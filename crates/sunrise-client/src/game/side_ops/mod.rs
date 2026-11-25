@@ -3,3 +3,4 @@ pub(in crate::game) mod events;
 pub(in crate::game) mod modapi;
 pub(in crate::game) mod player;
 pub(in crate::game) mod presentation;
+pub(in crate::game) mod tables;

@@ -132,16 +132,6 @@ impl Game<'_> {
     pub(in crate::game) fn block_at(&self, p: Pos) -> BlockStateId {
         self.world.block(p.0, p.1, p.2)
     }
-    pub(in crate::game) fn dispenser_block_name(&self, p: Pos) -> std::sync::Arc<str> {
-        self.res.facts().get(self.block_at(p)).name.clone()
-    }
-    pub(in crate::game) fn in_block_tag(&self, tag: &str, block: &str) -> bool {
-        self.res
-            .items()
-            .block_tags
-            .get(tag)
-            .is_some_and(|s| s.contains(block))
-    }
     pub(in crate::game::server_side) fn water_at(&self, p: Pos) -> bool {
         matches!(
             self.res.behaviours().fluid_kind(self.block_at(p)),

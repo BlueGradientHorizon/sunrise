@@ -650,7 +650,7 @@ impl Game<'_> {
                 .0
                 .apply_resources(armor_stand_assets);
             game.armor_stand_assets.0.extensions = item_extensions;
-            game.apply_staged_pack_server();
+            game.side_clear_random_tick_sections();
             game.portals.sections.clear();
             game.options.resources = root.clone();
             game.client.falling_vertices.get_mut().clear();

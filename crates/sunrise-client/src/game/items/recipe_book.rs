@@ -10,7 +10,6 @@ mod mod_screen;
 use super::{Game, Screen};
 use mod_api::{RecipeTransferCheck, RecipeTransferResult};
 use std::{
-    collections::BTreeSet,
     hash::{Hash, Hasher},
     time::{Duration, Instant},
 };
@@ -80,11 +79,6 @@ pub(in crate::game) struct RecipeUi {
     #[cfg(test)]
     pub(in crate::game) test_viewport: Option<[u32; 2]>,
     custom: mod_screen::ModRecipeUi,
-    /// The last authoritative property-set and stonecutter generation.
-    pub(in crate::game) server_properties: crate::recipe_book::ServerRecipeProperties,
-    /// The station tables of a client of a server: the window's own, their stonecutter list the
-    /// one the server sent, in its order (`station_recipes`). None on a server and until one sent.
-    pub(in crate::game) server_stations: Option<sunrise_client::stations::StationRecipes>,
     book: Option<Book>,
     tab: Option<Tab>,
     pub(in crate::game) search: Option<EditBox>,
@@ -101,10 +95,8 @@ pub(in crate::game) struct RecipeUi {
     /// Squeeze animations of new recipes: ticks left per button index and tab.
     button_anim: Vec<(usize, f32)>,
     tab_anim: Vec<(Tab, f32)>,
-    /// The client's copy of the known recipes (`ClientRecipeBook`), its
-    /// order deciding the buttons', and the recipes it was last synced with.
+    /// The client's copy of the known recipes (`ClientRecipeBook`), its order deciding the buttons'.
     client: ClientBook,
-    client_known: Option<BTreeSet<String>>,
     client_version: u64,
     /// The entries a server's packets carried, by display id: the book is
     /// made with them over its own (`Book::use_server_entries`).
@@ -478,43 +470,6 @@ impl Game<'_> {
         });
         out
     }
-    /// Sends the client book what changed in the server's: the first time a
-    /// replacing batch (vanilla's server iterates an identity hash set; this
-    /// one goes in id order), then each unlock and removal.
-    fn sync_client_book(&mut self) {
-        // On a server the book is the server's packets' (remote_recipe_book_*).
-        if self.remote.is_some() {
-            return;
-        }
-        let known = &self.level.recipe_book.recipes;
-        let index = &world_stations!(self).recipe_index;
-        let ui = &mut self.recipe_ui.0;
-        match ui.client_known.as_ref() {
-            Some(previous) if previous == known => return,
-            Some(previous) => {
-                for id in previous.difference(known) {
-                    for d in index.display_ids(id) {
-                        ui.client.remove(d);
-                    }
-                }
-                for id in known.difference(previous) {
-                    for d in index.display_ids(id) {
-                        ui.client.add(d);
-                    }
-                }
-            }
-            None => {
-                ui.client.clear();
-                for id in known {
-                    for d in index.display_ids(id) {
-                        ui.client.add(d);
-                    }
-                }
-            }
-        }
-        ui.client_known = Some(known.clone());
-        ui.client_version += 1;
-    }
     /// Every entry of the book, in its order (`native_recipes`).
     pub(in crate::game::client_side) fn recipe_book_entries(&mut self) -> Vec<Entry> {
         self.ensure_book();
@@ -527,7 +482,6 @@ impl Game<'_> {
     /// The display ids the player's book holds, and a number that changes
     /// whenever they do (`known_recipes`).
     pub(in crate::game::client_side) fn recipe_book_displays(&mut self) -> (u64, Vec<i32>) {
-        self.sync_client_book();
         (
             self.recipe_ui.0.client_version,
             self.recipe_ui.0.client.displays(),
@@ -540,6 +494,15 @@ impl Game<'_> {
         self.recipe_ui.0.custom = mod_screen::ModRecipeUi::default();
         self.recipe_tables.books = None;
         self.client_invalidate_mod_book_placement_catalogues();
+    }
+    /// Clear the client's packet-owned recipe book and cached displays on disconnect.
+    pub(in crate::game::client_side) fn reset_client_recipe_book(&mut self) {
+        self.forget_book();
+        let ui = &mut self.recipe_ui.0;
+        ui.client.clear();
+        ui.client_version += 1;
+        ui.server_entries.clear();
+        ui.last_clicked = None;
     }
     /// Puts a server's entries over `book` (`Book::use_server_entries`). The
     /// names come from the connection's registries; a tag's items are the ones
@@ -599,7 +562,6 @@ impl Game<'_> {
     /// Rebuilds the tab and button lists when anything they depend on changed.
     fn refresh_book_view(&mut self, book_type: BookType) {
         self.ensure_book();
-        self.sync_client_book();
         let mut h = std::collections::hash_map::DefaultHasher::new();
         for s in self.inventory.iter().flatten() {
             (&s.item, s.count, s.damage).hash(&mut h);
@@ -1801,8 +1763,6 @@ impl Game<'_> {
                 toast.push(id.to_owned());
             }
         }
-        // A local world opened later syncs its book from scratch.
-        ui.client_known = None;
         ui.client_version += 1;
         // A replacing packet starts the book again from its own recipes; a
         // later one puts its entries over the book as it is.

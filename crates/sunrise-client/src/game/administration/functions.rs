@@ -430,36 +430,6 @@ impl Game<'_> {
         self.fns.0.store = store;
         self.sync_function_registries(stack);
     }
-    /// The item and block tags the world's packs define, as `TagLoader` binds
-    /// them into the registries before the functions compile: the item and
-    /// block arguments' `#tag` and the completions read them. Recomputed from
-    /// the content tables, so a tag a pack no longer defines leaves again.
-    pub(in crate::game) fn sync_pack_tag_ids(&mut self) {
-        let tags = |ids: &std::collections::HashMap<String, std::collections::HashSet<String>>| {
-            let mut out: Vec<String> = ids
-                .keys()
-                .map(|k| sunrise_client::command::args::normalize(k))
-                .collect();
-            out.sort();
-            out
-        };
-        let item_tags = tags(&self.items().item_tags);
-        let block_tags = tags(&self.items().block_tags);
-        let reg = &mut self.ui.registries;
-        reg.item_tags.clone_from(&item_tags);
-        reg.block_tags.clone_from(&block_tags);
-        // `Registries::tags` reads an exported registry's entry first. Only
-        // update one the export made: a new empty entry would also take over
-        // `Registries::ids` and hide every item id.
-        for (registry, tags) in [
-            ("minecraft:item", item_tags),
-            ("minecraft:block", block_tags),
-        ] {
-            if let Some(entry) = reg.by_registry.get_mut(registry) {
-                entry.tags = tags;
-            }
-        }
-    }
     fn save_datapack_settings(&self) {
         let disabled: Vec<&String> = self
             .fns

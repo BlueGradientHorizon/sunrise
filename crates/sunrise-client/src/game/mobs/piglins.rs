@@ -57,13 +57,6 @@ impl Game<'_> {
         self.set_event_ai_target(mob, Some(target), player);
     }
 
-    pub(in crate::game) fn item_in_tag(&self, tag: &str, item: &str) -> bool {
-        self.res
-            .items()
-            .item_tags
-            .get(tag)
-            .is_some_and(|t| t.contains(item))
-    }
     pub(in crate::game) fn piglin_loved(&self, item: &str) -> bool {
         self.item_in_tag("minecraft:piglin_loved", item)
     }

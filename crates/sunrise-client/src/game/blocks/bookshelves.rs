@@ -1,6 +1,6 @@
 //! The enchanting power around an enchanting table (`EnchantmentMenu.slotsChanged`): the
 //! bookshelves and the blocks whose parts answer `enchant_power_bonus`.
-use super::{Game, native_world_read::BlockProviderQuery};
+use super::{Game, tables::BlockProviderQuery};
 use mod_api::LevelRef;
 use sunrise_client::stations::bookshelf_offsets;
 use sunrise_core::position::BlockPos;

@@ -170,17 +170,6 @@ pub(in crate::game::server_side) fn load<'a>(
     })
 }
 impl Game<'_> {
-    /// Borrow this world's generation; no lock or per-reader Arc increment.
-    pub(in crate::game) fn mob_maps(&self) -> &NeoForgeMobMaps {
-        self.mob_map_snapshot().as_ref()
-    }
-    pub(in crate::game) fn mob_map_snapshot(&self) -> &Arc<NeoForgeMobMaps> {
-        if let Some(tables) = &self.world_tables.0 {
-            &tables.data_maps.mob_maps
-        } else {
-            NeoForgeMobMaps::vanilla()
-        }
-    }
     /// Generation workers pin one world-owned snapshot per finalization, not
     /// a process-global last-loaded world. In-flight work retains its snapshot.
     pub(in crate::game::server_side) fn share_mob_maps(&self) {

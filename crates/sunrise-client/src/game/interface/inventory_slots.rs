@@ -467,14 +467,6 @@ impl Game<'_> {
             .collect();
         self.award_recipes(&recipes);
     }
-    pub(in crate::game) fn craft_recipe(&self) -> Option<(String, ItemStack)> {
-        let n = self.craft_size;
-        let grid: Vec<Option<ItemStack>> = (0..n * n).map(|i| self.craft_grid[i].clone()).collect();
-        let scale = |id: i32| self.maps.data.get(&id).map(|m| m.scale);
-        self.recipes()
-            .find_with(&self.loop_context, &grid, n, &scale)
-            .map(|(name, result)| (name.to_owned(), result))
-    }
     pub(in crate::game::client_side) fn draw_inventory_slots(
         &mut self,
         batch: &mut HudBatch,

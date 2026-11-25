@@ -1327,7 +1327,12 @@ impl Game<'_> {
         // The save screen has finished every write before releasing storage.
         self.ui.dispatcher = Default::default();
         self.reset_creative_contents();
-        self.finish_close_world_server();
+        self.server_items = None;
+        self.recipe_tables.clear_session();
+        self.reset_client_recipe_book();
+        self.refresh_recipe_property_context();
+        self.world_biomes = None;
+        self.world_biomes_base = None;
         self.client.world_icon = None;
         sunrise_client::crash::clear_detail("World");
         self.client.debug_charts.reset();

@@ -360,7 +360,7 @@ impl Game<'_> {
             Some(self.border.geometry()),
             Some(&self.res.motion().blocks),
         );
-        let side_server = self.game_side_server();
+        let side_server = self.game_side_client();
         let side = game_side!(self, side_server);
         let sections = self.client.client_pick.sections.get_mut();
         self.tnts.retain_mut(|t| {
@@ -522,7 +522,7 @@ impl Game<'_> {
         #[cfg(test)]
         nested_spawn_tests::after_lift(self, nested_spawn_tests::Point::RemoteRocket);
         for r in &mut rockets {
-            let side_server = self.game_side_server();
+            let side_server = self.game_side_client();
             r.remote_step(self.body_motion(&game_side!(self, side_server)));
             if let Some(target) = r.attached_to {
                 if me == Some(target) {

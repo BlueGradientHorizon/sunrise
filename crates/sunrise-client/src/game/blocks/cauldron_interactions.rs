@@ -42,7 +42,7 @@ pub(in crate::game) fn snapshot() -> Arc<Table> {
 pub(in crate::game) fn clear() {
     install(Arc::new(Table::default()));
 }
-pub(in crate::game::server_side) fn install(table: Arc<Table>) {
+pub(in crate::game) fn install(table: Arc<Table>) {
     TABLE.with_borrow_mut(|old| *old = table);
 }
 
@@ -102,7 +102,7 @@ pub(in crate::game::server_side) fn tag_id(tag: &str) -> Option<String> {
         .map(|id| id.to_string())
 }
 impl<'a> Registrar<'a> {
-    pub(in crate::game::server_side) fn new(
+    pub(in crate::game) fn new(
         items: &'a Items,
         registry: &'a sunrise_world::registry::BlockRegistry,
     ) -> Self {
@@ -140,7 +140,7 @@ impl<'a> Registrar<'a> {
         self.error = Some(error);
         Err(error)
     }
-    pub(in crate::game::server_side) fn finish(self) -> Result<Arc<Table>> {
+    pub(in crate::game) fn finish(self) -> Result<Arc<Table>> {
         let Self { edits, error, .. } = self;
         if let Some(error) = error {
             for edit in edits {
@@ -283,17 +283,6 @@ impl mod_api::CauldronInteractions for Registrar<'_> {
     }
 }
 impl Game<'_> {
-    pub(in crate::game::server_side) fn prepare_cauldron_interactions(
-        &self,
-        items: &Items,
-    ) -> Result<Arc<Table>> {
-        let mut registrar = Registrar::new(items, self.pack.assets.registry);
-        crate::game::native_hooks::native_register_cauldron_interaction(
-            &mod_api::RegistrationContext::new(),
-            &mut registrar,
-        );
-        registrar.finish()
-    }
     /// Invoke a mod's authoritative cauldron interaction on the server.
     pub(in crate::game) fn use_mod_cauldron(
         &mut self,

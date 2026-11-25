@@ -438,21 +438,6 @@ impl Game<'_> {
             log::warn!("Sunrise: registries preload: {e}");
         }
     }
-    /// `ResourceOrIdArgument`'s loot tables are the server's: every table the
-    /// world plays with, the game's, the content mods' and its packs'.
-    pub(in crate::game) fn sync_loot_table_ids(&mut self) {
-        let mut ids: Vec<String> = self.items().loot_table_ids().map(str::to_owned).collect();
-        ids.sort();
-        if let Some(entry) = self
-            .ui
-            .registries
-            .by_registry
-            .get_mut("minecraft:loot_table")
-        {
-            entry.ids.clone_from(&ids);
-        }
-        self.ui.registries.loot_tables = ids;
-    }
     /// The block the player is looking at, for coordinate suggestions, and
     /// the entity, for entity arguments (ClientSuggestionProvider).
     /// `ClientSuggestionProvider.getRelevantCoordinates` and

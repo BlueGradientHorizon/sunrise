@@ -605,23 +605,6 @@ impl Game<'_> {
         only: Option<[i32; 4]>,
         feedback: TradeFeedback,
     ) {
-        if only.is_none_or(|uuid| self.level.player_uuid == Some(uuid))
-            && self
-                .station
-                .as_ref()
-                .and_then(|s| s.merchant.as_ref())
-                .is_some_and(|m| m.mob == Some(id))
-        {
-            let reputation = self.villager_reputation(id);
-            self.menu_session(|menu, env, _| {
-                if let Some(session) = menu.merchant.as_mut() {
-                    session.reputation = reputation;
-                    session.update_special_prices();
-                }
-                menu.merchant_update_with_feedback(env.items, feedback);
-                Some(true)
-            });
-        }
         self.lan_merchant_reputation(id, only, feedback);
     }
     /// `Villager.restock` / `shouldRestock` with a trading player, at the
@@ -648,17 +631,7 @@ impl Game<'_> {
             }
             menu.merchant_update_with_feedback(env.items, TradeFeedback::AtWork(pitch));
         };
-        let local = self
-            .station
-            .as_ref()
-            .and_then(|s| s.merchant.as_ref())
-            .is_some_and(|m| m.mob == Some(id));
-        if local {
-            self.menu_session(|menu, env, _| {
-                refresh(menu, env);
-                Some(true)
-            });
-        } else if let Some(conn) = self.lan_trade_conn(id) {
+        if let Some(conn) = self.lan_trade_conn(id) {
             self.lan_merchant_op(conn, None, true, refresh);
         }
     }

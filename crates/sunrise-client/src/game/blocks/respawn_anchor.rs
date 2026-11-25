@@ -453,13 +453,6 @@ impl Game<'_> {
         let (lz, hz) = (bounds.min(Axis::Z), bounds.max(Axis::Z) - 1.0e-5);
         self.border.contains(lo, lz) && self.border.contains(hi, hz)
     }
-    pub(in crate::game) fn named_block_in_tag(&self, tag: &str, block: &str) -> bool {
-        self.res
-            .items()
-            .block_tags
-            .get(tag)
-            .is_some_and(|s| s.contains(block))
-    }
     /// `DismountHelper.findSafeDismountLocation` for a standing player.
     pub(in crate::game::server_side) fn safe_dismount_location(
         &self,

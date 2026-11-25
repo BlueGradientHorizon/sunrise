@@ -247,6 +247,9 @@ impl Game<'_> {
         }
         super::cauldron_interactions::clear();
         self.clear_world_parts();
+        self.server_loot.0.set(None);
+        self.server_items = None;
+        self.world_tables.0 = None;
         self.server.world_adopted = false;
         self.server.startup_ticket_restore_pending = false;
         result

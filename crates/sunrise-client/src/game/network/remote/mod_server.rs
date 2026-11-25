@@ -244,9 +244,6 @@ pub(in crate::game) mod recipe_properties;
 #[path = "session_server.rs"]
 pub(in crate::game) mod session;
 
-#[path = "tables_server.rs"]
-pub(in crate::game) mod tables;
-
 #[cfg(test)]
 #[path = "interaction_event_tests_server.rs"]
 pub(in crate::game) mod interaction_event_tests;

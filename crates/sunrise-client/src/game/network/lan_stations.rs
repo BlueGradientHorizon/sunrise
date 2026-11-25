@@ -64,28 +64,6 @@ pub(in crate::game) fn menu_of(
 }
 
 impl Game<'_> {
-    /// A reload changes what a stonecutter button number means. Close that window
-    /// before publishing the new recipe generation so queued old buttons cannot act on it.
-    pub(in crate::game) fn close_stonecutters_for_reload(&mut self) {
-        let Some(host) = self.lan.as_ref() else {
-            return;
-        };
-        let open: Vec<_> = host
-            .menus
-            .iter()
-            .filter_map(|(&conn, menus)| {
-                menus
-                    .station
-                    .as_ref()
-                    .filter(|menu| menu.kind == StationKind::Stonecutter)
-                    .map(|_| conn)
-            })
-            .collect();
-        for conn in open {
-            self.guest_close_menus_and_tell(conn);
-        }
-    }
-
     /// A workstation a guest's use opened (`ServerPlayer.openMenu`); false
     /// when guests can't use that one yet.
     pub(in crate::game) fn lan_open_station(&mut self, conn: u32, station: &Station) -> bool {

@@ -87,6 +87,25 @@ pub(in crate::game) struct RecipeTables {
     /// The types that came before the player did: the mods hear of them
     /// once the helpers can answer (`recipes_received_now`).
     received: Option<Vec<String>>,
+    /// The last authoritative property-set and stonecutter generation sent by a server.
+    pub(in crate::game) server_properties: crate::recipe_book::ServerRecipeProperties,
+    /// The station recipes of a client connected to a server (stonecutter order from server).
+    pub(in crate::game) server_stations: Option<sunrise_client::stations::StationRecipes>,
+}
+
+impl RecipeTables {
+    /// Drop all per-session synced recipe and book-display state on disconnect.
+    pub(in crate::game) fn clear_session(&mut self) {
+        self.tables = None;
+        self.books = None;
+        self.known = Default::default();
+        self.synced = None;
+        self.synced_index = None;
+        self.incoming = IncomingRecipes::default();
+        self.received = None;
+        self.server_properties = Default::default();
+        self.server_stations = None;
+    }
 }
 
 #[cfg(test)]
@@ -560,16 +579,6 @@ impl Game<'_> {
 }
 
 impl Game<'_> {
-    /// The display numbers the recipe book reads: the server's recipes',
-    /// once a server sent them, else the world's own.
-    pub(in crate::game::client_side) fn display_index(
-        &self,
-    ) -> &sunrise_client::recipe_book::RecipeIndex {
-        match &self.recipe_tables.synced_index {
-            Some(index) => index,
-            None => &self.stations().recipe_index,
-        }
-    }
     /// A new play session (`Login`): what the last server sent is gone.
     pub(in crate::game::client_side) fn forget_synced_recipes(&mut self) {
         self.recipe_tables.synced = None;

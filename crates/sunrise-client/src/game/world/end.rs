@@ -531,14 +531,6 @@ impl Game<'_> {
         )
     }
 
-    pub(in crate::game) fn block_name(&self, p: [i32; 3]) -> std::sync::Arc<str> {
-        self.res
-            .facts()
-            .get(self.world.block(p[0], p[1], p[2]))
-            .name
-            .clone()
-    }
-
     /// EnderEyeItem.use's `getPlayerPOVHitResult`: whether the block aimed
     /// at is an End portal frame (the use passes there).
     pub(in crate::game) fn aims_at_end_portal_frame(&self) -> bool {

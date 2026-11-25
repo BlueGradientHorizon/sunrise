@@ -12,14 +12,6 @@ pub(in crate::game::server_side) fn next_biome_keys_session() -> u64 {
 }
 
 impl Game<'_> {
-    /// What the chunk and far-terrain workers mesh with: the pack's context,
-    /// over the world's biomes when it has its own.
-    pub(in crate::game) fn worker_context(&self) -> Arc<WorkerContext> {
-        self.pack.context_with(self.mesh_biomes().clone())
-    }
-    pub(in crate::game) fn pack_files(&self) -> sunrise_world::loot::PackOverlay<'_> {
-        pack_files(&self.world_tables.0)
-    }
     /// Load the world's data packs' content tables (`None`: the world has no
     /// packs, and `Resources.rest` stays in use). This re-reads the tables,
     /// so it runs once per world open and on `/reload`.
@@ -387,6 +379,26 @@ impl Game<'_> {
                 .into()
             })
     }
+    #[inline(always)]
+    pub(in crate::game) fn server_world_tables(&self) -> Option<&WorldTables> {
+        self.world_tables.0.as_ref()
+    }
+
+    #[inline(always)]
+    pub(in crate::game) fn server_acting_player_uuid(&self) -> Option<u128> {
+        self.server.lan_acting_uuid
+    }
+
+    #[inline(always)]
+    pub(in crate::game) fn server_tags_ready(&self) -> bool {
+        self.session_lock.0.is_some()
+    }
+
+    #[inline(always)]
+    pub(in crate::game) fn server_clear_random_tick_sections(&mut self) {
+        self.random_tick_sections.0.clear();
+    }
+
     /// A world open's tables, and the first generation of the registries the mods declared.
     pub(in crate::game::server_side) fn open_world_tables(
         &mut self,
@@ -424,6 +436,26 @@ impl Game<'_> {
             .filter(|g| g.placed && g.participates_online() && g.brand == "sunrise")
         {
             sunrise_client::datapack_net::reload_connection(&guest.sender);
+        }
+    }
+    /// Close guest stonecutter windows before publishing a reloaded recipe generation.
+    pub(in crate::game::server_side) fn close_stonecutters_for_reload(&mut self) {
+        let Some(host) = self.lan.as_ref() else {
+            return;
+        };
+        let open: Vec<_> = host
+            .menus
+            .iter()
+            .filter_map(|(&conn, menus)| {
+                menus
+                    .station
+                    .as_ref()
+                    .filter(|menu| menu.kind == super::stations::Kind::Stonecutter)
+                    .map(|_| conn)
+            })
+            .collect();
+        for conn in open {
+            self.guest_close_menus_and_tell(conn);
         }
     }
     /// Reload the content tables with the world's packs, as
@@ -510,17 +542,11 @@ impl Game<'_> {
         self.adv.tree = advancements;
         self.adv.reset_tree();
         self.announce_data_bound(mod_api::TagsUpdateCause::ServerDataLoad { reload: true });
-        self.resolve_enchant_particles();
         self.announce_data_maps_updated(mod_api::DataMapsUpdateCause::ServerReload);
     }
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn active_enchantment_definitions(
-        &self,
-    ) -> &sunrise_client::enchant::Enchantments {
-        self.item_enchantments()
-    }
     /// Build and publish one server snapshot for this world load or reload.
     pub(in crate::game) fn load_server_loot(&mut self) {
         if let Some(tables) = &self.world_tables.0 {
@@ -581,46 +607,6 @@ impl Game<'_> {
         self.server_loot.0.set(loot);
     }
 
-    pub(in crate::game) fn prepare_parts(&self, items: &Items) -> Result<PreparedParts> {
-        // Some unit fixtures construct the Part tables without loading game content.
-        #[cfg(not(test))]
-        if !mod_api::__private::content_owners_published() {
-            return Err("Mod parts refused: content ownership has not been published".into());
-        }
-        let registry = self.pack.assets.registry;
-        let block_tags = &items.block_tags;
-        let tags = self.block_tag_sets(items);
-        let parts = mod_api::__private::prepare_parts(
-            block_tags,
-            &items.item_tags,
-            mod_api::__private::KnownIds {
-                block: &|id| registry.default_state(id).is_some(),
-                item: &|id| items.items.contains_key(id),
-            },
-        )
-        .map_err(|refused| match refused {
-            mod_api::__private::ResolvePartsError::ItemKeys(errors) => format!(
-                "Mod item keys refused:\n{}",
-                errors
-                    .into_iter()
-                    .map(|e| format!("mod {} requested unknown item {}", e.mod_id, e.id))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            ),
-            mod_api::__private::ResolvePartsError::Parts(errors) => {
-                format!("Mod parts refused:\n{}", errors.join("\n"))
-            }
-            _ => "Mod parts refused".to_owned(),
-        })?;
-        let block_states = api_values::prepare_block_states(registry)?;
-        let cauldrons = self.prepare_cauldron_interactions(items)?;
-        Ok(PreparedParts {
-            cauldrons,
-            block_states,
-            tags,
-            parts,
-        })
-    }
     /// Reload the content tables with the world's packs, as
     /// `/reload` reloads a server's (`ReloadableServerResources`).
     pub(in crate::game::server_side) fn prepare_world_reload(
@@ -691,59 +677,7 @@ impl Game<'_> {
         })
     }
 
-    /// Resolve the mods' parts against the tags this game plays with (`/reload` again): mods
-    /// that attach parts to a block or item it doesn't have are an error.
-    pub(in crate::game) fn resolve_parts(&self) -> Result<()> {
-        let prepared = self.prepare_parts(self.items())?;
-        if self
-            .remote
-            .as_ref()
-            .is_some_and(|r| !r.registries.tags.is_empty())
-        {
-            // During login this binds the local state keys. The effective item snapshot
-            // belongs to install_remote_tags, after it publishes the server's tag view.
-            self.bind_parts(prepared);
-        } else {
-            self.install_parts(prepared);
-        }
-        self.resolve_enchant_particles();
-        Ok(())
-    }
-    /// Bind parts, then resolve support and primary item answers against the published tags.
-    pub(in crate::game::server_side) fn install_parts(&self, prepared: PreparedParts) {
-        self.bind_parts(prepared);
-        self.resolve_primary_items();
-    }
-    /// Publish state keys and bind parts before their state-only answers are cached.
-    /// A server also publishes its parts for world generation.
-    pub(in crate::game) fn bind_parts(&self, prepared: PreparedParts) {
-        if self.is_logical_server()
-            && let Some(host) = &self.lan
-        {
-            cauldron_prediction::publish_registrations(
-                &prepared.cauldrons,
-                host.hub
-                    .guests
-                    .simulation_iter()
-                    .filter(|g| g.placed || g.held),
-            );
-        }
-        cauldron_interactions::install(prepared.cauldrons);
-        if self.is_logical_server() {
-            native_worldgen_parts::publish(
-                prepared.parts.as_ref(),
-                &prepared.block_states,
-                self.pack.assets.registry,
-            );
-        }
-        api_values::install_block_states(&self.tick, prepared.block_states);
-        native_world_read::install_block_tags(prepared.tags);
-        api_values::install_resolved_parts(&self.tick, prepared.parts);
-        self.mark_collision_shape_states();
-        self.resolve_block_paths();
-        self.resolve_piston_reactions();
-    }
-    pub(in crate::game::server_side) fn resolve_block_paths(&self) {
+    pub(in crate::game) fn server_resolve_block_paths(&self) {
         use mod_api::{HookId, PathComputationType};
         use sunrise_client::mobs::data::PartAnswers;
         let data = self.res.mob_data();
@@ -764,5 +698,11 @@ impl Game<'_> {
                 pathfindable: pathfindable.as_deref(),
             },
         );
+    }
+
+    #[cfg(test)]
+    #[inline(always)]
+    pub(in crate::game::server_side) fn resolve_block_paths(&self) {
+        self.server_resolve_block_paths();
     }
 }

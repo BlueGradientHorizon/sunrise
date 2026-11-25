@@ -129,19 +129,13 @@ pub(in crate::game) use super::native_worldgen::prepare as prepare_block_states;
 
 /// Publish the block state index prepared for this game. Between a tick's phases only: the
 /// token is the tick thread's, which a phase's work can't take or capture.
-pub(in crate::game::server_side) fn install_block_states(
-    _tick: &TickThread,
-    prepared: Arc<block_state::Index>,
-) {
+pub(in crate::game) fn install_block_states(_tick: &TickThread, prepared: Arc<block_state::Index>) {
     block_state::install(prepared);
 }
 
 /// Publish the parts table prepared for this game, and with it its listen index. Between a tick's
 /// phases only, like [`install_block_states`]: a phase keeps the `ListenSnapshot` it captured.
-pub(in crate::game::server_side) fn install_resolved_parts(
-    _tick: &TickThread,
-    parts: Option<mod_api::Parts>,
-) {
+pub(in crate::game) fn install_resolved_parts(_tick: &TickThread, parts: Option<mod_api::Parts>) {
     mod_api::__private::install_resolved_parts(parts);
 }
 
@@ -336,9 +330,7 @@ impl TryIntoApi for sunrise_client::boss_overlay::ModBar {
     }
 }
 
-#[path = "api_values/item_snapshot.rs"]
-mod item_snapshot;
-pub(in crate::game) use item_snapshot::ItemBoundary;
+pub(in crate::game) use crate::game::item_snapshot::{ItemBoundary, ItemSnapshot};
 
 impl TryIntoApi for sunrise_world::chunk::BlockState {
     type Api = mod_api::BlockState;
@@ -2377,6 +2369,50 @@ mod stack_limit_tests {
             assert_eq!(api.damage_component(), Some(damage));
             assert!(api.components().is_none());
         }
+    }
+
+    #[test]
+    fn active_registry_limits_survive_world_replacement_and_owner_drop() {
+        fn catalog_with(maximum: u32) -> Items {
+            let mut items = catalog();
+            items.items.get_mut("minecraft:stick").unwrap().max_stack = maximum;
+            items
+        }
+
+        let base = Arc::new(catalog_with(4));
+        let mut world = Arc::new(catalog_with(8));
+        let server = Arc::new(catalog_with(16));
+        let mut stack = ApiStack::of(mod_api::__private::item_key("minecraft:stick").unwrap());
+        stack.set_count(12).unwrap();
+
+        let snapshot = ItemSnapshot::capture(Some(&server), Some(&world), || {
+            ItemSnapshot::Shared(Arc::clone(&base))
+        });
+        drop(server);
+        assert_eq!(stack.try_into_engine(&snapshot).unwrap().count, 12);
+
+        let snapshot = ItemSnapshot::capture(None, Some(&world), || {
+            ItemSnapshot::Shared(Arc::clone(&base))
+        });
+        world = Arc::new(catalog_with(32));
+        assert_eq!(
+            stack.try_into_engine(&snapshot),
+            Err(StackWriteError::CountExceeded { maximum: 8 })
+        );
+        drop(snapshot);
+        let snapshot = ItemSnapshot::capture(None, Some(&world), || {
+            ItemSnapshot::Shared(Arc::clone(&base))
+        });
+        drop(world);
+        assert_eq!(stack.try_into_engine(&snapshot).unwrap().count, 12);
+
+        let snapshot =
+            ItemSnapshot::capture(None, None, || ItemSnapshot::Shared(Arc::clone(&base)));
+        drop(base);
+        assert_eq!(
+            stack.try_into_engine(&snapshot),
+            Err(StackWriteError::CountExceeded { maximum: 4 })
+        );
     }
 }
 

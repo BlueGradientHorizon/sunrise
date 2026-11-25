@@ -42,7 +42,7 @@ mod tests {
                     .unwrap()
                     .id("minecraft:emerald")
                     .unwrap();
-                game.recipe_ui.0.server_properties.replace(UpdateRecipes {
+                game.recipe_tables.server_properties.replace(UpdateRecipes {
                     properties: vec![("pot:input".into(), vec![id])],
                     stonecutter: vec![],
                 });
@@ -69,8 +69,7 @@ mod tests {
                 };
                 assert!(accepts(game, &stack));
                 assert!(!accepts(game, &ItemStack::new("minecraft:diamond", 1)));
-                game.recipe_ui
-                    .0
+                game.recipe_tables
                     .server_properties
                     .replace(UpdateRecipes::default());
                 game.refresh_recipe_property_context();

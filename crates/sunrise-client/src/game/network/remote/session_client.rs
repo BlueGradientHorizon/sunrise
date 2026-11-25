@@ -97,6 +97,12 @@ impl Game<'_> {
         self.adv = Default::default();
         self.stats = Default::default();
         self.score.board = Default::default();
+        self.server_items = None;
+        self.recipe_tables.clear_session();
+        self.reset_client_recipe_book();
+        self.refresh_recipe_property_context();
+        self.world_biomes = None;
+        self.world_biomes_base = None;
         self.streaming = Streaming::new(Arc::new(NoTerrain), self.worker_context(), 1);
         self.streaming.paused = true;
         self.reset_client_world(0);
@@ -150,6 +156,13 @@ impl Game<'_> {
         self.offer_retry();
         self.capture(false);
         Ok(())
+    }
+    pub(in crate::game::client_side) fn client_refresh_infiniburn(&mut self) {
+        self.world.infiniburn = Some(self.resolve_level_infiniburn(self.dimension_type()));
+    }
+    pub(in crate::game::client_side) fn finish_remote_level(&mut self) {
+        self.client_refresh_infiniburn();
+        self.apply_settings();
     }
     /// Switch to a (possibly new) dimension: a fresh client level.
     pub(in crate::game) fn enter_remote_dimension(

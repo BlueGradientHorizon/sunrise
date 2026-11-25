@@ -880,11 +880,6 @@ impl Game<'_> {
         }
         damage
     }
-    pub(in crate::game) fn biome_name_at(&self, p: Vec3) -> Option<String> {
-        let (x, y, z) = (p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
-        let c = self.world.chunks.get(&(x >> 4, z >> 4))?;
-        Some(world_biomes!(self).name(c.biome(x, y, z)).to_owned())
-    }
     pub(in crate::game::server_side) fn water_height(
         &self,
         x: i32,

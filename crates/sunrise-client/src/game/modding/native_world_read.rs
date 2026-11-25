@@ -3,7 +3,6 @@ use super::native_level_signals::ReadLevel;
 use super::{Dim, Game};
 use mod_api::BlockKey;
 use mod_api::{FluidKey, FluidState, LevelRef, LifecycleContext, UnresolvedFluid};
-use std::cell::RefCell;
 use sunrise_client::{items::Items, world::World};
 use sunrise_core::{geometry::Direction, position::BlockPos};
 use sunrise_world::{
@@ -12,62 +11,6 @@ use sunrise_world::{
     level::{Behaviours, fluid_can_be_replaced_with, fluid_tick_delay},
     registry::{BlockRegistry, BlockStateId},
 };
-
-/// Kinds of contextual block provider dispatched by the game.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(in crate::game) enum BlockProviderQuery {
-    EnchantPower,
-    LightEmission,
-}
-
-#[derive(PartialEq, Eq)]
-struct BlockQueryKey {
-    game: *const (),
-    state: BlockStateId,
-    query: BlockProviderQuery,
-}
-
-thread_local! {
-    static ACTIVE_BLOCK_QUERIES: RefCell<Vec<BlockQueryKey>> = const { RefCell::new(Vec::new()) };
-}
-
-struct PopBlockQuery;
-
-impl Drop for PopBlockQuery {
-    fn drop(&mut self) {
-        ACTIVE_BLOCK_QUERIES.with(|active| {
-            active.borrow_mut().pop();
-        });
-    }
-}
-
-impl Game<'_> {
-    /// Refuse re-entry for the same state and query kind in this game, regardless of level and
-    /// position. A provider can delegate to another state. Only actual dispatch enters here;
-    /// the vector retains its capacity between calls.
-    pub(in crate::game) fn with_block_provider_query<R>(
-        &self,
-        state: BlockStateId,
-        query: BlockProviderQuery,
-        ask: impl FnOnce() -> R,
-    ) -> Option<R> {
-        let key = BlockQueryKey {
-            game: std::ptr::from_ref(self).cast(),
-            state,
-            query,
-        };
-        ACTIVE_BLOCK_QUERIES.with(|active| {
-            let mut active = active.borrow_mut();
-            if active.contains(&key) {
-                return None;
-            }
-            active.push(key);
-            drop(active);
-            let _pop = PopBlockQuery;
-            Some(ask())
-        })
-    }
-}
 
 /// Shared by the level handle and the restricted block-hook view.
 pub(in crate::game::server_side) fn block_face_sturdy(
@@ -275,24 +218,6 @@ impl Game<'_> {
     /// The saved name for an engine-issued unresolved fluid.
     pub(in crate::game) fn unresolved_fluid_id(&self, fluid: UnresolvedFluid) -> String {
         mod_api::__private::unresolved_fluid_name(fluid)
-    }
-
-    /// The tag tables mods read: on a client the tags its server sent, once they are installed
-    /// (`install_remote_tags`), elsewhere the merged tables, once the world has built them (the
-    /// world lock is installed after they are built). None before that.
-    pub(in crate::game) fn native_tag_items(&self) -> Option<&Items> {
-        if self.options.execution_role.is_client() {
-            return self.remote.as_ref()?.tags.as_ref();
-        }
-        self.session_lock.0.is_some().then(|| self.items())
-    }
-
-    /// `items`' block tags, over this game's resolved block keys.
-    pub(in crate::game::server_side) fn block_tag_sets(
-        &self,
-        items: &Items,
-    ) -> std::collections::HashMap<String, std::collections::HashSet<BlockKey>> {
-        prepare_block_tags(&items.block_tags)
     }
 
     /// Whether the resolved block is in the world's merged block tag, on a client the tag its

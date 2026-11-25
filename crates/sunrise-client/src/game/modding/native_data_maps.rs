@@ -167,7 +167,7 @@ pub(crate) struct DataMaps {
 }
 
 /// `minecraft:` for an id written without a namespace.
-fn full_id(id: &str) -> Cow<'_, str> {
+pub(in crate::game) fn full_id(id: &str) -> Cow<'_, str> {
     if id.contains(':') {
         Cow::Borrowed(id)
     } else {
@@ -318,7 +318,7 @@ impl DataMaps {
 
     /// `entry`'s value in map `type_id` of `registry`, as NBT: none where the
     /// map gives it none.
-    fn value(
+    pub(in crate::game) fn value(
         &self,
         registry: &str,
         type_id: &str,
@@ -332,7 +332,7 @@ impl DataMaps {
     }
 
     /// Every entry map `type_id` of `registry` gives a value, in id order.
-    pub(in crate::game::server_side) fn entries(
+    pub(in crate::game) fn entries(
         &self,
         registry: &str,
         type_id: &str,
@@ -351,42 +351,6 @@ impl Game<'_> {
         for registry in self.server.data_map_registries.clone() {
             self.native_data_maps_updated(&registry, cause);
         }
-    }
-}
-
-impl Game<'_> {
-    /// The server's merged data maps, none unless this is a server whose
-    /// tables were built from packs and mods' files.
-    pub(in crate::game::server_side) fn loaded_data_maps(
-        &self,
-    ) -> Result<&DataMaps, mod_api::DataMapError> {
-        if self.serving.is_none() && self.options.dedicated.is_none() {
-            return Err(mod_api::DataMapError::Unavailable);
-        }
-        self.world_tables
-            .0
-            .as_ref()
-            .map(|tables| &tables.data_maps)
-            .ok_or(mod_api::DataMapError::Unavailable)
-    }
-    /// Entry `entry` of `registry`: its published NBT value in data map `map`, or
-    /// `Ok(None)` where the map gives it none.
-    pub(in crate::game) fn data_map_value(
-        &self,
-        registry: &str,
-        entry: &str,
-        map: &str,
-    ) -> Result<Option<&Tag>, mod_api::DataMapError> {
-        self.loaded_data_maps()?
-            .value(registry, map, &full_id(entry))
-    }
-    /// Every entry data map `map` of `registry` gives a value, with that value, in id order.
-    pub(in crate::game) fn data_map_entries(
-        &self,
-        registry: &str,
-        map: &str,
-    ) -> Result<&[(String, Tag)], mod_api::DataMapError> {
-        self.loaded_data_maps()?.entries(registry, map)
     }
 }
 

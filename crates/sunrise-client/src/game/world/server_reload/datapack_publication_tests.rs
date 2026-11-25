@@ -266,7 +266,9 @@ fn datapack_game_open_reload_and_exhaustion_are_atomic() {
                 assert_eq!(power(game), DatapackValue::Int(9));
                 game.reload_datapacks(false, &features).unwrap();
                 assert_eq!(power(game), DatapackValue::Int(9));
-                game.finish_close_world().unwrap();
+                game.finish_close_world_server();
+                crate::game::lan::sync::forget_sync_data();
+                crate::game::lan::sync::forget_server_sources();
                 game.options.execution_role =
                     crate::game::execution_role::ExecutionRole::DedicatedServer;
                 game.load_world(request(root)).unwrap();

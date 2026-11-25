@@ -16,24 +16,6 @@ pub(in crate::game::server_side) use sunrise_client::items::ItemStack;
 pub(in crate::game::server_side) use sunrise_core::nbt::Tag;
 
 impl Game<'_> {
-    /// Whether enchantments `a` and `b` may share an item (`Enchantment.areCompatible`), by the
-    /// world's enchantment definitions. API @API:item_components@.
-    pub(in crate::game) fn enchantments_compatible(&self, a: &str, b: &str) -> bool {
-        world_stations!(self).enchantments.compatible(a, b)
-    }
-    /// Whether an enchantment on `stack` has effect component `effect`, by the world's
-    /// enchantment definitions (`EnchantmentHelper.has`), behind
-    /// `ItemResource::has_enchantment_effect`, through the opaque backend. API
-    /// @API:item_components@.
-    pub(in crate::game) fn item_has_enchantment_effect(
-        &self,
-        stack: &ItemStack,
-        effect: &str,
-    ) -> bool {
-        world_stations!(self)
-            .enchantments
-            .has_component(stack, effect)
-    }
     pub(in crate::game) fn item_resource_attack_damage_bonus(
         &self,
         stack: &ItemStack,
@@ -64,7 +46,7 @@ impl Game<'_> {
             ..Default::default()
         };
         Some(stack_attack_bonus_preview(
-            &world_stations!(self).enchantments,
+            self.item_enchantments(),
             &effective,
             &ctx,
             &self.world.random,
@@ -83,7 +65,7 @@ impl Game<'_> {
             return Ok(None);
         }
         let items = world_items!(self);
-        let enchantments = &world_stations!(self).enchantments;
+        let enchantments = std::sync::Arc::clone(self.item_enchantments());
         let pool = enchantments.tag(&pool.to_string());
         if pool.is_empty() {
             return Ok(None);

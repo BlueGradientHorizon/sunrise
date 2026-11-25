@@ -643,8 +643,6 @@ pub(in crate::game) mod native_projectiles;
 pub(in crate::game) mod native_quick_move;
 #[path = "modding/native_raid_refs.rs"]
 pub(in crate::game) mod native_raid_refs;
-#[path = "modding/native_recipe_properties.rs"]
-pub(in crate::game) mod native_recipe_properties;
 #[cfg(test)]
 #[path = "modding/native_recipe_sync_tests.rs"]
 pub(in crate::game) mod native_recipe_sync_tests;
@@ -979,8 +977,6 @@ pub(in crate::game) mod jukebox_server;
 pub(in crate::game) mod lan_actions_server;
 #[path = "entities/lightning_server.rs"]
 pub(in crate::game) mod lightning_server;
-#[path = "interface/menu_clicks_server.rs"]
-pub(in crate::game) mod menu_clicks_server;
 #[path = "entities/minecarts_server.rs"]
 pub(in crate::game) mod minecarts_server;
 #[path = "modding/mods/mod_server.rs"]
@@ -997,8 +993,6 @@ pub(in crate::game) mod native_menu_refs_server;
 pub(in crate::game) mod native_server_server;
 #[path = "mobs/nautili_server.rs"]
 pub(in crate::game) mod nautili_server;
-#[path = "world/packs/mod_server.rs"]
-pub(in crate::game) mod packs_server;
 #[path = "interface/pad/mod_server.rs"]
 pub(in crate::game) mod pad_server;
 #[path = "entities/pick_entity_server.rs"]

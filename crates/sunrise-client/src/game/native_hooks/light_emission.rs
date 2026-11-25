@@ -1,5 +1,5 @@
 use super::*;
-use crate::game::native_world_read::BlockProviderQuery;
+use crate::game::tables::BlockProviderQuery;
 
 impl Game<'_> {
     pub(in crate::game) fn light_emission_dimension(level: mod_api::LevelRef) -> LevelDimension {

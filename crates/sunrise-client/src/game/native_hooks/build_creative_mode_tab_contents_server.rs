@@ -47,17 +47,6 @@ pub(in crate::game::server_side) use sunrise_items::creative_catalog::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_items::items::Items;
 
-impl Game<'_> {
-    #[inline(always)]
-    pub(in crate::game) fn shared_items(&self) -> Arc<Items> {
-        match (&self.server_items, &self.world_tables.0) {
-            (Some(items), _) => Arc::clone(items),
-            (_, Some(tables)) => Arc::clone(&tables.items),
-            _ => self.res.shared_items(),
-        }
-    }
-}
-
 #[cfg(test)]
 #[path = "build_creative_mode_tab_contents/tests_server.rs"]
 pub(in crate::game) mod tests;

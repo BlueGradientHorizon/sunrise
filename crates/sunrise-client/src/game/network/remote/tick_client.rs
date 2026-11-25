@@ -130,6 +130,17 @@ impl Game<'_> {
         ));
         self.capture_loaded_world();
     }
+    #[inline(always)]
+    pub(in crate::game::client_side) fn game_side_client(
+        &self,
+    ) -> (Option<u128>, Option<mod_api::LevelRef>, bool) {
+        let level = self.native_lifecycle.epoch().and_then(|epoch| {
+            let key = self.dim.key();
+            mod_api::__private::dimension_id(key)?;
+            Some(mod_api::LevelRef::with_generation(epoch, key, 0))
+        });
+        (None, level, false)
+    }
     /// `LocalPlayer.tick`'s `Player.tick` work: input, riding, motion and
     /// sleep, and the input `sendChanges` sends for it (`None`: nothing ticked).
     /// `fall_flying_before_hooks` is the flag from before the tick's hooks when the caller
@@ -261,7 +272,7 @@ impl Game<'_> {
                 }
             };
         }
-        let side_server = self.game_side_server();
+        let side_server = self.game_side_client();
         let Some(player) = self.player.as_mut() else {
             return Ok(None);
         };
@@ -304,7 +315,7 @@ impl Game<'_> {
                 None
             };
             let answer = self.ask_swim_entry(decision);
-            let side_server = self.game_side_server();
+            let side_server = self.game_side_client();
             let side = game_side!(self, side_server);
             let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
                 return Ok(None);
@@ -319,7 +330,7 @@ impl Game<'_> {
             // LocalPlayer.aiStep: water vision reads this tick's `Entity.baseTick`
             // `isEyeInFluid(FluidTags.WATER)` sample and `this.isSpectator()`, before `super.aiStep()`.
             self.tick_local_water_vision();
-            let side_server = self.game_side_server();
+            let side_server = self.game_side_client();
             let side = game_side!(self, side_server);
             let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
                 return Ok(None);
@@ -350,7 +361,7 @@ impl Game<'_> {
                     None
                 };
                 let answer = self.ask_swim_entry(decision);
-                let side_server = self.game_side_server();
+                let side_server = self.game_side_client();
                 let side = game_side!(self, side_server);
                 let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
                     return Ok(None);
@@ -361,7 +372,7 @@ impl Game<'_> {
                     return Ok(None);
                 }
                 self.tick_local_water_vision();
-                let side_server = self.game_side_server();
+                let side_server = self.game_side_client();
                 let side = game_side!(self, side_server);
                 let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
                     return Ok(None);
@@ -1205,7 +1216,7 @@ impl Game<'_> {
                 .next_float()
         };
         if running {
-            let side_server = self.game_side_server();
+            let side_server = self.game_side_client();
             let sections = self.client.client_pick.sections.get_mut();
             self.orbs.retain_mut(|o| {
                 let distance = |feet: &[f64; 3]| -> f64 {

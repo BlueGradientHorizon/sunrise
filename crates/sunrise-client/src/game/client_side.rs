@@ -738,8 +738,6 @@ pub(in crate::game) mod native_mob_refs_client;
 #[cfg(test)]
 #[path = "modding/native_player_level_tests_client.rs"]
 pub(in crate::game) mod native_player_level_tests_client;
-#[path = "modding/native_recipe_properties_client.rs"]
-pub(in crate::game) mod native_recipe_properties_client;
 #[path = "modding/native_server_client.rs"]
 pub(in crate::game) mod native_server_client;
 #[path = "blocks/nether_portal_client.rs"]

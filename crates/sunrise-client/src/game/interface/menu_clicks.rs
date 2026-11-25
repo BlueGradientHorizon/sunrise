@@ -66,7 +66,18 @@ impl Game<'_> {
             return;
         }
         let shown = self.creative_display_stack(slot);
-        match self.creative_display_click_server(shown.as_ref(), button, input) {
+        let catalog = self
+            .server_items
+            .as_deref()
+            .unwrap_or_else(|| self.res.items());
+        let max = |s: &ItemStack| catalog.get(&s.item).map_or(64, |i| i.max_stack);
+        match sunrise_client::creative::click_display(
+            &mut self.carried,
+            shown.as_ref(),
+            max,
+            button,
+            input,
+        ) {
             DisplayClick::Hotbar(i, stack) if i < self.inventory.len() => {
                 self.inventory[i] = Some(stack);
             }
@@ -497,7 +508,7 @@ impl Game<'_> {
         };
         let trade_env = sunrise_client::merchant::TradeEnv {
             trades: &self.stations().trades,
-            enchantments: &self.stations().enchantments,
+            enchantments: self.item_enchantments(),
             maps: Some(&maps),
         };
         let menu_can_equip = self.menu_can_equip();
@@ -631,13 +642,6 @@ impl Game<'_> {
             self.merchant_sync_out(s);
         }
         let after: Vec<Option<ItemStack>> = (0..total).map(|i| menu.slot(i).cloned()).collect();
-        // `FurnaceResultSlot.checkTakeAchievements` pays out only on actual takes (`onTake` /
-        // `onQuickCraft`), never on direct `Slot.set` edits.
-        let furnace_extracted = if matches!(kind, Kind::Furnace(_)) {
-            std::mem::take(&mut menu.furnace_extracted)
-        } else {
-            Vec::new()
-        };
         let carried = menu.carried.take();
         let dropped = std::mem::take(&mut menu.dropped);
         let sounds = std::mem::take(&mut menu.sounds);
@@ -683,13 +687,6 @@ impl Game<'_> {
             self.award_crafted(&crafted);
             for stack in &brewed {
                 self.trigger_brewed_potion(stack);
-            }
-            if !furnace_extracted.is_empty()
-                && self.is_logical_server()
-                && let (Some(pos), Some(p)) = (self.container, self.player.as_ref())
-            {
-                let at = [p.position.x, p.position.y, p.position.z];
-                self.award_furnace_recipes(pos, at);
             }
         } else if self.client.screen == Screen::Creative {
             // `Player.drop` swings even when the creative packet is suppressed. Creative-screen
@@ -753,9 +750,6 @@ impl Game<'_> {
         }
         if kind == Kind::CrafterBlock {
             self.apply_crafter_slot_states(&menu);
-        }
-        if matches!(kind, Kind::Furnace(_)) && self.is_logical_server() {
-            self.menu_session_with_game_server(&before);
         }
         self.apply_equipment();
         if let Some(maps) = level_maps {

@@ -151,14 +151,6 @@ impl Game<'_> {
         Some(self.sky_darken_in(world, Dim::from_id(level.dimension_id())))
     }
 
-    /// The effective flags are set by the server's world or received by the client at join.
-    pub(in crate::game) fn enabled_feature_ids(&self) -> &Arc<[String]> {
-        self.remote
-            .as_ref()
-            .map_or(self.level.enabled_features.as_arc(), |remote| {
-                &remote.features
-            })
-    }
     /// Dimension shape of a loaded server level, including parked levels.
     pub(in crate::game) fn level_dimension_shape(
         &self,

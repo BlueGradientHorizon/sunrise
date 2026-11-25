@@ -36,69 +36,6 @@ impl Game<'_> {
         self.to_network_projecting(s, &|_| ())
     }
     // handle_command_suggestions: remote/commands.rs
-    pub(in crate::game) fn set_registries(&mut self, registries: Arc<Dynamic>) {
-        let entries: Vec<(&str, serde_json::Value)> = registries
-            .registries
-            .get("minecraft:enchantment")
-            .into_iter()
-            .flatten()
-            .filter_map(|(name, data)| {
-                Some((
-                    name.as_str(),
-                    sunrise_client::scoreboard::tag_to_json(data.as_ref()?),
-                ))
-            })
-            .collect();
-        let enchantments = match self
-            .stations()
-            .enchantments
-            .with_entries(entries.iter().map(|(n, v)| (*n, v)))
-        {
-            Ok(table) => table.map(Arc::new),
-            Err(error) => {
-                log::warn!("Sunrise: refused enchantment registry: {error}");
-                return;
-            }
-        };
-        // The server's biomes the game lacks (a world data pack's) join the
-        // game's table, from the data it sent: colours, meshing and the
-        // chunk format all go through that table. The window's own server
-        // thread set the world's table already.
-        if self.integrated.is_none() {
-            let table = registries
-                .registries
-                .get(BIOME_REGISTRY)
-                .and_then(|list| client_biomes(self.res.biomes(), list))
-                .map(Arc::new);
-            if table.is_some() || self.world_biomes.is_some() {
-                self.world_biomes_base = table.clone();
-                self.world_biomes = table;
-                let context = self.worker_context();
-                self.streaming.reload_resources(&mut self.world, context);
-            }
-        }
-        let biomes: Vec<u16> = registries
-            .registries
-            .get(BIOME_REGISTRY)
-            .map(|list| {
-                list.iter()
-                    .map(|(name, _)| world_biomes!(self).id(name))
-                    .collect()
-            })
-            .unwrap_or_default();
-        if let Some(r) = self.remote.as_mut() {
-            r.enchantments = enchantments;
-            let bits = ceil_log2(biomes.len());
-            let column = r.chunk_format.layout();
-            r.chunk_format =
-                Arc::new(ChunkFormat::new(&r.dimension, biomes, bits).in_column(column));
-            r.registries = registries;
-            r.resolve_clocks();
-            self.install_server_items();
-            self.reset_creative_contents();
-            self.refresh_creative_search_tags();
-        }
-    }
     /// Another player of this level, whose copy passes every click (`Player.interactOn`).
     pub(in crate::game) fn is_level_player(&self, id: i32) -> bool {
         self.remote

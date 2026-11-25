@@ -8,6 +8,26 @@ pub(in crate::game::client_side) use crate::game::server_side::world_entry::*;
 pub(in crate::game::client_side) use std::sync::atomic::{AtomicU64, Ordering};
 
 impl Game<'_> {
+    #[inline(always)]
+    pub(in crate::game) fn client_world_tables(&self) -> Option<&WorldTables> {
+        None
+    }
+
+    #[inline(always)]
+    pub(in crate::game) fn client_acting_player_uuid(&self) -> Option<u128> {
+        self.remote.as_ref().map(|r| r.profile())
+    }
+
+    #[inline(always)]
+    pub(in crate::game) fn client_tags_ready(&self) -> bool {
+        false
+    }
+
+    #[inline(always)]
+    pub(in crate::game) fn client_resolve_enchant_particles(&self) {
+        self.resolve_enchant_particles();
+    }
+
     pub(in crate::game::client_side) fn defer_world_entry(
         &mut self,
         entry: PendingWorldEntry,
@@ -175,14 +195,5 @@ impl Game<'_> {
             None => {}
         }
         Ok(())
-    }
-    /// The station recipes menus and screens use: a client of a server numbers and draws its
-    /// stonecutter buttons by the list the server sent, else the world's own.
-    pub(in crate::game) fn station_recipes(&self) -> &sunrise_client::stations::StationRecipes {
-        self.recipe_ui
-            .0
-            .server_stations
-            .as_ref()
-            .unwrap_or(&self.stations().recipes)
     }
 }

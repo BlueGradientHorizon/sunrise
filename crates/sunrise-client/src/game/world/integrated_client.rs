@@ -169,21 +169,6 @@ impl Game<'_> {
         options.server = None;
         options.world = None;
         self.join_world_rest()?;
-        // The window plays against the world's own biome table (its chunks
-        // carry the packs' ids past the built-in list, `set_registries`
-        // names them through it), as the server thread's copy does.
-        let world = std::env::current_dir()?.join("saves").join(folder);
-        let enabled_features = sunrise_client::save::Level::read(&world)
-            .map(|l| l.enabled_features)
-            .unwrap_or_default();
-        self.world_biomes = Some(super::world_loading::packed_biomes(
-            &world,
-            &self.options.resources,
-            self.res.biomes(),
-            &enabled_features,
-            &self.pack.additional_data,
-        ));
-        self.world_biomes_base = self.world_biomes.clone();
         let (res, pack, settings) = (self.res.clone(), self.pack.clone(), self.settings.clone());
         sunrise_client::parallel::set_setting(settings.sunrise.parallel_tick);
         let flags = Arc::new(Flags {

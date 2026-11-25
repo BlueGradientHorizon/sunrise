@@ -189,44 +189,6 @@ impl GuestMenuEffects {
 }
 
 impl Game<'_> {
-    /// `LocalPlayer.doLimitedCrafting`: whether limited crafting is active.
-    pub fn limited_crafting(&self) -> bool {
-        self.remote.as_ref().map_or_else(
-            || {
-                self.ui
-                    .rules
-                    .bool_at(sunrise_client::gamerules::vanilla::LIMITED_CRAFTING)
-            },
-            |r| r.do_limited_crafting,
-        )
-    }
-
-    pub(in crate::game) fn menu_env(&self) -> Env<'_> {
-        Env {
-            crafting_remainder: Some(self),
-            player: self
-                .server
-                .lan_acting_uuid
-                .or_else(|| self.remote.as_ref().map(|r| r.profile())),
-            player_entity_id: Some(self.own_entity_id()),
-            loop_context: &self.loop_context,
-            items: self.items(),
-            recipes: self.recipes(),
-            brewing: &self.stations().brewing,
-            banners: &self.stations().banners,
-            station_recipes: self.station_recipes(),
-            enchantments: &self.stations().enchantments,
-            names: &self.pack.names,
-            trade: None,
-            maps: None,
-            limited_crafting: self.limited_crafting(),
-            can_equip: None,
-            known_recipes: Some(&self.level.recipe_book),
-            slot_rules: Some(self),
-            stacked: None,
-        }
-    }
-
     /// Runs `op` on the guest's menu with their inventory copied in and back.
     pub(in crate::game) fn guest_menu_op<R>(
         &mut self,

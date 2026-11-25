@@ -96,12 +96,14 @@ macro_rules! game_side {
             facts: $s.res.facts(),
             biomes: world_biomes!($s),
             behaviours: $s.res.behaviours(),
-            features: $s
-                .remote
-                .as_ref()
-                .map_or($s.level.enabled_features.as_arc(), |remote| {
-                    &remote.features
-                }),
+            features: if $s.options.execution_role.is_logical_server() {
+                $s.level.enabled_features.as_arc()
+            } else {
+                match &$s.remote {
+                    Some(remote) => &remote.features,
+                    None => $crate::game::tables::default_client_features(),
+                }
+            },
             items: $s.res.items(),
             damage_types: &$s.health_resources.damage,
             player_equipment: acting_equipment!($s),
@@ -129,12 +131,14 @@ macro_rules! game_side {
             facts: $s.res.facts(),
             biomes: world_biomes!($s),
             behaviours: $s.res.behaviours(),
-            features: $s
-                .remote
-                .as_ref()
-                .map_or($s.level.enabled_features.as_arc(), |remote| {
-                    &remote.features
-                }),
+            features: if $s.options.execution_role.is_logical_server() {
+                $s.level.enabled_features.as_arc()
+            } else {
+                match &$s.remote {
+                    Some(remote) => &remote.features,
+                    None => $crate::game::tables::default_client_features(),
+                }
+            },
             items: $s.res.items(),
             damage_types: &$s.health_resources.damage,
             player_equipment: acting_equipment!($s),
@@ -622,6 +626,8 @@ mod event_loop;
 pub(in crate::game) use client_side::events;
 #[path = "game/runtime/execution_role.rs"]
 mod execution_role;
+#[path = "game/modding/item_snapshot.rs"]
+pub(in crate::game) mod item_snapshot;
 #[path = "game/world/tables.rs"]
 pub(in crate::game) mod tables;
 #[allow(unused_imports)]
@@ -1730,8 +1736,6 @@ pub(in crate::game) use server_side::native_projectiles;
 pub(in crate::game) use server_side::native_quick_move;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_raid_refs;
-#[allow(unused_imports)]
-pub(in crate::game) use server_side::native_recipe_properties;
 #[path = "game/modding/native_recipe_sync.rs"]
 mod native_recipe_sync;
 #[allow(unused_imports)]

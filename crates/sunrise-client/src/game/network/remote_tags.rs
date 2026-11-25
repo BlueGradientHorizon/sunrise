@@ -25,10 +25,10 @@ impl Game<'_> {
             Arc::make_mut(&mut r.registries).add_tags(tags);
         }
         self.install_server_items();
-        self.refresh_infiniburn();
+        self.client_refresh_infiniburn();
         self.refresh_creative_search_tags();
         self.install_remote_tags();
-        if self.recipe_ui.0.server_stations.is_some()
+        if self.recipe_tables.server_stations.is_some()
             && tags
                 .registries
                 .iter()

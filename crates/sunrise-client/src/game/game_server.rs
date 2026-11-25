@@ -543,12 +543,14 @@ impl Game<'_> {
         }
         self.close_ender_chest();
     }
+    #[allow(dead_code)]
     #[inline(always)]
-    pub(in crate::game) fn finish_close_world_server(&mut self) {
+    pub(in crate::game::server_side) fn finish_close_world_server(&mut self) {
+        self.clear_world_parts();
         self.server_loot.0.set(None);
         self.server_items = None;
+        self.world_tables.0 = None;
         self.session_lock.0 = None;
-        self.clear_world_parts();
         self.server.world_adopted = false;
         self.server.startup_ticket_restore_pending = false;
     }
@@ -2462,12 +2464,14 @@ impl Game<'_> {
             environment,
             raining: rain > 0.2,
             thundering: thunder > 0.9,
-            enabled_features: self
-                .remote
-                .as_ref()
-                .map_or(self.level.enabled_features.as_arc(), |remote| {
-                    &remote.features
-                }),
+            enabled_features: if !client_side {
+                self.level.enabled_features.as_arc()
+            } else {
+                match &self.remote {
+                    Some(remote) => &remote.features,
+                    None => crate::game::tables::default_client_features(),
+                }
+            },
             player_box,
             guest_boxes,
             building_player_boxes,
