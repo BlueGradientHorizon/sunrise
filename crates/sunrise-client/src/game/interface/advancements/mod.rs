@@ -558,15 +558,6 @@ impl Game<'_> {
         let tree = self.adv.tree.clone();
         self.adv.progress = progress;
         self.ui.registries.advancements = tree.list.iter().map(|a| a.id.clone()).collect();
-        // `PlayerAdvancements.checkForAutomaticTriggers`: an advancement with no
-        // criteria is never done (`AdvancementRequirements.test` is false), but
-        // its rewards are granted as the progress loads. Vanilla's `award(holder, "")` finds no `""`
-        // criterion to grant and so returns without a toast or an announcement;
-        // the reward grant is the whole effect, and it happens again on the next
-        // load because there is no criterion to record it.
-        for index in tree.automatic() {
-            self.grant_rewards(&tree.list[index]);
-        }
     }
     pub(super) fn save_advancements(&self) {
         if !self.adv.loaded
@@ -1051,10 +1042,13 @@ impl Game<'_> {
                     (id.to_owned(), amplifier, duration)
                 })
                 .collect(),
-            components: sunrise_client::mobs::finalize::variant_component(m)
-                .map(|(id, value)| (id.to_owned(), value))
-                .into_iter()
-                .collect(),
+            components: sunrise_client::mobs::finalize::variant_component_in(
+                m,
+                self.world_variants(),
+            )
+            .map(|(id, value)| (id.to_owned(), value))
+            .into_iter()
+            .collect(),
             custom_name: m.custom_name_text.as_ref().map(Text::component),
             passengers,
             nbt,
@@ -1259,11 +1253,19 @@ impl Game<'_> {
                 hub.finish_native_first_tick(&task, &fresh, owners);
             });
         }
-        self.with_advancement_hub(|hub, owners| {
-            if hub.native_reload_pending {
-                hub.finish_reload_resources(owners);
-            }
-        });
+        let finished_reload = self
+            .with_advancement_hub(|hub, owners| {
+                if hub.native_reload_pending {
+                    hub.finish_reload_resources(owners);
+                    true
+                } else {
+                    false
+                }
+            })
+            .unwrap_or(false);
+        if finished_reload {
+            self.send_datapack_snapshots();
+        }
     }
     /// `PlayerAdvancements.progressChanged`, kept for a network player's client.
     fn progress_changed(&mut self, index: usize) {
@@ -1320,10 +1322,8 @@ impl Game<'_> {
         let tree = self.adv.tree.clone();
         for r in &allowed {
             let list = tree.recipe_criteria(r);
-            self.trigger_criteria(&tree, &list, |c, _| {
-                c["recipes"]
-                    .as_str()
-                    .is_some_and(|id| adv::full(id) == r.as_str())
+            self.trigger_criteria(&tree, &list, |c, w| {
+                adv::id_matches(&c["recipes"], "recipe", r, w)
             });
         }
         taken_back
@@ -1487,7 +1487,25 @@ impl Game<'_> {
             .level
             .recipe_book
             .add_recipes(&world_stations!(self).recipe_index, &rewards);
-        for table in &a.rewards.loot {
+        // `AdvancementRewards.loot` is a `HolderSet<LootTable>`: ids, or a tag's members in order
+        // (a tag that is not bound refused the advancement when the tree loaded).
+        let loot = self.server_loot.get();
+        let tables: Vec<String> = a
+            .rewards
+            .loot
+            .iter()
+            .flat_map(|entry| match entry.strip_prefix('#') {
+                Some(tag) => loot
+                    .as_ref()
+                    .and_then(|loot| loot.registry_tags("loot_table")?.get(&*adv::full(tag)))
+                    .into_iter()
+                    .flatten()
+                    .cloned()
+                    .collect::<Vec<String>>(),
+                None => vec![entry.clone()],
+            })
+            .collect();
+        for table in &tables {
             // `LootContextParamSets.ADVANCEMENT_REWARD`: the rewarded player is
             // THIS_ENTITY and their position the ORIGIN.
             let player = self.killer_loot_entity(None);

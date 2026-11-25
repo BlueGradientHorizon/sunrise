@@ -275,6 +275,7 @@ impl Game<'_> {
                     Some(&self.pack.block_registries),
                     &self.damage_hooks,
                 )
+                .with_variants(world_variants!(self))
                 .with_mob_hurt_handoff(&mut paused_hurt)
                 .with_mob_uuids(&self.persist.uuids)
                 .with_player_resolver(
@@ -1767,7 +1768,7 @@ impl mod_api::InsideEntityAccess for GameMobInsideAccess<'_, '_> {
             return false;
         };
         self.game
-            .level_destroy_block(level, pos, drop, None, false)
+            .level_destroy_block(level, pos, drop, None, None, false)
             .is_some()
     }
 
@@ -1819,7 +1820,7 @@ impl mod_api::InsideEntityAccess for GameMobInsideAccess<'_, '_> {
                 {
                     let _ = self
                         .game
-                        .level_destroy_block(level, pos, false, None, false);
+                        .level_destroy_block(level, pos, false, None, None, false);
                 }
             }
             mod_api::__private::BuiltinInsideAction::LayeredCauldronExtinguish { pos, state } => {

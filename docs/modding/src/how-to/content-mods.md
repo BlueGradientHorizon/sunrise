@@ -348,10 +348,27 @@ below it and head instruments (`ZOMBIE` through `CUSTOM_HEAD`) from the block ab
 is silent without a skull block entity above the note block with a `note_block_sound`.
 `ignited_by_lava` sets lava's ignition flag; a subscribed per-position `ignited_by_lava` hook still answers
 first. `replaceable` controls replacement by block placement and by features that check replaceability;
-the usual refusal when the hand holds the block's own item still applies. `skip_same_block_faces: true`
-hides model faces against any state of this same block, as glass does; `false` disables the template's render
-definition skip rule. Leaf and ice graphics options can still hide faces based on the template class.
-Unset values inherit the template. These are load-time properties on both sides, with no new hook.
+the usual refusal when the hand holds the block's own item still applies. Unset values inherit the
+template. These are load-time properties on both sides, with no new hook.
+
+`skip_rendering`, `hides_neighbor_face` and `supports_external_face_hiding` control culled neighbor
+faces as compiled block data (`BlockBehaviour.skipRendering`, NeoForge
+`IBlockExtension.hidesNeighborFace` and `supportsExternalFaceHiding`), without running mod code on
+meshing workers:
+- `skip_rendering` is a list of face rules that replaces the template's skip rule (`[]` disables it;
+  omitted inherits the template). `[{"neighbor": "self"}]` skips faces against any state of this
+  same block, as glass does.
+- `hides_neighbor_face` is a list of face rules whose matching neighbor faces pointing toward this
+  block are hidden when the neighbor supports external face hiding.
+- `supports_external_face_hiding: false` prevents any neighbor's `hides_neighbor_face` rules from
+  hiding this block's faces (default `true`).
+
+Each rule object accepts optional `neighbor` (a block id, `#tag`, `{"block"|"tag", "state"}`,
+`"self"`, or omitted for any neighbor), `state` (required property values on this block), `same`
+(property names that must match on both states), `faces` (`"all"`, `"horizontal"`, `"vertical"` or
+a list of direction names) and `facts` (a closed set of `BlockBehaviour.BlockStateBase` booleans:
+`is_air`, `can_occlude`, `is_solid_render`, `liquid`). Tag rules resolve against the client's
+synced block tags and remesh loaded sections on tag sync.
 
 `spawn_rule` sets which mobs spawn on the block (`BlockBehaviour.Properties.isValidSpawn`): `default` is vanilla's
 (a sturdy top face and light emission below 14), `always` and `never` answer for every mob, and `ocelot_or_parrot`
@@ -662,10 +679,12 @@ was made: `entity()` (the entity's id, `None` for the empty, position and cache 
   paths, on the thread that owns the level: the server tick, and the client's own prediction. A
   guest's move is checked by the server with the same entity id. Fluid passage and face-support
   checks never ask. Another thread (the mesher, world generation) reads the normal shape.
-- **Once a tick.** A part is asked once for each distinct question in a tick: the state, the
-  position and every input of the query (entity, kind, height, descending, placement, held item)
-  make one question. A step-up retry or a second sweep reads the first answer, so the shape cannot change
-  in the middle of a move.
+- **Every query.** A part is asked for every query that meets an opted-in state, as vanilla asks
+  `getCollisionShape` for every block of every sweep. A step-up retry or a second sweep asks
+  again, and a change to the mod's own state inside a tick is seen by the next query.
+- **Not the selection shape.** The outline a player targets is the declared shape or the one the
+  block entity publishes; this part is never asked for it, so a block can be solid and
+  unselectable, or passable and selectable.
 - **No re-entry.** The query holds the entity's state from before the move, and a collision query
   made inside the callback gets the empty-context answer, never a nested call.
 - **No `Host`.** A move holds the level's collision data and cannot lend a `Host`, as for
@@ -683,7 +702,7 @@ was made: `entity()` (the entity's id, `None` for the empty, position and cache 
   the previous answer, or `None` if no earlier Part answered. A failed shape construction
   returns an error to its caller without changing the answer.
 - **Cost.** Nothing for a block without such a part. An opted-in block costs one call per
-  distinct question in a tick.
+  query that meets it.
 
 #### Items
 
@@ -1138,7 +1157,19 @@ entry's record schema. Its scalar kinds are `Bool`, `Int { min, max }`, `Float {
   `DatapackVariant`s the schema lists, with that variant's fields beside it (`Codec.dispatch`). The id reads as
   vanilla's `byNameCodec` reads one (`growing` is `minecraft:growing`), and an id no variant declares fails the
   entry. `variant_id` names the variant, and `get` reads its fields. Only the declaring mod lists variants; there
-  is no way for another mod to add one.
+  is no way for another mod to add one;
+- Four vanilla codec kinds, decoded by the engine at load (and re-decoded on clients for synced registries) into
+  small `Copy` handles you copy out of `level.datapack_read` and evaluate afterwards:
+  - `IntProvider { min, max }` (`IntProviders.codec(min, max)`): `as_int_provider()` gives an `IntProviderValue`,
+    evaluated with `value.sample(host, random)`;
+  - `BlockStateProvider` (`BlockStateProvider.CODEC`): `as_block_state_provider()` gives a
+    `BlockStateProviderValue`, evaluated with `value.state(host, level, random, pos)`;
+  - `BlockPredicate` (`BlockPredicate.CODEC`): `as_block_predicate()` gives a `BlockPredicateValue`, evaluated
+    with `value.test(host, level, pos)`;
+  - `HolderSet { registry }` (`RegistryCodecs.homogeneousList`, `minecraft:block` only; any other registry is
+    refused at registration): `as_holder_set()` gives a `HolderSetValue`, queried with `value.contains(host, block)`.
+  Handles carry the load's generation number: after `/reload` (or a client snapshot swap), evaluating an older
+  handle returns `Err(DatapackValueError::Stale)` instead of panicking.
 
 Each field, at any depth, is required (`DatapackField::required`), given a default (`with_default`) or optional with
 no default (`DatapackField::optional`, `optionalFieldOf`), which reads as `None` when left out. An optional kind
@@ -1644,6 +1675,25 @@ radius. `kernel_size` 0 is none.
 ```json
 { "sunrise:enhanced_terrain_adaptation": { "kernel_size": 24, "kernel_distance": 24,
     "top": "carve", "bottom": "none", "rigid_junctions": true, "inflate": true } }
+```
+
+#### NeoForge model loaders and the root transform
+
+Block and item model files read NeoForge's built-in loaders `neoforge:composite`, `neoforge:obj` and
+`neoforge:empty`. `"loader": "neoforge:empty"` is a model with no quads: its other keys, `parent` and
+`textures` included, are ignored, and a model inheriting from it has no geometry either.
+
+A model's `transform` (NeoForge's root transform) moves its elements, its composite children and its OBJ faces
+before the blockstate's rotation. It is `"identity"`, a 3x4 row-major matrix (bare or as `{"matrix": ...}`), or an
+object of `translation`, `rotation` (or `left_rotation`), `scale` (one number or three), `right_rotation` (or
+`post-rotation`) and `origin` (`"center"`, `"corner"`, `"opposing-corner"`, the default, or three numbers). A
+rotation is one `{"x": degrees}` axis object, a list of them, three XYZ degrees or a quaternion. The model closest
+to the leaf that names a `transform` wins, so a child's `"identity"` removes its parent's. A composite's transform
+applies after each child's own. A registered loader's quads don't get it: the loader reads `transform` from
+`input.config` itself.
+
+```json
+{ "parent": "mymod:block/pipe", "transform": { "scale": 0.5, "origin": "center" } }
 ```
 
 #### Custom block-state definition types
