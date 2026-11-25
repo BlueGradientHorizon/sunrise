@@ -3,7 +3,7 @@
 //! `ordered_tick.rs` interleaves orbs, primed TNT and falling blocks by join order.
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// What the tick runs after the local player's own update: effects, the
     /// world's entities and blocks, and the network hub.
     pub(in crate::game) fn tick_world(&mut self, running: bool) -> Result<()> {
@@ -20,7 +20,7 @@ impl Game<'_> {
         sunrise_client::spans::time("tick_effects", || self.tick_effects(running));
         // Player.tick's ItemCooldowns.tick for the window's player (a
         // server's players count theirs down in `tick_guests`).
-        self.server.shield_cooldown = self.server.shield_cooldown.saturating_sub(1);
+        self.side.shield_cooldown = self.side.shield_cooldown.saturating_sub(1);
         self.cooldowns.tick();
         sunrise_client::spans::time("tick_using", || self.tick_using_server());
         sunrise_client::spans::time("postprocess_chunks", || self.postprocess_chunks())?;
@@ -42,7 +42,7 @@ impl Game<'_> {
             // what joins during it waits for the next tick
             // (`ensureActiveIsNotIterated`). Primed TNT and falling blocks
             // keep their own packet cutoff (`ordered.announced`, #10063).
-            self.server.ticked_entities_through = self.server.next_entity;
+            self.side.ticked_entities_through = self.side.next_entity;
         }
         // ChunkMap still ticks while /tick freeze holds block/entity ticks.
         if !running {
@@ -117,7 +117,7 @@ impl Game<'_> {
             // Orbs, primed TNT and falling blocks still to tick, in join order.
             self.run_ordered_ticks(sunrise_client::join_seq::JoinSeq::MAX, false)?;
             // Unsimulated entities no mod named are told once for the family.
-            self.native_others_tick_family(self.server.ordered.told, self.server.ordered.born);
+            self.native_others_tick_family(self.side.ordered.told, self.side.ordered.born);
             sunrise_client::spans::time("tick_experience", || self.tick_experience());
             // Merged, despawned or picked up.
             span("mods_leaves_flush", || self.native_leaves_flush());
@@ -164,7 +164,7 @@ impl Game<'_> {
         // Everything that has joined has had its spawn packet and, if it joined
         // before the entity passes (TNT a piston or repeater primed), its first
         // tick in the late pass above (#10063).
-        self.server.ordered.announced = sunrise_client::join_seq::JoinSeq::upcoming();
+        self.side.ordered.announced = sunrise_client::join_seq::JoinSeq::upcoming();
         if running {
             sunrise_client::spans::time("tick_moving_pistons", || self.tick_moving_pistons())?;
             sunrise_client::spans::time("tick_block_entities", || self.tick_block_entities())?;

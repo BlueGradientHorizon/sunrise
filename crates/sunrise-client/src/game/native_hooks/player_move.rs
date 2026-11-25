@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Server player `player` (their UUID) would move from `from` to `to` (or turn from
     /// `from_rotation` to `to_rotation`); set `cancel` to veto the report. Before it is
     /// committed. Server-side.

@@ -25,7 +25,7 @@ pub(in crate::game::server_side) use sunrise_client::{
     text::Text,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A named name tag names the mob under the crosshair.
     pub(in crate::game::server_side) fn name_mob(&mut self, index: usize) -> bool {
         // `NameTagItem`: the mob takes the tag's `custom_name` component, style and all.
@@ -61,8 +61,8 @@ impl Game<'_> {
         self.post_game_event("minecraft:entity_interact", at, ctx);
         self.swing_arm();
         if let (Some(player), Some(player_name)) = (
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_name.clone(),
+            self.side.lan_acting_uuid,
+            self.side.lan_acting_name.clone(),
         ) {
             self.native_player_name_entity(player, &player_name, entity_id, &entity_name);
         }

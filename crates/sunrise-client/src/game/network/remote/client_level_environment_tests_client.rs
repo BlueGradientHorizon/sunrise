@@ -51,7 +51,7 @@ fn client_clouds_fog_and_precipitation_follow_the_joined_level() {
     use sunrise_client::chunk::Chunk;
     use sunrise_core::position::BlockPos;
 
-    let precipitation_at = |game: &Game<'_>, x, y, z| {
+    let precipitation_at = |game: &Game<'_, crate::game::client_side::ClientState>, x, y, z| {
         crate::game::weather::precipitation_at(
             &game.world,
             world_biomes!(game),
@@ -128,7 +128,7 @@ fn client_clouds_fog_and_precipitation_follow_the_joined_level() {
                     let mut no_tint = sky;
                     no_tint.sunrise_color[3] = 0.0;
                     let mut sample = |forward, distance, sky, draws_sky| {
-                        game.client.view.forwards = [forward, 0.0, 0.0];
+                        game.side.view.forwards = [forward, 0.0, 0.0];
                         game.streaming.radius = distance;
                         game.settings.sunrise.sky = draws_sky;
                         let f = game.frame_fog(camera, sky, 0, [0.0; 3]);

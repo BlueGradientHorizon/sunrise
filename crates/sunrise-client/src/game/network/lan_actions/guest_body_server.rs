@@ -52,7 +52,7 @@ macro_rules! settle_guest_hit {
     };
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `handlePlayerPositionChange`: complete the accepted movement before later
     /// packets and `ServerPlayer.tick` can observe the player.
     pub(in crate::game) fn guest_accepted_move(&mut self, conn: u32, commit: CommittedMove) {

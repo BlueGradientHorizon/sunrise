@@ -43,11 +43,11 @@ pub(in crate::game::client_side) use sunrise_client::{
     widgets::{Cursor, request_cursor},
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `MerchantScreen` rendering.
     pub(in crate::game::client_side) fn draw_merchant(&mut self, batch: &mut HudBatch) -> bool {
         let (ox, oy) = self.inventory_origin(batch);
-        let local = (self.client.cursor.0 - ox, self.client.cursor.1 - oy);
+        let local = (self.side.cursor.0 - ox, self.side.cursor.1 - oy);
         let Some(m) = self.station.as_ref().and_then(|s| s.merchant.as_ref()) else {
             return false;
         };
@@ -269,7 +269,7 @@ impl Game<'_> {
             && local.1 >= 35.0 - 1.0
             && local.1 < 35.0 + 21.0 + 1.0;
         let slot_tooltip = if !deprecated && offer_tooltip.is_none() {
-            self.slot_at(batch, self.client.cursor.0, self.client.cursor.1)
+            self.slot_at(batch, self.side.cursor.0, self.side.cursor.1)
                 .and_then(|slot| self.slot_mut(slot).clone())
         } else {
             None
@@ -288,11 +288,11 @@ impl Game<'_> {
             );
             let lines: Vec<(String, u32)> =
                 text.split('\n').map(|l| (l.to_owned(), u32::MAX)).collect();
-            self.draw_tooltip_lines(batch, &lines, self.client.cursor.0, self.client.cursor.1);
+            self.draw_tooltip_lines(batch, &lines, self.side.cursor.0, self.side.cursor.1);
         } else if let Some(stack) =
             offer_tooltip.or_else(|| slot_tooltip.filter(|s| self.tooltip_with_carried(s)))
         {
-            self.draw_stack_tooltip(batch, &stack, self.client.cursor.0, self.client.cursor.1);
+            self.draw_stack_tooltip(batch, &stack, self.side.cursor.0, self.side.cursor.1);
         }
         if let Some(tooltip) = browser_tip {
             self.draw_mod_browser_tooltip(batch, tooltip);
@@ -321,7 +321,7 @@ impl Game<'_> {
                 if let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut()) {
                     m.focused = Some(i);
                 }
-                self.audio
+                self.side.audio
                     .0
                     .play("minecraft:ui.button.click", None, 0.25, 1.0);
                 self.try_move_items(index);
@@ -333,7 +333,7 @@ impl Game<'_> {
     /// `MerchantScreen.mouseDragged`: the held scroller follows the cursor.
     pub(in crate::game::client_side) fn merchant_drag(&mut self) -> bool {
         let Some(size) = self
-            .renderer
+            .side.renderer
             .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
@@ -341,7 +341,7 @@ impl Game<'_> {
             return false;
         };
         let (_, oy) = self.inventory_origin(&HudBatch::new(size, self.settings.gui_scale_inputs()));
-        let y = self.client.cursor.1 - oy;
+        let y = self.side.cursor.1 - oy;
         if let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut())
             && m.dragging
         {
@@ -373,7 +373,7 @@ impl Game<'_> {
         else {
             return false;
         };
-        self.audio
+        self.side.audio
             .0
             .play("minecraft:ui.button.click", None, 0.25, 1.0);
         self.try_move_items(index);

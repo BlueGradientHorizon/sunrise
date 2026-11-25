@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// NeoForge's `SweepAttackEvent`: a player's damaging melee hit on a
     /// `target` (`minecraft:zombie`, `minecraft:oak_boat`) is about to sweep or
     /// not, after `native_critical_hit`. `vanilla_sweep` is `Player.isSweepAttack`

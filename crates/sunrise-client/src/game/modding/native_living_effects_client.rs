@@ -17,7 +17,7 @@ pub(in crate::game::client_side) use sunrise_client::mobs::Mob;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_items::items::ItemStack;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `LivingEntity.getEffectBlendFactor` for the local player on a client.
     pub(in crate::game) fn living_effect_blend_factor(
         &self,

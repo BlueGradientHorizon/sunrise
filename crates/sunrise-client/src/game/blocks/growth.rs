@@ -12,7 +12,7 @@ use sunrise_core::{geometry::Direction, position::BlockPos};
 #[allow(unused_imports)]
 use sunrise_world::{level::classes::Class, worldgen::live::LiveFeatures};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `BonemealEvent` for the acting hand's bone meal `stack` on `pos`:
     /// the event's answer, and the stack as the mods left it, which goes
     /// back in the hand (`useItemOn` puts a creative player's count back).

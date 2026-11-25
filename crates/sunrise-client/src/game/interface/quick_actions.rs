@@ -12,7 +12,7 @@
 use super::Game;
 use sunrise_core::nbt::Tag;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `Minecraft.getQuickActionsDialog`: the dialogs the tag names, from
     /// `RegistryAccess.lookupOrThrow(Registries.DIALOG)`.
     fn quick_actions_dialog(&self) -> Option<Tag> {
@@ -48,8 +48,8 @@ impl Game<'_> {
             return false;
         };
         let before_rev = self.dialog_screen_key();
-        let before_screen = self.client.screen;
+        let before_screen = self.side.screen;
         self.show_dialog(&dialog);
-        self.dialog_screen_key() != before_rev || self.client.screen != before_screen
+        self.dialog_screen_key() != before_rev || self.side.screen != before_screen
     }
 }

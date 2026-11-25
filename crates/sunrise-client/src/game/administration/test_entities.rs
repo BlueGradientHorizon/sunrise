@@ -12,7 +12,7 @@ pub(in crate::game) use sunrise_gameplay::test_entities::{Aabb, intersects, stan
 #[allow(unused_imports)]
 pub use sunrise_gameplay::test_entities::{aabb_of, inflate};
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `ServerLevel.setChunkForced(x, z, true)` for the chunks of `area`
     /// (`TestInstanceBlockEntity.forceLoadChunks`).
     pub(in crate::game) fn force_load_test_chunks(&mut self, area: &BoundingBox) {

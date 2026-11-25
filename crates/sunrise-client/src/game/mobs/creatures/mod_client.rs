@@ -148,7 +148,7 @@ pub(in crate::game::client_side) use sunrise_gameplay::projectile_world::ProjWor
 #[path = "living_draw_client.rs"]
 pub(in crate::game) mod living_draw;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Client-side arrow particles and local sounds.
     pub(in crate::game) fn client_arrow_event(
         &mut self,
@@ -167,7 +167,7 @@ impl Game<'_> {
                 kind: k,
                 position,
                 velocity,
-            } => self.particles.0.add(
+            } => self.side.particles.0.add(
                 &ParticleOptions::simple(kind(k)),
                 [position.x, position.y, position.z],
                 [velocity.x, velocity.y, velocity.z],
@@ -176,7 +176,7 @@ impl Game<'_> {
                 sound,
                 volume,
                 pitch,
-            } => self.audio.0.play_on(
+            } => self.side.audio.0.play_on(
                 6,
                 arrow_sound_name(sound),
                 Some([at.x, at.y, at.z]),
@@ -265,16 +265,16 @@ impl Game<'_> {
         // keep the existing exact mesh-culling path.
         let precheck = self.settings.sunrise.entity_culling == EntityCullingMode::Asynchronous
             && self
-                .occlusion
+                .side.occlusion
                 .0
                 .async_culler
                 .as_ref()
                 .is_some_and(|culler| culler.camera_is_stationary())
             && self.settings.sunrise.entity_culling_precheck != 0
             && self.mobs.len() >= self.settings.sunrise.entity_culling_precheck as usize
-            && !self.occlusion.0.shadow_casters.0
+            && !self.side.occlusion.0.shadow_casters.0
             && mod_api::__private::mods().is_empty();
-        self.client.rendered_mobs.set(0);
+        self.side.rendered_mobs.set(0);
         // What custom entity model animations read of the frame.
         sunrise_client::mobs::cem_anim::set_frame(sunrise_client::mobs::cem_anim::Frame {
             time: self.world.game_time as f64 + alpha,
@@ -289,8 +289,8 @@ impl Game<'_> {
             }),
             player_rot: [self.pitch, self.yaw],
             paused: self.pause,
-            first_person: self.client.camera_type.is_first_person(),
-            third_person_reversed: self.client.camera_type
+            first_person: self.side.camera_type.is_first_person(),
+            third_person_reversed: self.side.camera_type
                 == sunrise_client::camera::CameraType::ThirdPersonFront,
             ..Default::default()
         });
@@ -312,17 +312,17 @@ impl Game<'_> {
     /// poses entities: a new frame of draws, the store restarted when the
     /// renderer's no longer matches. Once per frame, before any entity draws.
     pub(in crate::game::client_side) fn begin_skinning(&self) {
-        let renderer = self.renderer.0.as_ref().filter(|r| r.skins_entities());
+        let renderer = self.side.renderer.0.as_ref().filter(|r| r.skins_entities());
         match renderer.and_then(|r| r.skinned_models()) {
             Some(stored) => {
-                let mut models = self.skin_models.0.borrow_mut();
+                let mut models = self.side.skin_models.0.borrow_mut();
                 // Reuse helps CPU-bound crowds, but regressed TAA frame tails in
                 // windowed measurements. Keep the original arithmetic with TAA on.
                 models.set_rotation_cache_enabled(!self.settings.sunrise.taa);
-                models.begin(&mut self.client.skin_frame.borrow_mut(), stored);
+                models.begin(&mut self.side.skin_frame.borrow_mut(), stored);
                 models.tagged = renderer.is_some_and(|r| r.skins_tagged());
             }
-            None => self.client.skin_frame.borrow_mut().clear_draws(),
+            None => self.side.skin_frame.borrow_mut().clear_draws(),
         }
     }
     /// Culls one entity's vertices from `entity_start`, counting what it drew
@@ -340,8 +340,8 @@ impl Game<'_> {
                 && self.cull_entity_camera_bounds(lo, hi)
                 && let Some((mark, _)) = skinned
             {
-                if self.occlusion.0.shadow_casters.0 {
-                    let mut frame = self.client.skin_frame.borrow_mut();
+                if self.side.occlusion.0.shadow_casters.0 {
+                    let mut frame = self.side.skin_frame.borrow_mut();
                     let end = frame.vertices as usize;
                     sunrise_client::gfx::pack_draw::EntitySpan::hide(
                         &mut frame.spans,
@@ -349,7 +349,7 @@ impl Game<'_> {
                         end,
                     );
                 } else {
-                    self.client.skin_frame.borrow_mut().truncate(mark);
+                    self.side.skin_frame.borrow_mut().truncate(mark);
                 }
             }
             return;
@@ -364,14 +364,14 @@ impl Game<'_> {
         let hidden = self.cull_entity_vertices(out, entity_start);
         if out.len() < len {
             if let Some((mark, _)) = skinned {
-                self.client.skin_frame.borrow_mut().truncate(mark);
+                self.side.skin_frame.borrow_mut().truncate(mark);
             }
         } else if corners.is_some() {
             if let Some((mark, _)) = skinned {
                 // Previous GPU-only entities can leave zero-length CPU spans at
                 // this same offset. Use this query's result, not their metadata.
                 if hidden {
-                    let mut skin = self.client.skin_frame.borrow_mut();
+                    let mut skin = self.side.skin_frame.borrow_mut();
                     let end = skin.vertices as usize;
                     EntitySpan::hide(&mut skin.spans, mark.2 as usize, end);
                 }
@@ -379,7 +379,7 @@ impl Game<'_> {
             out.truncate(len - 2);
             // The temporary bounds are not real geometry. Keep the culling end marker
             // at the true CPU end before the next entity appends a span there.
-            for span in self.client.entity_spans.borrow_mut().iter_mut().rev() {
+            for span in self.side.entity_spans.borrow_mut().iter_mut().rev() {
                 if span.start as usize <= out.len() {
                     break;
                 }
@@ -398,14 +398,14 @@ impl Game<'_> {
             sunrise_client::particles::ParticleType::Poof,
         );
         for _ in 0..20 {
-            let r = self.particles.0.level_random();
+            let r = self.side.particles.0.level_random();
             let xa = r.next_gaussian() * 0.02;
             let ya = r.next_gaussian() * 0.02;
             let za = r.next_gaussian() * 0.02;
             let x = at[0] + width * (2.0 * r.next_double() - 1.0) - xa * 10.0;
             let y = at[1] + height * r.next_double() - ya * 10.0;
             let z = at[2] + width * (2.0 * r.next_double() - 1.0) - za * 10.0;
-            self.particles.0.add(&options, [x, y, z], [xa, ya, za]);
+            self.side.particles.0.add(&options, [x, y, z], [xa, ya, za]);
         }
     }
     /// `Guardian.aiStep` on a client: two bubbles a tick trailing a guardian
@@ -435,7 +435,7 @@ impl Game<'_> {
         for (at, width, height, view) in swimming {
             for _ in 0..2 {
                 let (x, y, z) = {
-                    let r = self.particles.0.random();
+                    let r = self.side.particles.0.random();
                     (r.next_double(), r.next_double(), r.next_double())
                 };
                 let p = [
@@ -443,7 +443,7 @@ impl Game<'_> {
                     at[1] + height * y - view[1] * 1.5,
                     at[2] + width * (2.0 * z - 1.0) * 0.5 - view[2] * 1.5,
                 ];
-                self.particles.0.add(&bubble, p, [0.0; 3]);
+                self.side.particles.0.add(&bubble, p, [0.0; 3]);
             }
         }
         for (eye, target, scale) in beams {
@@ -452,13 +452,13 @@ impl Game<'_> {
             if length <= 0.0 {
                 continue;
             }
-            let mut dist = self.particles.0.random().next_double();
+            let mut dist = self.side.particles.0.random().next_double();
             while dist < length {
-                let r = self.particles.0.random();
+                let r = self.side.particles.0.random();
                 dist += 1.8 - scale + r.next_double() * (1.7 - scale);
                 let f = dist / length;
                 let p = [eye[0] + d[0] * f, eye[1] + d[1] * f, eye[2] + d[2] * f];
-                self.particles.0.add(&bubble, p, [0.0; 3]);
+                self.side.particles.0.add(&bubble, p, [0.0; 3]);
             }
         }
     }
@@ -477,13 +477,13 @@ impl Game<'_> {
                     } else {
                         format!("minecraft:{name}")
                     };
-                    self.audio.0.play(&id, Some(at), volume, pitch);
+                    self.side.audio.0.play(&id, Some(at), volume, pitch);
                 }
                 MobEvent::SoundId(name, at, volume, pitch) => {
-                    self.audio.0.play(&name, Some(at), volume, pitch);
+                    self.side.audio.0.play(&name, Some(at), volume, pitch);
                 }
                 MobEvent::ProfessionWorkSound(name, at, volume, pitch) => {
-                    self.audio.0.play(&name, Some(at), volume, pitch);
+                    self.side.audio.0.play(&name, Some(at), volume, pitch);
                 }
                 MobEvent::LocalSound(name, at, volume, pitch) => {
                     let id = if name.contains(':') {
@@ -491,7 +491,7 @@ impl Game<'_> {
                     } else {
                         format!("minecraft:{name}")
                     };
-                    self.audio.0.play_unshared(&id, Some(at), volume, pitch);
+                    self.side.audio.0.play_unshared(&id, Some(at), volume, pitch);
                 }
                 MobEvent::LandingDust {
                     state,
@@ -500,7 +500,7 @@ impl Game<'_> {
                     speed,
                 } => self.client_landing_dust(state, Vec3::new(at[0], at[1], at[2]), count, speed),
                 MobEvent::PowderSnowParticle { at, velocity } => {
-                    self.particles.0.add(
+                    self.side.particles.0.add(
                         &ParticleOptions::simple(ParticleType::Snowflake),
                         at,
                         velocity,
@@ -515,7 +515,7 @@ impl Game<'_> {
                 } => {
                     if let Some(ty) = ParticleType::from_name(kind) {
                         let options = ParticleOptions::simple(ty);
-                        self.particles
+                        self.side.particles
                             .0
                             .send_particles(&options, at, spread, speed, count);
                     }
@@ -524,7 +524,7 @@ impl Game<'_> {
                     if let Some(ty) = ParticleType::from_name(kind) {
                         let options = ParticleOptions::simple(ty);
                         if count == 0 {
-                            self.particles.0.add(&options, at, [0.0; 3]);
+                            self.side.particles.0.add(&options, at, [0.0; 3]);
                         }
                         for _ in 0..count {
                             let r = &mut self.world.random;
@@ -538,14 +538,14 @@ impl Game<'_> {
                                 r.next_gaussian() * 0.02,
                                 r.next_gaussian() * 0.02,
                             ];
-                            self.particles.0.add(&options, p, v);
+                            self.side.particles.0.add(&options, p, v);
                         }
                     }
                 }
                 MobEvent::ParticleAt { kind, at, velocity } => {
                     if let Some(ty) = ParticleType::from_name(kind) {
                         let options = ParticleOptions::simple(ty);
-                        self.particles.0.add(&options, at, velocity);
+                        self.side.particles.0.add(&options, at, velocity);
                     }
                 }
                 MobEvent::ParticleColored {
@@ -554,7 +554,7 @@ impl Game<'_> {
                 } => {
                     let options =
                         ParticleOptions::colored(ParticleType::EntityEffect, [r, g, b, 1.0]);
-                    self.particles.0.add(&options, at, [0.0; 3]);
+                    self.side.particles.0.add(&options, at, [0.0; 3]);
                 }
                 MobEvent::DigParticles { at } => self.warden_dig_particles(at),
                 MobEvent::LidPush {
@@ -574,7 +574,7 @@ impl Game<'_> {
         let egg = item == "minecraft:egg";
         for _ in 0..8 {
             let v = if egg {
-                let r = self.particles.0.random();
+                let r = self.side.particles.0.random();
                 [
                     (f64::from(r.next_float()) - 0.5) * 0.08,
                     (f64::from(r.next_float()) - 0.5) * 0.08,
@@ -583,7 +583,7 @@ impl Game<'_> {
             } else {
                 [0.0; 3]
             };
-            self.particles.0.add(&options, at, v);
+            self.side.particles.0.add(&options, at, v);
         }
     }
     pub(in crate::game::client_side) fn pickup_arrow_geometry(
@@ -593,7 +593,7 @@ impl Game<'_> {
         out: &mut Vec<Vertex>,
     ) {
         // ItemPickupParticle: a picked-up arrow flying to its collector.
-        let taken = self.pickups.0.live.iter().filter_map(|p| match &p.taken {
+        let taken = self.side.pickups.0.live.iter().filter_map(|p| match &p.taken {
             super::pickups::Taken::Arrow(a) => Some((&**a, super::pickups::position(p, alpha))),
             _ => None,
         });
@@ -607,7 +607,7 @@ impl Game<'_> {
         out: &mut Vec<Vertex>,
     ) {
         let atlas = &self.gui.atlas;
-        let (right, up) = thrown_item_axes(self.client.camera_type, self.yaw, self.pitch);
+        let (right, up) = thrown_item_axes(self.side.camera_type, self.yaw, self.pitch);
         // A glowing projectile's outline: what it drew up to the next one.
         let mut glowing = None;
         for (a, at) in projectiles {
@@ -638,7 +638,7 @@ impl Game<'_> {
                 packed = (packed & 0xFF) | (u32::from(block) * 16) << 8;
             }
             if a.is_arrow() {
-                let Some(model) = self.client.arrow_model.as_ref() else {
+                let Some(model) = self.side.arrow_model.as_ref() else {
                     continue;
                 };
                 // SpectralArrowRenderer, and TippableArrowRenderer's `getColor() > 0`.
@@ -695,7 +695,7 @@ impl Game<'_> {
             }
             // ThrownTridentRenderer.
             if matches!(a.kind, ProjectileKind::Trident) {
-                let Some(model) = self.client.trident_model.as_ref() else {
+                let Some(model) = self.side.trident_model.as_ref() else {
                     continue;
                 };
                 let Some(r) = atlas.sprites.get("entity/trident/trident").copied() else {
@@ -728,7 +728,7 @@ impl Game<'_> {
             // ShulkerBulletRenderer: the tumbling bullet model, then a larger
             // translucent copy of it (colour 0x26FFFFFF); always 15 block light.
             if matches!(a.kind, ProjectileKind::ShulkerBullet { .. }) {
-                let model = &self.client.entity_models.shulker_bullet;
+                let model = &self.side.entity_models.shulker_bullet;
                 if let (Some(model), Some(r)) =
                     (model, atlas.sprites.get("entity/shulker/spark").copied())
                 {
@@ -780,7 +780,7 @@ impl Game<'_> {
             }
             // WitherSkullRenderer: the skull model facing its flight.
             if let Some(dangerous) = super::wither::skull_kind(a) {
-                let model = &self.client.entity_models.wither_skull;
+                let model = &self.side.entity_models.wither_skull;
                 let tex = if dangerous {
                     "entity/wither/wither_invulnerable"
                 } else {
@@ -859,7 +859,7 @@ impl Game<'_> {
     }
     /// Whether this frame's models can be posed on the GPU (`begin_skinning`).
     pub(in crate::game::client_side) fn skinning(&self) -> bool {
-        self.renderer
+        self.side.renderer
             .0
             .as_ref()
             .is_some_and(|r| r.skins_entities() && r.skinned_models().is_some())

@@ -20,7 +20,7 @@ macro_rules! section_scene {
 }
 pub(in crate::game) use section_scene;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn particle_occlusion_context(
         &self,
         camera: glam::DVec3,
@@ -36,14 +36,14 @@ impl Game<'_> {
             };
         ParticleOcclusionContext::new(
             section_scene!(self),
-            &self.async_particle_culler.0,
+            &self.side.async_particle_culler.0,
             mode,
             camera,
         )
     }
 
     pub(in crate::game::client_side) fn finish_async_particle_culling(&self) {
-        self.async_particle_culler
+        self.side.async_particle_culler
             .0
             .borrow_mut()
             .finish_frame(&self.world, self.res.facts());

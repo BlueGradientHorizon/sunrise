@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Change the active menu without losing window 0's cursor or state counter.
     pub(in crate::game) fn remote_set_menu(
         &mut self,

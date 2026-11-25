@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether `state` hides the face `fluid` draws toward it, `direction` pointing from the
     /// fluid to the block (`hidden` starts false); asked for every state and fluid where
     /// `refresh_render_visibility` resolves its tables. Client-side.

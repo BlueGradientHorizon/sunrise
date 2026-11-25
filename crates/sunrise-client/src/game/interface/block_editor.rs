@@ -207,7 +207,7 @@ fn edit_tooltip(
     hovered
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `LocalPlayer.open*Block`: the edit screen for the block entity at
     /// `pos`.
     pub(in crate::game::client_side) fn open_block_editor(
@@ -228,7 +228,7 @@ impl Game<'_> {
             .iter()
             .map(|e| e.value.clone())
             .collect();
-        self.block_editor.0 = Some(screen);
+        self.side.block_editor.0 = Some(screen);
         self.set_screen(Screen::BlockEditor);
         self.capture(false);
         for packet in opening {
@@ -253,7 +253,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game::client_side) fn close_block_editor(&mut self) {
-        self.block_editor.0 = None;
+        self.side.block_editor.0 = None;
         self.set_screen(Screen::Playing);
         self.capture(true);
     }
@@ -264,14 +264,14 @@ impl Game<'_> {
         &mut self,
         f: impl FnOnce(&mut BlockEditScreen, &mut BlockEntity) -> R,
     ) -> Option<R> {
-        let mut screen = self.block_editor.0.take()?;
+        let mut screen = self.side.block_editor.0.take()?;
         let result = self
             .world
             .block_entities
             .get_mut(&screen.pos)
             .map(|entity| f(&mut screen, entity));
         if result.is_some() {
-            self.block_editor.0 = Some(screen);
+            self.side.block_editor.0 = Some(screen);
         } else {
             self.set_screen(Screen::Playing);
             self.capture(true);
@@ -301,7 +301,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game::client_side) fn draw_block_editor(&mut self, batch: &mut HudBatch) {
-        let cursor = self.client.cursor;
+        let cursor = self.side.cursor;
         let Some(items) = self.with_block_editor(|s, e| {
             let items = s.editor.items(e, batch.width, batch.height);
             for (i, edit) in s.editor.edits().iter_mut().enumerate() {
@@ -323,7 +323,7 @@ impl Game<'_> {
         );
         self.draw_deferred_subtitles(batch);
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
-        let Some(mut screen) = self.block_editor.0.take() else {
+        let Some(mut screen) = self.side.block_editor.0.take() else {
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
             return;
         };
@@ -403,9 +403,9 @@ impl Game<'_> {
                 }
             }
         }
-        self.block_editor.0 = Some(screen);
+        self.side.block_editor.0 = Some(screen);
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
-        let screen = self.block_editor.0.as_ref().unwrap();
+        let screen = self.side.block_editor.0.as_ref().unwrap();
         // The focus navigator's pointer is hidden, not an actual mouse hover.
         let navigation_focus = self.pad_focus_rect();
         let focus = navigation_focus.map_or(screen.focus, |rect| {
@@ -420,7 +420,7 @@ impl Game<'_> {
             &items,
             cursor,
             focus,
-            self.client.narration.input_type().is_keyboard(),
+            self.side.narration.input_type().is_keyboard(),
             navigation_focus.is_some(),
         ) {
             if focused {
@@ -433,15 +433,15 @@ impl Game<'_> {
 
     pub(in crate::game::client_side) fn block_editor_click(&mut self) -> bool {
         let size = self
-            .renderer
+            .side.renderer
             .0
             .as_ref()
             .map_or([1, 1], |r| [r.config.width, r.config.height]);
         let b = HudBatch::new(size, self.settings.gui_scale_inputs());
-        let cursor = self.client.cursor;
+        let cursor = self.side.cursor;
         let shift = self.has_shift_down();
-        let alt = self.client.keys.raw(&KeyCode::AltLeft);
-        let atlas_click = |game: &Game<'_>, edit: &mut EditBox| {
+        let alt = self.side.keys.raw(&KeyCode::AltLeft);
+        let atlas_click = |game: &Game<'_, crate::game::client_side::ClientState>, edit: &mut EditBox| {
             edit.click(&game.gui.atlas, cursor.0, false, false);
         };
         let Some(items) = self.with_block_editor(|s, e| s.editor.items(e, b.width, b.height))
@@ -459,7 +459,7 @@ impl Game<'_> {
                     active,
                     ..
                 } if *active && ui::hovered(cursor, *x, *y, *w, 20.0) => {
-                    self.audio.0.play_button_click();
+                    self.side.audio.0.play_button_click();
                     let id = *id;
                     if let Some(outcome) = self.with_block_editor(|s, e| {
                         let pos = s.pos;
@@ -472,22 +472,22 @@ impl Game<'_> {
                 Item::Slider { id, x, y, w, .. } if ui::hovered(cursor, *x, *y, *w, 20.0) => {
                     let (id, x, w) = (*id, *x, *w);
                     let value = ui::slider_value(x, w, cursor.0) as f32;
-                    if let Some(mut screen) = self.block_editor.0.take() {
+                    if let Some(mut screen) = self.side.block_editor.0.take() {
                         screen.dragging = Some((id, x, w));
                         screen.editor.slide(id, value);
-                        self.block_editor.0 = Some(screen);
+                        self.side.block_editor.0 = Some(screen);
                     }
                     return true;
                 }
                 Item::Edit { index, x, y, w } if ui::hovered(cursor, *x, *y, *w, 20.0) => {
                     let index = *index;
-                    if let Some(mut screen) = self.block_editor.0.take() {
+                    if let Some(mut screen) = self.side.block_editor.0.take() {
                         screen.focus = Some(index);
                         if let Some(edit) = screen.editor.edits().get_mut(index) {
                             (edit.x, edit.width) = (*x, *w);
                             atlas_click(self, edit);
                         }
-                        self.block_editor.0 = Some(screen);
+                        self.side.block_editor.0 = Some(screen);
                     }
                     return true;
                 }
@@ -499,8 +499,8 @@ impl Game<'_> {
 
     /// The cursor moved with a slider held (`AbstractSliderButton.onDrag`).
     pub(in crate::game::client_side) fn block_editor_drag(&mut self) -> bool {
-        let x = self.client.cursor.0;
-        if let Some(screen) = self.block_editor.0.as_mut()
+        let x = self.side.cursor.0;
+        if let Some(screen) = self.side.block_editor.0.as_mut()
             && let Some((id, sx, sw)) = screen.dragging
         {
             screen.editor.slide(id, ui::slider_value(sx, sw, x) as f32);
@@ -511,7 +511,7 @@ impl Game<'_> {
 
     /// The left button released: a held slider lets go.
     pub(in crate::game::client_side) fn block_editor_release(&mut self) -> bool {
-        self.block_editor
+        self.side.block_editor
             .0
             .as_mut()
             .is_some_and(|screen| screen.dragging.take().is_some())
@@ -529,7 +529,7 @@ impl Game<'_> {
         let shift = self.has_shift_down();
         let types_text = self.types_text();
         let size = self
-            .renderer
+            .side.renderer
             .0
             .as_ref()
             .map_or([1, 1], |r| [r.config.width, r.config.height]);
@@ -547,7 +547,7 @@ impl Game<'_> {
             }
             KeyCode::Enter | KeyCode::NumpadEnter => {
                 let confirms = self
-                    .block_editor
+                    .side.block_editor
                     .0
                     .as_ref()
                     .is_some_and(|s| s.editor.enter_confirms());
@@ -588,7 +588,7 @@ impl Game<'_> {
                 false
             }
             _ => {
-                let Some(mut screen) = self.block_editor.0.take() else {
+                let Some(mut screen) = self.side.block_editor.0.take() else {
                     return false;
                 };
                 let mut handled = false;
@@ -596,7 +596,7 @@ impl Game<'_> {
                     && let Some(edit) = screen.editor.edits().get_mut(focus)
                 {
                     if let Some(shortcut) = shortcut {
-                        edit.shortcut(shortcut, &mut self.clipboard.0);
+                        edit.shortcut(shortcut, &mut self.side.clipboard.0);
                         handled = true;
                     } else {
                         handled = edit.key(key, ctrl, shift);
@@ -607,7 +607,7 @@ impl Game<'_> {
                         }
                     }
                 }
-                self.block_editor.0 = Some(screen);
+                self.side.block_editor.0 = Some(screen);
                 self.block_editor_after_input();
                 handled
             }
@@ -617,7 +617,7 @@ impl Game<'_> {
     /// What typing changed: the boxes whose text differs from before tell
     /// the editor, which may have packets to send.
     fn block_editor_after_input(&mut self) {
-        let Some(mut screen) = self.block_editor.0.take() else {
+        let Some(mut screen) = self.side.block_editor.0.take() else {
             return;
         };
         let pos = screen.pos;
@@ -634,7 +634,7 @@ impl Game<'_> {
             }
         }
         screen.values = now;
-        self.block_editor.0 = Some(screen);
+        self.side.block_editor.0 = Some(screen);
         for packet in packets {
             self.send(packet);
         }
@@ -646,7 +646,7 @@ impl Game<'_> {
         status: Text,
         size: Option<[i32; 3]>,
     ) {
-        let Some(mut screen) = self.block_editor.0.take() else {
+        let Some(mut screen) = self.side.block_editor.0.take() else {
             return;
         };
         if let Some(entity) = self.world.block_entities.get(&screen.pos) {
@@ -658,7 +658,7 @@ impl Game<'_> {
             .iter()
             .map(|e| e.value.clone())
             .collect();
-        self.block_editor.0 = Some(screen);
+        self.side.block_editor.0 = Some(screen);
     }
 
     fn block_editor_type_into(&mut self, screen: &mut BlockEditScreen, focus: usize, c: char) {
@@ -680,7 +680,7 @@ impl Game<'_> {
     /// Characters typed (`type TEXT` from the agent control): into the box
     /// with the focus.
     pub(in crate::game::client_side) fn block_editor_type(&mut self, typed: &str) {
-        let Some(mut screen) = self.block_editor.0.take() else {
+        let Some(mut screen) = self.side.block_editor.0.take() else {
             return;
         };
         if let Some(focus) = screen.focus {
@@ -688,7 +688,7 @@ impl Game<'_> {
                 self.block_editor_type_into(&mut screen, focus, c);
             }
         }
-        self.block_editor.0 = Some(screen);
+        self.side.block_editor.0 = Some(screen);
         self.block_editor_after_input();
     }
 }

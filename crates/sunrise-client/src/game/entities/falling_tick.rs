@@ -5,7 +5,7 @@ use sunrise_client::join_seq::JoinSeq;
 use sunrise_core::position::BlockPos;
 use sunrise_world::registry::BlockStateId;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Record that the falling block `id` (`join`) of `state` ended its tick still falling,
     /// when a part listens to its state.
     pub(in crate::game::server_side) fn note_falling_tick(
@@ -15,21 +15,21 @@ impl Game<'_> {
         state: BlockStateId,
     ) {
         if super::api_values::block_state::block_listens(mod_api::HookId::FallingTick, state) {
-            self.server.ordered.falling_ticked.push((id, join));
+            self.side.ordered.falling_ticked.push((id, join));
         }
     }
 
     /// Deliver the recorded falling ticks in order, each to the parts of the falling block's
     /// state as it is now; one gone since is skipped.
     pub(in crate::game) fn deliver_falling_ticks(&mut self) {
-        if self.server.ordered.falling_ticked.is_empty() {
+        if self.side.ordered.falling_ticked.is_empty() {
             return;
         }
         let Some(epoch) = self.native_lifecycle.epoch() else {
-            self.server.ordered.falling_ticked.clear();
+            self.side.ordered.falling_ticked.clear();
             return;
         };
-        let mut ticked = std::mem::take(&mut self.server.ordered.falling_ticked);
+        let mut ticked = std::mem::take(&mut self.side.ordered.falling_ticked);
         for (id, join) in ticked.drain(..) {
             let Some(i) = self
                 .falling
@@ -42,6 +42,6 @@ impl Game<'_> {
             let pos = BlockPos::new(p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
             self.native_falling_tick(state, pos, mod_api::EntityRef::new(epoch, id));
         }
-        self.server.ordered.falling_ticked = ticked;
+        self.side.ordered.falling_ticked = ticked;
     }
 }

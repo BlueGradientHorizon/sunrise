@@ -7,7 +7,7 @@ pub(in crate::game::client_side) use crate::game::entity::Entity;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::remote::motion::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `handleMoveVehicle`'s `getInterpolation().cancel()` for the mount this
     /// client drives.
     pub(in crate::game::client_side) fn cancel_driven_mount_interpolation(&mut self, id: u32) {

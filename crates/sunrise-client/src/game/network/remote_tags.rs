@@ -18,7 +18,7 @@ pub(in crate::game) const READ_REGISTRIES: [(&str, TagRegistry); 3] = [
 /// The synced registry whose tags `Tags::damage_type_in_tag` reads.
 pub(in crate::game) const DAMAGE_TYPE: &str = "minecraft:damage_type";
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientboundUpdateTagsPacket` in play.
     pub(in crate::game) fn remote_update_tags(&mut self, tags: &UpdateTags) {
         if let Some(r) = self.remote.as_mut() {
@@ -54,7 +54,7 @@ impl Game<'_> {
                     .collect(),
             )
         });
-        self.creative_screen.0.set_item_tags(tags.as_ref());
+        self.side.creative_screen.0.set_item_tags(tags.as_ref());
     }
 
     /// Make the server's tags what native mods read, then tell them. Snapshot client

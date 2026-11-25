@@ -3,7 +3,7 @@ use super::Game;
 use mod_api::*;
 use std::sync::Arc;
 
-impl ConfigContext for Game<'_> {
+impl<__Side: crate::game::Side> ConfigContext for Game<'_, __Side> {
     fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
         <Self as prelude::ConfigHost>::setting(self, mod_id, key)
     }
@@ -13,7 +13,7 @@ impl ConfigContext for Game<'_> {
     }
 }
 
-impl ReloadContext for Game<'_> {
+impl<__Side: crate::game::Side> ReloadContext for Game<'_, __Side> {
     fn dist(&self) -> Dist {
         <Self as prelude::ConfigHost>::dist(self)
     }
@@ -127,7 +127,7 @@ impl ReloadContext for Game<'_> {
     }
 }
 
-impl ClientReloadHost for Game<'_> {
+impl<__Side: crate::game::Side> ClientReloadHost for Game<'_, __Side> {
     fn render_assets(&self) -> &dyn RenderAssets {
         <Self as prelude::ServicesClientHost>::render_assets(self)
     }
@@ -176,7 +176,7 @@ impl ClientReloadHost for Game<'_> {
     }
 }
 
-impl ClientReloadListenerContext for Game<'_> {
+impl<__Side: crate::game::Side> ClientReloadListenerContext for Game<'_, __Side> {
     fn dist(&self) -> Dist {
         <Self as prelude::ConfigHost>::dist(self)
     }
@@ -212,7 +212,7 @@ impl ClientReloadListenerContext for Game<'_> {
     }
 }
 
-impl ClientSetupContext for Game<'_> {
+impl<__Side: crate::game::Side> ClientSetupContext for Game<'_, __Side> {
     fn config_files(&self) -> &'static dyn ConfigFiles {
         <Self as prelude::ConfigHost>::config_files(self)
     }

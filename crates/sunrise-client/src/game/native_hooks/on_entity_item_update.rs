@@ -15,13 +15,13 @@ pub(in crate::game) fn native_on_entity_item_update(
 }
 
 pub(in crate::game) struct ResidentDroppedItem<'g, 'w> {
-    pub(in crate::game) game: &'g mut Game<'w>,
+    pub(in crate::game) game: &'g mut Game<'w, crate::game::server_side::ServerState>,
     pub(in crate::game) subject: mod_api::ItemEntityRef,
     pub(in crate::game) index: usize,
 }
 
 pub(in crate::game) struct ItemEntityTickAccess<'g, 'w> {
-    pub(in crate::game) game: &'g mut Game<'w>,
+    pub(in crate::game) game: &'g mut Game<'w, crate::game::server_side::ServerState>,
     pub(in crate::game) subject: mod_api::ItemEntityRef,
     pub(in crate::game) index: usize,
 }

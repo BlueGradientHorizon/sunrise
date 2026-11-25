@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Non-result container slots of mod menu type `menu` changed on the server
     /// (`Container.setItem` / `AbstractContainerMenu.slotsChanged`). Listeners may push
     /// authoritative writes for declared result or owned slots into `outputs`.

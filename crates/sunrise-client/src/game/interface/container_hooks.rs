@@ -30,8 +30,8 @@ thread_local! {
 
 /// The game a view reads, and writes through when it was built for input.
 enum Backing<'a, 'g> {
-    Shared(&'a Game<'g>),
-    Owned(&'a mut Game<'g>),
+    Shared(&'a Game<'g, crate::game::client_side::ClientState>),
+    Owned(&'a mut Game<'g, crate::game::client_side::ClientState>),
 }
 
 /// The open screen for one call. Drawing's view is read-only: its clicks and rule queries do
@@ -126,13 +126,13 @@ fn button_of(button: MouseButton) -> Button {
 }
 
 impl<'g> Open<'_, 'g> {
-    fn game(&self) -> &Game<'g> {
+    fn game(&self) -> &Game<'g, crate::game::client_side::ClientState> {
         match &self.game {
             Backing::Shared(game) => game,
             Backing::Owned(game) => game,
         }
     }
-    fn game_mut(&mut self) -> Option<&mut Game<'g>> {
+    fn game_mut(&mut self) -> Option<&mut Game<'g, crate::game::client_side::ClientState>> {
         match &mut self.game {
             Backing::Shared(_) => None,
             Backing::Owned(game) => Some(game),
@@ -221,13 +221,13 @@ impl Container for Open<'_, '_> {
     }
     fn spread(&self) -> usize {
         self.game()
-            .client
+            .side
             .inv_drag
             .as_ref()
             .map_or(0, |(_, slots)| slots.len())
     }
     fn cursor(&self) -> (f32, f32) {
-        let (x, y) = self.game().client.cursor;
+        let (x, y) = self.game().side.cursor;
         (x - self.origin.0, y - self.origin.1)
     }
     fn shift(&self) -> bool {
@@ -270,11 +270,11 @@ impl hud::Canvas for Canvas<'_> {
     }
 }
 
-impl<'g> Game<'g> {
+impl<'g> Game<'g, crate::game::client_side::ClientState> {
     /// The menu type id of the open menu screen: the player's own, any container, workstation,
     /// trade, mount or mod menu; not creative's tabs, which have no menu type.
     fn container_menu_id(&self) -> Option<String> {
-        if self.client.screen != Screen::Inventory {
+        if self.side.screen != Screen::Inventory {
             return None;
         }
         if self.mount_active() {
@@ -363,7 +363,7 @@ impl<'g> Game<'g> {
         #[cfg(test)]
         BUILT.with(|n| n.set(n.get() + 1));
         let slots = self.slots();
-        let (origin, panel) = match self.renderer.0.as_ref() {
+        let (origin, panel) = match self.side.renderer.0.as_ref() {
             Some(r) => self.container_frame(&HudBatch::new(
                 [r.config.width, r.config.height],
                 self.settings.gui_scale_inputs(),
@@ -391,7 +391,7 @@ impl<'g> Game<'g> {
         &mut self,
         button: MouseButton,
     ) -> bool {
-        self.client.container_buttons.remove(&button)
+        self.side.container_buttons.remove(&button)
     }
     /// A mouse button down or up on a menu screen, once the mods' pre hooks let it through: true
     /// when a hook took it, or for the release of a press a hook took (`owned`). A release a hook
@@ -418,15 +418,15 @@ impl<'g> Game<'g> {
         }
         let taken = api::engine::press(&mut open, slot, button_of(button));
         if taken {
-            self.client.container_buttons.insert(button);
+            self.side.container_buttons.insert(button);
         }
         taken
     }
     /// Vanilla's quick craft drag ends with nothing clicked: its release, if it comes, does
     /// nothing.
     fn container_cancel_drag(&mut self) {
-        self.client.inv_drag = None;
-        self.client.inv_clicks.cancel_drag();
+        self.side.inv_drag = None;
+        self.side.inv_clicks.cancel_drag();
     }
     /// The cursor moved with a button held, once the mods' pre hook let it through: true when a
     /// hook took it. A drag taken from vanilla's own press ends its quick craft drag.
@@ -435,9 +435,9 @@ impl<'g> Game<'g> {
             return false;
         }
         let Some(button) = self
-            .client
+            .side
             .drag_button
-            .filter(|b| self.client.physical_buttons.contains(b))
+            .filter(|b| self.side.physical_buttons.contains(b))
         else {
             return false;
         };
@@ -446,7 +446,7 @@ impl<'g> Game<'g> {
             return false;
         };
         let taken = api::engine::drag(&mut open, slot, button_of(button));
-        if taken && !self.client.container_buttons.contains(&button) {
+        if taken && !self.side.container_buttons.contains(&button) {
             self.container_cancel_drag();
         }
         taken
@@ -506,7 +506,7 @@ impl<'g> Game<'g> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// One ordinary click on a game slot. False when nothing took it.
     pub(in crate::game::client_side) fn slot_click(
         &mut self,

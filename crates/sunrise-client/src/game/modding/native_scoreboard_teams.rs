@@ -61,7 +61,7 @@ fn api_comp(comp: &Comp) -> Result<mod_api::Text, TextFormError> {
     api_text(&comp_text(comp))
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The team a handle names: None for a stale handle, one of an earlier open, or on a client.
     fn team_state(&self, team: TeamRef) -> Option<&sb::Team> {
         if !self.is_logical_server() || self.native_lifecycle.epoch() != Some(team.fields().epoch) {

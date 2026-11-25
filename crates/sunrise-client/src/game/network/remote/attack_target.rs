@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `AttackRange.isInRange` measures from the player's current eyes, not the pick ray's origin.
     pub(in crate::game) fn attack_hit_distance(&self, [x, y, z]: [f64; 3]) -> Option<f64> {
         let [eye_x, eye_y, eye_z] = self.eye_position()?;

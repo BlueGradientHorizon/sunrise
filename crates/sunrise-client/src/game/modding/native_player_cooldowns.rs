@@ -15,7 +15,7 @@ use std::sync::Arc;
 use sunrise_client::cooldowns::Cooldowns;
 use sunrise_client::items::ItemStack;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The cooldowns of `player`, where they are kept now: a guest's own
     /// outside their turn, the game's while theirs is swapped in (as
     /// `player` finds the player).
@@ -99,8 +99,8 @@ impl Game<'_> {
         let group: Arc<str> = group.into();
         self.native_as_player_handle(player, |game| {
             game.cooldowns.remove(&group);
-            if game.server.lan_acting.is_some() {
-                game.server.guest_cooldowns.push((group, 0));
+            if game.side.lan_acting.is_some() {
+                game.side.guest_cooldowns.push((group, 0));
             }
         })
     }
@@ -108,7 +108,7 @@ impl Game<'_> {
     /// experience orb.
     pub(in crate::game) fn player_exp_cooldown(&self, player: PlayerRef) -> Option<u32> {
         match self.player_handle_read(player)? {
-            super::native_server::PlayerRead::Acting { .. } => Some(self.server.xp_delay),
+            super::native_server::PlayerRead::Acting { .. } => Some(self.side.xp_delay),
             super::native_server::PlayerRead::Guest(g) => Some(
                 self.lan
                     .as_ref()?
@@ -125,7 +125,7 @@ impl Game<'_> {
         player: PlayerRef,
         ticks: u32,
     ) -> bool {
-        self.native_as_player_handle(player, |game| game.server.xp_delay = ticks)
+        self.native_as_player_handle(player, |game| game.side.xp_delay = ticks)
     }
     /// Sets the player's `WardenSpawnTracker.cooldownTicks`: sculk shriekers
     /// they set off don't warn for `ticks` ticks. The level's players share
@@ -146,7 +146,7 @@ impl Game<'_> {
             .map(|owner| owner.uuid);
         if owner != Some(player.uuid())
             || self
-                .server
+                .side
                 .lan_acting_uuid
                 .is_some_and(|acting| Some(acting) != owner)
         {
@@ -155,7 +155,7 @@ impl Game<'_> {
         self.native_as_player_handle(player, |game| {
             // Loaded first, or the next tick's load would overwrite it.
             game.load_warden_tracker();
-            game.server.sculk.tracker.cooldown_ticks = i32::try_from(ticks).unwrap_or(i32::MAX);
+            game.side.sculk.tracker.cooldown_ticks = i32::try_from(ticks).unwrap_or(i32::MAX);
         })
     }
 }

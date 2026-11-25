@@ -103,7 +103,7 @@ fn button_tooltip(
     }
     None
 }
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `TestInstanceBlockEntity.getBeamSections`: grey while running, green
     /// for a pass, red for a failed required test and orange for an optional
     /// one; each section is one block tall and the last runs to the sky.
@@ -205,7 +205,7 @@ impl Game<'_> {
                         s.beacon[1] = Some(e);
                     }
                 }
-                self.audio
+                self.side.audio
                     .0
                     .play("minecraft:ui.button.click", None, 0.25, 1.0);
             }
@@ -219,7 +219,7 @@ impl Game<'_> {
                 && let Some(s) = self.station.as_mut()
             {
                 s.beacon[1] = Some(p);
-                self.audio
+                self.side.audio
                     .0
                     .play("minecraft:ui.button.click", None, 0.25, 1.0);
             }
@@ -228,7 +228,7 @@ impl Game<'_> {
         if inside(l, 164.0, 107.0, 22.0, 22.0) {
             let paid = self.station.as_ref().is_some_and(|s| s.inputs[0].is_some());
             if paid && sel[0].is_some() {
-                self.audio
+                self.side.audio
                     .0
                     .play("minecraft:ui.button.click", None, 0.25, 1.0);
                 self.confirm_beacon(sel);
@@ -237,7 +237,7 @@ impl Game<'_> {
             return true;
         }
         if inside(l, 190.0, 107.0, 22.0, 22.0) {
-            self.audio
+            self.side.audio
                 .0
                 .play("minecraft:ui.button.click", None, 0.25, 1.0);
             self.close_beacon_screen();
@@ -262,7 +262,7 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn draw_beacon(&mut self, batch: &mut HudBatch) {
         let (ox, oy) = self.inventory_origin(batch);
         let (bx, by) = (ox + SHIFT, oy);
-        let local = (self.client.cursor.0 - bx, self.client.cursor.1 - by);
+        let local = (self.side.cursor.0 - bx, self.side.cursor.1 - by);
         let levels = self.beacon_levels();
         let sel = self.station.as_ref().map_or([None; 2], |s| s.beacon);
         let paid = self.station.as_ref().is_some_and(|s| s.inputs[0].is_some());
@@ -393,7 +393,7 @@ impl Game<'_> {
         }
         self.draw_hovered_slot_highlight(batch, true, ox, oy);
         let mut stack_tip = None;
-        if let Some(slot) = self.slot_at(batch, self.client.cursor.0, self.client.cursor.1) {
+        if let Some(slot) = self.slot_at(batch, self.side.cursor.0, self.side.cursor.1) {
             stack_tip = self.slot_mut(slot).clone();
         }
         let browser_tip = self.draw_mod_browser(batch);
@@ -401,10 +401,10 @@ impl Game<'_> {
         if self.carried.is_some() {
             self.draw_carried(batch);
             if let Some(stack) = stack_tip.filter(|s| self.tooltip_with_carried(s)) {
-                self.draw_stack_tooltip(batch, &stack, self.client.cursor.0, self.client.cursor.1);
+                self.draw_stack_tooltip(batch, &stack, self.side.cursor.0, self.side.cursor.1);
             }
         } else if let Some(stack) = stack_tip {
-            self.draw_stack_tooltip(batch, &stack, self.client.cursor.0, self.client.cursor.1);
+            self.draw_stack_tooltip(batch, &stack, self.side.cursor.0, self.side.cursor.1);
         } else if let Some((text, positioner)) = tooltip {
             self.draw_tooltip_lines_positioned(batch, &[(text, u32::MAX)], anchor, &positioner);
         }

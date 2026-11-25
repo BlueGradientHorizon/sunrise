@@ -6,7 +6,7 @@ use mod_api::prelude::*;
 use mod_api::{BlockBreakingState, BlockPos, ClientFrameStats, ClientServer, PlayerRef};
 use std::sync::Arc;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn native_session(&self) -> Option<&Remote> {
         self.native_window().then_some(())?;
         self.native_lifecycle.epoch()?;
@@ -49,8 +49,8 @@ impl Game<'_> {
         Some(tab_list(
             &remote.listed_tab_players(),
             &self.score.board,
-            self.tab_list.0.header.as_ref(),
-            self.tab_list.0.footer.as_ref(),
+            self.side.tab_list.0.header.as_ref(),
+            self.side.tab_list.0.footer.as_ref(),
         ))
     }
 
@@ -88,11 +88,11 @@ impl Game<'_> {
         }
         let pitch = (pitch % 360.0).clamp(-90.0, 90.0);
         let (turned_yaw, turned_pitch) = (yaw - self.yaw, pitch - self.pitch);
-        self.client.rope_rot_old.0 += turned_yaw;
-        self.client.rope_rot_old.1 += turned_pitch;
+        self.side.rope_rot_old.0 += turned_yaw;
+        self.side.rope_rot_old.1 += turned_pitch;
         self.yaw = yaw;
         self.pitch = pitch;
-        if let Some(model) = self.client.player_model.as_mut() {
+        if let Some(model) = self.side.player_model.as_mut() {
             model.previous_head_pitch += turned_pitch;
             model.head_pitch = pitch;
         }
@@ -104,10 +104,10 @@ impl Game<'_> {
     pub(in crate::game) fn native_client_frame_stats(&self) -> Option<ClientFrameStats> {
         self.native_session()?;
         Some(ClientFrameStats {
-            fps: self.client.fps,
-            rendered_frames: self.client.frames,
+            fps: self.side.fps,
+            rendered_frames: self.side.frames,
             frame_time_ns: self
-                .client
+                .side
                 .debug_charts
                 .frame_times
                 .latest()
@@ -144,7 +144,7 @@ impl Game<'_> {
     /// None for stale, nonlocal or fake handles and outside a client world.
     pub(in crate::game) fn player_ambient_mood(&self, player: PlayerRef) -> Option<f32> {
         self.native_local_status(player)?;
-        Some(self.client.ambience.moodiness)
+        Some(self.side.ambience.moodiness)
     }
 }
 

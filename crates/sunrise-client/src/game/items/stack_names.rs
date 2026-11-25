@@ -4,7 +4,7 @@ use super::Game;
 #[allow(unused_imports)]
 use sunrise_client::items::ItemStack;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `ItemStack.getHoverName` as a component: custom name, book title, mod part, else vanilla.
     pub(in crate::game) fn stack_hover_name_text(
         &self,

@@ -20,12 +20,12 @@ use sunrise_world::{
 };
 
 pub(in crate::game) struct JournalLevelWrite<'g, 'a> {
-    game: &'g mut Game<'a>,
+    game: &'g mut Game<'a, crate::game::server_side::ServerState>,
     level: LevelRef,
 }
 
 impl<'g, 'a> JournalLevelWrite<'g, 'a> {
-    pub(in crate::game) fn new(game: &'g mut Game<'a>, level: LevelRef) -> Option<Self> {
+    pub(in crate::game) fn new(game: &'g mut Game<'a, crate::game::server_side::ServerState>, level: LevelRef) -> Option<Self> {
         (game.level_in_place(level) && game.has_level_transaction()).then_some(Self { game, level })
     }
 
@@ -43,7 +43,7 @@ impl<'g, 'a> JournalLevelWrite<'g, 'a> {
         flags: i32,
     ) -> bool {
         let [x, y, z] = pos;
-        if self.game.server.world_debug
+        if self.game.side.world_debug
             || !(-30_000_000..30_000_000).contains(&x)
             || !(-30_000_000..30_000_000).contains(&z)
             || !self.game.world.is_loaded_at(x, y, z)
@@ -339,7 +339,7 @@ pub(in crate::game) enum PendingWrite {
     },
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn level_removal_write(
         &mut self,
         pos: [i32; 3],
@@ -371,7 +371,7 @@ impl Game<'_> {
         if self.dim == level {
             return Some(f(self));
         }
-        if self.options.execution_role.is_client() || !self.levels.0.parked.contains_key(&level) {
+        if self.options.execution_role.is_client() || !self.side.levels.0.parked.contains_key(&level) {
             return None;
         }
         let back = self.dim;
@@ -380,7 +380,7 @@ impl Game<'_> {
             return None;
         }
         struct Restore<'g, 'a> {
-            game: &'g mut Game<'a>,
+            game: &'g mut Game<'a, crate::game::server_side::ServerState>,
             back: super::Dim,
         }
         impl Drop for Restore<'_, '_> {
@@ -463,7 +463,7 @@ impl Game<'_> {
                             self.send_resolved_native_sound(&resolved);
                         }
                     } else {
-                        self.server.pending_native_sounds.push(sound);
+                        self.side.pending_native_sounds.push(sound);
                     }
                 }
             }
@@ -471,7 +471,7 @@ impl Game<'_> {
                 if deliver_now {
                     self.server_send_particles(particles);
                 } else {
-                    self.server.pending_particles.push(particles);
+                    self.side.pending_particles.push(particles);
                 }
             }
             PendingWrite::Event {

@@ -202,23 +202,23 @@ pub(in crate::game::client_side) fn closed_screen()
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn open_advancements(&mut self, from_pause: bool) {
-        self.adv_ui.0 = AdvUi {
-            cache: self.adv_ui.0.cache.take(),
+        self.side.adv_ui.0 = AdvUi {
+            cache: self.side.adv_ui.0.cache.take(),
             tab: self.adv.selected_tab.clone(),
             from_pause,
             ..Default::default()
         };
         self.set_screen(Screen::Advancements);
-        if self.client.screen != Screen::Advancements {
+        if self.side.screen != Screen::Advancements {
             return;
         }
         self.capture(false);
         if self.adv.remote_tree.is_some() {
             // AdvancementsScreen.init attaches a fresh listener (ClientAdvancements.setListener),
             // which replays roots to select the first tab before init reports the selection again.
-            self.adv_ui.0.tab = None;
+            self.side.adv_ui.0.tab = None;
             self.remote_advancement_tabs_updated(false);
         }
         if let Some(tab) = self.adv_view().tab {
@@ -230,7 +230,7 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn close_advancements(&mut self) {
         // AdvancementsScreen.removed: the server hears the screen closed.
         self.send(sunrise_protocol::packets::play::Serverbound::SeenAdvancements(closed_screen()));
-        if self.adv_ui.0.from_pause {
+        if self.side.adv_ui.0.from_pause {
             self.set_screen(Screen::Paused);
         } else {
             self.set_screen(Screen::Playing);
@@ -241,21 +241,21 @@ impl Game<'_> {
     fn select_advancement_tab(&mut self, tab: usize) {
         let id = &self.adv.tree.list[tab].id;
         self.send(sunrise_protocol::packets::play::Serverbound::SeenAdvancements(opened_tab(id)));
-        self.adv_ui.0.tab = Some(id.clone());
+        self.side.adv_ui.0.tab = Some(id.clone());
         self.adv.selected_tab = Some(id.clone());
     }
     /// Only the open screen listens to `onAdvancementsCleared` / `onAdvancementsUpdated`.
     pub(in crate::game) fn remote_advancement_tabs_updated(&mut self, reset: bool) {
-        if self.client.screen != Screen::Advancements {
+        if self.side.screen != Screen::Advancements {
             return;
         }
         if reset {
-            self.adv_ui.0.tab = None;
-            self.adv_ui.0.tabs.clear();
+            self.side.adv_ui.0.tab = None;
+            self.side.adv_ui.0.tabs.clear();
         }
         let first = self.rebuild_remote_tabs();
-        if self.adv_ui.0.tab_state().is_none() {
-            self.adv_ui.0.tab = None;
+        if self.side.adv_ui.0.tab_state().is_none() {
+            self.side.adv_ui.0.tab = None;
             if let Some(tab) = first {
                 self.select_advancement_tab(tab);
             }
@@ -266,13 +266,13 @@ impl Game<'_> {
     fn rebuild_remote_tabs(&mut self) -> Option<usize> {
         self.adv_cache();
         let cache = self
-            .adv_ui
+            .side.adv_ui
             .0
             .cache
             .as_ref()
             .expect("advancement layout cached");
         let remote = cache.remote.as_ref().expect("remote advancement layout");
-        let mut old_tabs = std::mem::take(&mut self.adv_ui.0.tabs);
+        let mut old_tabs = std::mem::take(&mut self.side.adv_ui.0.tabs);
         for &root in &remote.tabs {
             let id = &cache.tree.list[root].id;
             let widgets = &remote.by_root[root];
@@ -295,13 +295,13 @@ impl Game<'_> {
                     state.bounds.add_widget(x, y);
                 }
             }
-            self.adv_ui.0.tabs.insert(id.clone(), state);
+            self.side.adv_ui.0.tabs.insert(id.clone(), state);
         }
         remote.tabs.first().copied()
     }
     fn adv_cache(&mut self) {
         if self
-            .adv_ui
+            .side.adv_ui
             .0
             .cache
             .as_ref()
@@ -349,7 +349,7 @@ impl Game<'_> {
                 .collect();
             (tree.children(), pos, None)
         };
-        self.adv_ui.0.cache = Some(Cache {
+        self.side.adv_ui.0.cache = Some(Cache {
             tree,
             kids,
             pos,
@@ -374,7 +374,7 @@ impl Game<'_> {
     fn adv_view(&mut self) -> View {
         self.adv_cache();
         let c = self
-            .adv_ui
+            .side.adv_ui
             .0
             .cache
             .as_ref()
@@ -399,7 +399,7 @@ impl Game<'_> {
             (tabs, Some(visible))
         };
         let tab = self
-            .adv_ui
+            .side.adv_ui
             .0
             .tab
             .as_ref()
@@ -431,10 +431,10 @@ impl Game<'_> {
             }
             let id = &tree.list[t].id;
             if visible.is_some() {
-                if let Some(state) = self.adv_ui.0.tabs.get_mut(id) {
+                if let Some(state) = self.side.adv_ui.0.tabs.get_mut(id) {
                     state.bounds = bounds;
                 } else {
-                    self.adv_ui.0.tabs.insert(
+                    self.side.adv_ui.0.tabs.insert(
                         id.clone(),
                         TabState {
                             bounds,
@@ -443,11 +443,11 @@ impl Game<'_> {
                     );
                 }
             }
-            if self.adv_ui.0.tab.as_ref() != Some(id) {
-                self.adv_ui.0.tab = Some(id.clone());
+            if self.side.adv_ui.0.tab.as_ref() != Some(id) {
+                self.side.adv_ui.0.tab = Some(id.clone());
             }
         } else {
-            self.adv_ui.0.tab = None;
+            self.side.adv_ui.0.tab = None;
         }
         View {
             tabs,
@@ -457,7 +457,7 @@ impl Game<'_> {
         }
     }
     fn adv_scroll_by(&mut self, dx: f64, dy: f64) {
-        let Some(state) = self.adv_ui.0.tab_state_mut() else {
+        let Some(state) = self.side.adv_ui.0.tab_state_mut() else {
             return;
         };
         let TabBounds(min_x, min_y, max_x, max_y) = state.bounds;
@@ -544,7 +544,7 @@ impl Game<'_> {
         let (left, top) = window(w, h);
         let (ix, iy) = (left + 9.0, top + 18.0);
         // Centre each tab the first time it is drawn.
-        let (sx, sy) = self.adv_ui.0.tab_state_mut().map_or((0.0, 0.0), |tab| {
+        let (sx, sy) = self.side.adv_ui.0.tab_state_mut().map_or((0.0, 0.0), |tab| {
             let bounds = tab.bounds;
             *tab.scroll.get_or_insert_with(|| bounds.center())
         });
@@ -615,7 +615,7 @@ impl Game<'_> {
             Some(_) => {
                 let start = batch.vertices.len();
                 let all = self
-                    .adv_ui
+                    .side.adv_ui
                     .0
                     .cache
                     .as_ref()
@@ -747,7 +747,7 @@ impl Game<'_> {
         // Done.
         let atlas = &self.gui.atlas;
         let (bx, by) = ((w / 2.0 - 100.0).floor(), h - FOOTER + 6.0);
-        let hover = ui::hovered(self.client.cursor, bx, by, 200.0, 20.0);
+        let hover = ui::hovered(self.side.cursor, bx, by, 200.0, 20.0);
         ui::action_button(
             batch,
             atlas,
@@ -762,7 +762,7 @@ impl Game<'_> {
         );
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
         // Tooltips.
-        if let Some(state) = self.adv_ui.0.tab_state() {
+        if let Some(state) = self.side.adv_ui.0.tab_state() {
             let alpha = (state.fade * 255.0).floor() as u32;
             batch.fill(atlas, ix, iy, 234.0, 113.0, alpha << 24);
             if let Some(i) = state.hovered {
@@ -775,14 +775,14 @@ impl Game<'_> {
                 let Some((ty, i)) = tab_type(n) else { continue };
                 let (x, y) = tab_pos(ty, i);
                 let (x, y) = (left + x, top + y);
-                let (cx, cy) = self.client.cursor;
+                let (cx, cy) = self.side.cursor;
                 if cx > x && cx < x + ty.1 && cy > y && cy < y + ty.2 {
                     if let Some(d) = &tree.list[t].display {
                         ui::tooltip(
                             batch,
                             &self.gui.atlas,
                             &[text_of(&d.title)],
-                            self.client.cursor,
+                            self.side.cursor,
                         );
                     }
                     break;
@@ -794,18 +794,18 @@ impl Game<'_> {
     fn adv_tick_hover(&mut self, view: &View, sx: i32, sy: i32, left: f32, top: f32) {
         let now = Instant::now();
         let ticks = self
-            .adv_ui
+            .side.adv_ui
             .0
             .last_frame
             .map_or(0.0, |t| (now - t).as_secs_f32() * 20.0)
             .min(5.0);
-        self.adv_ui.0.last_frame = Some(now);
-        let mx = (self.client.cursor.0 - left - 9.0).floor() as i32;
-        let my = (self.client.cursor.1 - top - 18.0).floor() as i32;
+        self.side.adv_ui.0.last_frame = Some(now);
+        let mx = (self.side.cursor.0 - left - 9.0).floor() as i32;
+        let my = (self.side.cursor.1 - top - 18.0).floor() as i32;
         let mut hovered = None;
         if mx > 0 && mx < INSIDE_W && my > 0 && my < INSIDE_H {
             let widgets = self
-                .adv_ui
+                .side.adv_ui
                 .0
                 .cache
                 .as_ref()
@@ -820,7 +820,7 @@ impl Game<'_> {
                 if hidden && !self.adv_done(i) {
                     continue;
                 }
-                let Some((x, y)) = self.adv_ui.0.cache.as_ref().and_then(|c| c.pos[i]) else {
+                let Some((x, y)) = self.side.adv_ui.0.cache.as_ref().and_then(|c| c.pos[i]) else {
                     continue;
                 };
                 let (x0, y0) = (sx.wrapping_add(x), sy.wrapping_add(y));
@@ -830,7 +830,7 @@ impl Game<'_> {
                 }
             }
         }
-        if let Some(tab) = self.adv_ui.0.tab_state_mut() {
+        if let Some(tab) = self.side.adv_ui.0.tab_state_mut() {
             tab.hovered = hovered;
             tab.fade = if hovered.is_some() {
                 (tab.fade + 0.06 * ticks).clamp(0.0, 0.3)
@@ -856,7 +856,7 @@ impl Game<'_> {
         let tree = self.adv.tree.clone();
         let a = &tree.list[i];
         let Some(d) = &a.display else { return };
-        let Some((wx, wy)) = self.adv_ui.0.cache.as_ref().and_then(|c| c.pos[i]) else {
+        let Some((wx, wy)) = self.side.adv_ui.0.cache.as_ref().and_then(|c| c.pos[i]) else {
             return;
         };
         let width = width as i32;
@@ -1033,20 +1033,20 @@ impl Game<'_> {
         size: [u32; 2],
     ) -> bool {
         if !pressed {
-            self.adv_ui.0.drag = None;
-            self.adv_ui.0.scrolling = false;
+            self.side.adv_ui.0.drag = None;
+            self.side.adv_ui.0.scrolling = false;
             return false;
         }
         let b = HudBatch::new(size, self.settings.gui_scale_inputs());
         let (w, h) = (b.width, b.height);
         if ui::hovered(
-            self.client.cursor,
+            self.side.cursor,
             (w / 2.0 - 100.0).floor(),
             h - FOOTER + 6.0,
             200.0,
             20.0,
         ) {
-            self.audio
+            self.side.audio
                 .0
                 .play("minecraft:ui.button.click", None, 0.25, 1.0);
             self.close_advancements();
@@ -1058,7 +1058,7 @@ impl Game<'_> {
             let Some((ty, i)) = tab_type(n) else { continue };
             let (x, y) = tab_pos(ty, i);
             let (x, y) = (left + x, top + y);
-            let (cx, cy) = self.client.cursor;
+            let (cx, cy) = self.side.cursor;
             if cx > x && cx < x + ty.1 && cy > y && cy < y + ty.2 {
                 // `ClientAdvancements.setSelectedTab(tab, true)`: the packet
                 // goes out before the tab is compared, so a click on the tab
@@ -1067,19 +1067,19 @@ impl Game<'_> {
                 return true;
             }
         }
-        self.adv_ui.0.drag = Some(self.client.cursor);
+        self.side.adv_ui.0.drag = Some(self.side.cursor);
         false
     }
     /// `mouseDragged` with the left button: the first step starts
     /// scrolling, later ones move the tree.
     pub(in crate::game::client_side) fn advancements_drag(&mut self) -> bool {
-        let Some(last) = self.adv_ui.0.drag else {
+        let Some(last) = self.side.adv_ui.0.drag else {
             return false;
         };
-        let (dx, dy) = (self.client.cursor.0 - last.0, self.client.cursor.1 - last.1);
-        self.adv_ui.0.drag = Some(self.client.cursor);
-        if !self.adv_ui.0.scrolling {
-            self.adv_ui.0.scrolling = true;
+        let (dx, dy) = (self.side.cursor.0 - last.0, self.side.cursor.1 - last.1);
+        self.side.adv_ui.0.drag = Some(self.side.cursor);
+        if !self.side.adv_ui.0.scrolling {
+            self.side.adv_ui.0.scrolling = true;
             return true;
         }
         self.adv_view();

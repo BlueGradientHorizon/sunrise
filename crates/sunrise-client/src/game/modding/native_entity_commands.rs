@@ -2,7 +2,7 @@
 use super::{Game, commands::execute, native_server::system_chat};
 use sunrise_client::text::Text;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Runs the command `line` (a leading slash allowed) with the entity as
     /// its source, as vanilla runs a portal's or a sign's command:
     /// `ServerPlayer.createCommandSourceStack` (another entity:
@@ -59,7 +59,7 @@ impl Game<'_> {
         let permission = level.level();
         match target {
             // The acting player, in place for this turn.
-            Target::Player => match self.server.lan_acting_uuid {
+            Target::Player => match self.side.lan_acting_uuid {
                 Some(uuid) => self.run_command_as_player(uuid, line, permission, suppress_output),
                 None => (false, Vec::new()),
             },
@@ -124,13 +124,13 @@ impl Game<'_> {
             silent: suppress_output,
             ..self.player_source()
         };
-        let outer_admins = std::mem::take(&mut self.server.admin_feedback);
+        let outer_admins = std::mem::take(&mut self.side.admin_feedback);
         let (ok, lines) = self.run_command_from(source, line, permission);
         for line in &lines {
             self.native_send(uuid, system_chat(line));
         }
         self.send_admin_feedback();
-        self.server.admin_feedback = outer_admins;
+        self.side.admin_feedback = outer_admins;
         (ok, lines)
     }
     /// `line` run from `source` at `permission`, with what it tells its source:
@@ -142,26 +142,26 @@ impl Game<'_> {
         permission: u8,
     ) -> (bool, Vec<Text>) {
         let silent = source.silent;
-        let outer = self.server.command_source.replace(source);
-        let filter = std::mem::replace(&mut self.server.native_command_filter, true);
-        let console = self.server.console_broadcast.take();
+        let outer = self.side.command_source.replace(source);
+        let filter = std::mem::replace(&mut self.side.native_command_filter, true);
+        let console = self.side.console_broadcast.take();
         // A silent source has no recipient for command feedback. Do not capture
         // explicit broadcasts such as /say; they go straight to their recipients.
         let capture = std::mem::replace(
-            &mut self.server.chat_capture,
+            &mut self.side.chat_capture,
             if silent { None } else { Some(Vec::new()) },
         );
-        let outer_exec = std::mem::take(&mut self.exec.0);
-        let outer_results = self.cmds.0.results.take();
+        let outer_exec = std::mem::take(&mut self.side.exec.0);
+        let outer_results = self.side.cmds.0.results.take();
         let level = std::mem::replace(&mut self.ui.registries.permission, permission);
         let ok = self.run_command(line);
         self.ui.registries.permission = level;
-        self.exec.0 = outer_exec;
-        self.cmds.0.results = outer_results;
-        let lines = std::mem::replace(&mut self.server.chat_capture, capture).unwrap_or_default();
-        self.server.console_broadcast = console;
-        self.server.native_command_filter = filter;
-        self.server.command_source = outer;
+        self.side.exec.0 = outer_exec;
+        self.side.cmds.0.results = outer_results;
+        let lines = std::mem::replace(&mut self.side.chat_capture, capture).unwrap_or_default();
+        self.side.console_broadcast = console;
+        self.side.native_command_filter = filter;
+        self.side.command_source = outer;
         (ok, lines)
     }
 }

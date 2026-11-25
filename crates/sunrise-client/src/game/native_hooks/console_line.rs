@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A line the server logged, with the overflow count on the first line of its batch.
     pub(in crate::game) fn native_console_line(
         &mut self,

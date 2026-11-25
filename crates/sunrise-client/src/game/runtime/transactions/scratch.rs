@@ -21,7 +21,7 @@ pub(in crate::game) struct Scratch {
     pub(in crate::game) overflow: Option<ItemStack>,
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Keeps scratch stack `id` as it is, if the innermost transaction hasn't yet.
     fn keep_scratch(&mut self, id: u64) {
         let Some(level) = self.transactions.levels.last_mut() else {

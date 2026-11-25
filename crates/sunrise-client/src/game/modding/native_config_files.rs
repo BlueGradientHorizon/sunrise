@@ -38,7 +38,7 @@ impl FileRoot {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The calling mod's own files in the game's `config/` folder, beside
     /// `options.txt` (beside `server.properties` on a dedicated server):
     /// its folder `config/<mod id>/` and the files beside it named
@@ -318,12 +318,12 @@ impl GameConfigFiles {
     }
 }
 
-fn world_root(game: &Game<'_>) -> Result<FileRoot, ConfigFileError> {
-    if game.server.world_root.as_os_str().is_empty() {
+fn world_root(game: &Game<'_, crate::game::server_side::ServerState>) -> Result<FileRoot, ConfigFileError> {
+    if game.side.world_root.as_os_str().is_empty() {
         return Err(ConfigFileError::NoWorld);
     }
     Ok(FileRoot {
-        path: game.server.world_root.clone(),
+        path: game.side.world_root.clone(),
         bulk: true,
     })
 }
@@ -356,7 +356,7 @@ macro_rules! files {
 }
 
 files!(GameConfigFiles, GameConfigFiles::root);
-files!(Game<'_>, world_root);
+files!(Game<'_, crate::game::server_side::ServerState>, world_root);
 
 #[cfg(test)]
 mod tests {

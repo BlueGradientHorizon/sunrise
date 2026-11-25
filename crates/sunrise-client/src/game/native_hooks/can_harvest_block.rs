@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Whether the player's tool harvests the block `state` at `pos`
     /// (`IBlockExtension.canHarvestBlock`): `can_harvest` starts with
     /// vanilla's answer and the block's parts may change it.

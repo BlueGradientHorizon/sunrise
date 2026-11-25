@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A vanilla game event is about to reach its listeners (NeoForge's
     /// `VanillaGameEvent`, vanilla's `Level.gameEvent`): every event, in
     /// `dimension`. `event` is its id (`minecraft:step`), `pos` where it

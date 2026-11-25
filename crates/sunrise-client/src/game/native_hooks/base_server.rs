@@ -26,7 +26,7 @@ pub(in crate::game::server_side) use crate::game::native_hooks::base::*;
 pub(in crate::game::server_side) use mod_api::ModBlockEntity;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Sends clients the block at `pos` and its block entity's update tag
     /// (`native_block_entity_update_tag`) again, as `Level.sendBlockUpdated`
     /// does: with the level's other block changes, to the players who see its

@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Before client disconnect teardown (NeoForge's
     /// `ClientPlayerNetworkEvent.LoggingOut`). The player may be absent.
     /// Client-side.

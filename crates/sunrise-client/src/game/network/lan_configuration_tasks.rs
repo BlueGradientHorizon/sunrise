@@ -22,7 +22,7 @@ use sunrise_client::{
 pub(in crate::game::server_side) fn start(sync: Arc<SyncData>, net: NetConfig) -> io::Result<Lan> {
     Lan::start_with_spawn_preparation(sync, net)
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     fn configuration_callback(
         &mut self,
         session: &Arc<Session>,
@@ -179,7 +179,7 @@ impl Game<'_> {
     }
 
     fn spawn_level_current(&self, level: SpawnLevel) -> bool {
-        Dim::exists(level.id) && self.levels.0.runtime.generation_of(level.id) == level.generation
+        Dim::exists(level.id) && self.side.levels.0.runtime.generation_of(level.id) == level.generation
     }
 
     /// PlayerList's unknown-dimension path uses the Overworld. A runtime level's
@@ -229,7 +229,7 @@ impl Game<'_> {
                     .as_ref()
                     .filter(|o| o.uuid == player)
                     .and_then(|o| o.saved.as_deref());
-                let saved = playerdata::saved_position(&self.server.world_root, player, owner);
+                let saved = playerdata::saved_position(&self.side.world_root, player, owner);
                 let dimension = saved
                     .dimension
                     .as_deref()
@@ -240,7 +240,7 @@ impl Game<'_> {
                     .id();
                 let level = SpawnLevel {
                     id: dimension,
-                    generation: self.levels.0.runtime.generation_of(dimension),
+                    generation: self.side.levels.0.runtime.generation_of(dimension),
                 };
                 let rotation = saved.rotation.unwrap_or(self.level.world_spawn_angle);
                 if let Some(position) = saved.position {
@@ -252,7 +252,7 @@ impl Game<'_> {
                     let back = self.dim;
                     self.enter_level(Dim::from_id(dimension))
                         .map_err(|e| e.to_string())?;
-                    self.tickets
+                    self.side.tickets
                         .0
                         .add_spawn(prepared.chunk(), SpawnTicketKind::Player);
                     self.enter_level(back).map_err(|e| e.to_string())?;
@@ -293,13 +293,13 @@ impl Game<'_> {
                         position: [feet.x, feet.y, feet.z],
                         rotation,
                     };
-                    self.tickets
+                    self.side.tickets
                         .0
                         .add_spawn(prepared.chunk(), SpawnTicketKind::Player);
                     SpawnTask::Load(prepared)
                 }
                 Err(chunk) => {
-                    self.tickets.0.add_spawn(chunk, SpawnTicketKind::Search);
+                    self.side.tickets.0.add_spawn(chunk, SpawnTicketKind::Search);
                     SpawnTask::Find {
                         level,
                         suggestion,
@@ -311,7 +311,7 @@ impl Game<'_> {
             SpawnTask::Load(prepared) => {
                 if spawn_area_full(&self.world, prepared.chunk(), PLAYER_SPAWN_RADIUS) {
                     // Hand off the pending load range to a fresh Ready ticket.
-                    self.tickets
+                    self.side.tickets
                         .0
                         .add_spawn(prepared.chunk(), SpawnTicketKind::Player);
                     SpawnTask::Ready(prepared)
@@ -320,7 +320,7 @@ impl Game<'_> {
                 }
             }
             SpawnTask::Ready(prepared) => {
-                self.tickets
+                self.side.tickets
                     .0
                     .add_spawn(prepared.chunk(), SpawnTicketKind::Player);
                 SpawnTask::Ready(prepared)
@@ -332,12 +332,12 @@ impl Game<'_> {
     }
 
     pub(in crate::game::server_side) fn tick_spawn_tickets(&mut self, running: bool, notify: bool) {
-        if self.tickets.0.spawn_areas().next().is_some() {
+        if self.side.tickets.0.spawn_areas().next().is_some() {
             // ServerChunkCache.tick doesn't purge in a frozen level, nor
             // does pause-when-empty tick the cache (it only polls chunk work).
             if running {
                 let streaming = &self.streaming;
-                self.tickets
+                self.side.tickets
                     .0
                     .tick_spawn(|center| streaming.chunk_ready_for_saving(center));
             }

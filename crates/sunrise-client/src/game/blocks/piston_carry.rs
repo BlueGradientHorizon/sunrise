@@ -167,7 +167,7 @@ impl GameLevel<'_> {
     }
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `PistonMovingBlockEntity.saveAdditional` for a chunk save, with the
     /// block entity the piston carries under [`CARRIED_KEY`].
     pub(in crate::game) fn saved_moving_piston(&self, pos: BlockPos, piston: &MovingPiston) -> Tag {

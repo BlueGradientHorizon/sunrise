@@ -8,7 +8,7 @@ pub(in crate::game::server_side) use crate::game::native_hooks::player_bed_leave
 pub(in crate::game::server_side) use std::cell::RefCell;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// [`Self::native_player_bed_leave`] for the player acting now, who sleeps
     /// in `self.sleeping`; its name is copied only when a mod listens.
     pub(in crate::game::server_side) fn native_acting_bed_leave(
@@ -16,10 +16,10 @@ impl Game<'_> {
         wake_immediately: bool,
         update_level: bool,
     ) {
-        if let (Some(head), Some(player)) = (self.sleeping, self.server.lan_acting_uuid)
+        if let (Some(head), Some(player)) = (self.sleeping, self.side.lan_acting_uuid)
             && mod_api::__private::listened(mod_api::HookId::PlayerBedLeave)
         {
-            let name = self.server.lan_acting_name.clone().unwrap_or_default();
+            let name = self.side.lan_acting_name.clone().unwrap_or_default();
             self.native_player_bed_leave(player, &name, head, wake_immediately, update_level);
         }
     }

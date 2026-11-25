@@ -5,7 +5,7 @@ pub(in crate::game::server_side) use crate::game::native_hooks::on_chunk_unloade
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use mod_api::ModBlockEntity;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Chunk `chunk` of `dimension` left the world (NeoForge's
     /// `ChunkEvent.Unload`), with a level that closes for being empty too. Don't
     /// read its blocks. Its block entities are still there, but changes made in

@@ -28,7 +28,7 @@ pub(in crate::game::server_side) use {
     sunrise_world::loot::{ContainerLootContext, LootData},
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `DecoratedPotBlockEntity.loadAdditional`: command edits and BlockInput
     /// loading write back to the same saved tag that live pot interactions use.
     pub(in crate::game) fn set_pot_data(&mut self, pos: [i32; 3], input: &Tag) -> Option<bool> {
@@ -63,12 +63,12 @@ impl Game<'_> {
                 ("z", Tag::Int(pos[2])),
             ])
         });
-        let loot = self.server_loot.0.get();
+        let loot = self.side.server_loot.0.get();
         unpack_loot(
             &mut tag,
             loot.as_deref(),
             &mut self.world.random,
-            &mut self.server.rand_sequences,
+            &mut self.side.rand_sequences,
             self.level.seed,
             self.res.items(),
             ContainerLootContext::default(),

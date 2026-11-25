@@ -53,7 +53,7 @@ impl PackStack {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn prepare_server_reload(
         &self,
         stack: &PackStack,
@@ -103,14 +103,14 @@ impl Game<'_> {
             },
         )
         .unwrap();
-        if let Some(tables) = &self.world_tables.0 {
+        if let Some(tables) = &self.side.world_tables.0 {
             prepared.loot.bind_from(&tables.loot_modifier_manager);
         }
-        self.reload_resources.0.install(prepared.retained, &skipped);
-        self.server.structure_templates.clear();
+        self.side.reload_resources.0.install(prepared.retained, &skipped);
+        self.side.structure_templates.clear();
     }
     /// The retained server reload listeners of the last successful reload.
     pub(in crate::game) fn reload_resources(&self) -> &dyn ServerReloadResources {
-        &self.reload_resources.0
+        &self.side.reload_resources.0
     }
 }

@@ -18,13 +18,13 @@ pub(in crate::game) fn client_started(options: &Options) {
     sunrise_hooks::engine::client_started(&Client::new(automated));
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Each frame: only a change reaches the hooks.
     pub(in crate::game::client_side) fn report_activity(&self) {
         sunrise_hooks::engine::activity(self.activity());
     }
     fn activity(&self) -> Activity {
-        if self.title.0.is_some() {
+        if self.side.title.0.is_some() {
             return Activity::Menus;
         }
         let Some(remote) = &self.remote else {

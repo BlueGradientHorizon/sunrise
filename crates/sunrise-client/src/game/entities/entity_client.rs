@@ -133,7 +133,7 @@ pub(in crate::game::client_side) use sunrise_world::{
 pub(in crate::game) trait RenderEntityBounds {
     fn render_id(&self) -> u32;
     fn render_bounds(&self, alpha: f64) -> Aabb;
-    fn render_glowing(&self, game: &Game<'_>) -> bool {
+    fn render_glowing(&self, game: &Game<'_, crate::game::client_side::ClientState>) -> bool {
         game.tracked_entity_glowing(self.render_id())
     }
 }
@@ -167,7 +167,7 @@ impl RenderEntityBounds for Mob {
         )
     }
 
-    fn render_glowing(&self, _game: &Game<'_>) -> bool {
+    fn render_glowing(&self, _game: &Game<'_, crate::game::client_side::ClientState>) -> bool {
         self.is_currently_glowing()
     }
 }
@@ -296,7 +296,7 @@ impl RenderEntityBounds for Cushion {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The entities of the families `entity_geometry` draws in one ordered pass, as runs in the
     /// order they joined the level.
     pub(in crate::game) fn ordered_draw_runs(

@@ -8,7 +8,7 @@ use mod_api::{
 };
 
 struct ClientDataReadAccess<'g, 'w> {
-    game: &'g Game<'w>,
+    game: &'g Game<'w, crate::game::client_side::ClientState>,
     subject: BlockEntityRef,
 }
 
@@ -61,7 +61,7 @@ impl BlockEntityClientReadAccess for ClientDataReadAccess<'_, '_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn notify_block_entity_data_received(
         &self,
         pos: [i32; 3],

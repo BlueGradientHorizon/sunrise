@@ -4,7 +4,7 @@
 use super::Game;
 use mod_api::HotbarSlotError;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `Inventory.setSelectedSlot` for a client mod: `slot` (0 to 8) becomes the hotbar slot the
     /// local player holds. Refused above 8, without a client world, and for a spectator (its
     /// number keys open the spectator menu), with the selection unchanged. The packet follows the

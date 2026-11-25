@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `stack`'s tooltip lines: the game's own, as `fluid_tooltip` listeners left them.
     pub(in crate::game) fn fluid_tooltip_lines(&self, stack: &FluidStack) -> Vec<(Text, u32)> {
         let mut lines =

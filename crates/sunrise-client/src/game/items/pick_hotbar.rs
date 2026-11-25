@@ -3,7 +3,7 @@
 //! (`sunrise_client::pick_item`).
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerGamePacketListenerImpl.tryPickItem` for the acting player (the host's own, or a
     /// guest swapped in): picks `stack` into the 36 main slots, `infinite` with infinite
     /// materials (creative). Returns whether anything changed.

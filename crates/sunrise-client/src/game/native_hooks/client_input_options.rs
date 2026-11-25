@@ -2,7 +2,7 @@ use super::*;
 
 /// Helpers for native mods, kept as stable as the hook points.
 // Native mods use these; nothing in Sunrise does.
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// A snapshot of the current input preferences.
     pub(in crate::game) fn input_options(&self) -> ClientInputOptions {
         let settings = &self.settings;

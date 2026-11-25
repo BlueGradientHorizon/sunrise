@@ -5,7 +5,7 @@
 use super::Game;
 use sunrise_client::ticket_levels::ViewedTicket;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The squares the areas in the level in place keep loaded and generated.
     pub(in crate::game::server_side) fn viewed_extra(&self) -> Vec<((i32, i32), i32)> {
         self.lan

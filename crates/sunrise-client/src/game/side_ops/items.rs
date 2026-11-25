@@ -3,20 +3,14 @@ use crate::game::{Game, Hit, consume::ItemConsumable};
 use sunrise_client::items::ItemStack;
 use sunrise_core::geometry::Vec3;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     #[inline(always)]
     pub(in crate::game) fn side_emit_consume(
         &mut self,
         consumable: &ItemConsumable,
         stack: &ItemStack,
         count: i32,
-    ) {
-        if self.is_logical_server() {
-            self.server_emit_consume(consumable, stack, count);
-        } else {
-            self.client_emit_consume(consumable, stack, count);
-        }
-    }
+    ) { <__Side as SideOps>::side_emit_consume(self, consumable, stack, count) }
 
     #[inline(always)]
     pub(in crate::game) fn side_move_bobber_response(
@@ -27,92 +21,164 @@ impl Game<'_> {
         wanted: Vec3,
         moved: Vec3,
         velocity: &mut Vec3,
-    ) {
-        if self.is_logical_server() {
-            self.server_move_bobber_response(id, position, ground, wanted, moved, velocity);
-        } else {
-            self.client_move_bobber_response(id, position, ground, wanted, moved, velocity);
-        }
-    }
+    ) { <__Side as SideOps>::side_move_bobber_response(self, id, position, ground, wanted, moved, velocity) }
 
     #[inline(always)]
-    pub(in crate::game) fn side_consume_held_slot(&mut self, amount: u32) {
-        if self.is_logical_server() {
-            self.server_consume_held_slot(amount);
-        } else {
-            self.client_consume_held_slot(amount);
-        }
-    }
+    pub(in crate::game) fn side_consume_held_slot(&mut self, amount: u32) { <__Side as SideOps>::side_consume_held_slot(self, amount) }
 
     #[inline(always)]
-    pub(in crate::game) fn side_on_start_using_item(&mut self, stack: &ItemStack) {
-        if self.is_logical_server() {
-            self.server_on_start_using_item(stack);
-        } else {
-            self.client_on_start_using_item(stack);
-        }
-    }
+    pub(in crate::game) fn side_on_start_using_item(&mut self, stack: &ItemStack) { <__Side as SideOps>::side_on_start_using_item(self, stack) }
 
     #[inline(always)]
-    pub(in crate::game) fn side_apply_use_cooldown(&mut self, stack: &ItemStack) {
-        if self.is_logical_server() {
-            self.server_apply_use_cooldown(stack);
-        } else {
-            self.client_apply_use_cooldown(stack);
-        }
-    }
+    pub(in crate::game) fn side_apply_use_cooldown(&mut self, stack: &ItemStack) { <__Side as SideOps>::side_apply_use_cooldown(self, stack) }
 
     #[inline(always)]
-    pub(in crate::game) fn side_item_pick(&self) -> Option<Hit> {
-        if self.is_logical_server() {
-            self.server_item_pick()
-        } else {
-            self.client_item_pick()
-        }
-    }
+    pub(in crate::game) fn side_item_pick(&self) -> Option<Hit> { <__Side as SideOps>::side_item_pick(self) }
 
     #[inline(always)]
-    pub(in crate::game) fn side_bucket_liquid_user_entity_id(&self) -> Option<u32> {
-        if self.is_logical_server() {
-            self.server_bucket_liquid_user_entity_id()
-        } else {
-            self.client_bucket_liquid_user_entity_id()
-        }
-    }
+    pub(in crate::game) fn side_bucket_liquid_user_entity_id(&self) -> Option<u32> { <__Side as SideOps>::side_bucket_liquid_user_entity_id(self) }
 
     #[inline(always)]
-    pub(in crate::game) fn side_in_rain(&mut self, at: Vec3, top: f64) -> bool {
-        if self.is_logical_server() {
-            self.server_in_rain(at, top)
-        } else {
-            self.client_in_rain(at, top)
-        }
-    }
+    pub(in crate::game) fn side_in_rain(&mut self, at: Vec3, top: f64) -> bool { <__Side as SideOps>::side_in_rain(self, at, top) }
 
     #[inline(always)]
-    pub(in crate::game) fn side_projectile_player_uuid(&mut self) -> Option<u128> {
-        if self.is_logical_server() {
-            self.server_projectile_player_uuid()
-        } else {
-            self.client_projectile_player_uuid()
-        }
-    }
+    pub(in crate::game) fn side_projectile_player_uuid(&mut self) -> Option<u128> { <__Side as SideOps>::side_projectile_player_uuid(self) }
 
     #[inline(always)]
-    pub(in crate::game) fn side_acting_player_ref(&self) -> Option<mod_api::PlayerRef> {
-        if self.is_logical_server() {
-            self.server_acting_player_ref()
-        } else {
-            self.client_acting_player_ref()
-        }
-    }
+    pub(in crate::game) fn side_acting_player_ref(&self) -> Option<mod_api::PlayerRef> { <__Side as SideOps>::side_acting_player_ref(self) }
 
     #[inline(always)]
-    pub(in crate::game) fn side_current_level_ref(&self) -> Option<mod_api::LevelRef> {
-        if self.is_logical_server() {
-            self.server_current_level_ref()
-        } else {
-            self.client_current_level_ref()
+    pub(in crate::game) fn side_current_level_ref(&self) -> Option<mod_api::LevelRef> { <__Side as SideOps>::side_current_level_ref(self) }
+}
+
+
+// Generated by Shape G codemod from side_* role dispatchers.
+pub(in crate::game) trait SideOps: Sized {
+    fn side_emit_consume(game: &mut crate::game::Game<'_, Self>, consumable: &ItemConsumable, stack: &ItemStack, count: i32);
+    fn side_move_bobber_response(game: &mut crate::game::Game<'_, Self>, id: u32, position: Vec3, ground: &mut sunrise_world::ground_support::GroundState, wanted: Vec3, moved: Vec3, velocity: &mut Vec3);
+    fn side_consume_held_slot(game: &mut crate::game::Game<'_, Self>, amount: u32);
+    fn side_on_start_using_item(game: &mut crate::game::Game<'_, Self>, stack: &ItemStack);
+    fn side_apply_use_cooldown(game: &mut crate::game::Game<'_, Self>, stack: &ItemStack);
+    fn side_item_pick(game: &crate::game::Game<'_, Self>) -> Option<Hit>;
+    fn side_bucket_liquid_user_entity_id(game: &crate::game::Game<'_, Self>) -> Option<u32>;
+    fn side_in_rain(game: &mut crate::game::Game<'_, Self>, at: Vec3, top: f64) -> bool;
+    fn side_projectile_player_uuid(game: &mut crate::game::Game<'_, Self>) -> Option<u128>;
+    fn side_acting_player_ref(game: &crate::game::Game<'_, Self>) -> Option<mod_api::PlayerRef>;
+    fn side_current_level_ref(game: &crate::game::Game<'_, Self>) -> Option<mod_api::LevelRef>;
+}
+#[allow(unused_variables)]
+impl SideOps for crate::game::server_side::ServerState {
+    fn side_emit_consume(game: &mut crate::game::Game<'_, Self>, consumable: &ItemConsumable, stack: &ItemStack, count: i32) {
+        {
+            game.server_emit_consume(consumable, stack, count);
+        }
+    }
+    fn side_move_bobber_response(game: &mut crate::game::Game<'_, Self>, id: u32, position: Vec3, ground: &mut sunrise_world::ground_support::GroundState, wanted: Vec3, moved: Vec3, velocity: &mut Vec3) {
+        {
+            game.server_move_bobber_response(id, position, ground, wanted, moved, velocity);
+        }
+    }
+    fn side_consume_held_slot(game: &mut crate::game::Game<'_, Self>, amount: u32) {
+        {
+            game.server_consume_held_slot(amount);
+        }
+    }
+    fn side_on_start_using_item(game: &mut crate::game::Game<'_, Self>, stack: &ItemStack) {
+        {
+            game.server_on_start_using_item(stack);
+        }
+    }
+    fn side_apply_use_cooldown(game: &mut crate::game::Game<'_, Self>, stack: &ItemStack) {
+        {
+            game.server_apply_use_cooldown(stack);
+        }
+    }
+    fn side_item_pick(game: &crate::game::Game<'_, Self>) -> Option<Hit> {
+        {
+            game.server_item_pick()
+        }
+    }
+    fn side_bucket_liquid_user_entity_id(game: &crate::game::Game<'_, Self>) -> Option<u32> {
+        {
+            game.server_bucket_liquid_user_entity_id()
+        }
+    }
+    fn side_in_rain(game: &mut crate::game::Game<'_, Self>, at: Vec3, top: f64) -> bool {
+        {
+            game.server_in_rain(at, top)
+        }
+    }
+    fn side_projectile_player_uuid(game: &mut crate::game::Game<'_, Self>) -> Option<u128> {
+        {
+            game.server_projectile_player_uuid()
+        }
+    }
+    fn side_acting_player_ref(game: &crate::game::Game<'_, Self>) -> Option<mod_api::PlayerRef> {
+        {
+            game.server_acting_player_ref()
+        }
+    }
+    fn side_current_level_ref(game: &crate::game::Game<'_, Self>) -> Option<mod_api::LevelRef> {
+        {
+            game.server_current_level_ref()
+        }
+    }
+}
+#[allow(unused_variables)]
+impl SideOps for crate::game::client_side::ClientState {
+    fn side_emit_consume(game: &mut crate::game::Game<'_, Self>, consumable: &ItemConsumable, stack: &ItemStack, count: i32) {
+        {
+            game.client_emit_consume(consumable, stack, count);
+        }
+    }
+    fn side_move_bobber_response(game: &mut crate::game::Game<'_, Self>, id: u32, position: Vec3, ground: &mut sunrise_world::ground_support::GroundState, wanted: Vec3, moved: Vec3, velocity: &mut Vec3) {
+        {
+            game.client_move_bobber_response(id, position, ground, wanted, moved, velocity);
+        }
+    }
+    fn side_consume_held_slot(game: &mut crate::game::Game<'_, Self>, amount: u32) {
+        {
+            game.client_consume_held_slot(amount);
+        }
+    }
+    fn side_on_start_using_item(game: &mut crate::game::Game<'_, Self>, stack: &ItemStack) {
+        {
+            game.client_on_start_using_item(stack);
+        }
+    }
+    fn side_apply_use_cooldown(game: &mut crate::game::Game<'_, Self>, stack: &ItemStack) {
+        {
+            game.client_apply_use_cooldown(stack);
+        }
+    }
+    fn side_item_pick(game: &crate::game::Game<'_, Self>) -> Option<Hit> {
+        {
+            game.client_item_pick()
+        }
+    }
+    fn side_bucket_liquid_user_entity_id(game: &crate::game::Game<'_, Self>) -> Option<u32> {
+        {
+            game.client_bucket_liquid_user_entity_id()
+        }
+    }
+    fn side_in_rain(game: &mut crate::game::Game<'_, Self>, at: Vec3, top: f64) -> bool {
+        {
+            game.client_in_rain(at, top)
+        }
+    }
+    fn side_projectile_player_uuid(game: &mut crate::game::Game<'_, Self>) -> Option<u128> {
+        {
+            game.client_projectile_player_uuid()
+        }
+    }
+    fn side_acting_player_ref(game: &crate::game::Game<'_, Self>) -> Option<mod_api::PlayerRef> {
+        {
+            game.client_acting_player_ref()
+        }
+    }
+    fn side_current_level_ref(game: &crate::game::Game<'_, Self>) -> Option<mod_api::LevelRef> {
+        {
+            game.client_current_level_ref()
         }
     }
 }

@@ -173,7 +173,7 @@ pub(in crate::game) fn stack_smash_damage(
     (damage + f64::from(per_block) * fall) as f32
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn holds_mace(&self) -> bool {
         self.inventory[self.selected]
             .as_ref()
@@ -330,7 +330,7 @@ impl Game<'_> {
         self.mobs[index].attacker_aim = aim;
         self.mobs[index].dealt_absorbed = 0;
         let decision = crate::game::entity::causer_decision!(self, attack.attacker);
-        let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
+        let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
         let hurt = {
             let mut breach = breach_modifier(
                 held.as_ref(),
@@ -579,10 +579,10 @@ impl Game<'_> {
         let push = SmashPush {
             center,
             heavy,
-            attacker: self.server.lan_acting,
+            attacker: self.side.lan_acting,
             team: self.player_team().cloned(),
         };
-        if self.server.lan_acting.is_some() {
+        if self.side.lan_acting.is_some() {
             self.creatures.smash_pushes.push(push);
         } else {
             self.smash_push_players(&push);
@@ -753,7 +753,7 @@ impl Game<'_> {
                     continue;
                 };
                 let plan = self.prepare_knockback_credit(id as i32, None, &attack);
-                let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
+                let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
                 let level = crate::game::entity::damage_level_of!(self, &attack, &mut credit, None);
                 self.mobs[i].knockback(level, 0.4, xd, zd, &source, amount);
                 self.post_attack(i);

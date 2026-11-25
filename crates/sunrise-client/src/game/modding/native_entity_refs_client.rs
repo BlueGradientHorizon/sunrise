@@ -32,7 +32,7 @@ pub(in crate::game::client_side) use sunrise_items::items::ItemStack;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::registry::BlockStateId;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `LevelRenderer.destroyBlockProgress` for this client's own view only.
     pub(in crate::game) fn level_set_client_break_progress(
         &mut self,

@@ -26,7 +26,7 @@ pub(in crate::game) struct QuietBatch {
     dropped: usize,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A `sunrise:quiet_commands` payload from `conn`: queued (or logged as
     /// refused when it breaks the payload's caps).
     pub(in crate::game::server_side) fn guest_quiet_commands(&mut self, conn: u32, data: &[u8]) {

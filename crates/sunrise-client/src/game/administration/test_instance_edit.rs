@@ -339,7 +339,7 @@ impl Editor for TestInstanceEditor {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_test_holder_padding(&self, _pos: Pos) -> i32 {
         0
     }

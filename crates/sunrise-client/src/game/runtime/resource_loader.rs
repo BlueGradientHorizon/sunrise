@@ -393,11 +393,11 @@ impl WorldRestLoader {
     }
 }
 
-pub(in crate::game) fn write_report(game: &Game<'_>) -> Result<()> {
+pub(in crate::game) fn write_report(game: &Game<'_, crate::game::client_side::ClientState>) -> Result<()> {
     if let Some(path) = &game.options.report {
         let report = serde_json::json!({
-            "frames": game.client.frames,
-            "elapsed_seconds": game.client.started.elapsed().as_secs_f64(),
+            "frames": game.side.frames,
+            "elapsed_seconds": game.side.started.elapsed().as_secs_f64(),
             "chunks": game.world.chunks.len(),
             "generated": game.streaming.generated_total,
             "meshed_sections": game.streaming.meshed_total,

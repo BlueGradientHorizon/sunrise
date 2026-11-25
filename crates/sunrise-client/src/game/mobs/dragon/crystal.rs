@@ -45,7 +45,7 @@ impl Crystal {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `EndCrystal.tick`'s `applyEffectsFromBlocks` for crystal `i`, which never
     /// moves: a cobweb or powder snow in its box (2 x 2 x 2, deflated by
     /// `1.0E-5F`) calls `makeStuckInBlock`, which resets its fall distance.

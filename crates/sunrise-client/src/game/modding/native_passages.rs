@@ -121,7 +121,7 @@ impl Passages {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `LevelRef::register_passage`: checks `passage`, numbers it and keeps it under its
     /// chunk; the clients holding that chunk hear of it in `flush_passages`.
     pub(in crate::game) fn level_register_passage(

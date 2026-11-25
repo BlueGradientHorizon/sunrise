@@ -10,12 +10,12 @@ use sunrise_client::{
 };
 use sunrise_core::identifier::Identifier;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     fn boss_bar_state(&self, bar: BossBarRef) -> Option<&BossBar> {
         if !self.is_logical_server() || self.native_lifecycle.epoch() != Some(bar.fields().epoch) {
             return None;
         }
-        self.server
+        self.side
             .bosses
             .bars
             .bars
@@ -28,7 +28,7 @@ impl Game<'_> {
             return false;
         }
         if let Some(state) = self
-            .server
+            .side
             .bosses
             .bars
             .bars
@@ -62,7 +62,7 @@ impl Game<'_> {
         if !self.is_logical_server() {
             return None;
         }
-        self.server.bosses.bars.get(id)
+        self.side.bosses.bars.get(id)
     }
 
     /// Every custom boss bar, in the order `/bossbar list` shows them.
@@ -70,7 +70,7 @@ impl Game<'_> {
         if !self.is_logical_server() {
             return Vec::new();
         }
-        self.server
+        self.side
             .bosses
             .listed_bars()
             .into_iter()
@@ -269,7 +269,7 @@ impl Game<'_> {
         let Some(id) = self.boss_bar_id(bar) else {
             return false;
         };
-        self.server.bosses.remove_bar(&id);
+        self.side.bosses.remove_bar(&id);
         self.bossbars_changed();
         true
     }

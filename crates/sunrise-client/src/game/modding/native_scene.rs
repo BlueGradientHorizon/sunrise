@@ -71,7 +71,7 @@ pub(in crate::game::client_side) fn shaded(color: u32, shade: f32) -> u32 {
     (color & 0xFF00_0000) | ch(0) | ch(8) | ch(16)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Draws `blocks`, a scene of block states at positions of its own (not
     /// the world's), into the box `rect` (x0, y0, x1, y1, GUI pixels) of a
     /// screen's `batch`, seen as `view` says: Create's Ponder scenes. Each
@@ -179,7 +179,7 @@ impl Game<'_> {
                 // Its text's new glyphs upload with this screen's batch.
                 batch
                     .patches
-                    .append(&mut self.client.text_patches.borrow_mut());
+                    .append(&mut self.side.text_patches.borrow_mut());
                 let placed = draw.into_placed(at);
                 for q in placed.as_chunks::<4>().0 {
                     let corners = q.each_ref().map(|v| Vec3::from_array(v.pos));

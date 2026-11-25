@@ -12,7 +12,7 @@ use sunrise_gameplay::stats::StatValues;
 
 use super::native_namespaced_id::namespaced;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether `player` still names the same player on this server.
     pub(in crate::game::server_side) fn native_player_current(&self, player: PlayerRef) -> bool {
         self.player_handle_read(player).is_some()
@@ -37,7 +37,7 @@ impl Game<'_> {
             Some(PlayerRead::Acting { .. }) => Some(Some(&self.stats)),
             None => {
                 let entity = player.entity();
-                if self.lan_displaced_players.0.is_empty()
+                if self.side.lan_displaced_players.0.is_empty()
                     || self.native_lifecycle.epoch()? != entity.epoch()
                 {
                     return None;
@@ -45,7 +45,7 @@ impl Game<'_> {
                 let CombatPlayer::Displaced(depth, _) = self.combat_player(entity.id())? else {
                     return None;
                 };
-                let frame = &self.lan_displaced_players.0[depth];
+                let frame = &self.side.lan_displaced_players.0[depth];
                 (frame.uuid == Some(player.uuid())).then_some(Some(&frame.stats))
             }
         }
@@ -108,7 +108,7 @@ impl Game<'_> {
     ) -> bool {
         self.native_as_player_handle(player, |game| {
             // A local counter loads lazily; guest turns already own their counter.
-            if game.server.lan_acting.is_none() {
+            if game.side.lan_acting.is_none() {
                 game.load_stats();
             }
             game.stats.replace_values(values);

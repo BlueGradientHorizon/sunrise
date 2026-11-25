@@ -18,7 +18,7 @@ pub(in crate::game::server_side) use sunrise_protocol::packets::play::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use winit::keyboard::KeyCode;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `WallHangingSignBlock.shouldTryToChainAnotherHangingSign` and
     /// `CeilingHangingSignBlock.shouldTryToChainAnotherHangingSign`: a hanging
     /// sign item clicked on a hanging sign's free side chains another sign onto
@@ -457,8 +457,8 @@ impl Game<'_> {
     #[inline(always)]
     pub(in crate::game) fn open_sign_editor_server(&mut self, pos: (i32, i32, i32), front: bool) {
         if let (Some(player), Some(name)) = (
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_name.clone(),
+            self.side.lan_acting_uuid,
+            self.side.lan_acting_name.clone(),
         ) {
             self.native_player_open_sign(player, &name, [pos.0, pos.1, pos.2], front);
         }
@@ -480,7 +480,7 @@ impl Game<'_> {
     pub(in crate::game::server_side) fn run_sign_command(&mut self, pos: [i32; 3], command: &str) {
         let source = self.sign_command_source(pos);
         let line = command.strip_prefix('/').unwrap_or(command);
-        self.exec.0 = Default::default();
+        self.side.exec.0 = Default::default();
         let permission = std::mem::replace(&mut self.ui.registries.permission, 2);
         let _ = self.execute_line(line, source);
         self.ui.registries.permission = permission;

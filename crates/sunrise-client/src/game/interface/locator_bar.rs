@@ -14,25 +14,25 @@ use sunrise_protocol::packets::play::TrackedWaypoint;
 #[path = "tests/locator_bar_tests.rs"]
 mod tests;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientPacketListener.handleWaypoint`.
     pub(in crate::game::client_side) fn handle_waypoint(&mut self, packet: &TrackedWaypoint) {
-        self.client.waypoints.apply(packet);
+        self.side.waypoints.apply(packet);
     }
     /// A new connection or world starts with no waypoints.
     pub(in crate::game::client_side) fn clear_waypoints(&mut self) {
-        self.client.waypoints = ClientWaypoints::default();
+        self.side.waypoints = ClientWaypoints::default();
     }
     /// `LocalPlayer.setExperienceValues`: a change of progress shows the
     /// experience bar for 100 ticks, except the first one
     /// (`experienceDisplayStartTick` starts at `Integer.MIN_VALUE`).
     pub(in crate::game::client_side) fn track_experience_display(&mut self) {
         let progress = self.experience.progress;
-        let (last, seen, _) = &mut self.client.experience_display;
+        let (last, seen, _) = &mut self.side.experience_display;
         if progress != *last {
             *last = progress;
             if *seen {
-                self.client.experience_display.2 = self.visual_ticks().max(1);
+                self.side.experience_display.2 = self.visual_ticks().max(1);
             } else {
                 *seen = true;
             }
@@ -44,13 +44,13 @@ impl Game<'_> {
                 super::stations::Kind::Enchanting | super::stations::Kind::Anvil
             )
         }) {
-            self.client.experience_display.2 = self.visual_ticks().max(1);
+            self.side.experience_display.2 = self.visual_ticks().max(1);
         }
     }
     /// `Hud.willPrioritizeExperienceInfo`. A start of 0 is none: the stamps above are at least 1
     /// (a new world under `SUNRISE_STILL` is still at tick 0).
     pub(in crate::game::client_side) fn experience_recent(&self) -> bool {
-        let (_, _, start) = self.client.experience_display;
+        let (_, _, start) = self.side.experience_display;
         start != 0 && start + 100 > self.visual_ticks()
     }
     /// `Hud.nextContextualInfoState`: jump bar reads `LocalPlayer.jumpableVehicle`, not `getCameraPlayer`.
@@ -69,7 +69,7 @@ impl Game<'_> {
     }
     /// `ClientWaypointManager.hasWaypoints`: what `contextual_bar` reads for the locator bar.
     pub(in crate::game) fn has_waypoints(&self) -> bool {
-        self.client.waypoints.has_waypoints()
+        self.side.waypoints.has_waypoints()
     }
     /// `Vec3iWaypoint.position`: a live client's entity, with `Entity.getEyePosition` at its own partial tick.
     fn waypoint_entity(&self, uuid: u128) -> Option<([i32; 3], [f64; 3])> {
@@ -114,7 +114,7 @@ impl Game<'_> {
         gui_width: i32,
         gui_height: i32,
     ) -> Vec<GuiDraw> {
-        let Some((camera_pos, yaw, pitch, fov)) = self.client.locator_camera else {
+        let Some((camera_pos, yaw, pitch, fov)) = self.side.locator_camera else {
             return Vec::new();
         };
         let Some((camera_uuid, camera_entity_pos)) = self.camera_identity_and_position() else {
@@ -152,9 +152,9 @@ impl Game<'_> {
             fov,
             project: &project,
             entity: &entity,
-            styles: &self.client.waypoint_styles,
+            styles: &self.side.waypoint_styles,
             tick: self.visual_ticks(),
         };
-        self.client.waypoints.draw(&view)
+        self.side.waypoints.draw(&view)
     }
 }

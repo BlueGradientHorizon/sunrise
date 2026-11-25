@@ -103,7 +103,7 @@ impl RayWorld for OutlineFluidRay<'_, '_> {
     }
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `Item.getPlayerPOVHitResult`: float view vector, OUTLINE and Fluid.ANY.
     pub(in crate::game) fn boat_item_hit(&self) -> Option<[f64; 3]> {
         let [x, y, z] = self.eye_position()?;

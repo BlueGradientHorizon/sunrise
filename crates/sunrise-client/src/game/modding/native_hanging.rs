@@ -4,7 +4,7 @@ use super::{Game, commands::Target};
 use mod_api::EntityRef;
 use sunrise_core::geometry::Direction;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `HangingEntity.setDirection`: the facing, from which the yaw, pitch and bounds follow.
     pub(in crate::game) fn entity_set_hanging_direction(
         &mut self,

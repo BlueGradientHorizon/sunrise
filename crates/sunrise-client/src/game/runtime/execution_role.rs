@@ -4,15 +4,11 @@ use super::Game;
 use mod_api::HostSide;
 
 /// The hook host of `game`'s side.
-pub(super) fn host_side<'a>(game: &'a mut Game<'_>) -> HostSide<'a> {
-    if game.is_logical_server() {
-        HostSide::Server(game)
-    } else {
-        HostSide::Client(game)
-    }
+pub(super) fn host_side<'a, S: super::Side>(game: &'a mut Game<'_, S>) -> HostSide<'a> {
+    S::host_side(game)
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// This game's side: a server simulates the world, a client does not. The
     /// one source for a helper's side; `remote` says whether a client is
     /// connected, not which side this game is.

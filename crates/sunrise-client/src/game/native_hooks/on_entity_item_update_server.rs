@@ -140,7 +140,7 @@ impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_> {
 }
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Asks the parts of the item entity at `index` of `dropped` whether its tick
     /// ends here. An item no part is attached to is told nothing: its stack is not
     /// converted and no scope is made.

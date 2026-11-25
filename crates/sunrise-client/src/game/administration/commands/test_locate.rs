@@ -61,7 +61,7 @@ pub(in crate::game) fn path_of(dimension: &str) -> &str {
     dimension.split_once(':').map_or(dimension, |(_, p)| p)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `outputPlayerCoordinates`.
     pub(in crate::game::server_side) fn output_player_coordinates(
         &mut self,
@@ -154,7 +154,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `StructureUtils.createNewEmptyTest`.
     pub(in crate::game::server_side) fn create_empty_test(
         &mut self,

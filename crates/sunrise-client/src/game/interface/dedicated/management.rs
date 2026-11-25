@@ -48,7 +48,7 @@ fn shown(user: &NameAndId) -> String {
     )
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(super) fn management(&mut self, state: &mut ServerState, request: &str) -> Value {
         let (connection, body) = request.split_once(' ').unwrap_or((request, "{}"));
         let rpc =

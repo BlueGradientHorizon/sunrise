@@ -9,7 +9,7 @@ use super::native_hooks::SleepProblem;
 use super::{Dim, Game};
 use sunrise_client::Result;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `BedRule.canSleep` of the current dimension's bed rule.
     pub(in crate::game) fn bed_can_sleep_now(&self) -> bool {
         self.dimension_type()
@@ -64,8 +64,8 @@ impl Game<'_> {
     /// a guest during its turn): the bed it lies in is occupied.
     pub(in crate::game::server_side) fn occupy_bed(&mut self, head: [i32; 3]) {
         self.set_bed_occupied(head, true);
-        if !self.server.player_beds.contains(&(self.dim, head)) {
-            self.server.player_beds.push((self.dim, head));
+        if !self.side.player_beds.contains(&(self.dim, head)) {
+            self.side.player_beds.push((self.dim, head));
         }
     }
 
@@ -87,14 +87,14 @@ impl Game<'_> {
     pub(in crate::game::server_side) fn free_left_beds(&mut self) {
         let dim = self.dim;
         let left: Vec<[i32; 3]> = self
-            .server
+            .side
             .player_beds
             .iter()
             .filter(|(d, head)| *d == dim && !self.player_in_bed(*head))
             .map(|(_, head)| *head)
             .collect();
         for head in left {
-            self.server.player_beds.retain(|b| *b != (dim, head));
+            self.side.player_beds.retain(|b| *b != (dim, head));
             self.set_bed_occupied(head, false);
             // AbstractBedBlock.onStopSleeping: the Overworld's straw_bed_rule
             // has destroy_on_leave, so a straw bed breaks when its sleeper gets up.
@@ -112,7 +112,7 @@ impl Game<'_> {
     /// The levels with a bed a player marked occupied: they tick until the
     /// bed is freed.
     pub(in crate::game::server_side) fn player_bed_levels(&self) -> impl Iterator<Item = Dim> + '_ {
-        self.server.player_beds.iter().map(|(d, _)| *d)
+        self.side.player_beds.iter().map(|(d, _)| *d)
     }
 
     /// `PlayerList.removeAll` before the server's last save: every player
@@ -120,11 +120,11 @@ impl Game<'_> {
     /// saved occupied by a player who is not in it when the world opens
     /// again. Each bed is freed in its own level.
     pub(in crate::game::server_side) fn free_player_beds(&mut self) -> Result<()> {
-        if self.server.player_beds.is_empty() {
+        if self.side.player_beds.is_empty() {
             return Ok(());
         }
         let back = self.dim;
-        for (dim, head) in std::mem::take(&mut self.server.player_beds) {
+        for (dim, head) in std::mem::take(&mut self.side.player_beds) {
             self.enter_level(dim)?;
             // A client holds no other levels (`enter_level`).
             if self.dim == dim {

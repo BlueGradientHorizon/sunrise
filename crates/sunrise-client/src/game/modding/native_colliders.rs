@@ -191,7 +191,7 @@ pub(in crate::game) struct ColliderChange {
     pub(in crate::game) messages: Vec<Message>,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The entity id a handle names when it may carry a collider: a server entity that is
     /// not a player.
     pub(in crate::game::server_side) fn collider_holder(
@@ -222,7 +222,7 @@ impl Game<'_> {
         let id = self.collider_holder(entity)?;
         let Some(collider) = collider else {
             if self.entity_attachments.remove_collider(id) {
-                self.server.collider_changes.push(ColliderChange {
+                self.side.collider_changes.push(ColliderChange {
                     entity: id,
                     messages: vec![Message::Clear { entity: id }],
                 });
@@ -248,7 +248,7 @@ impl Game<'_> {
         self.entity_attachments
             .insert_collider(id, level, ColliderEntry { state, saved });
         if !messages.is_empty() {
-            self.server.collider_changes.push(ColliderChange {
+            self.side.collider_changes.push(ColliderChange {
                 entity: id,
                 messages,
             });
@@ -273,7 +273,7 @@ impl Game<'_> {
         }
         entry.state.set_rotation(rotation);
         entry.saved = entry.state.to_nbt();
-        self.server.collider_changes.push(ColliderChange {
+        self.side.collider_changes.push(ColliderChange {
             entity: id,
             messages: vec![Message::Rotation {
                 entity: id,
@@ -492,7 +492,7 @@ impl Game<'_> {
     /// Sends what changed this tick to the clients that track each entity and have the
     /// channel, except those whose whole collider `fresh` is about to send.
     pub(in crate::game) fn flush_collider_sync(&mut self, fresh: &HashSet<(u128, u32)>) {
-        let changes = std::mem::take(&mut self.server.collider_changes);
+        let changes = std::mem::take(&mut self.side.collider_changes);
         for change in changes {
             let senders = self.lan.as_ref().map_or_else(Vec::new, |host| {
                 host.hub

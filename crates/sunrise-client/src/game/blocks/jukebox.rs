@@ -6,7 +6,7 @@ pub(in crate::game) use crate::game::jukebox_common::{
 };
 use sunrise_client::{containers::BlockEntity, text::Text};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Level event 1010: the song from the jukebox, and the "Now Playing" overlay.
     pub(in crate::game::client_side) fn start_song(&mut self, pos: [i32; 3], song: &str) {
         assert!(
@@ -17,15 +17,15 @@ impl Game<'_> {
         let Some(s) = self.items().songs.get(song).cloned() else {
             return;
         };
-        let id = self.audio.0.play_jukebox_song(&s.sound, pos);
-        self.client
+        let id = self.side.audio.0.play_jukebox_song(&s.sound, pos);
+        self.side
             .jukebox_sounds
             .insert((pos[0], pos[1], pos[2]), id);
         let description =
             sunrise_client::component::to_text(&s.description, &mut |k| Text::literal(k));
         let message = Text::translate("record.nowPlaying", &[description]);
         self.say_system_now(&message);
-        self.client.titles.set_overlay(message, true);
+        self.side.titles.set_overlay(message, true);
         self.update_song_volumes();
         self.notify_record_playing(pos, true);
     }
@@ -48,8 +48,8 @@ impl Game<'_> {
             !self.is_logical_server(),
             "stop_sound called on server role"
         );
-        if let Some(id) = self.client.jukebox_sounds.remove(&(pos[0], pos[1], pos[2])) {
-            self.audio.0.stop_and_release(id);
+        if let Some(id) = self.side.jukebox_sounds.remove(&(pos[0], pos[1], pos[2])) {
+            self.side.audio.0.stop_and_release(id);
         }
     }
 
@@ -60,7 +60,7 @@ impl Game<'_> {
             "update_song_volumes called on server role"
         );
         let sounds: Vec<_> = self
-            .client
+            .side
             .jukebox_sounds
             .iter()
             .map(|(k, id)| (*k, *id))
@@ -68,12 +68,12 @@ impl Game<'_> {
         for (k, id) in sounds {
             let playing = matches!(self.world.block_entities.get(&k), Some(BlockEntity::Jukebox(j)) if j.playing);
             if !keeps_song(
-                self.audio.0.engine.is_active(id),
+                self.side.audio.0.engine.is_active(id),
                 self.remote.is_some(),
                 playing,
             ) {
-                self.audio.0.stop_and_release(id);
-                self.client.jukebox_sounds.remove(&k);
+                self.side.audio.0.stop_and_release(id);
+                self.side.jukebox_sounds.remove(&k);
             }
         }
     }

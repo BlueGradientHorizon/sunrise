@@ -164,7 +164,7 @@ impl NativeConfigs {
     }
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Asks the mods for their configs and loads those of `kinds`.
     pub(in crate::game) fn native_configs_load(
         &mut self,

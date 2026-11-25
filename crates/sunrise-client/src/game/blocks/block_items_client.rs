@@ -24,7 +24,7 @@ pub(in crate::game::client_side) use sunrise_world::{
     registry::{BlockRegistry, BlockStateId},
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Client arm of [`Game::side_encode_live_block_entity`].
     pub(in crate::game) fn client_encode_live_block_entity(
         &self,

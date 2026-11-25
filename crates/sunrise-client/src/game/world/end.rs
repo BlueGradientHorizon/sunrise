@@ -346,13 +346,13 @@ impl SummonedEye {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `EyeOfEnder.tick` for the summoned and loaded eyes: they fly on by
     /// their motion and shatter on tick 81, dropping nothing.
     pub(in crate::game::server_side) fn tick_summoned_eyes(&mut self) {
         let ticking = self.entity_ticking_area();
         let mut shattered = Vec::new();
-        self.others.0.retain_mut(|o| {
+        self.side.others.0.retain_mut(|o| {
             let Some(eye) = o.eye.as_mut() else {
                 return true;
             };
@@ -424,7 +424,7 @@ pub(in crate::game) struct CrystalDrawFrame<'a> {
     pub(in crate::game) partial: f32,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// EnderEyeItem.useOn: fill an empty End portal frame, then light the
     /// portal when the ring of twelve filled frames is complete.
     pub(in crate::game::server_side) fn use_ender_eye(
@@ -442,7 +442,7 @@ impl Game<'_> {
         });
         let Some((hit, state)) = target else {
             // EnderEyeItem.useOn passes off a frame: a guest's UseItem throws it.
-            if matches!(self.server.guest_use, Some(super::GuestUse::OnBlock { .. })) {
+            if matches!(self.side.guest_use, Some(super::GuestUse::OnBlock { .. })) {
                 return Ok(false);
             }
             // EnderEyeItem.use: startUsingItem (getUseDuration 0, so the use
@@ -605,7 +605,7 @@ impl Game<'_> {
         entering: bool,
         target: Dim,
     ) -> Option<Vec3> {
-        if !self.server.end_portal_travel {
+        if !self.side.end_portal_travel {
             return None;
         }
         if entering {
@@ -618,7 +618,7 @@ impl Game<'_> {
         }
         // Leaving the End: the respawn position, a bed's found once it has
         // loaded (findRespawnPositionAndUseSpawnBlock, not using it up).
-        if let Some(c) = self.server.respawn_config.filter(|c| c.dim == target) {
+        if let Some(c) = self.side.respawn_config.filter(|c| c.dim == target) {
             return Some(Vec3::new(
                 f64::from(c.pos[0]) + 0.5,
                 f64::from(c.pos[1]),
@@ -675,7 +675,7 @@ impl Game<'_> {
         // ServerPlayer.findRespawnPositionAndUseSpawnBlock: where the bed or
         // anchor puts the player, facing it; else onto the spawn column.
         let mut target = target;
-        if let Some(c) = self.server.respawn_config.filter(|c| c.dim == self.dim) {
+        if let Some(c) = self.side.respawn_config.filter(|c| c.dim == self.dim) {
             if let Some((at, yaw, pitch)) = self.find_respawn_and_use(c, false)? {
                 return Ok(Some((at, [Some(yaw), Some(pitch)])));
             }
@@ -692,7 +692,7 @@ impl Game<'_> {
         Ok(match self.end_exit_landing(target, finder) {
             Ok(at) => Some((at, facing)),
             Err(chunk) => {
-                self.server.spawn_wait.push(chunk);
+                self.side.spawn_wait.push(chunk);
                 None
             }
         })
@@ -725,7 +725,7 @@ impl Game<'_> {
         {
             return Ok(());
         }
-        let won = self.server.fight.previously_killed;
+        let won = self.side.fight.previously_killed;
         let gateway = self.first_gateway();
         if self.exit_portal().is_none() {
             // findExitPortal remembers the location of a podium that is already there.

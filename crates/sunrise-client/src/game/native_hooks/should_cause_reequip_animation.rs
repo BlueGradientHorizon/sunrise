@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `IItemExtension.shouldCauseReequipAnimation`: does `hand` lower and
     /// rise again to show `stack` in place of `old`? `reequip` arrives with
     /// vanilla's answer; the parts of `stack`'s item may set it. Client-side.

@@ -5,7 +5,7 @@ pub(in crate::game::server_side) use crate::game::commands::position_args::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::commands::target_entity_mut;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// BlockPosArgument.getLoadedBlockPos.
     pub(in crate::game::server_side) fn block_pos_arg(
         &self,
@@ -17,7 +17,7 @@ impl Game<'_> {
             .ok_or_else(|| err("argument.pos.missing.int", &[]))?;
         // BlockPos.containing(getPosition)
         let p = self.resolve_coords(&c).map(|v| v.floor() as i32);
-        let dimension = self.server.command_source.map_or(self.dim, |s| s.dimension);
+        let dimension = self.side.command_source.map_or(self.dim, |s| s.dimension);
         if dimension != self.dim || !self.world.chunks.contains_key(&(p[0] >> 4, p[2] >> 4)) {
             return Err(err("argument.pos.unloaded", &[]));
         }

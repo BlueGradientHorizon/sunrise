@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Two animals bred and the baby they made is about to join the world
     /// (NeoForge's `BabyEntitySpawnEvent`, vanilla's
     /// `Animal.spawnChildFromBreeding`): `parent` and `partner` are entity

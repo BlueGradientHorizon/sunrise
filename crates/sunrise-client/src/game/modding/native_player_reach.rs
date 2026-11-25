@@ -5,7 +5,7 @@ use super::Game;
 use mod_api::{EntityReach, EntityRef, EquipmentSlot, LivingRef, PlayerRef};
 use sunrise_core::geometry::{Aabb, Vec3};
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The server's reach rule `reach` between `player` and `entity`: the squared distance from
     /// the player's eyes to the closest point of the entity's box (`AABB.distanceToSqr`, 0 with
     /// the eyes inside), against the player's `entity_interaction_range` with the rule's buffer,

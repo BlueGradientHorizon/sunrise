@@ -3,7 +3,7 @@ use crate::game::Dim;
 use sunrise_client::mesher::Vertex;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Before one first-person hand of this window's player is drawn
     /// (`RenderHandEvent`, client): a hand that holds an item or a map, the
     /// empty main hand's arm, and the empty off hand, where vanilla draws
@@ -30,7 +30,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Asks the mods about one first-person hand (`native_render_hand`) and
     /// says whether they left its default geometry out. They draw in the
     /// hands' view space `to_world`; what they drew is appended to the hand's

@@ -17,7 +17,7 @@ pub(in crate::game::client_side) use sunrise_mod_runtime::attachments::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::{level::MovingPiston, registry::BlockStateId};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// A client's moving piston at `at` once the server's block took its
     /// place (`LevelChunk.setBlockState`), with the block entity its copy
     /// carried: the server sends its own (`BlockEntityData`).

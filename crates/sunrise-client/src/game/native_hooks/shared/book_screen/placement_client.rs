@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn native_book_placement_scope_matches(
         &self,
         window: i32,
@@ -70,7 +70,7 @@ impl Game<'_> {
         // Publish the accepted native screen before building its layout. A
         // staged screen is not shown, even on an in-place Inventory open.
         if screen == Screen::Inventory
-            && let Some(native) = self.mod_screen.0.as_mut()
+            && let Some(native) = self.side.mod_screen.0.as_mut()
         {
             native.shown = true;
         }

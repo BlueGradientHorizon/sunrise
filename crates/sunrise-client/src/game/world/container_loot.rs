@@ -12,7 +12,7 @@ pub(in crate::game) enum LootTarget {
     Cart(u32),
     Boat(u32),
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn loot_inventory_item(
         &mut self,
         key: (i32, i32, i32),
@@ -135,7 +135,7 @@ impl Game<'_> {
         if player.is_some() {
             self.trigger_loot_table(&table);
         }
-        let Some(loot) = self.server_loot.0.get() else {
+        let Some(loot) = self.side.server_loot.0.get() else {
             return;
         };
         let biome = self
@@ -192,7 +192,7 @@ impl Game<'_> {
             }
         };
         let mut random = self.world.random.clone();
-        let mut sequences = std::mem::take(&mut self.server.rand_sequences);
+        let mut sequences = std::mem::take(&mut self.side.rand_sequences);
         fill_with_random(
             &pending,
             &mut slots,
@@ -204,7 +204,7 @@ impl Game<'_> {
             |items| self.container_fill_hook(&table, target, origin, player, items),
         );
         self.world.random = random;
-        self.server.rand_sequences = sequences;
+        self.side.rand_sequences = sequences;
         match target {
             LootTarget::Block(key) => {
                 if let Some(e) = self.world.block_entities.get_mut(&key) {

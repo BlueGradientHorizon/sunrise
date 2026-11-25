@@ -38,9 +38,9 @@ impl PickAccumulator {
         }
     }
 
-    pub(in crate::game) fn consider_candidate(
+    pub(in crate::game) fn consider_candidate<__Side: crate::game::Side>(
         &mut self,
-        game: &Game<'_>,
+        game: &Game<'_, __Side>,
         candidate: PickCandidate,
     ) -> bool {
         if let Some(candidates) = &mut self.candidates {
@@ -54,9 +54,9 @@ impl PickAccumulator {
         )
     }
 
-    pub(in crate::game) fn consider_box(
+    pub(in crate::game) fn consider_box<__Side: crate::game::Side>(
         &mut self,
-        game: &Game<'_>,
+        game: &Game<'_, __Side>,
         id: u32,
         from: Vec3,
         to: Vec3,
@@ -95,7 +95,7 @@ impl PickAccumulator {
     }
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Vanilla `ProjectileUtil.getEntityHitResult` per-box test (`AABB.contains` and `AABB.clip`).
     pub(in crate::game) fn test_pick_box(
         &self,

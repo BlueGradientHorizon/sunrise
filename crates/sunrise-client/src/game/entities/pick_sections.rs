@@ -66,7 +66,7 @@ impl PickFingerprint {
         self.epoch == other.epoch && self.dim == other.dim && self.is_remote == other.is_remote
     }
 
-    fn of(game: &Game<'_>) -> Self {
+    fn of(game: &Game<'_, crate::game::client_side::ClientState>) -> Self {
         Self {
             epoch: game.native_lifecycle.epoch(),
             dim: Some(game.dim),
@@ -109,22 +109,22 @@ impl PickFingerprint {
                 game.item_frames.last().map(|e| e.join),
             ),
             cushions: (game.cushions.len(), game.cushions.last().map(|e| e.join)),
-            interactions: game.client.interactions.len(),
+            interactions: game.side.interactions.len(),
             remote_general: game.remote.as_ref().map_or((0, None), |r| {
                 (
                     r.general.rows.len(),
                     r.general.rows.values().next_back().map(|e| e.join),
                 )
             }),
-            remote_knots: game.client.remote_knots.len(),
+            remote_knots: game.side.remote_knots.len(),
             local_knots: (
                 game.resident_entities.knots.len(),
                 game.resident_entities.knots.last().map(|e| e.join),
             ),
             crystals: (game.crystals.len(), game.crystals.last().map(|e| e.join)),
             displays: (
-                game.text_displays.0.len(),
-                game.text_displays.0.last().map(|(_, d)| d.join),
+                game.side.text_displays.0.len(),
+                game.side.text_displays.0.last().map(|(_, d)| d.join),
             ),
             items: (
                 game.dropped.len(),
@@ -271,7 +271,7 @@ impl PickSectionStorage {
         self.by_id.get(&id).map(|&(kind, _, _)| kind)
     }
 
-    fn note_fingerprint(&mut self, game: &Game<'_>) {
+    fn note_fingerprint(&mut self, game: &Game<'_, crate::game::client_side::ClientState>) {
         let fp = PickFingerprint::of(game);
         if !self.fingerprint.same_level(fp) {
             self.clear();
@@ -280,7 +280,7 @@ impl PickSectionStorage {
     }
 
     /// Reconciles only when the world context or container counts changed outside incremental hooks.
-    fn sync_with(&mut self, game: &Game<'_>) {
+    fn sync_with(&mut self, game: &Game<'_, crate::game::client_side::ClientState>) {
         let fp = PickFingerprint::of(game);
         if self.initialized && self.fingerprint == fp {
             return;
@@ -370,7 +370,7 @@ impl PickSectionStorage {
 /// Every entity the section index files, with its admission order, kind, id and position, family
 /// by family.
 pub(in crate::game) fn visit_section_members(
-    game: &Game<'_>,
+    game: &Game<'_, crate::game::client_side::ClientState>,
     consider: &mut impl FnMut(u64, PickKind, u32, [f64; 3]),
 ) {
     for e in game
@@ -471,7 +471,7 @@ pub(in crate::game) fn visit_section_members(
             [c.position.x, c.position.y, c.position.z],
         );
     }
-    for (&id, i) in &game.client.interactions {
+    for (&id, i) in &game.side.interactions {
         consider(
             i.join.get(),
             PickKind::Interaction,
@@ -489,7 +489,7 @@ pub(in crate::game) fn visit_section_members(
             );
         }
     }
-    for (&id, &block) in &game.client.remote_knots {
+    for (&id, &block) in &game.side.remote_knots {
         consider(u64::MAX, PickKind::RemoteKnot, id, knot_position(block));
     }
     for k in game.resident_entities.knots.iter() {
@@ -510,7 +510,7 @@ pub(in crate::game) fn visit_section_members(
     }
 
     if let Some(remote) = &game.remote {
-        for (&id, d) in &game.text_displays.0 {
+        for (&id, d) in &game.side.text_displays.0 {
             consider(
                 d.join.get(),
                 PickKind::RemoteDisplay,
@@ -561,20 +561,20 @@ pub(in crate::game) fn visit_section_members(
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Take one candidate per borrow so match checks and nested native reads can use the host.
     pub(in crate::game) fn client_section_candidates(
         &self,
         search: SectionSearch,
     ) -> impl Iterator<Item = PickMember> + '_ {
-        self.client
+        self.side
             .client_pick
             .sections
             .borrow_mut()
             .sync_with(self);
         let mut after = None;
         std::iter::from_fn(move || {
-            self.client
+            self.side
                 .client_pick
                 .sections
                 .borrow()
@@ -593,7 +593,7 @@ impl Game<'_> {
     pub(in crate::game) fn pick_section_sync_id(&mut self, id: u32) {
         if let Some((kind, pos)) = self.locate_pick_member(id) {
             let seq = self.pick_member_seq(kind, id);
-            let mut storage = self.client.client_pick.sections.borrow_mut();
+            let mut storage = self.side.client_pick.sections.borrow_mut();
             storage.note_fingerprint(self);
             storage.place(PickMember { kind, id }, pos, seq);
         }
@@ -601,7 +601,7 @@ impl Game<'_> {
 
     /// Updates entity `id`'s section after a position write; no-op within the same section.
     pub(in crate::game) fn pick_section_move(&self, id: u32, to: [f64; 3]) {
-        self.client
+        self.side
             .client_pick
             .sections
             .borrow_mut()
@@ -610,13 +610,13 @@ impl Game<'_> {
 
     /// Updates entity `id`'s section from its live position without scanning unrelated families.
     pub(in crate::game) fn pick_section_sync_moved_id(&mut self, id: u32) {
-        let kind = self.client.client_pick.sections.borrow().kind_of(id);
+        let kind = self.side.client_pick.sections.borrow().kind_of(id);
         let pos = match kind {
             Some(kind) => self.pick_member_position_of_kind(kind, id),
             None => self.locate_pick_member(id).map(|(_, pos)| pos),
         };
         if let Some(pos) = pos {
-            self.client
+            self.side
                 .client_pick
                 .sections
                 .borrow_mut()
@@ -626,19 +626,19 @@ impl Game<'_> {
 
     /// Removes entity `id` from section storage immediately on discard/removal.
     pub(in crate::game) fn pick_section_remove(&mut self, id: u32) {
-        let mut storage = self.client.client_pick.sections.borrow_mut();
+        let mut storage = self.side.client_pick.sections.borrow_mut();
         storage.note_fingerprint(self);
         storage.remove(id);
     }
 
     /// Clears section storage when changing or resetting a level.
     pub(in crate::game::client_side) fn pick_section_clear(&mut self) {
-        self.client.client_pick.sections.borrow_mut().clear();
+        self.side.client_pick.sections.borrow_mut().clear();
     }
 
     /// Updates sections for seated passengers after `position_riders` moves them.
     pub(in crate::game::client_side) fn sync_seated_pick_sections(&mut self) {
-        let mut storage = self.client.client_pick.sections.borrow_mut();
+        let mut storage = self.side.client_pick.sections.borrow_mut();
         if !storage.initialized && storage.by_id.is_empty() {
             return;
         }
@@ -654,7 +654,7 @@ impl Game<'_> {
                 storage.move_id(a.id(), [p.x, p.y, p.z]);
             }
         }
-        for (&id, i) in &self.client.interactions {
+        for (&id, i) in &self.side.interactions {
             if i.vehicle.is_some() {
                 storage.move_id(id as u32, [i.position.x, i.position.y, i.position.z]);
             }
@@ -736,7 +736,7 @@ impl Game<'_> {
                 [c.position.x, c.position.y, c.position.z],
             ));
         }
-        if let Some(i) = self.client.interactions.get(&(id as i32)) {
+        if let Some(i) = self.side.interactions.get(&(id as i32)) {
             return Some((
                 PickKind::Interaction,
                 [i.position.x, i.position.y, i.position.z],
@@ -749,7 +749,7 @@ impl Game<'_> {
         {
             return Some((PickKind::RemoteGeneral, row.position));
         }
-        if let Some(&block) = self.client.remote_knots.get(&id) {
+        if let Some(&block) = self.side.remote_knots.get(&id) {
             return Some((PickKind::RemoteKnot, knot_position(block)));
         }
         if let Some(k) = self.resident_entities.knots.iter().find(|k| k.id == id) {
@@ -769,7 +769,7 @@ impl Game<'_> {
     fn pick_member_seq(&self, kind: PickKind, id: u32) -> u64 {
         let id32 = id as i32;
         match kind {
-            PickKind::RemoteDisplay => self.text_displays.0.get(&id32).map(|d| d.join),
+            PickKind::RemoteDisplay => self.side.text_displays.0.get(&id32).map(|d| d.join),
             PickKind::Item => self
                 .dropped
                 .iter()
@@ -834,7 +834,7 @@ impl Game<'_> {
             PickKind::Painting => self.paintings.iter().find(|e| e.id == id).map(|e| e.join),
             PickKind::ItemFrame => self.item_frames.iter().find(|e| e.id == id).map(|e| e.join),
             PickKind::Cushion => self.cushions.iter().find(|e| e.id == id).map(|e| e.join),
-            PickKind::Interaction => self.client.interactions.get(&id32).map(|e| e.join),
+            PickKind::Interaction => self.side.interactions.get(&id32).map(|e| e.join),
             PickKind::RemoteGeneral => self
                 .remote
                 .as_ref()
@@ -854,7 +854,7 @@ impl Game<'_> {
     fn pick_member_position_of_kind(&self, kind: PickKind, id: u32) -> Option<[f64; 3]> {
         match kind {
             PickKind::RemoteDisplay => self
-                .text_displays
+                .side.text_displays
                 .0
                 .get(&(id as i32))
                 .map(|d| d.position().to_array()),
@@ -945,7 +945,7 @@ impl Game<'_> {
                 .find(|e| e.id == id)
                 .map(|e| [e.position.x, e.position.y, e.position.z]),
             PickKind::Interaction => self
-                .client
+                .side
                 .interactions
                 .get(&(id as i32))
                 .map(|e| [e.position.x, e.position.y, e.position.z]),
@@ -957,7 +957,7 @@ impl Game<'_> {
                 .get(&(id as i32))
                 .map(|e| e.position),
             PickKind::RemoteKnot => self
-                .client
+                .side
                 .remote_knots
                 .get(&id)
                 .copied()
@@ -1086,7 +1086,7 @@ impl Game<'_> {
                 .find(|c| c.id == id)
                 .map(|c| (c.id, aabb_extents(c.bounds()), 0.0)),
             PickKind::Interaction => self
-                .client
+                .side
                 .interactions
                 .get(&(id as i32))
                 .map(|i| (id, self.client_copy_box(id, i.position, i.bounds()), 0.0)),
@@ -1099,7 +1099,7 @@ impl Game<'_> {
                 .filter(|row| general_type_catalog().pickable(row.type_slot))
                 .map(|row| (id, row.bounds(), 0.0)),
             PickKind::RemoteKnot => self
-                .client
+                .side
                 .remote_knots
                 .get(&id)
                 .copied()
@@ -1148,7 +1148,7 @@ impl Game<'_> {
         if let Some(c) = self.cushions.iter().find(|e| e.id == id) {
             return Some(aabb_extents(c.bounds()));
         }
-        if let Some(i) = self.client.interactions.get(&(id as i32)) {
+        if let Some(i) = self.side.interactions.get(&(id as i32)) {
             return Some(i.bounds());
         }
         if let Some(p) = self.creatures.projectiles.iter().find(|e| e.id == id) {
@@ -1181,7 +1181,7 @@ impl Game<'_> {
         {
             return Some(row.bounds());
         }
-        if let Some(&block) = self.client.remote_knots.get(&id) {
+        if let Some(&block) = self.side.remote_knots.get(&id) {
             return Some(knot_bounds(block));
         }
         if let Some(k) = self.resident_entities.knots.iter().find(|k| k.id == id) {
@@ -1221,14 +1221,14 @@ impl Game<'_> {
         mut visit: impl FnMut(u32, Aabb, f64),
     ) {
         {
-            self.client
+            self.side
                 .client_pick
                 .sections
                 .borrow_mut()
                 .sync_with(self);
         }
         {
-            let storage = self.client.client_pick.sections.borrow();
+            let storage = self.side.client_pick.sections.borrow();
             storage.for_each_in_bounds(search_box, |member| {
                 if let Some((id, raw_bb, radius)) = self.resolve_pick_member(member)
                     && !self.is_pick_camera(id)

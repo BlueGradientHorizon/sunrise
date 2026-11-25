@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The end of `dimension`'s level save pass (NeoForge's `LevelEvent.Save`
     /// in `ServerLevel.save`), for autosave, `/save-all`, pause and shutdown.
     /// Individual record failures are reported and do not suppress this hook;

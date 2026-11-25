@@ -2,7 +2,7 @@
 use super::Game;
 use sunrise_client::{items::ItemStack, particles::ParticleOptions};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn item_particle_options(
         &self,
         stack: &ItemStack,

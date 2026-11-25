@@ -5,7 +5,7 @@ pub(in crate::game::client_side) use crate::game::remote::block_entity_data::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use mod_api::BlockEntityDataSource;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `handleBlockEntityData`: the block entity at `pos`, when it is of the
     /// packet's type, loads the tag (`loadWithComponents`). An empty compound
     /// leaves stored fields unchanged; update packets still send a notice.

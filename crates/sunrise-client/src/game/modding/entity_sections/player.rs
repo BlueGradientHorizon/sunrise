@@ -87,7 +87,7 @@ impl PlayerSectionScope {
     }
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn player_section_scope(&self) -> Option<PlayerSectionScope> {
         let scope = self.entity_section_scope()?;
         let id = u32::try_from(self.own_entity_id())

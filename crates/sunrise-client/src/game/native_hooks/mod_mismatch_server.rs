@@ -5,12 +5,12 @@ pub(in crate::game::server_side) use crate::game::native_hooks::mod_mismatch::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_client::save::level_mods;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A server opened a world: its saved code and content mods against the loaded ones.
     /// The mods hear the differences once (before the open, when a mod was missing and the
     /// open asked first: `ask_missing_mods`), and each one nobody resolved is a warning.
     pub(in crate::game) fn check_mod_mismatch(&mut self) {
-        let (mismatches, resolved) = match level_mods::take_answer(&self.save.0.root) {
+        let (mismatches, resolved) = match level_mods::take_answer(&self.side.save.0.root) {
             Some(answer) => answer,
             None => {
                 if self.level.saved_mods.is_none() {

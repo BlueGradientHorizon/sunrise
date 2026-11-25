@@ -121,11 +121,11 @@ pub(in crate::game) mod text_commands;
 #[path = "world_cmds_server.rs"]
 pub(in crate::game) mod world_cmds;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `CommandSource.acceptsSuccess`: a player's source takes success feedback while
     /// `send_command_feedback` is on; the server console's and an RCON client's always do.
     pub(in crate::game::server_side) fn accepts_success(&self) -> bool {
-        self.server.console_broadcast.is_some()
+        self.side.console_broadcast.is_some()
             || self
                 .ui
                 .rules
@@ -134,7 +134,7 @@ impl Game<'_> {
     /// The name of the player the game acts for: a guest's own while their
     /// command or action runs (`Player.getName`).
     pub(in crate::game) fn acting_player_name(&self) -> &str {
-        self.server
+        self.side
             .lan_acting_name
             .as_deref()
             .unwrap_or(PLAYER_NAME)
@@ -144,8 +144,8 @@ impl Game<'_> {
     /// in place); a command-block minecart executing as itself, and a command
     /// block's own name, in the origin's level; the server's for the console.
     pub(in crate::game::server_side) fn admin_display_name(&mut self) -> Text {
-        let Some(source) = self.server.command_source else {
-            return if self.server.console_broadcast.is_some() {
+        let Some(source) = self.side.command_source else {
+            return if self.side.console_broadcast.is_some() {
                 self.server_name()
             } else {
                 self.source_display_name()
@@ -172,7 +172,7 @@ impl Game<'_> {
         let rules = &self.ui.rules;
         let ops = rules.bool_at(sunrise_client::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
         // `source != server`: RCON is a source of its own and is logged.
-        let console_source = self.server.console_broadcast.is_some() && !self.server.rcon_source;
+        let console_source = self.side.console_broadcast.is_some() && !self.side.rcon_source;
         let log = !console_source
             && rules.bool_at(sunrise_client::gamerules::vanilla::LOG_ADMIN_COMMANDS);
         if !ops && !log {
@@ -188,14 +188,14 @@ impl Game<'_> {
         if ops {
             // The player whose command it is never hears it back; a block's,
             // minecart's or console's line has no such player.
-            let origin_is_player = self.server.console_broadcast.is_none()
-                && self.server.command_source.is_none_or(|s| s.origin_player);
+            let origin_is_player = self.side.console_broadcast.is_none()
+                && self.side.command_source.is_none_or(|s| s.origin_player);
             let source = if origin_is_player {
-                self.server.lan_acting
+                self.side.lan_acting
             } else {
                 None
             };
-            self.server.admin_feedback.push((line, source));
+            self.side.admin_feedback.push((line, source));
         }
     }
     pub(in crate::game::server_side) fn clone_between(
@@ -228,7 +228,7 @@ impl Game<'_> {
         // CloneCommands.clone: every column of both boxes must be loaded, in each level.
         self.clone_boxes_loaded([(from_dim, a, b), (to_dim, dest, dmax)])?;
         // CloneCommands.clone: the destination level being a Debug world fails it.
-        if self.server.world_debug {
+        if self.side.world_debug {
             return Err(err("commands.clone.failed", &[]));
         }
         let filter = match ctx.get("filter") {
@@ -303,7 +303,7 @@ impl Game<'_> {
     }
     pub(in crate::game) fn clone_levels(&mut self, ctx: &Context) -> R<i32> {
         let here = self.dim;
-        let source_level = self.server.command_source.map_or(self.dim, |s| s.dimension);
+        let source_level = self.side.command_source.map_or(self.dim, |s| s.dimension);
         // The coordinates, from the command's own source, before any level moves.
         let position = |name: &str| -> R<[i32; 3]> {
             let c = self
@@ -353,7 +353,7 @@ impl Game<'_> {
             return Err(err("commands.fill.toobig", &[&limit, &area]));
         }
         // FillCommand.fillBlocks: `ServerLevel.isDebug` fails it.
-        if self.server.world_debug {
+        if self.side.world_debug {
             return Err(err("commands.fill.failed", &[]));
         }
         let state = self.block_state(&block)?;
@@ -496,10 +496,10 @@ impl Game<'_> {
         if current == value {
             return Err(err("commands.gamerule.not_set", &[&rule_id, &value]));
         }
-        let name = self.server.lan_acting_name.clone();
+        let name = self.side.lan_acting_name.clone();
         let actor = match (
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_entity,
+            self.side.lan_acting_uuid,
+            self.side.lan_acting_entity,
             name.as_deref(),
         ) {
             (Some(uuid), Some(entity_id), Some(name)) => Some(mod_api::GameRuleActor {
@@ -555,7 +555,7 @@ impl Game<'_> {
             // The player's UUID, which an item they could not hold is set to.
             let conn = match t {
                 Target::Guest(conn) => Some(conn),
-                _ => self.server.lan_acting,
+                _ => self.side.lan_acting,
             };
             let uuid = match conn {
                 Some(conn) => self
@@ -628,10 +628,10 @@ impl Game<'_> {
             "say" => {
                 // A visible copy for the acting player goes with their captured output, in order.
                 let captured_for = self
-                    .server
+                    .side
                     .chat_capture
                     .as_ref()
-                    .and(self.server.lan_acting);
+                    .and(self.side.lan_acting);
                 let capture_say = self
                     .lan_broadcast_source_say(&name, &message, captured_for)
                     .ok_or_else(|| err("command.failed", &[]))?;
@@ -643,10 +643,10 @@ impl Game<'_> {
                     });
                 }
                 if self.lan.is_some() {
-                    if capture_say && let Some(capture) = self.server.chat_capture.as_mut() {
+                    if capture_say && let Some(capture) = self.side.chat_capture.as_mut() {
                         capture.push(line);
                     }
-                } else if let Some(capture) = self.server.chat_capture.as_mut() {
+                } else if let Some(capture) = self.side.chat_capture.as_mut() {
                     capture.push(line);
                 }
                 Ok(1)
@@ -654,10 +654,10 @@ impl Game<'_> {
             "me" => {
                 if self.lan.is_some() {
                     let captured_for = self
-                        .server
+                        .side
                         .chat_capture
                         .as_ref()
-                        .and(self.server.lan_acting);
+                        .and(self.side.lan_acting);
                     let capture_me = self
                         .lan_broadcast_source_emote(&name, &message, captured_for)
                         .ok_or_else(|| err("command.failed", &[]))?;
@@ -668,10 +668,10 @@ impl Game<'_> {
                             secure: false,
                         });
                     }
-                    if capture_me && let Some(capture) = self.server.chat_capture.as_mut() {
+                    if capture_me && let Some(capture) = self.side.chat_capture.as_mut() {
                         capture.push(line);
                     }
-                } else if let Some(capture) = self.server.chat_capture.as_mut() {
+                } else if let Some(capture) = self.side.chat_capture.as_mut() {
                     capture.push(Text::translate("chat.type.emote", &[name, message]));
                 }
                 Ok(1)
@@ -725,7 +725,7 @@ impl Game<'_> {
         };
         let state = self.block_state(&b)?;
         // SetBlockCommand.setBlock: `ServerLevel.isDebug` fails it.
-        if self.server.world_debug {
+        if self.side.world_debug {
             return Err(err("commands.setblock.failed", &[]));
         }
         let current = self.world.block(pos[0], pos[1], pos[2]);
@@ -794,7 +794,7 @@ impl Game<'_> {
             Some(Arg::Coords(c)) => c.rotation(self.source_rotation()),
             _ => [0.0, 0.0],
         };
-        let dimension = self.server.command_source.map_or(self.dim, |s| s.dimension);
+        let dimension = self.side.command_source.map_or(self.dim, |s| s.dimension);
         let [yaw, pitch] = self.set_world_spawn(dimension, pos, rot);
         let args = [
             Text::literal(pos[0].to_string()),
@@ -859,8 +859,8 @@ impl Game<'_> {
                 "experience_orb" => {
                     // `EntityType`'s factory, `new ExperienceOrb(EntityType, Level)`,
                     // which only `snapTo`s: the position is kept, even in a block.
-                    self.server.next_entity += 1;
-                    let id = self.server.next_entity;
+                    self.side.next_entity += 1;
+                    let id = self.side.next_entity;
                     let uuid = sunrise_client::save::insecure_uuid(
                         &mut sunrise_client::random_source::entity(),
                     );
@@ -883,8 +883,8 @@ impl Game<'_> {
                 "end_crystal" => {
                     // EndCrystal's constructor takes an id from the entity
                     // counter, and the crystal is shown with its base.
-                    self.server.next_entity += 1;
-                    let id = self.server.next_entity;
+                    self.side.next_entity += 1;
+                    let id = self.side.next_entity;
                     let at = Vec3::new(pos[0], pos[1], pos[2]);
                     let (drawn, uuid) = super::dragon::Crystal::own_draws();
                     self.persist.uuids.insert(id, uuid);
@@ -900,9 +900,9 @@ impl Game<'_> {
                 _ if super::minecarts::CartKind::from_id(&kind).is_some() => {
                     let cart_kind = super::minecarts::CartKind::from_id(&kind)
                         .unwrap_or(super::minecarts::CartKind::Rideable);
-                    self.server.next_entity += 1;
+                    self.side.next_entity += 1;
                     let mut cart = super::minecarts::Minecart::new(
-                        self.server.next_entity,
+                        self.side.next_entity,
                         cart_kind,
                         Vec3::new(pos[0], pos[1], pos[2]),
                     );
@@ -1039,7 +1039,7 @@ impl Game<'_> {
         };
         // Entity.lookAt: from the source's anchor (the feet, unless `anchored
         // eyes`) on the teleported entity, so the eyes depend on the target.
-        let anchored_eyes = self.server.command_source.is_some_and(|s| s.eyes);
+        let anchored_eyes = self.side.command_source.is_some_and(|s| s.eyes);
         let look_at = |this: &Self, t: Target, at: [f64; 3]| {
             let f = facing?;
             let eye = if anchored_eyes {
@@ -1052,7 +1052,7 @@ impl Game<'_> {
         // A server's player in another level than the source's (`execute
         // in`, the console's Overworld) moves there (ServerPlayer.teleport
         // into another level), after the command.
-        let source_level = match self.server.command_source.and_then(|s| s.level) {
+        let source_level = match self.side.command_source.and_then(|s| s.level) {
             Some(level) => level,
             None if self.source_entity().is_none() => super::Dim::Overworld,
             None => self.dim,
@@ -1116,16 +1116,16 @@ impl Game<'_> {
     }
     /// CommandSourceStack.sendFailure: red text.
     pub(in crate::game) fn command_failure(&mut self, message: Text) {
-        if self.server.command_source.is_some_and(|s| s.silent) {
+        if self.side.command_source.is_some_and(|s| s.silent) {
             return;
         }
-        if let Some(block) = self.server.command_source.and_then(|s| s.block) {
+        if let Some(block) = self.side.command_source.and_then(|s| s.block) {
             self.command_block_output(block, |timestamp| {
                 formatted_command_failure(message, Some(timestamp))
             });
             return;
         }
-        if let Some(cart) = self.server.command_source.and_then(|s| s.cart) {
+        if let Some(cart) = self.side.command_source.and_then(|s| s.cart) {
             self.cart_command_output(cart, |timestamp| {
                 formatted_command_failure(message, Some(timestamp))
             });
@@ -1235,7 +1235,7 @@ impl Game<'_> {
                 {
                     // Players already have a live attribute dirty callback.
                     if !matches!(t[0], Target::Player | Target::Guest(_)) {
-                        self.cmds.0.waypoint_dirty.push(t[0]);
+                        self.side.cmds.0.waypoint_dirty.push(t[0]);
                     }
                 }
                 result
@@ -1283,7 +1283,7 @@ impl Game<'_> {
         &mut self,
         f: impl FnOnce(&mut Self) -> T,
     ) -> T {
-        let origin = self.server.command_source.map(|s| s.origin_dimension);
+        let origin = self.side.command_source.map(|s| s.origin_dimension);
         let back = origin.and_then(|dim| self.enter_command_level(dim));
         let out = f(self);
         if let Some(back) = back {
@@ -1377,7 +1377,7 @@ impl Game<'_> {
                 // next tick's deaths, which skip it (as a frog's bite does).
                 if let Some(m) = killed
                     && !m.removed
-                    && self.server.died.insert(id)
+                    && self.side.died.insert(id)
                 {
                     self.mob_die(&m);
                 }
@@ -1411,7 +1411,7 @@ impl Game<'_> {
             Target::Other(id) => {
                 if self
                     .with_destroying_vehicle(t, |game| {
-                        game.others.0.retain(|o| o.id != id);
+                        game.side.others.0.retain(|o| o.id != id);
                         game.forget_entity(id);
                     })
                     .is_none()
@@ -1470,7 +1470,7 @@ impl Game<'_> {
         candidates.extend(self.item_frames.iter().map(|f| Target::Frame(f.id)));
         candidates.extend(self.paintings.iter().map(|p| Target::Painting(p.id)));
         candidates.extend(self.cushions.iter().map(|c| Target::Cushion(c.id)));
-        candidates.extend(self.others.0.iter().map(|o| Target::Other(o.id)));
+        candidates.extend(self.side.others.0.iter().map(|o| Target::Other(o.id)));
         candidates.extend(self.fangs.list.iter().map(|f| Target::Fangs(f.id)));
         // The End crystals and the dragon (EndCrystal and EnderDragon
         // are entities of their own).
@@ -1510,7 +1510,7 @@ impl Game<'_> {
                 if location.owner.dimension == self.dim.key() =>
             {
                 value == t
-                    || matches!(t, Target::Guest(conn) if self.server.lan_acting == Some(conn) && value == Target::Player)
+                    || matches!(t, Target::Guest(conn) if self.side.lan_acting == Some(conn) && value == Target::Player)
             }
             _ => false,
         }
@@ -1519,7 +1519,7 @@ impl Game<'_> {
     /// overworld, the nether, the end (MinecraftServer.getAllLevels).
     pub(in crate::game::server_side) fn loaded_dims(&self) -> Vec<Dim> {
         let mut dims = vec![self.dim];
-        dims.extend(self.levels.0.parked_dims());
+        dims.extend(self.side.levels.0.parked_dims());
         dims.sort_by_key(|d| match d {
             Dim::Overworld => 0,
             Dim::Nether => 1,
@@ -1534,7 +1534,7 @@ impl Game<'_> {
     pub(in crate::game::server_side) fn log_server_system_message(&self, line: &Text) {
         let message = format!("System chat: {}", line.plain());
         if self.is_dedicated_server() {
-            super::dedicated::log_outside_rcon_reply(self.server.rcon_source, &message);
+            super::dedicated::log_outside_rcon_reply(self.side.rcon_source, &message);
         } else {
             log::info!("{message}");
         }
@@ -1545,8 +1545,8 @@ impl Game<'_> {
         if from != to
             && mod_api::__private::listened(mod_api::HookId::PlayerLevelChange)
             && let (Some(player), Some(name)) = (
-                self.server.lan_acting_uuid,
-                self.server.lan_acting_name.clone(),
+                self.side.lan_acting_uuid,
+                self.side.lan_acting_name.clone(),
             )
         {
             self.native_player_level_change(player, &name, from, to);
@@ -1565,7 +1565,7 @@ impl Game<'_> {
     pub(in crate::game) fn network_entity_id(&self, t: Target) -> Option<i32> {
         let host = self.lan.as_ref();
         match t {
-            Target::Player => self.player_entity_id_by_connection(self.server.lan_acting),
+            Target::Player => self.player_entity_id_by_connection(self.side.lan_acting),
             Target::Guest(conn) => host?.hub.guest(conn).map(|g| g.entity_id),
             other => targets::non_player_entity_id(other),
         }
@@ -1574,7 +1574,7 @@ impl Game<'_> {
     /// `/tell`, showing the player on hover, inserting the name.
     pub(in crate::game) fn player_display_name(&self) -> Text {
         let name = self.acting_player_name();
-        if let Some(uuid) = self.server.lan_acting_uuid {
+        if let Some(uuid) = self.side.lan_acting_uuid {
             return self.player_text(name, uuid);
         }
         let mut displayname = self.target_name(Target::Player);
@@ -1595,9 +1595,9 @@ impl Game<'_> {
         &mut self,
         f: impl FnOnce(&mut Self) -> T,
     ) -> (T, Option<(bool, i32)>) {
-        let outer = self.cmds.0.results.replace(Vec::new());
+        let outer = self.side.cmds.0.results.replace(Vec::new());
         let out = f(self);
-        let results = std::mem::replace(&mut self.cmds.0.results, outer).unwrap_or_default();
+        let results = std::mem::replace(&mut self.side.cmds.0.results, outer).unwrap_or_default();
         let outcome = results
             .last()
             .map(|&(_, result)| (results.iter().any(|&(success, _)| success), result));
@@ -1605,7 +1605,7 @@ impl Game<'_> {
     }
     /// LocalCoordinates use the anchored position; world coordinates the position.
     pub(in crate::game) fn resolve_coords(&self, c: &Coordinates) -> [f64; 3] {
-        let origin = match (c, &self.server.command_source) {
+        let origin = match (c, &self.side.command_source) {
             (Coordinates::Local(_), Some(s)) => self.anchor_position(s),
             _ => self.source_position(),
         };
@@ -1624,7 +1624,7 @@ impl Game<'_> {
             Ok((ctx, _)) => {
                 let ctx = ctx.clone();
                 let root = parse.context.clone();
-                self.exec.0 = Default::default();
+                self.side.exec.0 = Default::default();
                 self.run_chain(&root, &ctx)
             }
         };
@@ -1650,9 +1650,9 @@ impl Game<'_> {
             silent: true,
             ..self.player_source()
         };
-        let outer = self.server.command_source.replace(quiet);
+        let outer = self.side.command_source.replace(quiet);
         let ok = self.run_command(command);
-        self.server.command_source = outer;
+        self.side.command_source = outer;
         ok
     }
     pub(in crate::game::server_side) fn send_player_look_at(
@@ -1673,8 +1673,8 @@ impl Game<'_> {
             }),
         });
         match t {
-            Target::Player if self.server.lan_acting.is_some() => {
-                self.server.guest_packets.push(packet)
+            Target::Player if self.side.lan_acting.is_some() => {
+                self.side.guest_packets.push(packet)
             }
             Target::Guest(conn) => {
                 if let Some(host) = self.lan.as_ref() {
@@ -1696,7 +1696,7 @@ impl Game<'_> {
     /// minecart origin is read in its own level (`source.origin_dimension`),
     /// which `execute in` does not move.
     pub(in crate::game) fn send_success(&mut self, message: Text, broadcast: bool) {
-        let source = self.server.command_source;
+        let source = self.side.command_source;
         if source.is_some_and(|s| s.silent) {
             return;
         }
@@ -1717,7 +1717,7 @@ impl Game<'_> {
             return false;
         }
         // A server player's change is heard by the mods first, who may keep or redirect it.
-        if let Some(uuid) = self.server.lan_acting_uuid {
+        if let Some(uuid) = self.side.lan_acting_uuid {
             let name = self.acting_player_name().to_owned();
             let mut cancel = false;
             self.native_player_game_mode_changed(uuid, &name, self.mode, &mut mode, &mut cancel);
@@ -1736,10 +1736,10 @@ impl Game<'_> {
     /// `broadcast-console-to-ops` (`DedicatedServer`) and RCON's
     /// `broadcast-rcon-to-ops` (`RconConsoleSource`).
     pub(in crate::game::server_side) fn should_inform_admins(&mut self) -> bool {
-        let source = self.server.command_source;
+        let source = self.side.command_source;
         let origin = source.and_then(|s| s.block.map(Ok).or(s.cart.map(Err)));
         let Some(origin) = origin else {
-            return self.server.console_broadcast.unwrap_or(true);
+            return self.side.console_broadcast.unwrap_or(true);
         };
         let tracks = self.in_origin_level(|g| match origin {
             Ok(pos) => g.command_block(pos).is_some_and(|c| c.track_output),
@@ -1756,7 +1756,7 @@ impl Game<'_> {
                 .bool_at(sunrise_client::gamerules::vanilla::COMMAND_BLOCK_OUTPUT)
     }
     pub(in crate::game) fn source_position(&self) -> [f64; 3] {
-        if let Some(s) = &self.server.command_source {
+        if let Some(s) = &self.side.command_source {
             return s.pos;
         }
         match &self.player {
@@ -1765,7 +1765,7 @@ impl Game<'_> {
         }
     }
     pub(in crate::game) fn source_rotation(&self) -> [f32; 2] {
-        self.server
+        self.side
             .command_source
             .map_or([self.yaw, self.pitch], |s| s.rot)
     }
@@ -1774,7 +1774,7 @@ impl Game<'_> {
     /// included: a summon compares it before and after.
     pub(in crate::game::server_side) fn spawned_mark(&self) -> (u32, usize) {
         (
-            self.server.next_entity,
+            self.side.next_entity,
             self.tnts.len()
                 + self.falling.len()
                 + self.creatures.projectiles.len()
@@ -1800,7 +1800,7 @@ impl Game<'_> {
             // joined in resource-stack order; a pack file with `replace`
             // drops what the lower sources put in (`TagLoader.load`).
             let packed = self
-                .fns
+                .side.fns
                 .0
                 .store
                 .files
@@ -1836,7 +1836,7 @@ impl Game<'_> {
         match t {
             Target::Player => {
                 let name = self.acting_player_name();
-                if let Some(uuid) = self.server.lan_acting_uuid {
+                if let Some(uuid) = self.side.lan_acting_uuid {
                     return self.player_text(name, uuid);
                 }
                 match self.score.board.players_team(name) {
@@ -1875,7 +1875,7 @@ impl Game<'_> {
             }
         }
         let conn = match t {
-            Target::Player => self.server.lan_acting,
+            Target::Player => self.side.lan_acting,
             Target::Guest(conn) => Some(conn),
             _ => None,
         };
@@ -1885,7 +1885,7 @@ impl Game<'_> {
         };
         // A fake player stays in its level. True: the teleport is taken, so no
         // same-level teleport stands in for it.
-        if Some(conn) == self.server.lan_acting
+        if Some(conn) == self.side.lan_acting
             && self.fake_blocks(mod_api::FakeEffect::ChangeDimension)
         {
             return Ok(true);
@@ -1898,7 +1898,7 @@ impl Game<'_> {
         ) {
             return Ok(true);
         }
-        self.server
+        self.side
             .level_teleports
             .push(super::server_travel::LevelTeleport {
                 conn,
@@ -1971,14 +1971,14 @@ impl Game<'_> {
             return Some(amount);
         }
         let (Some(player), Some(name)) = (
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_name.clone(),
+            self.side.lan_acting_uuid,
+            self.side.lan_acting_name.clone(),
         ) else {
             return Some(amount);
         };
         let (mut amount, mut cancel) = (amount, false);
         let player_entity_id = self
-            .server
+            .side
             .lan_acting_entity
             .map_or_else(|| self.own_entity_id(), |id| id as i32);
         self.native_player_xp_change(player, player_entity_id, &name, &mut amount, &mut cancel);

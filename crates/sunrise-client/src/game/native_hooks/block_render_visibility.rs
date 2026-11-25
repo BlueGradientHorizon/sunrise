@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether a mod hides `state` from the mesher (`hidden` starts false); asked once for every
     /// state at join and on `refresh_render_visibility`. Client-side.
     pub(in crate::game) fn native_block_render_visibility(

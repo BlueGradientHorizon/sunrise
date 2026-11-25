@@ -3,7 +3,7 @@ pub(in crate::game::server_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::minecarts::save_lending::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `MinecartTNT.explode`: with explosions disabled, only a primed cart is
     /// discarded. An unprimed cart survives, including its current tick.
     pub(in crate::game) fn explode_cart(&mut self, c: &mut Minecart, speed_sqr: f64) -> bool {
@@ -68,9 +68,9 @@ impl Game<'_> {
             self.destroy_type(sunrise_client::gamerules::vanilla::TNT_EXPLOSION_DROP_DECAY);
         // MinecartTNT.isPrimed (fuse > -1): a cart that ran into a wall or
         // fell unprimed blows rails up like any blast.
-        self.combat.0.rail_proof_blast = c.fuse >= 0;
-        self.combat.0.explosion_in_water = self.bounds_in_water(c.bounds());
-        self.combat.0.explosion_direct = Some(c.id);
+        self.side.combat.0.rail_proof_blast = c.fuse >= 0;
+        self.side.combat.0.explosion_in_water = self.bounds_in_water(c.bounds());
+        self.side.combat.0.explosion_direct = Some(c.id);
         let _ = self.with_hive_emptying_blast(|g| {
             g.server_explode_from(
                 at,
@@ -86,9 +86,9 @@ impl Game<'_> {
                     ),
             )
         });
-        self.combat.0.explosion_direct = None;
-        self.combat.0.explosion_in_water = false;
-        self.combat.0.rail_proof_blast = false;
+        self.side.combat.0.explosion_direct = None;
+        self.side.combat.0.explosion_in_water = false;
+        self.side.combat.0.rail_proof_blast = false;
         true
     }
 }

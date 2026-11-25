@@ -17,7 +17,7 @@ use super::Game;
 use mod_api::{DimensionKey, LevelRef};
 use sunrise_client::world::World;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// On a client, the key of the level `dimension` names: the one it shows, or one the server
     /// opened for viewing while that view is open. None before login.
     pub(in crate::game) fn client_level_key(&self, dimension: &str) -> Option<DimensionKey> {
@@ -59,7 +59,7 @@ impl Game<'_> {
         depth_far: f32,
     ) -> Option<sunrise_client::gfx::JoinedFrusta> {
         let own_level = self.client_own_level();
-        let renderer = self.renderer.0.as_mut()?;
+        let renderer = self.side.renderer.0.as_mut()?;
         renderer.set_world_view_own_level(own_level);
         Some(renderer.camera_frustum(camera, fov_degrees, yaw, pitch, bob, depth_far))
     }

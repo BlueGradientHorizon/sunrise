@@ -222,7 +222,7 @@ impl Station {
     }
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The anvil name the menu works with (`AnvilScreen.onNameChanged`).
     pub(in crate::game) fn anvil_item_name(&self, s: &Station) -> String {
         match &s.inputs[0] {

@@ -67,7 +67,7 @@ pub(in crate::game) fn lend_inventory_view(
     ));
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Lend `Inventory.getItem` over the resident slots.
     pub(in crate::game) fn player_inventory_slots(
         &self,

@@ -10,7 +10,7 @@ use sunrise_client::{
 #[allow(unused_imports)]
 use sunrise_core::geometry::Direction;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn particle_shape(
         &self,
         pos: [i32; 3],

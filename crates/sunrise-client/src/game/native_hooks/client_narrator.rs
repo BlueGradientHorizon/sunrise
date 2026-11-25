@@ -5,7 +5,7 @@ use super::*;
 use mod_api::{NarrateError, Narration};
 use sunrise_narrator::GameNarrator;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn narrate(
         &mut self,
         text: &sunrise_client::text::Text,

@@ -70,7 +70,7 @@ macro_rules! target_entity_mut {
 #[allow(unused_imports)]
 pub(in crate::game) use target_entity_mut;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn syntax_failure(&mut self, e: &CommandError, command: &str) {
         self.command_failure(e.message.clone());
         if let Some(context) =
@@ -555,7 +555,7 @@ impl Game<'_> {
                 // A server's player teleported within their level is placed
                 // there at once: the arrival they were waiting for elsewhere
                 // in it (whose chunks lose their tickets) is abandoned.
-                if let Some(conn) = self.server.lan_acting {
+                if let Some(conn) = self.side.lan_acting {
                     self.hold_for_chunks(conn, v);
                 }
                 // TeleportCommand.performTeleport grounds a player unless they're gliding.
@@ -567,12 +567,12 @@ impl Game<'_> {
                 // A server player's teleport is told to the mods once their
                 // move is in the hub (the put-back at the end of `guest_turn`).
                 if let (Some(conn), Some(uuid), Some(name), Some(from)) = (
-                    self.server.lan_acting,
-                    self.server.lan_acting_uuid,
-                    self.server.lan_acting_name.clone(),
+                    self.side.lan_acting,
+                    self.side.lan_acting_uuid,
+                    self.side.lan_acting_name.clone(),
                     from,
                 ) {
-                    self.server
+                    self.side
                         .teleport_notes
                         .push(super::server_travel::TeleportNote {
                             conn,
@@ -688,8 +688,8 @@ impl Game<'_> {
                 }
             }
             Target::Other(id) => {
-                if let Some(i) = self.others.0.iter().position(|e| e.id == id) {
-                    self.others.0.update(i, |o| {
+                if let Some(i) = self.side.others.0.iter().position(|e| e.id == id) {
+                    self.side.others.0.update(i, |o| {
                         o.position = v;
                         if let Some([yaw, pitch]) = rotation {
                             if yaw.is_finite() {

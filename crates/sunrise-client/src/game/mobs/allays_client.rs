@@ -5,7 +5,7 @@ use sunrise_client::{
     first_person::Hand, items::ItemStack, lan::playerdata::uuid_ints, mobs::allay,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     fn client_acting_uuid(&self) -> [i32; 4] {
         self.remote
             .as_ref()
@@ -72,7 +72,7 @@ impl Game<'_> {
             )
             .in_source(SoundSource::ALL[6]);
             sound.emitter = Some(mob.id);
-            let seed = self.audio.0.next_sound_seed();
+            let seed = self.side.audio.0.next_sound_seed();
             self.play_client_level_sound(sound, seed);
         }
         match result {

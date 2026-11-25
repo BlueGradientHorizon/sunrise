@@ -14,7 +14,7 @@ use sunrise_client::{
 };
 use sunrise_core::geometry::Vec3;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn fixture_special_attack(
         &mut self,
         op: &Value,
@@ -65,7 +65,7 @@ impl Game<'_> {
                 "weakness", 200, 0,
             ));
         }
-        self.server.attack_ticks = op["ticks"].as_u64().unwrap_or(20) as u32;
+        self.side.attack_ticks = op["ticks"].as_u64().unwrap_or(20) as u32;
         self.world.game_time = 100;
         let at = Vec3::new(0.5, 1.0, 0.5);
         // The fixture targets and the live drops from breaking them share one allocator.
@@ -183,7 +183,7 @@ impl Game<'_> {
             player.velocity.x.to_bits(),
             player.velocity.z.to_bits(),
             player.sprinting,
-            self.server.attack_ticks
+            self.side.attack_ticks
         )])
     }
 }

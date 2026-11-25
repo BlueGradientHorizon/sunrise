@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ModifyCustomSpawnersEvent`: the level `dimension` builds its custom spawners. `spawners`
     /// starts as vanilla's list; a mod takes spawners out or adds its own by key.
     pub(in crate::game) fn native_modify_custom_spawners(

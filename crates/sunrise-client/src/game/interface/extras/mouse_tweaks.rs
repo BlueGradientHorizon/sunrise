@@ -62,11 +62,11 @@ struct Drag {
     visited: Vec<usize>,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The open screen is one the tweaks run in, with the extra on.
     pub(in crate::game::client_side) fn tweaks_on(&self) -> bool {
         if !self.settings.extras.mouse_tweaks
-            || self.client.screen != Screen::Inventory
+            || self.side.screen != Screen::Inventory
             || self.station.is_some()
             || self.mount_active()
         {
@@ -86,7 +86,7 @@ impl Game<'_> {
         right: bool,
         shift: bool,
     ) -> bool {
-        self.client.tweaks.drag = None;
+        self.side.tweaks.drag = None;
         let Some(slot) = slot.filter(|&s| s != 200 && s < Creative::DISPLAY) else {
             return false;
         };
@@ -105,21 +105,21 @@ impl Game<'_> {
                 held,
                 active: true,
                 visited: vec![slot],
-                press: self.client.physical_presses,
+                press: self.side.physical_presses,
             };
             self.tweak_place(&mut drag, slot);
-            self.client.inv_drag = None;
-            self.client.inv_clicks.skip_release();
-            self.client.tweaks.drag = Some(drag);
+            self.side.inv_drag = None;
+            self.side.inv_clicks.skip_release();
+            self.side.tweaks.drag = Some(drag);
             return true;
         }
         if held.is_some() || shift {
-            self.client.tweaks.drag = Some(Drag {
+            self.side.tweaks.drag = Some(Drag {
                 right,
                 held,
                 active: false,
                 visited: vec![slot],
-                press: self.client.physical_presses,
+                press: self.side.physical_presses,
             });
         }
         false
@@ -139,7 +139,7 @@ impl Game<'_> {
     /// The cursor moved while a button is held: true when the tweaks own
     /// the drag (vanilla's quick craft drag doesn't grow).
     pub(in crate::game::client_side) fn tweak_drag_move(&mut self, slot: Option<usize>) -> bool {
-        let Some(mut drag) = self.client.tweaks.drag.take() else {
+        let Some(mut drag) = self.side.tweaks.drag.take() else {
             return false;
         };
         // A drag whose button went up unseen (another handler took its release, or the next press) is over.
@@ -148,8 +148,8 @@ impl Game<'_> {
         } else {
             winit::event::MouseButton::Left
         };
-        if !self.client.physical_buttons.contains(&button)
-            || drag.press != self.client.physical_presses
+        if !self.side.physical_buttons.contains(&button)
+            || drag.press != self.side.physical_presses
         {
             return false;
         }
@@ -166,7 +166,7 @@ impl Game<'_> {
                 // Holding a stack: only slots of the same item, and only
                 // while vanilla's drag hasn't spread.
                 let spread = self
-                    .client
+                    .side
                     .inv_drag
                     .as_ref()
                     .is_some_and(|(_, s)| s.len() > 1);
@@ -175,8 +175,8 @@ impl Game<'_> {
                 {
                     if !drag.active {
                         drag.active = true;
-                        self.client.inv_drag = None;
-                        self.client.inv_clicks.skip_release();
+                        self.side.inv_drag = None;
+                        self.side.inv_clicks.skip_release();
                     }
                     if shift {
                         self.slot_click(slot, 0, Input::QuickMove);
@@ -197,12 +197,12 @@ impl Game<'_> {
             }
         }
         let owned = drag.active || active;
-        self.client.tweaks.drag = Some(drag);
+        self.side.tweaks.drag = Some(drag);
         owned
     }
     /// The button went up: the drag ends.
     pub(in crate::game::client_side) fn tweak_release(&mut self) -> bool {
-        self.client.tweaks.drag.take().is_some()
+        self.side.tweaks.drag.take().is_some()
     }
     /// The wheel over an inventory screen: true when the tweaks used it.
     pub(in crate::game::client_side) fn tweak_scroll(
@@ -214,12 +214,12 @@ impl Game<'_> {
             return false;
         }
         let Some(slot) = slot else {
-            self.client.tweaks.wheel = 0.0;
+            self.side.tweaks.wheel = 0.0;
             return false;
         };
-        self.client.tweaks.wheel += delta;
-        let steps = self.client.tweaks.wheel.trunc();
-        self.client.tweaks.wheel -= steps;
+        self.side.tweaks.wheel += delta;
+        let steps = self.side.tweaks.wheel.trunc();
+        self.side.tweaks.wheel -= steps;
         for _ in 0..steps.abs() as u32 {
             if steps < 0.0 {
                 self.tweak_push(slot);

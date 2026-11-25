@@ -11,7 +11,7 @@ pub(in crate::game::client_side) use sunrise_client::lan::waypoints::Icon;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::mobs::{spear_use, stuck::Stuck};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_living_read_target(&self, living: LivingRef) -> Option<Target> {
         match self.native_client_entity_target(living.entity())? {
             Target::Player => Some(Target::Player),

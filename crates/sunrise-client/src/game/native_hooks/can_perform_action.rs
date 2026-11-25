@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `IItemExtension.canPerformAction`: can `stack` perform the item ability
     /// `ability` (`shield_block`, `shears_harvest`...)?
     /// `can_perform` arrives with vanilla's answer; the parts of the stack's

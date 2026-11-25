@@ -160,7 +160,7 @@ pub(in crate::game) const CLIENT_SOUNDS: &[&str] = &[
     "minecraft:entity.warden.heartbeat",
 ];
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Run every scenario of `spec` ("SCENARIOS,OUTPUT") and write the results.
     pub(in crate::game::server_side) fn sculk_fixture(&mut self, spec: &str) -> Result<()> {
         assert!(
@@ -367,7 +367,7 @@ impl Game<'_> {
             }
         }
         self.block_ticks = Ticks::new(0);
-        self.server.tick_chunks.clear();
+        self.side.tick_chunks.clear();
         self.sync_tick_chunks();
         self.mobs.clear();
         if s.trace_events {
@@ -412,8 +412,8 @@ impl Game<'_> {
         };
         self.level.seed = 0;
         self.potions.effects = Default::default();
-        self.server.sculk = Default::default();
-        self.server.sculk.tracker_loaded = true;
+        self.side.sculk = Default::default();
+        self.side.sculk.tracker_loaded = true;
         self.sculk_prepare();
         Ok(())
     }
@@ -441,9 +441,9 @@ impl Game<'_> {
         self.server_clear_acting_input();
         // The oracle sets the new player's shift state for every scenario.
         self.server_set_acting_sneak(s.sneak);
-        self.server.sculk.tracker = WardenSpawnTracker::default();
+        self.side.sculk.tracker = WardenSpawnTracker::default();
         if let Some(level) = s.warning {
-            self.server.sculk.tracker.set_warning_level(level);
+            self.side.sculk.tracker.set_warning_level(level);
         }
         // The blocks, in order (sculk block entities tick in the order they
         // were placed), with `Level.setBlock(pos, state, 2 | 16)` at game time 1000.
@@ -470,8 +470,8 @@ impl Game<'_> {
             }
         });
         self.level_events.clear();
-        self.server.sculk.known = self.world.chunks.keys().copied().collect();
-        self.server.sculk.known_revision = Some(self.world.chunks.membership_revision());
+        self.side.sculk.known = self.world.chunks.keys().copied().collect();
+        self.side.sculk.known_revision = Some(self.world.chunks.membership_revision());
         self.sculk_sync_index();
         let mut names: HashMap<u32, String> = HashMap::new();
         let mut sources: Vec<u32> = Vec::new();
@@ -508,7 +508,7 @@ impl Game<'_> {
             sources.push(id);
             self.mobs.push(m);
         }
-        self.server.next_entity = self.server.next_entity.max(200_000);
+        self.side.next_entity = self.side.next_entity.max(200_000);
         self.world.day_time = 6000;
         self.world.random.set_seed(s.level_seed);
         self.start_audio_capture();
@@ -520,7 +520,7 @@ impl Game<'_> {
         let mut region_last: HashMap<[i32; 3], String> = HashMap::new();
         let (mut last_player, mut last_rng) = (String::new(), String::new());
         let mut out = String::new();
-        self.server.lan_entity_events.clear();
+        self.side.lan_entity_events.clear();
         for t in 0..=s.ticks {
             dispense_fixture::start_recording();
             if t > 0 {
@@ -548,7 +548,7 @@ impl Game<'_> {
                     }
                 }
             }
-            let tr = self.server.sculk.tracker;
+            let tr = self.side.sculk.tracker;
             let dark = self
                 .potions
                 .effects
@@ -629,7 +629,7 @@ impl Game<'_> {
                         "pos": [p.position.x, p.position.y, p.position.z]})
                     ));
                 }
-                for (_, event) in self.server.lan_entity_events.drain(..) {
+                for (_, event) in self.side.lan_entity_events.drain(..) {
                     lines.push(format!("entity_event {event}"));
                 }
             }
@@ -643,10 +643,10 @@ impl Game<'_> {
                 }
             }
             // The sounds bound to an entity are the server's too.
-            let bound = std::mem::take(&mut self.server.bound_sounds)
+            let bound = std::mem::take(&mut self.side.bound_sounds)
                 .into_iter()
                 .map(|s| (s.name, s.at, s.volume, s.pitch));
-            for (sound, at, volume, pitch) in std::mem::take(&mut self.server.pending_sounds)
+            for (sound, at, volume, pitch) in std::mem::take(&mut self.side.pending_sounds)
                 .into_iter()
                 .map(|s| (s.event, s.position, s.volume, s.pitch))
                 .chain(bound)
@@ -770,7 +770,7 @@ impl Game<'_> {
                         Some(sunrise_client::mobs::Who::Player),
                         &attack,
                     );
-                    let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
+                    let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
                     if let Some(index) = self.mob_index.find(&self.mobs, id) {
                         self.mobs[index].damage(
                             crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),

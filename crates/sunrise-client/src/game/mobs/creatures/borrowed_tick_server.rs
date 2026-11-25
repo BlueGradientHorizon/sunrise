@@ -9,7 +9,7 @@ pub(in crate::game::server_side) use crate::game::creatures::borrowed_tick::rout
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::creatures::borrowed_tick::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The killing blow of a mob as the death hooks name it: its damage
     /// type and the causing entity's id (0 for none).
     pub(in crate::game::server_side) fn mob_damage_source(&self, m: &Mob) -> (&'static str, u32) {
@@ -20,7 +20,7 @@ impl Game<'_> {
         let attacker = match attacker {
             Some(Who::Mob(id)) => id,
             Some(Who::Player) => self
-                .server
+                .side
                 .last_hurt_by_player
                 .get(&m.id)
                 .and_then(|credit| self.resolve_player_credit(*credit))
@@ -97,7 +97,7 @@ impl Game<'_> {
         let original_len = snapshot.len();
         // A restored list can put new joins first. Keep its storage and view
         // slots intact, but walk its turns in join order when interleaving stands.
-        let turn_order = (!self.server.ordered.armor_stands.is_empty()
+        let turn_order = (!self.side.ordered.armor_stands.is_empty()
             && !mobs.is_sorted_by_key(|mob| mob.join))
         .then(|| {
             let mut order: Vec<_> = (0..original_len).collect();
@@ -175,10 +175,10 @@ impl Game<'_> {
                 let nearest = super::super::natural_spawning::NearestPlayers::new(&players);
                 // All but the snapshot is the same for every mob of the tick, so
                 // build it once: the player view and the teams scan every UUID.
-                let mut leash_boats = std::mem::take(&mut self.server.leash_boats);
+                let mut leash_boats = std::mem::take(&mut self.side.leash_boats);
                 leash_boats.clear();
                 leash_boats.extend(self.boats.iter().map(super::super::boat_leads::boat_state));
-                self.server.leash_boats = leash_boats;
+                self.side.leash_boats = leash_boats;
                 let mut base = self.mob_world_base(&[]);
                 // Install the shared observer only on the per-mob view below; keeping the
                 // reusable base empty lets its reference fields remain copyable between rows.
@@ -247,7 +247,7 @@ impl Game<'_> {
                     };
                     let m = &mut mobs[i];
                     if self
-                        .server
+                        .side
                         .ordered
                         .armor_stands
                         .front()
@@ -869,7 +869,7 @@ impl Game<'_> {
                     }
                 }
             }
-            self.server.pending_native_sounds.append(&mut hit_sounds);
+            self.side.pending_native_sounds.append(&mut hit_sounds);
             if sting.is_some() {
                 resume_brain = Some((brain_from, section_yield, tell_post.take()));
                 section_yield = false;
@@ -936,8 +936,8 @@ impl Game<'_> {
             self.mobs
                 .restore(mobs, sunrise_client::join_seq::RestoreOrder::SpawnsFirst);
             let restored = self.mobs.stamp();
-            std::mem::swap(&mut self.server.last_hurt_by_player, &mut player_credit);
-            std::mem::swap(&mut self.server.died, &mut died);
+            std::mem::swap(&mut self.side.last_hurt_by_player, &mut player_credit);
+            std::mem::swap(&mut self.side.died, &mut died);
             std::mem::swap(&mut self.creatures.ticked, &mut ticked);
             if let Some(host) = self.lan.as_mut() {
                 std::mem::swap(&mut host.mob_players, &mut bindings);
@@ -982,7 +982,7 @@ impl Game<'_> {
                         && sting.same_target(&self.mobs[i])
                     {
                         if let Some(hit) = paused_hurt.take() {
-                            self.paused_mob_hurt.0 = Some(hit);
+                            self.side.paused_mob_hurt.0 = Some(hit);
                             if let Some((i, hurt)) = self.complete_mob_hurt(i, false) {
                                 sting.resolved_hit(hurt);
                                 self.finish_mob_damage_at(i);
@@ -1038,7 +1038,7 @@ impl Game<'_> {
                                 && self.mobs[i].join == join
                                 && !self.mobs[i].removed
                             {
-                                self.paused_mob_hurt.0 = paused_hurt.take();
+                                self.side.paused_mob_hurt.0 = paused_hurt.take();
                                 self.finish_mob_damage_at(i);
                                 self.settle_creaking_hurt(id);
                             }
@@ -1107,8 +1107,8 @@ impl Game<'_> {
                 blocked = std::borrow::Cow::Owned(self.mobs_below_off_level());
             }
             mobs = self.mobs.lift();
-            std::mem::swap(&mut self.server.last_hurt_by_player, &mut player_credit);
-            std::mem::swap(&mut self.server.died, &mut died);
+            std::mem::swap(&mut self.side.last_hurt_by_player, &mut player_credit);
+            std::mem::swap(&mut self.side.died, &mut died);
             std::mem::swap(&mut self.creatures.ticked, &mut ticked);
             if let Some(host) = self.lan.as_mut() {
                 std::mem::swap(&mut host.mob_players, &mut bindings);

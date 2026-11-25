@@ -2,7 +2,7 @@
 #[allow(unused_imports)]
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `Rabbit.getBreedOffspring`: a fresh biome variant
     /// (`Rabbit.getRandomRabbitVariant`, from the level's random) one time in
     /// twenty, else a parent's colour by the breeding parent's own coin toss.

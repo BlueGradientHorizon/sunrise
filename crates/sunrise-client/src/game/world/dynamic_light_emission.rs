@@ -6,7 +6,7 @@
 use super::*;
 use sunrise_client::fast_hash::FxHashMap;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Query dynamic light emission in the active (`None`) or parked (`Some`) level.
     pub(in crate::game::server_side) fn ask_level_chunk_light_emission(
         &mut self,
@@ -16,7 +16,7 @@ impl Game<'_> {
     ) {
         let world = match parked {
             None => &self.world,
-            Some(id) => match self.levels.0.parked_world_of(id) {
+            Some(id) => match self.side.levels.0.parked_world_of(id) {
                 Some(world) => world,
                 None => return,
             },
@@ -37,7 +37,7 @@ impl Game<'_> {
         }
         let world = match parked {
             None => &mut self.world,
-            Some(id) => match self.levels.0.parked_world_mut_of(id) {
+            Some(id) => match self.side.levels.0.parked_world_mut_of(id) {
                 Some(world) => world,
                 None => return,
             },

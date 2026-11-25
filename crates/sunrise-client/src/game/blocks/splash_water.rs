@@ -15,7 +15,7 @@ use sunrise_core::{
 };
 use sunrise_world::{chunk::BlockState, registry::BlockStateId};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `PotionContents.is`: the potion of `stack` is in the potion tag `tag`
     /// (`minecraft:douses_fire` and the others, read from the data pack's
     /// `tags/potion`) and the stack has no custom effects of its own
@@ -155,7 +155,7 @@ impl Game<'_> {
                 if hurts && sensitive {
                     let invulnerable = m.invulnerable_flag;
                     let plan = self.prepare_knockback_credit(m.id as i32, attacker, &attack);
-                    let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
+                    let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
                     let m = &mut self.mobs[index];
                     m.damage(
                         crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),

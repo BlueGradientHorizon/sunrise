@@ -7,7 +7,7 @@ use sunrise_client::{
 };
 use sunrise_core::geometry::Vec3;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn spawn_projectile_from_rotation(
         &mut self,
         owner: LivingRef,
@@ -72,8 +72,8 @@ impl Game<'_> {
         mut shot: Projectile,
         stack: &ItemStack,
     ) -> Option<u32> {
-        self.server.next_entity += 1;
-        shot.id = self.server.next_entity;
+        self.side.next_entity += 1;
+        shot.id = self.side.next_entity;
         let id = shot.id;
         // Projectile.spawnProjectile: the spawn effects read the supplied
         // stack, whatever its count, and never change it.

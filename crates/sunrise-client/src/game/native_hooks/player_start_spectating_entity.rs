@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A server player started spectating `entity_id`, after their camera moved to it
     /// (`ServerPlayer.setCamera`) and their client was told. Server-side.
     pub(in crate::game) fn native_player_start_spectating_entity(

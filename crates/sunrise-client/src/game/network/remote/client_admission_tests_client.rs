@@ -57,7 +57,7 @@ fn add_player_requires_info_before_replacing_a_tracked_entity() {
                 .unwrap()
                 .join;
             let sound = SoundEntity::new(id as u32, cart_at, false);
-            game.audio.0.engine.add(
+            game.side.audio.0.engine.add(
                 SoundInstance::entity_bound(
                     "minecraft:fixture.bound",
                     6,

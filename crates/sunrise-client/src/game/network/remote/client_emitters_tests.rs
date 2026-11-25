@@ -17,7 +17,7 @@ pub(in crate::game) fn with_isolated_client(name: &str, body: impl FnOnce()) {
     crate::game::in_own_process(&test, body);
 }
 
-pub(in crate::game) fn registry_id(game: &Game<'_>, registry: &str, name: &str) -> i32 {
+pub(in crate::game) fn registry_id<__Side: crate::game::Side>(game: &Game<'_, __Side>, registry: &str, name: &str) -> i32 {
     game.remote
         .as_ref()
         .unwrap()
@@ -28,8 +28,8 @@ pub(in crate::game) fn registry_id(game: &Game<'_>, registry: &str, name: &str) 
         .unwrap()
 }
 
-pub(in crate::game) fn add_entity(
-    game: &Game<'_>,
+pub(in crate::game) fn add_entity<__Side: crate::game::Side>(
+    game: &Game<'_, __Side>,
     id: i32,
     uuid: u128,
     kind: &str,
@@ -48,14 +48,14 @@ pub(in crate::game) fn add_entity(
     })
 }
 
-pub(in crate::game) fn deliver(game: &mut Game<'_>, packet: C) {
+pub(in crate::game) fn deliver<__Side: crate::game::Side>(game: &mut Game<'_, __Side>, packet: C) {
     let bytes = packet.encode();
     let mut reader = sunrise_protocol::buf::Reader::new(&bytes);
     game.handle_packet(C::decode(reader.varint().unwrap(), reader.rest()).unwrap())
         .unwrap();
 }
 
-pub(in crate::game) fn animate(game: &mut Game<'_>, id: i32, action: u8) {
+pub(in crate::game) fn animate<__Side: crate::game::Side>(game: &mut Game<'_, __Side>, id: i32, action: u8) {
     deliver(game, C::Animate(play::Animate { id, action }));
 }
 

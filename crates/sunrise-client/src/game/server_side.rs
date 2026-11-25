@@ -1562,6 +1562,61 @@ pub(in crate::game) struct ServerState {
     pub(in crate::game) pending_native_sounds: Vec<creatures::NativeSound>,
     pub(in crate::game) effect_rng: sunrise_core::random::LegacyRandom,
     pub(in crate::game::server_side) sculk: sculk_server::SculkState,
+
+    pub(in crate::game::server_side) save: ServerShared<Arc<SaveDir>>,
+    /// Must precede session_lock: dropping the writer drains writes while the world is locked.
+    pub(in crate::game::server_side) player_autosaves: ServerOnly<sunrise_client::lan::playerdata::Autosaves>,
+    pub(in crate::game::server_side) session_lock: ServerShared<Option<sunrise_client::save::SessionLock>>,
+    pub(in crate::game::server_side) paused_mob_hurt: ServerOnly<Option<Box<sunrise_client::mobs::PausedMobHurt>>>,
+    pub(in crate::game::server_side) raiding: ServerOnly<raids::Raiding>,
+    /// The world's data packs' content tables, when it has packs (`None`
+    /// keeps `Resources.rest`'s own in use).
+    pub(in crate::game::server_side) world_tables: ServerShared<Option<WorldTables>>,
+    /// Server-owned loot and item snapshots, independent of client preloads.
+    pub(in crate::game::server_side) server_loot: ServerOnly<sunrise_client::structure_blocks::LootSnapshot>,
+    /// A server's levels other than the one in place (game/world/levels.rs).
+    pub(in crate::game::server_side) levels: ServerOnly<levels::Levels>,
+    pub(in crate::game::server_side) tickets: ServerShared<sunrise_client::ticket_levels::ChunkTickets>,
+    pub(in crate::game::server_side) random_tick_sections:
+        ServerOnly<sunrise_client::random_tick_sections::RandomTickSections>,
+    /// Entities of types Sunrise does not simulate.
+    pub(in crate::game::server_side) others:
+        ServerShared<sunrise_client::join_seq::ResidentList<commands::OtherEntity>>,
+    /// Item entities spawned and block entities removed while the block
+    /// behaviour ran (spilled contents, popped resources).
+    pub(in crate::game::server_side) spill: ServerOnly<spill::Spill>,
+    pub(in crate::game::server_side) creative_catalog: ServerOnly<Arc<sunrise_items::creative_catalog::Catalog>>,
+    /// The mobs lent to the hook calls running now, before they join a level
+    /// (game/modding/native_unspawned_mob.rs).
+    pub(in crate::game::server_side) lent_mobs: ServerOnly<RefCell<native_unspawned_mob::LentMobs>>,
+    /// The game tests read so far, by id (the test instance registry).
+    pub(in crate::game::server_side) test_defs: ServerOnly<
+        std::cell::RefCell<HashMap<String, Option<test_instances::TestDef>>>,
+    >,
+    /// `GameTestTicker.SINGLETON`: the game tests running on this server.
+    pub(in crate::game::server_side) game_tests: ServerOnly<game_tests::GameTests>,
+    /// A mod asked for the command trees again (`native_refresh_commands`):
+    /// the next server tick asks every mod for its commands and resends them.
+    pub(in crate::game::server_side) native_commands: ServerOnly<native_server::NativeCommandState>,
+    /// Other players in the current guest turn, including borrowed ancestor bodies.
+    pub(in crate::game::server_side) lan_building_boxes: ServerOnly<building_players::BuildingPlayers>,
+    /// Bodies and their statistics displaced by guest turns, outer first.
+    pub(in crate::game::server_side) lan_displaced_players: ServerOnly<Vec<lan_actions::DisplacedPlayer>>,
+    /// A fake player's `perform_action` in progress, and what it refused.
+    pub(in crate::game::server_side) fake_action: ServerOnly<std::sync::Arc<native_server::FakeAction>>,
+    /// A dedicated server's operator, whitelist and ban lists, for `/op`,
+    /// `/ban` and friends (`DedicatedPlayerList`).
+    pub(in crate::game::server_side) server_lists:
+        ServerOnly<Option<std::sync::Arc<std::sync::Mutex<dedicated::Lists>>>>,
+    /// State of `/spectate`, `/posteffect`, `/debug`, `/waypoint` and friends.
+    pub(in crate::game::server_side) cmds: ServerOnly<commands::extra::CommandExtras>,
+    /// The retained server reload listeners of the last successful reload.
+    pub(in crate::game::server_side) reload_resources: ServerOnly<mod_api::RetainedListeners>,
+    pub(in crate::game::server_side) combat: ServerOnly<combat::CombatTracker>,
+    /// Each guest's own `CombatTracker`, out of `combat` between turns.
+    pub(in crate::game::server_side) guest_combat: ServerOnly<std::collections::HashMap<u32, combat::CombatTracker>>,
+    pub(in crate::game::server_side) fns: ServerOnly<functions::FnState>,
+    pub(in crate::game::server_side) exec: ServerOnly<commands::execute::ExecState>,
 }
 
 impl ServerState {
@@ -1734,5 +1789,56 @@ impl<T> ServerShared<T> {
     #[inline(always)]
     pub(in crate::game) fn new(value: T) -> Self {
         Self(value)
+    }
+}
+
+impl crate::game::Side for ServerState {
+    const IS_SERVER: bool = true;
+    fn host_side<'a, 'g>(game: &'g mut crate::game::Game<'a, Self>) -> mod_api::HostSide<'g> {
+        mod_api::HostSide::Server(game)
+    }
+    fn as_host<'a, 'g>(game: &'g crate::game::Game<'a, Self>) -> &'g dyn mod_api::Host {
+        game
+    }
+    fn as_config_context<'a, 'g>(game: &'g crate::game::Game<'a, Self>) -> &'g dyn mod_api::ConfigContext {
+        game
+    }
+    fn as_reload_context<'a, 'g>(game: &'g crate::game::Game<'a, Self>) -> &'g dyn mod_api::ReloadContext {
+        game
+    }
+    fn as_pack_discovery_context_mut<'a, 'g>(game: &'g mut crate::game::Game<'a, Self>) -> &'g mut dyn mod_api::PackDiscoveryContext {
+        game
+    }
+    fn as_server_host_mut<'a, 'g>(game: &'g mut crate::game::Game<'a, Self>) -> Option<&'g mut dyn mod_api::ServerHost> {
+        Some(game)
+    }
+    fn attachment_store<'a, 'g>(game: &'g mut crate::game::Game<'a, Self>) -> &'g mut dyn mod_api::AttachmentStore {
+        game
+    }
+    fn world_tables(&self) -> Option<&crate::game::WorldTables> {
+        self.world_tables.0.as_ref()
+    }
+    fn lan_acting_uuid(&self) -> Option<u128> {
+        self.lan_acting_uuid
+    }
+    fn levels_generation(&self, id: &str) -> u32 {
+        self.levels.0.runtime.generation_of(id)
+    }
+    fn session_lock_active(&self) -> bool {
+        self.session_lock.0.is_some()
+    }
+    fn level_ref(&self, dim: crate::game::Dim, epoch: Option<mod_api::WorldEpoch>) -> Option<mod_api::LevelRef> {
+        epoch.and_then(|epoch| {
+            let key = dim.key();
+            let id = mod_api::__private::dimension_id(key)?;
+            Some(mod_api::LevelRef::with_generation(
+                epoch,
+                key,
+                self.levels.0.runtime.generation_of(id),
+            ))
+        })
+    }
+    fn game_side_tag_items<'a>(&self, _remote: &'a Option<crate::game::remote::Remote>, res: &'a crate::game::Resources) -> Option<&'a sunrise_client::items::Items> {
+        self.session_lock.0.is_some().then(|| res.items())
     }
 }

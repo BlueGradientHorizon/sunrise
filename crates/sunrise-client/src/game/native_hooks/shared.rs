@@ -1055,7 +1055,7 @@ pub(in crate::game) struct BonemealAsk {
 }
 
 /// Where the game calls the hook points.
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The chosen phase's broadcast event, before its scoped behaviour.
     pub(in crate::game) fn use_item_on_block(
         &mut self,

@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// An F2 frame is read back; mods may change its image, cancel, rename it or replace its line.
     pub(in crate::game) fn native_screenshot(
         &mut self,

@@ -18,7 +18,7 @@ pub(in crate::game) enum RidingRead<'a> {
     Client(&'a Remote),
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The dismount search with a vehicle or passenger lent out of `self.mobs`.
     pub(in crate::game::server_side) fn scoped_mob_dismount_location(
         &self,
@@ -825,7 +825,7 @@ impl Game<'_> {
         let own = self
             .player
             .as_ref()
-            .filter(|_| self.server.lan_acting.is_none())
+            .filter(|_| self.side.lan_acting.is_none())
             .map(|player| player.entity_id as u32);
         // An own-player edge that has no seat entry still needs to dismount.
         if let Some(own) = own

@@ -2,7 +2,7 @@
 //! of whether they wrote records to the world snapshot.
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Remove entities with the chunks in `keys`, except for a family's
     /// normal exceptions (such as a boat the player is riding).
     pub(super) fn unload_removed_entities(&mut self, keys: &HashSet<(i32, i32)>) {
@@ -81,7 +81,7 @@ impl Game<'_> {
             }
             keep
         });
-        self.others.0.retain(|o| {
+        self.side.others.0.retain(|o| {
             let keep = !gone(o.position) || ridden_roots.contains(&o.id);
             if !keep {
                 removed.push(o.id);

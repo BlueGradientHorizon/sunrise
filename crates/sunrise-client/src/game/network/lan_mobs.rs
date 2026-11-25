@@ -15,7 +15,7 @@ pub(in crate::game) use sunrise_gameplay::lan::mob_players::{
 };
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// How mobs see each guest in play (`player_view` with the guest swapped
     /// in).
     pub(in crate::game) fn lan_guest_views(&mut self) -> GuestViews {
@@ -107,11 +107,11 @@ impl Game<'_> {
                     ..
                 }
         ) {
-            self.combat.0.melee_mob = Some(mob);
+            self.side.combat.0.melee_mob = Some(mob);
         }
         let _ = self.handle_mob_events(vec![e]);
         // Used up by the hit; a blow that hurt nobody leaves it to no other.
-        self.combat.0.melee_mob = None;
+        self.side.combat.0.melee_mob = None;
     }
 
     /// The guests' boxes for the blocks entities trigger (pressure plates,
@@ -191,7 +191,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Hurt a guest: `f` runs as them, and the knockback it gave reaches
     /// their client. A hurt marks the velocity (Entity.markHurt), which goes
     /// out once the guest's server copy has travelled (`guest_server_tick`);
@@ -254,7 +254,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Every guest in the world (`ServerLevel.getPlayers` past the host).
     pub fn lan_present(&self) -> Vec<Present> {
         let guests = self
@@ -266,7 +266,7 @@ impl Game<'_> {
             .map(|g| {
                 let [x, y, z] = g.position;
                 // The acting guest's effects are on the game while their turn runs.
-                let effects = if self.server.lan_acting == Some(g.conn) {
+                let effects = if self.side.lan_acting == Some(g.conn) {
                     &self.potions.effects
                 } else {
                     &g.effects
@@ -286,7 +286,7 @@ impl Game<'_> {
     }
     /// The UUID of the player acting: the guest `as_guest` runs, else the host.
     pub fn acting_uuid(&self) -> [i32; 4] {
-        self.server
+        self.side
             .lan_acting_uuid
             .map(sunrise_client::lan::playerdata::uuid_ints)
             .or(self.level.player_uuid)

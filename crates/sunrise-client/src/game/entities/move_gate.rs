@@ -20,7 +20,7 @@ pub(in crate::game) enum MoveWho {
     Entity(EntityHandle),
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Arm one physical `Entity.move` invocation (#2414) for `who` with `cause`
     /// and hand back its gate: the caller then runs the kind's physics with
     /// the movement the gate decided (`delta`), and skips it when the gate

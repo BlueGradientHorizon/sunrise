@@ -15,7 +15,7 @@ use mod_api::{EntityRef, RemovalReason};
 use sunrise_client::items::ItemStack;
 use sunrise_core::geometry::Vec3;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Removes the entity with no death and no loot (`Entity.discard`): a
     /// chest boat or a minecart with a chest still drops what it holds, and
     /// a boat its lead, as vanilla's `remove` does. False for a player, a dragon part,
@@ -127,7 +127,7 @@ impl Game<'_> {
             _ => at,
         };
         // Found by its id: the hooks the spawn runs may add entities after it.
-        let id = self.server.next_entity + 1;
+        let id = self.side.next_entity + 1;
         self.spawn_at_location(Vec3::new(x, y, z), f64::from(y_offset), stack);
         self.dropped
             .iter()
@@ -172,7 +172,7 @@ impl Game<'_> {
         };
         mob.removed = true;
         let position = mob.position;
-        self.server.last_hurt_by_player.remove(&id);
+        self.side.last_hurt_by_player.remove(&id);
         self.dismount_mob(id);
         self.dismount_removed_passengers(id, position.y);
         if self.has_seated_passengers(id)

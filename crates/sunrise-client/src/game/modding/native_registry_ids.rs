@@ -3,7 +3,7 @@ use super::Game;
 use sunrise_core::identifier::Identifier;
 use sunrise_protocol::registry::SyncedNames;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The network id of `name` in `registry`: a client's own connection's registries (never the
     /// integrated server's), a server's synchronized ones, as its connections are sent them.
     /// None with no connection.

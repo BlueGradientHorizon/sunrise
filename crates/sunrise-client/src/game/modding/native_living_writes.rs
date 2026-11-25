@@ -19,7 +19,7 @@ use sunrise_client::lan::waypoints::Icon;
 #[allow(unused_imports)]
 use sunrise_client::mobs::{spear_use, stuck::Stuck};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The UUID of the player a living handle names.
     pub(in crate::game::server_side) fn native_living_player(
         &mut self,
@@ -48,8 +48,8 @@ impl Game<'_> {
         living: LivingRef,
     ) -> Option<&mut Stuck> {
         match self.native_living_target(living)? {
-            Target::Player => Some(&mut self.combat.0.stuck),
-            Target::Guest(conn) => Some(&mut self.guest_combat.0.entry(conn).or_default().stuck),
+            Target::Player => Some(&mut self.side.combat.0.stuck),
+            Target::Guest(conn) => Some(&mut self.side.guest_combat.0.entry(conn).or_default().stuck),
             Target::Mob(id) => self
                 .mobs
                 .iter_mut()
@@ -92,9 +92,9 @@ impl Game<'_> {
                         started,
                         send_to_self,
                         current,
-                        game.server.lan_acting_entity,
+                        game.side.lan_acting_entity,
                     ) {
-                        game.server
+                        game.side
                             .guest_packets
                             .push(super::lan_actions::swing_packet(
                                 id as i32,

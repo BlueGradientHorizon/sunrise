@@ -125,7 +125,7 @@ pub(in crate::game) fn picked_item<'a>(
     Some(potted.unwrap_or(item)).filter(|item| *item != "minecraft:air")
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Plain projection for the existing container-title consumers. The live
     /// `BaseContainerBlockEntity` name remains a Component, not rendered text.
     pub(in crate::game) fn block_name_plain(&self, key: (i32, i32, i32)) -> Option<String> {

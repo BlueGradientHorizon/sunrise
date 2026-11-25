@@ -27,7 +27,7 @@ pub(in crate::game::server_side) use sunrise_client::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_core::java_number::float_to_string;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Leaf predicates that read the command's world or entity context.
     pub(in crate::game::server_side) fn compute_leaf(
         &mut self,
@@ -80,7 +80,7 @@ impl Game<'_> {
             }
             _ => {
                 let source = self
-                    .server
+                    .side
                     .command_source
                     .unwrap_or_else(|| self.player_source());
                 // Scores are read from the holder's board only where
@@ -118,7 +118,7 @@ impl Game<'_> {
     ) -> Option<Value> {
         let id = sunrise_client::command::args::normalized(id);
         match registry {
-            "minecraft:predicate" => self.fns.0.store.predicates.get(id.as_ref()),
+            "minecraft:predicate" => self.side.fns.0.store.predicates.get(id.as_ref()),
             _ => self.context_registry(registry)?.get(id.as_ref()),
         }
         .cloned()

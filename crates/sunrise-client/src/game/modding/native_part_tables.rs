@@ -8,7 +8,7 @@ use sunrise_client::mesher::part_tables::{FluidTable, PartTables};
 use sunrise_core::geometry::Direction;
 use sunrise_world::fluid::{FluidKind, FluidState, mod_fluids};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Every table, built for the states and fluids of this game; a table that changes nothing
     /// is left empty. The overlay answer starts with vanilla's test, the mesher's `Info::overlay`.
     pub(in crate::game) fn resolve_part_tables(&self) -> PartTables {

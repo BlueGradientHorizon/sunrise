@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `IFallableExtension.fallingTick`: the falling block `entity` of `state`, in the block at
     /// `pos`, ticked and is still falling. Delivered after the ordered pass, with a
     /// `&mut dyn ServerHost`, so the part's writes land on the stored falling block.

@@ -150,7 +150,7 @@ fn random_uuid() -> u128 {
     u128::from_be_bytes(bytes)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// handleLogin: a new session state and signature cache, and prepareKeyPair.
     /// The session itself goes out from `tick_chat_session`, never from here:
     /// vanilla's tick sends it once the key future is done, after the login's
@@ -324,7 +324,7 @@ impl Game<'_> {
             CommandCheck::ParseErrors
         };
         // screenAfterCommand: what stays once it has run, a dialog included.
-        let over_screen = self.client.screen != Screen::Playing || self.dialog_open();
+        let over_screen = self.side.screen != Screen::Playing || self.dialog_open();
         let (message, accept) = match check {
             CommandCheck::NoIssues => {
                 // Verification above excludes message arguments. Use the ordinary sender so
@@ -350,7 +350,7 @@ impl Game<'_> {
             ),
         };
         self.open_screen_overlay("command_prompt", |game| {
-            game.command_prompt.0 = Some(CommandPrompt {
+            game.side.command_prompt.0 = Some(CommandPrompt {
                 command: command.to_owned(),
                 message,
                 accept,
@@ -365,7 +365,7 @@ impl Game<'_> {
 
     /// The command just clicked left this screen: if it asks, no returns there.
     pub(in crate::game::client_side) fn command_prompt_returns_to(&mut self, behind: Behind) {
-        if let Some(prompt) = self.command_prompt.0.as_mut() {
+        if let Some(prompt) = self.side.command_prompt.0.as_mut() {
             prompt.behind = Some(behind);
             prompt.over_screen = true;
         }
@@ -373,7 +373,7 @@ impl Game<'_> {
 
     /// The translation key of the open confirmation's message.
     pub(in crate::game::client_side) fn command_prompt_message(&self) -> Option<&'static str> {
-        self.command_prompt.0.as_ref().map(|p| p.message)
+        self.side.command_prompt.0.as_ref().map(|p| p.message)
     }
 
     /// The confirmation's title, the command in yellow in its message, and
@@ -393,7 +393,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game::client_side) fn draw_command_prompt(&self, batch: &mut HudBatch) {
-        let Some(prompt) = &self.command_prompt.0 else {
+        let Some(prompt) = &self.side.command_prompt.0 else {
             return;
         };
         sunrise_client::widgets::cover_frame();
@@ -427,13 +427,13 @@ impl Game<'_> {
         ];
         let mut layout = self.command_prompt_layout(prompt, (w, h));
         layout.declare_no(1);
-        layout.draw(batch, atlas, self.client.cursor, &labels);
+        layout.draw(batch, atlas, self.side.cursor, &labels);
         self.draw_overlay_mounted_widgets(batch, "command_prompt");
     }
 
     /// The confirmation's answer; on no, what was behind it is back.
     pub(in crate::game::client_side) fn answer_command_prompt(&mut self, yes: bool) {
-        let Some(prompt) = self.command_prompt.0.take() else {
+        let Some(prompt) = self.side.command_prompt.0.take() else {
             return;
         };
         match (yes, prompt.accept, prompt.behind) {
@@ -450,14 +450,14 @@ impl Game<'_> {
             }
             (true, CommandAccept::Copy, _) => {
                 use sunrise_client::clipboard::Clipboard;
-                self.clipboard.0.set(&format!("/{}", prompt.command));
+                self.side.clipboard.0.set(&format!("/{}", prompt.command));
             }
             (false, _, Some(Behind::Book(book))) => self.open_book(*book),
             (false, _, Some(Behind::Dialog(dialog))) => self.reopen_dialog(dialog),
             (false, _, None) => {}
         }
         self.refresh_screen_widgets();
-        if self.client.screen == Screen::Playing && !self.screen_over_playing() {
+        if self.side.screen == Screen::Playing && !self.screen_over_playing() {
             self.capture(true);
         }
     }
@@ -466,7 +466,7 @@ impl Game<'_> {
     /// (Screen's focus navigation, AbstractButton's Enter and Space).
     pub(in crate::game::client_side) fn command_prompt_key(&mut self, key: KeyCode) -> bool {
         let (size, shift) = (self.gui_size(), self.has_shift_down());
-        let Some(prompt) = &self.command_prompt.0 else {
+        let Some(prompt) = &self.side.command_prompt.0 else {
             return false;
         };
         let mut choice = self.command_prompt_layout(prompt, size);
@@ -479,7 +479,7 @@ impl Game<'_> {
             KeyCode::ArrowLeft | KeyCode::ArrowRight => choice.arrow(key == KeyCode::ArrowLeft),
             KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => {
                 if let Some(button) = choice.pressed() {
-                    self.audio.0.play_button_click();
+                    self.side.audio.0.play_button_click();
                     self.answer_command_prompt(button == 0);
                     return true;
                 }
@@ -488,21 +488,21 @@ impl Game<'_> {
             _ => return false,
         }
         let focus = choice.focus;
-        if let Some(prompt) = self.command_prompt.0.as_mut() {
+        if let Some(prompt) = self.side.command_prompt.0.as_mut() {
             prompt.focus = focus;
         }
         false
     }
 
     pub(in crate::game::client_side) fn command_prompt_click(&mut self) -> bool {
-        let Some(prompt) = &self.command_prompt.0 else {
+        let Some(prompt) = &self.side.command_prompt.0 else {
             return false;
         };
         let pressed = self
             .command_prompt_layout(prompt, self.gui_size())
-            .pressed_at(self.client.cursor);
+            .pressed_at(self.side.cursor);
         if let Some(button) = pressed {
-            self.audio.0.play_button_click();
+            self.side.audio.0.play_button_click();
             self.answer_command_prompt(button == 0);
         }
         pressed.is_some()

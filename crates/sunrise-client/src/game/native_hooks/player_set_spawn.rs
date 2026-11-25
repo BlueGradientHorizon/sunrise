@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// NeoForge's `PlayerSetSpawnEvent`: a server player's respawn point is about to be
     /// set (`ServerPlayer.setRespawnPosition`), once for each call vanilla makes: every sleep
     /// in a bed (the same bed too, which refreshes its angle), an anchor that is a new

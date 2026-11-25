@@ -53,7 +53,7 @@ pub(in crate::game::server_side) use sunrise_core::{
     random::{LegacyRandom, RandomSource},
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// EnderEyeItem.use: findNearestMapStructure over the stronghold rings,
     /// then an EyeOfEnder signalled towards it. Without a stronghold (other
     /// dimensions) nothing is thrown.

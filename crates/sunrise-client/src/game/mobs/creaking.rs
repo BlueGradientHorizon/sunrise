@@ -102,7 +102,7 @@ impl HeartHost for Host<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn heart_state_name(&self, state: BlockStateId) -> String {
         self.pack
             .assets
@@ -133,7 +133,7 @@ impl Game<'_> {
         #[cfg(test)]
         super::entity::taken_pass_tests::after_take(self);
         let mut uuids = std::mem::take(&mut self.persist.uuids);
-        let mut next_entity = self.server.next_entity;
+        let mut next_entity = self.side.next_entity;
         let mut random = self.world.random.clone();
         let spawning = self.spawning_monsters();
         let creaking = self.res.mob_types().get("minecraft:creaking").cloned();
@@ -167,7 +167,7 @@ impl Game<'_> {
         self.mobs
             .restore(mobs, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
         self.persist.uuids = uuids;
-        self.server.next_entity = next_entity;
+        self.side.next_entity = next_entity;
         self.world.random = random;
         let mut mob_events = Vec::new();
         for e in events {
@@ -375,9 +375,9 @@ impl Game<'_> {
         {
             return;
         }
-        self.server.creaking.follow_chunks(&self.world.chunks);
+        self.side.creaking.follow_chunks(&self.world.chunks);
         let mut keys: Vec<(i32, i32)> = self
-            .server
+            .side
             .creaking
             .unscanned
             .iter()
@@ -386,13 +386,13 @@ impl Game<'_> {
             .collect();
         keys.sort_unstable();
         for key in keys {
-            self.server.creaking.unscanned.remove(&key);
-            self.server.creaking.scanned.insert(key);
+            self.side.creaking.unscanned.remove(&key);
+            self.side.creaking.scanned.insert(key);
             let Some(chunk) = self.world.chunks.get(&key).cloned() else {
                 continue;
             };
-            if self.server.creaking.hearts.is_empty() {
-                self.server.creaking.hearts = self
+            if self.side.creaking.hearts.is_empty() {
+                self.side.creaking.hearts = self
                     .res
                     .facts()
                     .states
@@ -400,7 +400,7 @@ impl Game<'_> {
                     .map(|f| &*f.name == "minecraft:creaking_heart")
                     .collect();
             }
-            let hearts = &self.server.creaking.hearts;
+            let hearts = &self.side.creaking.hearts;
             let is_heart = |id: u32| hearts.get(id as usize).copied().unwrap_or(false);
             for (si, section) in chunk.sections.iter().enumerate() {
                 // Only a section whose palette holds a heart state can have
@@ -491,7 +491,7 @@ impl CreakingState {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Creaking.tearDown`: the crumble particles.
     pub(in crate::game) fn creaking_tear_down(&mut self, center: [f64; 3], spread: [f64; 3]) {
         let registry = self.pack.assets.registry;

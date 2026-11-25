@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn native_held_item_tint(
         &self,
         entity_id: u32,

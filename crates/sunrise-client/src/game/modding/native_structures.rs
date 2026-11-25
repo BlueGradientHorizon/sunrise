@@ -25,7 +25,7 @@ pub(in crate::game) struct TemplateBlock<'a> {
     pub nbt: Option<&'a Compound>,
 }
 // Native mods use this; nothing in Sunrise does.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// For a server mod: structure template `id` (`mymod:hut`, found as
     /// `StructureTemplateManager.get` finds it: the world's saved structures,
     /// then the game's and the mods' own) as `/place template id` would place

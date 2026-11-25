@@ -24,7 +24,7 @@ pub(in crate::game) fn retry_slot(
     }
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// A stack to the server (`SetCreativeModeSlot`): the same component
     /// patch a Sunrise server sends its clients, with the registries' ids, so
     /// the server's echo doesn't hand back a bare item.

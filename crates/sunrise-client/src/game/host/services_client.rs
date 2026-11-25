@@ -7,7 +7,7 @@ pub(in crate::game::client_side) use mod_api::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use std::sync::Arc;
 
-impl RenderAssets for Game<'_> {
+impl RenderAssets for Game<'_, crate::game::client_side::ClientState> {
     fn model(&self, id: &Identifier) -> Result<ModelRef, ModelError> {
         self.native_model(id)
     }

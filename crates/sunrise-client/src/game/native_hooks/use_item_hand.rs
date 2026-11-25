@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Apply a consuming result's swing on its owning logical side.
     pub(in crate::game) fn interaction_consumed(
         &mut self,

@@ -1,7 +1,7 @@
 //! Item registry numbers shared by API metadata reads and the game's scatter seeds.
 use super::Game;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(super) fn item_registry_id(&self, key: mod_api::ItemKey) -> Option<u32> {
         self.item_number(mod_api::__private::item_key_id(key)?)
     }

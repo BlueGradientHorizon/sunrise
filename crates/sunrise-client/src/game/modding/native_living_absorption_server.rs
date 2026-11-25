@@ -4,7 +4,7 @@ use super::Game;
 use super::commands::Target;
 use mod_api::LivingRef;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Server arm for `LivingEntity.getAbsorptionAmount`.
     pub(in crate::game) fn server_living_absorption(&self, living: LivingRef) -> Option<f32> {
         let target = self.server_living_read_target(living)?;

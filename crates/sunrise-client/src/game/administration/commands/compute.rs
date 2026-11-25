@@ -55,7 +55,7 @@ pub(in crate::game) fn context_entities<'a>(
 pub(in crate::game) type Arith = String;
 
 pub(in crate::game) struct ComputeCondition<'g, 'res> {
-    pub(in crate::game) game: &'g mut Game<'res>,
+    pub(in crate::game) game: &'g mut Game<'res, crate::game::server_side::ServerState>,
     pub(in crate::game) context: &'g ComputeContext,
 }
 
@@ -86,7 +86,7 @@ impl<'v> ConditionContext<'v> for ComputeCondition<'_, '_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A provider argument: its registry id (None when inline) and value.
     pub(in crate::game::server_side) fn provider_arg(
         &self,

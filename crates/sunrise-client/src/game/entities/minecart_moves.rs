@@ -18,7 +18,7 @@ pub(in crate::game) struct CartLanding {
     pub(in crate::game) bounds: Aabb,
     pub(in crate::game) distance: f64,
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Entity.move` resets a ray-clipped fall, then `checkFallDamage` uses the
     /// current position, supporting block and the body's last water contact.
     pub(in crate::game) fn cart_move_fall(

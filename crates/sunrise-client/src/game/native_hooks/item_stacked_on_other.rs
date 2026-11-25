@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// NeoForge's `ItemStackedOnOtherEvent`, before either item override: a pickup click on a menu
     /// slot, with the cursor and both stacks frozen in `event`. A listener sets `canceled` to skip
     /// the bundle override and answers in `result`: `handled` for a cancelled click that is done

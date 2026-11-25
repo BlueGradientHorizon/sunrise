@@ -8,7 +8,7 @@ thread_local! {
     pub(in crate::game) static DISPATCHES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     #[cfg(test)]
     pub(in crate::game) fn damage_item_dispatches(&self) -> usize {
         DISPATCHES.with(std::cell::Cell::get)

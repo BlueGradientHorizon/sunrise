@@ -40,7 +40,7 @@ impl mod_api::Hooks for Mod {
         r.block_part(stone, self.0.clone());
     }
 }
-fn with_client(name: &str, test: impl FnOnce(&mut Game<'_>, &Observer, BlockStateId)) {
+fn with_client<__Side: crate::game::Side>(name: &str, test: impl FnOnce(&mut Game<'_, __Side>, &Observer, BlockStateId)) {
     let selector = format!("game::remote::tests::predicted_block_notice_tests::{name}");
     if run_fresh_cases(
         &selector,
@@ -102,14 +102,14 @@ fn expected(pos: [i32; 3], old: &str, new: &str, predicted: bool) -> Notice {
         predicted,
     }
 }
-fn update(game: &mut Game<'_>, pos: [i32; 3], state: BlockStateId) {
+fn update<__Side: crate::game::Side>(game: &mut Game<'_, __Side>, pos: [i32; 3], state: BlockStateId) {
     game.handle_packet(C::BlockUpdate(play::BlockUpdate {
         pos,
         state: state.0 as i32,
     }))
     .unwrap();
 }
-fn ack(game: &mut Game<'_>) {
+fn ack<__Side: crate::game::Side>(game: &mut Game<'_, __Side>) {
     game.handle_packet(C::BlockChangedAck(play::BlockChangedAck { sequence: 7 }))
         .unwrap();
 }

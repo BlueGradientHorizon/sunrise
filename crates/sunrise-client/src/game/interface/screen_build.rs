@@ -584,19 +584,19 @@ impl ScreenBuildState {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `Gui.setScreen`: `KeyMapping.releaseAll` on a successful screen or overlay
     /// opening/replacement transition (never on per-frame observation or resize).
     pub(in crate::game) fn release_mappings_on_screen_open(&mut self) {
-        self.client.mod_keys.release_all();
+        self.side.mod_keys.release_all();
         self.release_screen_mappings();
     }
 
     /// Framebuffer size and GUI projection, including before the renderer is initialized.
     pub(in crate::game::client_side) fn gui_frame_now(&self) -> ([u32; 2], GuiSize) {
-        let framebuffer = self.renderer.0.as_ref().map_or_else(
+        let framebuffer = self.side.renderer.0.as_ref().map_or_else(
             || {
-                self.window.0.as_ref().map_or([1280, 720], |window| {
+                self.side.window.0.as_ref().map_or([1280, 720], |window| {
                     let size = window.inner_size();
                     [size.width, size.height]
                 })
@@ -616,13 +616,13 @@ impl Game<'_> {
     }
 
     fn build_screen_at(&mut self, framebuffer: [u32; 2]) {
-        let shown = self.client.screen != Screen::Playing
-            || self.title.0.is_some()
+        let shown = self.side.screen != Screen::Playing
+            || self.side.title.0.is_some()
             || self.screen_over_playing();
         let inputs = self.settings.gui_scale_inputs();
         let gui = GuiSize::new(framebuffer, inputs.requested, inputs.unicode);
         let identity = self
-            .title
+            .side.title
             .0
             .as_ref()
             .map(|title| title.mode.id())
@@ -640,7 +640,7 @@ impl Game<'_> {
         // state, and the mods' effects answer, compared here so the panels and
         // the exclusion never disagree by a frame.
         let container = (shown
-            && matches!(self.client.screen, Screen::Inventory | Screen::Creative))
+            && matches!(self.side.screen, Screen::Inventory | Screen::Creative))
         .then(|| {
             let batch =
                 sunrise_client::hud::HudBatch::new(framebuffer, self.settings.gui_scale_inputs());
@@ -648,13 +648,13 @@ impl Game<'_> {
         });
         let container = container.and_then(|inputs| {
             let unchanged = self
-                .screen_state
+                .side.screen_state
                 .0
                 .build
                 .current
                 .as_ref()
                 .is_some_and(|build| {
-                    build.screen == self.client.screen
+                    build.screen == self.side.screen
                         && build.identity == identity
                         && build.scale == gui.scale as f32
                         && build
@@ -683,15 +683,15 @@ impl Game<'_> {
         // The pause menu's inputs can change while it is open: a server's
         // links or a custom-additions dialog arriving. Compare them here and
         // make the layout only when they moved.
-        let pause = (shown && self.client.screen == Screen::Paused).then(|| {
+        let pause = (shown && self.side.screen == Screen::Paused).then(|| {
             let unchanged = self
-                .screen_state
+                .side.screen_state
                 .0
                 .build
                 .current
                 .as_ref()
                 .is_some_and(|build| {
-                    build.screen == self.client.screen
+                    build.screen == self.side.screen
                         && build.identity == identity
                         && build.scale == gui.scale as f32
                         && build
@@ -710,10 +710,10 @@ impl Game<'_> {
             .map(ScreenLayout::Container)
             .or_else(|| pause.map(ScreenLayout::Pause))
             .or(text);
-        self.screen_state
+        self.side.screen_state
             .0
             .build
-            .sync(self.client.screen, shown, identity, gui, layout);
+            .sync(self.side.screen, shown, identity, gui, layout);
     }
 
     /// What the open container screen draws outside its panel, from the
@@ -737,7 +737,7 @@ impl Game<'_> {
         if screen == Screen::Creative {
             // `CreativeModeInventoryScreen.extractTabButton`: 26 x 32 each.
             let (ox, oy) = (layout.image[0], layout.image[1]);
-            let creative = &self.creative_screen.0;
+            let creative = &self.side.creative_screen.0;
             for tab in creative.tabs.iter().filter(|t| creative.on_page(t)) {
                 let (x, y) = sunrise_client::creative::Creative::tab_position(tab);
                 out.push(ScreenRegion::new(
@@ -762,9 +762,9 @@ impl Game<'_> {
         region_screen: Option<Screen>,
     ) {
         use mod_api::{ScreenRegion, ScreenRegionKind};
-        let (_, mut regions) = std::mem::take(&mut self.screen_state.0.regions);
+        let (_, mut regions) = std::mem::take(&mut self.side.screen_state.0.regions);
         regions.clear();
-        let tabs = self.screen_state.0.drawn_book_tabs.take();
+        let tabs = self.side.screen_state.0.drawn_book_tabs.take();
         let shown = region_screen.filter(|_| self.screen_view_listened());
         if let Some(screen) = shown
             && let Some(layout) = self.built_container(batch)
@@ -783,13 +783,13 @@ impl Game<'_> {
                 );
             }
         }
-        self.screen_state.0.regions = (shown, regions);
+        self.side.screen_state.0.regions = (shown, regions);
     }
 
     /// The last published draw's regions of `screen` (`ScreenView::regions`).
     /// Empty for another screen and when no screen hook listens.
     pub(in crate::game) fn screen_regions(&self, screen: Screen) -> &[mod_api::ScreenRegion] {
-        match &self.screen_state.0.regions {
+        match &self.side.screen_state.0.regions {
             (Some(of), regions) if *of == screen => regions,
             _ => &[],
         }
@@ -800,7 +800,7 @@ impl Game<'_> {
         &self,
         batch: &sunrise_client::hud::HudBatch,
     ) -> Option<&ContainerLayout> {
-        self.screen_state
+        self.side.screen_state
             .0
             .build
             .current
@@ -814,7 +814,7 @@ impl Game<'_> {
         width: f32,
         height: f32,
     ) -> Option<&PauseLayout> {
-        self.screen_state
+        self.side.screen_state
             .0
             .build
             .current
@@ -828,7 +828,7 @@ impl Game<'_> {
         width: f32,
         height: f32,
     ) -> Option<&ChatLayout> {
-        self.screen_state
+        self.side.screen_state
             .0
             .build
             .current
@@ -842,7 +842,7 @@ impl Game<'_> {
         width: f32,
         height: f32,
     ) -> Option<&CommandBlockLayout> {
-        self.screen_state
+        self.side.screen_state
             .0
             .build
             .current
@@ -858,14 +858,14 @@ impl Game<'_> {
             dispatcher: super::chat::chat_tree(&self.remote),
             registries: &self.ui.registries,
         };
-        match self.client.screen {
+        match self.side.screen {
             Screen::Chat => {
                 if let Some(screen) = self.ui.chat_screen.as_mut() {
                     screen.resize(&m, &c, w as i32, h as i32);
                 }
             }
             Screen::CommandBlock => {
-                if let Some(screen) = self.command_block_screen.0.as_mut() {
+                if let Some(screen) = self.side.command_block_screen.0.as_mut() {
                     screen.resize(&m, &c, w, h);
                 }
             }
@@ -885,14 +885,14 @@ impl Game<'_> {
         gui: GuiSize,
     ) -> Option<ScreenLayout> {
         let (w, h) = (gui.size[0] as f32, gui.size[1] as f32);
-        let cart = match self.client.screen {
+        let cart = match self.side.screen {
             Screen::Chat => None,
-            Screen::CommandBlock => Some(self.command_block_screen.0.as_ref()?.cart()),
+            Screen::CommandBlock => Some(self.side.command_block_screen.0.as_ref()?.cart()),
             _ => return None,
         };
         self.resize_text_screens(w, h);
-        let built = self.screen_state.0.build.current.as_ref().filter(|build| {
-            build.screen == self.client.screen
+        let built = self.side.screen_state.0.build.current.as_ref().filter(|build| {
+            build.screen == self.side.screen
                 && build.identity == identity
                 && build.scale == gui.scale as f32
         });

@@ -2,7 +2,7 @@
 use super::Game;
 use sunrise_client::{first_person::Hand, mobs::sheep_dye};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `DyeItem.interactLivingEntity` on the server: applies wool dye, broadcasts the
     /// sound excluding the actor, and consumes the dye in survival.
     pub(in crate::game) fn server_interact_sheep_dye(&mut self, index: usize, hand: Hand) -> bool {

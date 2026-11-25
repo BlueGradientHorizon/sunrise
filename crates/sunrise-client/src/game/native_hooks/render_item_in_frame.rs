@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Before a visible item frame's item or map is drawn. Cancel hides the item, not the frame.
     pub(in crate::game) fn native_render_item_in_frame(
         &self,

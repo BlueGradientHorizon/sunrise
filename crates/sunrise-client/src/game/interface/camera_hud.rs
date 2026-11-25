@@ -14,7 +14,7 @@ const REMOTE_SATURATION: f32 = 5.0;
 /// `Entity.getMaxAirSupply`.
 const MAX_AIR: i32 = 300;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `Hud.extractItemHotbar`'s inputs and where its stacks come from; None draws nothing.
     pub(in crate::game::client_side) fn camera_hotbar(
         &self,
@@ -31,9 +31,9 @@ impl Game<'_> {
                     slots: std::array::from_fn(|i| {
                         self.inventory[i]
                             .as_ref()
-                            .map(|_| (f32::from(self.client.hotbar_pop[i]) - partial).max(0.0))
+                            .map(|_| (f32::from(self.side.hotbar_pop[i]) - partial).max(0.0))
                     }),
-                    offhand_pop: (f32::from(self.client.hotbar_pop[9]) - partial).max(0.0),
+                    offhand_pop: (f32::from(self.side.hotbar_pop[9]) - partial).max(0.0),
                 };
                 Some((inputs, HotbarSource::Own))
             }
@@ -132,7 +132,7 @@ impl Game<'_> {
             CameraPlayer::Absent => None,
             CameraPlayer::Own => {
                 let p = self.player.as_mut()?;
-                let blink = self.client.health_hud.update_health(
+                let blink = self.side.health_hud.update_health(
                     p.health.health(),
                     tick,
                     millis,
@@ -182,7 +182,7 @@ impl Game<'_> {
                     .and_then(|attr| self.remote_attribute(mob_id, attr))
                     .map_or(default_max, |v| v as f32);
                 let blink =
-                    self.client
+                    self.side
                         .health_hud
                         .update_health(health, tick, millis, invulnerable);
                 let inputs = HealthInputs {
@@ -229,7 +229,7 @@ impl Game<'_> {
                     )
                 };
                 let blink =
-                    self.client
+                    self.side
                         .health_hud
                         .update_health(health, tick, millis, invulnerable);
                 let inputs = HealthInputs {

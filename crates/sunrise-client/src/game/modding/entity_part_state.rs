@@ -3,7 +3,7 @@
 use super::Game;
 use mod_api::{EntityRef, EntityResidency};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_entity_residency(&self, entity: EntityRef) -> EntityResidency {
         if self.native_lifecycle.epoch() != Some(entity.epoch()) {
             return EntityResidency::Gone;

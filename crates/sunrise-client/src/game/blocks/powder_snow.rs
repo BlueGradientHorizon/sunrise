@@ -14,7 +14,7 @@ pub(in crate::game) fn extinguish_pitch(random: &mut impl RandomSource) -> f32 {
     1.6 + (random.next_float() - random.next_float()) * 0.4
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Whether the block at `pos` is powder snow.
     pub(in crate::game) fn is_powder_snow(&self, pos: [i32; 3]) -> bool {
         &*self

@@ -1,7 +1,7 @@
 //! Report destruction only where an item action actually consumes or breaks a stack.
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// A slot's hand, or no hand for armour and inventory ammunition.
     pub(super) fn item_slot_hand(&self, slot: usize) -> Option<Hand> {
         if slot == shield::OFFHAND_SLOT {

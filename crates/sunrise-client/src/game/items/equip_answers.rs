@@ -15,7 +15,7 @@ pub(in crate::game) enum EquipStack {
     Ready(Box<mod_api::ItemStack>),
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn equip_stack(&self, stack: &ItemStack) -> EquipStack {
         if !mod_api::__private::item_listens(mod_api::HookId::CanEquip, &stack.item) {
             return EquipStack::DataOnly;

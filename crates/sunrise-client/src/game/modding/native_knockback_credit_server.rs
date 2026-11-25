@@ -19,7 +19,7 @@ pub(in crate::game::server_side) use sunrise_client::{
     mobs::{Damage, Mob, Species, Who},
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The attacking entity's canonical UUID, already assigned on creation or admission.
     pub(in crate::game) fn known_attacker_uuid(&self, id: u32) -> Option<[i32; 4]> {
         self.known_resident_entity_uuid_at(self.dim.key(), id)
@@ -66,7 +66,7 @@ impl Game<'_> {
             .then(|| self.mobs.iter().find(|mob| mob.id as i32 == victim))
             .flatten();
         let existing_player = self
-            .server
+            .side
             .last_hurt_by_player
             .get(&(victim as u32))
             .copied();

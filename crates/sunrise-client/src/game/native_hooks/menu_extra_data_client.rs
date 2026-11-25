@@ -3,7 +3,7 @@ pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::native_hooks::menu_extra_data::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The opener position for the currently shown mod menu, if known.
     pub(in crate::game) fn screen_pos(&self) -> Option<[i32; 3]> {
         self.shown_native_screen()?.menu.pos

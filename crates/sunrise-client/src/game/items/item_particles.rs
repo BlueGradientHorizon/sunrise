@@ -11,7 +11,7 @@ use sunrise_client::{
 use sunrise_core::equipment_slot::EquipmentSlot;
 use sunrise_core::random::RandomSource;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `ItemParticleOption(ITEM, stack)`: the layer particle sprites of the
     /// stack's model resolved for the ground, with seed 0.
     pub(in crate::game) fn item_particle(&self, stack: &ItemStack) -> ParticleOptions {
@@ -44,7 +44,7 @@ impl Game<'_> {
             |p, v| spawned.push((p, v)),
         );
         for (p, v) in spawned {
-            self.particles.0.add(&options, p, v);
+            self.side.particles.0.add(&options, p, v);
         }
     }
     /// `LivingEntity.handleEntityEvent` 47 to 52, 65 and 68 from a server:
@@ -99,7 +99,7 @@ impl Game<'_> {
             |p, v| spawned.push((p, v)),
         );
         for (p, v) in spawned {
-            self.particles.0.add(&options, p, v);
+            self.side.particles.0.add(&options, p, v);
         }
     }
     /// `LivingEntity.breakItem`'s sound: the stack's `break_sound` (none when
@@ -120,12 +120,12 @@ impl Game<'_> {
             _ => return,
         };
         let pitch = 0.8 + self.world.random.next_float() * 0.4;
-        self.audio.0.play_unshared(&sound, Some(at), 0.8, pitch);
+        self.side.audio.0.play_unshared(&sound, Some(at), 0.8, pitch);
     }
     /// The slime ball, snowball and cobweb models behind `item_slime`,
     /// `item_snowball` and `item_cobweb`, resolved on first use.
     pub(in crate::game::client_side) fn ensure_item_particle_sprites(&mut self) {
-        if !self.particles.0.item_sprites.is_empty() {
+        if !self.side.particles.0.item_sprites.is_empty() {
             return;
         }
         for (ty, item) in [
@@ -137,7 +137,7 @@ impl Game<'_> {
                 .item_particle(&ItemStack::new(item, 1))
                 .item
                 .unwrap_or_default();
-            self.particles.0.item_sprites.insert(ty, sprites);
+            self.side.particles.0.item_sprites.insert(ty, sprites);
         }
     }
 }

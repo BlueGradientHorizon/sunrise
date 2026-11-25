@@ -5,7 +5,7 @@ pub(in crate::game::client_side) use crate::game::remote::sync::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::tab_list::{TabPlayer, default_skin};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn apply_remote_health(&mut self) {
         let Some((health, food, saturation)) = self.remote.as_ref().map(|r| r.health) else {
             return;
@@ -22,7 +22,7 @@ impl Game<'_> {
     /// player's deltaMovement, unless it lies dead, sleeps or rides.
     pub(in crate::game::client_side) fn apply_remote_push(&mut self, pushed: Vec3) {
         let still =
-            self.client.screen == Screen::Dead || self.sleeping.is_some() || self.riding.is_some();
+            self.side.screen == Screen::Dead || self.sleeping.is_some() || self.riding.is_some();
         if let Some(player) = self.player.as_mut()
             && !still
         {
@@ -35,7 +35,7 @@ impl Game<'_> {
     /// `LocalPlayer.tickDeath`: the level stops ticking the player at death tick 20,
     /// but the client keeps the player for death-screen rendering until respawn.
     pub(in crate::game::client_side) fn local_player_removed_by_death(&self) -> bool {
-        self.client.screen == Screen::Dead && self.ui.death_time >= 20
+        self.side.screen == Screen::Dead && self.ui.death_time >= 20
     }
     pub(in crate::game::client_side) fn remote_effect_def(
         &self,
@@ -107,7 +107,7 @@ impl Game<'_> {
             p.position.y.floor() as i32,
             p.position.z.floor() as i32,
         ];
-        if self.client.screen == Screen::Dead
+        if self.side.screen == Screen::Dead
             || p.spectator
             || self.named_block_in_tag("minecraft:climbable", &self.block_name(feet))
         {
@@ -555,9 +555,9 @@ impl Game<'_> {
                 self.player = Some(player);
                 self.bind_local_player_residency();
                 self.input_player_replaced();
-                self.client.sway = Default::default();
+                self.side.sway = Default::default();
                 self.eye = 1.62;
-                self.client.previous_eye = 1.62;
+                self.side.previous_eye = 1.62;
                 self.clock.reset();
                 self.apply_remote_health();
                 self.apply_remote_abilities();
@@ -572,7 +572,7 @@ impl Game<'_> {
         // setValuesFromPositionPacket: setOldPosAndRot gives xRotO the same
         // change, so a relative pitch keeps the model's ease and an absolute
         // one snaps it.
-        if let Some(m) = self.client.player_model.as_mut() {
+        if let Some(m) = self.side.player_model.as_mut() {
             m.previous_head_pitch =
                 position_packet_pitch(m.previous_head_pitch, p.pitch, relative_pitch);
             m.head_pitch = pitch;
@@ -607,13 +607,13 @@ impl Game<'_> {
         let air;
         let enabled = match &stack {
             Some(stack) => self
-                .creative_screen
+                .side.creative_screen
                 .0
                 .catalog()
                 .item_enabled(stack, self.enabled_feature_ids()),
             None => {
                 air = ItemStack::new("minecraft:air", 0);
-                self.creative_screen
+                self.side.creative_screen
                     .0
                     .catalog()
                     .item_enabled(&air, self.enabled_feature_ids())

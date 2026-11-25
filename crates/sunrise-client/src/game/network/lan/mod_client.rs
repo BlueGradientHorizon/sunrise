@@ -72,7 +72,7 @@ pub(in crate::game::client_side) use sunrise_protocol::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::block_collision::BlockCollisionRegistry;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_lan_open(&mut self, settings: LanSettings) -> Result<()> {
         let server = self
             .integrated
@@ -127,7 +127,7 @@ impl Game<'_> {
         }
         match words.get(1).copied() {
             Some("open") => {
-                if self.title.0.is_some() {
+                if self.side.title.0.is_some() {
                     return Err("open a world first".into());
                 }
                 let port = words.get(2).map_or(Ok(0), |p| p.parse::<u16>())?;

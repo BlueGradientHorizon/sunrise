@@ -29,4 +29,4 @@ pub(in crate::game::server_side) use crate::game::remote::inventory::remote_stat
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::remote::inventory::*;
 
-impl Game<'_> {}
+impl Game<'_, crate::game::server_side::ServerState> {}

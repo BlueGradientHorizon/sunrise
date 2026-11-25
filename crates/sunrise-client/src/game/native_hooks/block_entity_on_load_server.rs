@@ -17,7 +17,7 @@ pub(in crate::game::server_side) use mod_api::{
     BlockEntityClientScope, BlockEntityScope, BlockEntitySideScope,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_fire_pending_block_entity_loads(&mut self) {
         self.fire_pending_block_entity_data_loads();
         if !self.world.block_entities.has_pending_on_load() {

@@ -11,7 +11,7 @@ pub(in crate::game::client_side) use sunrise_core::{geometry::Direction, positio
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::level::BucketContent;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `bucket_contents` for the pour a server's client predicts: none for an
     /// item whose `empty_contents` Part answers on the server, whose result
     /// stands.

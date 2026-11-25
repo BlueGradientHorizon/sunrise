@@ -154,7 +154,7 @@ impl MountedWidgetEntry {
         owner.dispose("screen widget", "screen_widget_drop", kind);
     }
 
-    pub(in crate::game) fn press_button(&mut self, game: &mut Game<'_>) -> bool {
+    pub(in crate::game) fn press_button(&mut self, game: &mut Game<'_, crate::game::client_side::ClientState>) -> bool {
         let MountedWidgetKind::Button { state, on_press } = &mut self.kind else {
             return false;
         };
@@ -431,14 +431,14 @@ impl MountedWidgetEntry {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Run `ScreenEvent.Init.Post` to mount widgets on the initialized screen and apply focus.
     pub(in crate::game::client_side) fn init_screen_widgets(&mut self, view: &ScreenView<'_>) {
         if !mod_api::__private::listened(mod_api::HookId::ScreenInitPost) {
             return;
         }
         let mut mount = ScreenWidgetMount {
-            next_id: self.screen_state.0.widgets.next_id.get(),
+            next_id: self.side.screen_state.0.widgets.next_id.get(),
             entries: Vec::new(),
             children: Vec::new(),
             removed: Vec::new(),
@@ -488,18 +488,18 @@ impl Game<'_> {
             }
             // IDs issued to a failed listener are never reused.
         });
-        self.screen_state.0.widgets.next_id.set(mount.next_id);
+        self.side.screen_state.0.widgets.next_id.set(mount.next_id);
         let initial_focus =
             initial_focus.and_then(|id| entries.iter().position(|entry| entry.id == id));
-        let mut inner = self.screen_state.0.widgets.inner.borrow_mut();
+        let mut inner = self.side.screen_state.0.widgets.inner.borrow_mut();
         inner.entries = entries.into_iter().map(Some).collect();
         inner.removed_pause_actions = removed_pause_actions;
         if self
-            .client
+            .side
             .pause_focus
             .is_some_and(|id| inner.removed_pause_actions.contains(&id))
         {
-            self.client.pause_focus = None;
+            self.side.pause_focus = None;
         }
         drop(inner);
         if let Some(idx) = initial_focus {
@@ -509,7 +509,7 @@ impl Game<'_> {
 
     /// Whether Init.Post removed this native PauseScreen action from the current build.
     pub(in crate::game::client_side) fn pause_child_removed(&self, action: u8) -> bool {
-        self.screen_state
+        self.side.screen_state
             .0
             .widgets
             .inner
@@ -522,9 +522,9 @@ impl Game<'_> {
     /// discarding `last_click` (same-instance resize rebuilds widgets while
     /// preserving `MouseHandler.LastClick`).
     pub(in crate::game::client_side) fn clear_screen_widgets(&mut self) {
-        self.screen_state.0.widgets.clear();
+        self.side.screen_state.0.widgets.clear();
         sunrise_client::preedit::reset();
-        self.client.ime_area = None;
+        self.side.ime_area = None;
     }
 
     /// Remove focus from any currently focused mounted widget.
@@ -533,16 +533,16 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn set_mounted_widget_focus(&mut self, target: Option<usize>) {
-        let previous = self.screen_state.0.widgets.focused_index();
+        let previous = self.side.screen_state.0.widgets.focused_index();
         if previous == target {
             return;
         }
         sunrise_client::preedit::reset();
-        self.client.ime_area = None;
-        self.screen_state.0.widgets.inner.borrow_mut().focused = target;
+        self.side.ime_area = None;
+        self.side.screen_state.0.widgets.inner.borrow_mut().focused = target;
         if let Some(old_idx) = previous {
             let disabled = {
-                let mut inner = self.screen_state.0.widgets.inner.borrow_mut();
+                let mut inner = self.side.screen_state.0.widgets.inner.borrow_mut();
                 inner
                     .entries
                     .get_mut(old_idx)
@@ -553,12 +553,12 @@ impl Game<'_> {
                     })
             };
             if disabled {
-                self.screen_state.0.widgets.clear_links_for(old_idx);
+                self.side.screen_state.0.widgets.clear_links_for(old_idx);
             }
         }
         if let Some(new_idx) = target {
             let (ok, widget_target) = {
-                let mut inner = self.screen_state.0.widgets.inner.borrow_mut();
+                let mut inner = self.side.screen_state.0.widgets.inner.borrow_mut();
                 match inner.entries.get_mut(new_idx).and_then(Option::as_mut) {
                     Some(entry) => {
                         let ok = entry.apply_focus(true);
@@ -569,12 +569,12 @@ impl Game<'_> {
                 }
             };
             if !ok {
-                self.screen_state.0.widgets.clear_links_for(new_idx);
+                self.side.screen_state.0.widgets.clear_links_for(new_idx);
             } else if let Some(t) = widget_target {
                 self.clear_screen_click_focus();
-                self.pad.0.menu.origin = Some(t.rect);
-                if self.pad.0.menu.keyboard {
-                    self.pad.0.menu.focus = Some(t);
+                self.side.pad.0.menu.origin = Some(t.rect);
+                if self.side.pad.0.menu.keyboard {
+                    self.side.pad.0.menu.focus = Some(t);
                 }
             }
         }
@@ -582,7 +582,7 @@ impl Game<'_> {
 
     /// All visible, active mounted widgets as unified focus/pad targets.
     pub(in crate::game::client_side) fn mounted_widget_targets(&self) -> Vec<Target> {
-        let mut inner = self.screen_state.0.widgets.inner.borrow_mut();
+        let mut inner = self.side.screen_state.0.widgets.inner.borrow_mut();
         let mut out = Vec::new();
         let mut disabled = Vec::new();
         for (idx, slot) in inner.entries.iter_mut().enumerate() {
@@ -596,7 +596,7 @@ impl Game<'_> {
         }
         drop(inner);
         for idx in disabled {
-            self.screen_state.0.widgets.clear_links_for(idx);
+            self.side.screen_state.0.widgets.clear_links_for(idx);
         }
         out
     }
@@ -605,7 +605,7 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn sync_mounted_focus(&mut self, target: Target) {
         let idx = match target.kind {
             Kind::Mounted { id, .. } => self
-                .screen_state
+                .side.screen_state
                 .0
                 .widgets
                 .index_of(ScreenWidgetId::from_raw(id)),
@@ -623,9 +623,9 @@ impl Game<'_> {
         idx: usize,
         f: impl FnOnce(&mut Self, &mut MountedWidgetEntry) -> R,
     ) -> Option<R> {
-        let generation = self.screen_state.0.widgets.generation();
+        let generation = self.side.screen_state.0.widgets.generation();
         let (mut entry, focused) = {
-            let mut inner = self.screen_state.0.widgets.inner.borrow_mut();
+            let mut inner = self.side.screen_state.0.widgets.inner.borrow_mut();
             (
                 inner.entries.get_mut(idx)?.take()?,
                 inner.focused == Some(idx),
@@ -633,18 +633,18 @@ impl Game<'_> {
         };
         if entry.disabled || !entry.owner.is_enabled() {
             entry.disabled = true;
-            self.screen_state.0.widgets.clear_links_for(idx);
-            self.screen_state.0.widgets.inner.borrow_mut().entries[idx] = Some(entry);
+            self.side.screen_state.0.widgets.clear_links_for(idx);
+            self.side.screen_state.0.widgets.inner.borrow_mut().entries[idx] = Some(entry);
             return None;
         }
         let result = f(self, &mut entry);
-        if self.screen_state.0.widgets.generation() == generation {
+        if self.side.screen_state.0.widgets.generation() == generation {
             if entry.disabled || !entry.owner.is_enabled() {
                 entry.disabled = true;
-                self.screen_state.0.widgets.clear_links_for(idx);
+                self.side.screen_state.0.widgets.clear_links_for(idx);
             }
             let restored = {
-                let mut inner = self.screen_state.0.widgets.inner.borrow_mut();
+                let mut inner = self.side.screen_state.0.widgets.inner.borrow_mut();
                 if let Some(slot) = inner.entries.get_mut(idx) {
                     *slot = Some(entry);
                     None
@@ -677,20 +677,20 @@ impl Game<'_> {
         batch: &mut HudBatch,
         now: Instant,
     ) {
-        let len = self.screen_state.0.widgets.inner.borrow().entries.len();
+        let len = self.side.screen_state.0.widgets.inner.borrow().entries.len();
         if len == 0 {
             return;
         }
         let mouse = self.cursor();
         let partial_tick = self.clock.fraction() as f32;
-        let focused_idx = self.screen_state.0.widgets.focused_index();
-        let generation = self.screen_state.0.widgets.generation();
+        let focused_idx = self.side.screen_state.0.widgets.focused_index();
+        let generation = self.side.screen_state.0.widgets.generation();
         for idx in 0..len {
-            if self.screen_state.0.widgets.generation() != generation {
+            if self.side.screen_state.0.widgets.generation() != generation {
                 break;
             }
             let Some(mut entry) = self
-                .screen_state
+                .side.screen_state
                 .0
                 .widgets
                 .inner
@@ -781,7 +781,7 @@ impl Game<'_> {
                                     );
                                 }
                                 let hovered = point_in_rect(mouse, bounds);
-                                let host: &Game<'_> = self;
+                                let host: &Game<'_, crate::game::client_side::ClientState> = self;
                                 let mut draw = GameDrawContext::new(host, batch);
                                 widget.render(
                                     host,
@@ -799,13 +799,13 @@ impl Game<'_> {
                     }
                 }
             }
-            if self.screen_state.0.widgets.generation() == generation {
+            if self.side.screen_state.0.widgets.generation() == generation {
                 if entry.disabled || !entry.owner.is_enabled() {
                     entry.disabled = true;
-                    self.screen_state.0.widgets.clear_links_for(idx);
+                    self.side.screen_state.0.widgets.clear_links_for(idx);
                 }
                 let restored = {
-                    let mut inner = self.screen_state.0.widgets.inner.borrow_mut();
+                    let mut inner = self.side.screen_state.0.widgets.inner.borrow_mut();
                     if let Some(slot) = inner.entries.get_mut(idx) {
                         *slot = Some(entry);
                         None
@@ -842,11 +842,11 @@ impl Game<'_> {
         id: ScreenWidgetId,
         (x, y): (f32, f32),
     ) -> bool {
-        let generation = self.screen_state.0.widgets.generation();
+        let generation = self.side.screen_state.0.widgets.generation();
         let mouse = [x, y];
-        let modifiers = super::glfw_modifiers(self.client.modifiers);
+        let modifiers = super::glfw_modifiers(self.side.modifiers);
         let handled = self.mounted_widget_click(Some(id), mouse, 0, modifiers, false);
-        if handled && self.screen_state.0.widgets.generation() == generation {
+        if handled && self.side.screen_state.0.widgets.generation() == generation {
             self.mounted_widget_mouse_released(mouse, 0, modifiers);
         }
         handled
@@ -861,18 +861,18 @@ impl Game<'_> {
         double_click: bool,
     ) -> bool {
         let range = if let Some(id) = id {
-            let Some(index) = self.screen_state.0.widgets.index_of(id) else {
+            let Some(index) = self.side.screen_state.0.widgets.index_of(id) else {
                 return false;
             };
             index..index + 1
         } else {
-            let len = self.screen_state.0.widgets.inner.borrow().entries.len();
+            let len = self.side.screen_state.0.widgets.inner.borrow().entries.len();
             0..len
         };
         let hit_rect = |rect| id.is_some() || point_in_rect(mouse, rect);
-        let generation = self.screen_state.0.widgets.generation();
+        let generation = self.side.screen_state.0.widgets.generation();
         for idx in range {
-            if self.screen_state.0.widgets.generation() != generation {
+            if self.side.screen_state.0.widgets.generation() != generation {
                 return false;
             }
             enum Hit {
@@ -882,7 +882,7 @@ impl Game<'_> {
                 Custom,
             }
             let (hit, disabled) = {
-                let mut inner = self.screen_state.0.widgets.inner.borrow_mut();
+                let mut inner = self.side.screen_state.0.widgets.inner.borrow_mut();
                 match inner.entries.get_mut(idx).and_then(Option::as_mut) {
                     Some(entry) if !entry.disabled && entry.owner.is_enabled() => match &entry.kind
                     {
@@ -927,7 +927,7 @@ impl Game<'_> {
                 }
             };
             if disabled {
-                self.screen_state.0.widgets.clear_links_for(idx);
+                self.side.screen_state.0.widgets.clear_links_for(idx);
             }
             match hit {
                 Hit::Miss => continue,
@@ -935,14 +935,14 @@ impl Game<'_> {
                     if button != 0 {
                         return id.is_none();
                     }
-                    self.audio.0.play_button_click();
+                    self.side.audio.0.play_button_click();
                     let accepted =
                         self.with_mounted_widget(idx, |game, entry| entry.press_button(game));
                     if accepted == Some(true)
-                        && self.screen_state.0.widgets.generation() == generation
+                        && self.side.screen_state.0.widgets.generation() == generation
                     {
                         self.set_mounted_widget_focus(Some(idx));
-                        self.screen_state.0.widgets.inner.borrow_mut().dragging =
+                        self.side.screen_state.0.widgets.inner.borrow_mut().dragging =
                             Some((idx, button));
                     }
                     return true;
@@ -954,7 +954,7 @@ impl Game<'_> {
                     self.set_mounted_widget_focus(Some(idx));
                     let shift = (modifiers & 1) != 0;
                     {
-                        let mut inner = self.screen_state.0.widgets.inner.borrow_mut();
+                        let mut inner = self.side.screen_state.0.widgets.inner.borrow_mut();
                         if let Some(Some(entry)) = inner.entries.get_mut(idx)
                             && let MountedWidgetKind::TextField { edit_box, .. } = &mut entry.kind
                         {
@@ -988,10 +988,10 @@ impl Game<'_> {
                             }
                         })
                         .unwrap_or(false);
-                    if handled && self.screen_state.0.widgets.generation() == generation {
+                    if handled && self.side.screen_state.0.widgets.generation() == generation {
                         self.set_mounted_widget_focus(Some(idx));
                         if button == 0 {
-                            self.screen_state.0.widgets.inner.borrow_mut().dragging =
+                            self.side.screen_state.0.widgets.inner.borrow_mut().dragging =
                                 Some((idx, button));
                         }
                     }
@@ -1009,14 +1009,14 @@ impl Game<'_> {
         button: i32,
         modifiers: u32,
     ) -> bool {
-        let Some((idx, drag_button)) = self.screen_state.0.widgets.inner.borrow().dragging else {
+        let Some((idx, drag_button)) = self.side.screen_state.0.widgets.inner.borrow().dragging else {
             return false;
         };
         if drag_button != button {
             return false;
         }
-        self.screen_state.0.widgets.inner.borrow_mut().dragging = None;
-        if self.screen_state.0.widgets.focused_index() != Some(idx) {
+        self.side.screen_state.0.widgets.inner.borrow_mut().dragging = None;
+        if self.side.screen_state.0.widgets.focused_index() != Some(idx) {
             return false;
         }
         self.with_mounted_widget(idx, |game, entry| match &mut entry.kind {
@@ -1043,10 +1043,10 @@ impl Game<'_> {
         delta: [f32; 2],
         modifiers: u32,
     ) -> bool {
-        let Some((idx, drag_button)) = self.screen_state.0.widgets.inner.borrow().dragging else {
+        let Some((idx, drag_button)) = self.side.screen_state.0.widgets.inner.borrow().dragging else {
             return false;
         };
-        if drag_button != button || self.screen_state.0.widgets.focused_index() != Some(idx) {
+        if drag_button != button || self.side.screen_state.0.widgets.focused_index() != Some(idx) {
             return false;
         }
         self.with_mounted_widget(idx, |game, entry| match &mut entry.kind {
@@ -1081,17 +1081,17 @@ impl Game<'_> {
         scroll: [f64; 2],
         modifiers: u32,
     ) -> bool {
-        let len = self.screen_state.0.widgets.inner.borrow().entries.len();
+        let len = self.side.screen_state.0.widgets.inner.borrow().entries.len();
         if len == 0 {
             return false;
         }
-        let generation = self.screen_state.0.widgets.generation();
+        let generation = self.side.screen_state.0.widgets.generation();
         for idx in 0..len {
-            if self.screen_state.0.widgets.generation() != generation {
+            if self.side.screen_state.0.widgets.generation() != generation {
                 return false;
             }
             let is_custom = matches!(
-                self.screen_state.0
+                self.side.screen_state.0
                     .widgets
                     .inner
                     .borrow()
@@ -1132,7 +1132,7 @@ impl Game<'_> {
                     }
                 })
                 .unwrap_or(false);
-            if self.screen_state.0.widgets.generation() != generation {
+            if self.side.screen_state.0.widgets.generation() != generation {
                 return handled;
             }
             if handled {
@@ -1152,10 +1152,10 @@ impl Game<'_> {
         repeat: bool,
         modifiers: u32,
     ) -> bool {
-        if self.screen_state.0.widgets.is_empty() || key == KeyCode::Escape {
+        if self.side.screen_state.0.widgets.is_empty() || key == KeyCode::Escape {
             return false;
         }
-        let Some(idx) = self.screen_state.0.widgets.focused_index() else {
+        let Some(idx) = self.side.screen_state.0.widgets.focused_index() else {
             return false;
         };
         self.with_mounted_widget(idx, |game, entry| match &mut entry.kind {
@@ -1166,7 +1166,7 @@ impl Game<'_> {
                 {
                     return false;
                 }
-                game.audio.0.play_button_click();
+                game.side.audio.0.play_button_click();
                 entry.press_button(game);
                 true
             }
@@ -1210,7 +1210,7 @@ impl Game<'_> {
                         _ => None,
                     };
                     if let Some(shortcut) = shortcut {
-                        let changed = edit_box.shortcut(shortcut, &mut game.clipboard.0);
+                        let changed = edit_box.shortcut(shortcut, &mut game.side.clipboard.0);
                         if changed && let Some(callback) = on_change.as_mut() {
                             let value = edit_box.value.as_str();
                             call_owner(
@@ -1272,7 +1272,7 @@ impl Game<'_> {
         key: KeyCode,
         modifiers: u32,
     ) -> bool {
-        let Some(idx) = self.screen_state.0.widgets.focused_index() else {
+        let Some(idx) = self.side.screen_state.0.widgets.focused_index() else {
             return false;
         };
         let Some(name) = keybinds::key_name(key) else {
@@ -1303,7 +1303,7 @@ impl Game<'_> {
         c: char,
         modifiers: u32,
     ) -> bool {
-        let Some(idx) = self.screen_state.0.widgets.focused_index() else {
+        let Some(idx) = self.side.screen_state.0.widgets.focused_index() else {
             return false;
         };
         self.with_mounted_widget(idx, |game, entry| match &mut entry.kind {
@@ -1361,7 +1361,7 @@ impl Game<'_> {
         &self,
         _event: Option<&PreeditEvent>,
     ) -> bool {
-        let inner = self.screen_state.0.widgets.inner.borrow();
+        let inner = self.side.screen_state.0.widgets.inner.borrow();
         let Some(idx) = inner.focused else {
             return false;
         };
@@ -1389,7 +1389,7 @@ impl Game<'_> {
         &mut self,
         edited: Option<&TextEdit>,
     ) -> Option<TextEdit> {
-        let idx = self.screen_state.0.widgets.focused_index()?;
+        let idx = self.side.screen_state.0.widgets.focused_index()?;
         self.with_mounted_widget(idx, |game, entry| match &mut entry.kind {
             MountedWidgetKind::TextField {
                 edit_box,
@@ -1428,7 +1428,7 @@ impl Game<'_> {
     /// Whether the focused mounted widget captures text input (`Screen.isInputCaptured` /
     /// `EditBox.canConsumeInput`).
     pub(in crate::game::client_side) fn mounted_widget_captures_input(&self) -> bool {
-        let inner = self.screen_state.0.widgets.inner.borrow();
+        let inner = self.side.screen_state.0.widgets.inner.borrow();
         let Some(idx) = inner.focused else {
             return false;
         };

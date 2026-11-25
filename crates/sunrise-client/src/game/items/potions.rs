@@ -617,13 +617,13 @@ pub(in crate::game) fn collect_dragon_breath(
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// A client's own effects (`LivingEntity.tickEffects` on the client,
     /// `MobEffectInstance.tickClient`): they count down and blend, and the
     /// server removes them. Their modifiers and flags move the predicted
     /// player.
     pub(in crate::game) fn tick_client_effects(&mut self) {
-        client_tick_effects(&mut self.potions.effects, &mut self.client.darkness_blend);
+        client_tick_effects(&mut self.potions.effects, &mut self.side.darkness_blend);
         self.apply_effect_status();
     }
     /// `ThrowableProjectile.tick` on a server's client: it falls and moves
@@ -717,7 +717,7 @@ impl Game<'_> {
         &self,
         batch: &HudBatch,
     ) -> bool {
-        let (ox, image_width) = match self.client.screen {
+        let (ox, image_width) = match self.side.screen {
             Screen::Inventory
                 if self.container.is_none() && self.craft_size == 2 && !self.mount_active() =>
             {
@@ -767,7 +767,7 @@ impl Game<'_> {
             batch,
             &self.gui.atlas,
             &panels,
-            [self.client.cursor.0 as i32, self.client.cursor.1 as i32],
+            [self.side.cursor.0 as i32, self.side.cursor.1 as i32],
         )?;
         Some(self.effect_tooltip(batch, hovered))
     }
@@ -781,7 +781,7 @@ impl Game<'_> {
         let panel = hovered.panel;
         let mut lines = inventory_effects::tooltip(hovered);
         if mod_api::__private::listened(mod_api::HookId::GatherEffectScreenTooltips) {
-            let view = self.screen_view(batch, self.client.screen);
+            let view = self.screen_view(batch, self.side.screen);
             let effect = super::native_living_effects::active_effect(panel.effect);
             self.native_gather_effect_screen_tooltips(&view, &effect, &mut lines);
         }
@@ -849,16 +849,16 @@ impl Game<'_> {
             return layout;
         }
         if let Some(answer) =
-            self.screen_state
+            self.side.screen_state
                 .0
                 .build
-                .effects_answer(self.client.frames, self.client.screen, *space)
+                .effects_answer(self.side.frames, self.side.screen, *space)
         {
             return answer;
         }
         // Asked while the screen is laid out: nothing is drawn beside it yet.
         let view = super::screen_backgrounds::without_regions(
-            &self.screen_view_at(self.client.screen, rect),
+            &self.screen_view_at(self.side.screen, rect),
         );
         let mut canceled = false;
         self.native_screen_render_inventory_mob_effects(
@@ -869,9 +869,9 @@ impl Game<'_> {
             &mut canceled,
         );
         layout.hidden = canceled;
-        self.screen_state.0.build.keep_effects_answer(
-            self.client.frames,
-            self.client.screen,
+        self.side.screen_state.0.build.keep_effects_answer(
+            self.side.frames,
+            self.side.screen,
             *space,
             layout,
         );

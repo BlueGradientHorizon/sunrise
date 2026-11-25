@@ -2,7 +2,7 @@
 use super::{Game, commands::Target};
 use mod_api::{EntityRef, EntityTypeKey, LevelReadError, PushReaction};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn native_entity_kind_key(&self, target: Target) -> Option<EntityTypeKey> {
         // A living entity's type key was resolved with the accepted resources; other kinds
         // resolve their name.
@@ -48,7 +48,7 @@ impl Game<'_> {
             Target::Painting(_) => "minecraft:painting",
             Target::Boat(id) => self.boats.iter().find(|b| b.id == id)?.entity_type_name(),
             Target::Cart(id) => self.carts.iter().find(|cart| cart.id == id)?.kind.id(),
-            Target::Other(id) => &self.others.0.iter().find(|other| other.id == id)?.kind,
+            Target::Other(id) => &self.side.others.0.iter().find(|other| other.id == id)?.kind,
             Target::Crystal(_) => "minecraft:end_crystal",
             Target::Dragon(_) | Target::DragonPart(_) => super::native_living_body::ENDER_DRAGON,
             Target::Tnt(_) => "minecraft:tnt",

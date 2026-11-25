@@ -7,16 +7,16 @@ pub(in crate::game) use sunrise_client::hud_overlays::Titles;
 #[allow(unused_imports)]
 use sunrise_client::{hud::HudBatch, hud_layout, hud_overlays::HeldName, text::Text};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     #[inline(always)]
     pub(in crate::game::client_side) fn set_hud_overlay(&mut self, message: Text) {
-        self.client.titles.set_overlay(message, false);
+        self.side.titles.set_overlay(message, false);
     }
     /// `Hud.setOverlayMessage(line, animate_color)` on this window's HUD, outside a borrowed
     /// server guest's turn: no chat, narration or packet, as the direct setter does none.
     pub(in crate::game) fn set_overlay_message(&mut self, line: Text, animate_color: bool) {
         if self.native_window() {
-            self.client.titles.set_overlay(line, animate_color);
+            self.side.titles.set_overlay(line, animate_color);
         }
     }
 
@@ -27,7 +27,7 @@ impl Game<'_> {
         let background = self.settings.text_background(0.0);
         let font = &self.gui.atlas.font;
         let draws = self
-            .client
+            .side
             .titles
             .overlay_message(w, h, partial, font, background);
         hud_layout::paint(batch, &self.gui.atlas, &draws);
@@ -38,7 +38,7 @@ impl Game<'_> {
         let partial = self.clock.fraction() as f32;
         let background = self.settings.text_background(0.0);
         let font = &self.gui.atlas.font;
-        let draws = self.client.titles.title(w, h, partial, font, background);
+        let draws = self.side.titles.title(w, h, partial, font, background);
         hud_layout::paint(batch, &self.gui.atlas, &draws);
     }
     /// `Hud.extractSavingIndicator`, under the screens: the option, then the
@@ -47,7 +47,7 @@ impl Game<'_> {
         if !self.settings.autosave_indicator {
             return;
         }
-        let draws = self.client.saving_indicator.draw(
+        let draws = self.side.saving_indicator.draw(
             batch.width as i32,
             batch.height as i32,
             self.clock.fraction() as f32,
@@ -62,7 +62,7 @@ impl Game<'_> {
         let stack = self.inventory.get(self.selected)?.as_ref()?;
         let custom = stack.data().is_some_and(|data| data.custom_name.is_some());
         let previous = self
-            .client
+            .side
             .tool_highlight
             .last
             .as_ref()
@@ -81,7 +81,7 @@ impl Game<'_> {
     }
     /// The title, action bar and selected-item parts of `Hud.tick`.
     pub(in crate::game::client_side) fn tick_hud(&mut self) {
-        self.client.titles.tick();
+        self.side.titles.tick();
         // Hud.tick: the vignette after the titles, before the held item's name. (A local world,
         // which has no `Gui.tick` here, eases it in its level tick, `tick_particles`.)
         self.tick_vignette();
@@ -91,18 +91,18 @@ impl Game<'_> {
             .integrated
             .as_ref()
             .map_or(self.autosaving, |server| server.is_saving());
-        self.client.saving_indicator.tick(saving);
+        self.side.saving_indicator.tick(saving);
         let held = self.held_name();
-        self.client
+        self.side
             .tool_highlight
             .tick(held, self.settings.notification_display_time);
-        self.client.tool_highlight.tip = self.highlight_tip();
+        self.side.tool_highlight.tip = self.highlight_tip();
     }
     /// `IItemExtension.getHighlightTip` of the selected stack, while its name
     /// shows and a part of its item listens.
     pub(in crate::game::client_side) fn highlight_tip(&self) -> Option<Text> {
-        let last = self.client.tool_highlight.last.as_ref()?;
-        if self.client.tool_highlight.timer <= 0 {
+        let last = self.side.tool_highlight.last.as_ref()?;
+        if self.side.tool_highlight.timer <= 0 {
             return None;
         }
         let stack = self.inventory.get(self.selected)?.as_ref()?;
@@ -119,7 +119,7 @@ impl Game<'_> {
         batch: &mut HudBatch,
         can_hurt: bool,
     ) {
-        let draws = self.client.tool_highlight.draw(
+        let draws = self.side.tool_highlight.draw(
             batch.width as i32,
             batch.height as i32,
             can_hurt,

@@ -15,7 +15,7 @@ impl GameLevel<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The resistance the parts of `state` at `pos` give it against `explosion`, in place of
     /// its static one, on a logical server. A negative or non-finite answer is refused and a
     /// panicking part contained, both with a warning: None keeps the static value.

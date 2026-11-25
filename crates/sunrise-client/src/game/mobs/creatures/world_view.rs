@@ -22,7 +22,7 @@ pub(in crate::game) struct MobWorldSideParams<'s> {
     pub(in crate::game) difficulty: sunrise_client::mobs::spawning::LocalDifficulty,
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn mob_world_base_with<'s>(
         &'s self,
         others: &'s [Seen],

@@ -24,7 +24,7 @@ use sunrise_core::random::RandomSource;
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay::brushing::{Brushing, USE_DURATION, completion_state};
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn set_dusted(&mut self, pos: [i32; 3], dusted: i32) {
         let registry = self.pack.assets.registry;
         let Some(mut state) = registry

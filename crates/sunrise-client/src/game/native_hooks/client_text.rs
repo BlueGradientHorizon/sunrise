@@ -1,5 +1,5 @@
 use super::*;
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn text_string(&self, text: &mod_api::Text) -> String {
         sunrise_client_lib::api_text::to_engine_inprocess(text).plain()
     }

@@ -44,7 +44,7 @@ const BUTTON: f32 = 14.0;
 fn inside(p: (f32, f32), x: f32, y: f32, w: f32, h: f32) -> bool {
     p.0 >= x && p.1 >= y && p.0 < x + w && p.1 < y + h
 }
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `LoomScreen.containerChanged`: the error flag, whether the pattern
     /// buttons show (only when an input changed), and the scroller reset.
     pub(in crate::game::client_side) fn loom_screen_changed(&mut self) {
@@ -78,7 +78,7 @@ impl Game<'_> {
             Some(*flag)
         });
         if taken {
-            self.audio
+            self.side.audio
                 .0
                 .play("minecraft:ui.loom.select_pattern", None, 1.0, 1.0);
             self.remote_station_button(index as i32);
@@ -133,7 +133,7 @@ impl Game<'_> {
     /// `LoomScreen.mouseDragged` on the scroller.
     pub(in crate::game::client_side) fn loom_drag(&mut self) -> bool {
         let Some(size) = self
-            .renderer
+            .side.renderer
             .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
@@ -141,7 +141,7 @@ impl Game<'_> {
             return false;
         };
         let (_, oy) = self.inventory_origin(&HudBatch::new(size, self.settings.gui_scale_inputs()));
-        let cursor_y = self.client.cursor.1;
+        let cursor_y = self.side.cursor.1;
         let Some(l) = self.station.as_mut().map(|s| &mut s.loom) else {
             return false;
         };

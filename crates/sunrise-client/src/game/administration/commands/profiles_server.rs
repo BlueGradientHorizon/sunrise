@@ -14,18 +14,18 @@ pub(in crate::game::server_side) use sunrise_client::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_protocol::text::translatable;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// SaveAllCommand. Every save waits for the chunks to be written, so
     /// `flush` changes nothing.
     pub(in crate::game::server_side) fn cmd_save_all(&mut self) -> R<i32> {
         self.dedicated_lists()?;
         self.feedback(Text::translate("commands.save.saving", &[]));
         Self::admit_entity_save().map_err(|_| err("commands.save.failed", &[]))?;
-        if self.server.lan_acting.is_some() {
+        if self.side.lan_acting.is_some() {
             // The acting guest's record holds the game's state until their
             // turn ends: saving now would write it to their file.
             // shortcut: the other operators aren't told of a guest's save, add it if anyone asks.
-            self.server.save_after_guest_turn = true;
+            self.side.save_after_guest_turn = true;
             return Ok(1);
         }
         self.save_game().map_err(|e| {
@@ -51,7 +51,7 @@ impl Game<'_> {
         };
         let targets = if ctx.get("players").is_some() {
             self.entities(ctx, "players", true)?
-        } else if self.server.lan_acting.is_none() {
+        } else if self.side.lan_acting.is_none() {
             // CommandSourceStack.getPlayerOrException: a console or a command
             // block has no player to send.
             return Err(err("permissions.requires.player", &[]));
@@ -62,7 +62,7 @@ impl Game<'_> {
             .iter()
             .filter_map(|target| {
                 let conn = match *target {
-                    Target::Player => self.server.lan_acting?,
+                    Target::Player => self.side.lan_acting?,
                     Target::Guest(conn) => conn,
                     _ => return None,
                 };
@@ -95,14 +95,14 @@ impl Game<'_> {
     pub(in crate::game::server_side) fn dedicated_lists(
         &self,
     ) -> R<std::sync::Arc<std::sync::Mutex<super::super::dedicated::Lists>>> {
-        match (&self.server_lists.0, self.is_dedicated_server()) {
+        match (&self.side.server_lists.0, self.is_dedicated_server()) {
             (Some(lists), true) => Ok(lists.clone()),
             _ => Err(err("command.unknown.command", &[])),
         }
     }
     /// `CommandSourceStack.getTextName`.
     pub(in crate::game::server_side) fn source_text_name(&self) -> String {
-        if self.server.console_broadcast.is_some() {
+        if self.side.console_broadcast.is_some() {
             "Server".to_owned()
         } else {
             self.acting_player_name().to_owned()
@@ -112,7 +112,7 @@ impl Game<'_> {
     pub(in crate::game::server_side) fn target_profile(&self, t: Target) -> Option<NameAndId> {
         match t {
             Target::Player => Some(NameAndId {
-                id: self.server.lan_acting_uuid?,
+                id: self.side.lan_acting_uuid?,
                 name: self.acting_player_name().to_owned(),
             }),
             Target::Guest(conn) => self.command_guest(conn).map(|g| NameAndId {

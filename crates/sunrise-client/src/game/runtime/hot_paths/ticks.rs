@@ -7,7 +7,7 @@ use sunrise_core::random::{LegacyRandom, RandomSource};
 /// Ticks run before the measured ones, so one-time work (first paths, grown buffers) is done.
 const WARMUP: u64 = 20;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(super) fn hot_ticks(&mut self, recorder: &mut Recorder) -> Result<()> {
         if recorder.wants("server.tick.empty") {
             self.hot_level(1, 2)?;

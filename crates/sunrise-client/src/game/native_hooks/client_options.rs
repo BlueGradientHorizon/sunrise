@@ -3,7 +3,7 @@ use super::*;
 
 /// Helpers for native mods, kept as stable as the hook points.
 // Native mods use these; nothing in Sunrise does.
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// A snapshot of the current graphics preferences.
     pub(in crate::game) fn graphics_options(&self) -> ClientGraphicsOptions {
         let s = &self.settings;

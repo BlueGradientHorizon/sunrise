@@ -417,7 +417,7 @@ pub(in crate::game::server_side) fn install_wire_reload(
     });
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The commands' `minecraft:dialog` ids as the clients get them in the
     /// configuration phase (`sync`, the world's packs' dialogs among them):
     /// `/dialog show` parses an id against these and sends its index.

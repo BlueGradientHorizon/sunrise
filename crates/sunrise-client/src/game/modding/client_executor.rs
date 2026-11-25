@@ -3,17 +3,17 @@ use super::Game;
 use mod_api::ClientExecutor;
 use sunrise_client::crash;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_executor(&self) -> Option<ClientExecutor> {
         if !self.native_window() {
             return None;
         }
-        self.client_tasks.0.executor(crash::current_native_mod()?)
+        self.side.client_tasks.0.executor(crash::current_native_mod()?)
     }
 
     pub(in crate::game::client_side) fn close_client_tasks(&mut self) {
-        self.client_tasks.0.close();
-        self.pending_client_tasks.0.clear();
+        self.side.client_tasks.0.close();
+        self.side.pending_client_tasks.0.clear();
     }
 }
 

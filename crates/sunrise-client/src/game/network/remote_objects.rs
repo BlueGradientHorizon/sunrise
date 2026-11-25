@@ -33,7 +33,7 @@ pub(in crate::game) fn lerp_yaw_step(yaw: f32, target: f32, steps: u32) -> f32 {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `handleAddEntity` for an object type; false when `kind` isn't one.
     /// Hanging entities come at their block, with their direction as the
     /// spawn data (`Direction.from3DDataValue`).
@@ -54,7 +54,7 @@ impl Game<'_> {
             // A lead that came before its knot waits as a mob holder with the
             // knot's id (handleEntityLinkPacket's delayed holder); now it can
             // be tied to the fence.
-            self.client.remote_knots.insert(id, block);
+            self.side.remote_knots.insert(id, block);
             for m in &mut self.mobs {
                 if m.extra.leash == Some(Holder::Mob(id)) {
                     m.extra.leash = Some(Holder::Knot(block));
@@ -66,7 +66,7 @@ impl Game<'_> {
                 }
             });
         } else if let Some(shows) = super::text_displays::Shows::from_kind(kind) {
-            self.text_displays.0.insert(
+            self.side.text_displays.0.insert(
                 id as i32,
                 super::text_displays::RemoteTextDisplay::new(shows, position, yaw)
                     .with_pitch(pitch),
@@ -75,7 +75,7 @@ impl Game<'_> {
             self.add_remote_ominous_item_spawner(id, position);
         } else if kind == "minecraft:interaction" {
             // The width, height and response follow in SetEntityData.
-            self.client.interactions.insert(
+            self.side.interactions.insert(
                 id as i32,
                 super::interactions::RemoteInteraction::new_with_rotation(position, yaw, pitch),
             );
@@ -87,7 +87,7 @@ impl Game<'_> {
             c.previous_pitch = pitch;
             self.carts.push(c);
         } else if let Some((wood, chest)) = super::boats::any_boat_wood(kind)
-            && self.client.boat_models.has(wood, chest)
+            && self.side.boat_models.has(wood, chest)
         {
             let mut b = super::boats::Boat::new(id, Arc::from(wood), at, yaw);
             if chest {
@@ -180,7 +180,7 @@ impl Game<'_> {
 
     /// `handleSetEntityData` for an object: what changes how it looks.
     pub(in crate::game) fn remote_object_data(&mut self, id: i32, values: &[(u8, i32, Value)]) {
-        if self.text_displays.0.contains_key(&id) {
+        if self.side.text_displays.0.contains_key(&id) {
             // ItemDisplay.DATA_ITEM_STACK, read with the server's registries.
             let item = values
                 .iter()
@@ -188,7 +188,7 @@ impl Game<'_> {
                     (23, Value::Item(stack)) => Some(self.to_stack(stack)),
                     _ => None,
                 });
-            if let Some(display) = self.text_displays.0.get_mut(&id) {
+            if let Some(display) = self.side.text_displays.0.get_mut(&id) {
                 display.show(values, item);
                 display.metadata(values);
             }
@@ -455,7 +455,7 @@ impl Game<'_> {
                 }
             }
             if kind == super::minecarts::CartKind::Tnt && fuse {
-                self.particles.0.add(
+                self.side.particles.0.add(
                     &ParticleOptions::simple(ParticleType::Smoke),
                     [to.x, to.y + 0.5, to.z],
                     [0.0; 3],
@@ -465,7 +465,7 @@ impl Game<'_> {
                 && fuel > 0
                 && self.world.random.next_int_bound(4).unwrap_or(1) == 0
             {
-                self.particles.0.add(
+                self.side.particles.0.add(
                     &ParticleOptions::simple(ParticleType::LargeSmoke),
                     [to.x, to.y + 0.8, to.z],
                     [0.0; 3],
@@ -473,7 +473,7 @@ impl Game<'_> {
             }
             // MinecartTNT.tick: a primed cart counts its fuse down and sheds smoke.
             if kind == super::minecarts::CartKind::Tnt && fuse {
-                self.particles.0.add(
+                self.side.particles.0.add(
                     &ParticleOptions::simple(ParticleType::Smoke),
                     [to.x, to.y + 0.5, to.z],
                     [0.0; 3],
@@ -559,7 +559,7 @@ impl Game<'_> {
                 "yaw": c.yaw, "color": c.color_name()}),
             );
         }
-        for (&id, i) in &self.client.interactions {
+        for (&id, i) in &self.side.interactions {
             out.push(json!({"id": id, "kind": "minecraft:interaction",
                 "position": at(i.position), "width": i.width, "height": i.height,
                 "response": i.response}));
@@ -584,10 +584,10 @@ impl Game<'_> {
     /// the player (`ExperienceOrb.tick` on the client) and is never
     /// `playerTouch`ed.
     pub(in crate::game) fn clear_remote_objects(&mut self) {
-        self.text_displays.0.clear();
-        self.client.interactions.clear();
+        self.side.text_displays.0.clear();
+        self.side.interactions.clear();
         self.ominous_spawners.clear();
-        self.client.remote_knots.clear();
+        self.side.remote_knots.clear();
         self.carts.clear();
         self.boats.clear();
         self.armor_stands.clear();
@@ -599,10 +599,10 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn remove_remote_object(&mut self, id: u32) {
-        self.text_displays.0.shift_remove(&(id as i32));
-        self.client.interactions.remove(&(id as i32));
+        self.side.text_displays.0.shift_remove(&(id as i32));
+        self.side.interactions.remove(&(id as i32));
         self.ominous_spawners.retain(|s| s.id != id);
-        self.client.remote_knots.remove(&id);
+        self.side.remote_knots.remove(&id);
         self.carts.retain(|c| c.id != id);
         self.boats.retain(|b| b.id != id);
         self.armor_stands.retain(|a| a.id != id);

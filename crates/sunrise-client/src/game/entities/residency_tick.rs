@@ -1,7 +1,7 @@
 //! Complete residency journals on both logical-server and remote-client ticks.
 use super::Game;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(super) fn with_residency_tick(
         &mut self,
         tick: impl FnOnce(&mut Self) -> super::Result<()>,

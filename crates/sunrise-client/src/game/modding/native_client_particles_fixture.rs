@@ -13,7 +13,7 @@ use sunrise_client::{
 };
 use sunrise_core::geometry::Vec3;
 
-fn add(game: &mut Game<'_>, options: &ParticleOptions, at: [f64; 3], velocity: [f64; 3]) -> bool {
+fn add(game: &mut Game<'_, crate::game::client_side::ClientState>, options: &ParticleOptions, at: [f64; 3], velocity: [f64; 3]) -> bool {
     use super::api_values::TryIntoApi;
     let Ok(options) = options.try_into_api() else {
         return false;
@@ -22,7 +22,7 @@ fn add(game: &mut Game<'_>, options: &ParticleOptions, at: [f64; 3], velocity: [
     host.add_particle(&options, at, velocity)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     fn particle_fixture_tick(&mut self) {
         let level = ParticleLevel {
             world: &self.world,
@@ -31,7 +31,7 @@ impl Game<'_> {
             player: None,
             cached_chunk: std::cell::Cell::new(None),
         };
-        self.particles.0.tick(&level);
+        self.side.particles.0.tick(&level);
     }
 
     pub(in crate::game::client_side) fn run_native_client_particles_fixture(
@@ -42,7 +42,7 @@ impl Game<'_> {
         // World phase; the loading window it starts from is still in Setup.
         let at = [0.0, 100.0, 0.0];
         let smoke = ParticleOptions::simple(ParticleType::Smoke);
-        self.particles.0.requested = Some(Vec::new());
+        self.side.particles.0.requested = Some(Vec::new());
         self.player = None;
         assert!(!add(self, &smoke, at, [0.0; 3]), "menu has no client level");
         self.player = Some(PlayerMotion::new(self.motion, Vec3::new(0.0, 100.0, 0.0))?);
@@ -51,7 +51,7 @@ impl Game<'_> {
         custom.color = [0.1, 0.2, 0.3, 0.4];
         custom.scale = 2.5;
         assert!(add(self, &custom, at, encoded));
-        let requests = self.particles.0.requested.take().unwrap();
+        let requests = self.side.particles.0.requested.take().unwrap();
         assert_eq!(requests.len(), 1, "menu and server guards queued nothing");
         assert_eq!(requests[0].0.color, custom.color);
         assert_eq!(requests[0].0.scale, custom.scale);
@@ -64,7 +64,7 @@ impl Game<'_> {
             (at, encoded),
             "provider slots must remain unchanged"
         );
-        self.particles.0.requested = Some(Vec::new());
+        self.side.particles.0.requested = Some(Vec::new());
         for invalid in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
             assert!(!add(self, &smoke, [invalid, 100.0, 0.0], [0.0; 3]));
             assert!(!add(self, &smoke, at, [0.0, invalid, 0.0]));
@@ -77,7 +77,7 @@ impl Game<'_> {
         assert!(!add(self, &invalid_options, at, [0.0; 3]));
 
         assert!(
-            self.particles.0.requested.take().unwrap().is_empty(),
+            self.side.particles.0.requested.take().unwrap().is_empty(),
             "invalid requests must not touch the queue"
         );
 
@@ -99,7 +99,7 @@ impl Game<'_> {
             w: 16,
             h: 16,
         };
-        self.particles.0 = ParticleEngine::new(
+        self.side.particles.0 = ParticleEngine::new(
             &sunrise_assets::resource_source::ResourceSource::directory(pack.clone()),
             &HashMap::from([
                 ("particle/fixture_smoke".into(), rect),
@@ -107,21 +107,21 @@ impl Game<'_> {
             ]),
             &HashSet::new(),
         );
-        self.particles.0.camera = at;
+        self.side.particles.0.camera = at;
         assert!(add(self, &smoke, at, [0.0; 3]));
         assert_eq!(
-            self.particles.0.len(),
+            self.side.particles.0.len(),
             0,
             "engine defers pending spawns until its tick"
         );
         self.particle_fixture_tick();
         assert_eq!(
-            self.particles.0.len(),
+            self.side.particles.0.len(),
             1,
             "vanilla provider reached the live queue"
         );
         let mut vertices = Vec::new();
-        self.particles.0.render(
+        self.side.particles.0.render(
             glam::DVec3::from_array(at),
             glam::Quat::IDENTITY,
             1.0,
@@ -133,21 +133,21 @@ impl Game<'_> {
             4,
             "vanilla particle reaches ordinary render data"
         );
-        self.particles.0.clear();
+        self.side.particles.0.clear();
         assert!(add(self, &smoke, [64.0, 100.0, 0.0], [0.0; 3]));
         self.particle_fixture_tick();
         assert!(
-            self.particles.0.is_empty(),
+            self.side.particles.0.is_empty(),
             "ordinary camera-distance limiter is retained"
         );
-        self.particles.0.particle_level = 2;
+        self.side.particles.0.particle_level = 2;
         assert!(add(self, &smoke, at, [0.0; 3]));
         self.particle_fixture_tick();
         assert!(
-            self.particles.0.is_empty(),
+            self.side.particles.0.is_empty(),
             "ordinary minimal setting is retained"
         );
-        self.particles.0.particle_level = 0;
+        self.side.particles.0.particle_level = 0;
         assert!(add(
             self,
             &ParticleOptions::named("fixture:spark"),
@@ -156,13 +156,13 @@ impl Game<'_> {
         ));
         self.particle_fixture_tick();
         assert_eq!(
-            self.particles.0.len(),
+            self.side.particles.0.len(),
             1,
             "existing named provider reached the live queue"
         );
         self.particle_fixture_tick();
         vertices.clear();
-        self.particles.0.render(
+        self.side.particles.0.render(
             glam::DVec3::from_array(at),
             glam::Quat::IDENTITY,
             1.0,
@@ -180,7 +180,7 @@ impl Game<'_> {
             self.particle_fixture_tick();
         }
         assert!(
-            self.particles.0.is_empty(),
+            self.side.particles.0.is_empty(),
             "named provider lifetime still expires normally"
         );
         std::fs::write(

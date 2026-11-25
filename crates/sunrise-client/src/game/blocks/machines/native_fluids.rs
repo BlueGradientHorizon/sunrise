@@ -177,7 +177,7 @@ fn write_tanks(nbt: &mut Compound, tanks: &[Tank]) {
 }
 
 // Native mods use these; nothing in Sunrise does.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// What holds fluids at `pos` in the level in place: a mod block's tanks, or a cauldron.
     fn native_fluid_at(&self, pos: [i32; 3]) -> Option<FluidAt> {
         if !self.native_simulates() {

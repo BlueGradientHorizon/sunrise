@@ -68,9 +68,9 @@ pub(in crate::game::server_side) use winit::{
     keyboard::KeyCode,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     #[inline(always)]
     pub(in crate::game) fn shield_cooldown(&self) -> u32 {
-        self.server.shield_cooldown
+        self.side.shield_cooldown
     }
 }

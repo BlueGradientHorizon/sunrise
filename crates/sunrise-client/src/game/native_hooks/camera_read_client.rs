@@ -8,7 +8,7 @@ pub(in crate::game::client_side) use crate::game::native_hooks::camera_read::Pro
 pub(in crate::game::client_side) use crate::game::native_hooks::camera_read::*;
 
 /// Helpers for native mods, kept as stable as the hook points.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn activate_projection_frame(&self) -> ProjectionFrame {
         ProjectionFrame(PROJECT_VIEW.replace(self as *const Self as usize))
     }
@@ -25,12 +25,12 @@ impl Game<'_> {
     /// The most recently extracted world frame's camera, if one exists.
     /// During GUI rendering this is the current frame, including bob/spin and FOV.
     pub(in crate::game) fn camera(&self) -> Option<mod_api::Camera> {
-        self.client.native_camera_frame.clone()
+        self.side.native_camera_frame.clone()
     }
     /// The entity the view follows (`Minecraft.getCameraEntity`): the entity a server attached
     /// the camera to, else the local player. None outside a client world.
     pub(in crate::game) fn camera_entity(&self) -> Option<EntityRef> {
-        if !self.native_window() || self.title.0.is_some() {
+        if !self.native_window() || self.side.title.0.is_some() {
             return None;
         }
         self.player.as_ref()?;
@@ -45,7 +45,7 @@ impl Game<'_> {
         if PROJECT_VIEW.get() != self as *const Self as usize {
             return None;
         }
-        let camera = self.client.native_camera_frame.as_ref()?;
+        let camera = self.side.native_camera_frame.as_ref()?;
         sunrise_client::camera::project_point(
             &camera.projection,
             camera.position,

@@ -11,11 +11,11 @@ pub(in crate::game::server_side) use crate::game::player_equip::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_client::items::ItemStack;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn put_equipment_modifiers(&mut self) {
-        let mut applied = std::mem::take(&mut self.server.applied_modifiers);
+        let mut applied = std::mem::take(&mut self.side.applied_modifiers);
         let ran = self.apply_equipment_modifiers_with(&mut applied);
-        self.server.applied_modifiers = applied;
+        self.side.applied_modifiers = applied;
         if !ran {
             return;
         }

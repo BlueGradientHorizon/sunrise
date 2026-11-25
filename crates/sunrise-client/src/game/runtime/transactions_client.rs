@@ -5,7 +5,7 @@ use crate::game::transactions::{
 use mod_api::TransactionLifecycle;
 use sunrise_client::block_entities::BlockEntityIdentity;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_tx_close_storage_transaction(
         &mut self,
         commit: bool,

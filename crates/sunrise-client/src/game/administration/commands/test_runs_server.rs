@@ -25,7 +25,7 @@ pub(in crate::game::server_side) use sunrise_core::bounding_box::BoundingBox;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_world::worldgen::structure::Rotation;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The tests a finder gives (`findTests`), by id.
     pub(in crate::game::server_side) fn finder_tests(
         &self,
@@ -33,7 +33,7 @@ impl Game<'_> {
     ) -> Vec<(String, TestDef)> {
         let keys: Vec<String> = match finder {
             Finder::Failed(only_required) => self
-                .game_tests
+                .side.game_tests
                 .0
                 .failed
                 .iter()
@@ -69,7 +69,7 @@ impl Game<'_> {
             self.feedback_unbroadcast(Text::translate("commands.test.no_tests", &[]));
             return Ok(0);
         }
-        self.game_tests.0.failed.clear();
+        self.side.game_tests.0.failed.clear();
         self.feedback_unbroadcast(Text::translate(
             "commands.test.run.running",
             &[Text::literal(infos.len().to_string())],
@@ -80,7 +80,7 @@ impl Game<'_> {
     }
     /// `CommandSourceStack.sendFailure`.
     pub(in crate::game::server_side) fn test_failure(&mut self, message: Text) {
-        if self.server.command_source.is_some_and(|s| s.silent) {
+        if self.side.command_source.is_some_and(|s| s.silent) {
             return;
         }
         self.server_system_message(message.with_color(text::RED));
@@ -117,7 +117,7 @@ impl Game<'_> {
             return None;
         }
         let rotation = self.test_rotation(pos);
-        let id = self.game_tests.0.next_id();
+        let id = self.side.game_tests.0.next_id();
         Some(Info::new(id, key, def, Some(pos), self.dim, rotation).with_retry(retry))
     }
     /// `toGameTestInfo`: a test without a block, in the level in place.
@@ -147,7 +147,7 @@ impl Game<'_> {
             return Ok(None);
         };
         let rotation = rotation_for_steps(steps).ok_or_else(|| err("command.failed", &[]))?;
-        let id = self.game_tests.0.next_id();
+        let id = self.side.game_tests.0.next_id();
         Ok(Some(
             Info::new(id, key, def, None, dim, rotation).with_retry(retry),
         ))
@@ -173,8 +173,8 @@ impl Game<'_> {
         for (key, def) in self.finder_tests(&finder) {
             infos.extend(self.test_info_for(key, def, 0, Retry::none())?);
         }
-        self.game_tests.0.failed.clear();
-        let batches = verify_batches(&infos, || self.game_tests.0.next_id());
+        self.side.game_tests.0.failed.clear();
+        let batches = verify_batches(&infos, || self.side.game_tests.0.next_id());
         let grid = Grid::new(self.test_around(), 10).clearing();
         self.track_and_start_batches(batches, RunnerOptions::verify(grid));
         Ok(1)

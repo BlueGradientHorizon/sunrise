@@ -9,18 +9,18 @@ pub(in crate::game::client_side) use mod_api::{MappingError, VanillaKeyMappingRe
 
 /// Helpers for native mods, kept as stable as the hook points.
 // Native mods use these; nothing in Sunrise does.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The current window modifier keys in the same GLFW encoding as input hooks.
     /// Cleared when the window loses focus; available even outside a world.
     pub(in crate::game) fn modifiers(&self) -> ClientModifiers {
-        ClientModifiers::new(crate::game::glfw_modifiers(self.client.modifiers))
+        ClientModifiers::new(crate::game::glfw_modifiers(self.side.modifiers))
     }
     /// Playing, with nothing over the world: keys and zoom apply.
     pub(in crate::game) fn playing(&self) -> bool {
-        self.client.screen == Screen::Playing
-            && self.title.0.is_none()
-            && self.client.sign_edit.is_none()
-            && self.client.book.is_none()
+        self.side.screen == Screen::Playing
+            && self.side.title.0.is_none()
+            && self.side.sign_edit.is_none()
+            && self.side.book.is_none()
     }
     pub(in crate::game) fn vanilla_key_mapping(
         &self,
@@ -30,7 +30,7 @@ impl Game<'_> {
             return Err(MappingError::Unavailable);
         }
         let generation = self
-            .client
+            .side
             .mod_keys
             .client_generation()
             .ok_or(MappingError::Unavailable)?;
@@ -50,7 +50,7 @@ impl Game<'_> {
             if let ("movement", Some(Ok(key))) = (slot.definition().2, slot.default_input()) {
                 self.movement_key_held(key)
             } else {
-                self.client.vanilla_mappings.is_down(slot)
+                self.side.vanilla_mappings.is_down(slot)
             },
         )
     }
@@ -60,8 +60,8 @@ impl Game<'_> {
     ) -> Result<bool, MappingError> {
         let slot = self.vanilla_mapping_slot(mapping)?;
         Ok(match self.settings.keys.physical_at(slot) {
-            Some(Ok(key)) => self.client.physical_keys.contains(&key),
-            Some(Err(button)) => self.client.physical_buttons.contains(&button),
+            Some(Ok(key)) => self.side.physical_keys.contains(&key),
+            Some(Err(button)) => self.side.physical_buttons.contains(&button),
             None => false,
         })
     }
@@ -89,7 +89,7 @@ impl Game<'_> {
             return Err(MappingError::Unavailable);
         }
         let (generation, index) = mod_api::__private::vanilla_key_mapping_parts(mapping);
-        if self.client.mod_keys.client_generation() != Some(generation) {
+        if self.side.mod_keys.client_generation() != Some(generation) {
             return Err(MappingError::Stale);
         }
         VanillaMappingSlot::from_index(index).ok_or(MappingError::Stale)

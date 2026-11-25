@@ -288,10 +288,10 @@ pub(in crate::game) struct PlayerEntityState<'a> {
 }
 
 /// The game's world for predicates.
-pub(in crate::game) struct View<'a, 'g>(pub(in crate::game) &'a Game<'g>);
+pub(in crate::game) struct View<'a, 'g>(pub(in crate::game) &'a Game<'g, crate::game::server_side::ServerState>);
 impl adv::World for View<'_, '_> {
     fn predicate(&self, id: &str) -> Option<&Value> {
-        self.0.fns.0.store.predicates.get(id)
+        self.0.side.fns.0.store.predicates.get(id)
     }
     fn dimension(&self) -> &str {
         self.0.dim.id()
@@ -379,7 +379,7 @@ impl adv::World for View<'_, '_> {
     }
     fn in_tag(&self, registry: &str, tag: &str, id: &str) -> bool {
         let tags = TagSources {
-            pack_tags: self.0.world_tables.0.as_ref().map(|t| &t.pack_tags),
+            pack_tags: self.0.side.world_tables.0.as_ref().map(|t| &t.pack_tags),
             items: self.0.items(),
             mob_data: self.0.res.mob_data(),
             damage: &self.0.health_resources.damage,
@@ -450,7 +450,7 @@ pub(in crate::game::server_side) fn now_text() -> String {
         .map_or(0, |d| d.as_secs()) as i64;
     adv::date_text(secs)
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ItemPredicate.test` (the `item_filter` of a filtered item modifier).
     pub(in crate::game) fn loot_item_filter(&self, predicate: &Value, s: &ItemStack) -> bool {
         adv::item(predicate, &item_view(s), &View(self))
@@ -500,10 +500,10 @@ pub(in crate::game) fn item_view(s: &ItemStack) -> ItemView {
         custom_data: None,
     }
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn adv_path(&self) -> Option<std::path::PathBuf> {
         Some(super::stats::player_json(
-            &self.server.world_root,
+            &self.side.world_root,
             "advancements",
             self.level.player_uuid?,
         ))
@@ -511,7 +511,7 @@ impl Game<'_> {
     /// A server with no player of its own and nobody it acts for: there is
     /// no player for advancements and statistics.
     pub(in crate::game::server_side) fn no_player_here(&self) -> bool {
-        self.options.dedicated.is_some() && self.server.lan_acting.is_none()
+        self.options.dedicated.is_some() && self.side.lan_acting.is_none()
     }
     /// Load the local tree once; an empty server tree is still authoritative.
     pub(in crate::game) fn advancement_tree(&mut self) -> Arc<Tree> {
@@ -573,9 +573,9 @@ impl Game<'_> {
             || self.remote.is_some()
             || self.no_player_here()
             || self
-                .server
+                .side
                 .crash_save
-                .holds_interrupted(self.server.lan_acting)
+                .holds_interrupted(self.side.lan_acting)
         {
             return;
         }
@@ -753,7 +753,7 @@ impl Game<'_> {
         let Some(g) = host
             .hub
             .guest(conn)
-            .filter(|_| self.server.lan_acting != Some(conn))
+            .filter(|_| self.side.lan_acting != Some(conn))
         else {
             return adv::PlayerFacts::default();
         };
@@ -1092,7 +1092,7 @@ impl Game<'_> {
         name: &str,
         test: impl Fn(&Value, &dyn adv::World) -> bool,
     ) {
-        if self.server.lan_acting_fake || self.remote.is_some() || self.no_player_here() {
+        if self.side.lan_acting_fake || self.remote.is_some() || self.no_player_here() {
             return;
         }
         self.load_advancements();
@@ -1110,7 +1110,7 @@ impl Game<'_> {
         list: &[(usize, usize)],
         test: impl Fn(&Value, &dyn adv::World) -> bool,
     ) {
-        if self.server.lan_acting_fake {
+        if self.side.lan_acting_fake {
             return;
         }
         let mut hits = Vec::new();
@@ -1155,9 +1155,9 @@ impl Game<'_> {
             return;
         }
         if let (Some(uuid), Some(entity_id), Some(name)) = (
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_entity,
-            self.server.lan_acting_name.clone(),
+            self.side.lan_acting_uuid,
+            self.side.lan_acting_entity,
+            self.side.lan_acting_name.clone(),
         ) {
             let progress = progress_snapshot(advancement, &self.adv.progress);
             self.native_player_advancement_progress(
@@ -1185,7 +1185,7 @@ impl Game<'_> {
         use sunrise_client::lan::hub::advancements::{AdvancementOwners, AdvancementState};
         let host = self.lan.as_mut()?;
         let mut owners = AdvancementOwners::active(
-            &self.server.lan_guest_swaps,
+            &self.side.lan_guest_swaps,
             AdvancementState {
                 progress: &mut self.adv.progress,
                 changed: &mut self.adv.changed,
@@ -1252,7 +1252,7 @@ impl Game<'_> {
                     })
                     .flatten()
                     .unwrap_or(false);
-                if self.server.lan_acting == Some(task.conn) {
+                if self.side.lan_acting == Some(task.conn) {
                     if !was_done && done {
                         self.award_definition(definition);
                     }
@@ -1274,7 +1274,7 @@ impl Game<'_> {
     }
     /// `PlayerAdvancements.progressChanged`, kept for a network player's client.
     pub(in crate::game::server_side) fn progress_changed(&mut self, index: usize) {
-        if self.server.lan_acting.is_some() {
+        if self.side.lan_acting.is_some() {
             self.adv.changed.insert(index);
         }
     }
@@ -1287,8 +1287,8 @@ impl Game<'_> {
         let mut refused = Vec::new();
         let mut taken_back = 0;
         if let (Some(player), Some(name)) = (
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_name.clone(),
+            self.side.lan_acting_uuid,
+            self.side.lan_acting_name.clone(),
         ) {
             for recipe in unlocked {
                 let mut cancel = false;
@@ -1305,8 +1305,8 @@ impl Game<'_> {
                     .recipe_book
                     .remove_recipes(&world_stations!(self).recipe_index, &refused);
                 taken_back = removed.len();
-                if self.server.lan_acting.is_some() && !removed.is_empty() {
-                    self.server.guest_packets.push(C::RecipeBookRemove(
+                if self.side.lan_acting.is_some() && !removed.is_empty() {
+                    self.side.guest_packets.push(C::RecipeBookRemove(
                         sunrise_protocol::packets::recipes::RecipeBookRemove { ids: removed },
                     ));
                 }
@@ -1336,7 +1336,7 @@ impl Game<'_> {
     }
     /// `ServerPlayer.awardRecipes`: fake players learn no recipes.
     pub(in crate::game) fn award_recipes(&mut self, recipes: &[String]) -> usize {
-        if self.server.lan_acting_fake {
+        if self.side.lan_acting_fake {
             return 0;
         }
         let index = &world_stations!(self).recipe_index;
@@ -1386,7 +1386,7 @@ impl Game<'_> {
     /// `PlayerAdvancements.award` once done: `AdvancementRewards.grant`,
     /// then toast and announcement.
     pub(in crate::game::server_side) fn award(&mut self, index: usize) {
-        if self.server.lan_acting_fake {
+        if self.side.lan_acting_fake {
             return;
         }
         let tree = self.adv.tree.clone();
@@ -1394,12 +1394,12 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn award_definition(&mut self, a: &adv::Advancement) {
-        if self.server.lan_acting_fake {
+        if self.side.lan_acting_fake {
             return;
         }
         if let (Some(player), Some(name)) = (
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_name.clone(),
+            self.side.lan_acting_uuid,
+            self.side.lan_acting_name.clone(),
         ) {
             self.native_player_advancement_done(player, &name, &a.id);
         }
@@ -1427,7 +1427,7 @@ impl Game<'_> {
             let name = adv_name(a);
             // PlayerList.broadcastSystemMessage: everyone hears of a
             // network player's advancement.
-            match self.server.lan_acting_name.clone() {
+            match self.side.lan_acting_name.clone() {
                 // Player.getDisplayName.
                 Some(_) => {
                     let player = self.target_name(super::commands::Target::Player);
@@ -2792,7 +2792,7 @@ pub(in crate::game::server_side) fn decorate_name(d: &adv::Display) -> Text {
     }
     text_of(&component).with_component(component)
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `AdvancementCommands.Action.GRANT` on one advancement (or one of
     /// its criteria): false when nothing changed.
     pub(in crate::game) fn grant_advancement(
@@ -2800,7 +2800,7 @@ impl Game<'_> {
         index: usize,
         criterion: Option<&str>,
     ) -> bool {
-        if self.server.lan_acting_fake {
+        if self.side.lan_acting_fake {
             return false;
         }
         let tree = self.adv.tree.clone();
@@ -2833,7 +2833,7 @@ impl Game<'_> {
         index: usize,
         criterion: Option<&str>,
     ) -> bool {
-        if self.server.lan_acting_fake {
+        if self.side.lan_acting_fake {
             return false;
         }
         let tree = self.adv.tree.clone();

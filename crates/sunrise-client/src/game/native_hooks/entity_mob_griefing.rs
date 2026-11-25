@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `EntityMobGriefingEvent` (`EventHooks.canEntityGrief`): may `entity`
     /// change the world? `can_grief` starts as the `mob_griefing` rule.
     pub(in crate::game) fn native_entity_mob_griefing(

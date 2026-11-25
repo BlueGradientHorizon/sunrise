@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A dying mob or player `entity` of `kind` is about to drop `original`
     /// points of experience; the vanilla conditions have been checked.
     /// `attacking_player` is the player who last hurt it, if any. Change

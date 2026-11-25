@@ -11,7 +11,7 @@ use sunrise_client::{
 };
 use sunrise_gameplay::allays::{AllayLevel, AllayPlayer, SightView};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Allay.mobInteract`'s `level().playSound(player, this, sound, NEUTRAL,
     /// 2, 1)`, bound to allay `allay`. Vanilla leaves the player out because
     /// their client played it; Sunrise's own client plays it from the
@@ -103,7 +103,7 @@ impl Game<'_> {
     }
 }
 
-impl AllayLevel for Game<'_> {
+impl AllayLevel for Game<'_, crate::game::server_side::ServerState> {
     fn level_player_uuid(&self) -> Option<[i32; 4]> {
         self.level.player_uuid
     }

@@ -4,7 +4,7 @@
 use super::{weather::precipitation_at, *};
 use sunrise_client::{gfx::CelestialBody, mobs::ModelNormals};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Stored local and remote display positions, keeping the furthest stage on each cell.
     pub(in crate::game::client_side) fn crack_stages(&self) -> Vec<([i32; 3], u32)> {
         let mut stages: Vec<([i32; 3], u32)> = Vec::new();
@@ -23,7 +23,7 @@ impl Game<'_> {
             }
         }
         let now = self.world.game_time;
-        for crack in self.client.destroying.values() {
+        for crack in self.side.destroying.values() {
             if now.saturating_sub(crack.updated_at) <= 400 {
                 add(crack.pos, u32::from(crack.stage));
                 for &pos in &crack.positions {
@@ -134,7 +134,7 @@ impl Game<'_> {
         light: u32,
         out: &mut Vec<Vertex>,
     ) {
-        let Some(avatar) = self.client.player_model.as_ref() else {
+        let Some(avatar) = self.side.player_model.as_ref() else {
             return;
         };
         let Some(arm) = self.res.player_arm(avatar.slim, left).as_ref() else {
@@ -182,22 +182,22 @@ impl Game<'_> {
         // replay player's hands remain visible in first person; freecam has
         // no player-view hand.
         if !fov::studio_draws_hand(
-            self.client.studio.flying(),
+            self.side.studio.flying(),
             self.ui.hands_drawn(
                 self.spectator(),
                 self.camera_subject().is_some_and(|c| c.is_sleeping),
-                self.client.camera_type.is_first_person(),
+                self.side.camera_type.is_first_person(),
                 self.player
                     .as_ref()
                     .is_some_and(|p| !p.health.dead_or_dying()),
-                self.client.screen == Screen::Dead,
+                self.side.screen == Screen::Dead,
             ),
         ) {
             return (out, runs);
         }
         let a = alpha as f32;
         let interpolated_pitch = self
-            .client
+            .side
             .player_model
             .as_ref()
             .map_or(self.pitch, |model| {
@@ -214,9 +214,9 @@ impl Game<'_> {
                 0.0
             }
         });
-        let heights = self.client.heights.interpolated(a);
+        let heights = self.side.heights.interpolated(a);
         // The hand sway: both hands turn by a tenth of the bobs' lag.
-        let to_world = self.client.sway.to_world(a, &self.client.view);
+        let to_world = self.side.sway.to_world(a, &self.side.view);
         let eye = self.eye_position().unwrap_or_default();
         let light = self.world.light(
             eye[0].floor() as i32,
@@ -236,7 +236,7 @@ impl Game<'_> {
         // Only the picture changes: the clicks and what they send stay 26.3's.
         let legacy_block = self.pvp_legacy_look()
             && self.mapped_key_down("key.use")
-            && self.client.screen == Screen::Playing
+            && self.side.screen == Screen::Playing
             && items[0]
                 .as_ref()
                 .is_some_and(|s| s.item.ends_with("_sword"))
@@ -525,7 +525,7 @@ impl Game<'_> {
                 ) else {
                     continue;
                 };
-                let parameters = self.client.weather_parameters.get(x, z);
+                let parameters = self.side.weather_parameters.get(x, z);
                 let light = self.world.light(x, top.max(cy), z);
                 let coords = i32::from(light & 15) << 4 | i32::from(light >> 4) << 20;
                 // Only light brightening is needed here; UV phases stay zero.

@@ -14,7 +14,7 @@ use sunrise_client::pose::Pose;
 use sunrise_client_gameplay::mob_ambient as ambient;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn tick_client_ambient(&mut self) {
         if self.serving.is_some() || self.options.dedicated.is_some() {
             return;
@@ -25,7 +25,7 @@ impl Game<'_> {
         // cloud have to be made here.
         let following = self.remote.is_some();
         let mut events = Vec::new();
-        let random = self.particles.0.level_random();
+        let random = self.side.particles.0.level_random();
         for m in self.mobs.iter_mut().filter(|m| !m.removed) {
             ambient::client_ai_step(m, &mut events);
             ambient::client_particles(m, random, &mut events);
@@ -37,14 +37,14 @@ impl Game<'_> {
             match event {
                 MobEvent::ParticleAt { kind, at, velocity } => {
                     if let Some(ty) = ParticleType::from_name(kind) {
-                        self.particles
+                        self.side.particles
                             .0
                             .add(&ParticleOptions::simple(ty), at, velocity);
                     }
                 }
                 MobEvent::Particles { kind, at, count: 0 } => {
                     if let Some(ty) = ParticleType::from_name(kind) {
-                        self.particles
+                        self.side.particles
                             .0
                             .add(&ParticleOptions::simple(ty), at, [0.0; 3]);
                     }
@@ -53,14 +53,14 @@ impl Game<'_> {
                     at,
                     color: [r, g, b],
                 } => {
-                    self.particles.0.add(
+                    self.side.particles.0.add(
                         &ParticleOptions::colored(ParticleType::EntityEffect, [r, g, b, 1.0]),
                         at,
                         [0.0; 3],
                     );
                 }
                 // Each guest of a LAN host makes its own.
-                MobEvent::LocalSound(name, at, volume, pitch) => self.audio.0.play_unshared(
+                MobEvent::LocalSound(name, at, volume, pitch) => self.side.audio.0.play_unshared(
                     &format!("minecraft:{name}"),
                     Some(at),
                     volume,
@@ -142,7 +142,7 @@ impl Game<'_> {
                 // its own here; the particles' random stands in for it.
                 let r = match mob {
                     Some(i) => &mut game.mobs.get_mut(i)?.random,
-                    None => game.particles.0.random(),
+                    None => game.side.particles.0.random(),
                 };
                 Some((r.next_double(), r.next_double()))
             });
@@ -192,7 +192,7 @@ impl Game<'_> {
             |game| {
                 let random = match mob {
                     Some(id) => &mut game.mob_index.get_mut(&mut game.mobs, id)?.random,
-                    None => game.particles.0.random(),
+                    None => game.side.particles.0.random(),
                 };
                 Some((random.next_double(), random.next_double()))
             },
@@ -248,7 +248,7 @@ impl Game<'_> {
         if position.z.floor() as i32 != at[2] {
             z = z.clamp(f64::from(at[2]), f64::from(at[2]) + 1.0);
         }
-        self.particles.0.add(
+        self.side.particles.0.add(
             &ParticleOptions::block(ParticleType::Block, sprite, tint)
                 .with_source(&self.res.facts().get(state).name),
             [x, position.y + 0.1, z],
@@ -281,7 +281,7 @@ impl Game<'_> {
                 f64::from(p.dimensions.height),
             );
             swirl(
-                &mut self.particles.0,
+                &mut self.side.particles.0,
                 &self.world,
                 p.position,
                 size,
@@ -309,7 +309,7 @@ impl Game<'_> {
                     .filter_map(|e| effect_particle(e.id, m.extra.ambient_effects.contains(&e.id)))
                     .collect();
                 swirl(
-                    &mut self.particles.0,
+                    &mut self.side.particles.0,
                     &self.world,
                     m.position,
                     size,
@@ -321,7 +321,7 @@ impl Game<'_> {
                 let list = &m.extra.effect_particles;
                 let ambient = m.extra.effect_ambient;
                 swirl(
-                    &mut self.particles.0,
+                    &mut self.side.particles.0,
                     &self.world,
                     m.position,
                     size,

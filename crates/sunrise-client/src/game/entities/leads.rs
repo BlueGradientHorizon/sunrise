@@ -73,7 +73,7 @@ pub(in crate::game) struct Rope {
     pub(in crate::game) quad: Option<[[f64; 3]; 4]>,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn lead_sound(&mut self, sound: &str, at: [f64; 3]) {
         self.server_play_sound(&format!("minecraft:item.lead.{sound}"), at, 1.0, 1.0);
     }
@@ -100,7 +100,7 @@ impl Game<'_> {
     /// of the dead entities' memory (`prune_entity_memory`).
     pub(in crate::game) fn forget_untied_knots(&mut self) {
         let fences = self.lead_fences();
-        self.server.knot_ids.retain(|p, _| fences.contains(p));
+        self.side.knot_ids.retain(|p, _| fences.contains(p));
         self.resident_entities
             .knots
             .retain(|knot| fences.contains(&knot.fence));
@@ -127,7 +127,7 @@ impl Game<'_> {
         {
             return;
         }
-        self.server.knot_ids.remove(&fence);
+        self.side.knot_ids.remove(&fence);
         self.resident_entities
             .knots
             .retain(|knot| knot.fence != fence);
@@ -138,12 +138,12 @@ impl Game<'_> {
     /// it. A fence that already has one keeps it. Call
     /// [`Self::forget_untied_knots`] before the tie.
     pub(in crate::game) fn tie_knot(&mut self, fence: [i32; 3]) -> u32 {
-        if let Some(&id) = self.server.knot_ids.get(&fence) {
+        if let Some(&id) = self.side.knot_ids.get(&fence) {
             return id;
         }
-        self.server.next_entity += 1;
-        let id = self.server.next_entity;
-        self.server.knot_ids.insert(fence, id);
+        self.side.next_entity += 1;
+        let id = self.side.next_entity;
+        self.side.knot_ids.insert(fence, id);
         self.resident_entities.knots.push(Knot {
             attachment_lifetime: Default::default(),
             id,
@@ -191,7 +191,7 @@ impl Game<'_> {
         let facts = self.res.facts();
         let fences = self.res.items().block_tags.get("minecraft:fences");
         let mut untied = Vec::new();
-        self.others.0.retain_mut(|knot| {
+        self.side.others.0.retain_mut(|knot| {
             let Some(check) = knot.knot_check.as_mut() else {
                 return true;
             };
@@ -242,7 +242,7 @@ impl Game<'_> {
         skip: Option<usize>,
     ) -> bool {
         let knot_id = match to {
-            Holder::Knot(fence) => self.server.knot_ids.get(&fence).copied(),
+            Holder::Knot(fence) => self.side.knot_ids.get(&fence).copied(),
             _ => None,
         };
         let mut any = false;
@@ -347,7 +347,7 @@ impl Game<'_> {
         player: Option<[i32; 4]>,
     ) -> bool {
         let knot_id = match holder {
-            Holder::Knot(fence) => self.server.knot_ids.get(&fence).copied(),
+            Holder::Knot(fence) => self.side.knot_ids.get(&fence).copied(),
             _ => None,
         };
         match target {
@@ -425,7 +425,7 @@ impl Game<'_> {
         used: bool,
     ) {
         let killer = self
-            .server
+            .side
             .lead_killers
             .remove(&id)
             .map(|(killer, _)| killer);
@@ -444,8 +444,8 @@ impl Game<'_> {
         self.native_entity_unleash(id, &kind);
         if used
             && let (Some(player), Some(name)) = (
-                self.server.lan_acting_uuid,
-                self.server.lan_acting_name.clone(),
+                self.side.lan_acting_uuid,
+                self.side.lan_acting_name.clone(),
             )
         {
             self.native_player_unleash_entity(player, &name, id);
@@ -496,22 +496,22 @@ impl Game<'_> {
     ) -> bool {
         if let Some(fence) = self.natural_knot(id) {
             let at = leash::knot_state(fence).position.components();
-            self.server.knot_ids.remove(&fence);
+            self.side.knot_ids.remove(&fence);
             self.resident_entities.knots.retain(|k| k.id != id);
-            if !self.server.broken_knots.contains(&fence) {
-                self.server.broken_knots.push(fence);
+            if !self.side.broken_knots.contains(&fence) {
+                self.side.broken_knots.push(fence);
             }
             self.entity_killed_event_by(at, source);
             self.lead_sound("untied", at);
             return true;
         }
         if let Some(i) = self
-            .others
+            .side.others
             .0
             .iter()
             .position(|o| o.id == id && o.kind == "minecraft:leash_knot")
         {
-            let knot = self.others.0.remove(i);
+            let knot = self.side.others.0.remove(i);
             let at = knot.position.components();
             self.entity_killed_event_by(at, source);
             self.lead_sound("untied", at);
@@ -522,14 +522,14 @@ impl Game<'_> {
     /// Holders read from a save become real once the entity is found; a
     /// holder that never shows up drops the lead after 100 ticks.
     pub(in crate::game::server_side) fn tick_leads(&mut self) {
-        if !self.server.broken_knots.is_empty() {
-            let fences = std::mem::take(&mut self.server.broken_knots);
+        if !self.side.broken_knots.is_empty() {
+            let fences = std::mem::take(&mut self.side.broken_knots);
             let drop = self
                 .ui
                 .rules
                 .bool_at(sunrise_client::gamerules::vanilla::ENTITY_DROPS);
             for fence in fences {
-                let live_id = self.server.knot_ids.get(&fence).copied();
+                let live_id = self.side.knot_ids.get(&fence).copied();
                 let mobs: Vec<u32> = self
                     .mobs
                     .iter()
@@ -555,9 +555,9 @@ impl Game<'_> {
         }
         // A corpse gone without dropping its lead takes its killer along.
         // Only this level's: the others' mobs aren't in place.
-        if !self.server.lead_killers.is_empty() {
+        if !self.side.lead_killers.is_empty() {
             let (mobs, dim) = (&self.mobs, self.dim);
-            self.server
+            self.side
                 .lead_killers
                 .retain(|id, (_, at)| *at != dim || mobs.iter().any(|m| m.id == *id && !m.removed));
         }
@@ -662,7 +662,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Entity.interact`: retain the holder-detach success's item context.
     pub(in crate::game) fn interact_leash_with_item_context(
         &mut self,

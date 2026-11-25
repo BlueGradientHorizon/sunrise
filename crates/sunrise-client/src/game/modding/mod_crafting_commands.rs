@@ -1,6 +1,6 @@
 //! Hidden crafting recipe knowledge for /recipe, without recipe-book displays.
 use crate::game::Game;
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn change_mod_crafting_recipes(
         &mut self,
         give: bool,

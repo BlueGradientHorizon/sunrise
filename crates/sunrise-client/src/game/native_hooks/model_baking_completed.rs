@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `ModelEvent.BakingCompleted`: the resources' models are baked and published, the
     /// standalone ones included, so `model` resolves them in the new store. Once per successful
     /// model load, after both atlases' `texture_atlas_stitched`: on the first load before

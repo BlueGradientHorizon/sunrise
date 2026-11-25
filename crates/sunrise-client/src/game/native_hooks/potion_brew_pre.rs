@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A brewing stand at `pos` is about to brew (`PotionBrewEvent.Pre`,
     /// in `BrewingStandBlockEntity.doBrew`): `stacks` is a copy of its five
     /// slots (three bottles, the ingredient, the fuel). Set `cancel` to skip

@@ -2,7 +2,7 @@
 use super::Game;
 use sunrise_client::{items::ItemStack, mobs::piglin::BARTERING_ITEM};
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn piglin_loved(&self, item: &str) -> bool {
         self.item_in_tag("minecraft:piglin_loved", item)
     }

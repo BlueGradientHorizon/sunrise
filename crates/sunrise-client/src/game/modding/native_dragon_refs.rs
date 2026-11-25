@@ -7,7 +7,7 @@ use super::{
 };
 use mod_api::{DragonPhase, DragonRef, EntityRef, LivingRef, MobRef};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The dragon an entity handle names now.
     pub(in crate::game::server_side) fn native_dragon(&self, entity: EntityRef) -> Option<&Dragon> {
         let Target::Dragon(id) = self.native_entity_target(entity)? else {
@@ -60,7 +60,7 @@ impl Game<'_> {
     /// fight of a dragon in the level in place when that is the End.
     fn native_dragon_fight(&self, dragon: DragonRef) -> Option<&Fight> {
         self.native_dragon(dragon.entity())?;
-        (self.dim == Dim::End && self.server.fight.loaded).then_some(&self.server.fight)
+        (self.dim == Dim::End && self.side.fight.loaded).then_some(&self.side.fight)
     }
 
     /// `EnderDragonFight.aliveCrystals`: the crystals the last scan found

@@ -8,11 +8,11 @@ pub(in crate::game::server_side) use sunrise_client::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_core::geometry::Direction;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `BlockTransformer.TransformParticle.send`: its level event.
     pub(in crate::game) fn transform_particle(&mut self, particle: &str, pos: [i32; 3]) {
         let source = self
-            .server
+            .side
             .lan_acting_uuid
             .map(sunrise_world::level::LevelEventPlayer);
         match particle {

@@ -314,7 +314,7 @@ fn tabs(w: f32) -> (f32, f32) {
 }
 const TAB_H: f32 = 24.0;
 const FOOTER: f32 = 33.0;
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn open_stats(&mut self) {
         // StatsScreen.init: a server's client asks for its statistics.
         if self.remote.is_some() {
@@ -322,7 +322,7 @@ impl Game<'_> {
                 sunrise_protocol::packets::play::ClientCommand { action: 1 },
             ));
         }
-        self.client.stats_ui = StatsUi::default();
+        self.side.stats_ui = StatsUi::default();
         self.set_screen(Screen::Stats);
     }
     /// The list's scrollbar column (right of the 280 pixel list) and the
@@ -335,7 +335,7 @@ impl Game<'_> {
         row_h * rows as f32 + 4.0
     }
     fn stats_rows(&self) -> (f32, usize) {
-        match self.client.stats_ui.tab {
+        match self.side.stats_ui.tab {
             0 => (14.0, CUSTOM.len()),
             1 => (22.0, self.stat_items().len() + 1),
             _ => (36.0, self.stat_mobs().len()),
@@ -358,7 +358,7 @@ impl Game<'_> {
                 |s| self.res.facts().get(s).item.to_string(),
             )
         });
-        if let Some((col, order)) = self.client.stats_ui.sort {
+        if let Some((col, order)) = self.side.stats_ui.sort {
             let ty = COLUMNS[col].0;
             // `Item.getId`: one pass over the registry, not a scan per row
             // (the screen asks for its rows several times a frame).
@@ -465,13 +465,13 @@ impl Game<'_> {
                 row
             };
             let hovered = (0..TABS.len())
-                .find(|&i| ui::hovered(self.client.cursor, x0 + tw * i as f32, 0.0, tw, TAB_H));
+                .find(|&i| ui::hovered(self.side.cursor, x0 + tw * i as f32, 0.0, tw, TAB_H));
             Narratable::new(
                 What::List {
                     kind: ListKind::Tabs,
                     total: TABS.len(),
                     hovered: hovered.map(row),
-                    selected: Some(row(self.client.stats_ui.tab.min(TABS.len() - 1))),
+                    selected: Some(row(self.side.stats_ui.tab.min(TABS.len() - 1))),
                 },
                 [x0, 0.0, tw * TABS.len() as f32, TAB_H],
             )
@@ -479,7 +479,7 @@ impl Game<'_> {
         });
         for (i, key) in TABS.into_iter().enumerate() {
             let x = x0 + tw * i as f32;
-            let selected = self.client.stats_ui.tab == i;
+            let selected = self.side.stats_ui.tab == i;
             let active = self.stats_tab_active(i);
             // Only one that can be chosen: the bumpers step from the selected tab by clicking.
             if active {
@@ -488,7 +488,7 @@ impl Game<'_> {
                     sunrise_client::widgets::Kind::Tab(selected),
                 );
             }
-            let hover = ui::hovered(self.client.cursor, x, 0.0, tw, TAB_H);
+            let hover = ui::hovered(self.side.cursor, x, 0.0, tw, TAB_H);
             if hover && !active {
                 tab_tip = true;
             }
@@ -515,20 +515,20 @@ impl Game<'_> {
         // The list.
         let (row_h, rows) = self.stats_rows();
         let content = row_h * rows as f32 + 4.0;
-        self.client.stats_ui.scroll.clamp(top, bottom, content);
+        self.side.stats_ui.scroll.clamp(top, bottom, content);
         let left = ((w - 280.0) / 2.0).floor();
-        let scroll = self.client.stats_ui.scroll.amount;
+        let scroll = self.side.stats_ui.scroll.amount;
         let row_y = |i: usize| top + 4.0 + i as f32 * row_h - scroll;
         let visible = |y: f32| y >= top && y + row_h <= bottom;
         // The list's row under the mouse (`getHovered`).
         let hovered_row = {
-            let (cx, cy) = self.client.cursor;
+            let (cx, cy) = self.side.cursor;
             let i = ((cy - (top + 4.0) + scroll) / row_h).floor();
             let inside = cy >= top && cy < bottom && cx >= left && cx < left + 280.0;
             (inside && i >= 0.0 && (i as usize) < rows).then_some(i as usize)
         };
         let list_rect = [0.0, top, w, bottom - top];
-        let list_key = sunrise_client::widgets::key_of(&("stats/list", self.client.stats_ui.tab));
+        let list_key = sunrise_client::widgets::key_of(&("stats/list", self.side.stats_ui.tab));
         let tr = super::screen_info::tr;
         // GeneralStatisticsList and MobsStatisticsList: ObjectSelectionLists
         // narrating the hovered row (none is selected).
@@ -541,7 +541,7 @@ impl Game<'_> {
         };
         // The hovered item's tooltip, drawn over the list.
         let mut tip = None;
-        match self.client.stats_ui.tab {
+        match self.side.stats_ui.tab {
             0 => {
                 let mut sorted: Vec<(Text, String)> = CUSTOM
                     .iter()
@@ -600,7 +600,7 @@ impl Game<'_> {
                 if visible(y) {
                     for (c, (ty, sprite)) in COLUMNS.iter().enumerate() {
                         let x = left + 75.0 + 40.0 * c as f32 - 18.0;
-                        let hover = ui::hovered(self.client.cursor, x, y + 1.0, 18.0, 18.0);
+                        let hover = ui::hovered(self.side.cursor, x, y + 1.0, 18.0, 18.0);
                         // StatSortButton: an ImageButton named by its stat
                         // type, which is its tooltip too.
                         sunrise_client::widgets::narratable(|| {
@@ -621,7 +621,7 @@ impl Game<'_> {
                         };
                         batch.sprite(atlas, bg, x, y + 1.0);
                         batch.sprite(atlas, sprite, x, y + 1.0);
-                        if let Some((sc, order)) = self.client.stats_ui.sort
+                        if let Some((sc, order)) = self.side.stats_ui.sort
                             && sc == c
                         {
                             let s = if order < 0 {
@@ -653,7 +653,7 @@ impl Game<'_> {
                     batch.sprite(&self.gui.atlas, "container/slot", left + 1.0, y + 1.0);
                     self.draw_item(batch, &stack, left + 2.0, y + 2.0);
                     // `ItemRowWidget.extractTooltip`: the item's tooltip at the slot's corner.
-                    if ui::hovered(self.client.cursor, left + 1.0, y + 1.0, 18.0, 18.0) {
+                    if ui::hovered(self.side.cursor, left + 1.0, y + 1.0, 18.0, 18.0) {
                         tip = Some((stack.clone(), left + 19.0, y + 19.0));
                     }
                     let atlas = &self.gui.atlas;
@@ -703,7 +703,7 @@ impl Game<'_> {
             top,
             bottom,
             content,
-            self.client.stats_ui.scroll.amount,
+            self.side.stats_ui.scroll.amount,
         );
         self.draw_stats_footer(batch, w, h);
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
@@ -719,14 +719,14 @@ impl Game<'_> {
                 batch,
                 atlas,
                 &atlas.font.split(&tip, 170.0),
-                self.client.cursor,
+                self.side.cursor,
             );
         }
     }
     fn draw_stats_footer(&self, batch: &mut HudBatch, w: f32, h: f32) {
         let atlas = &self.gui.atlas;
         let (bx, by) = ((w / 2.0 - 100.0).floor(), h - FOOTER + 6.0);
-        let hover = ui::hovered(self.client.cursor, bx, by, 200.0, 20.0);
+        let hover = ui::hovered(self.side.cursor, bx, by, 200.0, 20.0);
         ui::action_button(
             batch,
             atlas,
@@ -747,11 +747,11 @@ impl Game<'_> {
         let active = [true, self.stats_tab_active(1), self.stats_tab_active(2)];
         let ctrl = self.has_control_down_with_quirk();
         let shift = self.has_shift_down();
-        let before = self.client.stats_ui.tab;
-        if self.client.stats_ui.key(key, ctrl, shift, active) && self.client.stats_ui.tab != before
+        let before = self.side.stats_ui.tab;
+        if self.side.stats_ui.key(key, ctrl, shift, active) && self.side.stats_ui.tab != before
         {
             // TabManager.setCurrentTab(.., true): the click of a tab press.
-            self.audio
+            self.side.audio
                 .0
                 .play("minecraft:ui.button.click", None, 0.25, 1.0);
         }
@@ -765,46 +765,46 @@ impl Game<'_> {
         let (w, h) = (b.width, b.height);
         let (x0, tw) = tabs(w);
         for i in 0..3 {
-            if ui::hovered(self.client.cursor, x0 + tw * i as f32, 0.0, tw, TAB_H)
-                && self.client.stats_ui.tab != i
+            if ui::hovered(self.side.cursor, x0 + tw * i as f32, 0.0, tw, TAB_H)
+                && self.side.stats_ui.tab != i
                 && self.stats_tab_active(i)
             {
-                self.client.stats_ui.tab = i;
-                self.client.stats_ui.scroll.amount = 0.0;
-                self.audio
+                self.side.stats_ui.tab = i;
+                self.side.stats_ui.scroll.amount = 0.0;
+                self.side.audio
                     .0
                     .play("minecraft:ui.button.click", None, 0.25, 1.0);
                 return true;
             }
         }
         if ui::hovered(
-            self.client.cursor,
+            self.side.cursor,
             (w / 2.0 - 100.0).floor(),
             h - FOOTER + 6.0,
             200.0,
             20.0,
         ) {
-            self.audio
+            self.side.audio
                 .0
                 .play("minecraft:ui.button.click", None, 0.25, 1.0);
             self.set_screen(Screen::Paused);
             return true;
         }
         let mut handled = false;
-        if self.client.stats_ui.tab == 1 {
+        if self.side.stats_ui.tab == 1 {
             let left = ((w - 280.0) / 2.0).floor();
-            let y = TAB_H + 4.0 - self.client.stats_ui.scroll.amount;
+            let y = TAB_H + 4.0 - self.side.stats_ui.scroll.amount;
             for c in 0..COLUMNS.len() {
                 let x = left + 75.0 + 40.0 * c as f32 - 18.0;
-                if ui::hovered(self.client.cursor, x, y + 1.0, 18.0, 18.0) {
+                if ui::hovered(self.side.cursor, x, y + 1.0, 18.0, 18.0) {
                     handled = true;
                     // sortByColumn: descending, ascending, off.
-                    self.client.stats_ui.sort = match self.client.stats_ui.sort {
+                    self.side.stats_ui.sort = match self.side.stats_ui.sort {
                         Some((sc, -1)) if sc == c => Some((c, 1)),
                         Some((sc, _)) if sc == c => None,
                         _ => Some((c, -1)),
                     };
-                    self.audio
+                    self.side.audio
                         .0
                         .play("minecraft:ui.button.click", None, 0.25, 1.0);
                 }
@@ -815,11 +815,11 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn stats_scroll(&mut self, amount: f32) -> bool {
         let (row_h, _) = self.stats_rows();
         let h = self.gui_size().1;
-        if !(TAB_H..h - FOOTER).contains(&self.client.cursor.1) {
+        if !(TAB_H..h - FOOTER).contains(&self.side.cursor.1) {
             return false;
         }
         let content = self.stats_content();
-        self.client
+        self.side
             .stats_ui
             .scroll
             .wheel(amount, row_h / 2.0, TAB_H, h - FOOTER, content);
@@ -831,8 +831,8 @@ impl Game<'_> {
         let b = HudBatch::new(size, self.settings.gui_scale_inputs());
         let (w, h) = (b.width, b.height);
         let content = self.stats_content();
-        self.client.stats_ui.scroll.press(
-            self.client.cursor,
+        self.side.stats_ui.scroll.press(
+            self.side.cursor,
             Self::stats_bar(w),
             TAB_H,
             h - FOOTER,
@@ -841,21 +841,21 @@ impl Game<'_> {
     }
     /// The pointer moved while the scrollbar is held.
     pub(in crate::game::client_side) fn stats_drag(&mut self) -> bool {
-        if !self.client.stats_ui.scroll.held() {
+        if !self.side.stats_ui.scroll.held() {
             return false;
         }
         let h = self.gui_size().1;
         let content = self.stats_content();
-        self.client
+        self.side
             .stats_ui
             .scroll
-            .drag(self.client.cursor.1, TAB_H, h - FOOTER, content);
+            .drag(self.side.cursor.1, TAB_H, h - FOOTER, content);
         true
     }
     /// The button came up: the scrollbar lets go.
     pub(in crate::game::client_side) fn stats_release(&mut self) -> bool {
-        let handled = self.client.stats_ui.scroll.held();
-        self.client.stats_ui.scroll.release();
+        let handled = self.side.stats_ui.scroll.held();
+        self.side.stats_ui.scroll.release();
         handled
     }
 }

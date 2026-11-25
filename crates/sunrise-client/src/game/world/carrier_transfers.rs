@@ -154,7 +154,7 @@ fn entities_content_equal(live: &sunrise_core::nbt::Tag, image: &sunrise_core::n
     sunrise_core::nbt::compare_nbt(&strip(live), Some(&strip(image)))
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Assembles `cells` into one carrier. One synchronous call on the
     /// server's thread at a tick boundary — no tick runs between
     /// `prepared` and `committed`, which is why routes without their own
@@ -245,14 +245,14 @@ impl Game<'_> {
             .unwrap_or(MAX_CARRIERS);
         #[cfg(not(test))]
         let capacity = MAX_CARRIERS;
-        let mut store = match Store::open_with_capacity(&self.server.world_root, capacity) {
+        let mut store = match Store::open_with_capacity(&self.side.world_root, capacity) {
             Ok(crate::carrier_store::Opened::Live(store)) => store,
             Ok(crate::carrier_store::Opened::NeverUsed) => {
                 // The gate reads the flag captured at world open, not
                 // the folder's existence now: a data folder created
                 // this session does not pass for an old one.
                 Store::first_use_with_capacity(
-                    &self.server.world_root,
+                    &self.side.world_root,
                     self.world.carrier_data_existed_at_open,
                     capacity,
                 )
@@ -261,7 +261,7 @@ impl Game<'_> {
             Err(e) => return Err(TransferError::Store(e.to_string())),
         };
 
-        store.use_retention_snapshot(&self.server.carrier_retention_snapshot);
+        store.use_retention_snapshot(&self.side.carrier_retention_snapshot);
 
         // Before/after images from the live world, encoded in memory —
         // a transfer that cannot be stored never lifts a block.
@@ -534,7 +534,7 @@ impl Game<'_> {
             .unwrap_or(MAX_CARRIERS);
         #[cfg(not(test))]
         let capacity = MAX_CARRIERS;
-        let mut store = match Store::open_with_capacity(&self.server.world_root, capacity) {
+        let mut store = match Store::open_with_capacity(&self.side.world_root, capacity) {
             Ok(crate::carrier_store::Opened::Live(store)) => store,
             _ => {
                 return Err(TransferError::Store(
@@ -542,7 +542,7 @@ impl Game<'_> {
                 ));
             }
         };
-        store.use_retention_snapshot(&self.server.carrier_retention_snapshot);
+        store.use_retention_snapshot(&self.side.carrier_retention_snapshot);
         if !store.journal().lists(uuid, generation) {
             return Err(TransferError::CarrierUnreadable(
                 "the journal does not list this carrier".into(),
@@ -748,7 +748,7 @@ impl Game<'_> {
                 "injected: the flush barrier failed after prepared".into(),
             ));
         }
-        self.save
+        self.side.save
             .0
             .flush()
             .map_err(|e| TransferError::Io(e.to_string()))?;
@@ -812,7 +812,7 @@ impl Game<'_> {
                 "injected: the flush barrier failed after prepared".into(),
             ));
         }
-        self.save
+        self.side.save
             .0
             .flush()
             .map_err(|e| TransferError::Io(e.to_string()))?;
@@ -879,8 +879,8 @@ impl Game<'_> {
     /// finished recovers before the first tick and any player. A
     /// refusal fails the open, and no save runs after it.
     pub(in crate::game::server_side) fn carrier_world_opened(&mut self) -> crate::Result<()> {
-        self.world.carrier_data_existed_at_open = self.server.world_root.join("data").is_dir();
-        self.server.carrier_retention_snapshot = match Store::open(&self.server.world_root) {
+        self.world.carrier_data_existed_at_open = self.side.world_root.join("data").is_dir();
+        self.side.carrier_retention_snapshot = match Store::open(&self.side.world_root) {
             Ok(crate::carrier_store::Opened::Live(store)) => store.retention_snapshot(),
             Ok(crate::carrier_store::Opened::NeverUsed) => Vec::new(),
             Err(error) => {
@@ -915,7 +915,7 @@ impl Game<'_> {
     /// while the store stays exactly as recovery found it.
     pub(in crate::game::server_side) fn carrier_recover_all_levels(&mut self) -> crate::Result<()> {
         // No pending operation: no level is touched at all.
-        let dimension = match crate::carrier_store::Store::open(&self.server.world_root) {
+        let dimension = match crate::carrier_store::Store::open(&self.side.world_root) {
             Ok(crate::carrier_store::Opened::Live(store)) => {
                 match store.journal().in_progress.as_ref() {
                     Some(op) => op.dimension.clone(),
@@ -976,7 +976,7 @@ impl Game<'_> {
     /// the storage layer, run from world open. Errors are logged and
     /// swallowed: cleanup is retention work, never a load refusal.
     fn carrier_cleanup(&mut self) {
-        let mut store = match crate::carrier_store::Store::open(&self.server.world_root) {
+        let mut store = match crate::carrier_store::Store::open(&self.side.world_root) {
             Ok(crate::carrier_store::Opened::Live(store)) => store,
             _ => return,
         };
@@ -989,7 +989,7 @@ impl Game<'_> {
     /// store's in-progress operation replays against this level's region
     /// directory, and only if the operation names this level.
     fn carrier_recover_current(&mut self) -> Result<(), String> {
-        let mut store = match crate::carrier_store::Store::open(&self.server.world_root) {
+        let mut store = match crate::carrier_store::Store::open(&self.side.world_root) {
             Ok(crate::carrier_store::Opened::Live(store)) => store,
             Ok(crate::carrier_store::Opened::NeverUsed) => return Ok(()),
             Err(error) => return Err(error.to_string()),
@@ -999,7 +999,7 @@ impl Game<'_> {
         }
         // SaveDir::root is the dimension folder; the regions live in its
         // region/ child.
-        let region = self.save.0.root.join("region");
+        let region = self.side.save.0.root.join("region");
         let states = crate::carrier_store::RegistryStates::new(self.pack.assets.registry);
         crate::carrier_store::recover(&mut store, &region, &states, self.dim.id())
             .map(|_| ())
@@ -1024,10 +1024,10 @@ impl Game<'_> {
         if chunks.is_empty() {
             return Ok(());
         }
-        self.save
+        self.side.save
             .0
             .save_later(&chunks, self.pack.assets.registry, world_biomes!(self))?;
-        self.save.0.flush()
+        self.side.save.0.flush()
     }
 }
 
@@ -1038,7 +1038,7 @@ impl Game<'_> {
 /// (`save_game_with`, world/autosave.rs), so the exit path's save and
 /// any autosave write nothing over the affected regions. The prepared
 /// operation stays on disk for recovery at the next open.
-fn carrier_stop_session(game: &mut Game<'_>, error: &TransferError) {
+fn carrier_stop_session(game: &mut Game<'_, crate::game::server_side::ServerState>, error: &TransferError) {
     if game.error.is_none() {
         game.error = Some(format!("carrier transfer failed: {error}").into());
     }

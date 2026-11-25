@@ -56,7 +56,7 @@ pub(in crate::game) fn attackable(p: &Projectile) -> bool {
     redirectable(p) || matches!(p.kind, ProjectileKind::ShulkerBullet { .. })
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The pickable projectile under the crosshair within entity reach.
     pub(in crate::game::server_side) fn redirectable_hit(&self) -> Option<(usize, f64)> {
         let (eye, dir) = self.aim()?;
@@ -196,7 +196,7 @@ impl Game<'_> {
     /// owner. False, and nothing changes, when the projectile refuses.
     pub(in crate::game::server_side) fn turn_projectile(&mut self, i: usize) -> bool {
         let (pitch, yaw) = (self.pitch, self.yaw);
-        let (guest, owner_uuid) = (self.server.lan_acting, Some(self.acting_player_uuid()));
+        let (guest, owner_uuid) = (self.side.lan_acting, Some(self.acting_player_uuid()));
         self.creatures
             .projectiles
             .update(i, |p| attack_deflect(p, pitch, yaw, owner_uuid, guest))
@@ -225,7 +225,7 @@ pub(in crate::game::server_side) fn attack_deflect(
     true
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Player.attack` on a redirectable projectile: `onAttack` resets the
     /// attack strength, then `Projectile.deflect(AIM_DEFLECT, player, player,
     /// true)`. When the projectile refuses (a wind charge in its first five

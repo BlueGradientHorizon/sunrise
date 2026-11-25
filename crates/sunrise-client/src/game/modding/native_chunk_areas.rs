@@ -55,7 +55,7 @@ fn refusal(
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// For a server mod: its areas for `player`, in place of its last ones, through
     /// `Hub::set_viewed_areas`. Refused, changing nothing, for a player not online, a level
     /// handle of an earlier open, a call outside a mod's hook, and what the hub refuses.

@@ -14,7 +14,7 @@ fn title(session: Option<&str>) -> String {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The session part `createTitle` adds while `getConnection` has a player and its connection is open.
     fn title_session(&self) -> Option<&'static str> {
         let live = self.remote.as_ref().is_some_and(|r| r.session.connected());
@@ -34,17 +34,17 @@ impl Game<'_> {
 
     /// `updateTitle`: on a session change (level, publishing), and a new language once back to play.
     pub(in crate::game::client_side) fn update_window_title(&mut self) {
-        let language = match self.client.window_title {
-            Some((_, shown)) if self.client.screen != Screen::Playing => shown,
+        let language = match self.side.window_title {
+            Some((_, shown)) if self.side.screen != Screen::Playing => shown,
             _ => sunrise_client::lang::generation(),
         };
         let shown = (self.title_session(), language);
-        if self.client.window_title == Some(shown) {
+        if self.side.window_title == Some(shown) {
             return;
         }
-        if let Some(window) = &self.window.0 {
+        if let Some(window) = &self.side.window.0 {
             window.set_title(&title(shown.0));
-            self.client.window_title = Some(shown);
+            self.side.window_title = Some(shown);
         }
     }
 }

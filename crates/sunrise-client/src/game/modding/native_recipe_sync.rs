@@ -1,7 +1,7 @@
 //! Per-recipient recipe selection on the server thread.
 use crate::game::Game;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn prepare_recipe_join(&mut self, conn: u32) {
         self.ask_recipe_for_conn(conn);
         self.native_filter_commands(Some(conn));

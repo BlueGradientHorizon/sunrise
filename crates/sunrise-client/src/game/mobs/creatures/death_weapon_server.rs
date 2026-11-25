@@ -3,7 +3,7 @@ pub(in crate::game::server_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::creatures::death_weapon::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn projectile_attack(&self, shot: &Projectile) -> Attack {
         let mut attack = match shot.owner {
             Some(Who::Player) => self
@@ -78,7 +78,7 @@ impl Game<'_> {
         source: Damage,
         aim: Option<sunrise_client::mobs::Aim>,
     ) -> bool {
-        if self.combat.0.attack().projectile != Some(projectile.id as i32) {
+        if self.side.combat.0.attack().projectile != Some(projectile.id as i32) {
             let attack = self.projectile_attack(projectile);
             return self.with_attack(attack, |game| {
                 game.damage_projectile_with_weapon(projectile, id, amount, source, aim)
@@ -92,15 +92,15 @@ impl Game<'_> {
             return false;
         };
         let plan =
-            self.prepare_knockback_credit(id as i32, source.attacker, self.combat.0.attack());
+            self.prepare_knockback_credit(id as i32, source.attacker, self.side.combat.0.attack());
         // The projectile's shooter, the hit's causing entity.
-        let shooter = self.combat.0.attack().attacker;
+        let shooter = self.side.combat.0.attack().attacker;
         let decision = crate::game::entity::causer_decision!(self, shooter);
-        let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
+        let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
         let (victim, lend) =
             crate::game::entity::victim_and_causer!(self, index, shooter, decision);
         let hurt = victim.damage_projectile(
-            crate::game::entity::damage_level_of!(self, self.combat.0.attack(), &mut credit, lend),
+            crate::game::entity::damage_level_of!(self, self.side.combat.0.attack(), &mut credit, lend),
             amount,
             source,
             aim,
@@ -139,7 +139,7 @@ impl Game<'_> {
         }
         let weapon = accepted.as_ref().and_then(|hit| hit.weapon.as_ref());
         let weapon = weapon.and_then(|stack| stack.try_into_api().ok());
-        let Some(loot) = self.server_loot.0.get() else {
+        let Some(loot) = self.side.server_loot.0.get() else {
             return self.death_experience(m, player_uuid, player_killed, consumed);
         };
         let player = || killer.clone();
@@ -153,7 +153,7 @@ impl Game<'_> {
                     .then(|| self.target_loot_entity(crate::game::commands::Target::Mob(id)))
                     // A charged creeper's blast kills after the creeper left the list.
                     .or_else(|| {
-                        self.combat
+                        self.side.combat
                             .0
                             .charged_exploders
                             .contains(&id)
@@ -244,7 +244,7 @@ impl Game<'_> {
                 }
                 None => {
                     let mut rolls = drops::PlainRolls {
-                        sequences: &mut self.server.rand_sequences,
+                        sequences: &mut self.side.rand_sequences,
                         level_random: &mut self.world.random,
                     };
                     drops::roll_death(m, &death, &mut rolls)
@@ -284,7 +284,7 @@ impl Game<'_> {
         });
         if skulls && let Some(Who::Mob(id)) = m.last_damage.and_then(|(d, _)| d.attacker) {
             // Creeper.droppedSkulls: one head per charged explosion.
-            self.combat.0.charged_exploders.retain(|c| *c != id);
+            self.side.combat.0.charged_exploders.retain(|c| *c != id);
             if let Some(creeper) = self.mobs.iter_mut().find(|o| o.id == id) {
                 creeper.extra.charged = false;
             }
@@ -436,7 +436,7 @@ impl Game<'_> {
         let player = self.own_entity_id() as u32;
         let attacker = shot.owner.map(|owner| match owner {
             Who::Player => self
-                .combat
+                .side.combat
                 .0
                 .enchantment_projectile_attacker
                 .or_else(|| self.player_attacker(shot.guest).map(|s| s.0))

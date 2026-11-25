@@ -5,7 +5,7 @@ use sunrise_client_render::moving_colliders::{self, Placed, Prepared, Shove};
 use sunrise_core::geometry::Vec3;
 use sunrise_world::{entity_move::MoverType, piston_push};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn server_shove_pass(
         &mut self,
         start: &Prepared,

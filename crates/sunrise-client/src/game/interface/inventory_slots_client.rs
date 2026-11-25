@@ -10,7 +10,7 @@ pub(in crate::game::client_side) use crate::game::inventory_slots::container_slo
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::inventory_slots::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn craft_result(&self) -> Option<ItemStack> {
         // A server's result slot is the server's (`CraftingMenu.slotChangedCraftingGrid`).
         if let Some(r) = &self.remote {
@@ -20,7 +20,7 @@ impl Game<'_> {
     }
     /// The quick craft drag in progress, as the menu engine previews it.
     pub(in crate::game) fn drag_view(&mut self) -> Option<DragView> {
-        let (ty, slots) = self.client.inv_drag.clone()?;
+        let (ty, slots) = self.side.inv_drag.clone()?;
         let mut view = None;
         self.menu_session(|menu, env, to_menu| {
             let menu_slots: Option<Vec<usize>> = slots.iter().map(|&g| to_menu(g)).collect();
@@ -58,8 +58,8 @@ impl Game<'_> {
         self.draw_item(
             batch,
             &stack,
-            self.client.cursor.0 - 8.0,
-            self.client.cursor.1 - 8.0,
+            self.side.cursor.0 - 8.0,
+            self.side.cursor.1 - 8.0,
         );
     }
     /// The highlight of the slot under the cursor, for the screens whose
@@ -72,7 +72,7 @@ impl Game<'_> {
         ox: f32,
         oy: f32,
     ) {
-        let Some(slot) = self.slot_at(batch, self.client.cursor.0, self.client.cursor.1) else {
+        let Some(slot) = self.slot_at(batch, self.side.cursor.0, self.side.cursor.1) else {
             return;
         };
         if slot == 309 && matches!(self.container_kind(), Some(BlockEntity::Crafter(_))) {
@@ -260,13 +260,13 @@ impl Game<'_> {
         let browser_tip = self.draw_mod_browser(batch);
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
         if let Some(lines) = book_tip {
-            self.draw_tooltip_lines(batch, &lines, self.client.cursor.0, self.client.cursor.1);
+            self.draw_tooltip_lines(batch, &lines, self.side.cursor.0, self.side.cursor.1);
         }
         self.draw_carried(batch);
         self.draw_slot_tooltip(batch);
         self.draw_native_screen_tooltip(batch);
         if let Some(lines) = effect_tip {
-            self.draw_tooltip_lines(batch, &lines, self.client.cursor.0, self.client.cursor.1);
+            self.draw_tooltip_lines(batch, &lines, self.side.cursor.0, self.side.cursor.1);
         }
         if let Some(tooltip) = browser_tip {
             self.draw_mod_browser_tooltip(batch, tooltip);
@@ -454,7 +454,7 @@ impl Game<'_> {
     /// open book moves the window right, the room the mods ask beside it
     /// (`screen_room`) left.
     pub(in crate::game) fn inventory_origin_unbuilt(&self, batch: &HudBatch) -> (f32, f32) {
-        if self.client.screen == Screen::Creative {
+        if self.side.screen == Screen::Creative {
             return Self::creative_origin(batch);
         }
         let width = self.native_screen_width().unwrap_or(176.0);

@@ -3,9 +3,9 @@ use super::{Game, Screen};
 use mod_api::{MenuRef, MenuSlotKind};
 use sunrise_client::containers::{ModMenuType, mod_menu_type};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn menu_slot_kinds(&self, menu: MenuRef) -> Option<Vec<MenuSlotKind>> {
-        if !matches!(self.client.screen, Screen::Inventory | Screen::Creative) {
+        if !matches!(self.side.screen, Screen::Inventory | Screen::Creative) {
             return None;
         }
         self.remote.as_ref().filter(|remote| remote.has_level())?;

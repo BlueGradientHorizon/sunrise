@@ -14,7 +14,7 @@ fn refused(why: Refused) -> CollisionExclusionsError {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// For a server mod: the player's collision exclusions, in place of the last ones (the
     /// guest's, which its moves are checked against, and its body's). Refused for a stale handle,
     /// an entity that isn't a player, and boxes the set refuses; the set there was stays.
@@ -29,13 +29,13 @@ impl Game<'_> {
         {
             Target::Guest(conn) => conn,
             Target::Player => self
-                .server
+                .side
                 .lan_acting
                 .ok_or(CollisionExclusionsError::Stale)?,
             _ => return Err(CollisionExclusionsError::NotAPlayer),
         };
         // During the guest's own turn its body is the game's player.
-        let acting = self.server.lan_acting == Some(conn);
+        let acting = self.side.lan_acting == Some(conn);
         let host = self.lan.as_mut().ok_or(CollisionExclusionsError::Stale)?;
         let turn_body = host
             .hub

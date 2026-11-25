@@ -426,7 +426,7 @@ pub(in crate::game::client_side) fn argb(c: i32) -> u32 {
 pub(in crate::game::client_side) fn rgb_of(rgba: u32) -> u32 {
     (rgba & 0xFF) << 16 | (rgba >> 8 & 0xFF) << 8 | (rgba >> 16 & 0xFF)
 }
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `EnchantmentScreen.containerTick`'s `tickBook` for an open enchanting table.
     pub(in crate::game::client_side) fn tick_enchanting_book(&mut self) {
         if let Some(s) = self.station.as_mut().filter(|s| s.kind == Kind::Enchanting) {
@@ -892,7 +892,7 @@ impl Game<'_> {
             return false;
         }
         let Some(size) = self
-            .renderer
+            .side.renderer
             .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
@@ -901,7 +901,7 @@ impl Game<'_> {
         };
         let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
         let (ox, oy) = self.inventory_origin(&batch);
-        let local = (self.client.cursor.0 - ox, self.client.cursor.1 - oy);
+        let local = (self.side.cursor.0 - ox, self.side.cursor.1 - oy);
         let shift = self.has_shift_down();
         if let Some(kind) = self.station.as_ref().map(|s| s.kind) {
             if kind == Kind::Merchant && !right && self.merchant_click(local) {
@@ -933,7 +933,7 @@ impl Game<'_> {
                 return true;
             }
         }
-        let Some(slot) = self.slot_at(&batch, self.client.cursor.0, self.client.cursor.1) else {
+        let Some(slot) = self.slot_at(&batch, self.side.cursor.0, self.side.cursor.1) else {
             return true;
         };
         // Every station's clicks (and the brewing stand's) run on the
@@ -1011,7 +1011,7 @@ impl Game<'_> {
                 Some(*flag)
             });
             if taken {
-                self.audio
+                self.side.audio
                     .0
                     .play("minecraft:ui.stonecutter.select_recipe", None, 1.0, 1.0);
                 self.remote_station_button(index as i32);
@@ -1028,7 +1028,7 @@ impl Game<'_> {
             return false;
         };
         let (ox, oy) = self.inventory_origin(&batch);
-        let local = (self.client.cursor.0 - ox, self.client.cursor.1 - oy);
+        let local = (self.side.cursor.0 - ox, self.side.cursor.1 - oy);
         if !off_visible_rows(&self.station_targets(), local, up) {
             return false;
         }
@@ -1070,7 +1070,7 @@ impl Game<'_> {
         let mut handled = self.loom_drag();
         handled |= self.merchant_drag();
         let Some(size) = self
-            .renderer
+            .side.renderer
             .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
@@ -1078,7 +1078,7 @@ impl Game<'_> {
             return handled;
         };
         let (_, oy) = self.inventory_origin(&HudBatch::new(size, self.settings.gui_scale_inputs()));
-        let y = self.client.cursor.1 - oy;
+        let y = self.side.cursor.1 - oy;
         // `StonecutterScreen.mouseDragged`.
         if let Some(s) = self.station.as_mut()
             && s.kind == Kind::Stonecutter
@@ -1103,7 +1103,7 @@ impl Game<'_> {
     }
     /// Whether keyboard text goes to the anvil rename box.
     pub(in crate::game::client_side) fn station_typing(&self) -> bool {
-        self.client.screen == Screen::Inventory
+        self.side.screen == Screen::Inventory
             && self
                 .station
                 .as_ref()
@@ -1190,7 +1190,7 @@ impl Game<'_> {
         let Some(s) = self.station.as_mut() else {
             return;
         };
-        if s.rename.shortcut(shortcut, &mut self.clipboard.0) {
+        if s.rename.shortcut(shortcut, &mut self.side.clipboard.0) {
             s.name.clone_from(&s.rename.value);
             let after = self
                 .station
@@ -1210,7 +1210,7 @@ impl Game<'_> {
             return false;
         }
         let (x, y, w, h) = (ox + 62.0, oy + 24.0, 103.0, 12.0);
-        let (mx, my) = self.client.cursor;
+        let (mx, my) = self.side.cursor;
         if mx < x || my < y || mx >= x + w || my >= y + h {
             return false;
         }
@@ -2177,12 +2177,12 @@ impl Game<'_> {
         if self.mod_browser_dragging() {
             return;
         }
-        let Some(slot) = self.slot_at(batch, self.client.cursor.0, self.client.cursor.1) else {
+        let Some(slot) = self.slot_at(batch, self.side.cursor.0, self.side.cursor.1) else {
             return;
         };
         // The recipe book's tooltip is drawn after the slot's own, so a ghost wins.
         if let Some(ghost) = self.ghost_stack(slot) {
-            self.draw_stack_tooltip(batch, &ghost, self.client.cursor.0, self.client.cursor.1);
+            self.draw_stack_tooltip(batch, &ghost, self.side.cursor.0, self.side.cursor.1);
             return;
         }
         let stack = self.slot_view(slot);
@@ -2201,15 +2201,15 @@ impl Game<'_> {
                 batch,
                 &stack,
                 lines,
-                self.client.cursor.0,
-                self.client.cursor.1,
+                self.side.cursor.0,
+                self.side.cursor.1,
             );
         } else if let Some(text) = self.crafter_tooltip(slot) {
             self.draw_tooltip_lines(
                 batch,
                 &[(sunrise_client::text::Text::literal(text), u32::MAX)],
-                self.client.cursor.0,
-                self.client.cursor.1,
+                self.side.cursor.0,
+                self.side.cursor.1,
             );
         }
     }

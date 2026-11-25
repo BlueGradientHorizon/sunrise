@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `IItemExtension.getHighlightTip`: the name drawn above the hotbar for
     /// the selected `stack`. `name` arrives with vanilla's styled hover name;
     /// the parts of `stack`'s item may replace it. Client-side.

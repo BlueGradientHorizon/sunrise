@@ -10,7 +10,7 @@ use sunrise_world::registry::BlockStateId;
 const HORIZONTAL: std::ops::Range<i32> = -(1 << 25)..(1 << 25);
 const VERTICAL: std::ops::Range<i32> = -(1 << 11)..(1 << 11);
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The server's record of a player in its list, by handle.
     fn listed_guest(&self, player: PlayerRef) -> Result<&Guest, Refusal> {
         if self.native_lifecycle.epoch() != Some(player.entity().epoch()) {
@@ -38,7 +38,7 @@ impl Game<'_> {
             return Err(Refusal::Client);
         }
         let conn = match self.player_handle_read(player).ok_or(Refusal::Stale)? {
-            PlayerRead::Acting { .. } => self.server.lan_acting.ok_or(Refusal::NoConnection)?,
+            PlayerRead::Acting { .. } => self.side.lan_acting.ok_or(Refusal::NoConnection)?,
             PlayerRead::Guest(g) if !g.is_fake() => g.conn,
             PlayerRead::Guest(_) => return Err(Refusal::NoConnection),
         };

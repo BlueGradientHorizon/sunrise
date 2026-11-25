@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// A tool is about to transform a block. Cancel or replace the final state;
     /// `None` suppresses the transformation. The block's own `tool_modified_state` part answers
     /// first, and a block whose part cancelled the action never reaches this hook.

@@ -19,7 +19,7 @@ pub(in crate::game) fn leave_fullscreen_after(
     }
 }
 
-pub(in crate::game) fn run_event_loop(mut game: Game<'_>) -> Result<()> {
+pub(in crate::game) fn run_event_loop(mut game: Game<'_, crate::game::client_side::ClientState>) -> Result<()> {
     if game.options.headless {
         // No display to open winit's loop on: the game's own loop.
         game.run_headless();
@@ -315,7 +315,7 @@ impl Loading {
     pub(in crate::game::client_side) fn finish(
         &mut self,
         mut loaded: Loaded,
-    ) -> Result<Option<Game<'static>>> {
+    ) -> Result<Option<Game<'static, crate::game::client_side::ClientState>>> {
         let handoff_at = Instant::now();
         let mut options = self.options.take().ok_or("loading already finished")?;
         options.resources = loaded.root.clone();
@@ -394,8 +394,8 @@ impl Loading {
         };
         drop(game_step);
         let game_ms = game_at.elapsed().as_millis();
-        game.client.fullscreen = self.fullscreen;
-        game.client.panorama_rotation = self.panorama_rotation;
+        game.side.fullscreen = self.fullscreen;
+        game.side.panorama_rotation = self.panorama_rotation;
         self.menu.handoff(&mut game);
         game.apply_settings();
         if let Err(error) = clouds {
@@ -422,7 +422,7 @@ impl Loading {
 /// the game itself, on the same event loop and window.
 pub(in crate::game) enum App {
     Loading(Box<Loading>),
-    Ready(Box<Game<'static>>),
+    Ready(Box<Game<'static, crate::game::client_side::ClientState>>),
 }
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
@@ -445,7 +445,7 @@ impl ApplicationHandler for App {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         enum Step {
             Waiting,
-            Ready(Box<Game<'static>>),
+            Ready(Box<Game<'static, crate::game::client_side::ClientState>>),
             Done,
             Failed(Box<dyn std::error::Error>),
         }

@@ -9,7 +9,7 @@ pub(in crate::game::server_side) use sunrise_client::command::args::Sort;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_core::random::RandomSource;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// EntitySelector.findEntities.
     pub(in crate::game) fn select(&mut self, s: &Selector) -> Vec<Target> {
         if let Some(name) = &s.player_name {
@@ -30,13 +30,13 @@ impl Game<'_> {
         // registered selector type decides for itself (`native_selector_kept`).
         let alive_only = matches!(s.kind, 'e' | 'n') && s.token.is_none();
         let mut source_candidates: Vec<Target> = Vec::new();
-        match (s.kind, self.server.command_source) {
+        match (s.kind, self.side.command_source) {
             // @s: the executing entity (none for a server source).
             ('s', Some(source)) => source_candidates.extend(source.entity),
             ('s', None) => source_candidates.extend(self.source_entity()),
             // A guest in place is among the players, in join order.
             _ if self.player.is_some()
-                && self.server.lan_acting.is_none()
+                && self.side.lan_acting.is_none()
                 && (!alive_only
                     || self
                         .player

@@ -3,7 +3,7 @@ pub(in crate::game::server_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::lan_actions::tick::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn advance_guest_entity_clock(&mut self, conn: u32) {
         let Some(host) = self.lan.as_mut() else {
             return;
@@ -268,13 +268,13 @@ impl Game<'_> {
                 Vec::new()
             };
             let _ = self.as_guest_at(gi, conn, |g| {
-                let outer = std::mem::replace(&mut g.server.stab_players, players);
+                let outer = std::mem::replace(&mut g.side.stab_players, players);
                 // Player.tick's attackStrengthTicker, part of the body.
                 if body {
-                    g.server.attack_ticks = g.server.attack_ticks.saturating_add(1);
+                    g.side.attack_ticks = g.side.attack_ticks.saturating_add(1);
                 }
                 g.tick_using_server();
-                g.server.stab_players = outer;
+                g.side.stab_players = outer;
                 if g.use_delay > 0 {
                     g.use_delay -= 1;
                 }
@@ -382,7 +382,7 @@ impl Game<'_> {
         building_cache(self.lan.as_ref());
         let result = self.tick_guest_connections_inner(across_levels);
         building_cache(None);
-        self.server.pickup_columns = None;
+        self.side.pickup_columns = None;
         result
     }
     pub(in crate::game::server_side) fn tick_guest_connections_inner(
@@ -433,7 +433,7 @@ impl Game<'_> {
                 }
                 active_level = Some(dim);
                 // Most players aren't in any of the columns items reach.
-                self.server.pickup_columns = Some(Default::default());
+                self.side.pickup_columns = Some(Default::default());
                 if self
                     .lan
                     .as_ref()
@@ -559,7 +559,7 @@ impl Game<'_> {
             if digging.is_some() || play.mining.is_some() || play.destroy_delay > 0 {
                 let _ = self.as_guest_at(gi, conn, |g| {
                     if let Some((pos, face)) = digging {
-                        g.server.forced_hit = Some(Hit {
+                        g.side.forced_hit = Some(Hit {
                             pos,
                             face,
                             point: [
@@ -571,7 +571,7 @@ impl Game<'_> {
                         });
                     }
                     let _ = g.tick_mining();
-                    g.server.forced_hit = None;
+                    g.side.forced_hit = None;
                 });
                 // Instant STARTs complete without a STOP; do not break a later
                 // block planted in the same position again.

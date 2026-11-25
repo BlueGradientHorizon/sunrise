@@ -432,13 +432,13 @@ pub(in crate::game::client_side) fn entity_post_effect(kind: &str) -> Option<&'s
     sunrise_client_render::spectator_shaders::chain(kind)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// True if this client holds a live entity with `id` in any runtime list or slot.
     fn holds_camera_entity(&self, id: u32) -> bool {
         self.dragon.as_ref().is_some_and(|d| d.id == id)
             || self.mob_index.find_ref(&self.mobs, id).is_some()
             || self.armor_stands.iter().any(|a| a.id == id)
-            || self.client.interactions.contains_key(&(id as i32))
+            || self.side.interactions.contains_key(&(id as i32))
             || self.boats.iter().any(|b| b.id == id)
             || self.carts.iter().any(|c| c.id == id)
             || self.item_frames.iter().any(|f| f.id == id)
@@ -451,9 +451,9 @@ impl Game<'_> {
             || self.dropped.iter().any(|d| d.id == id)
             || self.falling.iter().any(|f| f.id == id)
             || self.crystals.iter().any(|c| c.id == id)
-            || self.text_displays.0.contains_key(&(id as i32))
+            || self.side.text_displays.0.contains_key(&(id as i32))
             || self.hook.as_ref().is_some_and(|h| h.id() == id)
-            || self.client.remote_hooks.iter().any(|h| h.id() == id)
+            || self.side.remote_hooks.iter().any(|h| h.id() == id)
             || self.potions.remote_thrown_pose(id).is_some()
             || self.end.remote_eye_pose(id).is_some()
     }
@@ -486,23 +486,23 @@ impl Game<'_> {
 
     /// `GameRenderer.clearSpectatedEntityPostEffect`.
     pub(in crate::game::client_side) fn clear_spectated_entity_post_effect(&mut self) {
-        self.client.spectated_post_effect = None;
-        self.client.spectated_post_effect_active = false;
+        self.side.spectated_post_effect = None;
+        self.side.spectated_post_effect_active = false;
     }
 
     /// `GameRenderer.toggleSpectatorPostEffect` (`key.toggleSpectatorShaderEffects` / F4).
     pub(in crate::game::client_side) fn toggle_spectator_post_effect(&mut self) {
-        self.client.spectated_post_effect_active = !self.client.spectated_post_effect_active;
+        self.side.spectated_post_effect_active = !self.side.spectated_post_effect_active;
     }
 
     /// `GameRenderer.checkEntityPostEffect` for the camera entity, or for none
     /// (`first_person` false: the third-person view clears it).
     pub(in crate::game::client_side) fn check_entity_post_effect(&mut self, first_person: bool) {
-        self.client.spectated_post_effect = self
+        self.side.spectated_post_effect = self
             .camera_subject()
             .filter(|_| first_person)
             .and_then(|c| c.post_effect);
-        self.client.spectated_post_effect_active = self.client.spectated_post_effect.is_some();
+        self.side.spectated_post_effect_active = self.side.spectated_post_effect.is_some();
     }
 
     /// The entity a server attached the view to, when it is not the player (live or detached).
@@ -733,8 +733,8 @@ impl Game<'_> {
 
     /// `mainCamera().position()` once aligned, or the camera entity's position before first align.
     pub(in crate::game::client_side) fn visual_camera_position(&self) -> Option<[f64; 3]> {
-        if self.client.view.initialized {
-            Some(self.client.view.position)
+        if self.side.view.initialized {
+            Some(self.side.view.position)
         } else if self.remote.is_some() {
             self.camera_eye_position()
         } else {
@@ -840,7 +840,7 @@ impl Game<'_> {
             );
         let dead = self.death_time();
         let fog_effects =
-            CameraFogEffects::from_effects(&self.potions.effects, self.client.darkness_blend);
+            CameraFogEffects::from_effects(&self.potions.effects, self.side.darkness_blend);
         let camera = CameraEntity {
             position: [p.position.x, p.position.y, p.position.z],
             previous: [
@@ -878,7 +878,7 @@ impl Game<'_> {
                 hurt_dir: p.health.hurt_dir,
                 death_time: dead,
             }),
-            avatar_bob: Some(self.client.avatar),
+            avatar_bob: Some(self.side.avatar),
             fov_player: self.fov_player(),
             has_player_passenger: false,
             collision_kind: EntityContextKind::Player,
@@ -1158,7 +1158,7 @@ impl Game<'_> {
                 detached_hud: None,
             });
         }
-        if let Some(i) = self.client.interactions.get(&id) {
+        if let Some(i) = self.side.interactions.get(&id) {
             let mut camera = interaction_camera_entity(i);
             camera.mount = mount;
             return Some(non_living_subject(
@@ -1383,7 +1383,7 @@ impl Game<'_> {
                 )
             })
             .or_else(|| {
-                self.client
+                self.side
                     .remote_hooks
                     .iter()
                     .find(|h| h.id() == uid)
@@ -1413,7 +1413,7 @@ impl Game<'_> {
                 "minecraft:fishing_bobber",
             ));
         }
-        if let Some(d) = self.text_displays.0.get(&id) {
+        if let Some(d) = self.side.text_displays.0.get(&id) {
             let mut camera = d.camera_entity();
             camera.mount = mount;
             return Some(non_living_subject(
@@ -1556,7 +1556,7 @@ impl Game<'_> {
 
     /// `LevelRenderer`: the camera entity is not drawn from its own eyes, but a sleeping one is.
     pub(in crate::game) fn hides_as_camera(&self, id: u32) -> bool {
-        self.client.camera_type.is_first_person()
+        self.side.camera_type.is_first_person()
             && self.live_remote_camera_id() == Some(id)
             && !self
                 .mob_index

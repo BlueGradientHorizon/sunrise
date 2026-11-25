@@ -4,7 +4,7 @@
 use super::*;
 use sunrise_client::motion::MotionEvent;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Run equipment continuations with the acting player installed on the real host.
     #[allow(clippy::too_many_arguments)]
     pub(in crate::game::server_side) fn hurt_player_equipment(
@@ -45,7 +45,7 @@ impl Game<'_> {
                 causing,
                 creative_source,
                 helmet,
-                !self.combat.0.refuse_player_hit,
+                !self.side.combat.0.refuse_player_hit,
                 armor_weapon,
             )?;
         if let Some(damage) = hit.helmet_damage() {
@@ -192,7 +192,7 @@ impl Game<'_> {
         let mut amounts = [amount; 4];
         if mod_api::__private::listened(mod_api::HookId::ArmorHurt)
             && let (Some(uuid), Some(player)) =
-                (self.server.lan_acting_uuid, self.server.lan_acting_entity)
+                (self.side.lan_acting_uuid, self.side.lan_acting_entity)
         {
             let mut entries: Vec<mod_api::ArmorHurt> = eligible
                 .iter()

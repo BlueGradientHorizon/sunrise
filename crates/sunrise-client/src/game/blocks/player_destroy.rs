@@ -6,7 +6,7 @@ use sunrise_client::{blocks::StateFacts, items::ItemStack};
 use sunrise_core::position::BlockPos;
 use sunrise_world::registry::BlockStateId;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Remove the block `state` at `pos` for the player breaking it with `held`, and say whether
     /// it was removed, the state the removal saw (vanilla's `adjustedState`: a cracked pot) and
     /// whether the break harvests (drops loot). `filled_hive` is a beehive with bees or honey.

@@ -5,7 +5,7 @@ pub(in crate::game::server_side) use crate::game::cauldrons::is_under_water;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::cauldrons::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `CauldronInteractions` for the held item aimed at a cauldron.
     pub(in crate::game) fn use_on_cauldron(
         &mut self,

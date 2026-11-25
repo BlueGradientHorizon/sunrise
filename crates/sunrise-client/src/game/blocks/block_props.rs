@@ -9,7 +9,7 @@ use sunrise_client::{
 use sunrise_core::geometry::Vec3;
 use sunrise_world::registry::BlockStateId;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn prop(&self, state: BlockStateId, key: &str) -> Option<String> {
         self.pack
             .assets

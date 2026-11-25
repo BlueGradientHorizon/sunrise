@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook point. It does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `chunk`'s ticket level went from `old` to `new` (NeoForge's
     /// `ChunkTicketLevelUpdatedEvent`): a ticket began or ceased to keep it
     /// alive or ticking. Told in the order the level's tickets changed it,

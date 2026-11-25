@@ -18,7 +18,7 @@ pub(in crate::game::client_side) use sunrise_client::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_protocol::packets::play::{self, Serverbound as S};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The grid's current recipe result (`CrafterMenu.refreshRecipeResult`).
     pub(in crate::game) fn crafter_result(&self) -> Option<ItemStack> {
         let key = self.container?;
@@ -158,7 +158,7 @@ impl Game<'_> {
             ));
         }
         let pitch = if enabled { 1.0 } else { 0.75 };
-        self.audio
+        self.side.audio
             .0
             .play("minecraft:ui.button.click", None, 0.4, pitch);
     }

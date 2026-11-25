@@ -24,7 +24,7 @@ pub(in crate::game::client_side) use sunrise_gameplay::brushing::{
     Brushing, USE_DURATION, completion_state,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Level event 3008 (`LevelEventHandler`): the finished block's sound
     /// and break particles.
     pub(in crate::game) fn brush_complete_event(&mut self, pos: [i32; 3], data: i32) {
@@ -37,7 +37,7 @@ impl Game<'_> {
         if !sound.is_empty() {
             let at = pos.map(|v| f64::from(v) + 0.5);
             // Each client plays it from the event itself.
-            self.audio.0.play_unshared(sound, Some(at), 1.0, 1.0);
+            self.side.audio.0.play_unshared(sound, Some(at), 1.0, 1.0);
         }
         self.destroy_particles(pos, state);
     }
@@ -64,7 +64,7 @@ impl Game<'_> {
             _ => (0.1, 1.0),
         };
         let count = 7 + self
-            .particles
+            .side.particles
             .0
             .level_random()
             .next_int_bound(5)
@@ -72,13 +72,13 @@ impl Game<'_> {
         let x = hit.point[0] - if hit.face == [-1, 0, 0] { 1.0e-6 } else { 0.0 };
         let z = hit.point[2] - if hit.face == [0, 0, -1] { 1.0e-6 } else { 0.0 };
         for _ in 0..count {
-            let random = self.particles.0.level_random();
+            let random = self.side.particles.0.level_random();
             let v = [
                 dx * flip * 3.0 * random.next_double(),
                 0.0,
                 dz * flip * 3.0 * random.next_double(),
             ];
-            self.particles.0.add(&options, [x, hit.point[1], z], v);
+            self.side.particles.0.add(&options, [x, hit.point[1], z], v);
         }
     }
     /// `BrushableBlockRenderer`: reveal the item from the first brushed face.

@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// NeoForge's `ClientPlayerChangeGameTypeEvent`: observe any `PlayerInfo` game type change.
     pub(in crate::game) fn native_client_player_change_game_type(
         &mut self,

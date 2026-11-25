@@ -3,7 +3,7 @@ use super::Game;
 use mod_api::{MenuRef, PlayerRef};
 use sunrise_client::items::ItemStack;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// A player's current supported menu.
     pub(in crate::game) fn player_container_menu(&self, player: PlayerRef) -> Option<MenuRef> {
         self.side_player_container_menu(player)

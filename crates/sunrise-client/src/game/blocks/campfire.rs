@@ -29,7 +29,7 @@ pub(in crate::game) fn is_campfire(name: &str) -> bool {
     )
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `CampfireBlock.useItemOn` with a held item that is a campfire recipe's
     /// input (`RecipePropertySet.CAMPFIRE_INPUT`): on a server level the food
     /// goes into the first free slot (`placeFood`), and the use is consumed

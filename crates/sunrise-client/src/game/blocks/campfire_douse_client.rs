@@ -11,7 +11,7 @@ pub(in crate::game::client_side) use sunrise_core::position::BlockPos;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::chunk::BlockState;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `CampfireBlock.useItemOn` as this client runs it before the server's
     /// answer (`MultiPlayerGameMode.useItemOn`): the twenty smoke puffs of
     /// `CampfireBlock.douse` and the campfire gone out, kept as predicted
@@ -36,7 +36,7 @@ impl Game<'_> {
         };
         let signal = state.properties.get("signal_fire").map(String::as_str) == Some("true");
         for _ in 0..20 {
-            make_campfire_smoke(&mut self.particles.0, pos, signal, true);
+            make_campfire_smoke(&mut self.side.particles.0, pos, signal, true);
         }
         let at = BlockPos::new(pos[0], pos[1], pos[2]);
         self.predict_blocks(&[(at, unlit)], seq);

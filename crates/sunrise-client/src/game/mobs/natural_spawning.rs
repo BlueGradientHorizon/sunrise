@@ -331,7 +331,7 @@ impl<'p> NearestPlayers<'p> {
 const PLAYERS_SCANNED: usize = 8;
 /// The game level as natural spawning reads it.
 pub(in crate::game) struct GameLevel<'g, 'a> {
-    pub(in crate::game) game: &'g Game<'a>,
+    pub(in crate::game) game: &'g Game<'a, crate::game::server_side::ServerState>,
     pub(in crate::game) w: MobWorld<'g>,
     /// Every player in the level ([`Game::level_players`]).
     pub(in crate::game) players: Vec<LevelPlayer>,
@@ -912,7 +912,7 @@ impl NaturalLevel for GameLevel<'_, '_> {
             .collect()
     }
     fn structure_spawns(&self) -> &StructureSpawns {
-        &self.game.server.structure_spawns
+        &self.game.side.structure_spawns
     }
     fn nearest_player_positions(&self) -> &[[f64; 3]] {
         &self.nearest
@@ -1059,7 +1059,7 @@ fn spawn_cost_types(biomes: &sunrise_client::biome::Biomes) -> Vec<&str> {
     }
     types
 }
-impl<'a> Game<'a> {
+impl<'a> Game<'a, crate::game::server_side::ServerState> {
     /// `CollisionGetter.noCollision(AABB)`: with no source there is no border
     /// shape. `EntityGetter.getEntityCollisions` queries the inflated area.
     pub(in crate::game::server_side) fn no_spawn_collision(
@@ -1102,7 +1102,7 @@ impl<'a> Game<'a> {
         &self,
         dimension: mod_api::DimensionKey,
     ) -> SpawnPolicy {
-        self.server
+        self.side
             .spawn_policies
             .get(&dimension)
             .copied()
@@ -1149,9 +1149,9 @@ impl<'a> Game<'a> {
         let mut links: HashMap<u32, u32> = HashMap::new();
         for group in groups.iter_mut() {
             for mob in group.iter_mut() {
-                self.server.next_entity += 1;
-                links.insert(mob.id, self.server.next_entity);
-                mob.id = self.server.next_entity;
+                self.side.next_entity += 1;
+                links.insert(mob.id, self.side.next_entity);
+                mob.id = self.side.next_entity;
             }
         }
         for group in groups.iter_mut() {
@@ -1253,9 +1253,9 @@ impl<'a> Game<'a> {
     }
     fn local_player_in_level(&self) -> bool {
         self.player.is_some()
-            && !self.server.lan_acting_fake
+            && !self.side.lan_acting_fake
             && self
-                .server
+                .side
                 .lan_acting
                 .is_none_or(|conn| self.command_guest(conn).is_some_and(|g| g.placed))
     }
@@ -1275,7 +1275,7 @@ impl<'a> Game<'a> {
             h.hub
                 .guests
                 .iter()
-                .filter(move |g| g.placed_in(dimension) && self.server.lan_acting != Some(g.conn))
+                .filter(move |g| g.placed_in(dimension) && self.side.lan_acting != Some(g.conn))
         })
     }
     /// `Level.hasNearbyAlivePlayer` before a level is built for the spawn
@@ -1307,7 +1307,7 @@ impl<'a> Game<'a> {
         scratch: &mut SpawnScratch,
     ) -> i32 {
         let tickets = self.streaming.mod_tickets();
-        let levels = self.tickets.0.levels();
+        let levels = self.side.tickets.0.levels();
         scratch.collect(
             players,
             |chunk| tickets.forces_natural_spawning(chunk),
@@ -1376,7 +1376,7 @@ impl<'a> Game<'a> {
     /// player: inhabited time, then `spawnForChunk`.
     pub(in crate::game::server_side) fn spawn_natural(&mut self) {
         // `tickChunks` does nothing in a Debug world.
-        if self.server.world_debug {
+        if self.side.world_debug {
             return;
         }
         let mut laps = sunrise_client::spans::laps();
@@ -1399,7 +1399,7 @@ impl<'a> Game<'a> {
         if players.is_empty() {
             return;
         }
-        let mut scratch = std::mem::take(&mut self.server.spawn_scratch);
+        let mut scratch = std::mem::take(&mut self.side.spawn_scratch);
         let spawnable = self.spawning_chunks(&players, &mut scratch);
         laps.lap("sn_candidates");
         for &key in &scratch.candidates {
@@ -1488,10 +1488,10 @@ impl<'a> Game<'a> {
         laps.lap("sn_attempts");
         self.world.random = random;
         // ServerChunkCache.lastSpawnState, for the debug overlay.
-        self.server.spawn_counts.insert(self.dim, last_state);
+        self.side.spawn_counts.insert(self.dim, last_state);
         let (created, rides) = extras;
         self.add_spawned(pending, created, rides, false);
-        self.server.spawn_scratch = scratch;
+        self.side.spawn_scratch = scratch;
         laps.lap("sn_finalize");
     }
     /// `NoiseBasedChunkGenerator.spawnOriginalMobs`: creature packs for a

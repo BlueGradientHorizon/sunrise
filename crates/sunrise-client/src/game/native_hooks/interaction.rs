@@ -12,7 +12,7 @@ impl InteractionDecision {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// An interaction key acts on what the crosshair points at
     /// (`InputEvent.InteractionKeyMappingTriggered`), while playing: `key` says which.
     /// The attack fires when an attack is allowed and again each tick a held attack

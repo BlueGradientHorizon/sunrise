@@ -16,7 +16,7 @@ pub(in crate::game::server_side) use {
     sunrise_core::nbt::Tag, sunrise_world::worldgen::generator::JigsawQuery,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn jigsaw_block_mut(&mut self, pos: Pos) -> Option<&mut JigsawBlock> {
         match self.world.block_entities.get_mut(&pos)? {
             BlockEntity::JigsawBlock(b) => Some(b),

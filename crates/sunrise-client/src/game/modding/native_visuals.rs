@@ -12,16 +12,16 @@ pub(in crate::game) struct FrameVisuals {
 impl FrameVisuals {
     pub(in crate::game::client_side) fn finish(
         self,
-        game: &Game<'_>,
+        game: &Game<'_, crate::game::client_side::ClientState>,
         camera: glam::DVec3,
     ) -> Vec<dynamic_light::Colored> {
         let particle_lights = game
-            .renderer
+            .side.renderer
             .0
             .as_ref()
             .and_then(|r| r.particle_lights())
             .map_or_else(Vec::new, |entries| {
-                game.particles
+                game.side.particles
                     .0
                     .lights(entries, game.clock.camera_fraction() as f32)
             });
@@ -48,7 +48,7 @@ fn rim_target_valid(
     loaded && state != air
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Frame-local requests never persist after a mod is removed or a world changes.
     pub(in crate::game::client_side) fn native_frame_visuals(
         &self,
@@ -58,7 +58,7 @@ impl Game<'_> {
         let mut visuals = FrameVisuals::default();
         // Held and dropped items whose block the pack's `[[lights]]` colour shine in that colour,
         // as far as their dynamic light reaches.
-        if let Some(renderer) = self.renderer.0.as_ref().filter(|r| r.has_light_colors()) {
+        if let Some(renderer) = self.side.renderer.0.as_ref().filter(|r| r.has_light_colors()) {
             for (source, item) in self.dynamic_light_sources(alpha) {
                 let Some(color) = item.and_then(|i| renderer.light_color(i)) else {
                     continue;

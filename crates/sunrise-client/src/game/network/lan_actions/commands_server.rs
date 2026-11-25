@@ -3,7 +3,7 @@ pub(in crate::game::server_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::lan_actions::commands::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Commands.performCommand for a guest, with the message arguments it
     /// signed (none after an unsigned command packet). The packet's command has no chat slash, and
     /// vanilla parses it as sent: a leading `/` is part of the command (a mod's `//set` is `/set`).
@@ -65,7 +65,7 @@ impl Game<'_> {
             return;
         };
         let integrated = host.hub.config.integrated;
-        if let Some(level) = self.native_commands.0.level(command)
+        if let Some(level) = self.side.native_commands.0.level(command)
             && let Some(permission) = host.hub.guest(conn).map(|g| g.permission)
             && permission >= level
         {
@@ -133,7 +133,7 @@ impl Game<'_> {
             self.ui.registries.players.clone()
         };
         players.extend(host.hub.online_players().map(|g| g.name.clone()));
-        let (ops, banned_players, banned_ips, whitelisted) = match &self.server_lists.0 {
+        let (ops, banned_players, banned_ips, whitelisted) = match &self.side.server_lists.0 {
             Some(lists) => {
                 let l = lists.lock().unwrap();
                 (
@@ -255,7 +255,7 @@ impl Game<'_> {
         c: GuestCommand,
     ) -> Option<(bool, Vec<sunrise_client::text::Text>)> {
         let (ok, mut lines) = self.with_guest_swap(c.conn, self.dim, |game| {
-            game.server.chat_capture = Some(Vec::new());
+            game.side.chat_capture = Some(Vec::new());
             let level = std::mem::replace(&mut game.ui.registries.permission, c.permission);
             let ok = match game.perform_native_command(c.conn, c.permission, &c.command, c.quiet) {
                 Some(ok) => ok,
@@ -263,9 +263,9 @@ impl Game<'_> {
                 None => game.run_command(&c.command),
             };
             game.ui.registries.permission = level;
-            (ok, game.server.chat_capture.take().unwrap_or_default())
+            (ok, game.side.chat_capture.take().unwrap_or_default())
         })?;
-        if std::mem::take(&mut self.server.save_after_guest_turn) {
+        if std::mem::take(&mut self.side.save_after_guest_turn) {
             lines.push(self.save_all_reply());
         }
         if let Some(host) = self.lan.as_mut() {
@@ -314,7 +314,7 @@ impl Game<'_> {
     /// them (`broadcast_to_admins`). Without a server open to players they are
     /// dropped: no one else can hear them.
     pub(in crate::game) fn send_admin_feedback(&mut self) {
-        let lines = std::mem::take(&mut self.server.admin_feedback);
+        let lines = std::mem::take(&mut self.side.admin_feedback);
         let Some(host) = self.lan.as_ref() else {
             return;
         };

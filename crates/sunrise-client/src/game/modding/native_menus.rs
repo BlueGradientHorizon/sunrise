@@ -70,7 +70,7 @@ pub(in crate::game::server_side) fn fit(
 /// none of these runs while a player's state is swapped in (inside
 /// a command executor, the menus can be opened and filled).
 #[allow(dead_code)]
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn native_conn(&self, uuid: u128) -> Option<u32> {
         let host = self.lan.as_ref()?;
         let g = host
@@ -383,7 +383,7 @@ pub(in crate::game) fn open_menu_of(
 }
 
 /// Where the game calls the menu hook points.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerPlayer.openMenu` / `openHorseInventory`: called only after
     /// constructing the menu, queuing its open packet and sending full contents.
     /// Remember it before dispatch so a hook can close it synchronously.
@@ -483,7 +483,7 @@ impl Game<'_> {
     /// the guest has no body to swap in.
     fn player_hook(&mut self, conn: u32, f: impl FnOnce(&mut Self)) {
         let mut f = Some(f);
-        if self.server.lan_acting != Some(conn) {
+        if self.side.lan_acting != Some(conn) {
             self.as_guest(conn, |g| {
                 if let Some(f) = f.take() {
                     f(g);

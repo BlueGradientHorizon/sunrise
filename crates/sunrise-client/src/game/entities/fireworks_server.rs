@@ -42,7 +42,7 @@ pub(in crate::game::server_side) use sunrise_core::{
 #[path = "fireworks/impact_server.rs"]
 pub(in crate::game) mod impact;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn advance_rocket(
         &mut self,
         r: &mut Rocket,
@@ -190,7 +190,7 @@ impl Game<'_> {
         let at = self.player.as_ref().map_or(Vec3::ZERO, |p| p.position);
         let mut rocket = self.new_rocket(at, stack, true, &mut random_source::entity());
         rocket.owner = Some(Who::Player);
-        rocket.guest = self.server.lan_acting;
+        rocket.guest = self.side.lan_acting;
         self.rockets.push(rocket);
         if !self.creative {
             self.consume_held();
@@ -198,8 +198,8 @@ impl Game<'_> {
         self.award_stat("used", "minecraft:firework_rocket", 1);
         self.swing_arm();
         if let (Some(player), Some(name)) = (
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_name.clone(),
+            self.side.lan_acting_uuid,
+            self.side.lan_acting_name.clone(),
         ) {
             self.native_player_elytra_boost(player, &name);
         }
@@ -420,7 +420,7 @@ impl Game<'_> {
         rocket.angled = true;
         rocket.owner = owner;
         rocket.guest = self
-            .server
+            .side
             .lan_acting
             .filter(|_| owner == Some(Who::Player));
         self.rockets.push(rocket);
@@ -439,7 +439,7 @@ impl Game<'_> {
         );
         let mut rocket = self.new_rocket(at, stack, false, &mut random_source::entity());
         rocket.owner = Some(Who::Player);
-        rocket.guest = self.server.lan_acting;
+        rocket.guest = self.side.lan_acting;
         self.rockets.push(rocket);
         if !self.creative {
             self.consume_held();
@@ -486,7 +486,7 @@ impl Game<'_> {
         guest: Option<u32>,
         at: [f64; 3],
     ) {
-        if let Some(conn) = guest.filter(|conn| self.server.lan_acting != Some(*conn)) {
+        if let Some(conn) = guest.filter(|conn| self.side.lan_acting != Some(*conn)) {
             let posted = self
                 .as_guest(conn, |g| {
                     let ctx = g.who_context(owner, None);
@@ -518,7 +518,7 @@ impl Game<'_> {
             // The hit's causing entity, lent to its listeners beside the victim.
             let causing = self.causer_id(attacker);
             let decision = crate::game::entity::causer_decision!(self, causing);
-            let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
+            let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
             if let Some(index) = self.mob_index.find(&self.mobs, id) {
                 let before = self.mobs[index].health;
                 let join = self.mobs[index].join;
@@ -561,9 +561,9 @@ impl Game<'_> {
         // Ability, spectator and death refusals belong to hurtServer, after
         // its invulnerability observation (also for an attached target).
         // No mob ever owns a rocket.
-        self.combat.0.projectile_owner = None;
-        self.combat.0.rocket_hit = true;
-        self.combat.0.projectile_direct =
+        self.side.combat.0.projectile_owner = None;
+        self.side.combat.0.rocket_hit = true;
+        self.side.combat.0.projectile_direct =
             Some(Text::translate("entity.minecraft.firework_rocket", &[]));
         let at = [from.x, from.y, from.z];
         self.hurt_player_from(amount, Some(at), "minecraft:fireworks", Some(None), false);

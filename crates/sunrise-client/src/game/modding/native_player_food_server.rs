@@ -3,7 +3,7 @@ use super::Game;
 use mod_api::PlayerRef;
 use sunrise_client::entities::Experience;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether `player` still names the same player on this server.
     fn native_player_valid(&self, player: PlayerRef) -> bool {
         self.player_handle_read(player).is_some()

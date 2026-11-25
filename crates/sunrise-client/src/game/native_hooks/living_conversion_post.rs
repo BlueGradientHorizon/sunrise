@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A mob converted into another type (NeoForge's
     /// `LivingConversionEvent.Post`): `converted` replaces `entity`. Fires
     /// with `native_entity_transform`, after the finalized new mob joined the

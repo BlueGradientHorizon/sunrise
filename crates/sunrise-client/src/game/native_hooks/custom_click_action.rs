@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// NeoForge's `CustomClickActionEvent`: a server player's client sent a `custom`
     /// click action (a dialog button or a text component's click event): its id and
     /// optional payload. Vanilla only logs it; set `cancel` to skip that. Only play-phase

@@ -14,7 +14,7 @@ use sunrise_core::{
     random::RandomSource,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `Fox.handleEntityEvent(45)`: eight crumbs of the item in its mouth,
     /// thrown from in front of it along `Entity.getLookAngle`.
     pub(in crate::game::client_side) fn fox_eat_particles(&mut self, id: u32) {
@@ -54,7 +54,7 @@ impl Game<'_> {
         }
         let options = self.item_particle(&ItemStack::new(&item, 1));
         for (p, v) in spawned {
-            self.particles.0.add(&options, p, v);
+            self.side.particles.0.add(&options, p, v);
         }
     }
     /// `Witch.handleEntityEvent(15)`: `nextInt(35) + 10` purple puffs about
@@ -83,7 +83,7 @@ impl Game<'_> {
         }
         let options = ParticleOptions::simple(ParticleType::Witch);
         for p in spawned {
-            self.particles.0.add(&options, p, [0.0, 0.0, 0.0]);
+            self.side.particles.0.add(&options, p, [0.0, 0.0, 0.0]);
         }
     }
     /// `Ravager.handleEntityEvent(69)`: forty puffs of smoke from the middle
@@ -104,13 +104,13 @@ impl Game<'_> {
         );
         let options = ParticleOptions::simple(ParticleType::Poof);
         for _ in 0..40 {
-            let r = self.particles.0.random();
+            let r = self.side.particles.0.random();
             let v = [
                 r.next_gaussian() * 0.2,
                 r.next_gaussian() * 0.2,
                 r.next_gaussian() * 0.2,
             ];
-            self.particles.0.add(&options, center, v);
+            self.side.particles.0.add(&options, center, v);
         }
         if let Some(view) = self.client_player_view()
             && view.alive

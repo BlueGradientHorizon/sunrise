@@ -45,7 +45,7 @@ pub(in crate::game) fn in_attack_range(
     .contains(distance, buffer)
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The stack in an inventory slot, the off hand at `OFFHAND_SLOT`.
     pub(in crate::game) fn stack_in(&self, slot: usize) -> Option<&ItemStack> {
         if slot == OFFHAND_SLOT {

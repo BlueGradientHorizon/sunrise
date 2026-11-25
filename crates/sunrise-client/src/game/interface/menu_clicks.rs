@@ -4,7 +4,7 @@
 #[allow(unused_imports)]
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `CrafterBlockEntity.setSlotState`: the menu's slot states land on the
     /// block entity, whose `setChanged` marks the chunk for saving.
     pub(in crate::game) fn apply_crafter_slot_states(&mut self, menu: &sunrise_client::menu::Menu) {

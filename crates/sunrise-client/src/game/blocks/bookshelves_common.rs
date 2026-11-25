@@ -5,7 +5,7 @@ use sunrise_client::stations::bookshelf_offsets;
 use sunrise_core::position::BlockPos;
 use sunrise_world::registry::BlockStateId;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The enchanting power around the table at `pos`, truncated as NeoForge's `(int) power`.
     pub(in crate::game) fn count_bookshelves(&self, pos: [i32; 3]) -> i32 {
         let table = BlockPos::new(pos[0], pos[1], pos[2]);

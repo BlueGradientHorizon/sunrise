@@ -2,7 +2,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Before the in-world HUD, including under F1 (`RenderGuiEvent.Pre`). A veto skips
     /// the HUD and ordinary toasts, but not mandatory diagnostics.
     pub(in crate::game) fn native_render_gui_pre(&self, canceled: &mut bool) {

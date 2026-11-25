@@ -5,7 +5,7 @@ pub(in crate::game::server_side) use crate::game::state_resolver::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use mod_api::{__private::has_scoped_hook, HookId};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ask` for each of the first `states` block states, in id order, when a part subscribes
     /// to `hook`; `None` when none does, and nothing is asked.
     pub(in crate::game) fn resolve_per_state<T>(

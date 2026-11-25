@@ -2,7 +2,7 @@
 use super::{Game, commands::Target};
 use mod_api::EntityRef;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_entity_is_shift_key_down(
         &self,
         entity: EntityRef,

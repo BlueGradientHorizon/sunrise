@@ -132,7 +132,7 @@ pub(in crate::game) enum AnchorUse {
     Other,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn anchor_with_charges(
         &self,
         state: BlockStateId,
@@ -184,8 +184,8 @@ impl Game<'_> {
         forced: bool,
     ) -> bool {
         let (Some(player), Some(name)) = (
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_name.clone(),
+            self.side.lan_acting_uuid,
+            self.side.lan_acting_name.clone(),
         ) else {
             return false;
         };
@@ -215,7 +215,7 @@ impl Game<'_> {
         if config.is_some() {
             self.spawn = None;
         }
-        self.server.respawn_config = config;
+        self.side.respawn_config = config;
         true
     }
     /// `RespawnAnchorBlock.useWithoutItem` on a charged anchor: outside the
@@ -237,7 +237,7 @@ impl Game<'_> {
         };
         // RespawnConfig.isSamePosition: dimension and block.
         let same = self
-            .server
+            .side
             .respawn_config
             .is_some_and(|c| c.dim == config.dim && c.pos == config.pos);
         if !same {
@@ -247,7 +247,7 @@ impl Game<'_> {
             // setRespawnPosition(config, true): the message, the point; the
             // anchor replaces a bed.
             self.server_system_message(Text::translate("block.minecraft.set_spawn", &[]));
-            self.server.respawn_config = Some(config);
+            self.side.respawn_config = Some(config);
             if let Some([x, y, z]) = self.level.world_spawn {
                 self.spawn = Some(Vec3::new(
                     f64::from(x) + 0.5,
@@ -625,7 +625,7 @@ pub(in crate::game::server_side) fn wrap_degrees(degrees: f64) -> f64 {
     d
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `RespawnAnchorBlock.charge`: one more charge, the block change and the sound.
     pub(in crate::game::server_side) fn charge_anchor(
         &mut self,

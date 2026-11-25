@@ -18,7 +18,7 @@ use sunrise_core::position::BlockPos;
 use sunrise_items::items::ItemStack;
 use sunrise_world::registry::BlockStateId;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     fn native_block_entity_target(&self, entity: BlockEntityRef) -> Option<(&World, &BlockEntity)> {
         let world = self.native_level_read_world(entity.fields().level)?;
         Some((world, resident_block_entity(world, entity)?))
@@ -611,7 +611,7 @@ impl Game<'_> {
             .filter(|(host, g)| {
                 // The acting guest's mode is live in `Game` during its turn; the hub
                 // hears of a change only in the put-back at the end of `guest_turn`.
-                let spectator = if self.server.lan_acting_uuid == Some(g.uuid) {
+                let spectator = if self.side.lan_acting_uuid == Some(g.uuid) {
                     self.spectator()
                 } else {
                     g.spectator()
@@ -630,7 +630,7 @@ impl Game<'_> {
             })
             .collect();
         if self.level_in_place(level)
-            && !self.server.lan_acting_fake
+            && !self.side.lan_acting_fake
             && !self.spectator()
             && self
                 .container

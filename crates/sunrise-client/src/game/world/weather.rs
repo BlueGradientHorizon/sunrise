@@ -57,7 +57,7 @@ impl sunrise_world::level::weather::PrecipitationReads for GamePrecipitation<'_,
     }
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The joined `ClientLevel`'s sea level, or the server level's generator setting.
     pub(in crate::game) fn weather_sea_level(&self) -> i32 {
         self.remote

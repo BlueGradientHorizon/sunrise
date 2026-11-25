@@ -259,7 +259,7 @@ impl CombatTracker {
         }
     }
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Runs `f` with `attack` as the attack the hits on the player land in, and puts the previous
     /// one back when it returns: the one writer of `combat.attack`, so the restore cannot be
     /// skipped. Mob victims take their attack explicitly (`DamageLevel::attacked_by`); this is
@@ -270,14 +270,14 @@ impl Game<'_> {
         attack: Attack,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        let outer = std::mem::replace(&mut self.combat.0.attack, attack);
+        let outer = std::mem::replace(&mut self.side.combat.0.attack, attack);
         let result = f(self);
-        self.combat.0.attack = outer;
+        self.side.combat.0.attack = outer;
         result
     }
     /// The attack the hits on the player land in now (a reader of `combat.attack`).
     pub(in crate::game) fn current_attack(&self) -> Attack {
-        self.combat.0.attack.clone()
+        self.side.combat.0.attack.clone()
     }
 
     /// `LivingDrownEvent`'s `bubbles` for an entity drowning at `at`: true for
@@ -322,7 +322,7 @@ impl Game<'_> {
     pub(in crate::game::server_side) fn player_hurt_by(
         &self,
     ) -> Option<(sunrise_client::mobs::Who, i64)> {
-        let ((id, _), at) = self.combat.0.last_hurt_by.as_ref()?;
+        let ((id, _), at) = self.side.combat.0.last_hurt_by.as_ref()?;
         (self.world.game_time - at <= 100).then_some((sunrise_client::mobs::Who::Mob(*id), *at))
     }
     /// Remember who deals the next `damage_type` damage to the player.
@@ -345,8 +345,8 @@ impl Game<'_> {
         name: Text,
         item: Option<Text>,
     ) {
-        self.combat.0.mark();
-        self.combat.0.pending.push(PendingAttacker {
+        self.side.combat.0.mark();
+        self.side.combat.0.pending.push(PendingAttacker {
             damage_type: damage_type.to_owned(),
             attacker: (id, name),
             item,
@@ -364,8 +364,8 @@ impl Game<'_> {
         item: Option<Text>,
         living: bool,
     ) {
-        self.combat.0.mark();
-        self.combat.0.pending.push(PendingAttacker {
+        self.side.combat.0.mark();
+        self.side.combat.0.pending.push(PendingAttacker {
             damage_type: damage_type.to_owned(),
             attacker: (id, name),
             item,
@@ -377,8 +377,8 @@ impl Game<'_> {
     /// nothing caused it (a splash potion nobody threw): the death message
     /// names it instead (`getLocalizedDeathMessage`). It is no kill credit.
     pub(in crate::game) fn note_direct_entity(&mut self, damage_type: &str, name: Text) {
-        self.combat.0.mark();
-        self.combat
+        self.side.combat.0.mark();
+        self.side.combat
             .0
             .pending_direct
             .push((damage_type.to_owned(), name));
@@ -407,12 +407,12 @@ impl Game<'_> {
                         })
                     });
                 if let Some(uuid) = uuid {
-                    self.combat.0.note_hurt_by_player(PlayerCredit(uuid), now);
+                    self.side.combat.0.note_hurt_by_player(PlayerCredit(uuid), now);
                 }
             }
             // `instanceof Wolf`: a content mod's type copying the wolf is one.
             Some(m) if m.extra.tame && m.species() == Species::Wolf => {
-                self.combat.0.last_hurt_by_player = m.extra.owner.map(|o| {
+                self.side.combat.0.last_hurt_by_player = m.extra.owner.map(|o| {
                     let owner = sunrise_client::lan::playerdata::ints_uuid(o);
                     (PlayerCredit(owner), now)
                 });
@@ -427,14 +427,14 @@ impl Game<'_> {
         damage_type: &str,
         attack: Option<&Attack>,
     ) {
-        let Some(pending) = self.combat.0.pending.iter().find(|p| {
+        let Some(pending) = self.side.combat.0.pending.iter().find(|p| {
             p.damage_type == damage_type
                 && attack.is_none_or(|attack| p.attacker.0 == attack.attacker as u32)
         }) else {
             return;
         };
         let id = pending.attacker.0;
-        self.combat.0.last_hurt_by = pending
+        self.side.combat.0.last_hurt_by = pending
             .credit
             .then(|| (pending.attacker.clone(), self.world.game_time));
         self.resolve_player_responsible_for_player(
@@ -499,7 +499,7 @@ impl Game<'_> {
                 _ => continue,
             };
             let (attacker, item, living, credit) = self
-                .combat
+                .side.combat
                 .0
                 .pending
                 .iter()
@@ -511,35 +511,35 @@ impl Game<'_> {
                         living,
                         credit,
                         ..
-                    } = self.combat.0.pending.remove(i);
+                    } = self.side.combat.0.pending.remove(i);
                     (Some(attacker), item, living, credit)
                 })
                 .unwrap_or_default();
             let direct = match attacker {
                 Some(_) => None,
                 None => self
-                    .combat
+                    .side.combat
                     .0
                     .pending_direct
                     .iter()
                     .position(|(t, _)| *t == name)
-                    .map(|i| self.combat.0.pending_direct.remove(i).1),
+                    .map(|i| self.side.combat.0.pending_direct.remove(i).1),
             };
             let (fall_location, fall_distance) = self.fall_location();
             let now = self.world.game_time;
             if let Some(a) = &attacker {
                 if living {
-                    self.combat.0.last_hurt_by = credit.then(|| (a.clone(), now));
+                    self.side.combat.0.last_hurt_by = credit.then(|| (a.clone(), now));
                 }
                 recorded = Some((name.clone(), a.0));
-                if living && !self.combat.0.in_combat {
-                    self.combat.0.in_combat = true;
+                if living && !self.side.combat.0.in_combat {
+                    self.side.combat.0.in_combat = true;
                 }
             }
             if let Some(tenths) = damage_taken_award(amount) {
                 self.award_custom_stat("damage_taken", tenths);
             }
-            self.combat.0.entries.push(Entry {
+            self.side.combat.0.entries.push(Entry {
                 damage_type: name,
                 damage: amount,
                 fall_location,
@@ -548,21 +548,21 @@ impl Game<'_> {
                 item,
                 direct,
             });
-            self.combat.0.last_damage = now;
+            self.side.combat.0.last_damage = now;
         }
-        self.combat.0.pending.clear();
-        self.combat.0.pending_direct.clear();
-        self.combat.0.noted_since = None;
-        self.combat.0.projectile_direct = None;
-        self.combat.0.projectile_attacker = None;
-        self.combat.0.fall_before = self.player.as_ref().map_or(0.0, |p| p.fall_distance);
+        self.side.combat.0.pending.clear();
+        self.side.combat.0.pending_direct.clear();
+        self.side.combat.0.noted_since = None;
+        self.side.combat.0.projectile_direct = None;
+        self.side.combat.0.projectile_attacker = None;
+        self.side.combat.0.fall_before = self.player.as_ref().map_or(0.0, |p| p.fall_distance);
     }
     /// `FallLocation.getCurrentFallLocation` and the fall distance so far.
     pub(in crate::game::server_side) fn fall_location(&self) -> (Option<&'static str>, f32) {
         let Some(p) = self.player.as_ref() else {
             return (None, 0.0);
         };
-        let distance = p.fall_distance.max(self.combat.0.fall_before) as f32;
+        let distance = p.fall_distance.max(self.side.combat.0.fall_before) as f32;
         let location = if let Some(c) = p.last_climbable {
             let name = self
                 .res
@@ -586,12 +586,12 @@ impl Game<'_> {
     }
     /// `CombatTracker.recheckStatus`: forget old fights.
     pub(in crate::game::server_side) fn recheck_combat(&mut self) {
-        let reset = if self.combat.0.in_combat { 300 } else { 100 };
-        if !self.combat.0.entries.is_empty()
-            && self.world.game_time - self.combat.0.last_damage > reset
+        let reset = if self.side.combat.0.in_combat { 300 } else { 100 };
+        if !self.side.combat.0.entries.is_empty()
+            && self.world.game_time - self.side.combat.0.last_damage > reset
         {
-            self.combat.0.entries.clear();
-            self.combat.0.in_combat = false;
+            self.side.combat.0.entries.clear();
+            self.side.combat.0.in_combat = false;
         }
     }
     /// Whether damage type `name` is in `tag` (with or without its `minecraft:`) in the
@@ -606,7 +606,7 @@ impl Game<'_> {
     pub(in crate::game::server_side) fn most_significant_fall(&self) -> Option<usize> {
         let (mut result, mut alternative) = (None, None);
         let (mut best_fall, mut alt_damage) = (0.0f32, 0.0f32);
-        for (i, e) in self.combat.0.entries.iter().enumerate() {
+        for (i, e) in self.side.combat.0.entries.iter().enumerate() {
             let fake = self.damage_in_tag(&e.damage_type, "always_most_significant_fall");
             let distance = if fake { f32::MAX } else { e.fall_distance };
             if (self.damage_in_tag(&e.damage_type, "is_fall") || fake)
@@ -654,7 +654,7 @@ impl Game<'_> {
         &self,
         player: Option<u32>,
     ) -> Option<Text> {
-        if player == self.server.lan_acting {
+        if player == self.side.lan_acting {
             return self.main_hand_custom_name();
         }
         let g = self.lan.as_ref()?.hub.guest(player?)?;
@@ -672,8 +672,8 @@ impl Game<'_> {
     /// `me`: a server's guest is not `PLAYER_NAME`.
     pub(in crate::game::server_side) fn combat_death_message_for(&mut self, me: Text) -> Text {
         self.recheck_combat();
-        let entries = std::mem::take(&mut self.combat.0.entries);
-        self.combat.0.in_combat = false;
+        let entries = std::mem::take(&mut self.side.combat.0.entries);
+        self.side.combat.0.in_combat = false;
         let Some(killing) = entries.last() else {
             return Text::translate("death.attack.generic", &[me]);
         };
@@ -684,9 +684,9 @@ impl Game<'_> {
             .and_then(|id| self.health_resources.damage.definition(id))
             .map(|d| (d.message_id.clone(), d.death_message_type.clone()))
             .unwrap_or_else(|| ("generic".into(), "default".into()));
-        self.combat.0.entries = entries;
+        self.side.combat.0.entries = entries;
         let knock = self.most_significant_fall();
-        let entries = std::mem::take(&mut self.combat.0.entries);
+        let entries = std::mem::take(&mut self.side.combat.0.entries);
         let killing = entries.last().expect("checked above");
         let killer = killing.attacker.clone();
         let direct = killing.direct.clone();
@@ -744,7 +744,7 @@ impl Game<'_> {
             return Text::translate(&key, &[me, name]);
         }
         // getKillCredit: the last mob that hurt the player in the past 100 ticks.
-        if let Some(((_, name), at)) = &self.combat.0.last_hurt_by
+        if let Some(((_, name), at)) = &self.side.combat.0.last_hurt_by
             && self.world.game_time - at <= 100
         {
             return Text::translate(&format!("{key}.player"), &[me, name.clone()]);
@@ -822,7 +822,7 @@ impl Game<'_> {
         let player = match killer {
             Some(Some(conn)) => Some((u32::MAX - 1 - conn, self.target_name(Target::Guest(conn)))),
             Some(None) => Some((u32::MAX, self.target_name(Target::Player))),
-            None if self.player.is_some() || self.server.lan_acting.is_some() => {
+            None if self.player.is_some() || self.side.lan_acting.is_some() => {
                 Some((u32::MAX, self.target_name(Target::Player)))
             }
             None => None,
@@ -840,7 +840,7 @@ impl Game<'_> {
             Who::Mob(id) => g
                 .mob_display_name(id)
                 .or_else(|| {
-                    g.combat
+                    g.side.combat
                         .0
                         .exploded
                         .iter()
@@ -896,9 +896,9 @@ impl Game<'_> {
             last_hurt_by: credit.map(|c| (c, now)),
             ..CombatTracker::default()
         };
-        std::mem::swap(&mut self.combat.0, &mut tracker);
+        std::mem::swap(&mut self.side.combat.0, &mut tracker);
         let text = self.combat_death_message_for(me);
-        std::mem::swap(&mut self.combat.0, &mut tracker);
+        std::mem::swap(&mut self.side.combat.0, &mut tracker);
         text
     }
 }
@@ -976,7 +976,7 @@ pub(in crate::game) mod fall_location_tests {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `LivingEntity.setLastHurtMob` on the player body currently taking its turn.
     pub(in crate::game) fn remember_player_target(&mut self, target: Option<u32>) {
         if let Some(p) = self.player.as_mut() {
@@ -1053,7 +1053,7 @@ impl Game<'_> {
 }
 
 /// Hits one mob's tick deals another, handled after the mob loop.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A melee hit on another mob, then `postAttack`; whether it landed.
     pub(in crate::game::server_side) fn mob_attacks_mob(
         &mut self,
@@ -1093,7 +1093,7 @@ impl Game<'_> {
             }
             Who::Mob(id) => self.mob_attacks_mob(id, amount, source),
         };
-        self.combat.0.hit_landed = landed;
+        self.side.combat.0.hit_landed = landed;
         if !landed {
             if let Some(b) = mob.and_then(|id| self.mobs.iter_mut().find(|m| m.id == id)) {
                 sunrise_client::mobs::bee::sting_refused(b);
@@ -1102,7 +1102,7 @@ impl Game<'_> {
         }
         match target {
             Who::Player => {
-                self.combat.0.stuck.add_stinger();
+                self.side.combat.0.stuck.add_stinger();
                 if poison_ticks > 0 {
                     self.give_player_effect("minecraft:poison", poison_ticks, 0);
                 }

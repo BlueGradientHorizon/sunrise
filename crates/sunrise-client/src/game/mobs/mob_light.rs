@@ -2,7 +2,7 @@
 use super::Game;
 use sunrise_client::mobs::Mob;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `EntityRenderer.getPackedLightCoords`: the light `mob` is drawn with at `alpha`.
     pub(in crate::game::client_side) fn mob_packed_light(&self, mob: &Mob, alpha: f64) -> u32 {
         sunrise_client_gameplay::mob_light::packed_light(&self.world, mob, alpha)

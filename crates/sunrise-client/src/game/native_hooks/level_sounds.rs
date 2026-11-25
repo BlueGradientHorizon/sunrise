@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `PlayLevelSoundEvent.AtPosition` before server broadcast or client playback.
     pub(in crate::game) fn native_play_level_sound_at_position(
         &mut self,

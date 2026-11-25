@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Declare categories for custom recipe types, with registered item icons.
     /// Asked lazily once per recipe table by `recipe_book_category`.
     /// The complete batch is validated atomically; any invalid declaration

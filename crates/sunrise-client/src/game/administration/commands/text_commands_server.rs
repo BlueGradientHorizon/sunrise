@@ -13,7 +13,7 @@ pub(in crate::game::server_side) use sunrise_client::{lan::data::component_nbt, 
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_protocol::packets::play::{self, Clientbound as C};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// TitleCommand's `connection.send` for each player: a guest is sent the
     /// packet, the acting player queues it on `server.guest_packets`.
     pub(in crate::game::server_side) fn titles_or_packet(&mut self, players: &[Target], packet: C) {
@@ -23,8 +23,8 @@ impl Game<'_> {
         );
         for &t in players {
             match t {
-                Target::Player if self.server.lan_acting.is_some() || self.lan.is_none() => {
-                    self.server.guest_packets.push(packet.clone());
+                Target::Player if self.side.lan_acting.is_some() || self.lan.is_none() => {
+                    self.side.guest_packets.push(packet.clone());
                 }
                 Target::Player => {}
                 Target::Guest(conn) => {

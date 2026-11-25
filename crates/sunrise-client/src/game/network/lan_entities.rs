@@ -20,22 +20,22 @@ pub(in crate::game::server_side) fn assign_entity_id(next: &mut u32, id: &mut u3
     *id
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Entity.nextEntityId`: the id a new entity takes from the one counter.
     pub(in crate::game) fn take_entity_id(&mut self) -> u32 {
-        self.server.next_entity += 1;
-        self.server.next_entity
+        self.side.next_entity += 1;
+        self.side.next_entity
     }
     /// Whether the id counter is within [`ENTITY_ID_HEADROOM`] of the end: then a mod's spawn is
     /// refused and the tick spawns nothing of its own, named once in the log. Ids already handed
     /// out are never taken back, so a stale handle never names a later entity.
     pub(in crate::game) fn entity_ids_exhausted(&mut self) -> bool {
-        let exhausted = self.server.next_entity >= u32::MAX - ENTITY_ID_HEADROOM;
+        let exhausted = self.side.next_entity >= u32::MAX - ENTITY_ID_HEADROOM;
         if exhausted && !self.native_lifecycle.ids_exhausted_told {
             self.native_lifecycle.ids_exhausted_told = true;
             log::error!(
                 "entity ids exhausted: {} of {} handed out; no entity spawns until the world reopens",
-                self.server.next_entity,
+                self.side.next_entity,
                 u32::MAX
             );
         }
@@ -136,7 +136,7 @@ fn stand_poses(a: &sunrise_client::entities::ArmorStand) -> Vec<(u8, i32, Value)
     meta
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The entities players started and stopped tracking, told to the mods in
     /// each player's order with the hub in `self.lan` and no player's state
     /// swapped in (`ServerEntity.addPairing` and `removePairing`). Output a
@@ -522,7 +522,7 @@ impl Game<'_> {
                     .push((10, serializer::INT, Value::Int(i32::from(f.rotation))));
             }
         }
-        for (p, &id) in self.server.knot_ids.iter().filter(|&(_, &id)| id > after) {
+        for (p, &id) in self.side.knot_ids.iter().filter(|&(_, &id)| id > after) {
             // LeashFenceKnotEntity.getAddEntityPacket: the fence's block.
             add_state(
                 out,
@@ -629,7 +629,7 @@ impl Game<'_> {
         }
         self.lan_projectile_states(out, after);
         self.lan_general_states(out, after);
-        for o in self.others.0.iter().filter(|o| o.id > after) {
+        for o in self.side.others.0.iter().filter(|o| o.id > after) {
             let p = o.position;
             let e = add_state(out, o.id, &o.kind, [p.x, p.y, p.z], o.yaw, false);
             e.pitch = o.pitch;
@@ -654,9 +654,9 @@ impl Game<'_> {
             let Some(kept) = kept.get_mut(&self.dim) else {
                 return;
             };
-            if kept.len() > self.others.0.len() + 64 {
+            if kept.len() > self.side.others.0.len() + 64 {
                 let ids: sunrise_client::fast_hash::FxHashSet<u32> =
-                    self.others.0.iter().map(|o| o.id).collect();
+                    self.side.others.0.iter().map(|o| o.id).collect();
                 kept.retain(|id, _| ids.contains(id));
             }
         });
@@ -724,7 +724,7 @@ thread_local! {
     > = Default::default();
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The synched data of a text, block or item display kept unsimulated,
     /// from its compound (`Display.readAdditionalSaveData`), with the
     /// defaults to send when a value goes back to one.
@@ -838,7 +838,7 @@ impl Game<'_> {
         // (game/leads.rs `tie_knot`); the tracker shows that same entity.
         // `notifyLeasheeRemoved` discards it once the last lead is gone.
         self.forget_untied_knots();
-        let next = &mut self.server.next_entity;
+        let next = &mut self.side.next_entity;
         use super::entity_residency::assign_resident_ids;
         assign_resident_ids!(self.tnts, t, next, None);
         assign_resident_ids!(self.falling, f, next, Some(&f.attachment_lifetime));

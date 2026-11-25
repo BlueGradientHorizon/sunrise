@@ -3,7 +3,7 @@ pub(in crate::game::server_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::native_hooks::explosion_notice_containment::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     // A notice cannot veto removal. Recover from a failed native callback just
     // as crash::contain recovers from other mod-controlled work, and let the
     // caller finish removal even if the callback already changed the world.

@@ -53,7 +53,7 @@ pub(in crate::game::server_side) use sunrise_world::{
     worldgen::terrain::TerrainBlockStates,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `IntegratedServer.setWorldAllowCommands`, then `updatePermissions`.
     pub(in crate::game) fn set_allow_commands(&mut self, allow: bool) {
         self.level.allow_commands = Some(allow);

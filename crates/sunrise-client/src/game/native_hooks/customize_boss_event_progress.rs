@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// One boss bar is about to be drawn (`CustomizeGuiOverlayEvent.BossEventProgress`): `x`,
     /// `y` are its top-left corner and `increment` the spacing to the next bar, in GUI pixels,
     /// which a mod may change; `cancel` skips drawing it.

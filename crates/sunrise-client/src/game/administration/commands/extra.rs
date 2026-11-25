@@ -182,7 +182,7 @@ pub(in crate::game) fn civil(secs: i64) -> (i64, i64, i64, i64, i64, i64) {
     (y, m, d, rem / 3600, rem % 3600 / 60, rem % 60)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// EntityArgument.getEntity / getPlayer.
     pub(in crate::game) fn one_entity(
         &mut self,
@@ -704,7 +704,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerPlayer.openDialog` for every target of `/dialog show`: a guest
     /// is sent `ClientboundShowDialogPacket`, the window's own player opens
     /// the dialog on its screen.
@@ -759,7 +759,7 @@ impl Game<'_> {
         }
     }
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `LivingEntity.readAdditionalSaveData`'s `locator_bar_icon`
     /// (`Waypoint.Icon.CODEC`: a required `style` and an optional int `color`).
     /// None when the key is missing or does not decode, which is the default icon.

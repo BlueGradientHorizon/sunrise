@@ -152,7 +152,7 @@ pub(in crate::game::server_side) fn api_modifier(m: &Modifier) -> Option<Attribu
     ))
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// What a living handle names now: a player, a mob, an armor stand or the dragon.
     pub(in crate::game) fn native_living_target(&self, living: LivingRef) -> Option<Target> {
         match self.native_entity_target(living.entity())? {
@@ -194,7 +194,7 @@ impl Game<'_> {
                     return false;
                 };
                 let plan = self.prepare_knockback_credit(id as i32, None, &NO_ATTACK);
-                let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
+                let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
                 let level =
                     crate::game::entity::damage_level_of!(self, &NO_ATTACK, &mut credit, None);
                 self.mobs[i].knockback(
@@ -210,7 +210,7 @@ impl Game<'_> {
             Target::Dragon(_) => {
                 let resistance = self.dragon_knockback_resistance();
                 let plan = self.prepare_knockback_credit(id as i32, None, &NO_ATTACK);
-                let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
+                let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
                 let level =
                     crate::game::entity::damage_level_of!(self, &NO_ATTACK, &mut credit, None);
                 level.through_short_knockback(|level| {
@@ -241,7 +241,7 @@ impl Game<'_> {
         let hub = &self.lan.as_ref()?.hub;
         let player = match target {
             Target::Player => {
-                hub.guest(self.server.lan_acting?)?;
+                hub.guest(self.side.lan_acting?)?;
                 self.player.as_ref()?
             }
             Target::Guest(conn) => hub.guest(conn)?.motion.as_deref()?,
@@ -250,11 +250,11 @@ impl Game<'_> {
         let mut random = player.random.clone();
         let plan = self.prepare_knockback_credit(id as i32, None, attack);
         let dimension = self.resident_target_dimension(target).unwrap_or(self.dim);
-        let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
+        let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
         let world = if dimension == self.dim {
             &mut self.world
         } else {
-            &mut self.levels.0.parked_mut(dimension)?.world
+            &mut self.side.levels.0.parked_mut(dimension)?.world
         };
         let mut level = DamageLevel::of(
             world,
@@ -266,7 +266,7 @@ impl Game<'_> {
         .attacked_by(attack)
         .with_knockback_credit(&mut credit)
         .with_effects(HitEffects::new(
-            &mut self.server.pending_native_sounds,
+            &mut self.side.pending_native_sounds,
             Some(hub),
             dimension.id(),
             self.native_lifecycle.epoch(),
@@ -321,7 +321,7 @@ impl Game<'_> {
             )
             .unwrap_or(0.0);
         let plan = self.prepare_knockback_credit(id as i32, None, attack);
-        let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
+        let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
         let level = crate::game::entity::damage_level_of!(self, attack, &mut credit, None);
         let pushed = Hurting::ArmorStand(id as i32, source);
         if level.through_short_knockback(|level| level.knockback_canceled(pushed, &mut knock)) {
@@ -796,7 +796,7 @@ impl Game<'_> {
                     g.journal_player_health();
                     g.player.as_mut()?.set_health(health, false).ok()?;
                     if revived
-                        && let Some(conn) = g.server.lan_acting
+                        && let Some(conn) = g.side.lan_acting
                         && let Some(host) = g.lan.as_mut()
                         && let Some(gi) =
                             host.hub.guests.iter().position(|guest| guest.conn == conn)
@@ -824,7 +824,7 @@ impl Game<'_> {
                 if revived {
                     m.death_canceled = false;
                     m.death_time = 0;
-                    self.server.died.remove(&id);
+                    self.side.died.remove(&id);
                 }
                 true
             }
@@ -866,13 +866,13 @@ impl Game<'_> {
     /// in whichever loaded level it is now (`credited_entity`).
     pub(in crate::game) fn living_kill_credit(&self, living: LivingRef) -> Option<EntityRef> {
         let credit = match self.native_living_target(living)? {
-            Target::Player => self.combat.0.player_credit(self.world.game_time),
+            Target::Player => self.side.combat.0.player_credit(self.world.game_time),
             Target::Guest(conn) => self
-                .guest_combat
+                .side.guest_combat
                 .0
                 .get(&conn)
                 .and_then(|combat| combat.player_credit(self.world.game_time)),
-            Target::Mob(id) => self.server.last_hurt_by_player.get(&id).copied(),
+            Target::Mob(id) => self.side.last_hurt_by_player.get(&id).copied(),
             _ => None,
         };
         if let Some(credit) = credit {
@@ -892,12 +892,12 @@ impl Game<'_> {
     pub(in crate::game) fn living_last_attacker(&self, living: LivingRef) -> Option<EntityRef> {
         match self.native_living_target(living)? {
             Target::Player => self
-                .combat
+                .side.combat
                 .0
                 .kill_credit(self.world.game_time)
                 .and_then(|id| self.credited_entity(id)),
             Target::Guest(conn) => self
-                .guest_combat
+                .side.guest_combat
                 .0
                 .get(&conn)?
                 .kill_credit(self.world.game_time)
@@ -919,12 +919,12 @@ impl Game<'_> {
                     // handles read while the hub is out).
                     Who::Player => {
                         let conn =
-                            self.resolve_player_credit(*self.server.last_hurt_by_player.get(&id)?)?;
+                            self.resolve_player_credit(*self.side.last_hurt_by_player.get(&id)?)?;
                         match conn {
-                            None if self.server.lan_acting.is_some() => None,
+                            None if self.side.lan_acting.is_some() => None,
                             None => Some(self.player.as_ref()?.entity_id as u32),
-                            Some(conn) if self.server.lan_acting == Some(conn) => {
-                                Some(self.server.lan_acting_entity?)
+                            Some(conn) if self.side.lan_acting == Some(conn) => {
+                                Some(self.side.lan_acting_entity?)
                             }
                             Some(conn) => Some(
                                 self.lan
@@ -997,7 +997,7 @@ impl Game<'_> {
             if self.mob_in_other_level(id).is_some() {
                 return Some(EntityRef::new(epoch, id));
             }
-            id = self.levels.0.travelled(id)?;
+            id = self.side.levels.0.travelled(id)?;
             if let Some(found) = self.entity(id) {
                 return Some(found);
             }

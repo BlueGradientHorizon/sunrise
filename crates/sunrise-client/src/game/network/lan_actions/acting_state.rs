@@ -32,14 +32,14 @@ pub(in crate::game) struct ServerPendingGuestUi {
     pub mount: Option<u32>,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     #[inline(always)]
     pub(in crate::game) fn server_acting_sneak(&self) -> bool {
         assert!(
             self.is_logical_server(),
             "server_acting_sneak called on Client role"
         );
-        self.server.acting_input.sneak
+        self.side.acting_input.sneak
     }
 
     #[inline(always)]
@@ -48,7 +48,7 @@ impl Game<'_> {
             self.is_logical_server(),
             "server_acting_attack called on Client role"
         );
-        self.server.acting_input.attack
+        self.side.acting_input.attack
     }
 
     #[inline(always)]
@@ -57,7 +57,7 @@ impl Game<'_> {
             self.is_logical_server(),
             "server_acting_use called on Client role"
         );
-        self.server.acting_input.use_item
+        self.side.acting_input.use_item
     }
 
     #[inline(always)]
@@ -66,7 +66,7 @@ impl Game<'_> {
             self.is_logical_server(),
             "server_acting_sprint called on Client role"
         );
-        self.server.acting_input.sprint
+        self.side.acting_input.sprint
     }
 
     #[inline(always)]
@@ -78,7 +78,7 @@ impl Game<'_> {
             self.is_logical_server(),
             "server_set_acting_input called on Client role"
         );
-        self.server.acting_input = input;
+        self.side.acting_input = input;
     }
 
     #[inline(always)]
@@ -87,7 +87,7 @@ impl Game<'_> {
             self.is_logical_server(),
             "server_set_acting_sneak called on Client role"
         );
-        self.server.acting_input.sneak = held;
+        self.side.acting_input.sneak = held;
     }
 
     #[inline(always)]
@@ -96,7 +96,7 @@ impl Game<'_> {
             self.is_logical_server(),
             "server_set_acting_attack called on Client role"
         );
-        self.server.acting_input.attack = held;
+        self.side.acting_input.attack = held;
     }
 
     #[inline(always)]
@@ -105,7 +105,7 @@ impl Game<'_> {
             self.is_logical_server(),
             "server_set_acting_use called on Client role"
         );
-        self.server.acting_input.use_item = held;
+        self.side.acting_input.use_item = held;
     }
 
     #[allow(dead_code)]
@@ -115,7 +115,7 @@ impl Game<'_> {
             self.is_logical_server(),
             "server_set_acting_sprint called on Client role"
         );
-        self.server.acting_input.sprint = held;
+        self.side.acting_input.sprint = held;
     }
 
     #[inline(always)]
@@ -124,7 +124,7 @@ impl Game<'_> {
             self.is_logical_server(),
             "server_clear_acting_input called on Client role"
         );
-        self.server.acting_input = ServerActingInput::default();
+        self.side.acting_input = ServerActingInput::default();
     }
 
     #[inline(always)]
@@ -136,7 +136,7 @@ impl Game<'_> {
             self.is_logical_server(),
             "server_replace_acting_input called on Client role"
         );
-        std::mem::replace(&mut self.server.acting_input, next)
+        std::mem::replace(&mut self.side.acting_input, next)
     }
 
     #[allow(dead_code)]
@@ -146,7 +146,7 @@ impl Game<'_> {
             self.is_logical_server(),
             "server_take_pending_guest_ui called on Client role"
         );
-        std::mem::take(&mut self.server.pending_guest_ui)
+        std::mem::take(&mut self.side.pending_guest_ui)
     }
 
     #[inline(always)]
@@ -158,7 +158,7 @@ impl Game<'_> {
             self.is_logical_server(),
             "server_replace_pending_guest_ui called on Client role"
         );
-        std::mem::replace(&mut self.server.pending_guest_ui, next)
+        std::mem::replace(&mut self.side.pending_guest_ui, next)
     }
 
     /// `SignBlock.openTextEdit` on a server-role game: checks fake-player admission,
@@ -177,8 +177,8 @@ impl Game<'_> {
         if self.fake_blocks(mod_api::FakeEffect::Menu) {
             return;
         }
-        self.server.pending_guest_ui.sign_editor = Some(PendingSignEditor { pos, front });
-        self.server.acting_input = ServerActingInput::default();
+        self.side.pending_guest_ui.sign_editor = Some(PendingSignEditor { pos, front });
+        self.side.acting_input = ServerActingInput::default();
         self.open_sign_editor_server(pos, front);
     }
 
@@ -198,8 +198,8 @@ impl Game<'_> {
             return false;
         }
         self.award_custom_stat("interact_with_lectern", 1);
-        self.server.pending_guest_ui.lectern = Some(key);
-        self.server.acting_input = ServerActingInput::default();
+        self.side.pending_guest_ui.lectern = Some(key);
+        self.side.acting_input = ServerActingInput::default();
         true
     }
 
@@ -218,8 +218,8 @@ impl Game<'_> {
         if self.pack.assets.registry.state(state).is_none() {
             return;
         }
-        self.server.pending_guest_ui.command_block = Some(pos);
-        self.server.acting_input = ServerActingInput::default();
+        self.side.pending_guest_ui.command_block = Some(pos);
+        self.side.acting_input = ServerActingInput::default();
     }
 
     /// `AbstractHorse.openCustomInventoryScreen` on a server-role game.
@@ -238,8 +238,8 @@ impl Game<'_> {
         self.station = None;
         self.container = None;
         self.craft_size = 2;
-        self.server.acting_input.use_item = false;
-        self.server.pending_guest_ui.mount = Some(mob_id);
+        self.side.acting_input.use_item = false;
+        self.side.pending_guest_ui.mount = Some(mob_id);
     }
 
     /// `ServerboundPlayerCommandPacket::OPEN_INVENTORY` while riding a mount.

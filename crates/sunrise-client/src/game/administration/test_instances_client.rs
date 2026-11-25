@@ -54,14 +54,14 @@ pub(in crate::game::client_side) use {
     },
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientPacketListener.handleGameTestHighlightPos`:
     /// `GameTestBlockHighlightRenderer.highlightPos` shows the block for ten
     /// seconds with its position relative to the test.
     pub(in crate::game) fn highlight_test_pos(&mut self, absolute: [i32; 3], relative: [i32; 3]) {
         let text = format!("{}, {}, {}", relative[0], relative[1], relative[2]);
         let until = std::time::Instant::now() + std::time::Duration::from_millis(10_000);
-        self.client
+        self.side
             .test_highlights
             .insert((absolute[0], absolute[1], absolute[2]), (text, until));
     }
@@ -79,11 +79,11 @@ impl Game<'_> {
         // `GameTestBlockHighlightRenderer.emitGizmos`: expired highlights go,
         // the rest are a green box with the relative position over it.
         let now = std::time::Instant::now();
-        self.client
+        self.side
             .test_highlights
             .retain(|_, (_, until)| now <= *until);
         let mut markers: Vec<(_, _, u32)> = self
-            .client
+            .side
             .test_highlights
             .iter()
             .map(|(&pos, (text, _))| ([pos.0, pos.1, pos.2], text.clone(), HIGHLIGHT_FILL))
@@ -152,6 +152,6 @@ impl Game<'_> {
                 super::text_displays::submit_distance_sq(o.x as f32, o.y as f32, o.z as f32);
             see_through.finish(st_start, dist_sq);
         }
-        self.client.map_patches.extend(patches);
+        self.side.map_patches.extend(patches);
     }
 }

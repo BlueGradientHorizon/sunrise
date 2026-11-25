@@ -15,7 +15,7 @@ pub(in crate::game) enum GiveItem {
     Fake,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `GiveCommand.giveItem` adds the fake pickup before drawing the sound pitch.
     pub(in crate::game) fn give_pickup(&mut self, prototype: ItemStack) {
         let Some(eye) = self.eye_position() else {

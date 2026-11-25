@@ -23,7 +23,7 @@ const MIN_COST: i32 = 5;
 const MAX_COST_SPAN: f32 = 17.0;
 
 /// The mobs that call `populateDefaultEquipmentEnchantments` when they spawn.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Mob.equip(EquipmentTable)` for a spawner's `equipment`: the loot table
     /// (the mob as `this`, its random sequence) is rolled and each stack goes
     /// in the slot `EquipmentUser.resolveSlot` picks, with the table's drop
@@ -32,7 +32,7 @@ impl Game<'_> {
         let Some((name, chances)) = equipment_table(table) else {
             return;
         };
-        let Some(loot) = self.server_loot.0.get() else {
+        let Some(loot) = self.side.server_loot.0.get() else {
             return;
         };
         let Some(m) = self.mobs.iter().find(|m| m.id == id) else {
@@ -48,7 +48,7 @@ impl Game<'_> {
         let seed = self.level.seed;
         let stacks = match loot.random_sequence(&name) {
             Some(sequence) => {
-                let random = self.server.rand_sequences.get(sequence, seed);
+                let random = self.side.rand_sequences.get(sequence, seed);
                 loot.roll_entity(&name, random, &params)
             }
             None => loot.roll_entity(&name, &mut self.world.random, &params),

@@ -23,7 +23,7 @@ pub(in crate::game) struct ActiveClientItemUse {
     ticks: u32,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The first block along the view within `distance` (at most 1024), in loaded chunks only; `None` on a miss.
     pub(in crate::game) fn raycast(&self, distance: f32) -> Option<mod_api::Hit> {
         let (d, hit) = self.view_hit()?;
@@ -59,7 +59,7 @@ impl Game<'_> {
     fn can_capture_item_use(&self) -> bool {
         self.using.is_none()
             && !self.spectator()
-            && self.client.screen != Screen::Dead
+            && self.side.screen != Screen::Dead
             && self
                 .player
                 .as_ref()
@@ -107,7 +107,7 @@ impl Game<'_> {
             return false;
         };
         let item_id = Arc::clone(&stack.item);
-        self.client_item_use.0 = Some(ActiveClientItemUse {
+        self.side.client_item_use.0 = Some(ActiveClientItemUse {
             mod_id,
             mod_index,
             behavior: Arc::clone(&behavior),
@@ -125,7 +125,7 @@ impl Game<'_> {
     /// Reset an invalid capture or rebind the live stack and count a held tick. Only input
     /// handling releases it.
     pub(in crate::game) fn tick_client_item_use(&mut self) {
-        let Some(active) = self.client_item_use.0.as_ref() else {
+        let Some(active) = self.side.client_item_use.0.as_ref() else {
             return;
         };
         let valid = mod_index_on(active.mod_index) && self.client_item_use_valid(active);
@@ -137,7 +137,7 @@ impl Game<'_> {
         let held = self.mapped_key_down("key.use");
         if !valid {
             self.reset_client_item_use();
-        } else if let Some(active) = self.client_item_use.0.as_mut() {
+        } else if let Some(active) = self.side.client_item_use.0.as_mut() {
             if let Some(live) = live {
                 active.stack = live;
             }
@@ -157,7 +157,7 @@ impl Game<'_> {
         &mut self,
         release_requested: bool,
     ) -> bool {
-        let Some(mut active) = self.client_item_use.0.take() else {
+        let Some(mut active) = self.side.client_item_use.0.take() else {
             return false;
         };
         if let Some(live) = self.live_client_item_use_stack(&active) {

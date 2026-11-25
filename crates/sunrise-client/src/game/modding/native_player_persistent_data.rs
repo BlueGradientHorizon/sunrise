@@ -67,7 +67,7 @@ pub(in crate::game) fn persistent_data_compound(saved: Option<&Tag>) -> Option<&
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The mods' compound on a player: the acting player's saved data is the level's for their
     /// turn, another's is their record's.
     pub(in crate::game) fn player_persistent_data(&self, player: PlayerRef) -> Option<&Compound> {

@@ -70,7 +70,7 @@ impl FangState {
         self.list.len()
     }
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn add_fangs(
         &mut self,
         at: [f64; 3],
@@ -78,8 +78,8 @@ impl Game<'_> {
         delay: i32,
         owner: u32,
     ) {
-        self.server.next_entity += 1;
-        self.insert_fangs(self.server.next_entity, at, yaw, delay, owner);
+        self.side.next_entity += 1;
+        self.insert_fangs(self.side.next_entity, at, yaw, delay, owner);
     }
 
     pub(in crate::game::server_side) fn fangs_to_nbt(
@@ -115,7 +115,7 @@ impl Game<'_> {
         sunrise_threads::work::clear_work();
         // ServerLevel.tick: only entities in entity-ticking chunks that joined before the pass tick.
         let ticking = self.entity_ticking_area();
-        let through = self.server.ticked_entities_through;
+        let through = self.side.ticked_entities_through;
         let mut list = self.fangs.list.lift();
         #[cfg(test)]
         super::entity::taken_pass_tests::after_take(self);
@@ -263,7 +263,7 @@ impl Game<'_> {
             // The hit's causing entity, lent to its listeners beside the victim.
             let causing = self.causer_id(attacker);
             let decision = crate::game::entity::causer_decision!(self, causing);
-            let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
+            let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
             let (victim, lend) =
                 crate::game::entity::victim_and_causer!(self, index, causing, decision);
             let hurt = victim.damage(

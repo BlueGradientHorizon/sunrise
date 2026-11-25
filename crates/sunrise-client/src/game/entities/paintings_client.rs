@@ -18,7 +18,7 @@ pub(in crate::game::client_side) use sunrise_gameplay::painting_variants::{
     PaintingVariants, Variant, frame_coexists, painting_coexists, painting_facing,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// PaintingRenderer: variant on the front, back texture behind and on the edges.
     pub(in crate::game) fn painting_geometry(
         &self,

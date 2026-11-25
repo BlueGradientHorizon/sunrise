@@ -124,7 +124,7 @@ pub(in crate::game::client_side) fn view_pages(data: Option<&StackData>) -> Vec<
         })
         .collect()
 }
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn book_lines(&self, page: &str) -> Vec<Text> {
         self.page_lines(&Text::untrusted(page))
     }
@@ -147,7 +147,7 @@ impl Game<'_> {
         page: &Text,
         left: f32,
     ) -> Option<sunrise_client::text::Style> {
-        let (mx, my) = self.client.cursor;
+        let (mx, my) = self.side.cursor;
         let row = ((my - 32.0) / 9.0).floor();
         if row < 0.0 || row >= LINES as f32 {
             return None;
@@ -178,7 +178,7 @@ impl Game<'_> {
         match link {
             ClickEvent::ChangePage(target) => {
                 let target = (target - 1).clamp(0, count.saturating_sub(1) as i32);
-                let Some(BookScreen::View { page, .. }) = self.client.book.as_mut() else {
+                let Some(BookScreen::View { page, .. }) = self.side.book.as_mut() else {
                     return;
                 };
                 if let Some(key) = lectern {
@@ -197,7 +197,7 @@ impl Game<'_> {
             // a confirmation returns to.
             ClickEvent::RunCommand(command) => {
                 let book = if lectern.is_none() {
-                    self.client.book.take()
+                    self.side.book.take()
                 } else {
                     None
                 };
@@ -212,7 +212,7 @@ impl Game<'_> {
             // Screen.defaultHandleClickEvent: copied, the book stays open.
             ClickEvent::CopyToClipboard(value) => {
                 use sunrise_client::clipboard::Clipboard;
-                self.clipboard.0.set(&value);
+                self.side.clipboard.0.set(&value);
             }
             // defaultHandleGameClickEvent: the dialog opens over the book.
             ClickEvent::ShowDialog(dialog) => self.show_dialog_ref(&dialog),
@@ -289,7 +289,7 @@ impl Game<'_> {
     /// Opens `screen` (through `open_screen_overlay`: a mod may keep it shut).
     pub(in crate::game) fn open_book(&mut self, screen: BookScreen) {
         self.open_screen_overlay(screen.id(), |game| {
-            game.client.book = Some(screen);
+            game.side.book = Some(screen);
             game.clear_device_keys();
             game.set_mapping_held("key.use", false);
             game.capture(false);
@@ -300,7 +300,7 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn set_book_signing(&mut self, on: bool) {
         let id = if on { "book_sign" } else { "book_edit" };
         self.open_screen_overlay(id, |game| {
-            if let Some(book @ BookScreen::Edit { .. }) = game.client.book.as_mut() {
+            if let Some(book @ BookScreen::Edit { .. }) = game.side.book.as_mut() {
                 if on {
                     book.begin_signing();
                 } else if let BookScreen::Edit { signing, .. } = book {
@@ -312,7 +312,7 @@ impl Game<'_> {
     pub(in crate::game) fn close_book(&mut self) {
         // A server's lectern: LecternScreen's menu closes (closeContainer).
         if matches!(
-            self.client.book,
+            self.side.book,
             Some(BookScreen::View {
                 lectern: Some(_),
                 ..
@@ -321,10 +321,10 @@ impl Game<'_> {
         {
             self.remote_close_container();
         }
-        if self.client.book.take().is_some() {
+        if self.side.book.take().is_some() {
             self.refresh_screen_widgets();
         }
-        self.capture(self.client.screen == super::Screen::Playing && !self.screen_over_playing());
+        self.capture(self.side.screen == super::Screen::Playing && !self.screen_over_playing());
     }
     /// `BookEditScreen.saveChanges` and `BookSignScreen`'s Sign and Close:
     /// trailing empty pages dropped, the book in hand updated here and, on a
@@ -332,7 +332,7 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn save_book(&mut self, sign: bool) {
         let Some(BookScreen::Edit {
             slot, pages, title, ..
-        }) = self.client.book.take()
+        }) = self.side.book.take()
         else {
             return;
         };
@@ -364,7 +364,7 @@ impl Game<'_> {
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
     ) -> bool {
         if let Some(shortcut) = shortcut
-            && matches!(self.client.book, Some(BookScreen::Edit { .. }))
+            && matches!(self.side.book, Some(BookScreen::Edit { .. }))
         {
             self.book_shortcut(shortcut);
             return true;
@@ -378,7 +378,7 @@ impl Game<'_> {
         key: Option<KeyCode>,
         text: Option<&str>,
     ) -> bool {
-        match self.client.book.as_mut() {
+        match self.side.book.as_mut() {
             Some(BookScreen::View { .. }) => match key {
                 Some(KeyCode::Escape) => {
                     self.close_book();
@@ -405,7 +405,7 @@ impl Game<'_> {
                 // `BookSignScreen.keyPressed` signs whenever the title box is
                 // not empty, blank or not, and trims the title on send.
                 Some(KeyCode::Enter | KeyCode::NumpadEnter) => {
-                    let empty = self.client.book.as_ref().is_some_and(
+                    let empty = self.side.book.as_ref().is_some_and(
                         |b| matches!(b, BookScreen::Edit { title, .. } if title.is_empty()),
                     );
                     if !empty {
@@ -473,7 +473,7 @@ impl Game<'_> {
     /// Typing for `sunrise-ctl type` (`\n` is a line break).
     pub(in crate::game::client_side) fn book_type(&mut self, text: &str) {
         let text = text.replace("\\n", "\n");
-        match self.client.book.as_mut() {
+        match self.side.book.as_mut() {
             Some(BookScreen::Edit { signing: true, .. }) => self.book_title_insert(&text),
             Some(BookScreen::Edit { .. }) => self.page_insert(&text),
             _ => {}
@@ -484,7 +484,7 @@ impl Game<'_> {
         let (ctrl, shift) = (self.has_control_down(), self.has_shift_down());
         let Some(BookScreen::Edit {
             title, title_edit, ..
-        }) = self.client.book.as_mut()
+        }) = self.side.book.as_mut()
         else {
             return false;
         };
@@ -497,7 +497,7 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn book_title_insert(&mut self, text: &str) {
         let Some(BookScreen::Edit {
             title, title_edit, ..
-        }) = self.client.book.as_mut()
+        }) = self.side.book.as_mut()
         else {
             return;
         };
@@ -507,7 +507,7 @@ impl Game<'_> {
     /// `BookEditScreen.keyPressed` on the page, apart from the line moves.
     pub(in crate::game::client_side) fn book_page_key(&mut self, key: KeyCode) -> bool {
         let (ctrl, shift) = (self.has_control_down(), self.has_shift_down());
-        let before = match self.client.book.as_ref() {
+        let before = match self.side.book.as_ref() {
             Some(BookScreen::Edit { page_edit, .. }) => Some((
                 page_edit.value.clone(),
                 page_edit.cursor,
@@ -515,7 +515,7 @@ impl Game<'_> {
             )),
             _ => return false,
         };
-        let handled = if let Some(BookScreen::Edit { page_edit, .. }) = self.client.book.as_mut() {
+        let handled = if let Some(BookScreen::Edit { page_edit, .. }) = self.side.book.as_mut() {
             page_edit.key(key, ctrl, shift)
         } else {
             false
@@ -537,20 +537,20 @@ impl Game<'_> {
         shortcut: sunrise_client::clipboard::EditShortcut,
     ) {
         let signing = matches!(
-            self.client.book,
+            self.side.book,
             Some(BookScreen::Edit { signing: true, .. })
         );
         if signing {
             if let Some(BookScreen::Edit {
                 title, title_edit, ..
-            }) = self.client.book.as_mut()
+            }) = self.side.book.as_mut()
             {
-                title_edit.shortcut(shortcut, &mut self.clipboard.0);
+                title_edit.shortcut(shortcut, &mut self.side.clipboard.0);
                 title.clone_from(&title_edit.value);
             }
             return;
         }
-        let before = match self.client.book.as_ref() {
+        let before = match self.side.book.as_ref() {
             Some(BookScreen::Edit { page_edit, .. }) => Some((
                 page_edit.value.clone(),
                 page_edit.cursor,
@@ -558,8 +558,8 @@ impl Game<'_> {
             )),
             _ => None,
         };
-        if let Some(BookScreen::Edit { page_edit, .. }) = self.client.book.as_mut() {
-            page_edit.shortcut(shortcut, &mut self.clipboard.0);
+        if let Some(BookScreen::Edit { page_edit, .. }) = self.side.book.as_mut() {
+            page_edit.shortcut(shortcut, &mut self.side.clipboard.0);
         }
         self.page_keep(before);
     }
@@ -568,7 +568,7 @@ impl Game<'_> {
         &mut self,
         f: impl FnOnce(&mut ui::EditBox),
     ) -> bool {
-        let before = match self.client.book.as_ref() {
+        let before = match self.side.book.as_ref() {
             Some(BookScreen::Edit { page_edit, .. }) => Some((
                 page_edit.value.clone(),
                 page_edit.cursor,
@@ -576,7 +576,7 @@ impl Game<'_> {
             )),
             _ => return false,
         };
-        let ran = if let Some(BookScreen::Edit { page_edit, .. }) = self.client.book.as_mut() {
+        let ran = if let Some(BookScreen::Edit { page_edit, .. }) = self.side.book.as_mut() {
             f(page_edit);
             true
         } else {
@@ -589,7 +589,7 @@ impl Game<'_> {
         &mut self,
         before: Option<(String, usize, usize)>,
     ) -> bool {
-        let next = match self.client.book.as_ref() {
+        let next = match self.side.book.as_ref() {
             Some(BookScreen::Edit { page_edit, .. }) => page_edit.value.clone(),
             _ => return false,
         };
@@ -599,7 +599,7 @@ impl Game<'_> {
             page,
             page_edit,
             ..
-        }) = self.client.book.as_mut()
+        }) = self.side.book.as_mut()
         else {
             return false;
         };
@@ -615,7 +615,7 @@ impl Game<'_> {
     /// ArrowUp and ArrowDown move a visual line, keeping the column.
     pub(in crate::game::client_side) fn book_move_line(&mut self, dir: isize) {
         let shift = self.has_shift_down();
-        let (text, cursor) = match self.client.book.as_ref() {
+        let (text, cursor) = match self.side.book.as_ref() {
             Some(BookScreen::Edit {
                 pages,
                 page,
@@ -632,7 +632,7 @@ impl Game<'_> {
         let slice: String = chars[start..end].iter().collect();
         // MultilineTextField.LINE_SEEK_PIXEL_BIAS: vanilla biases this seek, not the drawn caret.
         let pos = start + self.gui.atlas.font.fit(&slice, x + 2.0);
-        if let Some(BookScreen::Edit { page_edit, .. }) = self.client.book.as_mut() {
+        if let Some(BookScreen::Edit { page_edit, .. }) = self.side.book.as_mut() {
             page_edit.set_cursor(pos, shift);
         }
     }
@@ -640,7 +640,7 @@ impl Game<'_> {
     /// (`getCursorLineView`'s beginIndex and endIndex).
     pub(in crate::game::client_side) fn book_line_edge(&mut self, end: bool) {
         let shift = self.has_shift_down();
-        let (text, cursor) = match self.client.book.as_ref() {
+        let (text, cursor) = match self.side.book.as_ref() {
             Some(BookScreen::Edit {
                 pages,
                 page,
@@ -652,7 +652,7 @@ impl Game<'_> {
         let rows = self.page_rows(&text);
         let (_, line) = self.caret_on(&text, &rows, cursor);
         let (start, stop) = rows[line];
-        if let Some(BookScreen::Edit { page_edit, .. }) = self.client.book.as_mut() {
+        if let Some(BookScreen::Edit { page_edit, .. }) = self.side.book.as_mut() {
             page_edit.set_cursor(if end { stop } else { start }, shift);
         }
     }
@@ -737,7 +737,7 @@ impl Game<'_> {
         let shift = self.has_shift_down();
         let Some(BookScreen::Edit {
             title, title_edit, ..
-        }) = self.client.book.as_mut()
+        }) = self.side.book.as_mut()
         else {
             return;
         };
@@ -757,25 +757,25 @@ impl Game<'_> {
         double: bool,
     ) {
         if double {
-            if let Some(BookScreen::Edit { page_edit, .. }) = self.client.book.as_mut() {
+            if let Some(BookScreen::Edit { page_edit, .. }) = self.side.book.as_mut() {
                 page_edit.select_word_at_cursor();
             }
             return;
         }
         let shift = self.has_shift_down();
-        let text = match self.client.book.as_ref() {
+        let text = match self.side.book.as_ref() {
             Some(BookScreen::Edit { pages, page, .. }) => pages[*page].clone(),
             _ => return,
         };
         let pos = self.page_index_at(&text, mx - origin_x, my - origin_y);
-        if let Some(BookScreen::Edit { page_edit, .. }) = self.client.book.as_mut() {
+        if let Some(BookScreen::Edit { page_edit, .. }) = self.side.book.as_mut() {
             page_edit.set_cursor(pos, shift);
         }
     }
     /// The page buttons (`pageForward` adds a page while editing).
     pub(in crate::game::client_side) fn turn_page(&mut self, forward: bool) {
         let mut lectern_page = None;
-        match self.client.book.as_mut() {
+        match self.side.book.as_mut() {
             Some(BookScreen::Edit {
                 pages,
                 page,
@@ -816,7 +816,7 @@ impl Game<'_> {
             self.lectern_button(key, if forward { 2 } else { 1 });
             return;
         }
-        self.audio
+        self.side.audio
             .0
             .play("minecraft:item.book.page_turn", None, 1.0, 1.0);
     }
@@ -865,7 +865,7 @@ impl Game<'_> {
     #[inline(always)]
     pub(in crate::game::client_side) fn lectern_book_open(&self) -> bool {
         matches!(
-            self.client.book,
+            self.side.book,
             Some(BookScreen::View {
                 lectern: Some(_),
                 ..
@@ -878,7 +878,7 @@ impl Game<'_> {
         &mut self,
         action: Option<&str>,
     ) -> sunrise_client::Result<serde_json::Value> {
-        let lectern = match &self.client.book {
+        let lectern = match &self.side.book {
             Some(BookScreen::View { lectern, .. }) => *lectern,
             Some(BookScreen::Edit { .. }) => None,
             None => return Err("no book is open".into()),
@@ -893,7 +893,7 @@ impl Game<'_> {
             },
             // The book and quill's buttons: Sign, then Sign and Close; Done
             // (which saves), then Cancel.
-            Some("sign") => match self.client.book.as_mut() {
+            Some("sign") => match self.side.book.as_mut() {
                 Some(BookScreen::Edit {
                     signing: true,
                     title,
@@ -902,7 +902,7 @@ impl Game<'_> {
                 Some(BookScreen::Edit { .. }) => self.set_book_signing(true),
                 _ => return Err("not a book and quill".into()),
             },
-            Some("done") => match self.client.book.as_mut() {
+            Some("done") => match self.side.book.as_mut() {
                 Some(BookScreen::Edit { signing: true, .. }) => {
                     self.set_book_signing(false);
                 }
@@ -911,7 +911,7 @@ impl Game<'_> {
             },
             Some(other) => return Err(format!("unknown book button {other}").into()),
         }
-        Ok(match &self.client.book {
+        Ok(match &self.side.book {
             Some(BookScreen::View {
                 pages,
                 page,
@@ -940,7 +940,7 @@ impl Game<'_> {
             lectern: Some(_),
             pages,
             page,
-        }) = self.client.book.as_mut()
+        }) = self.side.book.as_mut()
         {
             *pages = view_pages(book.as_ref().and_then(ItemStack::data));
             *page = (*page).min(pages.len().saturating_sub(1));
@@ -952,7 +952,7 @@ impl Game<'_> {
             lectern: Some(_),
             pages,
             page,
-        }) = self.client.book.as_mut()
+        }) = self.side.book.as_mut()
         {
             *page = (value.max(0) as usize).min(pages.len().saturating_sub(1));
         }
@@ -960,22 +960,22 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn book_click(&mut self, size: [u32; 2]) -> bool {
         let b = HudBatch::new(size, self.settings.gui_scale_inputs());
         let (w, left) = (b.width, ((b.width - 192.0) / 2.0).floor());
-        let (mx, my) = self.client.cursor;
+        let (mx, my) = self.side.cursor;
         // MouseHandler: a click within 250 ms of the last one on this screen is a double click.
         let now = std::time::Instant::now();
         let double = self
-            .client
+            .side
             .book_last_click
             .is_some_and(|at| now.duration_since(at).as_millis() < 250);
-        self.client.book_last_click = Some(now);
+        self.side.book_last_click = Some(now);
         let inside =
             |x: f32, y: f32, bw: f32, bh: f32| mx >= x && my >= y && mx < x + bw && my < y + bh;
         let click = |game: &mut Self| {
-            game.audio
+            game.side.audio
                 .0
                 .play("minecraft:ui.button.click", None, 0.25, 1.0)
         };
-        match &self.client.book {
+        match &self.side.book {
             Some(BookScreen::Edit {
                 signing: true,
                 title,
@@ -1054,12 +1054,12 @@ impl Game<'_> {
     }
     pub(in crate::game::client_side) fn draw_book(&mut self, batch: &mut HudBatch) {
         let mut hovered = None;
-        let Some(book) = &self.client.book else {
+        let Some(book) = &self.side.book else {
             return;
         };
         let atlas = &self.gui.atlas;
         let w = batch.width;
-        let (mx, my) = self.client.cursor;
+        let (mx, my) = self.side.cursor;
         let hover =
             |x: f32, y: f32, bw: f32, bh: f32| mx >= x && my >= y && mx < x + bw && my < y + bh;
         self.render_transparent_background("book", batch);
@@ -1408,7 +1408,7 @@ impl Game<'_> {
                 hovered = pages.get(*page).and_then(|t| self.book_style_at(t, left));
             }
         }
-        if let Some(book_id) = self.client.book.as_ref().map(BookScreen::id) {
+        if let Some(book_id) = self.side.book.as_ref().map(BookScreen::id) {
             self.draw_overlay_mounted_widgets(batch, book_id);
         }
         if let Some(style) = hovered {

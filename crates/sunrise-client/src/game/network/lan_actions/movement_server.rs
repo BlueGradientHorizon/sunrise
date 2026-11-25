@@ -5,7 +5,7 @@ pub(in crate::game::server_side) use crate::game::lan_actions::movement::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_core::position::BlockPos;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Player.canGlide`: not flying, airborne, not riding, no levitation, and
     /// a glider that its next point of wear won't break.
     pub(in crate::game::server_side) fn guest_can_glide(&mut self, conn: u32) -> Option<bool> {

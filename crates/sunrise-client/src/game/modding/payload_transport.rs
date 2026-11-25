@@ -21,7 +21,7 @@ impl Deferred {
         let _ = self.epoch.with_active(|| self.prepared.publish());
     }
 }
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn player_send_payload(
         &mut self,
         player: PlayerRef,

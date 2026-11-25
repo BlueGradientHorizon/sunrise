@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `DispenserBlock.getDispenseMethod`, before the item's `dispense_item`:
     /// the block the dispenser faces chooses what the dispense does, for any
     /// item, including vanilla items, on the authoritative server (not

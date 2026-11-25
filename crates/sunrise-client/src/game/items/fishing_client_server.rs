@@ -62,7 +62,7 @@ pub(in crate::game::server_side) use sunrise_core::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_protocol::entity_data::{Value, serializer};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerLevel.sendParticles` of a simple particle.
     pub(in crate::game) fn send_particles(
         &mut self,

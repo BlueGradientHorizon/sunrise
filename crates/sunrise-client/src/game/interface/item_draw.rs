@@ -34,7 +34,7 @@ struct ItemEntityDraw<'a> {
 
 /// The game's painter for the HUD kit's icons (`hud_kit::icon`): items by their models.
 pub(in crate::game) struct IconPainter<'g, 'a> {
-    pub(in crate::game) game: &'g Game<'a>,
+    pub(in crate::game) game: &'g Game<'a, crate::game::client_side::ClientState>,
 }
 
 impl sunrise_client::hud_kit::icon::IconPainter for IconPainter<'_, '_> {
@@ -50,12 +50,12 @@ impl sunrise_client::hud_kit::icon::IconPainter for IconPainter<'_, '_> {
 
 /// The game's answers to what the resolver cannot read from the stack.
 pub(in crate::game) struct Env<'a, 'g> {
-    game: &'a Game<'g>,
+    game: &'a Game<'g, crate::game::client_side::ClientState>,
 }
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Before a frame is drawn: drop the model draws prepared for the last one.
     pub(in crate::game::client_side) fn begin_frame_draws(&self) {
-        self.client.prepared_model_draws.borrow_mut().clear();
+        self.side.prepared_model_draws.borrow_mut().clear();
     }
 }
 
@@ -279,7 +279,7 @@ impl ItemEnv for Env<'_, '_> {
                 (self.game.visual_ticks() ^ 0x9e37_79b9).wrapping_mul(0x9e37_79b9_7f4a_7c15);
             return (mixed >> 40) as f32 / (1u64 << 24) as f32;
         }
-        let nanos = self.game.client.started.elapsed().subsec_nanos();
+        let nanos = self.game.side.started.elapsed().subsec_nanos();
         (nanos % 1_000_000) as f32 / 1_000_000.0
     }
 }
@@ -460,7 +460,7 @@ fn use_duration(components: ComponentsView<'_>) -> i32 {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn item_env(&self) -> Env<'_, '_> {
         Env { game: self }
     }
@@ -468,7 +468,7 @@ impl Game<'_> {
         Host {
             banners: &self.stations().banners,
             sprites: &self.gui.atlas.sprites,
-            skins: &self.skin_downloads.0,
+            skins: &self.side.skin_downloads.0,
             profiles: &self.skin_profiles,
         }
     }
@@ -477,12 +477,12 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn item_level(&self) -> LevelState {
         let dimension = self.dim.id();
         let key = (
-            self.client.frames,
+            self.side.frames,
             self.world.game_time,
             self.world.day_time,
             dimension,
         );
-        let mut cached = self.client.item_level_cache.borrow_mut();
+        let mut cached = self.side.item_level_cache.borrow_mut();
         if let Some((at, level)) = cached.as_ref()
             && *at == key
         {
@@ -662,7 +662,7 @@ impl Game<'_> {
             }
         }
         state.hdr_tier = self.luminance().hdr_tier(&stack.item);
-        if state.hdr_tier > 0 && self.renderer.0.as_ref().is_some_and(|r| r.hdr_on()) {
+        if state.hdr_tier > 0 && self.side.renderer.0.as_ref().is_some_and(|r| r.hdr_on()) {
             state.hdr_light = self.luminance().of(&stack.item);
         }
         state
@@ -696,7 +696,7 @@ impl Game<'_> {
             batch,
             x,
             y,
-            self.client.glint_frame,
+            self.side.glint_frame,
         );
     }
     /// An item under `pose` (GUI pixels), cut by no slot and with a depth of its own: what
@@ -719,7 +719,7 @@ impl Game<'_> {
             },
             batch,
             pose,
-            self.client.glint_frame,
+            self.side.glint_frame,
         )
     }
     /// The glint clock, options and sprite for this frame: read once per
@@ -738,7 +738,7 @@ impl Game<'_> {
     }
     /// The `GLINT_TEXTURING` inputs of this frame (`WorldSink` picks `ENTITY_SCALE` per quad).
     pub(in crate::game::client_side) fn glint(&self) -> Option<item_render::Glint> {
-        self.client
+        self.side
             .glint_frame
             .glint(item_render::Glint::ITEM_SCALE)
     }
@@ -836,8 +836,8 @@ impl Game<'_> {
         light: u32,
         lights: (glam::Vec3, glam::Vec3),
     ) -> Option<((usize, usize, u32), Option<(glam::Vec3, glam::Vec3)>)> {
-        let mut models = self.skin_models.0.borrow_mut();
-        let mut frame = self.client.skin_frame.borrow_mut();
+        let mut models = self.side.skin_models.0.borrow_mut();
+        let mut frame = self.side.skin_frame.borrow_mut();
         let mark = frame.mark();
         let mut skin = sunrise_client::mobs::skin::Skin::new(&mut models, &mut frame);
         for &pose in poses {
@@ -928,7 +928,7 @@ impl Game<'_> {
         out: &mut Vec<Vertex>,
     ) {
         // ItemPickupParticle: the render state extracted at partial tick 1.
-        let taken = self.pickups.0.live.iter().filter_map(|p| match &p.taken {
+        let taken = self.side.pickups.0.live.iter().filter_map(|p| match &p.taken {
             super::pickups::Taken::Item(item) => Some(ItemEntityDraw {
                 item,
                 at: super::pickups::position(p, alpha),
@@ -974,7 +974,7 @@ impl Game<'_> {
             }
             // EntityRenderer.shouldRender: the item's 0.25 box, grown by 0.5,
             // in the view frustum. Checked before its model is resolved.
-            if entity && let Some(view) = &self.client.view_frustum {
+            if entity && let Some(view) = &self.side.view_frustum {
                 let (lo, hi) = dropped_item_cull_box(glam::DVec3::from_array(at), camera);
                 if !view.intersects(lo, hi) {
                     continue;
@@ -1077,7 +1077,7 @@ impl Game<'_> {
                 self.mark_outline(&out[entity_start..], rgb);
                 if let Some(((first, _, _), _)) = skinned {
                     let color = sunrise_client::mobs::render::abgr(rgb);
-                    self.client
+                    self.side
                         .skin_frame
                         .borrow_mut()
                         .outline_since(first, color);

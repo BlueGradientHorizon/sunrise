@@ -31,7 +31,7 @@ pub(in crate::game) struct LevelFormat {
     pub(in crate::game) synced_type: Option<(String, serde_json::Value)>,
 }
 
-impl crate::game::Game<'_> {
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// The environment attributes of the level the player is in, from its synchronized dimension
     /// type, as `EnvironmentAttributeSystem.addDimensionLayer` takes `level.dimensionType()`'s
     /// attributes (and `addDynamicLayers` its timelines): the type's attributes and timelines over

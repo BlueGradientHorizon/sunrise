@@ -3,7 +3,7 @@ pub(in crate::game::server_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::creatures::world_view::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn mob_world_base<'s>(&'s self, others: &'s [Seen]) -> MobWorld<'s> {
         self.world.enable_path_type_cache();
         self.mob_world_base_with(
@@ -13,9 +13,9 @@ impl Game<'_> {
                 trading_players: Some(self),
                 player: self.player_view(),
                 player_identity: self.player_identity(),
-                leash_boats: &self.server.leash_boats,
+                leash_boats: &self.side.leash_boats,
                 teams: std::sync::Arc::new(self.mob_teams()),
-                lid_openers: &self.server.lid_openers,
+                lid_openers: &self.side.lid_openers,
                 mod_effects: Some(self),
                 mob_hooks: (self.native_authoritative()
                     && ([

@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// NeoForge's `PermissionsChangedEvent`: the operator list is about to give player
     /// `player` (`name`) the permission level `new` in place of `old`, through `PlayerList.op`
     /// (`/op`, the console's `op`, the management API's `operators/add` and `operators/set`)

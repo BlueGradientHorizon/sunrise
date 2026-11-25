@@ -5,7 +5,7 @@ pub(in crate::game::client_side) use crate::game::stack_names::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::items::ItemStack;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `ItemStack.getStyledHoverName`, without the rarity colour applied by the tooltip.
     pub(in crate::game) fn styled_stack_name(
         &self,

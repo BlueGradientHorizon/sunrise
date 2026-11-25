@@ -100,7 +100,7 @@ impl LevelAccess for RainView<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Level.getSkyDarken` for an active or parked level, without switching dimensions.
     pub(in crate::game) fn level_get_sky_darken(&self, level: LevelRef) -> Option<i32> {
         let world = self.native_level_read_world(level)?;

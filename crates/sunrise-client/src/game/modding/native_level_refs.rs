@@ -70,7 +70,7 @@ fn biome_search_within_budget(parameters: mod_api::BiomeSearch, height: i32) -> 
         .is_some_and(|samples| samples <= mod_api::BiomeSearch::MAX_SAMPLES)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn level_add_water_ticket(
         &mut self,
         level: LevelRef,
@@ -86,7 +86,7 @@ impl Game<'_> {
         let world = if level.dimension() == self.dim.key() {
             &mut self.world
         } else {
-            self.levels.0.parked_world_mut_of(level.dimension_id())?
+            self.side.levels.0.parked_world_mut_of(level.dimension_id())?
         };
         world
             .water_tickets
@@ -112,7 +112,7 @@ impl Game<'_> {
         }
         let world = if level.dimension() == self.dim.key() {
             &mut self.world
-        } else if let Some(world) = self.levels.0.parked_world_mut_of(level.dimension_id()) {
+        } else if let Some(world) = self.side.levels.0.parked_world_mut_of(level.dimension_id()) {
             world
         } else {
             return false;
@@ -139,7 +139,7 @@ impl Game<'_> {
         let terrain = if level.dimension() == self.dim.key() {
             self.end.locator()
         } else {
-            self.levels.0.parked_locator_of(level.dimension_id())
+            self.side.levels.0.parked_locator_of(level.dimension_id())
         }?;
         let selector = normalized_selector(biome);
         let allowed = |name: &str| self.biome_matches(&selector, name);
@@ -177,7 +177,7 @@ impl Game<'_> {
         let terrain = if level.dimension() == self.dim.key() {
             self.end.locator()
         } else {
-            self.levels.0.parked_locator_of(level.dimension_id())
+            self.side.levels.0.parked_locator_of(level.dimension_id())
         }?;
         let names = self.structure_names(&normalized_selector(structure));
         terrain
@@ -192,7 +192,7 @@ impl Game<'_> {
         let streaming = if level.dimension() == self.native_level_key() {
             &self.streaming
         } else {
-            self.levels.0.parked_streaming_of(level.dimension_id())?
+            self.side.levels.0.parked_streaming_of(level.dimension_id())?
         };
         let [qx, qy, qz] = streaming.biome_zoom.quart_at_block(block_pos(pos));
         let chunk = world.chunks.get(&(qx >> 2, qz >> 2))?;
@@ -318,7 +318,7 @@ impl Game<'_> {
         if level.dimension() == self.dim.key() {
             return Ok(&self.world);
         }
-        self.levels
+        self.side.levels
             .0
             .parked_world_of(level.dimension_id())
             .ok_or(mod_api::LevelReadError::Stale)
@@ -410,7 +410,7 @@ impl Game<'_> {
         if level.dimension() == self.dim.key() {
             return Some(&self.streaming);
         }
-        self.levels.0.parked_streaming_of(level.dimension_id())
+        self.side.levels.0.parked_streaming_of(level.dimension_id())
     }
     /// Whether `/forceload` holds the chunk (`ServerLevel.getForcedChunks`),
     /// loaded or not; a mod's own ticket on it does not count. None for a stale handle or on a client.
@@ -441,7 +441,7 @@ impl Game<'_> {
             self.streaming
                 .set_forced_loaded(&mut self.world, x, z, forced)
         } else {
-            self.levels
+            self.side.levels
                 .0
                 .force_parked_chunk(chunk.level().dimension_id(), x, z, forced)
                 .unwrap_or(false)
@@ -451,7 +451,7 @@ impl Game<'_> {
         if dim == self.dim {
             Some(&mut self.streaming)
         } else {
-            self.levels.0.parked_streaming_of_mut(dim.id())
+            self.side.levels.0.parked_streaming_of_mut(dim.id())
         }
     }
 
@@ -533,7 +533,7 @@ impl Game<'_> {
         let dimension = chunk.level().dimension_id();
         let streaming = if dimension == self.dim.id() {
             &mut self.streaming
-        } else if let Some(streaming) = self.levels.0.parked_streaming_of_mut(dimension) {
+        } else if let Some(streaming) = self.side.levels.0.parked_streaming_of_mut(dimension) {
             streaming
         } else {
             return false;
@@ -993,7 +993,7 @@ impl Game<'_> {
         if self.native_level_world(level).is_none() {
             return false;
         }
-        self.levels
+        self.side.levels
             .0
             .request_save(super::Dim::from_id(level.dimension_id()));
         true

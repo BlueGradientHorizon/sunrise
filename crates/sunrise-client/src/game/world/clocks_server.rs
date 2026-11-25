@@ -7,7 +7,7 @@ pub(in crate::game::server_side) use crate::game::clocks::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_gameplay::world_clock::WorldClock;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Advance every world clock (`ServerClockManager.tick`) when `advance_time` allows it.
     pub(in crate::game) fn advance_clock(&mut self) {
         if !self

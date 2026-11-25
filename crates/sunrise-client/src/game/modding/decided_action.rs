@@ -41,8 +41,8 @@ thread_local! {
     pub(in crate::game) static DECIDED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-type Fresh<'p> = Box<dyn Fn(&Game<'_>) -> bool + 'p>;
-type Perform<'p> = Box<dyn FnOnce(&mut Game<'_>) + 'p>;
+type Fresh<'p> = Box<dyn Fn(&Game<'_, crate::game::server_side::ServerState>) -> bool + 'p>;
+type Perform<'p> = Box<dyn FnOnce(&mut Game<'_, crate::game::server_side::ServerState>) + 'p>;
 
 struct Shared<'p> {
     epoch: Epoch<'p>,
@@ -105,7 +105,7 @@ impl<'a, 'g> ActionTarget<GameHost<'a, 'g>> for Action<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Decide an action `name` on the menu `route` for the player entity `actor`: `fire` calls the
     /// hook and validates what it answered (`Reply::Allow`, or `Invalid` to refuse), `fresh` says
     /// the menu is still the one the action froze, and `perform` is the action, run once inside the
@@ -117,9 +117,9 @@ impl Game<'_> {
         route: MenuId,
         actor: EntityRef,
         epoch: Epoch<'p>,
-        fresh: impl Fn(&Game<'_>) -> bool + 'p,
-        fire: impl FnOnce(&mut Game<'_>) -> Reply,
-        perform: impl FnOnce(&mut Game<'_>) + 'p,
+        fresh: impl Fn(&Game<'_, crate::game::server_side::ServerState>) -> bool + 'p,
+        fire: impl FnOnce(&mut Game<'_, crate::game::server_side::ServerState>) -> Reply,
+        perform: impl FnOnce(&mut Game<'_, crate::game::server_side::ServerState>) + 'p,
     ) -> bool {
         self.decided_action_on(
             name,
@@ -145,9 +145,9 @@ impl Game<'_> {
         name: &'static str,
         target: DecidedTarget,
         epoch: Epoch<'p>,
-        fresh: impl Fn(&Game<'_>) -> bool + 'p,
-        fire: impl FnOnce(&mut Game<'_>) -> Reply,
-        perform: impl FnOnce(&mut Game<'_>) + 'p,
+        fresh: impl Fn(&Game<'_, crate::game::server_side::ServerState>) -> bool + 'p,
+        fire: impl FnOnce(&mut Game<'_, crate::game::server_side::ServerState>) -> Reply,
+        perform: impl FnOnce(&mut Game<'_, crate::game::server_side::ServerState>) + 'p,
     ) -> bool {
         let DecidedTarget { route, identity } = target;
         #[cfg(test)]
@@ -207,7 +207,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A scoped click decision fully consumes the packet. Unsubscribed layouts use the same
     /// default router without opening an action or allocating its read set.
     pub(in crate::game::server_side) fn menu_clicked_decided(
@@ -254,7 +254,7 @@ impl Game<'_> {
         let offhand = guest.offhand.clone();
         let carried = guest.carried.clone();
         let capture_block =
-            |game: &Game<'_>, guest: &sunrise_client::lan::guest::Guest, pos: (i32, i32, i32)| {
+            |game: &Game<'_, crate::game::server_side::ServerState>, guest: &sunrise_client::lan::guest::Guest, pos: (i32, i32, i32)| {
                 (
                     game.world.block_entities.generation(&pos),
                     game.world.block(pos.0, pos.1, pos.2),

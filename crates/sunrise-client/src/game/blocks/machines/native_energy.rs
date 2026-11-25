@@ -34,7 +34,7 @@ fn extract_amount(buffer: &ModEnergyBuffer, energy: i32, asked: i32) -> i32 {
     energy.min(asked).min(buffer.max_extract).max(0)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The buffer of the mod block at `at` in the level in place and the energy it holds,
     /// if `at`'s side reaches a fill or a drain (none: every side does).
     fn energy_buffer(&self, at: BlockSide) -> Option<(Arc<ModEnergyBuffer>, i32)> {

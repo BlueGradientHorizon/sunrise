@@ -82,7 +82,7 @@ pub(in crate::game) fn duration(seconds: f64) -> String {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The console and the player who started the task get the progress.
     pub(in crate::game::server_side) fn pregen_report(
         &mut self,

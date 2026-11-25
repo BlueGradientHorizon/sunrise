@@ -41,7 +41,7 @@ pub(in crate::game::server_side) use sunrise_core::nbt::Tag;
 #[path = "items/slot_sources_server.rs"]
 pub(in crate::game) mod slot_sources;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// One item modifier (a typed object, a list or a datapack reference)
     /// applied to a stack; `None` when the stack ends up empty.
     pub(in crate::game) fn apply_item_modifier(
@@ -75,7 +75,7 @@ impl Game<'_> {
             Value::Array(list) => list.iter().fold(stack, |s, f| {
                 self.apply_item_modifier(f, s, rng, this, origin, depth + 1)
             }),
-            Value::String(id) => match self.fns.0.store.item_modifiers.get(id).cloned() {
+            Value::String(id) => match self.side.fns.0.store.item_modifiers.get(id).cloned() {
                 Some(f) => self.apply_item_modifier(&f, stack, rng, this, origin, depth + 1),
                 None => stack,
             },
@@ -430,7 +430,7 @@ impl Game<'_> {
             if ctx.get("modifier").is_some() {
                 let modifier = self.item_modifier_arg(ctx, "modifier")?;
                 let source = self
-                    .server
+                    .side
                     .command_source
                     .unwrap_or_else(|| self.player_source());
                 let view = source.entity.map(|t| self.entity_view_asked(t, &modifier));
@@ -511,7 +511,7 @@ impl Game<'_> {
             // (and its announcement) comes before the command's message.
             if changed > 0 && matches!(o, Owner::Entity(Target::Player)) && self.player.is_some() {
                 self.check_inventory_trigger();
-                self.cmds.0.broadcast_announced = self.adv.announced.len();
+                self.side.cmds.0.broadcast_announced = self.adv.announced.len();
             }
         }
         if selected == 0 {
@@ -594,7 +594,7 @@ impl Game<'_> {
         };
         let modifier = self.item_modifier_arg(ctx, "modifier")?;
         let source = self
-            .server
+            .side
             .command_source
             .unwrap_or_else(|| self.player_source());
         let view = source.entity.map(|t| self.entity_view_asked(t, &modifier));
@@ -735,7 +735,7 @@ impl Game<'_> {
         } else {
             format!("minecraft:{raw}")
         };
-        self.fns
+        self.side.fns
             .0
             .store
             .item_modifiers
@@ -763,7 +763,7 @@ impl Game<'_> {
             Slot::Armor(i) => self.armor.get(*i).cloned().flatten(),
             Slot::Offhand => self.offhand.clone(),
             Slot::Equipment(i) => self.equipment.get(*i).cloned(),
-            Slot::Ender(i) => self.server.ender_items.get(*i).cloned().flatten(),
+            Slot::Ender(i) => self.side.ender_items.get(*i).cloned().flatten(),
             Slot::Mob(id, key) => {
                 let m = self.mobs.iter().find(|m| m.id == *id)?;
                 m.equipment_stacks()[mob_slot(key)?].clone()
@@ -870,12 +870,12 @@ impl Game<'_> {
                 );
                 true
             }
-            Slot::Ender(i) => match self.server.ender_items.get_mut(*i) {
+            Slot::Ender(i) => match self.side.ender_items.get_mut(*i) {
                 Some(slot) => {
                     *slot = stack.clone();
                     // An open ender chest menu shows a copy, which closing copies back
                     // over `ender_items`: the write goes into the copy as well.
-                    if let Some(key) = self.server.ender_open
+                    if let Some(key) = self.side.ender_open
                         && let Some(BlockEntity::Chest(items)) =
                             self.world.block_entities.get_mut(&key)
                         && let Some(open) = items.get_mut(*i)

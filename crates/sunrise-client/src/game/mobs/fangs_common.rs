@@ -3,7 +3,7 @@ use super::Game;
 use crate::game::server_side::fangs::Fangs;
 use sunrise_core::geometry::Vec3;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn insert_fangs(
         &mut self,
         id: u32,

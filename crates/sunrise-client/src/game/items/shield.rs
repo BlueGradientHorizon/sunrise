@@ -25,7 +25,7 @@ pub(in crate::game) fn block_delay_passed(
     ticks as i32 >= (component.delay_seconds * 20.0).round() as i32
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `AbstractArrow.onHitEntity` on the player: a piercing arrow passes item blocking, whoever
     /// shot it, because `applyItemBlocking` reads the direct entity's pierce level.
     pub(in crate::game::server_side) fn arrow_hits_player(
@@ -33,7 +33,7 @@ impl Game<'_> {
         amount: f32,
         p: &sunrise_client::projectiles::Projectile,
     ) -> bool {
-        self.combat.0.piercing_hit = p.arrow.as_ref().is_some_and(|a| a.pierce > 0);
+        self.side.combat.0.piercing_hit = p.arrow.as_ref().is_some_and(|a| a.pierce > 0);
         self.mob_hits_player(
             amount,
             [p.previous.x, p.previous.y, p.previous.z],
@@ -49,7 +49,7 @@ impl Game<'_> {
         if self.blocks_attacks(stack).is_none() {
             return false;
         }
-        if self.server.shield_cooldown == 0 {
+        if self.side.shield_cooldown == 0 {
             self.start_using_item();
         }
         true
@@ -177,7 +177,7 @@ impl Game<'_> {
         }
         let Some(id) = attacker else {
             // Another player's melee hit has no mob behind it.
-            if let Some((from, disable)) = self.combat.0.player_attacker {
+            if let Some((from, disable)) = self.side.combat.0.player_attacker {
                 let fully = outcome.fully_blocked;
                 let attacker = ([from[0], from[2]], disable);
                 self.blocked_by_attacker(
@@ -273,8 +273,8 @@ impl Game<'_> {
         };
         if ticks > 0 {
             if let (Some(player), Some(name)) = (
-                self.server.lan_acting_uuid,
-                self.server.lan_acting_name.clone(),
+                self.side.lan_acting_uuid,
+                self.side.lan_acting_name.clone(),
             ) {
                 self.native_player_shield_disable(player, &name, ticks);
             }
@@ -285,14 +285,14 @@ impl Game<'_> {
             let item = used.as_ref().map(|stack| stack.item.clone());
             let mut cancel = false;
             if let (Some(player), Some(name), Some(item)) = (
-                self.server.lan_acting_uuid,
-                self.server.lan_acting_name.clone(),
+                self.side.lan_acting_uuid,
+                self.side.lan_acting_name.clone(),
                 item,
             ) {
                 self.native_player_item_cooldown(player, &name, &item, ticks as i32, &mut cancel);
             }
             if !cancel {
-                self.server.shield_cooldown = ticks;
+                self.side.shield_cooldown = ticks;
                 // ItemCooldowns.addCooldown(stack, ticks) on the shield's group: a guest is
                 // sent it (ServerItemCooldowns), which keeps the shield down on their screen,
                 // and the 0 that ends it.

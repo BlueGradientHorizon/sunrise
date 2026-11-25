@@ -23,7 +23,7 @@ pub(in crate::game::client_side) use sunrise_client::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_core::{geometry::Vec3, random::RandomSource};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `OminousItemSpawnerRenderer`: full-bright item growing over its first 50 ticks and turning.
     pub(in crate::game) fn ominous_item_spawner_geometry(
         &self,
@@ -73,7 +73,7 @@ impl Game<'_> {
             "ominous_spawner_particles called on Server role"
         );
         let options = ParticleOptions::simple(ParticleType::OminousSpawning);
-        let r = self.particles.0.random();
+        let r = self.side.particles.0.random();
         let count = r.next_int_between_inclusive(1, 3).unwrap_or(1);
         let mut flights = Vec::new();
         for _ in 0..count {
@@ -82,7 +82,7 @@ impl Game<'_> {
             flights.push([from[0] - at[0], from[1] - at[1], from[2] - at[2]]);
         }
         for v in flights {
-            self.particles.0.add(&options, at, v);
+            self.side.particles.0.add(&options, at, v);
         }
     }
     /// `OminousItemSpawner.tick` on a client: advances tickCount and emits particles every 5 ticks.

@@ -35,7 +35,7 @@ pub(in crate::game::server_side) use sunrise_client::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_protocol::packets::play;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Install only the writes calculated by the plan.
     pub(in crate::game::server_side) fn apply_merchant_take(
         &mut self,
@@ -118,7 +118,7 @@ impl Game<'_> {
             level
                 .trades
                 .sequences
-                .get_or_insert_with(|| self.server.rand_sequences.clone());
+                .get_or_insert_with(|| self.side.rand_sequences.clone());
         }
     }
     pub(in crate::game) fn lan_merchant_click(
@@ -475,7 +475,7 @@ impl Journal {
         }
         self.correct_on_abort.extend(child.correct_on_abort);
     }
-    pub(in crate::game) fn rollback(self, game: &mut Game<'_>) {
+    pub(in crate::game) fn rollback(self, game: &mut Game<'_, crate::game::server_side::ServerState>) {
         for restore in self.guests.into_values() {
             restore(game);
         }
@@ -486,13 +486,13 @@ impl Journal {
             restore(game);
         }
         if let Some(sequences) = self.sequences {
-            game.server.rand_sequences = sequences;
+            game.side.rand_sequences = sequences;
         }
     }
 }
 
 impl TakeReads {
-    pub(in crate::game) fn fresh(&self, game: &Game<'_>) -> bool {
+    pub(in crate::game) fn fresh(&self, game: &Game<'_, crate::game::server_side::ServerState>) -> bool {
         let Some(host) = game.lan.as_ref() else {
             return false;
         };

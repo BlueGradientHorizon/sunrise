@@ -34,7 +34,7 @@ impl sunrise_mod_runtime::attachments::HasAttachmentLifetime for Dragon {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Install a replacement only after retiring the previous parts' sidecars.
     pub(in crate::game::server_side) fn replace_resident_dragon(&mut self, dragon: Dragon) {
         self.discard_resident_dragon();
@@ -92,7 +92,7 @@ impl Game<'_> {
         crate::game::entity_residency::assign_resident_ids!(
             self.crystals,
             c,
-            &mut self.server.next_entity,
+            &mut self.side.next_entity,
             None
         );
     }

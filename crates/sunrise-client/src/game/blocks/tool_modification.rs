@@ -4,7 +4,7 @@ use super::Game;
 use sunrise_client::items::ItemStack;
 use sunrise_world::registry::BlockStateId;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// What the tool action `tool` makes of the block `block`: `state` starts with vanilla's
     /// answer. The block's parts answer first (`tool_modified_state`,
     /// `IBlockExtension.getToolModifiedState`), and `block_tool_modification` hears their result

@@ -9,7 +9,7 @@ pub(in crate::game::server_side) use sunrise_client::join_seq::JoinList;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_core::random::RandomSource;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether the acting player, `player`, takes the ground `item` they
     /// touch (`ItemEntity.playerTouch`).
     pub(in crate::game::server_side) fn native_pickup_allowed(

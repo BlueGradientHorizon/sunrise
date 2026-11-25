@@ -268,7 +268,7 @@ impl Editor for JigsawEditor {
     fn cancel(&mut self, _entity: &mut BlockEntity) {}
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `LocalPlayer.openJigsawBlock`.
     pub(in crate::game::client_side) fn open_jigsaw_block(&mut self, pos: Pos) {
         let Some(BlockEntity::JigsawBlock(b)) = self.world.block_entities.get(&pos) else {

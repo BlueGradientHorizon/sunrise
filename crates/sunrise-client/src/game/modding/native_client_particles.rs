@@ -31,7 +31,7 @@ fn finite_options(options: &ParticleOptions) -> bool {
         })
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientLevel.addParticle`: request one particle in this client's loaded world.
     /// Options and provider input slots pass through unchanged, including encoded
     /// color or size values in `velocity`. Normal distance, settings and population
@@ -55,7 +55,7 @@ impl Game<'_> {
         // The limiter's roll draws the level random: inside a part's `animate_tick`, the one
         // the part holds as `event.random`.
         self.with_lent_level_random(|game| {
-            game.particles
+            game.side.particles
                 .0
                 .add_with_world(Some(&game.world), options, at, velocity, false, false);
         });
@@ -91,8 +91,8 @@ impl Game<'_> {
         let Some((sprite, tint)) = self.particle_sprite(state, source_pos) else {
             return Ok(false);
         };
-        let particle = Particle::terrain(self.particles.0.random(), at, velocity, sprite, tint);
-        self.particles.0.push(particle);
+        let particle = Particle::terrain(self.side.particles.0.random(), at, velocity, sprite, tint);
+        self.side.particles.0.push(particle);
         Ok(true)
     }
 
@@ -122,7 +122,7 @@ impl Game<'_> {
         let camera = self.eye_position().unwrap_or(request.at);
         // Without explosions its poofs are added at once, each with the limiter's roll.
         self.with_lent_level_random(|game| {
-            game.particles.0.fireworks(
+            game.side.particles.0.fireworks(
                 request.at,
                 request.velocity,
                 explosions,

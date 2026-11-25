@@ -3,7 +3,7 @@
 use super::{Game, native_block_tables::BlockTables};
 use sunrise_world::registry::BlockStateId;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The waxed twin of `state`; see [`BlockTables::honeycomb_waxed`].
     pub(in crate::game) fn honeycomb_waxed(&self, state: BlockStateId) -> Option<BlockStateId> {
         BlockTables::of(self).honeycomb_waxed(state)

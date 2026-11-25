@@ -63,7 +63,7 @@ enum Body<'a> {
     Other(Target),
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The player's body or the mob a handle names, or its target.
     fn native_entity_body(&self, entity: EntityRef) -> Option<Body<'_>> {
         self.native_target_body(self.native_entity_target(entity)?)
@@ -93,7 +93,7 @@ impl Game<'_> {
     ) -> Option<mod_api::MainHand> {
         let (target, location) = self.native_entity_target_with_location(entity)?;
         let left = match target {
-            Target::Player => return self.guest_main_arm(self.server.lan_acting?),
+            Target::Player => return self.guest_main_arm(self.side.lan_acting?),
             Target::Guest(conn) => return self.guest_main_arm(conn),
             Target::Mob(_) => self.mobs[self.mobs.locate(location?.join)?].main_arm_left(),
             Target::Stand(_) | Target::Dragon(_) => false,
@@ -147,7 +147,7 @@ impl Game<'_> {
                     return false;
                 }
                 if let (Some(&conn), Some(lan)) =
-                    (self.server.lan_guest_swaps.last(), self.lan.as_mut())
+                    (self.side.lan_guest_swaps.last(), self.lan.as_mut())
                 {
                     lan.hub
                         .update_guest(conn, |guest| guest.sprinting = sprinting);

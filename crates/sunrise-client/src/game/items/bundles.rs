@@ -25,7 +25,7 @@ pub(in crate::game::client_side) fn takes_bundle_wheel(screen: Screen) -> bool {
     matches!(screen, Screen::Inventory | Screen::Creative)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// A slot a bundle can be selected in: the player's inventory and off hand in any
     /// menu (#4436: a crafting table's, an enchanting table's...), and a container's own
     /// slots. A server only knows those in chest-like menus.
@@ -55,7 +55,7 @@ impl Game<'_> {
         if shown == 0 {
             return false;
         }
-        let (wheel_x, wheel_y) = self.client.bundle_mouse.wheel.on_mouse_scroll(x, y);
+        let (wheel_x, wheel_y) = self.side.bundle_mouse.wheel.on_mouse_scroll(x, y);
         let wheel = if wheel_y == 0 { -wheel_x } else { wheel_y };
         if wheel != 0 {
             let selected = bundle.data().map_or(-1, |d| d.bundle_selected.0);
@@ -101,12 +101,12 @@ impl Game<'_> {
     /// `AbstractContainerScreen.onStopHovering` (and `onClose`): leaving a slot, or the
     /// screen, clears the bundle's selection.
     pub(in crate::game::client_side) fn tick_bundle_hover(&mut self) {
-        let now = if takes_bundle_wheel(self.client.screen) {
+        let now = if takes_bundle_wheel(self.side.screen) {
             self.inventory_target().0
         } else {
             None
         };
-        if let Some(left) = std::mem::replace(&mut self.client.bundle_mouse.hovered, now)
+        if let Some(left) = std::mem::replace(&mut self.side.bundle_mouse.hovered, now)
             && Some(left) != now
         {
             self.unselect_bundle(left);

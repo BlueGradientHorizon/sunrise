@@ -532,7 +532,7 @@ pub(in crate::game) enum OrbOrder {
     AfterChild,
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// A sulfur cube's attribute map (`LivingEntity.attributes`), from its
     /// type's defaults, before its first tick adopts the body's archetype
     /// modifiers. A map already there (commands, armor) is kept.

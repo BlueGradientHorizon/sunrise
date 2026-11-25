@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// An explosion at `center` in `dimension` (`minecraft:overworld`) is
     /// about to break `blocks` and reach `entities`: `ServerExplosion.explode`
     /// with its `toBlow`, before any block or entity is hit. Take out the

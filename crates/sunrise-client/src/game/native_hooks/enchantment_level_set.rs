@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// An enchanting table at `pos` drew the level of one offer
     /// (`EnchantmentMenu.slotsChanged`, after `getEnchantmentCost`): `offer`
     /// holds the server player whose table it is, the row (0 to 2), the

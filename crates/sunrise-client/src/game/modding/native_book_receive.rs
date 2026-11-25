@@ -44,7 +44,7 @@ impl DisplayResources for RemoteResources<'_, '_> {
         self.recipes.get(id).is_some_and(|value| value == kind)
     }
 }
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     fn load_remote_mod_book_catalogue(
         &self,
         data: &sync::CatalogBytes,

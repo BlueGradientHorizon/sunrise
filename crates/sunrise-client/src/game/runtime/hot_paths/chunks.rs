@@ -11,7 +11,7 @@ use sunrise_world::compression::Compression;
 const RADIUS: i32 = 2;
 const ROUNDS: u64 = 4;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(super) fn hot_chunks(&mut self, recorder: &mut Recorder) -> Result<()> {
         if !recorder.wants("chunk.") {
             return Ok(());

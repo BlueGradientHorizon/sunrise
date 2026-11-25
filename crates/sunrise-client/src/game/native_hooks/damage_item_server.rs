@@ -8,7 +8,7 @@ pub(in crate::game::server_side) use crate::game::native_hooks::damage_item::DIS
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::native_hooks::damage_item::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The parts' answer for `loss` points of wear on `stack`, worn or used by
     /// `wearer`: the points it takes, or all the durability it has left when a
     /// part breaks it now (the vanilla break then runs where the wear lands).

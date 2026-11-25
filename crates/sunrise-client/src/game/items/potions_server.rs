@@ -89,7 +89,7 @@ impl CloudSettings {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `InfestedMobEffect.onMobHurt` for the player: from half its height up,
     /// along where it looks.
     pub(in crate::game) fn player_infested(&mut self) {
@@ -812,7 +812,7 @@ impl Game<'_> {
         };
         let rules = self.world.health_rules;
         let Some(p) = self.player.as_mut() else {
-            self.combat.0.forget_noted(false);
+            self.side.combat.0.forget_noted(false);
             return;
         };
         match action {
@@ -829,7 +829,7 @@ impl Game<'_> {
                     && let Ok(o) = p.hurt_blocking(
                         crate::game::entity::damage_level_of!(
                             self,
-                            self.combat.0.attack(),
+                            self.side.combat.0.attack(),
                             no_push,
                             None,
                             acting_equipment!(self)
@@ -844,7 +844,7 @@ impl Game<'_> {
                     canceled = o.canceled;
                 }
 
-                self.combat.0.forget_noted(canceled);
+                self.side.combat.0.forget_noted(canceled);
                 self.finish_guest_damage();
             }
             EffectAction::Poison => {
@@ -854,7 +854,7 @@ impl Game<'_> {
                     let _ = p.hurt(
                         crate::game::entity::damage_level_of!(
                             self,
-                            self.combat.0.attack(),
+                            self.side.combat.0.attack(),
                             no_push,
                             None,
                             acting_equipment!(self)
@@ -985,7 +985,7 @@ impl Game<'_> {
                                 m.damage(
                                     crate::game::entity::damage_level_of!(
                                         self,
-                                        self.combat.0.attack(),
+                                        self.side.combat.0.attack(),
                                         no_push,
                                         None
                                     ),
@@ -1099,7 +1099,7 @@ impl Game<'_> {
                                 let attack = self.potion_attack(owner, guest);
                                 let plan =
                                     self.prepare_knockback_credit(mob as i32, owner, &attack);
-                                let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
+                                let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
                                 let Some(index) = self.mob_index.find(&self.mobs, mob) else {
                                     return;
                                 };
@@ -1354,7 +1354,7 @@ impl Game<'_> {
                 name: Some(self.player_display_text()),
                 attacker: None,
                 player: true,
-                guest: self.server.lan_acting,
+                guest: self.side.lan_acting,
             },
             Some(Who::Mob(id)) => PotionOwner {
                 name: self.mob_display_name(id),
@@ -1608,11 +1608,11 @@ impl Game<'_> {
                     let source = Damage::indirect_magic(owner.who(), [at.x, at.y, at.z]);
                     let id = m.id;
                     let mut attack = self.potion_attack(owner.who(), owner.guest);
-                    attack.projectile = self.combat.0.attack().projectile;
-                    attack.projectile_kind = self.combat.0.attack().projectile_kind;
-                    attack.projectile_type = self.combat.0.attack().projectile_type;
+                    attack.projectile = self.side.combat.0.attack().projectile;
+                    attack.projectile_kind = self.side.combat.0.attack().projectile_kind;
+                    attack.projectile_type = self.side.combat.0.attack().projectile_type;
                     let plan = self.prepare_knockback_credit(id as i32, owner.who(), &attack);
-                    let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
+                    let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
                     self.mobs[i].damage_by(
                         crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),
                         harm,
@@ -1872,7 +1872,7 @@ impl Game<'_> {
                 shot.shoot_from_rotation(
                     self.pitch, self.yaw, -20.0, power, 1.0, velocity, on_ground,
                 );
-                shot.guest = self.server.lan_acting;
+                shot.guest = self.side.lan_acting;
                 self.add_projectile(shot);
                 // ThrowablePotionItem.use / ExperienceBottleItem.use: awardStat(ITEM_USED).
                 self.award_stat("used", &stack.item, 1);
@@ -2027,7 +2027,7 @@ impl PotionState {
 }
 
 /// A mob's content mod effects tick in its own tick (`ai::tick_effects_hurting`).
-impl sunrise_client::mobs::ModEffectTicks for Game<'_> {
+impl sunrise_client::mobs::ModEffectTicks for Game<'_, crate::game::server_side::ServerState> {
     fn tick_mod_effect(
         &self,
         effect: usize,

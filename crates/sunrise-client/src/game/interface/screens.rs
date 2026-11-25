@@ -283,7 +283,7 @@ fn death_style_at(
     }
     None
 }
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `PauseScreen.getCustomAdditions`'s additions: the
     /// `minecraft:pause_screen_additions` tag's one dialog, or the
     /// `minecraft:custom_options` `dialog_list` when it names several. `None`
@@ -367,7 +367,7 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn pause_init_children(
         &self,
     ) -> Vec<(u8, [f32; 4], Option<mod_api::Text>)> {
-        if self.client.screen != Screen::Paused || !self.client.pause_menu {
+        if self.side.screen != Screen::Paused || !self.side.pause_menu {
             return Vec::new();
         }
         let [w, h] = self.gui_frame_now().1.size.map(|axis| axis as f32);
@@ -432,8 +432,8 @@ impl Game<'_> {
                 continue;
             }
             icon_narration_index += usize::from(index < 3);
-            let is_focused = self.client.pause_focus == Some(id);
-            let hover = active && (ui::hovered(self.client.cursor, x, y, bw, 20.0) || is_focused);
+            let is_focused = self.side.pause_focus == Some(id);
+            let hover = active && (ui::hovered(self.side.cursor, x, y, bw, 20.0) || is_focused);
             let label = match (id, &additions) {
                 (14, Some((label, _))) => label.clone(),
                 _ => Text::translate(key, &[]),
@@ -460,8 +460,8 @@ impl Game<'_> {
                 continue;
             }
             let active = icon_active(i, friends);
-            let is_focused = self.client.pause_focus == Some(id);
-            let hover = active && (ui::hovered(self.client.cursor, x, y, 20.0, 20.0) || is_focused);
+            let is_focused = self.side.pause_focus == Some(id);
+            let hover = active && (ui::hovered(self.side.cursor, x, y, 20.0, 20.0) || is_focused);
             // The icon has no label: name it for controller focus and the
             // control socket's widget tree.
             if i == FRIENDS_ICON {
@@ -518,13 +518,13 @@ impl Game<'_> {
                 .into_iter()
                 .map(|(line, _)| line)
                 .collect();
-            ui::tooltip(batch, atlas, &lines, self.client.cursor);
+            ui::tooltip(batch, atlas, &lines, self.side.cursor);
         }
     }
     pub(in crate::game::client_side) fn execute_pause_action(&mut self, hit: u8) -> Result<()> {
         match hit {
             0 => {
-                self.client.pause_focus = None;
+                self.side.pause_focus = None;
                 self.set_screen(Screen::Playing);
                 self.capture(true);
             }
@@ -535,7 +535,7 @@ impl Game<'_> {
             10 => self.set_screen(Screen::Friends),
             // DialogConnectionAccess.openDialog(Dialogs.SERVER_LINKS).
             11 => {
-                self.client.links_ui.scroll = 0.0;
+                self.side.links_ui.scroll = 0.0;
                 self.set_screen(Screen::ServerLinks);
             }
             // ConfirmLinkScreen.confirmLink(this, CommonLinks...) on the pause screen.
@@ -551,7 +551,7 @@ impl Game<'_> {
             // additions dialog, from the pause menu.
             14 => {
                 if let Some((_, dialog)) = self.pause_screen_additions() {
-                    self.client.pause_focus = None;
+                    self.side.pause_focus = None;
                     self.set_screen(Screen::Playing);
                     self.capture(true);
                     self.show_dialog(&dialog);
@@ -576,7 +576,7 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn pause_click(&mut self) -> Result<bool> {
         let (w, h) = {
             let size = self
-                .renderer
+                .side.renderer
                 .0
                 .as_ref()
                 .map_or([1, 1], |r| [r.config.width, r.config.height]);
@@ -598,7 +598,7 @@ impl Game<'_> {
             .copied()
             .find(|b| {
                 b.5 && !self.pause_child_removed(b.4)
-                    && ui::hovered(self.client.cursor, b.0, b.1, b.2, 20.0)
+                    && ui::hovered(self.side.cursor, b.0, b.1, b.2, 20.0)
             })
             .map(|b| b.4)
             .or_else(|| {
@@ -607,7 +607,7 @@ impl Game<'_> {
                     .into_iter()
                     .find(|&i| {
                         !self.pause_child_removed(12 + i as u8)
-                            && ui::hovered(self.client.cursor, icons[i].0, icons[i].1, 20.0, 20.0)
+                            && ui::hovered(self.side.cursor, icons[i].0, icons[i].1, 20.0, 20.0)
                     })
                     .map(|i| 12 + i as u8)
             })
@@ -615,7 +615,7 @@ impl Game<'_> {
                 (self.friends_shown()
                     && !self.pause_child_removed(10)
                     && ui::hovered(
-                        self.client.cursor,
+                        self.side.cursor,
                         icons[FRIENDS_ICON].0,
                         icons[FRIENDS_ICON].1,
                         20.0,
@@ -624,8 +624,8 @@ impl Game<'_> {
                 .then_some(10)
             });
         if let Some(id) = hit {
-            self.client.pause_focus = Some(id);
-            self.audio.0.play_button_click();
+            self.side.pause_focus = Some(id);
+            self.side.audio.0.play_button_click();
             self.execute_pause_action(id)?;
             return Ok(true);
         }
@@ -634,7 +634,7 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn pause_key(&mut self, key: KeyCode) -> Result<bool> {
         let (w, h) = {
             let size = self
-                .renderer
+                .side.renderer
                 .0
                 .as_ref()
                 .map_or([1, 1], |r| [r.config.width, r.config.height]);
@@ -671,7 +671,7 @@ impl Game<'_> {
         match key {
             KeyCode::Tab => {
                 let reverse = self.has_shift_down();
-                let next = match self.client.pause_focus {
+                let next = match self.side.pause_focus {
                     Some(cur) => {
                         if let Some(pos) = active_ids.iter().position(|&id| id == cur) {
                             if reverse {
@@ -699,7 +699,7 @@ impl Game<'_> {
                         }
                     }
                 };
-                self.client.pause_focus = next;
+                self.side.pause_focus = next;
                 Ok(true)
             }
             KeyCode::ArrowUp | KeyCode::ArrowDown | KeyCode::ArrowLeft | KeyCode::ArrowRight => {
@@ -712,7 +712,7 @@ impl Game<'_> {
                         rects.push((id, x, y, 20.0));
                     }
                 }
-                let cur_id = self.client.pause_focus.unwrap_or(0);
+                let cur_id = self.side.pause_focus.unwrap_or(0);
                 if let Some(cur) = rects.iter().find(|r| r.0 == cur_id) {
                     let (cx, cy) = (cur.1 + cur.3 / 2.0, cur.2 + 10.0);
                     let mut best: Option<(u8, f32)> = None;
@@ -742,16 +742,16 @@ impl Game<'_> {
                         }
                     }
                     if let Some((next_id, _)) = best {
-                        self.client.pause_focus = Some(next_id);
+                        self.side.pause_focus = Some(next_id);
                     }
                 } else {
-                    self.client.pause_focus = Some(active_ids[0]);
+                    self.side.pause_focus = Some(active_ids[0]);
                 }
                 Ok(true)
             }
             KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => {
-                if let Some(hit) = self.client.pause_focus.filter(|id| active_ids.contains(id)) {
-                    self.audio.0.play_button_click();
+                if let Some(hit) = self.side.pause_focus.filter(|id| active_ids.contains(id)) {
+                    self.side.audio.0.play_button_click();
                     self.execute_pause_action(hit)?;
                     Ok(true)
                 } else {
@@ -799,11 +799,11 @@ impl Game<'_> {
             });
             let size = self.gui_size();
             let mut confirm = Confirm::new(&atlas.font, size, &title, &Text::literal(""));
-            confirm.focus = self.client.death_focus.map(|f| f as usize);
+            confirm.focus = self.side.death_focus.map(|f| f as usize);
             confirm.draw_active(
                 batch,
                 atlas,
-                self.client.cursor,
+                self.side.cursor,
                 [&labels[0], &labels[1]],
                 opened.elapsed().as_millis() >= 1000,
             );
@@ -852,9 +852,9 @@ impl Game<'_> {
             .died_at
             .is_none_or(|t| t.elapsed().as_millis() >= 1000);
         for (x, y, key, id) in death_buttons(w, h, self.level.hardcore) {
-            let is_focused = self.client.death_focus == Some(id);
+            let is_focused = self.side.death_focus == Some(id);
             let hover =
-                active && (ui::hovered(self.client.cursor, x, y, 200.0, 20.0) || is_focused);
+                active && (ui::hovered(self.side.cursor, x, y, 200.0, 20.0) || is_focused);
             ui::button(
                 batch,
                 atlas,
@@ -876,11 +876,11 @@ impl Game<'_> {
                 &|c, style| atlas.font.advance(c, style),
                 cause,
                 w,
-                self.client.cursor,
+                self.side.cursor,
             )
         {
             if let Some(hover) = &style.hover {
-                ui::tooltip(batch, atlas, &[(**hover).clone()], self.client.cursor);
+                ui::tooltip(batch, atlas, &[(**hover).clone()], self.side.cursor);
             }
             if style.click.is_some() {
                 widgets::request_cursor(widgets::Cursor::PointingHand);
@@ -890,11 +890,11 @@ impl Game<'_> {
     /// LocalPlayer.respawn: the player comes back (the death screen's
     /// button, or at once with `immediate_respawn`).
     pub(in crate::game::client_side) fn respawn_player(&mut self) -> Result<()> {
-        self.client.death_focus = None;
+        self.side.death_focus = None;
         self.ui.death_text = None;
         // LocalPlayer.respawn: KeyMapping.resetToggleKeys.
         self.reset_toggle_keys();
-        self.client.vanilla_mappings.reset_toggle_keys();
+        self.side.vanilla_mappings.reset_toggle_keys();
         self.remote_respawn();
         Ok(())
     }
@@ -918,8 +918,8 @@ impl Game<'_> {
                 &title,
                 &Text::literal(""),
             );
-            if let Some(yes) = confirm.answer_at(self.client.cursor) {
-                self.client.death_focus = Some(if yes { 0 } else { 1 });
+            if let Some(yes) = confirm.answer_at(self.side.cursor) {
+                self.side.death_focus = Some(if yes { 0 } else { 1 });
                 self.death_confirm_answer(yes)?;
                 return Ok(true);
             }
@@ -937,29 +937,29 @@ impl Game<'_> {
                 &|c, style| atlas.font.advance(c, style),
                 cause,
                 mid,
-                self.client.cursor,
+                self.side.cursor,
             ) {
                 self.click_url(url);
                 return Ok(true);
             }
         }
         let size = self
-            .renderer
+            .side.renderer
             .0
             .as_ref()
             .map_or([1, 1], |r| [r.config.width, r.config.height]);
         let b = HudBatch::new(size, self.settings.gui_scale_inputs());
         let hit = death_buttons(b.width, b.height, self.level.hardcore)
             .into_iter()
-            .find(|d| ui::hovered(self.client.cursor, d.0, d.1, 200.0, 20.0))
+            .find(|d| ui::hovered(self.side.cursor, d.0, d.1, 200.0, 20.0))
             .map(|d| d.3);
         if let Some(id) = hit {
-            self.client.death_focus = Some(id);
+            self.side.death_focus = Some(id);
         }
         // handleExitToTitleScreen: outside hardcore, Title Screen asks first.
         if hit == Some(1) && !self.level.hardcore {
             self.ui.death_confirm = Some(std::time::Instant::now());
-            self.audio.0.play_button_click();
+            self.side.audio.0.play_button_click();
             return Ok(true);
         }
         self.death_action(hit)?;
@@ -979,13 +979,13 @@ impl Game<'_> {
             }
             return match key {
                 KeyCode::Escape => {
-                    self.audio.0.play_button_click();
+                    self.side.audio.0.play_button_click();
                     self.death_confirm_answer(false)?;
                     Ok(true)
                 }
                 KeyCode::Tab => {
                     let reverse = self.has_shift_down();
-                    self.client.death_focus = match self.client.death_focus {
+                    self.side.death_focus = match self.side.death_focus {
                         Some(0) => Some(1),
                         Some(1) => Some(0),
                         _ => {
@@ -999,16 +999,16 @@ impl Game<'_> {
                     Ok(true)
                 }
                 KeyCode::ArrowLeft => {
-                    self.client.death_focus = Some(0);
+                    self.side.death_focus = Some(0);
                     Ok(true)
                 }
                 KeyCode::ArrowRight => {
-                    self.client.death_focus = Some(1);
+                    self.side.death_focus = Some(1);
                     Ok(true)
                 }
                 KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => {
-                    let yes = self.client.death_focus != Some(1);
-                    self.audio.0.play_button_click();
+                    let yes = self.side.death_focus != Some(1);
+                    self.side.audio.0.play_button_click();
                     self.death_confirm_answer(yes)?;
                     Ok(true)
                 }
@@ -1018,7 +1018,7 @@ impl Game<'_> {
         match key {
             KeyCode::Tab => {
                 let reverse = self.has_shift_down();
-                self.client.death_focus = match self.client.death_focus {
+                self.side.death_focus = match self.side.death_focus {
                     Some(0) => Some(1),
                     Some(1) => Some(0),
                     _ => {
@@ -1032,21 +1032,21 @@ impl Game<'_> {
                 Ok(true)
             }
             KeyCode::ArrowUp => {
-                self.client.death_focus = Some(0);
+                self.side.death_focus = Some(0);
                 Ok(true)
             }
             KeyCode::ArrowDown => {
-                self.client.death_focus = Some(1);
+                self.side.death_focus = Some(1);
                 Ok(true)
             }
             KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => {
-                let Some(hit) = self.client.death_focus else {
+                let Some(hit) = self.side.death_focus else {
                     return Ok(false);
                 };
-                self.audio.0.play_button_click();
+                self.side.audio.0.play_button_click();
                 if hit == 1 && !self.level.hardcore {
                     self.ui.death_confirm = Some(std::time::Instant::now());
-                    self.client.death_focus = Some(0);
+                    self.side.death_focus = Some(0);
                     return Ok(true);
                 }
                 self.death_action(Some(hit))?;
@@ -1060,7 +1060,7 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn death_confirm_answer(&mut self, yes: bool) -> Result<()> {
         self.ui.death_confirm = None;
         if yes {
-            self.audio.0.play_button_click();
+            self.side.audio.0.play_button_click();
             self.close_world()
         } else {
             self.death_action(Some(0))
@@ -1074,7 +1074,7 @@ impl Game<'_> {
             _ => {}
         }
         if hit.is_some() {
-            self.audio.0.play_button_click();
+            self.side.audio.0.play_button_click();
         }
         Ok(())
     }

@@ -1,7 +1,7 @@
 use super::*;
 use crate::game::tables::BlockProviderQuery;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn light_emission_dimension(level: mod_api::LevelRef) -> LevelDimension {
         LevelDimension::of_level(sunrise_core::LevelKey::from_interned_id(
             level.dimension_id(),

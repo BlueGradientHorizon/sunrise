@@ -7,7 +7,7 @@ pub(in crate::game::server_side) use sunrise_client::items::ItemStack;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_core::nbt::Tag;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_item_combat_actor(
         &self,
         actor: mod_api::LivingRef,

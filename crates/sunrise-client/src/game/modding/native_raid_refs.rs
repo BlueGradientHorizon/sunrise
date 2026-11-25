@@ -9,7 +9,7 @@ use sunrise_client::{
     raid::{Raid, Raids, Status},
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     // Diverges from upstream: handles resolve the requested server level without
     // swapping it into place, including during hooks for another level.
     fn native_level_raid_collections(&self, level: LevelRef) -> Option<(&Raids, &[Mob])> {
@@ -17,16 +17,16 @@ impl Game<'_> {
         if level.dimension() == self.dim.key() {
             Some((self.raids_in_place()?, &self.mobs))
         } else {
-            let parked = self.levels.0.parked_of(level.dimension_id())?;
+            let parked = self.side.levels.0.parked_of(level.dimension_id())?;
             Some((parked.raiding.raids(level.dimension_id())?, &parked.mobs))
         }
     }
     fn native_level_raids_mut(&mut self, level: LevelRef) -> Option<&mut Raids> {
         self.native_level_world(level)?;
         if level.dimension() == self.dim.key() {
-            self.raiding.0.raids_mut(level.dimension_id())
+            self.side.raiding.0.raids_mut(level.dimension_id())
         } else {
-            self.levels
+            self.side.levels
                 .0
                 .parked_mut_of(level.dimension_id())?
                 .raiding

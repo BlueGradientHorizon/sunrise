@@ -75,7 +75,7 @@ pub(in crate::game::client_side) use sunrise_protocol::connection::Pipe;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_protocol::{crypto::offline_uuid, text::translatable};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Only the owner window changes its integrated server's command tree.
     pub(in crate::game::client_side) fn sync_pregen_option(&self) {
         let Some(server) = &self.integrated else {
@@ -96,10 +96,10 @@ impl Game<'_> {
     #[inline(always)]
     #[allow(dead_code)]
     pub(in crate::game) fn integrated_tick_loop_client(&mut self, started: Instant) -> f32 {
-        self.client
+        self.side
             .debug_charts
             .log_tick(started, started.elapsed());
-        self.client.debug_charts.smoothed_tick_ms
+        self.side.debug_charts.smoothed_tick_ms
     }
     /// `Minecraft.doWorldLoad`: start the server thread on the world; the
     /// window joins it through memory once it is ready (`poll_integrated_start`).
@@ -173,7 +173,7 @@ impl Game<'_> {
         let (res, pack, settings) = (self.res.clone(), self.pack.clone(), self.settings.clone());
         sunrise_client::parallel::set_setting(settings.sunrise.parallel_tick);
         let flags = Arc::new(Flags {
-            reports: self.client_reports.0.clone(),
+            reports: self.side.client_reports.0.clone(),
             ..Flags::default()
         });
         flags
@@ -238,7 +238,7 @@ impl Game<'_> {
             new_world,
         });
         // Harnesses, control scripts and runs without a window go on with the world open.
-        if self.window.0.is_none() || super::synchronous_startup(&self.options) {
+        if self.side.window.0.is_none() || super::synchronous_startup(&self.options) {
             while self.integrated_starting.is_some() {
                 self.poll_integrated_start()?;
                 if self.integrated_starting.is_some() {
@@ -298,7 +298,7 @@ impl Game<'_> {
         }
         // IntegratedServer.getWorldScreenshotFile: the client grabs the frame
         // the Select World list shows, and needs the save folder for it.
-        self.client.world_icon = Some(WorldIcon {
+        self.side.world_icon = Some(WorldIcon {
             path: std::env::current_dir()?
                 .join("saves")
                 .join(&folder)
@@ -317,15 +317,15 @@ impl Game<'_> {
             _ => return,
         };
         let now = Instant::now();
-        let at = self.client.loading_progress_at.get_or_insert(now);
+        let at = self.side.loading_progress_at.get_or_insert(now);
         let steps = (now.duration_since(*at).as_millis() / 50).min(20) as u32;
         *at += Duration::from_millis(u64::from(steps) * 50);
         if now.duration_since(*at) > Duration::from_secs(1) {
             *at = now;
         }
         for _ in 0..steps {
-            self.client.loading_progress = sunrise_client::level_loading::smooth(
-                self.client.loading_progress,
+            self.side.loading_progress = sunrise_client::level_loading::smooth(
+                self.side.loading_progress,
                 view.server_progress(),
             );
         }

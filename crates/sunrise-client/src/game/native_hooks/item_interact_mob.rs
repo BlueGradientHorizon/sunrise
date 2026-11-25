@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// an item fallback after a native mob's ordinary interaction passed.
     pub(in crate::game) fn native_item_interact_mob(
         &mut self,

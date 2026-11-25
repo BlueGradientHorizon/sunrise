@@ -325,7 +325,7 @@ enum MobObject {
     OffLevel(u32),
 }
 
-impl Game<'_> {}
+impl Game<'_, crate::game::server_side::ServerState> {}
 
 impl EntityMemory {
     pub(in crate::game) fn force_meta(&mut self, id: u32, index: u8) {
@@ -586,7 +586,7 @@ fn transformation_tag(
     Tag::Compound(t)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Saved ticks and the save time for a chunk about to be written.
     pub(in crate::game) fn attach_save_data(&self, chunk: &mut Chunk) {
         let pos = ChunkPos::new(chunk.x, chunk.z);
@@ -643,7 +643,7 @@ impl Game<'_> {
         // HopperBlockEntity.saveAdditional: its inventory is modelled, but its
         // transfer phase lives in Game. The snapshot's source overlay preserves
         // the remaining NBT without changing the live source compound.
-        for (p, state) in &self.server.hoppers {
+        for (p, state) in &self.side.hoppers {
             if (p.0 >> 4, p.2 >> 4) != (chunk.x, chunk.z)
                 || self
                     .res
@@ -749,7 +749,7 @@ impl Game<'_> {
                 if text(tag.get("id")).as_deref() == Some("minecraft:hopper")
                     && self.data_block_name([p.0, p.1, p.2]) == "minecraft:hopper"
                 {
-                    self.server
+                    self.side
                         .hoppers
                         .insert(*p, super::machines::HopperState::load(tag));
                 }
@@ -776,7 +776,7 @@ impl Game<'_> {
             .is_ok()
             && loaded
         {
-            self.server.tick_chunks.wait(key);
+            self.side.tick_chunks.wait(key);
         }
         // The saved list is consumed: later saves take the scheduler's ticks.
         if loaded && let Some(c) = self.world.chunks.get_mut(&key) {
@@ -884,8 +884,8 @@ impl Game<'_> {
             }
             "minecraft:evoker_fangs" => {
                 if let Some(at) = entity_nbt::position(&tag) {
-                    self.server.next_entity += 1;
-                    let id = self.server.next_entity;
+                    self.side.next_entity += 1;
+                    let id = self.side.next_entity;
                     let delay = sunrise_client::save::number(tag.get("Warmup")).unwrap_or(0) as i32;
                     let owner = self.loaded_fangs_owner(&tag);
                     if let Some(state) = transferred.take() {
@@ -1068,8 +1068,8 @@ impl Game<'_> {
         uuid: Option<[i32; 4]>,
         transferred: Option<super::entity_initialization::TransferredEntityState>,
     ) {
-        self.server.next_entity += 1;
-        if let Some(mut a) = entity_nbt::armor_stand_from_nbt(&tag, self.server.next_entity) {
+        self.side.next_entity += 1;
+        if let Some(mut a) = entity_nbt::armor_stand_from_nbt(&tag, self.side.next_entity) {
             let mut tag = tag;
             let riders = self.take_passengers(&mut tag);
             a.live
@@ -1107,8 +1107,8 @@ impl Game<'_> {
             // parts' from the entity counter.
             d.live
                 .retain_supplier(&self.motion.attributes, "minecraft:ender_dragon");
-            d.id = self.server.next_entity + 1;
-            self.server.next_entity += 9;
+            d.id = self.side.next_entity + 1;
+            self.side.next_entity += 9;
             if let Some(state) = transferred {
                 self.adopt_transferred_entity_state(d.id, state);
             }
@@ -1136,8 +1136,8 @@ impl Game<'_> {
             c.time = super::dragon::Crystal::start_time(c.position, drawn, self.clock.still());
             // EndCrystal's constructor takes an id from the
             // entity counter.
-            self.server.next_entity += 1;
-            c.id = self.server.next_entity;
+            self.side.next_entity += 1;
+            c.id = self.side.next_entity;
             if let Some(state) = transferred {
                 self.adopt_transferred_entity_state(c.id, state);
             }
@@ -1160,8 +1160,8 @@ impl Game<'_> {
         uuid: Option<[i32; 4]>,
         transferred: Option<super::entity_initialization::TransferredEntityState>,
     ) {
-        self.server.next_entity += 1;
-        if let Some(mut f) = entity_nbt::item_frame_from_nbt(&tag, self.server.next_entity) {
+        self.side.next_entity += 1;
+        if let Some(mut f) = entity_nbt::item_frame_from_nbt(&tag, self.side.next_entity) {
             let item = f.item.take();
             f.set_item(item);
             if let Some(state) = transferred {
@@ -1183,8 +1183,8 @@ impl Game<'_> {
         uuid: Option<[i32; 4]>,
         transferred: Option<super::entity_initialization::TransferredEntityState>,
     ) {
-        self.server.next_entity += 1;
-        if let Some(c) = entity_nbt::cushion_from_nbt(&tag, self.server.next_entity) {
+        self.side.next_entity += 1;
+        if let Some(c) = entity_nbt::cushion_from_nbt(&tag, self.side.next_entity) {
             if let Some(state) = transferred {
                 self.adopt_transferred_entity_state(c.id, state);
             }
@@ -1214,8 +1214,8 @@ impl Game<'_> {
         if let Some((pos, facing, variant)) = entity_nbt::painting_from_nbt(&tag)
             && let Some(v) = self.painting_variants.saved_or_default(variant.as_deref())
         {
-            self.server.next_entity += 1;
-            let id = self.server.next_entity;
+            self.side.next_entity += 1;
+            let id = self.side.next_entity;
             if let Some(state) = transferred {
                 self.adopt_transferred_entity_state(id, state);
             }
@@ -1486,14 +1486,14 @@ impl Game<'_> {
         // A missing mod's record is opaque, not a vanilla fallback entity to normalize.
         let quarantined = super::general::quarantined_kind(kind).then(|| tag.clone());
         strip_finalize(&mut tag);
-        let id = self.server.next_entity + 1;
+        let id = self.side.next_entity + 1;
         let other = Self::other_from_nbt(&mut tag, id, kind)?;
         let riders = if quarantined.is_none() && Self::other_takes_passengers(kind) {
             self.take_passengers(&mut tag)
         } else {
             Vec::new()
         };
-        self.server.next_entity = id;
+        self.side.next_entity = id;
         let uuid = with_constructor_uuid(entity_nbt::uuid(&tag));
         if let Some(state) = transferred {
             self.adopt_transferred_entity_state(id, state);
@@ -1502,7 +1502,7 @@ impl Game<'_> {
         if let Some(original) = quarantined {
             self.persist.raw.insert(id, original);
         }
-        self.others.0.push(other);
+        self.side.others.0.push(other);
         self.load_passengers(id, riders);
         Some(id)
     }
@@ -1679,7 +1679,7 @@ impl Game<'_> {
             tag
         } else {
             let other = self
-                .others
+                .side.others
                 .0
                 .iter()
                 .find(|o| o.id == root && Self::other_takes_passengers(&o.kind))?;
@@ -1751,7 +1751,7 @@ impl Game<'_> {
         self.boats.retain(|b| !gone.contains(&b.id));
         self.carts.retain(|c| !gone.contains(&c.id));
         self.armor_stands.retain(|a| !gone.contains(&a.id));
-        self.others.0.retain(|o| !gone.contains(&o.id));
+        self.side.others.0.retain(|o| !gone.contains(&o.id));
         self.resident_entities
             .general
             .rows
@@ -1829,7 +1829,7 @@ impl Game<'_> {
         {
             return;
         }
-        let Some(uuid) = self.server.pending_vehicle else {
+        let Some(uuid) = self.side.pending_vehicle else {
             return;
         };
         let raw = self.level.player_extra.clone();
@@ -1839,7 +1839,7 @@ impl Game<'_> {
         if let Some(Tag::Compound(p)) = &mut self.level.player_extra {
             p.remove(&"RootVehicle".into());
         }
-        self.server.pending_vehicle = None;
+        self.side.pending_vehicle = None;
         self.riding = Some(id);
         // `PlayerList.placeNewPlayer` boards the saved vehicle through `startRiding`, so `addPassenger` places it.
         self.seat_player(id);
@@ -1863,7 +1863,7 @@ impl Game<'_> {
     pub(in crate::game) fn forget_entity(&mut self, id: u32) {
         self.persist.transient.remove(&id);
         self.persist.uuids.remove(&id);
-        self.server.last_hurt_by_player.remove(&id);
+        self.side.last_hurt_by_player.remove(&id);
         self.persist.score_destroyed.remove(&id);
         self.forget_entity_initialization(mod_api::Holder::Entity(id));
         self.entity_attachments.remove(&id);
@@ -2245,8 +2245,8 @@ impl Game<'_> {
                 .or_default()
                 .push((c.id, c.join_seq(), tag));
         }
-        for i in 0..self.others.0.len() {
-            let o = &self.others.0[i];
+        for i in 0..self.side.others.0.len() {
+            let o = &self.side.others.0[i];
             // EntityType.noSave: Entity.getEncodeId is null, so the chunk never stores it.
             if include(o.id, o.position) && o.kind.as_str() != "minecraft:leash_knot" {
                 let uuid = self
@@ -2314,9 +2314,9 @@ impl Game<'_> {
         let chunks = self.entity_chunks(&keys, false);
         self.prune_entity_memory();
         if wait {
-            self.save.0.save_entities(chunks)
+            self.side.save.0.save_entities(chunks)
         } else {
-            self.save.0.save_entities_later(chunks)
+            self.side.save.0.save_entities_later(chunks)
         }
     }
     /// Complete a removed vehicle's scoreboard callback at logical removal,
@@ -2474,7 +2474,7 @@ impl Game<'_> {
             .iter()
             .map(|(key, entities)| (*key, entities.len()))
             .collect();
-        if let Err(e) = self.save.0.save_entities_later(chunks) {
+        if let Err(e) = self.side.save.0.save_entities_later(chunks) {
             log::warn!("Sunrise: failed to save entities: {e}");
         }
         for (chunk, count) in counts {
@@ -2482,7 +2482,7 @@ impl Game<'_> {
         }
     }
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Entity::save_nbt` for a mob: a rider is saved inside its root vehicle,
     /// in the root's chunk; a boat's or cart's passengers inside the vehicle.
     pub(in crate::game) fn save_mob(
@@ -2741,7 +2741,7 @@ impl Game<'_> {
 /// The mob layer's [`sunrise_client::mobs::WhoLookup`]: a warden's anger keeps
 /// the suspects that left by UUID, and resolves the ones that are back through
 /// the same map a save writes them from (`mob_to_nbt`'s `uuid_of`).
-impl sunrise_client::mobs::WhoLookup for Game<'_> {
+impl sunrise_client::mobs::WhoLookup for Game<'_, crate::game::server_side::ServerState> {
     fn who_by_uuid(&self, uuid: [i32; 4]) -> Option<Who> {
         Game::who_by_uuid(self, uuid)
     }

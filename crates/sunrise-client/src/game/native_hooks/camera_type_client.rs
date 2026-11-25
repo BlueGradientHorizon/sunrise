@@ -4,17 +4,17 @@ pub(in crate::game::client_side) use super::*;
 pub(in crate::game::client_side) use crate::game::native_hooks::camera_type::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The window's camera type (`Options.getCameraType`).
     pub(in crate::game) fn camera_type(&self) -> CameraType {
-        self.client
+        self.side
             .requested_camera_type
             .get()
-            .unwrap_or(self.client.camera_type)
+            .unwrap_or(self.side.camera_type)
     }
     /// Queue the window's camera type without cycling, including from shared hooks.
     pub(in crate::game) fn set_camera_type(&self, camera_type: CameraType) {
-        self.client.requested_camera_type.set(Some(camera_type));
+        self.side.requested_camera_type.set(Some(camera_type));
     }
 }
 

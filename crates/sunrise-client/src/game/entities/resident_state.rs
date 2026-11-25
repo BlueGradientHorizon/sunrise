@@ -10,7 +10,7 @@ pub(in crate::game) struct ResidentEntities {
     pub general: super::general::GeneralStore,
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `Player.drop(stack, false)`, as `ItemUtils.createFilledResult` drops what no longer fits
     /// in the inventory: thrown from the eyes, with no thrower, statistic or drop hook.
     pub(in crate::game) fn drop_plain(&mut self, stack: ItemStack) -> Option<u32> {

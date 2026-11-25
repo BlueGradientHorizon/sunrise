@@ -1,7 +1,7 @@
 use super::{Dim, Game};
 use mod_api::{AttachmentHolder, EntityRef};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Publish a placed player's saved map, or bind before its first store.
     /// Scope changes always replace the registration, even for an emptied map.
     pub(in crate::game) fn bind_player_attachments(&mut self, conn: u32, first_store: bool) {
@@ -28,8 +28,8 @@ impl Game<'_> {
             EntityRef::new(epoch, guest.entity_id as u32),
             uuid,
         ));
-        let acting = self.server.lan_acting_uuid == Some(uuid);
-        if !acting && self.server.lan_guest_swaps.contains(&conn) {
+        let acting = self.side.lan_acting_uuid == Some(uuid);
+        if !acting && self.side.lan_guest_swaps.contains(&conn) {
             return;
         }
         let map = if acting {

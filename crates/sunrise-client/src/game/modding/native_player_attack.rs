@@ -8,7 +8,7 @@ use super::native_server::PlayerRead;
 use mod_api::PlayerRef;
 use sunrise_client::attack_strength::{BASE_ATTACK_SPEED, delay};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Player.getAttackStrengthScale(partial)` for `player`.
     /// Returns `None` for a non-finite partial tick; finite partials are not restricted.
     pub(in crate::game) fn player_attack_strength_scale(
@@ -40,7 +40,7 @@ impl Game<'_> {
 /// attack speed base, the main-hand item of its last tick, and its effects'
 /// modifiers.
 fn guest_attack_speed(
-    game: &Game<'_>,
+    game: &Game<'_, crate::game::server_side::ServerState>,
     guest: &sunrise_client::lan::guest::Guest,
     item: Option<&str>,
 ) -> f64 {

@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// A player's destroy speed for the block at `pos` may be changed or canceled.
     pub(in crate::game) fn native_player_break_speed(
         &mut self,

@@ -7,12 +7,12 @@ pub(in crate::game::server_side) use mod_api::SwimmingCheck;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_client::{motion::SwimEntry, sprint};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_ask_swim_eligibility(
         &self,
         check: SwimmingCheck,
     ) -> Option<bool> {
-        let uuid = self.server.lan_acting_uuid.or_else(|| {
+        let uuid = self.side.lan_acting_uuid.or_else(|| {
             self.level
                 .player_uuid
                 .map(sunrise_client::lan::playerdata::ints_uuid)

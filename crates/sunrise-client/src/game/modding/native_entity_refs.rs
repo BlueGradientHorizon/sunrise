@@ -103,7 +103,7 @@ pub(in crate::game::server_side) fn list_query_body<T: Entity + Joined, const DI
     (!entity.is_removed()).then(|| entity.bounds())
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// What a handle names now, or None for a stale or foreign one.
     pub(in crate::game) fn native_entity_target(&self, entity: EntityRef) -> Option<Target> {
         self.native_entity_target_with_location(entity)
@@ -125,7 +125,7 @@ impl Game<'_> {
         entity: EntityRef,
         dimension: DimensionKey,
     ) -> Option<(Target, Option<Location>)> {
-        if self.server.held_out.contains(&entity.id())
+        if self.side.held_out.contains(&entity.id())
             || !self.is_logical_server()
             || self.native_lifecycle.epoch() != Some(entity.epoch())
         {
@@ -140,9 +140,9 @@ impl Game<'_> {
                 .iter()
                 .rev()
                 .find(|&&(_, _, id)| id == entity.id())?;
-            return if self.server.lan_acting == Some(conn) {
+            return if self.side.lan_acting == Some(conn) {
                 Some((Target::Player, None))
-            } else if self.server.lan_guest_swaps.contains(&conn) {
+            } else if self.side.lan_guest_swaps.contains(&conn) {
                 None
             } else {
                 Some((Target::Guest(conn), None))
@@ -390,9 +390,9 @@ impl Game<'_> {
                 })
                 .map(|guest| guest.bounds()),
             Target::Other(_) if server => self
-                .others
+                .side.others
                 .0
-                .get(self.others.0.locate(join)?)?
+                .get(self.side.others.0.locate(join)?)?
                 .display_marker_or_interaction_bounds(),
             Target::Hook(id) if server => self
                 .fishing_hooks_here()
@@ -833,14 +833,14 @@ impl Game<'_> {
             (&self.world, &self.be_anims)
         } else {
             let dim = self
-                .levels
+                .side.levels
                 .0
                 .parked_dims()
                 .into_iter()
                 .find(|dim| dim.key() == level.dimension())?;
             (
-                self.levels.0.parked_world(dim)?,
-                self.levels.0.parked_anims(dim)?,
+                self.side.levels.0.parked_world(dim)?,
+                self.side.levels.0.parked_anims(dim)?,
             )
         };
         Some(self.state_shape_boxes(world, anims, state, pos, kind))
@@ -916,7 +916,7 @@ impl Game<'_> {
             return None;
         };
         let (dim, parked) = self
-            .levels
+            .side.levels
             .0
             .parked
             .iter()

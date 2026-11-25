@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// A viewed level's sound reached this client (`viewed_level_sound`): where in the player's
     /// level it plays, if anywhere. Client-side.
     pub(in crate::game) fn native_viewed_level_sound(

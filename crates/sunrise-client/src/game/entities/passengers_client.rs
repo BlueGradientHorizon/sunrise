@@ -22,7 +22,7 @@ pub(in crate::game::client_side) use sunrise_core::{
     random::{LegacyRandom, RandomSource},
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Client-side seat for a remote general entity row (`remote.general.rows`).
     pub(in crate::game) fn client_general_seat(
         &self,
@@ -178,14 +178,14 @@ impl Game<'_> {
             let at = riders::seat(attachment, 0.0, v.position, v.yaw);
             return Some(glam::DVec3::new(at.x, at.y, at.z));
         }
-        if let Some(d) = self.text_displays.0.get(&(vehicle as i32)) {
+        if let Some(d) = self.side.text_displays.0.get(&(vehicle as i32)) {
             return if let Some(parent) = d.vehicle {
                 self.client_passenger_riding_position_inner(parent, me, own_seat, index, path)
             } else {
                 Some(d.position())
             };
         }
-        if let Some(i) = self.client.interactions.get(&(vehicle as i32)) {
+        if let Some(i) = self.side.interactions.get(&(vehicle as i32)) {
             if let Some(parent) = i.vehicle {
                 return self
                     .client_passenger_riding_position_inner(parent, me, own_seat, index, path);
@@ -290,7 +290,7 @@ impl Game<'_> {
                         continue;
                     };
                     let before = self
-                        .text_displays
+                        .side.text_displays
                         .0
                         .get(&(v as i32))
                         .map(|d| d.seat().1)
@@ -378,11 +378,11 @@ impl Game<'_> {
         });
         for _ in 0..3 {
             let mut vehicles: Vec<u32> = self
-                .text_displays
+                .side.text_displays
                 .0
                 .values()
                 .filter_map(|d| d.vehicle)
-                .chain(self.client.interactions.values().filter_map(|i| i.vehicle))
+                .chain(self.side.interactions.values().filter_map(|i| i.vehicle))
                 .collect();
             vehicles.sort_unstable();
             vehicles.dedup();
@@ -393,14 +393,14 @@ impl Game<'_> {
                         .map(|at| (v, at))
                 })
                 .collect();
-            let sections = self.client.client_pick.sections.get_mut();
-            for (&id, display) in &mut self.text_displays.0 {
+            let sections = self.side.client_pick.sections.get_mut();
+            for (&id, display) in &mut self.side.text_displays.0 {
                 if let Some(at) = display.vehicle.and_then(|v| seats.get(&v)) {
                     display.ride(*at);
                     sections.move_id(id as u32, display.position().to_array());
                 }
             }
-            for interaction in self.client.interactions.values_mut() {
+            for interaction in self.side.interactions.values_mut() {
                 if let Some(at) = interaction.vehicle.and_then(|v| seats.get(&v)) {
                     interaction.ride_to(*at);
                 }

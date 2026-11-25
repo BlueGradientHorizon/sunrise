@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Item.use after the same hand's target passed, or for a server UseItem packet.
     pub(in crate::game) fn right_click_item(
         &mut self,

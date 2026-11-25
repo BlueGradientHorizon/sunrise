@@ -2,7 +2,7 @@
 use super::{dragon::Hurt, minecarts::CartHit, *};
 use sunrise_client::mobs::DamageKind;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Player.attack's cost after an accepted special-entity hurt. Hanging
     /// decorations consume their hit in skipAttackInteraction, before this tail.
     pub(in crate::game::server_side) fn special_attack_exhaustion(&mut self) {
@@ -49,7 +49,7 @@ impl Game<'_> {
             self.special_attack_slowdown(knockback);
             self.special_attack_exhaustion();
         }
-        self.server.attack_ticks = 0;
+        self.side.attack_ticks = 0;
         true
     }
     /// `VehicleEntity.hurtServer` from the player's attack.
@@ -78,7 +78,7 @@ impl Game<'_> {
         };
         let vanilla =
             self.saved_refuses_damage(id as u32, "minecraft:player_attack", self.creative);
-        if !crate::game::entity::damage_level_of!(self, self.combat.0.attack(), no_push, None)
+        if !crate::game::entity::damage_level_of!(self, self.side.combat.0.attack(), no_push, None)
             .invulnerability_check(
                 sunrise_client::health::Hurting::Entity(id, kind, source),
                 vanilla,
@@ -93,7 +93,7 @@ impl Game<'_> {
         }
         self.vehicle_attack_sounds(area, sweep, magic.then_some(id));
         // Player.onAttack: the hit starts the attack strength again.
-        self.server.attack_ticks = 0;
+        self.side.attack_ticks = 0;
         self.swing_arm();
         true
     }

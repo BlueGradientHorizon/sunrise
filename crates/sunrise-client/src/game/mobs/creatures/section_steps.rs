@@ -7,7 +7,7 @@ pub(in crate::game) struct Steps {
     seen: Vec<u32>,
 }
 
-pub(in crate::game) fn begin(game: &mut Game<'_>) -> Steps {
+pub(in crate::game) fn begin(game: &mut Game<'_, crate::game::server_side::ServerState>) -> Steps {
     Steps {
         enabled: game.entity_section_scope().is_some(),
         seen: std::mem::take(&mut game.native_lifecycle.entity_sections.projectile_ids),
@@ -15,7 +15,7 @@ pub(in crate::game) fn begin(game: &mut Game<'_>) -> Steps {
 }
 
 pub(in crate::game) fn record(
-    game: &mut Game<'_>,
+    game: &mut Game<'_, crate::game::server_side::ServerState>,
     steps: &mut Steps,
     projectile: Option<&Projectile>,
     from: Vec3,
@@ -38,7 +38,7 @@ pub(in crate::game) fn record(
     true
 }
 
-pub(in crate::game) fn finish(game: &mut Game<'_>, mut steps: Steps) {
+pub(in crate::game) fn finish(game: &mut Game<'_, crate::game::server_side::ServerState>, mut steps: Steps) {
     if steps.enabled {
         {
             let live = &mut game.native_lifecycle.entity_sections.projectile_live;
@@ -69,7 +69,7 @@ pub(in crate::game) fn finish(game: &mut Game<'_>, mut steps: Steps) {
     game.native_lifecycle.entity_sections.projectile_ids = steps.seen;
 }
 
-pub(in crate::game) fn teleport_player(game: &mut Game<'_>, to: Vec3) {
+pub(in crate::game) fn teleport_player(game: &mut Game<'_, crate::game::server_side::ServerState>, to: Vec3) {
     game.stop_riding();
     let from = game.player.as_ref().map(|player| player.position);
     if let Some(player) = game.player.as_mut() {

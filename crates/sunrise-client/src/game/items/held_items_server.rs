@@ -13,7 +13,7 @@ pub(in crate::game::server_side) use crate::game::held_items::in_attack_range;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::held_items::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Player.attack`: the attack damage attribute with held and effect modifiers.
     pub(in crate::game) fn attack_damage(&mut self) -> f32 {
         self.player

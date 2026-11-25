@@ -28,7 +28,7 @@ pub(in crate::game) struct ClientPick {
     pub(in crate::game) taken: u64,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// A window always has a decision, including before the first pick (a miss).
     /// None in the outer option means a server ray or the current pick computation.
     pub(in crate::game) fn cached_entity_pick(&self) -> Option<Option<(EntityRef, f64, [f64; 3])>> {
@@ -108,7 +108,7 @@ impl mod_api::ResidentClientEntity for ResidentClientPickEntity {
 }
 
 pub(in crate::game) struct ClientPickEntityAccess<'g, 'w> {
-    pub(in crate::game) game: &'g mut Game<'w>,
+    pub(in crate::game) game: &'g mut Game<'w, crate::game::client_side::ClientState>,
     pub(in crate::game) subject: mod_api::EntityRef,
 }
 

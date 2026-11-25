@@ -9,7 +9,7 @@ pub(in crate::game::client_side) use crate::game::remote::chat_received::player_
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::remote::chat_received::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// NeoForge's `ClientChatReceivedEvent` (`ClientHooks.onClientChat`,
     /// `onClientPlayerChat` and `onClientSystemChat`): mods may replace
     /// `line` or cancel it. False when cancelled.

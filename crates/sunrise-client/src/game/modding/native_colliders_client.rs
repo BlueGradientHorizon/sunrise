@@ -45,7 +45,7 @@ pub(in crate::game::client_side) use sunrise_mod_runtime::attachments::{Attachme
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_protocol::collider_sync::{self, Message};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// A client forgets the collider of an entity the server stopped showing it.
     pub(in crate::game::client_side) fn forget_client_collider(&mut self, id: i32) {
         if let Some(remote) = self.remote.as_mut() {

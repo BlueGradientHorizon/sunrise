@@ -1,7 +1,7 @@
 //! A client block notification is not a save mutation.
 use super::Game;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(super) fn notify_block_clients(&mut self, pos: (i32, i32, i32)) {
         self.world
             .path_type_block_updated(sunrise_core::position::BlockPos::new(pos.0, pos.1, pos.2));

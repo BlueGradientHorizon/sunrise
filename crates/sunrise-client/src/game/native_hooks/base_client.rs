@@ -26,7 +26,7 @@ pub(in crate::game::client_side) use crate::game::native_hooks::base::*;
 pub(in crate::game::client_side) use mod_api::ModBlockEntity;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `ParticleEngine.clearParticles`: every particle and emitter goes before the next
     /// frame is drawn or the next particle tick runs, whichever comes first. It takes
     /// `&self`, so a screen or render hook can ask, as with `play_local_sound`.
@@ -35,12 +35,12 @@ impl Game<'_> {
         if !self.native_window() {
             return false;
         }
-        self.client.mod_clear_particles.set(true);
+        self.side.mod_clear_particles.set(true);
         true
     }
     /// Where the mouse is, in GUI pixels.
     pub(in crate::game) fn cursor(&self) -> [f32; 2] {
-        [self.client.cursor.0, self.client.cursor.1]
+        [self.side.cursor.0, self.side.cursor.1]
     }
     /// A small local vanilla particle; caller should rate-limit emission.
     pub(in crate::game) fn flame_particle(&mut self, at: [f64; 3], soul: bool) {
@@ -59,7 +59,7 @@ impl Game<'_> {
         } else {
             ParticleType::Flame
         };
-        self.particles
+        self.side.particles
             .0
             .add(&ParticleOptions::simple(kind), at, [0.0, 0.01, 0.0]);
     }
@@ -82,10 +82,10 @@ impl Game<'_> {
     /// The mod whose own screen is open, if one is (Escape, or another screen
     /// replacing it, closes it).
     pub(in crate::game) fn mod_screen(&self) -> Option<&str> {
-        self.client
+        self.side
             .native_mod_screen
             .as_deref()
-            .filter(|_| self.client.screen == Screen::Mod)
+            .filter(|_| self.side.screen == Screen::Mod)
     }
     /// Closes mod `mod_id`'s own screen, if it is open.
     pub(in crate::game) fn mod_screen_close(&mut self, mod_id: &str) {
@@ -110,29 +110,29 @@ impl Game<'_> {
     /// guest-acting contexts). A gamepad can close it (B, Start) but not click on
     /// it: its clicks don't reach the mouse hooks.
     pub(in crate::game) fn mod_screen_open(&mut self, mod_id: &str) -> bool {
-        let unavailable = self.renderer.0.is_none()
-            || (self.player.is_none() && self.title.0.is_none())
+        let unavailable = self.side.renderer.0.is_none()
+            || (self.player.is_none() && self.side.title.0.is_none())
             || self.remote_loading();
         let owner = if self.screen_over_playing() {
             None
         } else {
             self.mod_screen()
         };
-        if let Some(open) = mod_screen_opens(self.client.screen, unavailable, owner, mod_id) {
+        if let Some(open) = mod_screen_opens(self.side.screen, unavailable, owner, mod_id) {
             return open;
         }
         if self.screen_hooks_heard() {
             let decision = {
                 let current = if self.screen_over_playing() {
                     self.observed_screen_view()
-                        .unwrap_or_else(|| self.screen_change_view(self.client.screen))
-                } else if self.client.screen == Screen::Playing
-                    && let Some(title) = self.title.0.as_ref()
+                        .unwrap_or_else(|| self.screen_change_view(self.side.screen))
+                } else if self.side.screen == Screen::Playing
+                    && let Some(title) = self.side.title.0.as_ref()
                 {
                     let none = self.screen_change_view(Screen::Playing);
                     screen_view_with_id(&none, title.mode.id())
                 } else {
-                    self.screen_change_view(self.client.screen)
+                    self.screen_change_view(self.side.screen)
                 };
                 let new = screen_view_for_mod(&self.screen_change_view(Screen::Mod), mod_id);
                 self.decide_screen_for_mod_open(&current, &new, current.id != "playing")
@@ -905,12 +905,12 @@ impl Game<'_> {
     /// `native_panel_event`. The panel is the last mod's to show one; empty
     /// items and no recipe page take yours away.
     pub(in crate::game) fn panel_items(&mut self, mod_id: &str, items: Vec<mod_api::Stack>) {
-        self.client.panel.show_items(mod_id, items);
+        self.side.panel.show_items(mod_id, items);
     }
     /// The particles alive in the client's level (`ParticleEngine.countParticles`): 0 once
     /// a clear is asked, and on a server.
     pub(in crate::game) fn particle_count(&self) -> u32 {
-        if !self.native_window() || self.client.mod_clear_particles.get() {
+        if !self.native_window() || self.side.mod_clear_particles.get() {
             return 0;
         }
         u32::try_from(self.client_particle_count()).unwrap_or(u32::MAX)
@@ -944,7 +944,7 @@ impl Game<'_> {
         if !self.native_window() || !local_sound_ok(sound, after) {
             return None;
         }
-        Some(self.client.mod_sounds.queue(sound, after))
+        Some(self.side.mod_sounds.queue(sound, after))
     }
     /// The open menu's title (the block's name, or the one it was given),
     /// as plain text.

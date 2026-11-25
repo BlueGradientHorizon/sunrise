@@ -9,7 +9,7 @@ const RELIGHT_MAX: usize = 256;
 /// a mod cannot grow the queue, or the snapshots the workers hold, past this.
 const RELIGHT_QUEUE_MAX: usize = 4096;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// For a server mod: the runs made at once, straight into the chunks of the authoritative level `dimension`
     /// (the one being ticked, as for `native_set_block`), with what `fill ... strict` does for block entities (a
     /// block replaced by another loses its block entity, and a new block gets the one `native_set_block` would

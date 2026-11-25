@@ -9,7 +9,7 @@ pub(in crate::game::client_side) use sunrise_client::{multiplayer, title::Mode};
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_hooks::connection::{By, Ended, Left, Retry, Server};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `ConnectScreen`'s Cancel: a server's (single player's server isn't
     /// joined through `ConnectScreen`), until the login is done.
     pub(in crate::game::client_side) fn connect_cancel(
@@ -28,9 +28,9 @@ impl Game<'_> {
         if let Some(since) = self.remote.as_ref().and_then(|r| r.reconfiguring) {
             let (_, (x, y)) = self.reconfigure_layout(self.gui_size());
             if self.ticks.saturating_sub(since) >= 600
-                && sunrise_client::ui::hovered(self.client.cursor, x, y, 150.0, 20.0)
+                && sunrise_client::ui::hovered(self.side.cursor, x, y, 150.0, 20.0)
             {
-                self.audio.0.play_button_click();
+                self.side.audio.0.play_button_click();
                 self.leave_server(None)?;
                 return Ok(true);
             }
@@ -39,8 +39,8 @@ impl Game<'_> {
         let Some((x, y)) = self.connect_cancel(self.gui_size()) else {
             return Ok(false);
         };
-        if sunrise_client::ui::hovered(self.client.cursor, x, y, 200.0, 20.0) {
-            self.audio.0.play_button_click();
+        if sunrise_client::ui::hovered(self.side.cursor, x, y, 200.0, 20.0) {
+            self.side.audio.0.play_button_click();
             self.leave_server(None)?;
             return Ok(true);
         }
@@ -76,7 +76,7 @@ impl Game<'_> {
         if let Err(error) = self.join_server(address, name, None, cookies, lan, realm, list_name) {
             log::warn!("Sunrise: could not join server: {error}");
             let skip = self.settings.file.bool("skipMultiplayerWarning");
-            match &mut self.title.0 {
+            match &mut self.side.title.0 {
                 Some(title) => {
                     title.skip_multiplayer_warning = skip;
                     title.failed(error);
@@ -104,19 +104,19 @@ impl Game<'_> {
         key: Option<&str>,
         by: By,
     ) {
-        if !std::mem::take(&mut self.client.connection_open) {
+        if !std::mem::take(&mut self.side.connection_open) {
             return;
         }
         sunrise_hooks::engine::ended(&Ended::new(reason, key, by));
-        self.client.pending_retry = sunrise_hooks::engine::retry();
-        if self.client.pending_retry.is_none() {
-            self.client.last_connection = None;
+        self.side.pending_retry = sunrise_hooks::engine::retry();
+        if self.side.pending_retry.is_none() {
+            self.side.last_connection = None;
         }
     }
     /// The server let the player in (`Hooks::joined`); nothing for a world the window plays
     /// itself, whose session joins the same way.
     pub(in crate::game::client_side) fn connection_joined(&mut self) {
-        if !self.client.connection_open {
+        if !self.side.connection_open {
             return;
         }
         sunrise_hooks::engine::joined();
@@ -124,22 +124,22 @@ impl Game<'_> {
     /// The open network connection closes without being lost (`Hooks::left`). Nothing when
     /// none is open: it closed already, or the window plays its own world.
     pub(in crate::game) fn connection_left(&mut self, how: Left) {
-        if !std::mem::take(&mut self.client.connection_open) {
+        if !std::mem::take(&mut self.side.connection_open) {
             return;
         }
-        self.client.last_connection = None;
+        self.side.last_connection = None;
         sunrise_hooks::engine::left(how);
     }
     /// A connection to `address` as `name` starts over the network (`Hooks::connecting`). One
     /// still open closes first, as the player leaving it.
     pub(in crate::game) fn connection_starts(&mut self, address: &str, name: &str, lan: bool) {
         self.connection_left(Left::Disconnected);
-        self.client.pending_retry = None;
-        self.client.retry_due = None;
+        self.side.pending_retry = None;
+        self.side.retry_due = None;
         let server = Server::new(address, name, lan);
         sunrise_hooks::engine::connecting(&server);
-        self.client.last_connection = Some(server);
-        self.client.connection_open = true;
+        self.side.last_connection = Some(server);
+        self.side.connection_open = true;
     }
     /// Once a frame while the Disconnected screen offers to connect again: the connection due
     /// from the last answer, else the crates' answer now (its line, the connection, or nothing
@@ -147,15 +147,15 @@ impl Game<'_> {
     /// gets the signed-in account again: `connect_server` takes it from `auth::current()`, held
     /// in memory for the whole run (the launcher's session file is gone after the first read).
     pub(in crate::game::client_side) fn follow_retry(&mut self) -> Result<()> {
-        if retry_slot(&mut self.title.0).is_none_or(|slot| slot.is_none()) {
-            self.client.retry_due = None;
+        if retry_slot(&mut self.side.title.0).is_none_or(|slot| slot.is_none()) {
+            self.side.retry_due = None;
             return Ok(());
         }
-        let answer = match self.client.retry_due.take() {
+        let answer = match self.side.retry_due.take() {
             Some(server) => Some(Retry::Now(server)),
             None => sunrise_hooks::engine::retry(),
         };
-        let Some(slot) = retry_slot(&mut self.title.0) else {
+        let Some(slot) = retry_slot(&mut self.side.title.0) else {
             return Ok(());
         };
         let server = match answer {
@@ -192,38 +192,38 @@ impl Game<'_> {
     /// connection's end asked to: its line, or the connection on the next frame (`follow_retry`)
     /// when it is due at once.
     pub(in crate::game::client_side) fn offer_retry(&mut self) {
-        let Some(answer) = self.client.pending_retry.take() else {
+        let Some(answer) = self.side.pending_retry.take() else {
             return;
         };
-        if retry_slot(&mut self.title.0).is_none() {
+        if retry_slot(&mut self.side.title.0).is_none() {
             return;
         }
         let line = match answer {
             Retry::Wait(line) => line,
             Retry::Now(server) => {
-                self.client.retry_due = Some(server);
+                self.side.retry_due = Some(server);
                 String::new()
             }
             // An answer this engine doesn't know: no offer.
             _ => return,
         };
-        if let Some(server) = &self.client.last_connection {
+        if let Some(server) = &self.side.last_connection {
             let address = sunrise_client::net::shown_address(&server.address);
             log::info!("Sunrise: offering to connect to {address} again: {line}");
         }
-        if let Some(slot) = retry_slot(&mut self.title.0) {
+        if let Some(slot) = retry_slot(&mut self.side.title.0) {
             *slot = Some(line);
         }
     }
     /// The server this window connected to last over the network: while connected, and after a
     /// lost connection while the Disconnected screen may connect there again.
     pub(in crate::game::client_side) fn server_address(&self) -> Option<&str> {
-        let server = self.client.last_connection.as_ref();
+        let server = self.side.last_connection.as_ref();
         server.map(|server| server.address.as_str())
     }
     /// That server was found on the local network.
     pub(in crate::game::client_side) fn server_is_lan(&self) -> bool {
-        self.client
+        self.side
             .last_connection
             .as_ref()
             .is_some_and(|server| server.lan)

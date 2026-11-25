@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `EnderManAngerEvent`: `player` stares at enderman `enderman`
     /// (`Enderman.isBeingStaredBy` passed). Set `cancel` and the stare
     /// doesn't count: no anger, no freezing in place, no teleport closer.

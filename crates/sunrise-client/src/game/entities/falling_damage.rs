@@ -4,7 +4,7 @@ use sunrise_client::falling_block;
 use sunrise_core::{geometry::Vec3, position::BlockPos, random::RandomSource};
 use sunrise_world::level::LevelEvent;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `FallingBlockEntity.causeFallDamage`: impact damage and anvil wear,
     /// before block effects and portal handling can transfer the entity.
     pub(in crate::game::server_side) fn falling_block_impact(&mut self, block: &mut FallingBlock) {
@@ -52,9 +52,9 @@ impl Game<'_> {
                     let plan = self.prepare_knockback_credit(
                         self.mobs[index].id as i32,
                         None,
-                        self.combat.0.attack(),
+                        self.side.combat.0.attack(),
                     );
-                    let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
+                    let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
                     self.mobs[index].damage(
                         crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),
                         impact.amount,

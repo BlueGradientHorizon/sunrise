@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A brewing stand at `pos` brewed (`PotionBrewEvent.Post`, at the end of
     /// `BrewingStandBlockEntity.doBrew`), or `potion_brew_pre` was cancelled:
     /// `stacks` holds its five slots after the brew (or as the cancelling

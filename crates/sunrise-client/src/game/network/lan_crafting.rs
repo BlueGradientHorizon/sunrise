@@ -188,7 +188,7 @@ impl GuestMenuEffects {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Runs `op` on the guest's menu with their inventory copied in and back.
     pub(in crate::game) fn guest_menu_op<R>(
         &mut self,
@@ -539,7 +539,7 @@ impl Game<'_> {
         let prepare = |menu: &mut Menu, env: &Env| menu.load_container(env, &items, None);
         let snapshot = menu.snapshot();
         // A take listener edits the transient slots through the Host: the menu reads them back.
-        let refresh = |game: &Game<'_>, menu: &mut Menu| {
+        let refresh = |game: &Game<'_, crate::game::server_side::ServerState>, menu: &mut Menu| {
             let Some(guest) = game.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
                 return false;
             };
@@ -794,7 +794,7 @@ impl Game<'_> {
                 refreshed_result = Some(craft.result);
             }
         }
-        let refresh = |game: &Game<'_>, menu: &mut Menu| {
+        let refresh = |game: &Game<'_, crate::game::server_side::ServerState>, menu: &mut Menu| {
             if generation != game.world.block_entities.generation(&pos)
                 || !game
                     .lan
@@ -883,7 +883,7 @@ impl Game<'_> {
         };
         // The write-back to the block's storage and its effects: inside the click's decision, so
         // an outer abort restores them with the cursor and the slots.
-        let write_back = |game: &mut Game<'_>, menu: &mut Menu, changed: bool| {
+        let write_back = |game: &mut Game<'_, crate::game::server_side::ServerState>, menu: &mut Menu, changed: bool| {
             game.journal_block_entity(pos);
             if let Some((_, links)) = &linked {
                 for &at in links {

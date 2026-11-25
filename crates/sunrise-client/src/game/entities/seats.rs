@@ -99,7 +99,7 @@ pub(in crate::game::server_side) fn saves_with_chunk(kind: &str) -> bool {
     !matches!(kind, "minecraft:leash_knot" | "minecraft:lightning_bolt")
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A non-steerable general row, armor stand or kept entity as a vehicle.
     pub(in crate::game) fn seat(&self, id: u32) -> Option<Seat> {
         if let Some(seat) = self.general_seat(id, false) {
@@ -123,7 +123,7 @@ impl Game<'_> {
                 yaw: 0.0,
             });
         }
-        let o = self.others.0.iter().find(|o| o.id == id)?;
+        let o = self.side.others.0.iter().find(|o| o.id == id)?;
         if !could_accept_passenger(&o.kind) {
             return None;
         }

@@ -1,6 +1,6 @@
 use super::Game;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `Minecraft.hasSingleplayerServer`: a world of this window's own, run on its integrated server.
     pub(in crate::game) fn has_singleplayer_server(&self) -> bool {
         self.side_has_singleplayer_server()

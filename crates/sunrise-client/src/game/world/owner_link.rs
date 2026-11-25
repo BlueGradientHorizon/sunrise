@@ -167,7 +167,7 @@ pub(in crate::game) enum ControlRequest {
     },
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Answers one request of the window, on the server thread.
     pub(in crate::game::server_side) fn serve_owner_request(&mut self, request: OwnerRequest) {
         match request {
@@ -288,7 +288,7 @@ impl Game<'_> {
                 let _ = reply.send(self.lan_set_op(&name, level));
             }
             ControlRequest::WorldRoot(reply) => {
-                let _ = reply.send(self.server.world_root.clone());
+                let _ = reply.send(self.side.world_root.clone());
             }
             ControlRequest::SaveThenWait { saved, copied } => {
                 let _ = saved.send(self.save_game().map_err(|e| e.to_string()));

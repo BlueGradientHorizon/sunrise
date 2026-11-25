@@ -33,9 +33,9 @@ pub(in crate::game::client_side) use sunrise_client::server_perf::MemoryCost;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client_render::gfx::RendererMemorySnapshot;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_memory_inputs(&self) -> MemoryInputs {
-        let far = self.lod.0.as_ref().map(|lod| {
+        let far = self.side.lod.0.as_ref().map(|lod| {
             let ((active, cached), (kept, kept_bytes)) = (lod.stats(), lod.kept());
             let tiles = FarTiles {
                 active,
@@ -52,7 +52,7 @@ impl Game<'_> {
                 .dedicated
                 .is_none()
                 .then(|| self.world.chunks.values().cloned().collect()),
-            renderer: self.renderer.0.as_ref().map(|r| r.memory_snapshot()),
+            renderer: self.side.renderer.0.as_ref().map(|r| r.memory_snapshot()),
             far,
         }
     }
@@ -70,7 +70,7 @@ impl Game<'_> {
 }
 
 impl PendingMemory {
-    pub(in crate::game) fn start(game: &Game<'_>, cost: MemoryCost) -> Option<Self> {
+    pub(in crate::game) fn start(game: &Game<'_, crate::game::client_side::ClientState>, cost: MemoryCost) -> Option<Self> {
         cost.measure(|| {
             let inputs = game.client_memory_inputs();
             let (job, request) = match Self::spawn(

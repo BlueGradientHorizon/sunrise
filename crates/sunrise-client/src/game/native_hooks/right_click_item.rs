@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `PlayerInteractEvent.RightClickItem`, immediately before `Item.use`.
     /// Cancel skips its Part and vanilla behaviour; its result defaults to
     /// `Pass`. On the client `Success`, `SuccessServer` and `Consume` end the

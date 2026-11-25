@@ -125,7 +125,7 @@ impl CartKind {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `tinted_block_model_vertices` for baked models given as they are (a
     /// state's, or a standalone model).
     pub(in crate::game) fn baked_model_vertices<'m>(
@@ -304,7 +304,7 @@ impl Game<'_> {
             if self.hides_as_camera(c.id) {
                 continue;
             }
-            let Some(model) = self.client.cart_models.models.get(&c.kind) else {
+            let Some(model) = self.side.cart_models.models.get(&c.kind) else {
                 continue;
             };
             let lerp = self.remote_minecart_lerp(c.id, a);
@@ -330,7 +330,7 @@ impl Game<'_> {
                 // EntityRenderer.shouldRender: the interpolated box grown by 0.5;
                 // AbstractMinecartRenderer.getBoundingBoxForCulling stretches it
                 // up by the display block's offset.
-                if let Some(view) = &self.client.view_frustum {
+                if let Some(view) = &self.side.view_frustum {
                     let top = HEIGHT
                         + if shown.flatten().is_none() {
                             0.0
@@ -610,36 +610,36 @@ impl Game<'_> {
                 on_rails: c.on_rails,
             })
             .collect();
-        self.client
+        self.side
             .cart_sounds
             .retain(|id| carts.iter().any(|c| c.id == *id));
         for cart in &carts {
-            if !self.client.cart_sounds.contains(&cart.id) {
+            if !self.side.cart_sounds.contains(&cart.id) {
                 let instance = SoundInstance::minecart(cart, random_source::create());
-                let (_, res) = self.audio.0.play_instance(instance, false);
+                let (_, res) = self.side.audio.0.play_instance(instance, false);
                 if res != PlayResult::NotStarted {
-                    self.client.cart_sounds.insert(cart.id);
+                    self.side.cart_sounds.insert(cart.id);
                 }
             }
         }
         let vehicle = self.riding.filter(|id| carts.iter().any(|c| c.id == *id));
-        if vehicle != self.client.riding_cart_sounds
+        if vehicle != self.side.riding_cart_sounds
             && let Some(cart) = carts.iter().find(|c| Some(c.id) == vehicle)
         {
             let mut started = true;
             for underwater in [true, false] {
                 let instance =
                     SoundInstance::riding_minecart(cart, underwater, random_source::create());
-                let (_, res) = self.audio.0.play_instance(instance, false);
+                let (_, res) = self.side.audio.0.play_instance(instance, false);
                 if res == PlayResult::NotStarted {
                     started = false;
                 }
             }
             if started {
-                self.client.riding_cart_sounds = vehicle;
+                self.side.riding_cart_sounds = vehicle;
             }
         } else if vehicle.is_none() {
-            self.client.riding_cart_sounds = None;
+            self.side.riding_cart_sounds = None;
         }
         (vehicle, carts)
     }

@@ -3,7 +3,7 @@ use super::*;
 #[allow(unused_imports)]
 use sunrise_client::save::level_mods;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Dispatch the saved list at the earliest Game Host boundary on either side.
     /// Each resolution keeps its first resolving listener across dispatch.
     pub(in crate::game) fn native_mod_mismatch(

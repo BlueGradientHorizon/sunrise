@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A recipe viewer's "+" on a mod menu: the scoped part of the open menu's type may move
     /// `recipe`'s ingredients itself (or, with `dry_run`, say what that would do) and answer in
     /// `result`; None hands the transfer on to the game's own grid transfer.

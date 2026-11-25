@@ -11,7 +11,7 @@ pub(in crate::game::server_side) use sunrise_gameplay::test_entities::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_gameplay::test_entities::{aabb_of, inflate};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `level.getEntitiesOfClass(Entity.class, bounds, mob -> !(mob instanceof
     /// Player)).forEach(Entity::discard)`: every entity but a player whose box
     /// meets `bounds` is removed without dying or dropping anything.
@@ -68,7 +68,7 @@ impl Game<'_> {
             .retain(|c| !intersects(standing(at(c.position), 2.0, 2.0), bounds));
         // Entities Sunrise does not simulate have no box of their own: the
         // position decides.
-        self.others.0.retain(|o| {
+        self.side.others.0.retain(|o| {
             let p = at(o.position);
             !(0..3).all(|i| p[i] >= bounds.0[i] && p[i] < bounds.1[i])
         });

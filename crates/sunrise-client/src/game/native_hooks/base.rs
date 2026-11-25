@@ -451,7 +451,7 @@ impl GameLevel<'_> {
 }
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Before an authoritative server level's tick pass. `dimension` is its ID.
     pub(in crate::game) fn native_level_tick_pre(&mut self, level: LevelRef) {
         self.fire_level_tick_pre(level);
@@ -960,7 +960,7 @@ impl GameLevel<'_> {
 
 /// Helpers for native mods, kept as stable as the hook points.
 // Native mods use these; nothing in Sunrise does.
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The server-owned holders' attachments; `TYPE.get(host, holder)` reads
     /// one. On a client it is the copy of what the server synced: `set` and
     /// `remove` change only the copy.
@@ -1239,7 +1239,7 @@ impl LevelView<'_> {
 }
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {}
+impl<__Side: crate::game::Side> Game<'_, __Side> {}
 
 #[cfg(test)]
 #[path = "base_tests/screen_open_tests.rs"]

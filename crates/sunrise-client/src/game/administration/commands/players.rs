@@ -29,7 +29,7 @@ pub(in crate::game) fn mode_name(id: i32) -> &'static str {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The guest `conn`, while the hub is in `self.lan`.
     pub(in crate::game) fn command_guest(&self, conn: u32) -> Option<&Guest> {
         self.lan.as_ref()?.hub.guest(conn)

@@ -40,7 +40,7 @@ pub(in crate::game::client_side) fn warm_debug_cpu() {
 
 /// The game as `KeyboardHandler` sees it while it runs one key event.
 struct Host<'g, 'a> {
-    game: &'g mut Game<'a>,
+    game: &'g mut Game<'a, crate::game::client_side::ClientState>,
 }
 
 impl DebugHost for Host<'_, '_> {
@@ -48,16 +48,16 @@ impl DebugHost for Host<'_, '_> {
         self.game.open_screen()
     }
     fn toggle_overlay(&mut self) {
-        self.game.set_debug_overlay(!self.game.client.debug);
+        self.game.set_debug_overlay(!self.game.side.debug);
     }
     fn pause_game(&mut self, without_menu: bool) {
         // Gui.setPauseScreen: PauseScreen(false) only when the game really
         // pauses (single player, not open to the network). Escape alone opens
         // the menu as it always has (key_pressed).
         let g = &mut *self.game;
-        if without_menu && g.client.screen == Screen::Playing {
-            g.client.pause_menu = !g.has_singleplayer_server() || g.is_published();
-            g.client.pause_focus = None;
+        if without_menu && g.side.screen == Screen::Playing {
+            g.side.pause_menu = !g.has_singleplayer_server() || g.is_published();
+            g.side.pause_focus = None;
             g.set_screen(Screen::Paused);
             g.capture(false);
             g.mining = None;
@@ -68,25 +68,25 @@ impl DebugHost for Host<'_, '_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `DebugScreenEntryList.setOverlayVisible`: rebuild on each visibility transition.
     fn set_debug_overlay(&mut self, visible: bool) {
-        if self.client.debug != visible {
-            self.client.debug = visible;
-            self.debug_entries.0.invalidate();
+        if self.side.debug != visible {
+            self.side.debug = visible;
+            self.side.debug_entries.0.invalidate();
         }
     }
 
     fn open_screen(&self) -> OpenScreen {
-        if self.title.0.is_some() {
+        if self.side.title.0.is_some() {
             return OpenScreen::Other;
         }
-        match self.client.screen {
+        match self.side.screen {
             Screen::GameModeSwitcher => OpenScreen::GameModeSwitcher,
-            Screen::Playing if self.client.book.is_none() && self.client.sign_edit.is_none() => {
+            Screen::Playing if self.side.book.is_none() && self.side.sign_edit.is_none() => {
                 OpenScreen::None
             }
-            Screen::Paused if !self.client.pause_menu => OpenScreen::PauseWithoutMenu,
+            Screen::Paused if !self.side.pause_menu => OpenScreen::PauseWithoutMenu,
             _ => OpenScreen::Other,
         }
     }
@@ -102,10 +102,10 @@ impl Game<'_> {
             return false;
         };
         let pressed = action != KeyAction::Release;
-        let switcher_open = self.client.screen == Screen::GameModeSwitcher;
+        let switcher_open = self.side.screen == Screen::GameModeSwitcher;
         if switcher_open && pressed {
             if name == self.settings.keys.get("key.debug.switchGameMode") {
-                if let Some(switcher) = &mut self.client.gamemode_switcher {
+                if let Some(switcher) = &mut self.side.gamemode_switcher {
                     switcher.cycle();
                 }
             } else if key == KeyCode::Escape {
@@ -125,26 +125,26 @@ impl Game<'_> {
         // so a screen with a focused text box takes every press first;
         // releases still reach KeyboardHandler.
         let typing = matches!(
-            self.client.screen,
+            self.side.screen,
             Screen::Chat
                 | Screen::Options
                 | Screen::WorldOptions
                 | Screen::CommandBlock
                 | Screen::BlockEditor
-        ) || self.client.sign_edit.is_some()
-            || self.client.book.is_some()
-            || (self.client.screen == Screen::Creative && self.creative_screen.0.tab().search)
+        ) || self.side.sign_edit.is_some()
+            || self.side.book.is_some()
+            || (self.side.screen == Screen::Creative && self.side.creative_screen.0.tab().search)
             || self.recipe_search_focused()
             || self.station_typing()
             || (self.title_input_active()
                 && self
-                    .title
+                    .side.title
                     .0
                     .as_mut()
                     .is_some_and(|t| t.focused_field().is_some()));
         // Container screens use Escape, the inventory key and the hotbar and
         // drop keys first; any other screen closes on Escape.
-        let screen_key = match self.client.screen {
+        let screen_key = match self.side.screen {
             Screen::Inventory | Screen::Creative => matches!(
                 key,
                 KeyCode::Escape
@@ -168,12 +168,12 @@ impl Game<'_> {
             return false;
         }
         let crash_down = keybinds::key_code(self.settings.keys.get("key.debug.crash"))
-            .is_some_and(|k| self.client.physical_keys.contains(&k));
-        let shift = self.client.physical_keys.contains(&KeyCode::ShiftLeft)
-            || self.client.physical_keys.contains(&KeyCode::ShiftRight);
+            .is_some_and(|k| self.side.physical_keys.contains(&k));
+        let shift = self.side.physical_keys.contains(&KeyCode::ShiftLeft)
+            || self.side.physical_keys.contains(&KeyCode::ShiftRight);
         let now = self.debug_millis();
         let binds = self.settings.keys.clone();
-        let mut keys = std::mem::take(&mut self.client.debug_keys);
+        let mut keys = std::mem::take(&mut self.side.debug_keys);
         let modifier_was_down = keys.modifier_down;
         let to_game = keys.key_press(
             &mut Host { game: self },
@@ -184,7 +184,7 @@ impl Game<'_> {
             crash_down,
             now,
         );
-        self.client.debug_keys = keys;
+        self.side.debug_keys = keys;
         if switcher_open {
             if name == binds.get("key.debug.modifier") {
                 self.close_gamemode_switcher(true);
@@ -207,12 +207,12 @@ impl Game<'_> {
     }
     /// `Util.getMillis` (positive: KeyboardHandler treats 0 as unset).
     pub(in crate::game::client_side) fn debug_millis(&self) -> i64 {
-        self.client.started.elapsed().as_millis() as i64 + 1_000_000
+        self.side.started.elapsed().as_millis() as i64 + 1_000_000
     }
     /// `KeyboardHandler.tick`: the debug crash countdown.
     pub(in crate::game::client_side) fn tick_debug_keys(&mut self) -> Result<()> {
         let now = self.debug_millis();
-        match self.client.debug_keys.tick(now) {
+        match self.side.debug_keys.tick(now) {
             None => {}
             Some(CrashNotice::Message) => {
                 let args = [
@@ -240,11 +240,11 @@ impl Game<'_> {
     /// The network charts' samples each tick: `BandwidthDebugMonitor.tick` always, and the
     /// integrated server's instant ping (a remote one is `tick_debug_connection`).
     pub(in crate::game::client_side) fn tick_debug_charts(&mut self) {
-        let shown = self.client.debug && self.client.debug_charts.network;
+        let shown = self.side.debug && self.side.debug_charts.network;
         let Some(r) = &self.remote else {
             // The integrated server answers within the tick.
             if shown {
-                self.client.debug_charts.ping.log(0);
+                self.side.debug_charts.ping.log(0);
             }
             return;
         };
@@ -257,11 +257,11 @@ impl Game<'_> {
             ]
         });
         if let Some([bytes, sent, received]) = received {
-            self.client.debug_charts.log_bandwidth(bytes);
-            self.client.debug_charts.log_packets([sent, received]);
+            self.side.debug_charts.log_bandwidth(bytes);
+            self.side.debug_charts.log_packets([sent, received]);
         }
         r.session
-            .drain_debug_pings(|delay| self.client.debug_charts.ping.log(delay));
+            .drain_debug_pings(|delay| self.side.debug_charts.ping.log(delay));
     }
     /// `ClientPacketListener.tick` after the carried slot and the chat session: the ping while the
     /// network charts show, then, with a level, `ClientDebugSubscriber.tick`'s request.
@@ -270,16 +270,16 @@ impl Game<'_> {
             return;
         };
         let has_level = r.has_level();
-        if self.client.debug && self.client.debug_charts.network {
+        if self.side.debug && self.side.debug_charts.network {
             use sunrise_protocol::packets::status::Ping;
             let time = sunrise_client::net::ping_millis();
             self.send(Serverbound::PingRequest(Ping { time }));
         }
         if has_level
             && let Some(wanted) = self
-                .client
+                .side
                 .debug_charts
-                .subscription_request(self.client.debug)
+                .subscription_request(self.side.debug)
         {
             // `dedicated_server_tick_time` is registry id 0.
             let subscriptions = if wanted { vec![0] } else { vec![] };
@@ -312,7 +312,7 @@ impl Game<'_> {
         };
         // `DebugScreenOverlay`: the single-player variants for a local server.
         let remote = !self.has_singleplayer_server();
-        let c = &self.client.debug_charts;
+        let c = &self.side.debug_charts;
         [
             format!(
                 "Debug charts: {}; {};",
@@ -342,16 +342,16 @@ impl Game<'_> {
         batch: &mut HudBatch,
         size: [u32; 2],
     ) {
-        if self.client.screen != Screen::DebugOptions {
+        if self.side.screen != Screen::DebugOptions {
             self.draw_debug_overlay_under(batch, size);
         }
     }
     /// Whether this client's debug overlay passes the draw gate this frame.
     pub(in crate::game) fn debug_overlay_visible(&self) -> bool {
-        let screen_open = self.title.0.is_some() || self.client.screen != Screen::Playing;
-        self.debug_entries.0.any_enabled(
-            &self.registered_debug_entries.0,
-            self.client.debug,
+        let screen_open = self.side.title.0.is_some() || self.side.screen != Screen::Playing;
+        self.side.debug_entries.0.any_enabled(
+            &self.side.registered_debug_entries.0,
+            self.side.debug,
             self.reduced_debug_info(),
         ) && (!self.ui.hide_gui || screen_open)
     }
@@ -377,7 +377,7 @@ impl Game<'_> {
         // (`Renderer::lightmap_sample`). Whether there are any is part of the cache's key, so
         // a sample that stops being current is not painted again from it.
         let lightmap = self
-            .renderer
+            .side.renderer
             .0
             .as_ref()
             .filter(|_| self.debug_shows_lightmap())
@@ -388,7 +388,7 @@ impl Game<'_> {
             self.gui.atlas.font.epoch(),
             lightmap.is_some(),
         );
-        if let Some(vertices) = self.client.debug_paint.borrow().fresh(now, layout) {
+        if let Some(vertices) = self.side.debug_paint.borrow().fresh(now, layout) {
             batch.vertices.extend_from_slice(vertices);
             return;
         }
@@ -404,7 +404,7 @@ impl Game<'_> {
         let mut d = debug_overlay::Displayer::default();
         self.debug_entry_lines(&mut d, framebuffer);
         // The chart keys and the charts only while the overlay is open.
-        let footer = if self.client.debug {
+        let footer = if self.side.debug {
             self.debug_chart_lines().to_vec()
         } else {
             Vec::new()
@@ -412,8 +412,8 @@ impl Game<'_> {
         let (left, right) = d.columns(&footer);
         let atlas = &self.gui.atlas;
         let mut draws = debug_overlay::draw(&atlas.font, [&left, &right], scale, width);
-        if self.client.debug {
-            let charts = self.client.debug_charts.draw(
+        if self.side.debug {
+            let charts = self.side.debug_charts.draw(
                 &atlas.font,
                 width,
                 height,
@@ -431,7 +431,7 @@ impl Game<'_> {
             draws.push(hud_layout::GuiDraw::Pop);
         }
         hud_layout::paint(batch, atlas, &draws);
-        self.client
+        self.side
             .debug_paint
             .borrow_mut()
             .store(now, layout, &batch.vertices[first_vertex..]);
@@ -440,38 +440,38 @@ impl Game<'_> {
     /// the lightmap. Only then does the renderer read a pack-drawn light texture back for it
     /// (`Renderer::set_lightmap_readback`).
     pub(in crate::game::client_side) fn debug_shows_lightmap(&self) -> bool {
-        self.debug_overlay_visible() && self.client.debug && self.client.debug_charts.lightmap
+        self.debug_overlay_visible() && self.side.debug && self.side.debug_charts.lightmap
     }
     /// Whether the overlay is listing GPU pass times (its `system_specs` lines), the only reason
     /// it has to time passes.
     pub(in crate::game::client_side) fn debug_lists_gpu_passes(&self) -> bool {
-        self.client.debug
-            && self.title.0.is_none()
-            && !(self.ui.hide_gui && self.client.screen == Screen::Playing)
+        self.side.debug
+            && self.side.title.0.is_none()
+            && !(self.ui.hide_gui && self.side.screen == Screen::Playing)
             && self.debug_entry("system_specs")
     }
     /// The monitor's refresh rate in millihertz, asked of the OS at most once a second (on
     /// Windows, winit calls `EnumDisplaySettingsExW` each time).
     fn debug_refresh_rate(&self) -> Option<u32> {
-        if let Some((at, rate)) = self.client.debug_refresh.get()
+        if let Some((at, rate)) = self.side.debug_refresh.get()
             && at.elapsed() < Duration::from_secs(1)
         {
             return rate;
         }
         let rate = self
-            .window
+            .side.window
             .0
             .as_ref()
             .and_then(|w| w.current_monitor())
             .and_then(|m| m.refresh_rate_millihertz());
-        self.client.debug_refresh.set(Some((Instant::now(), rate)));
+        self.side.debug_refresh.set(Some((Instant::now(), rate)));
         rate
     }
     /// `DebugEntryFps`.
     pub(in crate::game::client_side) fn debug_fps_line(&self, d: &mut debug_overlay::Displayer) {
         let limit = self.framerate_limit();
         let present = self
-            .renderer
+            .side.renderer
             .0
             .as_ref()
             .map_or("", |r| match r.config.present_mode {
@@ -486,19 +486,19 @@ impl Game<'_> {
         });
         // Sunrise: with frame generation running, the frames reaching the screen too.
         let generated = self
-            .renderer
+            .side.renderer
             .0
             .as_ref()
             .and_then(|r| r.frame_generation_share())
             .map_or(String::new(), |share| {
                 format!(
                     " ({} fps FSR 3.1)",
-                    (self.client.fps * (1.0 + share)).round() as i32
+                    (self.side.fps * (1.0 + share)).round() as i32
                 )
             });
         d.priority(format!(
             "{} fps{generated} T: {}{present} @{refresh}Hz",
-            self.client.fps.round() as i32,
+            self.side.fps.round() as i32,
             if limit == 260 {
                 "inf".into()
             } else {
@@ -529,7 +529,7 @@ impl Game<'_> {
         d.line("Filtering: None");
         d.line(format!(
             "Terrain Rendering: {}",
-            if self.renderer.0.as_ref().is_some_and(|r| r.multi_draw) {
+            if self.side.renderer.0.as_ref().is_some_and(|r| r.multi_draw) {
                 "multidrawindirect"
             } else {
                 "naive"
@@ -542,7 +542,7 @@ impl Game<'_> {
         d: &mut debug_overlay::Displayer,
         framebuffer: [i32; 2],
     ) {
-        if let Some(r) = self.renderer.0.as_ref() {
+        if let Some(r) = self.side.renderer.0.as_ref() {
             d.group(
                 "system",
                 [format!(
@@ -565,7 +565,7 @@ impl Game<'_> {
                     }
                 )],
             );
-            if let Some(w) = self.window.0.as_ref() {
+            if let Some(w) = self.side.window.0.as_ref() {
                 let density = w.scale_factor();
                 let logical = winit::dpi::PhysicalSize::new(framebuffer[0], framebuffer[1])
                     .to_logical::<f64>(density);
@@ -583,7 +583,7 @@ impl Game<'_> {
             if self.settings.sunrise.dynamic_resolution {
                 let scale = super::frame_autotune::world_scale(
                     &self.settings.sunrise,
-                    &self.client.dynamic_resolution,
+                    &self.side.dynamic_resolution,
                 );
                 d.group("system", [format!("Resolution Scale: {scale}% (dynamic)")]);
             }
@@ -611,7 +611,7 @@ impl Game<'_> {
         }
         // Sunrise's own: HDR's output while the setting is on, under the GPU (a group of its
         // own would move others to the other column).
-        if let Some(r) = self.renderer.0.as_ref()
+        if let Some(r) = self.side.renderer.0.as_ref()
             && r.output().requests_hdr(self.settings.sunrise.hdr)
         {
             d.group("system", [r.hdr_line()]);
@@ -622,7 +622,7 @@ impl Game<'_> {
         if self.player.is_some() {
             use sunrise_core::java_number::format_fixed;
             let [tx, rx] = self
-                .client
+                .side
                 .debug_charts
                 .packet_rates
                 .map(|n| format_fixed(f64::from(n), 0));
@@ -695,10 +695,10 @@ impl Game<'_> {
     }
     /// `DebugScreenEntryList.isCurrentlyEnabled` for an entry's path.
     pub(in crate::game::client_side) fn debug_entry(&self, path: &str) -> bool {
-        self.debug_entries.0.enabled(
-            &self.registered_debug_entries.0,
+        self.side.debug_entries.0.enabled(
+            &self.side.registered_debug_entries.0,
             path,
-            self.client.debug,
+            self.side.debug,
             self.reduced_debug_info(),
         )
     }
@@ -729,9 +729,9 @@ impl Game<'_> {
             }
             DebugAction::ShowHitboxes if player => {
                 let on = self
-                    .debug_entries
+                    .side.debug_entries
                     .0
-                    .toggle_status("entity_hitboxes", self.client.debug);
+                    .toggle_status("entity_hitboxes", self.side.debug);
                 self.debug_translated(if on {
                     "debug.show_hitboxes.on"
                 } else {
@@ -746,9 +746,9 @@ impl Game<'_> {
             }
             DebugAction::ShowChunkBorders if player => {
                 let on = self
-                    .debug_entries
+                    .side.debug_entries
                     .0
-                    .toggle_status("chunk_borders", self.client.debug);
+                    .toggle_status("chunk_borders", self.side.debug);
                 self.debug_translated(if on {
                     "debug.chunk_boundaries.on"
                 } else {
@@ -842,26 +842,26 @@ impl Game<'_> {
                 true
             }
             DebugAction::FpsCharts => {
-                let mut visible = self.client.debug;
-                self.client.debug_charts.toggle_fps(&mut visible);
+                let mut visible = self.side.debug;
+                self.side.debug_charts.toggle_fps(&mut visible);
                 self.set_debug_overlay(visible);
                 true
             }
             DebugAction::NetworkCharts => {
-                let mut visible = self.client.debug;
-                self.client.debug_charts.toggle_network(&mut visible);
+                let mut visible = self.side.debug;
+                self.side.debug_charts.toggle_network(&mut visible);
                 self.set_debug_overlay(visible);
                 true
             }
             DebugAction::LightmapTexture => {
-                let mut visible = self.client.debug;
-                self.client.debug_charts.toggle_lightmap(&mut visible);
+                let mut visible = self.side.debug;
+                self.side.debug_charts.toggle_lightmap(&mut visible);
                 self.set_debug_overlay(visible);
                 true
             }
             // Other title submenus still need their own interruption/close policy.
             DebugAction::DebugOptions
-                if self.title.0.as_ref().is_some_and(|title| {
+                if self.side.title.0.as_ref().is_some_and(|title| {
                     !matches!(title.mode, sunrise_client::title::Mode::Main)
                 }) =>
             {
@@ -1077,7 +1077,7 @@ impl Game<'_> {
     /// `KeyboardHandler.setClipboard`.
     fn set_clipboard(&mut self, text: &str) {
         use sunrise_client::clipboard::Clipboard;
-        self.clipboard.0.set(text);
+        self.side.clipboard.0.set(text);
     }
     /// The debug renderers' gizmos for a frame (`DebugRenderer.emitGizmos`).
     pub(in crate::game::client_side) fn debug_gizmos(
@@ -1103,7 +1103,7 @@ impl Game<'_> {
             return g;
         }
         let hide_camera = self
-            .client
+            .side
             .camera_type
             .is_first_person()
             .then(|| {
@@ -1190,7 +1190,7 @@ impl Game<'_> {
             let p = c.position;
             g.entity_box(min, max, [p.x, p.y, p.z], 0.2125, false, (0.0, c.yaw));
         }
-        for (&id, i) in &self.client.interactions {
+        for (&id, i) in &self.side.interactions {
             if hide_camera == Some(id as u32) {
                 continue;
             }
@@ -1350,7 +1350,7 @@ impl Game<'_> {
             g.hitbox(at(r.previous, r.position), size, eye, false, (pitch, yaw));
         }
         for h in self.hook.iter().map(|h| (h.previous, h.position)).chain(
-            self.client
+            self.side
                 .remote_hooks
                 .iter()
                 .map(|h| (h.previous, h.position)),
@@ -1388,7 +1388,7 @@ impl Game<'_> {
             }
         }
         // The player's own, unless the camera is in its head.
-        if (!self.client.camera_type.is_first_person() || !self.controls_camera())
+        if (!self.side.camera_type.is_first_person() || !self.controls_camera())
             && let Some(p) = &self.player
         {
             let d = p.dimensions;

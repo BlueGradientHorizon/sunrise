@@ -10,7 +10,7 @@ use sunrise_client::{containers::BlockEntity, items::ItemStack, sound_engine::BL
 #[allow(unused_imports)]
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `getDismountLocationForPassenger`: beside the cart's motion direction,
     /// else on top.
     pub(in crate::game) fn dismount_cart(&mut self, i: usize) {

@@ -25,7 +25,7 @@ pub(in crate::game::client_side) use sunrise_protocol::{
 };
 
 /// The server's teleport that makes the local player, on a stone floor, with the level loaded.
-pub(in crate::game) fn stand(game: &mut Game<'_>, teleport: i32) {
+pub(in crate::game) fn stand(game: &mut Game<'_, crate::game::client_side::ClientState>, teleport: i32) {
     game.streaming
         .insert_remote(&mut game.world, Chunk::empty(0, 0));
     let stone = game
@@ -51,5 +51,5 @@ pub(in crate::game) fn stand(game: &mut Game<'_>, teleport: i32) {
     let remote = game.remote.as_mut().unwrap();
     remote.loaded_sent = true;
     remote.level_load.finish();
-    game.client.screen = Screen::Playing;
+    game.side.screen = Screen::Playing;
 }

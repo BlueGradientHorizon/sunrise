@@ -9,7 +9,7 @@ use sunrise_client::hud::HudAtlas;
 #[allow(unused_imports)]
 use sunrise_client::text::{InlineObject, Text};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn substitute_inline_images(&self, text: &Text) -> Option<Text> {
         substitute(&self.gui.atlas, text, |run, images| {
             self.native_substitute_inline_images(mod_api::__private::SubstituteInlineImagesCall {

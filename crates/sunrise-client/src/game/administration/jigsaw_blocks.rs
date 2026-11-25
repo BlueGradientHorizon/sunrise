@@ -4,7 +4,7 @@ use sunrise_client::jigsaw_block;
 
 pub(in crate::game) type Pos = (i32, i32, i32);
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The block's front facing, from its `orientation` (`JigsawBlock.getFrontFacing`).
     pub(in crate::game) fn jigsaw_front(&self, pos: Pos) -> Option<String> {
         let state = self.world.block(pos.0, pos.1, pos.2);

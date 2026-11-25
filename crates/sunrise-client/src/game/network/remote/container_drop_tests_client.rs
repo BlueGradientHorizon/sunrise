@@ -65,7 +65,7 @@ fn canceled_creative_drop_keeps_throttle_budget_for_next_take() {
                     with_client_game(|game| {
                         let mut reader = logged_in(game);
                         game.set_local_mode(GameMode::Creative);
-                        game.client.screen = Screen::Creative;
+                        game.side.screen = Screen::Creative;
                         game.inventory[0] = Some(ItemStack::new("minecraft:stone", 3));
                         game.send_creative_slots();
                         sent(&mut reader);
@@ -73,7 +73,7 @@ fn canceled_creative_drop_keeps_throttle_budget_for_next_take() {
 
                         // Room for one accepted drop before the 1280 cap.
                         for _ in 0..63 {
-                            game.client.drop_spam_throttler.increment();
+                            game.side.drop_spam_throttler.increment();
                         }
                         assert!(
                             game.menu_ops(&[
@@ -86,7 +86,7 @@ fn canceled_creative_drop_keeps_throttle_budget_for_next_take() {
                             Some(1),
                             "second throw in the batch must still see available budget after the first drop is canceled"
                         );
-                        assert!(!game.client.drop_spam_throttler.is_under_threshold());
+                        assert!(!game.side.drop_spam_throttler.is_under_threshold());
 
                         let packets: Vec<_> = sent(&mut reader)
                             .into_iter()
@@ -129,10 +129,10 @@ fn creative_drop_guards_charge_only_sent_drops() {
                     game.poll_remote_events(true).unwrap();
                 }
                 for _ in 0..64 {
-                    game.client.drop_spam_throttler.increment();
+                    game.side.drop_spam_throttler.increment();
                 }
                 spawn_menu_test(game);
-                assert!(game.client.drop_spam_throttler.is_under_threshold());
+                assert!(game.side.drop_spam_throttler.is_under_threshold());
                 game.handle_packet(C::PlayerPosition(play::PlayerPosition {
                     teleport: 1,
                     position: [0.5, 65.0, 0.5],
@@ -146,7 +146,7 @@ fn creative_drop_guards_charge_only_sent_drops() {
                 game.set_local_mode(GameMode::Creative);
                 let stone = || ItemStack::new("minecraft:stone", 1);
                 let vanilla = ["minecraft:vanilla".to_owned()];
-                let catalog = game.creative_screen.0.catalog();
+                let catalog = game.side.creative_screen.0.catalog();
                 let items = game
                     .remote
                     .as_ref()
@@ -162,7 +162,7 @@ fn creative_drop_guards_charge_only_sent_drops() {
                     assert!(!catalog.item_enabled(&stack, &[]), "{name}");
                 }
 
-                game.client.screen = Screen::Creative;
+                game.side.screen = Screen::Creative;
                 game.inventory[0] = Some(stone());
                 game.remote_creative_slot_add(0);
                 game.inventory[1] = Some(stone());
@@ -204,9 +204,9 @@ fn creative_drop_guards_charge_only_sent_drops() {
                 game.remote_creative_slot_add(0);
                 game.remote_creative_throw(stone());
                 game.set_local_mode(GameMode::Creative);
-                game.client.screen = Screen::Inventory;
+                game.side.screen = Screen::Inventory;
                 game.remote_creative_throw(stone());
-                game.client.screen = Screen::Creative;
+                game.side.screen = Screen::Creative;
                 game.remote_creative_throw(ItemStack::new("minecraft:air", 1));
                 game.remote_creative_throw(ItemStack::new("minecraft:air", 0));
                 game.remote_creative_throw(ItemStack::new("minecraft:stone", 0));
@@ -220,12 +220,12 @@ fn creative_drop_guards_charge_only_sent_drops() {
                 for _ in 0..63 {
                     game.remote_creative_throw(stone());
                 }
-                assert!(game.client.drop_spam_throttler.is_under_threshold());
+                assert!(game.side.drop_spam_throttler.is_under_threshold());
                 game.remote_creative_throw(stone());
-                assert!(!game.client.drop_spam_throttler.is_under_threshold());
+                assert!(!game.side.drop_spam_throttler.is_under_threshold());
 
                 // With no screen the game-mode method may still send: only the click checks the cap.
-                game.client.screen = Screen::Playing;
+                game.side.screen = Screen::Playing;
                 game.remote_creative_throw(stone());
                 game.remote_creative_slot_add(0);
                 let packets: Vec<_> = sent(&mut reader)
@@ -244,13 +244,13 @@ fn creative_drop_guards_charge_only_sent_drops() {
                 game.handle_packet(C::Respawn(play::Respawn { spawn, keep: 0 }))
                     .unwrap();
                 for _ in 0..63 {
-                    game.client.drop_spam_throttler.increment();
+                    game.side.drop_spam_throttler.increment();
                 }
-                assert!(game.client.drop_spam_throttler.is_under_threshold());
+                assert!(game.side.drop_spam_throttler.is_under_threshold());
                 game.remote.as_mut().unwrap().session.disconnect();
                 game.remote_creative_throw(stone());
                 assert!(
-                    game.client.drop_spam_throttler.is_under_threshold(),
+                    game.side.drop_spam_throttler.is_under_threshold(),
                     "refused send must not charge the drop throttler"
                 );
             });
@@ -267,12 +267,12 @@ fn creative_screen_throws_wait_for_loaded_player_tick() {
             with_client_game(|game| {
                 let mut reader = logged_in(game);
                 game.set_local_mode(GameMode::Creative);
-                game.client.screen = Screen::Creative;
+                game.side.screen = Screen::Creative;
                 let stone = ItemStack::new("minecraft:stone", 2);
                 game.inventory[0] = Some(stone.clone());
                 game.carried = Some(stone.clone());
                 for _ in 0..64 {
-                    game.client.drop_spam_throttler.increment();
+                    game.side.drop_spam_throttler.increment();
                 }
                 game.remote.as_mut().unwrap().loaded_sent = false;
                 assert_eq!(game.tick_remote_own_player().unwrap(), None);
@@ -290,7 +290,7 @@ fn creative_screen_throws_wait_for_loaded_player_tick() {
                 let _ = game.tick_remote_own_player().unwrap();
                 game.throw_click(false, Input::Pickup);
                 assert!(game.carried.is_none());
-                assert!(!game.client.drop_spam_throttler.is_under_threshold());
+                assert!(!game.side.drop_spam_throttler.is_under_threshold());
                 let packets: Vec<_> = sent(&mut reader)
                     .into_iter()
                     .filter_map(|p| match p {
@@ -301,17 +301,17 @@ fn creative_screen_throws_wait_for_loaded_player_tick() {
                 assert_eq!(packets, [(-1, 2)]);
 
                 // A new screen doesn't reset the budget; a replacement LocalPlayer does.
-                game.client.screen = Screen::Playing;
-                game.client.screen = Screen::Creative;
-                assert!(!game.client.drop_spam_throttler.is_under_threshold());
+                game.side.screen = Screen::Playing;
+                game.side.screen = Screen::Creative;
+                assert!(!game.side.drop_spam_throttler.is_under_threshold());
                 let spawn = spawn_menu_test(game);
                 assert!(
-                    !game.client.drop_spam_throttler.is_under_threshold(),
+                    !game.side.drop_spam_throttler.is_under_threshold(),
                     "an existing player survives Login"
                 );
                 game.handle_packet(C::Respawn(play::Respawn { spawn, keep: 0 }))
                     .unwrap();
-                assert!(game.client.drop_spam_throttler.is_under_threshold());
+                assert!(game.side.drop_spam_throttler.is_under_threshold());
             });
         },
     );
@@ -329,7 +329,7 @@ fn playing_menu_throw_uses_only_container_click_and_server_drops_once() {
             with_client_game(|game| {
                 let mut reader = logged_in(game);
                 game.set_local_mode(GameMode::Creative);
-                game.client.screen = Screen::Playing;
+                game.side.screen = Screen::Playing;
                 game.inventory[0] = Some(ItemStack::new("minecraft:stone", 3));
                 let menu = game
                     .local_player()

@@ -176,7 +176,7 @@ fn recipe(id: String, kind: RecipeKind) -> Recipe {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn registered_recipe_book_category(
         &mut self,
         kind: &str,
@@ -221,7 +221,7 @@ impl Game<'_> {
         let mut stack = stack.try_into_engine(self.items())?;
         if self.remote.is_some()
             && !self
-                .creative_screen
+                .side.creative_screen
                 .0
                 .catalog()
                 .item_enabled(&stack, self.enabled_feature_ids())
@@ -448,7 +448,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// A new play session (`Login`): what the last server sent is gone.
     pub(in crate::game::client_side) fn forget_synced_recipes(&mut self) {
         self.recipe_tables.synced = None;

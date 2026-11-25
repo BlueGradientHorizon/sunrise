@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Finish the menu handoff after the guest's use. As in
     /// `ChestBlock.useWithoutItem`, the block has already decided its use
     /// result independently of what `ServerPlayer.openMenu` does.

@@ -53,7 +53,7 @@ pub(in crate::game::server_side) fn charge_sounds(
     (played, play[0], play[1])
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_projectile_player_uuid(&mut self) -> Option<u128> {
         Some(sunrise_client::lan::playerdata::ints_uuid(
             self.acting_player_uuid(),
@@ -207,8 +207,8 @@ impl Game<'_> {
             .player
             .as_ref()
             .map(|p| [p.position.x, p.position.y, p.position.z]);
-        let (played, start, middle) = charge_sounds(now, self.server.crossbow_sounds, sounds);
-        self.server.crossbow_sounds = played;
+        let (played, start, middle) = charge_sounds(now, self.side.crossbow_sounds, sounds);
+        self.side.crossbow_sounds = played;
         if let (Some(sound), Some(at)) = (start, at) {
             self.server_play_sound(sound, at, 0.5, 1.0);
         }
@@ -350,7 +350,7 @@ impl Game<'_> {
                 let (player, name, projectile) = (
                     sunrise_client::lan::playerdata::ints_uuid(self.acting_player_uuid()),
                     self.acting_player_name().to_owned(),
-                    self.server.next_entity,
+                    self.side.next_entity,
                 );
                 self.native_entity_shoot_bow(player, &name, projectile, power as f32);
             }

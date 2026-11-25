@@ -57,7 +57,7 @@ pub(in crate::game::server_side) use sunrise_world::attribute_map::ValueKind;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_world::attributes::entity::Catalog;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The entity id `who` names as a hit's causing entity: a mob's own, the player in place's
     /// for `Who::Player`; 0 for none.
     pub(in crate::game) fn causer_id(&self, who: Option<sunrise_client::mobs::Who>) -> i32 {
@@ -119,7 +119,7 @@ impl Game<'_> {
         let living =
             mod_api::LivingRef::new(mod_api::EntityRef::new(epoch, u32::try_from(id).ok()?));
         match self.native_living_target(living)? {
-            Target::Guest(conn) if self.server.lan_acting != Some(conn) => Some(conn),
+            Target::Guest(conn) if self.side.lan_acting != Some(conn) => Some(conn),
             _ => None,
         }
     }

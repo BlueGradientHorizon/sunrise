@@ -3,7 +3,7 @@ use super::Game;
 use mod_api::{BlockKey, ChunkRef};
 use sunrise_core::random::{RandomSource, slime_chunk_random};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn chunk_is_slime_chunk(&self, chunk: ChunkRef) -> Option<bool> {
         let seed = self.level_seed(chunk.level())?;
         let [x, z] = chunk.pos();

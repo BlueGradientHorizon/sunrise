@@ -14,7 +14,7 @@ fn registered() -> BTreeSet<String> {
         .collect()
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn tick_book_snapshot_retry(&mut self) {
         self.check_mod_book_placement_timeout();
         if self

@@ -17,14 +17,14 @@ use winit::{event::MouseButton, keyboard::KeyCode};
 /// A sort button's side in GUI pixels.
 const SORT_BUTTON: f32 = 9.0;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The sort buttons of the open screen, with the extra on: their
     /// corner (from the screen's) and the slots each sorts. The container's
     /// (chest-like ones only) sits by its title, the main inventory's by
     /// the "Inventory" label's line.
     fn sort_buttons(&self) -> Vec<((f32, f32), Vec<usize>)> {
         if !self.settings.extras.sort
-            || self.client.screen != Screen::Inventory
+            || self.side.screen != Screen::Inventory
             || self.station.is_some()
             || self.mount_active()
         {
@@ -67,7 +67,7 @@ impl Game<'_> {
         let atlas = &self.gui.atlas;
         for ((x, y), _) in self.sort_buttons() {
             let (x, y) = (ox + x, oy + y);
-            let (cx, cy) = self.client.cursor;
+            let (cx, cy) = self.side.cursor;
             let hovered = cx >= x && cx < x + SORT_BUTTON && cy >= y && cy < y + SORT_BUTTON;
             let face = if hovered {
                 rgba(220, 220, 220, 255)
@@ -91,7 +91,7 @@ impl Game<'_> {
     }
     /// A left press on a sort button sorts its slots (true).
     pub(in crate::game::client_side) fn sort_press(&mut self) -> bool {
-        let Some(r) = self.renderer.0.as_ref() else {
+        let Some(r) = self.side.renderer.0.as_ref() else {
             return false;
         };
         let batch = HudBatch::new(
@@ -99,7 +99,7 @@ impl Game<'_> {
             self.settings.gui_scale_inputs(),
         );
         let (ox, oy) = self.inventory_origin(&batch);
-        let (cx, cy) = self.client.cursor;
+        let (cx, cy) = self.side.cursor;
         let hit = self.sort_buttons().into_iter().find(|((x, y), _)| {
             let (x, y) = (ox + x, oy + y);
             cx >= x && cx < x + SORT_BUTTON && cy >= y && cy < y + SORT_BUTTON

@@ -22,7 +22,7 @@ pub(in crate::game) const TOTEM: &str = "minecraft:totem_of_undying";
 /// `EntityEvent.TOTEM_OF_UNDYING`.
 pub(in crate::game) const TOTEM_EVENT: i8 = 35;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Entity event 35 from a server, for this client's own player or an
     /// entity it draws.
     pub(in crate::game::client_side) fn remote_totem(&mut self, id: i32) {
@@ -40,13 +40,13 @@ impl Game<'_> {
     /// 30-tick emitter) and its sound, heard here only (`playLocalSound`),
     /// and the player's own rumble.
     pub(in crate::game::client_side) fn totem_event(&mut self, target: TrackingTarget, body: Body) {
-        self.particles.0.tracking_emitter_for(
+        self.side.particles.0.tracking_emitter_for(
             ParticleOptions::simple(ParticleType::TotemOfUndying),
             target,
             body.bounds,
             30,
         );
-        self.audio
+        self.side.audio
             .0
             .play_unshared("minecraft:item.totem.use", Some(body.bounds.feet), 1.0, 1.0);
         if target == TrackingTarget::LocalPlayer {
@@ -57,9 +57,9 @@ impl Game<'_> {
             // half hands over the stack it used up; only an event from a
             // remote server, whose item is still in the hand, looks one up.
             let totem = body.protector.unwrap_or_else(|| self.find_totem());
-            self.client
+            self.side
                 .item_activation
-                .activate(totem, self.particles.0.random());
+                .activate(totem, self.side.particles.0.random());
         }
     }
     /// `ClientPacketListener.findTotem`: the first hand's item with
@@ -76,7 +76,7 @@ impl Game<'_> {
     /// `GameRenderer.tick`: the activated item counts down.
     pub(in crate::game::client_side) fn tick_item_activation(&mut self) {
         if self.player.is_some() {
-            self.client.item_activation.tick();
+            self.side.item_activation.tick();
         }
     }
     /// `ScreenEffectRenderer.renderItemActivationAnimation`, for the hand
@@ -95,8 +95,8 @@ impl Game<'_> {
             return;
         }
         let (Some(stack), Some(pose)) = (
-            self.client.item_activation.active(),
-            self.client.item_activation.pose(partial, aspect),
+            self.side.item_activation.active(),
+            self.side.item_activation.pose(partial, aspect),
         ) else {
             return;
         };

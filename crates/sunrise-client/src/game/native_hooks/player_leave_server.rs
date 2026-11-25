@@ -5,7 +5,7 @@ pub(in crate::game::server_side) use crate::game::native_hooks::player_leave::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_client::lan::guest::Guest;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The leave lines of a guest the hub removed and broadcast the leave line of, and whether
     /// the mods hear that they logged out.
     pub(in crate::game) fn announce_guest_left(&mut self, guest: &Guest) -> bool {

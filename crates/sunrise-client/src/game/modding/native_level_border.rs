@@ -8,7 +8,7 @@ use crate::game::level_control_hooks::LevelControl;
 use mod_api::LevelRef;
 use sunrise_client::worldborder::{MAX_CENTER, MAX_SIZE};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `WorldBorder.setCenter(x, z)`; the border-center hook hears it. The centre it already
     /// has is true with nothing heard, as `/worldborder center` changes nothing. False for a
     /// centre that isn't finite or lies past 2.9999984E7 on x or z, inside the border-center

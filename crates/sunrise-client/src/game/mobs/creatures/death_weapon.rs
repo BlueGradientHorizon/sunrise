@@ -2,7 +2,7 @@
 #[allow(unused_imports)]
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `DamageSources.arrow` / `trident`: type and tags follow the actual projectile.
     pub(in crate::game) fn projectile_damage_kind(&self, shot: &Projectile) -> DamageKind {
         match shot.kind {

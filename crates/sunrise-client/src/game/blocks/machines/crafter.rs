@@ -35,7 +35,7 @@ pub(in crate::game::server_side) fn recipe_matches(condition: &Value, id: &str) 
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Level.setBlock` of one boolean property of the block at `pos`.
     pub(in crate::game::server_side) fn set_bool_prop(
         &mut self,

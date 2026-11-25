@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Ahead of the effect panels beside the survival and creative
     /// inventories (`ScreenEvent.RenderInventoryMobEffects`, vanilla's
     /// `EffectsInInventory.extractRenderState`): `available_space` is the

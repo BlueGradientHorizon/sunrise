@@ -9,7 +9,7 @@ use sunrise_core::position::BlockPos;
 #[allow(unused_imports)]
 use sunrise_world::chunk::BlockState;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The lit campfire at `pos` that `held` puts out, when the item is in
     /// `#minecraft:douses_campfires` (`CampfireBlock.useItemOn`).
     pub(in crate::game) fn campfire_to_douse(

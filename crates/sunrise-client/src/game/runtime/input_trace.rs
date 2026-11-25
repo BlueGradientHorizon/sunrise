@@ -21,12 +21,12 @@ pub(in crate::game) use sunrise_client_gameplay::input_trace::{
     redact_command,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// An agent's control line: input unless it only reads, which still counts
     /// as the agent watching.
     pub(in crate::game::client_side) fn note_socket_line(&mut self, line: &str) {
         if is_read_only(line) || is_session_command(line) {
-            self.input_trace.0.agent_activity();
+            self.side.input_trace.0.agent_activity();
             return;
         }
         self.note_input(
@@ -42,7 +42,7 @@ impl Game<'_> {
     /// and mouse motion skips it, so a player who uses none of them pays
     /// nothing per input event.
     fn tracing_input(&self) -> bool {
-        self.control.is_some() || self.settings.extras.repro_keys || self.repro.0.recording_active()
+        self.control.is_some() || self.settings.extras.repro_keys || self.side.repro.0.recording_active()
     }
 
     /// Record an input event and, when a person steps into an agent's run, tell
@@ -62,12 +62,12 @@ impl Game<'_> {
             || self.agent_busy()
             || self.events.has_waits();
         if self
-            .input_trace
+            .side.input_trace
             .0
             .record(self.ticks, origin, kind, agent_active)
         {
             let event = json!({ "event": "user-input", "input": kind_name });
-            self.repro.0.note_event(self.ticks, &event);
+            self.side.repro.0.note_event(self.ticks, &event);
             self.events.note(self.ticks, event);
             log::info!(
                 "Sunrise: {kind_name} input from a person while an agent was driving \
@@ -137,7 +137,7 @@ impl Game<'_> {
             }
             // GUI clicks land where the pointer is; in the world the pointer is
             // grabbed and turns the view through `device_event` instead.
-            WindowEvent::CursorMoved { .. } if self.client.screen != Screen::Playing => {
+            WindowEvent::CursorMoved { .. } if self.side.screen != Screen::Playing => {
                 if let Some(sample) = cursor_sample {
                     self.note_input(origin, TraceKind::cursor(sample));
                 }

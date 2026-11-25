@@ -11,7 +11,7 @@ pub(in crate::game) struct HubClockSnapshot {
     pub(in crate::game) level_clock: Option<(String, f32)>,
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The clock `World.day_time` follows (`UiState::active_clock`).
     pub(in crate::game) fn active_clock(&self) -> &str {
         if self.ui.active_clock.is_empty() {

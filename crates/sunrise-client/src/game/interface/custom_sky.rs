@@ -11,7 +11,7 @@ pub(in crate::game) struct CustomSkyView {
     last: Option<std::time::Instant>,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Fills the renderer's custom sky layers for this frame; `camera` is the eye's position.
     /// Nothing for the title screen, the Nether (it has no sky) or a sky a shader pack draws.
     pub(in crate::game::client_side) fn custom_sky_frame(
@@ -22,7 +22,7 @@ impl Game<'_> {
         title: bool,
     ) {
         let Some(mut draws) = self
-            .renderer
+            .side.renderer
             .0
             .as_mut()
             .map(|r| std::mem::take(r.custom_sky_draws()))
@@ -37,7 +37,7 @@ impl Game<'_> {
         };
         let now = std::time::Instant::now();
         let seconds = self
-            .client
+            .side
             .custom_sky
             .last
             .replace(now)
@@ -45,7 +45,7 @@ impl Game<'_> {
         if let Some(world) =
             world.filter(|&w| !title && self.settings.sunrise.sky && self.pack.custom_sky.has(w))
         {
-            let mut state = std::mem::take(&mut self.client.custom_sky.state);
+            let mut state = std::mem::take(&mut self.side.custom_sky.state);
             // Level.isThundering / isRaining.
             let weather = if thunder > 0.9 && rain > 0.2 {
                 Weather::Thunder
@@ -68,9 +68,9 @@ impl Game<'_> {
                 &mut state,
                 &mut draws,
             );
-            self.client.custom_sky.state = state;
+            self.side.custom_sky.state = state;
         }
-        if let Some(renderer) = self.renderer.0.as_mut() {
+        if let Some(renderer) = self.side.renderer.0.as_mut() {
             *renderer.custom_sky_draws() = draws;
         }
     }

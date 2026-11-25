@@ -3,7 +3,7 @@
 //! `native_may_leave` first, and does nothing when a mod says no.
 use super::{Game, commands::Target, native_hooks::mob_kind};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn retire_vehicle_registration(&self, target: Target) {
         match target {
             Target::Boat(id) => {
@@ -85,8 +85,8 @@ impl Game<'_> {
     /// The entity id of the acting player: a guest's while their action runs (kept with the
     /// action, as the hub is often out of `lan` then), else none (0).
     pub(in crate::game) fn native_acting_entity(&self) -> u32 {
-        match self.server.lan_acting {
-            Some(conn) => self.server.lan_acting_entity.unwrap_or_else(|| {
+        match self.side.lan_acting {
+            Some(conn) => self.side.lan_acting_entity.unwrap_or_else(|| {
                 let guests = self.lan_guest_entities();
                 guests.iter().find(|g| g.0 == conn).map_or(0, |g| g.1)
             }),
@@ -110,7 +110,7 @@ impl Game<'_> {
             "minecraft:tnt".into()
         } else if self.armor_stands.iter().any(|a| a.id == id) {
             self.target_type(Target::Stand(id))
-        } else if self.others.0.iter().any(|o| o.id == id) {
+        } else if self.side.others.0.iter().any(|o| o.id == id) {
             self.target_type(Target::Other(id))
         } else if let Some(row) = self.general_object(id) {
             super::general::general_type_catalog()

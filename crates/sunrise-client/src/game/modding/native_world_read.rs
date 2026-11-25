@@ -184,7 +184,7 @@ pub(in crate::game) fn engine_fluid_kind(fluid: FluidKey) -> Option<FluidKind> {
 /// The blocks around one position of a level, as `FluidState.getHeight` reads them: an unloaded
 /// block is empty and has no sturdy underside.
 struct FluidColumn<'a, 'g> {
-    game: &'a Game<'g>,
+    game: &'a Game<'g, crate::game::server_side::ServerState>,
     level: LevelRef,
 }
 impl FluidColumn<'_, '_> {
@@ -214,7 +214,7 @@ impl FluidHeightWorld for FluidColumn<'_, '_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The saved name for an engine-issued unresolved fluid.
     pub(in crate::game) fn unresolved_fluid_id(&self, fluid: UnresolvedFluid) -> String {
         mod_api::__private::unresolved_fluid_name(fluid)
@@ -407,7 +407,7 @@ impl Game<'_> {
         let world = if dim == self.dim {
             Some(&self.world)
         } else {
-            self.levels.0.parked_world(dim)
+            self.side.levels.0.parked_world(dim)
         }
         .ok_or(NativeBlockReadError::UnavailableDimension)?;
         read_block(world, self.pack.assets.registry, pos)

@@ -7,7 +7,7 @@ pub(in crate::game::client_side) use crate::game::developer_launch::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::lan::{NetConfig, hub::HubConfig};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Join single player's integrated server through memory.
     pub(in crate::game) fn connect_local(
         &mut self,

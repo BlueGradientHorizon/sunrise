@@ -7,7 +7,7 @@ pub(in crate::game::server_side) use sunrise_client::{items::ItemStack, mobs::na
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_core::random::RandomSource;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `AbstractNautilus.mobInteract`. Returns whether the click was used.
     pub(in crate::game) fn interact_nautilus(&mut self, index: usize, item: &str) -> bool {
         let m = &self.mobs[index];
@@ -61,7 +61,7 @@ impl Game<'_> {
                     m.nav_stop();
                 }
                 if tamed {
-                    self.set_event_ai_target(self.mobs[index].id, None, self.server.lan_acting);
+                    self.set_event_ai_target(self.mobs[index].id, None, self.side.lan_acting);
                 }
                 let sound = nautilus::eat_sound(&self.mobs[index]);
                 // TamableAnimal.spawnTamingParticles (entity event 7 or 6).
@@ -139,9 +139,9 @@ impl Game<'_> {
             m.extra.love_player = true;
             let sound = nautilus::eat_sound(m);
             let id = m.id;
-            self.server.love_cause.insert(id, self.server.lan_acting);
+            self.side.love_cause.insert(id, self.side.lan_acting);
             let kind = self.mobs[index].kind.id.clone();
-            self.native_entity_enter_love_mode(id, &kind, self.server.lan_acting_uuid);
+            self.native_entity_enter_love_mode(id, &kind, self.side.lan_acting_uuid);
             self.use_nautilus_food(item);
             self.nautilus_sound(index, sound);
             // Animal.setInLove: entity event 18.

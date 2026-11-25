@@ -36,7 +36,7 @@ pub(in crate::game::server_side) use sunrise_core::{
 
 /// Zero-allocation live world view for `ProjectileWorld` and `ArrowTargets`.
 pub(in crate::game) struct LiveProjWorld<'a, 'r> {
-    pub game: &'a Game<'r>,
+    pub game: &'a Game<'r, crate::game::server_side::ServerState>,
     pub w: MobWorld<'a>,
     pub border: Option<[f64; 4]>,
     pub query: TargetQuery,
@@ -118,7 +118,7 @@ impl ArrowTargets for LiveProjWorld<'_, '_> {
     }
 }
 
-impl<'r> Game<'r> {
+impl<'r> Game<'r, crate::game::server_side::ServerState> {
     /// Construct a live zero-allocation world view for projectile sweeps.
     pub(in crate::game) fn live_proj_world<'a>(
         &'a self,
@@ -341,7 +341,7 @@ impl<'r> Game<'r> {
         };
         let attacker = match owner {
             Who::Player => match owner_guest {
-                Some(conn) if self.server.lan_acting != Some(conn) => guest(conn),
+                Some(conn) if self.side.lan_acting != Some(conn) => guest(conn),
                 _ => Some((self.own_entity_id(), self.player_team())),
             },
             Who::Mob(oid) => guest_by_id(oid),
@@ -395,7 +395,7 @@ impl<'r> Game<'r> {
                 }
                 if self.natural_knot(id).is_some()
                     || self
-                        .others
+                        .side.others
                         .0
                         .iter()
                         .any(|o| o.id == id && o.kind == "minecraft:leash_knot")
@@ -434,7 +434,7 @@ impl<'r> Game<'r> {
             position: Some([info.position.x, info.position.y, info.position.z]),
         };
         let vanilla = self.saved_refuses_damage(id, info.damage_type, creative);
-        crate::game::entity::damage_level_of!(self, self.combat.0.attack(), no_push, None)
+        crate::game::entity::damage_level_of!(self, self.side.combat.0.attack(), no_push, None)
             .invulnerability_check(
                 sunrise_client::health::Hurting::Entity(id as i32, kind, source),
                 vanilla,
@@ -588,7 +588,7 @@ impl<'r> Game<'r> {
         {
             let (may_build, may_interact) = match causing_target {
                 Some(Target::Player) => (self.may_build(), self.may_interact_at(pos)),
-                Some(Target::Guest(conn)) if self.server.lan_acting == Some(conn) => {
+                Some(Target::Guest(conn)) if self.side.lan_acting == Some(conn) => {
                     (self.may_build(), self.may_interact_at(pos))
                 }
                 Some(Target::Guest(conn)) => (
@@ -626,7 +626,7 @@ impl<'r> Game<'r> {
         // LeashFenceKnotEntity (`BlockAttachedEntity.hurtServer`), natural or explicit.
         let is_knot = self.natural_knot(id).is_some()
             || self
-                .others
+                .side.others
                 .0
                 .iter()
                 .any(|o| o.id == id && o.kind == "minecraft:leash_knot");
@@ -750,7 +750,7 @@ impl<'r> Game<'r> {
         let by_player = resolved == Some(Who::Player);
         let creative = match resolved {
             Some(Who::Player) => match info.guest {
-                Some(conn) if self.server.lan_acting == Some(conn) => self.creative,
+                Some(conn) if self.side.lan_acting == Some(conn) => self.creative,
                 Some(conn) => self.command_guest(conn).is_some_and(|g| g.creative()),
                 None => self.creative,
             },
@@ -774,7 +774,7 @@ impl<'r> Game<'r> {
     ) -> Option<Who> {
         match owner? {
             Who::Player => match guest {
-                Some(conn) if self.server.lan_acting != Some(conn) => {
+                Some(conn) if self.side.lan_acting != Some(conn) => {
                     self.command_guest(conn).map(|_| Who::Player)
                 }
                 _ => self.player.as_ref().map(|_| Who::Player),
@@ -983,7 +983,7 @@ impl<'r> Game<'r> {
                 });
             }
         }
-        for o in self.others.0.iter() {
+        for o in self.side.others.0.iter() {
             if o.kind == "minecraft:leash_knot" && allows(o.id, false) {
                 visit(TargetCandidate {
                     who: Who::Mob(o.id),

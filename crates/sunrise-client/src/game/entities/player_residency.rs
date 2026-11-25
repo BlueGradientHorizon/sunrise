@@ -24,11 +24,11 @@ impl SpecializedSource<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn current_player_resident_location(
         &self,
     ) -> Option<Location> {
-        match self.server.lan_acting {
+        match self.side.lan_acting {
             Some(conn) => self.command_guest(conn)?.residency.location(),
             None => self.resident_entities.local_player.location(),
         }
@@ -50,7 +50,7 @@ impl Game<'_> {
 
     pub(in crate::game::server_side) fn resident_target_id(&self, target: Target) -> Option<u32> {
         match target {
-            Target::Player => match self.server.lan_acting {
+            Target::Player => match self.side.lan_acting {
                 Some(conn) => self
                     .command_guest(conn)?
                     .residency
@@ -74,7 +74,7 @@ impl Game<'_> {
     pub(in crate::game::server_side) fn acting_player_join(
         &self,
     ) -> sunrise_client::join_seq::JoinSeq {
-        self.server
+        self.side
             .lan_acting
             .and_then(|conn| self.command_guest(conn))
             .map_or_else(
@@ -84,7 +84,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn install_fishing_hook(&mut self, mut hook: super::fishing::Hook) {
-        hook.caster = self.server.lan_acting;
+        hook.caster = self.side.lan_acting;
         hook.caster_generation = self.acting_player_join();
         self.hook.discard();
         self.bind_current_hook_residency();
@@ -107,7 +107,7 @@ impl Game<'_> {
                         kind: Kind::Hook,
                     },
                     Source::Hook {
-                        caster: self.server.lan_acting,
+                        caster: self.side.lan_acting,
                     },
                 )
             });
@@ -127,7 +127,7 @@ impl Game<'_> {
     ) {
         self.resident_entities.local_player.rebind(journal);
         let body_id = self.player.as_ref().map(|player| player.entity_id as u32);
-        if self.server.lan_acting.is_some()
+        if self.side.lan_acting.is_some()
             || self
                 .resident_entities
                 .local_player
@@ -140,7 +140,7 @@ impl Game<'_> {
         if self.hook.resident_location().is_some_and(|at| {
             at.source
                 != (Source::Hook {
-                    caster: self.server.lan_acting,
+                    caster: self.side.lan_acting,
                 })
         }) {
             self.hook.begin_loan();
@@ -149,10 +149,10 @@ impl Game<'_> {
             host.hub
                 .guests
                 .bind_residency(journal, |id| super::Dim::from_id(id).key());
-            for &conn in &self.server.lan_guest_swaps {
+            for &conn in &self.side.lan_guest_swaps {
                 if let Some(index) = host.hub.guests.connection_index(conn) {
                     let guest = &host.hub.guests[index];
-                    if self.server.lan_acting != Some(conn)
+                    if self.side.lan_acting != Some(conn)
                         || body_id != Some(guest.entity_id as u32)
                     {
                         guest.residency.extract();
@@ -193,7 +193,7 @@ impl Game<'_> {
     ) -> Option<SourceEntity<(SpecializedSource<'_>, Target)>> {
         let (source, id, target) = match (at.owner.kind, at.source) {
             (Kind::Player, Source::LocalPlayer) => {
-                if self.server.lan_acting.is_some()
+                if self.side.lan_acting.is_some()
                     || self.resident_entities.local_player.location() != Some(at)
                 {
                     return None;
@@ -216,7 +216,7 @@ impl Game<'_> {
                 if guest.residency.location() != Some(at) || guest.released {
                     return None;
                 }
-                if self.server.lan_acting == Some(conn) {
+                if self.side.lan_acting == Some(conn) {
                     let player = self.player.as_ref()?;
                     if player.entity_id != guest.entity_id {
                         return None;
@@ -227,7 +227,7 @@ impl Game<'_> {
                         Target::Player,
                     )
                 } else {
-                    if self.server.lan_guest_swaps.contains(&conn) {
+                    if self.side.lan_guest_swaps.contains(&conn) {
                         return None;
                     }
                     (
@@ -240,7 +240,7 @@ impl Game<'_> {
             (Kind::Hook, Source::Hook { caster }) => {
                 let hook = match caster {
                     None => {
-                        if self.server.lan_acting.is_some() {
+                        if self.side.lan_acting.is_some() {
                             return None;
                         }
                         let hook = self.hook.as_ref()?;
@@ -256,10 +256,10 @@ impl Game<'_> {
                             .guests
                             .connection_index(conn)
                             .map(|index| &host.hub.guests[index]);
-                        let hook = if self.server.lan_acting == Some(conn) {
+                        let hook = if self.side.lan_acting == Some(conn) {
                             self.hook.as_ref()?
                         } else {
-                            if self.server.lan_guest_swaps.contains(&conn) {
+                            if self.side.lan_guest_swaps.contains(&conn) {
                                 return None;
                             }
                             host.play.get(&conn)?.hook.as_ref()?
@@ -301,7 +301,7 @@ impl Game<'_> {
                 SlotAccess::Done(visit(self.player_state.attachments.attachment_lifetime()))
             }
             Source::Guest(conn) => {
-                if self.server.lan_acting == Some(conn) {
+                if self.side.lan_acting == Some(conn) {
                     return SlotAccess::Done(visit(
                         self.player_state.attachments.attachment_lifetime(),
                     ));
@@ -316,7 +316,7 @@ impl Game<'_> {
                 SlotAccess::Done(visit(attachments.attachment_lifetime()))
             }
             Source::Hook { caster } => {
-                let hook = if caster == self.server.lan_acting {
+                let hook = if caster == self.side.lan_acting {
                     self.hook.as_mut()
                 } else {
                     caster.and_then(|conn| self.lan.as_mut()?.play.get_mut(&conn)?.hook.as_mut())

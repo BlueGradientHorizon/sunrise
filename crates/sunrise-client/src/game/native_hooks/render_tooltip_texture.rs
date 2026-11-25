@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `RenderTooltipEvent.Texture`: the look of a tooltip box about to be drawn. Set `texture`
     /// to a tooltip style and the box draws its `tooltip/<name>_background` and `_frame` GUI
     /// sprites; left `None`, it is the solid fills in `background` and the `border_top` to

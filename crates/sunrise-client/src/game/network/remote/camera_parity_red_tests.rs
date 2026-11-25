@@ -64,7 +64,7 @@ pub(in crate::game) fn vec3_bits_expected(v: &Value) -> [u64; 3] {
     [hex_f64(&v[0]), hex_f64(&v[1]), hex_f64(&v[2])]
 }
 
-pub(in crate::game) fn entity_type_id(game: &Game<'_>, kind: &str) -> i32 {
+pub(in crate::game) fn entity_type_id<__Side: crate::game::Side>(game: &Game<'_, __Side>, kind: &str) -> i32 {
     game.remote
         .as_ref()
         .unwrap()
@@ -78,7 +78,7 @@ pub(in crate::game) fn entity_type_id(game: &Game<'_>, kind: &str) -> i32 {
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::client_side::remote_client::tests::camera_parity_red_tests::setup_remote_overworld;
 
-pub(in crate::game) fn add_player_info(game: &mut Game<'_>, id: i32, uuid: u128) {
+pub(in crate::game) fn add_player_info<__Side: crate::game::Side>(game: &mut Game<'_, __Side>, id: i32, uuid: u128) {
     game.handle_packet(C::PlayerInfoUpdate(play::PlayerInfoUpdate {
         actions: 1, // ADD_PLAYER
         entries: vec![play::PlayerInfo {
@@ -90,8 +90,8 @@ pub(in crate::game) fn add_player_info(game: &mut Game<'_>, id: i32, uuid: u128)
     .unwrap();
 }
 
-pub(in crate::game) fn add_entity(
-    game: &mut Game<'_>,
+pub(in crate::game) fn add_entity<__Side: crate::game::Side>(
+    game: &mut Game<'_, __Side>,
     id: i32,
     kind: &str,
     position: [f64; 3],
@@ -119,8 +119,8 @@ pub(in crate::game) fn add_entity(
     .unwrap();
 }
 
-pub(in crate::game) fn sync_interaction_size(
-    game: &mut Game<'_>,
+pub(in crate::game) fn sync_interaction_size<__Side: crate::game::Side>(
+    game: &mut Game<'_, __Side>,
     id: i32,
     width: f32,
     height: f32,
@@ -376,8 +376,8 @@ pub(in crate::game) fn run_culling_near_plane_uses_max_of_fov_and_option_fov_26_
     });
 }
 
-pub(in crate::game) fn add_entity_with_data(
-    game: &mut Game<'_>,
+pub(in crate::game) fn add_entity_with_data<__Side: crate::game::Side>(
+    game: &mut Game<'_, __Side>,
     id: i32,
     kind: &str,
     position: [f64; 3],

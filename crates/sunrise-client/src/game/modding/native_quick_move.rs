@@ -71,7 +71,7 @@ struct QuickMove {
     held: ItemStack,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerGamePacketListenerImpl.handleContainerClick` for a quick move
     /// in a guest's open mod container menu (on a vanilla menu type or the
     /// mod's own): the mods' `native_menu_quick_move` first, as the clicking player.
@@ -441,7 +441,7 @@ pub(in crate::game) struct Admitted {
 
 impl Admitted {
     pub(in crate::game) fn of(
-        game: &Game<'_>,
+        game: &Game<'_, crate::game::server_side::ServerState>,
         conn: u32,
         pos: Pos,
         size: usize,
@@ -461,7 +461,7 @@ impl Admitted {
 
     /// Whether the same window, guest mode and original backing generation are still admitted.
     /// Callers separately check the level-bound holder before settling the clicked slot.
-    pub(in crate::game) fn holds(&self, game: &Game<'_>) -> bool {
+    pub(in crate::game) fn holds(&self, game: &Game<'_, crate::game::server_side::ServerState>) -> bool {
         let Some(guest) = game.lan.as_ref().and_then(|host| host.hub.guest(self.conn)) else {
             return false;
         };

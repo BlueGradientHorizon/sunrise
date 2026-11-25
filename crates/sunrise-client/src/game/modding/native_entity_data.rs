@@ -12,7 +12,7 @@ use sunrise_core::nbt::{Compound, Tag};
 /// The most tags an entity holds (`Entity.addTag`).
 const MAX_TAGS: usize = 1024;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The entity's data as `/data get entity` shows it
     /// (`Entity.saveWithoutId`): its compound without `id`. An entity with no
     /// UUID yet gets the one it will be saved with. API 386.

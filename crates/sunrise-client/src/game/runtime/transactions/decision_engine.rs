@@ -34,7 +34,7 @@ pub(super) struct KeptOwner {
 impl Target {
     /// Check the active action before looking in a slot that an outer action
     /// might have lifted. A missing menu is never the reentrancy mechanism.
-    pub(in crate::game) fn admit(game: &Game<'_>, conn: u32) -> Result<Self, Admission> {
+    pub(in crate::game) fn admit<__Side: crate::game::Side>(game: &Game<'_, __Side>, conn: u32) -> Result<Self, Admission> {
         if game.transactions.iter().any(|level| {
             level
                 .action
@@ -60,7 +60,7 @@ impl Target {
         self.id
     }
 
-    fn read<'a>(&self, game: &'a Game<'_>) -> Option<(OwnerStamp, &'a EngineMenu)> {
+    fn read<'a, __Side: crate::game::Side>(&self, game: &'a Game<'_, __Side>) -> Option<(OwnerStamp, &'a EngineMenu)> {
         let menus = game.lan.as_ref()?.menus.get(&self.conn)?;
         let inventory = &menus.crafting.inventory;
         Some((inventory.stamp(), inventory.as_deref()?))
@@ -68,9 +68,9 @@ impl Target {
 
     /// Every route must use this boundary before taking or mutating its owner.
     /// First-write snapshots merge into the existing Host transaction journal.
-    pub(in crate::game) fn edit<R>(
+    pub(in crate::game) fn edit<R, __Side: crate::game::Side>(
         &self,
-        game: &mut Game<'_>,
+        game: &mut Game<'_, __Side>,
         edit: impl FnOnce(&mut EngineMenu) -> R,
     ) -> Option<R> {
         if self.read(game)?.0.id != self.id {
@@ -82,7 +82,7 @@ impl Target {
         Some(edit(menu))
     }
 
-    fn keep_in(&self, game: &mut Game<'_>) {
+    fn keep_in<__Side: crate::game::Side>(&self, game: &mut Game<'_, __Side>) {
         let Some(level) = game.transactions.last() else {
             return;
         };
@@ -108,7 +108,7 @@ impl Target {
 mod tests;
 
 impl KeptOwner {
-    pub(super) fn rollback(self, game: &mut Game<'_>) {
+    pub(super) fn rollback<__Side: crate::game::Side>(self, game: &mut Game<'_, __Side>) {
         let Some(menus) = game
             .lan
             .as_mut()

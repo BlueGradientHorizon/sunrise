@@ -390,7 +390,7 @@ impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_
         self.0.release_tick_targets();
     }
     fn using_item(&self) -> bool {
-        self.0.client_item_use.0.is_some() || self.0.using.is_some()
+        self.0.side.client_item_use.0.is_some() || self.0.using.is_some()
     }
     fn release_using(&mut self) {
         if !self.0.end_client_item_use(true) && self.0.using.is_some() {
@@ -453,7 +453,7 @@ impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn apply_packet(&mut self, packet: C) -> Result<()> {
         self.observe_client_packet(&packet);
         match packet {
@@ -539,9 +539,9 @@ impl Game<'_> {
             // PingDebugMonitor.onPongReceived.
             C::PongResponse(p) => {
                 let delay = sunrise_client::net::ping_millis().wrapping_sub(p.time);
-                self.client.debug_charts.ping.log(delay);
+                self.side.debug_charts.ping.log(delay);
             }
-            C::DebugSample(p) => self.client.debug_charts.log_remote_sample(&p.sample)?,
+            C::DebugSample(p) => self.side.debug_charts.log_remote_sample(&p.sample)?,
             C::Login(p) => self.apply_login_packet(p),
             C::Respawn(p) => self.apply_respawn_packet(p),
             C::PlayerPosition(p) => self.remote_teleport(&p)?,
@@ -574,7 +574,7 @@ impl Game<'_> {
             C::Sound(p) => self.apply_sound_packet(p),
             C::SoundEntity(p) => self.apply_sound_entity_packet(p),
             C::StopSound(p) => self
-                .audio
+                .side.audio
                 .0
                 .stop_sounds(p.sound.as_deref(), p.source.map(|s| s as usize)),
             C::AddEntity(p) => self.apply_add_entity_packet(p),
@@ -751,15 +751,15 @@ impl Game<'_> {
             // ClientPacketListener.setActionBarText, setTitleText,
             // setSubtitleText, setTitlesAnimation and handleTitlesClear.
             C::BossEvent(p) => self.apply_boss_event(&p),
-            C::SetActionBarText(p) => self.client.titles.set_overlay(remote_text(&p.text), false),
-            C::SetTitleText(p) => self.client.titles.set_title(remote_text(&p.text)),
-            C::SetSubtitleText(p) => self.client.titles.set_subtitle(remote_text(&p.text)),
-            C::SetTitlesAnimation(p) => self.client.titles.set_times(p.fade_in, p.stay, p.fade_out),
+            C::SetActionBarText(p) => self.side.titles.set_overlay(remote_text(&p.text), false),
+            C::SetTitleText(p) => self.side.titles.set_title(remote_text(&p.text)),
+            C::SetSubtitleText(p) => self.side.titles.set_subtitle(remote_text(&p.text)),
+            C::SetTitlesAnimation(p) => self.side.titles.set_times(p.fade_in, p.stay, p.fade_out),
             // ClientCommonPacketListenerImpl.handleShowDialog / handleClearDialog.
             C::ShowDialog(p) => self.show_play_dialog(&p.dialog),
             C::ClearDialog(_) => self.clear_dialog(),
             // ClientPacketListener.handleLowDiskSpaceWarning.
-            C::LowDiskSpaceWarning(_) => self.client_reports.0.report_low_disk_space(),
+            C::LowDiskSpaceWarning(_) => self.side.client_reports.0.report_low_disk_space(),
             C::ClearTitles(p) => self.apply_clear_titles_packet(p),
             _ => {}
         }
@@ -811,7 +811,7 @@ impl Game<'_> {
         // CommonComponents.GUI_DISCONNECT
         let label = sunrise_client::text::Text::translate("menu.disconnect", &[]);
         let active = self.ticks.saturating_sub(since) >= 600;
-        let hover = sunrise_client::ui::hovered(self.client.cursor, bx, by, 150.0, 20.0);
+        let hover = sunrise_client::ui::hovered(self.side.cursor, bx, by, 150.0, 20.0);
         sunrise_client::ui::button(batch, atlas, bx, by, 150.0, 20.0, &label, active, hover);
     }
     /// `HashedStack.create` with the connection's registries (the client's
@@ -946,7 +946,7 @@ impl Game<'_> {
         // The block events and block changes of a piston clock start and end
         // thousands of moves at once: the collision view and the renderer
         // take them all in one sync, before the tick or frame reads them.
-        if std::mem::take(&mut self.client.moving_pistons_stale) {
+        if std::mem::take(&mut self.side.moving_pistons_stale) {
             self.sync_moving_pistons();
         }
         polled
@@ -1158,7 +1158,7 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn remote_player_uuid(&self, id: u32) -> Option<u128> {
         let remote = self.remote.as_ref()?;
         if self
-            .client
+            .side
             .player_model
             .as_ref()
             .is_some_and(|m| m.id == id)
@@ -1350,10 +1350,10 @@ impl Game<'_> {
 }
 
 /// The game as the tick's input sees it.
-pub(in crate::game) struct RemoteInputWorld<'g, 'a>(pub(in crate::game) &'g mut Game<'a>);
+pub(in crate::game) struct RemoteInputWorld<'g, 'a>(pub(in crate::game) &'g mut Game<'a, crate::game::client_side::ClientState>);
 
 pub(in crate::game) struct RemoteUseWorld<'g, 'a>(
-    pub(in crate::game) &'g mut Game<'a>,
+    pub(in crate::game) &'g mut Game<'a, crate::game::client_side::ClientState>,
     pub(in crate::game) mod_api::InteractionAttempt,
 );
 

@@ -1,7 +1,7 @@
 //! The block ray of `Game::clip_ray` (`BlockGetter.clip`), with or without fluids.
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `clip_ray`; with `fluids`, the first fluid block a hit too, at its near face (`ClipContext.Fluid.ANY`).
     pub(super) fn clip_ray_fluids(
         &self,

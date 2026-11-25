@@ -2,7 +2,7 @@ use super::Game;
 use sunrise_core::{nbt::Tag, position::BlockPos};
 use sunrise_world::{level::MovingPiston, registry::BlockStateId};
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn state_to_nbt(&self, state: BlockStateId) -> Tag {
         sunrise_client::entity_nbt::state_to_nbt(self.pack.assets.registry, state)
     }

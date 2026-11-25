@@ -5,7 +5,7 @@ use super::Game;
 use core::ops::ControlFlow;
 use mod_api::{ChunkRef, EntityRef, LevelReadError, LevelRef, PlayerRef};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerLevel.players`: the online players of an open server level, each once.
     pub(in crate::game) fn level_visit_online_players(
         &self,

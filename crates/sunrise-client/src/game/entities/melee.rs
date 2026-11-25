@@ -7,7 +7,7 @@ use super::*;
 #[path = "tests/melee_hit_tests.rs"]
 pub(in crate::game) mod hit_tests;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Player.getAttackStrengthScale(0.5)`.
     pub(in crate::game) fn attack_strength_scale(&self) -> f32 {
         self.attack_strength_scale_at(0.5)
@@ -21,7 +21,7 @@ impl Game<'_> {
             return None;
         }
         let delay = sunrise_client::attack_strength::delay(self.main_hand_attack_speed());
-        Some(((self.server.attack_ticks as f32 + partial) / delay).clamp(0.0, 1.0))
+        Some(((self.side.attack_ticks as f32 + partial) / delay).clamp(0.0, 1.0))
     }
 
     /// Sets the player in place's `attackStrengthTicker` to the fewest ticks for which
@@ -29,7 +29,7 @@ impl Game<'_> {
     pub(in crate::game::server_side) fn charge_attack_fully(&mut self) {
         let delay = sunrise_client::attack_strength::delay(self.main_hand_attack_speed());
         // The cast saturates: with no attack speed the delay is infinite and no ticker reaches it.
-        self.server.attack_ticks = (delay - 0.5).ceil() as u32;
+        self.side.attack_ticks = (delay - 0.5).ceil() as u32;
     }
 
     /// `Player.isSweepAttack`: a charged, grounded sword hit below the movement
@@ -66,7 +66,7 @@ impl Game<'_> {
     pub(in crate::game) fn area_critical_hit(&mut self, id: i32, area: Aabb, magic: bool) {
         let (feet, size) = (area.bottom_center(), area.size());
         self.critical_hit(
-            self.server.lan_acting,
+            self.side.lan_acting,
             id,
             [feet.x, feet.y, feet.z],
             size.x,
@@ -101,7 +101,7 @@ impl Game<'_> {
         {
             // `BlockAttachedEntity.hurtServer` refuses first through `isInvulnerableToBase`.
             if self.native_player_hit_invulnerable(self.paintings[i].id, "minecraft:painting") {
-                self.server.attack_ticks = 0;
+                self.side.attack_ticks = 0;
             } else {
                 self.break_painting(i, true);
             }
@@ -134,7 +134,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether the ray picked a general row and consumed the click.
     pub(in crate::game::server_side) fn attack_general_row(&mut self) -> bool {
         let Some((eye, direction)) = self.aim() else {
@@ -175,7 +175,7 @@ impl Game<'_> {
     pub(in crate::game) fn strike_general_row(&mut self, id: u32, kind: &str) {
         let ((_, scale, _, _), admitted) = self.melee_damage_with_admission(kind, false, Some(id));
         // Player.onAttack: the blow starts the attack strength again, hurt or not.
-        self.server.attack_ticks = 0;
+        self.side.attack_ticks = 0;
         if admitted {
             if self.extra_knockback(kind, scale).1 {
                 self.server_play_at_feet("minecraft:entity.player.attack.knockback");
@@ -188,7 +188,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Player.attack` on a mob: the damage, knockback, sweep, particles and
     /// sounds.
     pub(in crate::game) fn attack_mob(&mut self, index: usize) {
@@ -198,7 +198,7 @@ impl Game<'_> {
         let ((amount, scale, crit, magic), admitted) =
             self.melee_damage_with_admission(&target_kind, true, Some(self.mobs[index].id));
         // Player.onAttack: the hit starts the attack strength again, hurt or not.
-        self.server.attack_ticks = 0;
+        self.side.attack_ticks = 0;
         if !admitted {
             // Player.attack skips the hurt and its whole tail when the hit has neither
             // base nor enchantment damage (`baseDamage > 0.0F || magicBoost > 0.0F`):
@@ -265,7 +265,7 @@ impl Game<'_> {
             if knockback > 0.0 {
                 let (xd, zd) = self.extra_knockback_direction();
                 let plan = self.prepare_knockback_credit(self.mobs[index].id as i32, None, &attack);
-                let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
+                let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
                 let level = crate::game::entity::damage_level_of!(self, &attack, &mut credit, None);
                 self.mobs[index].knockback_full(
                     level,
@@ -289,7 +289,7 @@ impl Game<'_> {
             self.award_custom_stat("damage_dealt", (actual * 10.0).round() as i32);
             if crit {
                 self.critical_hit(
-                    self.server.lan_acting,
+                    self.side.lan_acting,
                     self.mobs[index].id as i32,
                     feet,
                     width,
@@ -300,7 +300,7 @@ impl Game<'_> {
             // Player.attackVisualEffects: magicCrit when the enchantments added damage.
             if magic {
                 self.critical_hit(
-                    self.server.lan_acting,
+                    self.side.lan_acting,
                     self.mobs[index].id as i32,
                     feet,
                     width,
@@ -443,7 +443,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Player.attack` after a target that is not a mob took the hit:
     /// the sprint knockback sound, a living target's critical hit (`living`:
     /// its entity id; `crit`: whether `melee_damage` decided the hit critical,

@@ -22,7 +22,7 @@ enum Refused {
     OutOfRange,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The time marker `id` of `clock`. The timelines' markers belong to the Overworld's clock:
     /// no other clock defines one today, as `/time set <marker>` reads them.
     fn clock_marker(&self, clock: &str, id: &Identifier) -> Option<TimeMarker> {

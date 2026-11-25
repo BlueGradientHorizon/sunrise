@@ -475,7 +475,7 @@ pub(in crate::game) struct PendingMemory {
     pub(in crate::game) rows: Receiver<MemoryRows>,
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn memory_report(&self) -> MemoryReport {
         self.side_memory_report()
     }

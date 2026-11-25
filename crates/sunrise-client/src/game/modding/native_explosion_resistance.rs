@@ -8,7 +8,7 @@ use mod_api::{
 };
 use sunrise_client::mobs::DamageKind;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The resistance the blast `level.explode(source, center, radius, fire, interaction)` would
     /// meet in the cell at `pos`. `Unavailable` for a stale level or source, a chunk that isn't
     /// loaded or an unknown state.

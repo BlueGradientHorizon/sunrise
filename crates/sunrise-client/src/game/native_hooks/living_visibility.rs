@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `LivingVisibilityEvent` (`LivingEntity.getVisibilityPercent`): how
     /// visible `entity` is to `looking`, which scales the range a targeting
     /// check sees it from. `visibility` comes in as vanilla's percent.

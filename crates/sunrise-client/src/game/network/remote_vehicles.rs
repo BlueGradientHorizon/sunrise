@@ -97,7 +97,7 @@ pub(in crate::game) struct ObjectHit {
     pub location: [f64; 3],
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether a use starts on an entity (`Minecraft.hitResult` is an `EntityHitResult`).
     pub(in crate::game) fn remote_use_targets_entity(&self) -> bool {
         self.entity_targeted()
@@ -114,7 +114,7 @@ impl Game<'_> {
         {
             return Some(row.position);
         }
-        if let Some(&block) = self.client.remote_knots.get(&id) {
+        if let Some(&block) = self.side.remote_knots.get(&id) {
             let p = sunrise_client::mobs::leash::knot_state(block).position;
             return Some([p.x, p.y, p.z]);
         }
@@ -309,7 +309,7 @@ impl Game<'_> {
                 m.extra.passenger = true;
             }
         }
-        for (id, display) in &mut self.text_displays.0 {
+        for (id, display) in &mut self.side.text_displays.0 {
             if passengers.contains(id) {
                 display.vehicle = Some(vehicle_id);
             } else if display.vehicle == Some(vehicle_id) {
@@ -323,7 +323,7 @@ impl Game<'_> {
                 a.vehicle = None;
             }
         }
-        for (&id, i) in &mut self.client.interactions {
+        for (&id, i) in &mut self.side.interactions {
             if passengers.contains(&id) {
                 i.vehicle = Some(vehicle_id);
             } else if i.vehicle == Some(vehicle_id) {
@@ -351,7 +351,7 @@ impl Game<'_> {
                     &[keybinds::display_name(self.settings.keys.get("key.sneak"))],
                 );
                 self.say_system_now(&message);
-                self.client.titles.set_overlay(message, false);
+                self.side.titles.set_overlay(message, false);
                 if let Some(i) = self.carts.iter().position(|c| c.id == vehicle_id) {
                     self.carts.update(i, |c| c.passenger_yaw_delta = 0.0);
                 }
@@ -455,7 +455,7 @@ impl Game<'_> {
             let index = std::collections::HashMap::new();
             if let Some(at) = self.passenger_riding_position(id, None, None, &index) {
                 let before = self
-                    .text_displays
+                    .side.text_displays
                     .0
                     .get(&(id as i32))
                     .map(|d| d.seat().1)
@@ -784,7 +784,7 @@ impl Game<'_> {
             self.boats.update(i, super::boats::Boat::tick_bubble_wobble);
             if !driven {
                 self.boats
-                    .update(i, |b| Self::tick_boat_paddles(b, &mut self.audio.0));
+                    .update(i, |b| Self::tick_boat_paddles(b, &mut self.side.audio.0));
             }
         }
     }

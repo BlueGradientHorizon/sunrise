@@ -40,7 +40,7 @@ pub(in crate::game) struct GeneralDrawFrame<'a> {
     now: Instant,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn begin_general_geometry(
         &self,
         camera: DVec3,
@@ -107,7 +107,7 @@ impl Game<'_> {
         }
         let section_block = position.floor().as_ivec3().to_array();
         if self.world.shape.contains_y(section_block[1])
-            && !self.renderer.0.as_ref().is_some_and(|renderer| {
+            && !self.side.renderer.0.as_ref().is_some_and(|renderer| {
                 renderer.entity_section_visible(
                     section_block,
                     self.settings.chunk_fade as f32,

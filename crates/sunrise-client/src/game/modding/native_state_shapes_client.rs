@@ -24,7 +24,7 @@ pub(in crate::game::client_side) use sunrise_world::{
     registry::BlockStateId,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn outline_edges_iter(
         &self,
         state: BlockStateId,

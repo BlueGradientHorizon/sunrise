@@ -99,7 +99,7 @@ impl CartLerp {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientPacketListener.handleMinecartAlongTrack`: the steps join the ones
     /// the minecart has queued, if it runs `NewMinecartBehavior`.
     pub(in crate::game) fn remote_move_minecart(&mut self, p: play::MoveMinecartAlongTrack) {

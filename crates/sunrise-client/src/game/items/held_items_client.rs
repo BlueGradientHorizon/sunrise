@@ -2,7 +2,7 @@
 use crate::game::Game;
 use sunrise_client::items::ItemStack;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `MultiPlayerGameMode.sameDestroyTarget`'s item half for `began`.
     pub(in crate::game::client_side) fn same_destroying_item(
         &self,

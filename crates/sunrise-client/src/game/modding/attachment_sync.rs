@@ -13,7 +13,7 @@ use sunrise_client::raw_payloads::Endpoint;
 use sunrise_mod_runtime::attachments::Holder;
 use sunrise_protocol::attachment_sync::{self, Message};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The messages that give a player `holder`'s synced attachments whole: its
     /// own, and for a chunk those of its block entities. A player holder with
     /// none still gives one, to drop what the client holds.

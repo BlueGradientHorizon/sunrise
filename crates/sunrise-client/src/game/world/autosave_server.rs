@@ -3,24 +3,24 @@ pub(in crate::game::server_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::autosave::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn finish_player_autosaves(&mut self, wait: bool) -> Result<bool> {
-        let saved = self.player_autosaves.0.completed(wait);
+        let saved = self.side.player_autosaves.0.completed(wait);
         if !saved.is_empty() {
-            let directory = sunrise_client::lan::playerdata::directory(&self.server.world_root);
+            let directory = sunrise_client::lan::playerdata::directory(&self.side.world_root);
             for player in saved {
                 self.native_player_save_to_file(player.uuid, &player.name, &directory);
             }
         }
-        self.player_autosaves.0.writes_finished()
+        self.side.player_autosaves.0.writes_finished()
     }
     /// `MinecraftServer.onTickRateChanged`: mods hear of it, then a rate that
     /// asks for a shorter wait than the one already running shortens it.
     pub(in crate::game) fn on_tick_rate_changed(&mut self) {
         self.native_server_tick_rate_changed();
         let interval = self.next_autosave_interval();
-        if interval < self.server.ticks_until_autosave {
-            self.server.ticks_until_autosave = interval;
+        if interval < self.side.ticks_until_autosave {
+            self.side.ticks_until_autosave = interval;
         }
     }
     pub(in crate::game) fn save_game_metadata(&mut self) -> Result<()> {
@@ -41,14 +41,14 @@ impl Game<'_> {
         let stored_owner = self.store_owner();
         write_level_for_role(
             &mut self.level,
-            &self.server.world_root,
+            &self.side.world_root,
             self.options.execution_role,
             self.res.items(),
-            self.server.crash_save.keep_owner_file,
+            self.side.crash_save.keep_owner_file,
         )?;
         // PlayerEvent.SaveToFile for the owner, once level.dat is written.
         if let Some((uuid, name)) = stored_owner {
-            let directory = sunrise_client::lan::playerdata::directory(&self.server.world_root);
+            let directory = sunrise_client::lan::playerdata::directory(&self.side.world_root);
             self.native_player_save_to_file(uuid, &name, &directory);
         }
         // PlayerList.saveAll: every placed player saves with the server, to
@@ -61,7 +61,7 @@ impl Game<'_> {
             // The vehicle tree goes into a player's file when they leave
             // (`take_parent_vehicle`); here it stays in the chunk saves.
             host.hub.guests.update_all(|g| {
-                if g.placed && !self.server.crash_save.excludes(g.conn) {
+                if g.placed && !self.side.crash_save.excludes(g.conn) {
                     // Read-only fixture input, correlated with the real save receipt.
                     // Keep this identical on the untouched/fixed selector builds.
                     if std::env::var_os("SUNRISE_DEV_ADVANCEMENT_SELECTOR_AUDIT").is_some() {
@@ -73,7 +73,7 @@ impl Game<'_> {
                                 "progress":g.advancements.to_json(&self.adv.tree, sunrise_world::DATA_VERSION)})
                         );
                     }
-                    self.player_autosaves.0.enqueue(g, &self.server.world_root, self.res.items());
+                    self.side.player_autosaves.0.enqueue(g, &self.side.world_root, self.res.items());
                 }
             });
         }

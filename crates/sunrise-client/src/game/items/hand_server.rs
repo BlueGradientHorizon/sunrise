@@ -22,12 +22,12 @@ pub(in crate::game::server_side) use sunrise_client::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_core::geometry::{Aabb, Vec3};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The item whose attack damage and speed modifiers the player has (`attack_item`).
     pub(in crate::game::server_side) fn attack_item_info(
         &self,
     ) -> Option<&sunrise_client::items::ItemInfo> {
-        self.items().get(self.server.attack_item.as_deref()?)
+        self.items().get(self.side.attack_item.as_deref()?)
     }
     /// Server-side `LivingEntity.swing` handler called via `side_ops::presentation`.
     pub(in crate::game) fn server_swing_hand(
@@ -55,7 +55,7 @@ impl Game<'_> {
         let before = self.swings_started;
         self.swing_arm();
         if self.swings_started != before {
-            self.server.predicted_swings += 1;
+            self.side.predicted_swings += 1;
         }
     }
     #[inline(always)]
@@ -67,11 +67,11 @@ impl Game<'_> {
         main: Option<&ItemStack>,
     ) {
         if reset {
-            self.server.attack_ticks = 0;
+            self.side.attack_ticks = 0;
         }
         if changed {
             self.apply_equipment();
         }
-        self.server.attack_item = main.map(|s| s.item.clone());
+        self.side.attack_item = main.map(|s| s.item.clone());
     }
 }

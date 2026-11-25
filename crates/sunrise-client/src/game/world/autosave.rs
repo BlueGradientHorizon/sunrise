@@ -3,7 +3,7 @@
 #[allow(unused_imports)]
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn admit_entity_save() -> Result<()> {
         if !sunrise_client::join_seq::visibility::passes_settled() {
             return Err("entity pass is lifted".into());
@@ -24,7 +24,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn admit_level_save(&self) -> Result<()> {
         // A carrier transfer that broke after `prepared` stopped the
         // session (`carrier_stop_session`): its recovery replays the

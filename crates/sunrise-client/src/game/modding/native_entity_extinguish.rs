@@ -2,7 +2,7 @@
 use super::{Game, commands::Target, powder_snow::extinguish_pitch};
 use mod_api::{EntityRef, SoundSource};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn entity_extinguish_fire(&mut self, entity: EntityRef) -> bool {
         match self.native_entity_target(entity) {
             Some(target @ (Target::Player | Target::Guest(_))) => self
@@ -13,7 +13,7 @@ impl Game<'_> {
                     let ticks = player.fire_ticks;
                     let at = [player.position.x, player.position.y, player.position.z];
                     if player.is_on_fire() {
-                        let pitch = extinguish_pitch(&mut game.server.effect_rng);
+                        let pitch = extinguish_pitch(&mut game.side.effect_rng);
                         game.server_play_sound_on(
                             SoundSource::Players.index(),
                             "minecraft:entity.generic.extinguish_fire",
@@ -45,7 +45,7 @@ impl Game<'_> {
                 let ticks = stand.fire_ticks;
                 let at = [stand.position.x, stand.position.y, stand.position.z];
                 if stand.is_on_fire() {
-                    let pitch = extinguish_pitch(&mut self.server.effect_rng);
+                    let pitch = extinguish_pitch(&mut self.side.effect_rng);
                     self.server_play_sound_on(
                         SoundSource::Neutral.index(),
                         "minecraft:entity.generic.extinguish_fire",

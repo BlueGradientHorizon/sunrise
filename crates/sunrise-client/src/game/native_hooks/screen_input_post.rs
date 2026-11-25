@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// A mouse press after its receiving screen ran (`ScreenEvent.MouseButtonPressed.Post`).
     pub(in crate::game) fn native_screen_mouse_button_pressed_post(
         &self,

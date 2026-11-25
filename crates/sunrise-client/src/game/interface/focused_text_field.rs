@@ -40,35 +40,35 @@ fn visit_box(field: &mut EditBox, edited: Option<&TextEdit>) -> TextEdit {
     field.edit.clone()
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The box a typed character goes to (`type_chars_into_screen`'s choice), as it stands
     /// after `edited` when there is one, whose responders then run.
     fn focused_text_edit(&mut self, edited: Option<&TextEdit>) -> Option<TextEdit> {
-        if self.screen_state.0.widgets.has_focus() {
+        if self.side.screen_state.0.widgets.has_focus() {
             return self.mounted_focused_text_edit(edited);
         }
         if self.screen_over_playing() {
             return None;
         }
-        if control::title_owns_text(&self.client.screen, self.title.0.is_some()) {
+        if control::title_owns_text(&self.side.screen, self.side.title.0.is_some()) {
             let mut state = None;
-            self.title
+            self.side.title
                 .0
                 .as_mut()?
                 .edit_focused_text_field(|field| state = Some(visit_box(field, edited)));
             return state;
         }
-        match self.client.screen {
+        match self.side.screen {
             Screen::Chat | Screen::CommandBlock => {
                 let measure = Measure(&self.gui.atlas.font);
                 let commands = Commands {
                     dispatcher: super::chat::chat_tree(&self.remote),
                     registries: &self.ui.registries,
                 };
-                let screen = if self.client.screen == Screen::Chat {
+                let screen = if self.side.screen == Screen::Chat {
                     self.ui.chat_screen.as_mut()?
                 } else {
-                    &mut self.command_block_screen.0.as_mut()?.command
+                    &mut self.side.command_block_screen.0.as_mut()?.command
                 };
                 if let Some(edited) = edited {
                     screen.edit_input(&measure, &commands, |field| {
@@ -84,25 +84,25 @@ impl Game<'_> {
             }
             Screen::Social => {
                 if edited.is_some() {
-                    self.client.social.scroll = 0.0;
+                    self.side.social.scroll = 0.0;
                 }
-                Some(visit_box(&mut self.client.social.search, edited))
+                Some(visit_box(&mut self.side.social.search, edited))
             }
             Screen::DebugOptions => self
-                .client
+                .side
                 .debug_options
                 .as_mut()
                 .filter(|screen| screen.search.focused)
                 .map(|screen| visit_box(&mut screen.search, edited)),
             Screen::Inventory | Screen::Creative if self.mod_browser_typing() => {
-                let state = visit_box(self.client.panel.search.as_mut()?, edited);
+                let state = visit_box(self.side.panel.search.as_mut()?, edited);
                 if edited.is_some() {
                     self.mod_browser_text(None, false);
                 }
                 Some(state)
             }
             Screen::Inventory if self.recipe_search_focused() => {
-                Some(visit_box(self.recipe_ui.0.search.as_mut()?, edited))
+                Some(visit_box(self.side.recipe_ui.0.search.as_mut()?, edited))
             }
             Screen::Inventory if self.station_typing() => {
                 let state = visit_box(&mut self.station.as_mut()?.rename, edited);
@@ -112,12 +112,12 @@ impl Game<'_> {
                 Some(state)
             }
             Screen::Creative
-                if self.creative_screen.0.tab().search && !self.client.creative_ignore_text =>
+                if self.side.creative_screen.0.tab().search && !self.side.creative_ignore_text =>
             {
                 if edited.is_some() {
-                    self.creative_screen.0.scroll = 0.0;
+                    self.side.creative_screen.0.scroll = 0.0;
                 }
-                Some(visit_box(&mut self.creative_screen.0.search, edited))
+                Some(visit_box(&mut self.side.creative_screen.0.search, edited))
             }
             _ => None,
         }

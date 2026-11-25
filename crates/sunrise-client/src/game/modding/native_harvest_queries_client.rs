@@ -3,7 +3,7 @@ use super::Game;
 use mod_api::{LevelRef, PlayerRef};
 use sunrise_world::registry::BlockStateId;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_player_destroy_progress(
         &mut self,
         player: PlayerRef,

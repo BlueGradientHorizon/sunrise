@@ -143,14 +143,14 @@ pub(in crate::game::server_side) fn gives_uuid(t: Target) -> Option<u32> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn scoreboard_path(&self) -> std::path::PathBuf {
-        self.server.world_root.join("data/minecraft/scoreboard.dat")
+        self.side.world_root.join("data/minecraft/scoreboard.dat")
     }
     /// `ServerLevel.getWorldBorder`'s file: each dimension's own
     /// `data/minecraft/world_border.dat`.
     pub(in crate::game::server_side) fn border_path(&self, dim: super::Dim) -> std::path::PathBuf {
-        save::dimension_dir(&self.server.world_root, dim.id())
+        save::dimension_dir(&self.side.world_root, dim.id())
             .join("data/minecraft/world_border.dat")
     }
     /// The border `dim`'s level saved. The Overworld also reads the root file older Sunrise
@@ -163,7 +163,7 @@ impl Game<'_> {
         if root.is_none() && dim == super::Dim::Overworld {
             root = save::read_dat(
                 &self
-                    .server
+                    .side
                     .world_root
                     .join("data/minecraft/world_border.dat"),
             );
@@ -202,17 +202,17 @@ impl Game<'_> {
             self.score.board = Scoreboard::unpack(data);
         }
         self.score.storage =
-            sunrise_client::command_storage::CommandStorage::load(&self.server.world_root);
+            sunrise_client::command_storage::CommandStorage::load(&self.side.world_root);
         self.score.stopwatches =
-            sunrise_client::stopwatches::Stopwatches::load(&self.server.world_root);
+            sunrise_client::stopwatches::Stopwatches::load(&self.side.world_root);
         self.sync_score_registries();
     }
     pub(in crate::game) fn save_scoreboard(&mut self) {
         if !self.score.loaded || !self.is_logical_server() {
             return;
         }
-        self.score.storage.save(&self.server.world_root);
-        self.score.stopwatches.save(&self.server.world_root);
+        self.score.storage.save(&self.side.world_root);
+        self.score.stopwatches.save(&self.side.world_root);
         // The border is saved with its level (`save_level`).
         let path = self.scoreboard_path();
         let board = &self.score.board;
@@ -443,7 +443,7 @@ impl Game<'_> {
                 for (id, negated) in &s.predicates {
                     // EntitySelectorOptions rejects a missing registry entry
                     // before applying the predicate's negation.
-                    let Some(json) = self.fns.0.store.predicates.get(id) else {
+                    let Some(json) = self.side.fns.0.store.predicates.get(id) else {
                         ok = false;
                         break;
                     };
@@ -1028,7 +1028,7 @@ pub(in crate::game::server_side) fn trigger_objectives_for(
 
 /// The commands' view of the game.
 pub(in crate::game) struct GameEnv<'a, 'b> {
-    pub(in crate::game) g: &'a mut Game<'b>,
+    pub(in crate::game) g: &'a mut Game<'b, crate::game::server_side::ServerState>,
 }
 impl Env for GameEnv<'_, '_> {
     fn sb(&self) -> &Scoreboard {
@@ -1057,7 +1057,7 @@ impl Env for GameEnv<'_, '_> {
         }
     }
     fn source(&mut self) -> Option<(Holder, bool)> {
-        let entity = match self.g.server.command_source {
+        let entity = match self.g.side.command_source {
             Some(s) => s.entity,
             None => Some(Target::Player),
         }?;

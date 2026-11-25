@@ -34,7 +34,7 @@ pub(in crate::game) fn spawn() -> play::SpawnInfo {
 pub(in crate::game) use crate::game::client_side::remote_client::tests::client_vanilla_reads_tests::stand;
 
 /// Joins as entity [`PLAYER`] in the overworld.
-pub(in crate::game) fn join(game: &mut Game<'_>) -> (ConnReader, ConnWriter) {
+pub(in crate::game) fn join<__Side: crate::game::Side>(game: &mut Game<'_, __Side>) -> (ConnReader, ConnWriter) {
     let connection = super::connect_menu_test(game);
     game.handle_packet(C::Login(play::Login {
         player_id: PLAYER as i32,
@@ -56,7 +56,7 @@ pub(in crate::game) fn join(game: &mut Game<'_>) -> (ConnReader, ConnWriter) {
 }
 
 /// The server adds entity `id` of `kind` beside the player.
-pub(in crate::game) fn add(game: &mut Game<'_>, id: u32, kind: &str) {
+pub(in crate::game) fn add<__Side: crate::game::Side>(game: &mut Game<'_, __Side>, id: u32, kind: &str) {
     let kind = game
         .remote
         .as_ref()
@@ -81,7 +81,7 @@ pub(in crate::game) fn add(game: &mut Game<'_>, id: u32, kind: &str) {
 }
 
 /// `EntityRef::tick_count` of entity `id`, read through a client host.
-pub(in crate::game) fn tick_count(game: &Game<'_>, id: u32) -> Option<i32> {
+pub(in crate::game) fn tick_count<__Side: crate::game::Side>(game: &Game<'_, __Side>, id: u32) -> Option<i32> {
     game.entity(id)?.tick_count(game as &dyn ClientHost)
 }
 

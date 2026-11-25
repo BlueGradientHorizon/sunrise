@@ -67,7 +67,7 @@ pub(in crate::game) fn interact_vibrations(stack: &ItemStack, default: Option<bo
     )
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `LivingEntity.updateUsingItem` for a `mod_use` item used `ticks` so far:
     /// `completeUsingItem` once its duration ran out.
     pub(in crate::game::server_side) fn tick_mod_use(

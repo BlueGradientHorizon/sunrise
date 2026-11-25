@@ -3,7 +3,7 @@ pub(in crate::game::server_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::fireworks::impact::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Let listeners inspect and remove the live rocket, preserving its identity
     /// across the detached tick. Refuse a stale hit after writes.
     pub(in crate::game::server_side) fn rocket_impact(

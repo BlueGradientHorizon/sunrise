@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `player` started watching `chunk` (NeoForge's `ChunkWatchEvent.Watch`):
     /// the chunk came into their view and goes to their client, once until
     /// `native_chunk_unwatch`. Vanilla tells it as the chunk is queued

@@ -112,7 +112,7 @@ pub(in crate::game) fn target_id(t: Target) -> Option<u32> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether this game simulates the level `dimension`.
     fn native_simulates_level(&self, dimension: &str) -> bool {
         (self.serving.is_some() || self.options.dedicated.is_some()) && dimension == self.dim.id()
@@ -153,7 +153,7 @@ impl Game<'_> {
         // stands at `pos`.
         place_summoned(&mut tag, pos);
         let from = self.mobs.len();
-        let first = self.server.next_entity + 1;
+        let first = self.side.next_entity + 1;
         let deferred = (self.tnts.len(), self.falling.len(), self.rockets.len());
         let target = self.spawn_entity_from_nbt(tag);
         // These roots take their id as they load, and a rocket has no command
@@ -164,7 +164,7 @@ impl Game<'_> {
                     self.tnts,
                     deferred.0,
                     e,
-                    &mut self.server.next_entity,
+                    &mut self.side.next_entity,
                     None
                 ))
             }
@@ -173,7 +173,7 @@ impl Game<'_> {
                     self.falling,
                     deferred.1,
                     f,
-                    &mut self.server.next_entity,
+                    &mut self.side.next_entity,
                     Some(&f.attachment_lifetime)
                 ))
             }
@@ -182,7 +182,7 @@ impl Game<'_> {
                     self.rockets,
                     deferred.2,
                     e,
-                    &mut self.server.next_entity,
+                    &mut self.side.next_entity,
                     None
                 ))
             }
@@ -224,7 +224,7 @@ enum Slot {
 /// Entities joining and leaving the level (`native_entity_join_level`,
 /// `native_entity_leave_level`), for every kind in the entity walk and the
 /// families kept apart from it. Kept out of `native_hooks.rs`, whose lines may not hold macros.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether an entity may have joined since the last announcement. A join
     /// in another level may cause one harmless walk of this level.
     fn joins_pending(&self) -> bool {
@@ -358,21 +358,21 @@ impl Game<'_> {
     fn assign_pending_join_ids(&mut self) {
         self.assign_dragon_and_crystal_ids();
         use super::entity_residency::assign_resident_ids;
-        assign_resident_ids!(self.tnts, t, &mut self.server.next_entity, None);
+        assign_resident_ids!(self.tnts, t, &mut self.side.next_entity, None);
         assign_resident_ids!(
             self.falling,
             f,
-            &mut self.server.next_entity,
+            &mut self.side.next_entity,
             Some(&f.attachment_lifetime)
         );
         assign_resident_ids!(
             self.creatures.projectiles,
             p,
-            &mut self.server.next_entity,
+            &mut self.side.next_entity,
             Some(&p.attachment_lifetime)
         );
-        assign_resident_ids!(self.tridents, t, &mut self.server.next_entity, None);
-        assign_resident_ids!(self.rockets, r, &mut self.server.next_entity, None);
+        assign_resident_ids!(self.tridents, t, &mut self.side.next_entity, None);
+        assign_resident_ids!(self.rockets, r, &mut self.side.next_entity, None);
     }
     /// The entity inserted earliest after `mark` (and, with a `through`, no later than it), but
     /// the `skipped`.
@@ -418,7 +418,7 @@ impl Game<'_> {
             offer(Slot::Apart(Apart::Dragon), d.id, d.join);
         }
         for (i, other) in self
-            .others
+            .side.others
             .0
             .iter()
             .enumerate()
@@ -471,8 +471,8 @@ impl Game<'_> {
                 (kind.into(), block(f.pos))
             }
             Slot::Apart(Apart::Other(i)) => (
-                self.others.0[i].kind.as_str().into(),
-                self.others.0[i].position,
+                self.side.others.0[i].kind.as_str().into(),
+                self.side.others.0[i].position,
             ),
             Slot::Apart(Apart::Dragon) => (
                 "minecraft:ender_dragon".into(),
@@ -489,7 +489,7 @@ impl Game<'_> {
             Slot::Apart(Apart::Painting(i)) => drop(self.paintings.remove(i)),
             Slot::Apart(Apart::Frame(i)) => drop(self.item_frames.remove(i)),
             Slot::Apart(Apart::Dragon) => self.discard_resident_dragon(),
-            Slot::Apart(Apart::Other(i)) => drop(self.others.0.remove(i)),
+            Slot::Apart(Apart::Other(i)) => drop(self.side.others.0.remove(i)),
         }
     }
     /// Entities that were moved, not added (a portal's arrival keeps being
@@ -571,7 +571,7 @@ impl Game<'_> {
         self.cushions.iter().for_each(|c| seen(c.id));
         self.paintings.iter().for_each(|p| seen(p.id));
         self.item_frames.iter().for_each(|f| seen(f.id));
-        self.others.0.iter().for_each(|e| seen(e.id));
+        self.side.others.0.iter().for_each(|e| seen(e.id));
         if let Some(d) = self.dragon.as_ref() {
             seen(d.id);
         }

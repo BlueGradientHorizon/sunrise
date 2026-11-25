@@ -20,7 +20,7 @@ pub(crate) enum HotbarSource {
 
 /// A hotbar's slots (0-8) and off hand (40), drawn for `GuiDraw::Item`.
 pub(crate) struct HotbarItems<'a, 'g> {
-    pub(crate) game: &'a Game<'g>,
+    pub(crate) game: &'a Game<'g, crate::game::client_side::ClientState>,
     pub(crate) source: HotbarSource,
 }
 impl HotbarItems<'_, '_> {
@@ -59,7 +59,7 @@ impl GuiItems for HotbarItems<'_, '_> {
 /// The skins of `GuiDraw::PlayerFace`s ([`Game::player_face_skin`]), borrowed; `name` holds a
 /// looked-up skin's name, reused from face to face.
 struct FaceSkins<'a, 'g> {
-    game: &'a Game<'g>,
+    game: &'a Game<'g, crate::game::client_side::ClientState>,
     name: String,
 }
 impl GuiFaces for FaceSkins<'_, '_> {
@@ -82,7 +82,7 @@ pub(crate) fn paint_error((index, why): (usize, Undrawable)) -> GuiPaintError {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// A mod's `gui_paint` buffer: every op drawn under its pose, items from the local player's
     /// hotbar, faces with the skins the client has, or nothing and the op it could not draw.
     pub(crate) fn native_gui_paint(

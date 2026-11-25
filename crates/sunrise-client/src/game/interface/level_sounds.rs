@@ -73,7 +73,7 @@ pub(in crate::game) fn listened() -> bool {
         || mod_api::__private::listened(HookId::PlayLevelSoundAtEntity)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerLevel.playSeededSound`'s entity overload, `playSound(except,
     /// emitter, ...)`: `sound` plays here and, while the level's sounds are
     /// captured for others, joins the tick's bound sounds. `lan_broadcast_effects` asks
@@ -88,8 +88,8 @@ impl Game<'_> {
     ) {
         // Kept while the level's sounds are captured for others, as
         // `Audio.play` keeps the rest.
-        if self.server.audio_capture_active {
-            self.server.bound_sounds.push(BoundSound {
+        if self.side.audio_capture_active {
+            self.side.bound_sounds.push(BoundSound {
                 name: sound.name.to_owned(),
                 at: sound.at,
                 volume: sound.volume,
@@ -103,7 +103,7 @@ impl Game<'_> {
 
     /// The tick's bound sounds, in the order they played, for the players.
     pub(in crate::game::server_side) fn send_bound_sounds(&mut self) {
-        for s in std::mem::take(&mut self.server.bound_sounds) {
+        for s in std::mem::take(&mut self.side.bound_sounds) {
             let sound = LevelSound {
                 name: &s.name,
                 at: s.at,
@@ -185,7 +185,7 @@ impl Game<'_> {
             return None;
         }
         struct AskGuard<'g, 'a> {
-            game: &'g mut Game<'a>,
+            game: &'g mut Game<'a, crate::game::server_side::ServerState>,
             queued_before: usize,
         }
         impl Drop for AskGuard<'_, '_> {
@@ -193,7 +193,7 @@ impl Game<'_> {
                 self.game.creatures.asking_level_sound = false;
                 if let Some(added) = self
                     .game
-                    .server
+                    .side
                     .pending_native_sounds
                     .get_mut(self.queued_before..)
                 {
@@ -203,7 +203,7 @@ impl Game<'_> {
                 }
             }
         }
-        let queued_before = self.server.pending_native_sounds.len();
+        let queued_before = self.side.pending_native_sounds.len();
         self.creatures.asking_level_sound = true;
         let guard = AskGuard {
             game: self,

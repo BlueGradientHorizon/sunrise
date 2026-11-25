@@ -44,7 +44,7 @@ pub(in crate::game::server_side) use sunrise_world::attribute_map::ValueKind;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_world::damage_source::Catalog as DamageCatalog;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// ServerRecipeBook.addRecipes/removeRecipes for the player in place: how
     /// many recipe book displays changed (a transmute recipe has one per
     /// material count).
@@ -60,8 +60,8 @@ impl Game<'_> {
             self.invalidate_mod_book_placement_knowledge();
         }
         // A network player's client drops them from its book.
-        if self.server.lan_acting.is_some() && !removed.is_empty() {
-            self.server.guest_packets.push(C::RecipeBookRemove(
+        if self.side.lan_acting.is_some() && !removed.is_empty() {
+            self.side.guest_packets.push(C::RecipeBookRemove(
                 sunrise_protocol::packets::recipes::RecipeBookRemove { ids: removed },
             ));
         }
@@ -201,11 +201,11 @@ impl Game<'_> {
         let viewers = if ctx.get("viewers").is_some() {
             self.entities(ctx, "viewers", true)?
         } else {
-            let acting = self.server.lan_acting;
+            let acting = self.side.lan_acting;
             let guests = self.lan.iter().flat_map(|h| h.hub.online_players());
             self.player
                 .as_ref()
-                .filter(|_| !self.server.lan_acting_fake)
+                .filter(|_| !self.side.lan_acting_fake)
                 .map(|_| Target::Player)
                 .into_iter()
                 .chain(
@@ -222,7 +222,7 @@ impl Game<'_> {
             .filter(|&t| {
                 if particle.as_ref().is_some_and(ServerParticle::is_mod) {
                     let conn = match t {
-                        Target::Player => self.server.lan_acting,
+                        Target::Player => self.side.lan_acting,
                         Target::Guest(conn) => Some(conn),
                         _ => None,
                     };
@@ -267,7 +267,7 @@ impl Game<'_> {
             match (t, &packet) {
                 (Target::Player, None) if self.lan.is_none() => {
                     if let Some(p) = &particle {
-                        self.server.pending_particles.push(ServerQueuedParticle {
+                        self.side.pending_particles.push(ServerQueuedParticle {
                             dimension: self.dim.id(),
                             particle: p.clone(),
                             at: pos,
@@ -280,8 +280,8 @@ impl Game<'_> {
                         sent += 1;
                     }
                 }
-                (Target::Player, Some(p)) if self.server.lan_acting.is_some() => {
-                    self.server.guest_packets.push(p.clone());
+                (Target::Player, Some(p)) if self.side.lan_acting.is_some() => {
+                    self.side.guest_packets.push(p.clone());
                     sent += 1;
                 }
                 (Target::Guest(conn), Some(p)) => {
@@ -335,7 +335,7 @@ impl Game<'_> {
             };
             // LookAt.perform: Entity.lookAt from the source's anchor (the
             // feet, unless `anchored eyes`).
-            let anchored_eyes = self.server.command_source.is_some_and(|s| s.eyes);
+            let anchored_eyes = self.side.command_source.is_some_and(|s| s.eyes);
             let eye = if anchored_eyes {
                 self.server_target_eye_height(t)
             } else {
@@ -535,7 +535,7 @@ impl Game<'_> {
             {
                 let mut moved = to;
                 let uuid = match t {
-                    Target::Player => self.server.lan_acting_uuid,
+                    Target::Player => self.side.lan_acting_uuid,
                     Target::Guest(conn) => self.command_guest(conn).map(|g| g.uuid),
                     _ => None,
                 };
@@ -589,7 +589,7 @@ impl Game<'_> {
             self.entities(ctx, "targets", false)?
         } else {
             vec![
-                self.server
+                self.side
                     .command_source
                     .and_then(|s| s.entity)
                     .unwrap_or(Target::Player),
@@ -639,9 +639,9 @@ impl Game<'_> {
             return false;
         };
         let plan =
-            self.prepare_knockback_credit(id as i32, damage.attacker, self.combat.0.attack());
-        let attack = self.combat.0.attack();
-        let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
+            self.prepare_knockback_credit(id as i32, damage.attacker, self.side.combat.0.attack());
+        let attack = self.side.combat.0.attack();
+        let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
         let mob = &mut self.mobs[index];
         let (queued, old_health) = (mob.outbox.len(), mob.health);
         let hurt = mob.damage(
@@ -662,7 +662,7 @@ impl Game<'_> {
             if damage.attacker == Some(Who::Player) {
                 self.remember_mob_player_credit(id);
                 if let Some(host) = self.lan.as_mut() {
-                    match self.server.lan_acting {
+                    match self.side.lan_acting {
                         Some(conn) => {
                             host.mob_players.insert(id, conn);
                         }
@@ -740,7 +740,7 @@ impl Game<'_> {
             direct: entity_id(direct),
             position,
         };
-        if crate::game::entity::damage_level_of!(self, self.combat.0.attack(), no_push, None)
+        if crate::game::entity::damage_level_of!(self, self.side.combat.0.attack(), no_push, None)
             .invulnerability_check(
                 sunrise_client::health::Hurting::Entity(id as i32, &entity_kind, source),
                 vanilla,
@@ -784,12 +784,12 @@ impl Game<'_> {
             }
             return mob.extra.armor_attributes.as_deref_mut();
         }
-        if !self.cmds.0.attributes.contains_key(&t) {
+        if !self.side.cmds.0.attributes.contains_key(&t) {
             let ty = self.target_type(t);
             let map = self.motion.attributes.create(&ty)?;
-            self.cmds.0.attributes.insert(t, map);
+            self.side.cmds.0.attributes.insert(t, map);
         }
-        self.cmds.0.attributes.get_mut(&t)
+        self.side.cmds.0.attributes.get_mut(&t)
     }
     pub(in crate::game::server_side) fn hurt_target_from_source(
         &mut self,
@@ -820,7 +820,7 @@ impl Game<'_> {
                 let creative_source = self.creative_source_of(cause.or(by));
                 // resolvePlayerResponsibleForDamage: remember the causing player's UUID.
                 let by_player = match cause.or(by) {
-                    Some(Target::Player) => self.server.lan_acting,
+                    Some(Target::Player) => self.side.lan_acting,
                     Some(Target::Guest(conn)) => Some(conn),
                     _ => None,
                 }
@@ -835,7 +835,7 @@ impl Game<'_> {
                         }
                         let hurt = g.hurt_player_from(amount, from, ty, attacker, creative_source);
                         if hurt && let Some(credit) = by_player {
-                            g.combat.0.note_hurt_by_player(credit, now);
+                            g.side.combat.0.note_hurt_by_player(credit, now);
                         }
                         hurt
                     })
@@ -861,7 +861,7 @@ impl Game<'_> {
                 // DamageSource.getEntity is the causing player, even when
                 // another client issued the command or supplied the direct entity.
                 let guest = match cause.or(by) {
-                    Some(Target::Guest(conn)) if self.server.lan_acting != Some(conn) => Some(conn),
+                    Some(Target::Guest(conn)) if self.side.lan_acting != Some(conn) => Some(conn),
                     _ => None,
                 };
                 if let Some(conn) = guest {
@@ -921,7 +921,7 @@ impl Game<'_> {
             Target::Cart(id)
         } else if self.armor_stands.iter().any(|a| a.id == id) {
             Target::Stand(id)
-        } else if self.others.0.iter().any(|o| o.id == id) {
+        } else if self.side.others.0.iter().any(|o| o.id == id) {
             Target::Other(id)
         } else {
             Target::Mob(id)
@@ -940,7 +940,7 @@ impl Game<'_> {
     ) {
         let guest = match t {
             Target::Guest(conn) => Some(conn),
-            Target::Player => self.server.lan_acting,
+            Target::Player => self.side.lan_acting,
             _ => return,
         };
         match guest.and_then(|conn| Some((conn, self.lan.as_ref()?))) {
@@ -949,7 +949,7 @@ impl Game<'_> {
                     .hub
                     .sound_packet(sound, at, volume, pitch, source as i32, seed);
                 if t == Target::Player && !committing {
-                    self.server.guest_packets.push(packet);
+                    self.side.guest_packets.push(packet);
                 } else {
                     host.hub.send_to(conn, &packet);
                 }
@@ -974,12 +974,12 @@ impl Game<'_> {
         for &t in targets {
             let guest = match t {
                 Target::Guest(conn) => Some(conn),
-                Target::Player => self.server.lan_acting,
+                Target::Player => self.side.lan_acting,
                 _ => continue,
             };
             match guest {
                 Some(_) if t == Target::Player && !committing => {
-                    self.server.guest_packets.push(packet.clone());
+                    self.side.guest_packets.push(packet.clone());
                 }
                 Some(conn) => {
                     if let Some(host) = self.lan.as_ref() {

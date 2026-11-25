@@ -9,7 +9,7 @@ use sunrise_client::mobs::DamageKind;
 /// Below this radius the reference tells no detonate listener (`ServerExplosion.explode`).
 const DETONATE_RADIUS: f32 = 1.0e-5;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Destroys the blocks at `positions` as the blast `level.explode(source, center, radius, fire,
     /// interaction)` would: `explosion_start` (which may cancel it), `explosion_detonate` with the
     /// positions, then the blast's block step on those left. Positions in chunks that aren't

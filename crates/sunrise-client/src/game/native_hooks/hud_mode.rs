@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Effective HUD and first-person hand visibility.
     pub(in crate::game) fn hud_mode(&self) -> mod_api::HudMode {
         self.ui.hud_mode()

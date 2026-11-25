@@ -32,11 +32,11 @@ impl SingleplayerProfile {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `IntegratedServer.getSingleplayerProfile`. None for a dedicated server, which is
     /// created with no such profile, and for a client.
     pub(in crate::game) fn native_singleplayer_profile(&self) -> Option<GameProfile<'_>> {
-        let profile = self.server.singleplayer_profile.as_ref()?;
+        let profile = self.side.singleplayer_profile.as_ref()?;
         Some(mod_api::__private::game::game_profile(
             profile.uuid,
             &profile.name,
@@ -47,7 +47,7 @@ impl Game<'_> {
     /// `IntegratedServer.isSingleplayerOwner`: the connected player's name against the
     /// profile's, ignoring case; the UUID, the properties and the permission level play no part.
     pub(in crate::game) fn player_is_singleplayer_owner(&self, player: PlayerRef) -> bool {
-        let Some(owner) = &self.server.singleplayer_profile else {
+        let Some(owner) = &self.side.singleplayer_profile else {
             return false;
         };
         self.online_player_record(player)

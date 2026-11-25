@@ -98,27 +98,27 @@ const BUTTONS: [(Status, &str, u32); 3] = [
     (Status::AlwaysOn, "debug.entry.always", WARNING),
 ];
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `KeyboardHandler`'s F3+F6: closes the screen if it is open, else opens
     /// it over whatever screen yields (`canInterruptScreen`), closing that
     /// screen first.
     pub(in crate::game::client_side) fn toggle_debug_options(&mut self) {
-        if self.client.screen == Screen::DebugOptions {
+        if self.side.screen == Screen::DebugOptions {
             self.close_debug_options();
             return;
         }
-        if !debug_options_interrupts(self.client.screen, self.screen_over_playing()) {
+        if !debug_options_interrupts(self.side.screen, self.screen_over_playing()) {
             return;
         }
         self.close_screen_behind_debug_options();
         let mut search = EditBox::new(0.0, 0.0, (ROW_WIDTH / 3.0).floor(), 20.0);
         search.max_length = 32;
-        self.client.debug_options = Some(DebugOptionsUi {
+        self.side.debug_options = Some(DebugOptionsUi {
             search,
             scroll: Scroll::default(),
         });
         self.set_screen(Screen::DebugOptions);
-        self.client.pause_menu = true;
+        self.side.pause_menu = true;
         self.capture(false);
         self.mining = None;
     }
@@ -127,12 +127,12 @@ impl Game<'_> {
     /// screen whose close only swaps the screen (stats, links, the pause menu)
     /// yields by being overwritten instead.
     fn close_screen_behind_debug_options(&mut self) {
-        match self.client.screen {
+        match self.side.screen {
             Screen::Inventory => {
                 self.close_container_client();
-                self.client.pause_focus = None;
+                self.side.pause_focus = None;
                 self.set_screen(Screen::Playing);
-                self.client.pause_menu = true;
+                self.side.pause_menu = true;
                 self.capture(true);
             }
             Screen::Creative => {
@@ -147,9 +147,9 @@ impl Game<'_> {
     }
     /// `Screen.onClose`: back to the title when no level is open, otherwise the game.
     pub(in crate::game::client_side) fn close_debug_options(&mut self) {
-        self.client.debug_options = None;
+        self.side.debug_options = None;
         self.set_screen(Screen::Playing);
-        self.capture(self.title.0.is_none());
+        self.capture(self.side.title.0.is_none());
     }
     /// The header's title row and warning (`init`'s vertical layout,
     /// centred in the header): the title's x, the row's top, the warning's
@@ -187,7 +187,7 @@ impl Game<'_> {
     /// `ClampingLazyMaxIntRange(-1, window.calculateScale(0, unicode))` as a
     /// CycleButton: the next value, or the previous one with Shift.
     fn cycle_debug_gui_scale(&mut self, back: bool) {
-        let size = self.renderer.0.as_ref().map_or([1280, 720], |r| {
+        let size = self.side.renderer.0.as_ref().map_or([1280, 720], |r| {
             [r.config.width as i32, r.config.height as i32]
         });
         let max = sunrise_client::window::calculate_scale(size, 0, self.settings.force_unicode);
@@ -202,7 +202,7 @@ impl Game<'_> {
         self.settings.save(&crate::game::options_path());
     }
     pub(in crate::game::client_side) fn draw_debug_options(&mut self, batch: &mut HudBatch) {
-        let Some(s) = self.client.debug_options.as_ref() else {
+        let Some(s) = self.side.debug_options.as_ref() else {
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
             return;
@@ -210,7 +210,7 @@ impl Game<'_> {
         let (w, h) = (batch.width, batch.height);
         // extractBlurredBackground: the debug overlay goes under the screen.
         let size = self
-            .renderer
+            .side.renderer
             .0
             .as_ref()
             .map_or([w as u32, h as u32], |r| [r.config.width, r.config.height]);
@@ -219,10 +219,10 @@ impl Game<'_> {
         let in_world = self.player.is_some();
         ui::menu_background(batch, atlas, 0.0, 0.0, w, h, in_world);
         let reduced = self.reduced_debug_info();
-        let rows = rows(&self.registered_debug_entries.0, &s.search.value);
+        let rows = rows(&self.side.registered_debug_entries.0, &s.search.value);
         let (top, bottom) = (HEADER, h - FOOTER);
         let content = content_height(rows.len());
-        self.client
+        self.side
             .debug_options
             .as_mut()
             .unwrap()
@@ -234,10 +234,10 @@ impl Game<'_> {
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
         let (title_x, header_top, lines) = self.debug_options_header(w);
         let gui_scale_label = self.debug_gui_scale_label();
-        let s = self.client.debug_options.as_mut().unwrap();
+        let s = self.side.debug_options.as_mut().unwrap();
         let first = batch.vertices.len();
         let left = row_left(w);
-        let inside = self.client.cursor.1 >= top && self.client.cursor.1 < bottom;
+        let inside = self.side.cursor.1 >= top && self.side.cursor.1 < bottom;
         let mut tooltip = None;
         for (i, row) in rows.iter().enumerate() {
             let y = top + 2.0 - s.scroll.amount.trunc() + i as f32 * ITEM;
@@ -263,7 +263,7 @@ impl Game<'_> {
                     };
                     batch.text_styled(atlas, &name, cx, cy + 5.0, u32::MAX, true);
                     let xs = button_xs(cx);
-                    let status = self.debug_entries.0.status(entry.path);
+                    let status = self.side.debug_entries.0.status(entry.path);
                     for ((status_of, key, color), x) in BUTTONS.into_iter().zip(xs) {
                         let selected = status == status_of;
                         let label = Text::translate(key, &[]).with_color(if selected {
@@ -271,12 +271,12 @@ impl Game<'_> {
                         } else {
                             UNSELECTED
                         });
-                        let hover = inside && ui::hovered(self.client.cursor, x, cy, BUTTON, 16.0);
+                        let hover = inside && ui::hovered(self.side.cursor, x, cy, BUTTON, 16.0);
                         ui::button(batch, atlas, x, cy, BUTTON, 16.0, &label, !selected, hover);
                     }
                     if !allowed
                         && inside
-                        && ui::hovered(self.client.cursor, cx, y, xs[0] - cx, ITEM)
+                        && ui::hovered(self.side.cursor, cx, y, xs[0] - cx, ITEM)
                     {
                         tooltip = Some(Text::translate("debug.options.notAllowed.tooltip", &[]));
                     }
@@ -325,13 +325,13 @@ impl Game<'_> {
             Text::translate("gui.done", &[]),
         ];
         let active = [
-            !self.debug_entries.0.is_using_profile(Profile::Default),
-            !self.debug_entries.0.is_using_profile(Profile::Performance),
+            !self.side.debug_entries.0.is_using_profile(Profile::Default),
+            !self.side.debug_entries.0.is_using_profile(Profile::Performance),
             true,
             true,
         ];
         for (i, label) in labels.iter().enumerate() {
-            let hover = ui::hovered(self.client.cursor, xs[i], fy, FOOTER_BUTTONS[i], 20.0);
+            let hover = ui::hovered(self.side.cursor, xs[i], fy, FOOTER_BUTTONS[i], 20.0);
             if i == 3 {
                 sunrise_client::widgets::declare_action(
                     sunrise_client::widgets::Action::Done,
@@ -357,32 +357,32 @@ impl Game<'_> {
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
         if let Some(tooltip) = tooltip {
             let lines = atlas.font.split(&tooltip, 200.0);
-            ui::tooltip(batch, atlas, &lines, self.client.cursor);
+            ui::tooltip(batch, atlas, &lines, self.side.cursor);
         }
     }
     /// A left click: a status button, the search box, a footer button.
     pub(in crate::game::client_side) fn debug_options_click(&mut self) -> bool {
-        let Some(mut s) = self.client.debug_options.take() else {
+        let Some(mut s) = self.side.debug_options.take() else {
             return false;
         };
         let (w, h) = self.gui_size();
         let (top, bottom) = (HEADER, h - FOOTER);
-        let rows = rows(&self.registered_debug_entries.0, &s.search.value);
+        let rows = rows(&self.side.registered_debug_entries.0, &s.search.value);
         let left = row_left(w);
         // A press on the scrollbar holds it and clicks nothing else.
         if s.scroll.press(
-            self.client.cursor,
+            self.side.cursor,
             left + ROW_WIDTH + 8.0,
             top,
             bottom,
             content_height(rows.len()),
         ) {
-            self.client.debug_options = Some(s);
+            self.side.debug_options = Some(s);
             return true;
         }
         let shift = self.has_shift_down();
         s.search.focused = ui::hovered(
-            self.client.cursor,
+            self.side.cursor,
             s.search.x,
             s.search.y,
             s.search.width,
@@ -390,33 +390,33 @@ impl Game<'_> {
         );
         if s.search.focused {
             s.search
-                .click(&self.gui.atlas, self.client.cursor.0, shift, false);
+                .click(&self.gui.atlas, self.side.cursor.0, shift, false);
         }
-        let inside = self.client.cursor.1 >= top && self.client.cursor.1 < bottom;
+        let inside = self.side.cursor.1 >= top && self.side.cursor.1 < bottom;
         let mut clicked = None;
         if inside {
             for (i, row) in rows.iter().enumerate() {
                 let Row::Option(entry) = row else { continue };
                 let cy = top + 2.0 - s.scroll.amount.trunc() + i as f32 * ITEM + 2.0;
-                let status = self.debug_entries.0.status(entry.path);
+                let status = self.side.debug_entries.0.status(entry.path);
                 for ((status_of, _, _), x) in BUTTONS.into_iter().zip(button_xs(left + 2.0)) {
-                    if status != status_of && ui::hovered(self.client.cursor, x, cy, BUTTON, 16.0) {
+                    if status != status_of && ui::hovered(self.side.cursor, x, cy, BUTTON, 16.0) {
                         clicked = Some((entry.path, status_of));
                     }
                 }
             }
         }
         let search = s.search.focused;
-        self.client.debug_options = Some(s);
+        self.side.debug_options = Some(s);
         if let Some((path, status)) = clicked {
             // OptionEntry.setValue.
-            self.audio.0.play_button_click();
-            self.debug_entries.0.set_status(path, status);
+            self.side.audio.0.play_button_click();
+            self.side.debug_entries.0.set_status(path, status);
             return true;
         }
         let (xs, fy) = footer(w, h);
         let Some(i) =
-            (0..4).find(|&i| ui::hovered(self.client.cursor, xs[i], fy, FOOTER_BUTTONS[i], 20.0))
+            (0..4).find(|&i| ui::hovered(self.side.cursor, xs[i], fy, FOOTER_BUTTONS[i], 20.0))
         else {
             return search;
         };
@@ -427,18 +427,18 @@ impl Game<'_> {
                 } else {
                     Profile::Performance
                 };
-                if self.debug_entries.0.is_using_profile(profile) {
+                if self.side.debug_entries.0.is_using_profile(profile) {
                     return search;
                 }
-                self.audio.0.play_button_click();
-                self.debug_entries.0.load_profile(profile);
+                self.side.audio.0.play_button_click();
+                self.side.debug_entries.0.load_profile(profile);
             }
             2 => {
-                self.audio.0.play_button_click();
+                self.side.audio.0.play_button_click();
                 self.cycle_debug_gui_scale(shift);
             }
             _ => {
-                self.audio.0.play_button_click();
+                self.side.audio.0.play_button_click();
                 self.close_debug_options();
             }
         }
@@ -449,10 +449,10 @@ impl Game<'_> {
         let (_, h) = self.gui_size();
         let scroll = self.pad_stick_scroll()
             || self.pad_step_scroll()
-            || (HEADER..h - FOOTER).contains(&self.client.cursor.1);
-        if scroll && let Some(s) = &mut self.client.debug_options {
+            || (HEADER..h - FOOTER).contains(&self.side.cursor.1);
+        if scroll && let Some(s) = &mut self.side.debug_options {
             let content =
-                content_height(rows(&self.registered_debug_entries.0, &s.search.value).len());
+                content_height(rows(&self.side.registered_debug_entries.0, &s.search.value).len());
             s.scroll
                 .wheel(delta, ITEM / 2.0, HEADER, h - FOOTER, content);
             return true;
@@ -462,12 +462,12 @@ impl Game<'_> {
     /// The pointer moved while the list's scrollbar is held.
     pub(in crate::game::client_side) fn debug_options_drag(&mut self) -> bool {
         let (_, h) = self.gui_size();
-        let y = self.client.cursor.1;
-        if let Some(s) = &mut self.client.debug_options
+        let y = self.side.cursor.1;
+        if let Some(s) = &mut self.side.debug_options
             && s.scroll.held()
         {
             let content =
-                content_height(rows(&self.registered_debug_entries.0, &s.search.value).len());
+                content_height(rows(&self.side.registered_debug_entries.0, &s.search.value).len());
             s.scroll.drag(y, HEADER, h - FOOTER, content);
             return true;
         }
@@ -475,7 +475,7 @@ impl Game<'_> {
     }
     /// The button came up: the scrollbar lets go.
     pub(in crate::game::client_side) fn debug_options_release(&mut self) -> bool {
-        self.client.debug_options.as_mut().is_some_and(|s| {
+        self.side.debug_options.as_mut().is_some_and(|s| {
             let handled = s.scroll.held();
             s.scroll.release();
             handled
@@ -494,7 +494,7 @@ impl Game<'_> {
         let ctrl = self.has_control_down_with_quirk();
         let shift = self.has_shift_down();
         let Some(s) = self
-            .client
+            .side
             .debug_options
             .as_mut()
             .filter(|s| s.search.focused)
@@ -502,7 +502,7 @@ impl Game<'_> {
             return false;
         };
         if let Some(shortcut) = shortcut {
-            s.search.shortcut(shortcut, &mut self.clipboard.0);
+            s.search.shortcut(shortcut, &mut self.side.clipboard.0);
             true
         } else {
             s.search.key(key, ctrl, shift)
@@ -510,7 +510,7 @@ impl Game<'_> {
     }
     /// One character off the search box, for the controller's on-screen keyboard.
     pub(in crate::game::client_side) fn debug_options_backspace(&mut self) {
-        if let Some(s) = &mut self.client.debug_options
+        if let Some(s) = &mut self.side.debug_options
             && s.search.focused
         {
             s.search.key(KeyCode::Backspace, false, false);
@@ -522,7 +522,7 @@ impl Game<'_> {
             .chars()
             .filter(|&c| c != '\u{a7}' && c >= ' ' && c != '\u{7f}')
             .collect();
-        if let Some(s) = &mut self.client.debug_options
+        if let Some(s) = &mut self.side.debug_options
             && s.search.focused
             && !allowed.is_empty()
         {

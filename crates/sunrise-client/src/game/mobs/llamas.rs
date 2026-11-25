@@ -10,7 +10,7 @@ use sunrise_client::mobs::{equine, llama};
 #[allow(unused_imports)]
 use sunrise_core::random::RandomSource;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Llama.handleEating`: wheat and hay bales heal, age up a baby, raise
     /// the temper and, from a hay bale, put a tame adult in love.
     pub(in crate::game::server_side) fn feed_llama(&mut self, index: usize, item: &str) -> bool {
@@ -58,9 +58,9 @@ impl Game<'_> {
         // Animal.setInLove: entity event 18.
         if loved {
             let id = self.mobs[index].id;
-            self.server.love_cause.insert(id, self.server.lan_acting);
+            self.side.love_cause.insert(id, self.side.lan_acting);
             let kind = self.mobs[index].kind.id.clone();
-            self.native_entity_enter_love_mode(id, &kind, self.server.lan_acting_uuid);
+            self.native_entity_enter_love_mode(id, &kind, self.side.lan_acting_uuid);
             self.mob_event_particles(id, 18);
         }
         self.llama_sound(index, "entity.llama.eat", 1.0);
@@ -79,7 +79,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `AbstractChestedHorse.mobInteract` and `AbstractHorse.mobInteract` for
     /// llamas and trader llamas. Returns whether the click was used.
     pub(in crate::game) fn interact_llama(&mut self, index: usize, item: &str) -> bool {

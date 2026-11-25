@@ -19,13 +19,13 @@ pub(in crate::game::client_side) use sunrise_client::{
 };
 
 #[allow(dead_code)]
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Applies a client mod's `clear_particles` if one is waiting. Called at the start of
     /// each particle tick, after `RenderFrameEvent.Pre`, and at particle extraction, after
     /// HUD, screen and entity callbacks. Extraction also discards its geometry if a model
     /// callback asks to clear while it is being built, even while paused or tick-frozen.
     pub(in crate::game::client_side) fn apply_mod_particle_clear(&mut self) {
-        if self.client.mod_clear_particles.take() {
+        if self.side.mod_clear_particles.take() {
             self.clear_client_particles();
         }
     }
@@ -33,31 +33,31 @@ impl Game<'_> {
     /// particles, starters, queue and emitters, the item pickups and the elder guardian
     /// apparition. Leaving a level and switching levels clear through it too.
     pub(in crate::game) fn clear_client_particles(&mut self) {
-        self.client.mod_clear_particles.set(false);
-        self.particles.0.clear();
-        self.pickups.0.clear();
+        self.side.mod_clear_particles.set(false);
+        self.side.particles.0.clear();
+        self.side.pickups.0.clear();
     }
     /// `ParticleEngine.countParticles`: every live group. Sunrise keeps vanilla's groups
     /// apart: ordinary particles, firework starters and elder guardians in the engine,
     /// and ITEM_PICKUP in `pickups`.
     pub(in crate::game) fn client_particle_count(&self) -> usize {
-        self.particles.0.group_count() + self.pickups.0.live.len()
+        self.side.particles.0.group_count() + self.side.pickups.0.live.len()
     }
     /// A mod's own screen closes (Escape, or `mod_screen_close`).
     pub(in crate::game) fn close_mod_screen(&mut self) {
-        if self.client.screen == Screen::Mod {
-            if self.title.0.is_some() {
+        if self.side.screen == Screen::Mod {
+            if self.side.title.0.is_some() {
                 self.close_mod_screen_to_title();
             } else {
                 self.set_screen(Screen::Playing);
                 self.capture(true);
             }
-            if self.client.screen == Screen::Mod {
+            if self.side.screen == Screen::Mod {
                 // `screen_opening` kept it open, or opened a mod's own.
                 return;
             }
         }
-        self.client.native_mod_screen = None;
+        self.side.native_mod_screen = None;
     }
     /// `Screen.onClose`'s `setScreen(null)` with no world: the title screen
     /// opens, asked for once as `mod` to `title`, and a mod's answer applies
@@ -76,7 +76,7 @@ impl Game<'_> {
             ScreenDecision::ModScreen(mod_id) => self.apply_screen(Screen::Mod, Some(mod_id)),
             ScreenDecision::Vanilla(target) => self.open_screen_target(target),
             ScreenDecision::Open => {
-                if let Some(title) = self.title.0.as_mut() {
+                if let Some(title) = self.side.title.0.as_mut() {
                     title.open_by_id("title");
                 }
                 self.apply_screen(Screen::Playing, None);
@@ -88,14 +88,14 @@ impl Game<'_> {
     /// of its charts is drawn there.
     pub(in crate::game::client_side) fn native_corner_shown(&self, corner: Corner) -> bool {
         let charts = self
-            .client
+            .side
             .debug_charts
             .corners(!self.has_singleplayer_server());
-        !debug_takes(corner, self.client.debug, charts)
+        !debug_takes(corner, self.side.debug, charts)
     }
 }
 
-impl<'g> Game<'g> {
+impl<'g> Game<'g, crate::game::client_side::ClientState> {
     pub(in crate::game) fn draw_gui_layer_body(
         &mut self,
         batch: &mut HudBatch,
@@ -157,7 +157,7 @@ impl<'g> Game<'g> {
         until: Option<VanillaGuiLayer>,
         batch: &mut HudBatch,
     ) {
-        let Some(next) = self.client.hud_layer_next else {
+        let Some(next) = self.side.hud_layer_next else {
             return;
         };
         let Some(order) = gui_layers::order() else {
@@ -172,7 +172,7 @@ impl<'g> Game<'g> {
             }
         }
         // Past `until` itself: its paint site draws it, not the cursor.
-        self.client.hud_layer_next = Some(next.max(end + usize::from(until.is_some())));
+        self.side.hud_layer_next = Some(next.max(end + usize::from(until.is_some())));
     }
     /// Dispatches a vanilla slot after flushing inserted layers below it. Replacing or wrapping
     /// a body leaves the slot's ID, order and hooks unchanged. The original body's eligibility
@@ -181,7 +181,7 @@ impl<'g> Game<'g> {
         &mut self,
         layer: VanillaGuiLayer,
         batch: &mut HudBatch,
-        draw: &mut dyn FnMut(&mut Game<'g>, &mut HudBatch),
+        draw: &mut dyn FnMut(&mut Game<'g, crate::game::client_side::ClientState>, &mut HudBatch),
     ) {
         self.draw_mod_gui_layers(Some(layer), batch);
         self.run_gui_layer(

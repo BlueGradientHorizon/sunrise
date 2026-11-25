@@ -17,7 +17,7 @@ use sunrise_core::nbt::Tag;
 /// `PlayerEnderChestContainer`'s size.
 const SLOTS: usize = 27;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Lend `PlayerEnderChestContainer.getItem` over the live or saved slots.
     pub(in crate::game) fn player_ender_chest(
         &self,
@@ -30,12 +30,12 @@ impl Game<'_> {
         let items = match self.player_handle_read(player)? {
             // An open ender chest menu holds the live copy until it closes.
             PlayerRead::Acting { .. } => match self
-                .server
+                .side
                 .ender_open
                 .and_then(|key| self.world.block_entities.get(&key))
             {
                 Some(sunrise_client::containers::BlockEntity::Chest(items)) => items,
-                _ => &self.server.ender_items,
+                _ => &self.side.ender_items,
             },
             PlayerRead::Guest(g) => &g.ender_items,
         };
@@ -65,11 +65,11 @@ impl Game<'_> {
         let mut set = false;
         let ran = self.native_as_player_handle(player, |game| {
             game.journal_player(player.uuid());
-            if let Some(key) = game.server.ender_open {
+            if let Some(key) = game.side.ender_open {
                 game.journal_block_entity(key);
             }
-            if game.server.ender_items.len() < SLOTS {
-                game.server.ender_items.resize(SLOTS, None);
+            if game.side.ender_items.len() < SLOTS {
+                game.side.ender_items.resize(SLOTS, None);
             }
             set = game.slot_set(&Slot::Ender(slot as usize), stack.filter(|s| s.count > 0));
         });
@@ -101,8 +101,8 @@ impl Game<'_> {
             return Ok(false);
         }
         let title = component_nbt(&title.component());
-        if self.server.lan_guest_swaps.contains(&conn) {
-            self.server.lan_ender_menus.push((conn, title));
+        if self.side.lan_guest_swaps.contains(&conn) {
+            self.side.lan_ender_menus.push((conn, title));
             return Ok(true);
         }
         Ok(self.open_ender_menu(conn, title))
@@ -111,13 +111,13 @@ impl Game<'_> {
     /// The ender chest menus `player_open_ender_chest` asked for in guest `conn`'s turn,
     /// opened now that the turn is over, in the order asked (the last one stays open).
     pub(in crate::game::server_side) fn open_turn_ender_menus(&mut self, conn: u32) {
-        if !self.server.lan_ender_menus.iter().any(|(c, _)| *c == conn) {
+        if !self.side.lan_ender_menus.iter().any(|(c, _)| *c == conn) {
             return;
         }
-        let (mine, others) = std::mem::take(&mut self.server.lan_ender_menus)
+        let (mine, others) = std::mem::take(&mut self.side.lan_ender_menus)
             .into_iter()
             .partition(|(c, _)| *c == conn);
-        self.server.lan_ender_menus = others;
+        self.side.lan_ender_menus = others;
         for (_, title) in mine {
             self.open_ender_menu(conn, title);
         }

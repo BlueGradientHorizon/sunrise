@@ -18,7 +18,7 @@ pub(in crate::game) fn selector_box(origin: [f64; 3], delta: [f64; 3]) -> Aabb {
     extents((lo, hi))
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Entity.getBoundingBox`: use each simulated kind's existing physical
     /// box. None means no authoritative box is modeled here yet; the selector
     /// retains its existing point fallback for those kinds.

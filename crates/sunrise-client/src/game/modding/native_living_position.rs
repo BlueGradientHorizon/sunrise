@@ -5,7 +5,7 @@ use super::{Game, commands::Target};
 use mod_api::{EntityRef, LivingRef, Pose};
 use sunrise_core::geometry::Vec3;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `LivingEntity.hasLineOfSight(Entity)`: whether nothing that collides
     /// (`ClipContext.Block.COLLIDER`, fluids ignored) lies between the
     /// living entity's eyes and `target`'s eye height, within 128 blocks.

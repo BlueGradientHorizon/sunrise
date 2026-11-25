@@ -14,7 +14,7 @@ use sunrise_client::{
 #[allow(unused_imports)]
 use sunrise_core::nbt::Tag;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `BlockEntity.triggerEvent(a, b)` on the block entity at `pos`.
     pub(in crate::game) fn block_entity_event(&mut self, pos: [i32; 3], a: i32, b: i32) {
         let state = self.world.block(pos[0], pos[1], pos[2]).0;

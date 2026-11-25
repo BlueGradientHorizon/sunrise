@@ -13,7 +13,7 @@ pub(in crate::game::client_side) use crate::game::remote::break_prediction::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_core::position::BlockPos;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn check_active_group_updates(
         &self,
         groups: &GroupUpdates,

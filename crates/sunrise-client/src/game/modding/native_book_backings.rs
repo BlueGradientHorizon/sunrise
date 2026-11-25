@@ -56,7 +56,7 @@ pub(in crate::game) struct Backings {
 }
 impl Backings {
     pub fn capture(
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
         before: &MenuSnapshot,
         plan: &MenuPlacement,
     ) -> Result<Self, Refusal> {
@@ -179,7 +179,7 @@ impl Backings {
         }
         Ok(value)
     }
-    fn keep(&mut self, game: &Game<'_>, pos: Pos) -> Result<(), Refusal> {
+    fn keep(&mut self, game: &Game<'_, crate::game::server_side::ServerState>, pos: Pos) -> Result<(), Refusal> {
         if self.blocks.contains_key(&pos) {
             return Ok(());
         }
@@ -213,7 +213,7 @@ impl Backings {
     /// slot. Cleared slots already return their contents through the player.
     pub(in crate::game::server_side) fn add_sources(
         &mut self,
-        game: &Game<'_>,
+        game: &Game<'_, crate::game::server_side::ServerState>,
         sources: &[(Pos, Vec<Option<ItemStack>>)],
     ) -> Result<Vec<Vec<Option<ItemStack>>>, Refusal> {
         let mut seen: BTreeSet<Key> = self
@@ -244,7 +244,7 @@ impl Backings {
         }
         Ok(stock)
     }
-    pub(in crate::game::server_side) fn unchanged_blocks(&self, game: &Game<'_>) -> bool {
+    pub(in crate::game::server_side) fn unchanged_blocks(&self, game: &Game<'_, crate::game::server_side::ServerState>) -> bool {
         game.dim.id() == self.dimension
             && self.blocks.iter().all(|(pos, before)| {
                 let Some(entity) = game.world.block_entities.get(pos) else {
@@ -271,10 +271,10 @@ impl Backings {
                 }
             })
     }
-    pub(in crate::game::server_side) fn unchanged(&self, game: &mut Game<'_>) -> bool {
+    pub(in crate::game::server_side) fn unchanged(&self, game: &mut Game<'_, crate::game::server_side::ServerState>) -> bool {
         self.unchanged_blocks(game) && self.native_is_unchanged(game)
     }
-    fn native_is_unchanged(&self, game: &mut Game<'_>) -> bool {
+    fn native_is_unchanged(&self, game: &mut Game<'_, crate::game::server_side::ServerState>) -> bool {
         let (Some(native), Some((conn, uuid, window))) = (&self.native, self.native_menu) else {
             return self.native.is_none() && self.native_menu.is_none();
         };

@@ -4,7 +4,7 @@ use sunrise_client::{entities::ItemEntity, health::HurtSource, items::ItemStack,
 use sunrise_core::geometry::Vec3;
 use sunrise_world::damage_source::DamageTypeId;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ItemEntity.hurtServer`: the item branch reached by `DamageCommand.damage`.
     pub(in crate::game) fn hurt_item_entity(
         &mut self,
@@ -95,7 +95,7 @@ impl Game<'_> {
             kind,
             self.creative_source_of(causing),
         );
-        if crate::game::entity::damage_level_of!(self, self.combat.0.attack(), no_push, None)
+        if crate::game::entity::damage_level_of!(self, self.side.combat.0.attack(), no_push, None)
             .invulnerability_check(
                 sunrise_client::health::Hurting::Entity(id as i32, "minecraft:item", source),
                 vanilla,

@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Not `native_loot_drops`: that is the loot-modifier step, which edits
     /// the stacks a table rolled (blocks, shearing, a mob's table). This hook
     /// fires once after it, on the entity's whole collected drop list, and

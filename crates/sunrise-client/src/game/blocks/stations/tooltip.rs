@@ -209,7 +209,7 @@ fn report_tooltip_prepare_error(err: &TooltipComponentPrepareError) {
     log::error!("tooltip component preparation failed: {err}");
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `getEmptyBundleDescriptionTextHeight`'s lines: the empty bundle's description wrapped at
     /// the grid's width in `default_font`.
     fn bundle_description_lines(&self, default_font: &str) -> usize {

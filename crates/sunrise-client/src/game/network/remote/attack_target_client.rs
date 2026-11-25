@@ -3,7 +3,7 @@ pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::remote::attack_target::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `Player.attack`'s damage and `getAttackStrengthScale(0.5)` on this
     /// client.
     pub(in crate::game) fn remote_attack_damage(&mut self) -> (f32, f32) {
@@ -13,7 +13,7 @@ impl Game<'_> {
         let speed = self
             .own_attribute("minecraft:attack_speed")
             .unwrap_or_else(|| self.main_hand_attack_speed());
-        let strength = self.client.hand_strength.scale(0.5, speed);
+        let strength = self.side.hand_strength.scale(0.5, speed);
         // Player.attack's damage: a riptide spin's, or this client's own
         // ATTACK_DAMAGE, which the held item and effects don't change here.
         let spin = self.player.as_ref().map_or(0.0, |p| p.auto_spin_attack_dmg);

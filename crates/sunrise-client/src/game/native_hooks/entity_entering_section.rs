@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `EntityEvent.EnteringSection`: `entity` is in the section `new_section`, no longer in
     /// `old_section`; `chunk_changed` when their x or z differ (`modding/entity_sections.rs`).
     /// This runs synchronously after the position write and section filing, before that write

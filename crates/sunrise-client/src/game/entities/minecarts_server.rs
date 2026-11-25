@@ -190,7 +190,7 @@ impl CartIndex {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `activateMinecart` on an activator rail.
     pub(in crate::game) fn activate_cart(&mut self, c: &mut Minecart, powered: bool) {
         match c.kind {
@@ -1133,13 +1133,13 @@ impl Game<'_> {
             f64::from(hit.pos[1]) + 0.0625 + offset,
             f64::from(hit.pos[2]) + 0.5,
         );
-        self.server.next_entity += 1;
-        let cart = Minecart::new(self.server.next_entity, kind, at);
+        self.side.next_entity += 1;
+        let cart = Minecart::new(self.side.next_entity, kind, at);
         self.world
             .modified
             .insert((hit.pos[0] >> 4, hit.pos[2] >> 4));
         self.carts.push(cart);
-        let id = self.server.next_entity;
+        let id = self.side.next_entity;
         self.apply_item_stack_config(super::commands::Target::Cart(id), kind.id(), stack, true);
         if self.serving.is_some() || self.options.dedicated.is_some() {
             let cart = self.carts.last().unwrap();

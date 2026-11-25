@@ -1,5 +1,5 @@
 use super::*;
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Dropped-item contact after vertical collision response and before block effects.
     pub(in crate::game) fn native_item_after_vertical_collision(
         &mut self,

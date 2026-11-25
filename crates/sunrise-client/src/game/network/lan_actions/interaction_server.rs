@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn guest_drop_carried(&mut self, gi: usize) {
         let carried = self.with_own_record(gi, |host, _| {
             let conn = host.hub.guests[gi].conn;
@@ -43,7 +43,7 @@ impl Game<'_> {
                 game.toss_item(stack, eye, v, None);
             }
         };
-        if self.server.lan_acting == Some(conn) {
+        if self.side.lan_acting == Some(conn) {
             toss(self, stacks);
             return;
         }
@@ -55,11 +55,11 @@ impl Game<'_> {
         });
         // Fallback when `conn` is already suspended under a nested guest turn.
         if let Some(stacks) = remaining {
-            let prev = self.server.lan_acting_uuid.replace(uuid);
+            let prev = self.side.lan_acting_uuid.replace(uuid);
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 toss(self, stacks);
             }));
-            self.server.lan_acting_uuid = prev;
+            self.side.lan_acting_uuid = prev;
             if let Err(payload) = result {
                 std::panic::resume_unwind(payload);
             }
@@ -392,7 +392,7 @@ impl Game<'_> {
                 .as_guest_at(gi, conn, |g| {
                     let swings = g.swings_started;
                     let consumed = g.with_hand(hand, |g| g.use_knot(knot, true));
-                    reset_use_attack_strength(&mut g.server.attack_ticks, swings, g.swings_started);
+                    reset_use_attack_strength(&mut g.side.attack_ticks, swings, g.swings_started);
                     (g.swings_started != swings, consumed)
                 })
                 .ok();
@@ -409,14 +409,14 @@ impl Game<'_> {
         let target = InteractTarget { id, location };
         let used = self
             .as_guest_at(gi, conn, |g| {
-                let saved = g.server.guest_use;
-                let failed = std::mem::replace(&mut g.server.use_failed, false);
-                g.server.guest_use = Some(GuestUse::Entity(hand, target));
+                let saved = g.side.guest_use;
+                let failed = std::mem::replace(&mut g.side.use_failed, false);
+                g.side.guest_use = Some(GuestUse::Entity(hand, target));
                 let swings = g.swings_started;
-                let consumed = matches!(g.use_item(), Ok(Some(_))) && !g.server.use_failed;
-                g.server.guest_use = saved;
-                g.server.use_failed = failed;
-                reset_use_attack_strength(&mut g.server.attack_ticks, swings, g.swings_started);
+                let consumed = matches!(g.use_item(), Ok(Some(_))) && !g.side.use_failed;
+                g.side.guest_use = saved;
+                g.side.use_failed = failed;
+                reset_use_attack_strength(&mut g.side.attack_ticks, swings, g.swings_started);
                 (g.swings_started != swings, consumed)
             })
             .ok();
@@ -438,12 +438,12 @@ impl Game<'_> {
         let players = self.stab_players_for(conn);
         let sound = self
             .guest_hit_by(conn, |g| {
-                if g.cannot_attack_with_item(g.server.attack_ticks as i32, 5) {
+                if g.cannot_attack_with_item(g.side.attack_ticks as i32, 5) {
                     None
                 } else {
-                    let outer = std::mem::replace(&mut g.server.stab_players, players);
+                    let outer = std::mem::replace(&mut g.side.stab_players, players);
                     let sound = g.jab();
-                    g.server.stab_players = outer;
+                    g.side.stab_players = outer;
                     sound
                 }
             })
@@ -575,7 +575,7 @@ impl Game<'_> {
                 return Err(ActionRefused::Protected);
             }
         }
-        let heard = self.server.pending_sounds.len();
+        let heard = self.side.pending_sounds.len();
         let used = self
             .as_guest_at(gi, conn, |g| {
                 // A horn's sound, inline instruments included.
@@ -583,12 +583,12 @@ impl Game<'_> {
                     let held = g.held()?;
                     g.res.items().instrument(held).map(|i| i.sound)
                 });
-                let saved = g.server.guest_use;
-                g.server.guest_use = Some(GuestUse::Item(hand));
+                let saved = g.side.guest_use;
+                g.side.guest_use = Some(GuestUse::Item(hand));
                 let swings = g.swings_started;
                 let consumed = matches!(g.use_item(), Ok(Some(_)));
-                g.server.guest_use = saved;
-                reset_use_attack_strength(&mut g.server.attack_ticks, swings, g.swings_started);
+                g.side.guest_use = saved;
+                reset_use_attack_strength(&mut g.side.attack_ticks, swings, g.swings_started);
                 (g.swings_started != swings, horn, consumed)
             })
             .ok();
@@ -681,32 +681,32 @@ impl Game<'_> {
                 return Ok(true);
             }
             let logged = self.world.block_log.as_ref().map_or(0, Vec::len);
-            let heard = self.server.pending_sounds.len();
+            let heard = self.side.pending_sounds.len();
             let used = self.as_guest_at(gi, conn, |g| {
                 let attempt = g.was_block_placement_attempt(hand);
-                let saved = (g.server.forced_hit, g.server.guest_use);
-                g.server.forced_hit = Some(hit);
-                g.server.guest_use = Some(GuestUse::on_block(hand));
+                let saved = (g.side.forced_hit, g.side.guest_use);
+                g.side.forced_hit = Some(hit);
+                g.side.guest_use = Some(GuestUse::on_block(hand));
                 let swings = g.swings_started;
-                let predicted = g.server.predicted_swings;
+                let predicted = g.side.predicted_swings;
                 let result = g.with_block_use_original(hand, |g| {
                     let result = g.use_item();
-                    if matches!(result, Ok(Some(_))) && !g.server.use_failed {
+                    if matches!(result, Ok(Some(_))) && !g.side.use_failed {
                         g.finish_block_use(hit.pos, hand);
                     }
                     result
                 });
                 let fell_through = matches!(
-                    g.server.guest_use,
+                    g.side.guest_use,
                     Some(GuestUse::OnBlock {
                         block_fell_through: true,
                         ..
                     })
                 );
-                (g.server.forced_hit, g.server.guest_use) = saved;
-                reset_use_attack_strength(&mut g.server.attack_ticks, swings, g.swings_started);
+                (g.side.forced_hit, g.side.guest_use) = saved;
+                reset_use_attack_strength(&mut g.side.attack_ticks, swings, g.swings_started);
                 (
-                    g.swings_started != swings && g.server.predicted_swings == predicted,
+                    g.swings_started != swings && g.side.predicted_swings == predicted,
                     result.map(|used| used.is_some()),
                     attempt,
                     fell_through,
@@ -772,7 +772,7 @@ impl Game<'_> {
     }
     /// The fence of the knot whose entity id is `id` (`lan_assign_ids`).
     pub(in crate::game::server_side) fn knot_at_id(&self, id: i32) -> Option<[i32; 3]> {
-        self.server
+        self.side
             .knot_ids
             .iter()
             .find(|&(_, &knot)| knot as i32 == id)

@@ -15,7 +15,7 @@ pub(in crate::game::client_side) use mod_api::{HookId, Identifier, SoundSource};
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use std::borrow::Cow;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientLevel.playSeededSound`: ask this client's mods before playback.
     /// A packet reaches this independently of the server's level event.
     pub(in crate::game::client_side) fn play_client_level_sound(
@@ -48,7 +48,7 @@ impl Game<'_> {
             return;
         };
         match entity {
-            Some(entity) => self.audio.0.play_entity_seeded(
+            Some(entity) => self.side.audio.0.play_entity_seeded(
                 &heard.name,
                 heard.source.index(),
                 heard.volume,
@@ -56,7 +56,7 @@ impl Game<'_> {
                 seed,
                 entity,
             ),
-            None => self.audio.0.play_on_seeded(
+            None => self.side.audio.0.play_on_seeded(
                 heard.source.index(),
                 &heard.name,
                 Some(at),
@@ -73,10 +73,10 @@ impl Game<'_> {
             !self.is_logical_server(),
             "play_client_local_sound called on Server role"
         );
-        let seed = self.audio.0.next_sound_seed();
+        let seed = self.side.audio.0.next_sound_seed();
         let at = sound.at;
         if let Some(heard) = self.client_ask_level_sound(self.dim.id(), sound) {
-            self.audio.0.play_on_seeded(
+            self.side.audio.0.play_on_seeded(
                 heard.source.index(),
                 &heard.name,
                 Some(at),
@@ -120,7 +120,7 @@ impl Game<'_> {
             return None;
         }
         struct AskGuard<'g, 'a> {
-            game: &'g mut Game<'a>,
+            game: &'g mut Game<'a, crate::game::client_side::ClientState>,
         }
         impl Drop for AskGuard<'_, '_> {
             fn drop(&mut self) {

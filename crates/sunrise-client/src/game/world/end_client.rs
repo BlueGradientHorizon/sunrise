@@ -89,7 +89,7 @@ pub(in crate::game) fn end_flash_quad(
     (out, bodies)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The environment attributes the frame draws: the packs' Polytone layers over the
     /// current dimension's, when a pack has some. Gameplay keeps `dim_environment`. A client of a
     /// server draws the type its server sent, with the packs' layers over it where they have a
@@ -229,7 +229,7 @@ impl Game<'_> {
         if self.crystals.is_empty() {
             return None;
         }
-        let model = self.client.crystal_model.as_ref()?;
+        let model = self.side.crystal_model.as_ref()?;
         let r = self
             .gui
             .atlas
@@ -253,7 +253,7 @@ impl Game<'_> {
             && !self.settings.file.bool("hideLightningFlashes")
         {
             let intensity = self.end.flash.intensity(partial as f32);
-            sky.sky_light_factor += if self.client.boss_overlay.should_create_world_fog() {
+            sky.sky_light_factor += if self.side.boss_overlay.should_create_world_fog() {
                 intensity / 3.0
             } else {
                 intensity
@@ -270,21 +270,21 @@ impl Game<'_> {
         );
         let crumbs = self.item_particle(&ItemStack::new("minecraft:ender_eye", 1));
         for _ in 0..8 {
-            let r = self.particles.0.random();
+            let r = self.side.particles.0.random();
             let v = [
                 r.next_gaussian() * 0.15,
                 r.next_double() * 0.2,
                 r.next_gaussian() * 0.15,
             ];
-            self.particles.0.add(&crumbs, [x, y, z], v);
+            self.side.particles.0.add(&crumbs, [x, y, z], v);
         }
         let portal = ParticleOptions::simple(ParticleType::Portal);
         let mut angle = 0.0f64;
         while angle < std::f64::consts::PI * 2.0 {
             let (c, s) = (angle.cos(), angle.sin());
             let at = [x + c * 5.0, y - 0.4, z + s * 5.0];
-            self.particles.0.add(&portal, at, [c * -5.0, 0.0, s * -5.0]);
-            self.particles.0.add(&portal, at, [c * -7.0, 0.0, s * -7.0]);
+            self.side.particles.0.add(&portal, at, [c * -5.0, 0.0, s * -5.0]);
+            self.side.particles.0.add(&portal, at, [c * -7.0, 0.0, s * -7.0]);
             angle += std::f64::consts::PI / 20.0;
         }
     }
@@ -305,14 +305,14 @@ impl Game<'_> {
             if water {
                 let bubble = ParticleOptions::simple(ParticleType::Bubble);
                 for _ in 0..4 {
-                    self.particles.0.add(&bubble, origin, movement);
+                    self.side.particles.0.add(&bubble, origin, movement);
                 }
             } else {
-                let r = self.particles.0.random();
+                let r = self.side.particles.0.random();
                 let x = origin[0] + r.next_double() * 0.6 - 0.3;
                 let z = origin[2] + r.next_double() * 0.6 - 0.3;
                 let portal = ParticleOptions::simple(ParticleType::Portal);
-                self.particles
+                self.side.particles
                     .0
                     .add(&portal, [x, origin[1] - 0.5, z], movement);
             }
@@ -329,17 +329,17 @@ impl Game<'_> {
         // getDefaultClockTime: the End's own clock (the client keeps the
         // dimension's default clock in day_time), not the game time.
         self.end.flash.tick(self.world.day_time);
-        if self.end.flash.started_this_tick() && self.client.win.is_none() {
+        if self.end.flash.started_this_tick() && self.side.win.is_none() {
             let flash = &self.end.flash;
             let instance = sunrise_client::sound_engine::SoundInstance::directional(
                 "minecraft:weather.end_flash",
                 sunrise_client::sound_engine::WEATHER,
                 sunrise_client::random_source::create(),
-                self.audio.0.listener,
+                self.side.audio.0.listener,
                 flash.x_angle,
                 flash.y_angle,
             );
-            self.audio.0.play_instance_after(instance, 30);
+            self.side.audio.0.play_instance_after(instance, 30);
         }
     }
 }

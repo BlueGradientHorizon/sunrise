@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `MobSpawnEvent.SpawnPlacementCheck`: after `SpawnPlacements.checkSpawnRules`,
     /// `default_result` is the effective predicate result, including native registrations
     /// even for vanilla types. `spawner` is the block that asked, if any. `random` is the

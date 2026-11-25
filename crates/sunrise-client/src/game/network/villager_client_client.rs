@@ -25,7 +25,7 @@ pub(in crate::game::client_side) use sunrise_client::mobs::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_protocol::{entity_data::Value, registry::Builtin};
 
-impl super::Game<'_> {
+impl super::Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn client_professions(
         &self,
     ) -> super::Result<Arc<ResolvedProfessions>> {

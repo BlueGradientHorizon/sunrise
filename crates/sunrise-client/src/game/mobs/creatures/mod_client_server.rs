@@ -147,7 +147,7 @@ pub(in crate::game::server_side) use sunrise_core::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_gameplay::projectile_world::ProjWorld;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Armadillo.mobInteract`: a brush brushes a scute off an adult
     /// (`brushOffScute`) and loses 16 durability.
     pub(in crate::game) fn interact_armadillo(&mut self, index: usize, item: &str) -> bool {

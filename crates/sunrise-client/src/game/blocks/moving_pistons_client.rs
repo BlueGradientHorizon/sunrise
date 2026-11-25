@@ -11,7 +11,7 @@ pub(in crate::game::client_side) use sunrise_world::{
     piston_shape::MovingPistonState, registry::BlockStateId,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// One `MovingBlockRenderState`: the baked model at `at` (camera-relative),
     /// seeded by its block position `seed`, tinted per face with the block
     /// colours there and lit as `ModelBlockRenderer.tesselateFlat` lights a
@@ -177,7 +177,7 @@ impl Game<'_> {
         &self,
         section: (i32, i32, i32),
     ) -> bool {
-        self.pending_uploads
+        self.side.pending_uploads
             .0
             .iter()
             .any(|upload| upload.key == section)

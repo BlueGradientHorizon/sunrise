@@ -24,7 +24,7 @@ pub(in crate::game::server_side) use sunrise_world::{
     worldgen::terrain::TerrainBlockStates,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The server thread's half of the debug entries, in the level of
     /// `dim` while it is in place: the server chunk's heightmaps, the local
     /// difficulty, the last spawn state and the chunk source's counts.
@@ -47,7 +47,7 @@ impl Game<'_> {
             overlay::local_difficulty_line(self.local_difficulty(at).effective)
         });
         let spawn_counts = self
-            .server
+            .side
             .spawn_counts
             .get(&self.dim)
             .map(|(chunks, counts)| overlay::spawn_counts_line(*chunks, counts));

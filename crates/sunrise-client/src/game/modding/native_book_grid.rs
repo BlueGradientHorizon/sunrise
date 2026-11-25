@@ -37,7 +37,7 @@ fn reason(refusal: PlacementRefusal) -> &'static str {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Ask the part of the open menu's type to place `session`'s recipe, with the player swapped in.
     /// The placement comes back with the answer, changed by what the part placed.
     pub(in crate::game::server_side) fn ask_mod_book_place(

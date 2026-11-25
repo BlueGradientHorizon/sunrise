@@ -252,7 +252,7 @@ macro_rules! define_resident_access {
 }
 pub(crate) use define_resident_access;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     resident_owners!(
         define_resident_access,
         self,

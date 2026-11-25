@@ -7,7 +7,7 @@ pub(in crate::game::client_side) use crate::game::native_hooks::preset_title::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use winit::keyboard::PhysicalKey;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Give the bound editor its key before normal title-screen navigation.
     pub(in crate::game::client_side) fn preset_editor_key(&self, key: KeyCode) -> bool {
         let physical = PhysicalKey::Code(key);
@@ -17,7 +17,7 @@ impl Game<'_> {
                 session.key_pressed(
                     preset_editor_key_code(physical),
                     keybinds::raw_key_code(physical),
-                    crate::game::glfw_modifiers(self.client.modifiers),
+                    crate::game::glfw_modifiers(self.side.modifiers),
                 )
             })
     }
@@ -34,8 +34,8 @@ impl Game<'_> {
             return false;
         };
         session.mouse_clicked(
-            self.client.cursor.0,
-            self.client.cursor.1,
+            self.side.cursor.0,
+            self.side.cursor.1,
             button,
             double_click,
         )
@@ -49,7 +49,7 @@ impl Game<'_> {
         else {
             return false;
         };
-        let modifiers = crate::game::glfw_modifiers(self.client.modifiers);
+        let modifiers = crate::game::glfw_modifiers(self.side.modifiers);
         let mut handled = false;
         for ch in text.chars().filter(|c| !c.is_control()) {
             handled |= session.char_typed(ch, modifiers);
@@ -59,8 +59,8 @@ impl Game<'_> {
     pub(in crate::game) fn stage_title(&mut self, mut title: sunrise_client::title::Title) {
         title.set_additional_data_packs(self.pack.additional_data.clone());
         title.set_preset_data_source(self.pack.data_changes.clone());
-        self.screen_state.0.build.reopened();
-        self.title.0 = Some(title);
+        self.side.screen_state.0.build.reopened();
+        self.side.title.0 = Some(title);
     }
     pub(in crate::game) fn show_title_with_registry(
         &mut self,

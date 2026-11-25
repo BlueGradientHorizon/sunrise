@@ -7,7 +7,7 @@ use super::{
 };
 use sunrise_client::entity_solids::{Candidate, Mover as Rule, Side, SolidKind, Solids};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Fills `out` with the entities that can be solid to a player as `Entity.canBeCollidedWith`
     /// allows (a boat, a living shulker, a happy ghast), as candidates the hub asks its rule of
     /// for each reported move. Built once per tick into the hub's own buffer, and left empty when

@@ -787,7 +787,7 @@ impl RiderIndex {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A general entity row in the active level. Removal hides it before the sweep.
     pub(in crate::game) fn general_row(&self, id: u32) -> Option<&GeneralRow> {
         if !self.persist.removals.is_empty() && self.persist.removals.contains(&Target::General(id))
@@ -969,7 +969,7 @@ impl Game<'_> {
         }
         let chunk = chunk_of(at);
         let quarantined_here = self
-            .others
+            .side.others
             .0
             .iter()
             .filter(|other| quarantined_kind(&other.kind) && chunk_of(other.position) == chunk)
@@ -1054,7 +1054,7 @@ impl Game<'_> {
         // the tree's UUIDs may already live there.
         let uuids: HashSet<[i32; 4]> = tree.iter().map(|&index| rows[index].uuid).collect();
         if self
-            .levels
+            .side.levels
             .0
             .parked_general_holds_any_uuid(destination, &uuids)
         {
@@ -1262,8 +1262,8 @@ impl Game<'_> {
         mount: Option<u32>,
         transferred: Option<TransferredEntityState>,
     ) -> u32 {
-        self.server.next_entity += 1;
-        let id = self.server.next_entity;
+        self.side.next_entity += 1;
+        let id = self.side.next_entity;
         // Install before `remember_uuid` (the same ordering a transferred
         // mob's state takes): the destination is the same logical entity.
         if let Some(state) = transferred {
@@ -1312,8 +1312,8 @@ pub(in crate::game::server_side) fn quarantined_kind(kind: &str) -> bool {
 
 /// Whether any UUID of the record tree names a live entity of the level
 /// (`uuid_admission_refused` over the whole tree, in preorder).
-fn general_tree_uuid_admission_refused(game: &Game<'_>, record: &GeneralEntityRecord) -> bool {
-    fn refused(game: &Game<'_>, record: &GeneralEntityRecord) -> bool {
+fn general_tree_uuid_admission_refused(game: &Game<'_, crate::game::server_side::ServerState>, record: &GeneralEntityRecord) -> bool {
+    fn refused(game: &Game<'_, crate::game::server_side::ServerState>, record: &GeneralEntityRecord) -> bool {
         game.uuid_admission_refused(Some(record.uuid))
             || record.passengers.iter().any(|rider| refused(game, rider))
     }
@@ -1376,7 +1376,7 @@ impl Entity for GeneralRow {
         Cow::Borrowed(general_type_catalog().key(self.type_slot))
     }
     fn save_nbt(
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
         index: usize,
         keys: &HashSet<ChunkKey>,
     ) -> Option<(ChunkKey, Tag)> {
@@ -1397,7 +1397,7 @@ impl Entity for GeneralRow {
         Some((key, game.general_tree_nbt(row.id, false)?))
     }
     fn load_nbt(
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
         kind: &str,
         _uuid: Option<[i32; 4]>,
         _player_uuid: Option<[i32; 4]>,

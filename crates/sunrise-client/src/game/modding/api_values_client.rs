@@ -193,7 +193,7 @@ impl<T: TryIntoApi, E: Clone> TryIntoApi for Result<T, E> {
     }
 }
 
-impl super::Game<'_> {
+impl super::Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn api_block_entity_submit(
         &self,
         pos: [i32; 3],

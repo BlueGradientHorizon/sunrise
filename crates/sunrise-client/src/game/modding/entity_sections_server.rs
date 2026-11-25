@@ -40,7 +40,7 @@ pub(in crate::game::server_side) use std::collections::hash_map::Entry;
 #[path = "entity_sections/observer_cache_server.rs"]
 pub(in crate::game) mod observer_cache;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The projectiles tick ([`Game::tick_projectiles_now`]), and each one's move is filed.
     pub(in crate::game) fn tick_projectiles(&mut self) -> super::Result<()> {
         self.tick_projectiles_now()

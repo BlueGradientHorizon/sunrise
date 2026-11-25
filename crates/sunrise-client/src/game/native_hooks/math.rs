@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The profile jmath's operations dispatch on (`jmath::PLATFORM`), in the
     /// API's own type.
     pub(in crate::game) fn math_profile(&self) -> mod_api::MathProfile {

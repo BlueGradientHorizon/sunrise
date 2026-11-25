@@ -28,7 +28,7 @@ pub(in crate::game::server_side) use sunrise_world::level::flags as level_flags;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use winit::keyboard::KeyCode;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerGamePacketListenerImpl.handleEditBook`: a guest's book in a
     /// hotbar slot or its off hand (`updateBookContents`, `signBook`).
     pub(in crate::game::server_side) fn lan_edit_book(&mut self, conn: u32, p: play::EditBook) {
@@ -47,7 +47,7 @@ impl Game<'_> {
                 .is_some_and(|stack| &*stack.item == "minecraft:writable_book");
             if writable
                 && let (Some(player), Some(name)) =
-                    (g.server.lan_acting_uuid, g.server.lan_acting_name.clone())
+                    (g.side.lan_acting_uuid, g.side.lan_acting_name.clone())
             {
                 g.native_player_edit_book(
                     player,
@@ -89,8 +89,8 @@ impl Game<'_> {
             self.set_lectern_has_book(key, false, None);
             self.container_changed(key);
             if let (Some(player), Some(name)) = (
-                self.server.lan_acting_uuid,
-                self.server.lan_acting_name.clone(),
+                self.side.lan_acting_uuid,
+                self.side.lan_acting_name.clone(),
             ) {
                 self.native_player_take_lectern_book(
                     player,
@@ -101,12 +101,12 @@ impl Game<'_> {
             }
         } else if menu.data[0] != before {
             self.set_lectern_powered(key, true);
-            self.server.lectern_pulses.push((key, 2));
+            self.side.lectern_pulses.push((key, 2));
             self.server_level_event_at(1043, [key.0, key.1, key.2], 0);
             self.container_changed(key);
             if let (Some(player), Some(name)) = (
-                self.server.lan_acting_uuid,
-                self.server.lan_acting_name.clone(),
+                self.side.lan_acting_uuid,
+                self.side.lan_acting_name.clone(),
             ) {
                 self.native_player_lectern_page_change(
                     player,
@@ -120,13 +120,13 @@ impl Game<'_> {
     /// The 2-tick pulses of turned lecterns.
     pub(in crate::game) fn tick_lecterns(&mut self) {
         let mut done = Vec::new();
-        for (key, left) in &mut self.server.lectern_pulses {
+        for (key, left) in &mut self.side.lectern_pulses {
             *left -= 1;
             if *left <= 0 {
                 done.push(*key);
             }
         }
-        self.server.lectern_pulses.retain(|(_, left)| *left > 0);
+        self.side.lectern_pulses.retain(|(_, left)| *left > 0);
         for key in done {
             self.set_lectern_powered(key, false);
         }
@@ -151,9 +151,9 @@ impl Game<'_> {
         } else {
             stack
         };
-        if self.server.lan_acting.is_some() && written {
+        if self.side.lan_acting.is_some() && written {
             let hand = i32::from(self.hand == Hand::Off);
-            self.server
+            self.side
                 .guest_packets
                 .push(C::OpenBook(play::OpenBook { hand }));
         }
@@ -213,8 +213,8 @@ impl Game<'_> {
         self.server_play_sound("minecraft:item.book.put", at, 1.0, 1.0);
         self.container_changed(key);
         if let (Some(player), Some(name)) = (
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_name.clone(),
+            self.side.lan_acting_uuid,
+            self.side.lan_acting_name.clone(),
         ) {
             self.native_player_insert_lectern_book(player, &name, pos, &book.item);
         }
@@ -229,7 +229,7 @@ impl Game<'_> {
         title: Option<String>,
     ) {
         let author = self
-            .server
+            .side
             .lan_acting_name
             .clone()
             .unwrap_or_else(|| super::chat::PLAYER_NAME.to_owned());

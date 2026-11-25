@@ -7,7 +7,7 @@ use sunrise_client::{
 };
 use sunrise_core::geometry::Vec3;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn mount_index(&self) -> Option<usize> {
         let id = self.riding?;
         self.mobs.iter().position(|m| m.id == id)

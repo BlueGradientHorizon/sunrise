@@ -69,7 +69,7 @@ fn gear_knockback(items: &Items, worn: &[Option<&ItemStack>; 6]) -> Vec<(f64, Op
     modifiers
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Each mob's gear knockback modifiers, which `Mob::knockback_resistance` adds to the
     /// mob's attribute at each push. A worn or held stack is read again only when it changed
     /// (`ItemStack.matches`, as `collectEquipmentChanges` asks), so a tick

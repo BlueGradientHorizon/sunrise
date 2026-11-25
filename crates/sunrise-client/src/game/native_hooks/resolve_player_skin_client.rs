@@ -5,7 +5,7 @@ pub(in crate::game::client_side) use crate::game::native_hooks::resolve_player_s
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use mod_api::{HookId, PlayerModel, PlayerSkinOverride};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Install the resolved appearance on the render-only avatar and return the original pair.
     pub(in crate::game::client_side) fn apply_player_skin_override(
         &mut self,
@@ -14,7 +14,7 @@ impl Game<'_> {
         if !mod_api::__private::listened(HookId::ResolvePlayerSkin)
             || panorama
             || self.player.is_none()
-            || self.client.player_model.is_none()
+            || self.side.player_model.is_none()
         {
             return None;
         }
@@ -24,11 +24,11 @@ impl Game<'_> {
         // The same packed atlas is sampled by the body, the hand, and the preview.
         // The pool is absent if the current atlas has no slots for live images.
         if self.gui.atlas.dynamic_texture_pool.is_none()
-            || self.client.dynamic_textures.size(&texture) != Some([64, 64])
+            || self.side.dynamic_textures.size(&texture) != Some([64, 64])
         {
             return None;
         }
-        let avatar = self.client.player_model.as_mut()?;
+        let avatar = self.side.player_model.as_mut()?;
         Some((
             avatar.skin.replace(texture.to_string()),
             std::mem::replace(&mut avatar.slim, model == PlayerModel::Slim),

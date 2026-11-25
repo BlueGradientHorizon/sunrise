@@ -2,7 +2,7 @@
 use super::*;
 use serde_json::{Value, json};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     #[inline(always)]
     pub(in crate::game) fn server_game_side_meta(
         &self,
@@ -13,13 +13,13 @@ impl Game<'_> {
             Some(mod_api::LevelRef::with_generation(
                 epoch,
                 key,
-                self.levels.0.runtime.generation_of(id),
+                self.side.levels.0.runtime.generation_of(id),
             ))
         });
         (
-            self.server.lan_acting_uuid,
+            self.side.lan_acting_uuid,
             level,
-            self.session_lock.0.is_some(),
+            self.side.session_lock.0.is_some(),
         )
     }
 
@@ -198,7 +198,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn server_recipes(&self) -> &Recipes {
-        self.world_tables
+        self.side.world_tables
             .0
             .as_ref()
             .map_or_else(|| self.res.recipes(), |t| &t.recipes)

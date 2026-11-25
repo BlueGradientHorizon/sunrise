@@ -13,10 +13,10 @@ pub(in crate::game::server_side) use sunrise_client::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_core::{position::BlockPos, random::RandomSource};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Entity.playEntityOnFireExtinguishedSound
     pub(in crate::game) fn extinguish_sound(&mut self, at: [f64; 3]) {
-        let pitch = extinguish_pitch(&mut self.server.effect_rng);
+        let pitch = extinguish_pitch(&mut self.side.effect_rng);
         self.server_play_sound("minecraft:entity.generic.extinguish_fire", at, 0.7, pitch);
     }
     /// `PowderSnowBlock.entityInside` (runBefore EXTINGUISH) for a burning player.

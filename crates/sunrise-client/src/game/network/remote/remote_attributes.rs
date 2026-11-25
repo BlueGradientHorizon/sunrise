@@ -5,7 +5,7 @@ use sunrise_client::entities::nameplate::NameplateDistances;
 use sunrise_protocol::packets::play;
 use sunrise_world::attributes::entity::AttributeId;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Returns a tracked remote entity's synced attribute or its vanilla type default.
     pub(in crate::game) fn remote_attribute(&self, id: i32, attribute: AttributeId) -> Option<f64> {
         let remote = self.remote.as_ref()?;

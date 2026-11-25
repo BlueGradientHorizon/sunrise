@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `IItemExtension.applyEnchantments`: the enchanting table applies `enchantments` (the
     /// list it chose, as (id, level)) to `stack`, its input. `result` arrives with vanilla's
     /// result; the parts of the input's item may replace it. Server-side.

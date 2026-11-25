@@ -46,7 +46,7 @@ pub(in crate::game::server_side) fn consumed_snapshot(
 /// `EntityEvent.USE_ITEM_COMPLETE`: the server finished the player's use.
 pub(in crate::game) const USE_ITEM_COMPLETE_EVENT: i8 = 9;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The consuming player, including the local player outside a guest action.
     /// Before a world is published the handle is stale, but the effect still runs.
     pub(in crate::game::server_side) fn consuming_player_entity(&self) -> mod_api::EntityRef {
@@ -54,7 +54,7 @@ impl Game<'_> {
             self.native_lifecycle
                 .epoch()
                 .unwrap_or(mod_api::WorldEpoch::new(0)),
-            if self.server.lan_acting.is_some() {
+            if self.side.lan_acting.is_some() {
                 self.native_acting_entity()
             } else {
                 self.own_entity_id() as u32
@@ -65,8 +65,8 @@ impl Game<'_> {
     /// `ServerPlayer.completeUsingItem`: the player's own client is told
     /// first, and completes the use itself (eating the food there too).
     pub(in crate::game::server_side) fn send_use_item_complete(&mut self) {
-        if self.server.lan_acting.is_some() {
-            self.server
+        if self.side.lan_acting.is_some() {
+            self.side
                 .guest_entity_events
                 .push(USE_ITEM_COMPLETE_EVENT);
         }
@@ -398,7 +398,7 @@ impl Game<'_> {
         self.previous_position = at;
         // `broadcastEntityEvent(46)` after the teleport. A server-thread window
         // is a remote client, so the packet is what draws the particles there.
-        if let Some(id) = self.server.lan_acting_entity {
+        if let Some(id) = self.side.lan_acting_entity {
             self.lan_entity_event(id as i32, 46, [at.x, at.y, at.z]);
         }
         true
@@ -541,7 +541,7 @@ impl Game<'_> {
 
 /// `Consumable.emitParticlesAndSounds` on the server.
 pub(in crate::game::server_side) struct Emitter<'a, 'g>(
-    pub(in crate::game::server_side) &'a mut Game<'g>,
+    pub(in crate::game::server_side) &'a mut Game<'g, crate::game::server_side::ServerState>,
 );
 impl EmissionWorld for Emitter<'_, '_> {
     type Error = Infallible;
@@ -566,7 +566,7 @@ impl EmissionWorld for Emitter<'_, '_> {
                     speed: [0.0; 3],
                     count,
                     randomization: 0,
-                    except: self.0.server.lan_acting,
+                    except: self.0.side.lan_acting,
                 });
         }
         Ok(())
@@ -584,9 +584,9 @@ impl EmissionWorld for Emitter<'_, '_> {
         let Some(at) = self.0.feet() else {
             return Ok(());
         };
-        if self.0.server.lan_acting.is_some() {
+        if self.0.side.lan_acting.is_some() {
             self.0
-                .server
+                .side
                 .guest_player_sounds
                 .push((sound, at, volume, pitch));
         } else {
@@ -598,7 +598,7 @@ impl EmissionWorld for Emitter<'_, '_> {
 
 /// The local player as `TeleportRandomlyConsumeEffect`'s user.
 pub(in crate::game) struct Teleporter<'a, 'g>(
-    pub(in crate::game) &'a mut Game<'g>,
+    pub(in crate::game) &'a mut Game<'g, crate::game::server_side::ServerState>,
     pub(in crate::game) Option<&'a mod_api::ItemStack>,
 );
 impl Teleporter<'_, '_> {
@@ -621,10 +621,10 @@ impl TeleportConsumeWorld for Teleporter<'_, '_> {
         &mut self.0.world.random
     }
     fn min_y(&mut self, level: Dim) -> Result<i32, Infallible> {
-        Ok(self.0.server.level_shapes.get(level.id()).min_y)
+        Ok(self.0.side.level_shapes.get(level.id()).min_y)
     }
     fn logical_height(&mut self, level: Dim) -> Result<i32, Infallible> {
-        Ok(self.0.server.level_shapes.get(level.id()).logical_height)
+        Ok(self.0.side.level_shapes.get(level.id()).logical_height)
     }
     fn is_passenger(&mut self) -> Result<bool, Infallible> {
         Ok(self.0.riding.is_some())
@@ -670,7 +670,7 @@ impl TeleportConsumeWorld for Teleporter<'_, '_> {
         // huge y would walk down a long way); one that is not a number keeps
         // the draw.
         if to.iter().all(|v| v.is_finite()) {
-            let shape = self.0.server.level_shapes.get(self.0.dim.id());
+            let shape = self.0.side.level_shapes.get(self.0.dim.id());
             let high = shape.min_y + shape.logical_height - 1;
             let y = to[1].clamp(f64::from(shape.min_y), f64::from(high));
             *target = Vec3::new(to[0], y, to[2]);
@@ -748,7 +748,7 @@ impl MobConsumption<'_> {
 
 /// A paused mob as the same `TeleportRandomlyConsumeEffect` user as a player.
 pub(in crate::game) struct MobTeleporter<'a, 'g> {
-    pub(in crate::game) game: &'a mut Game<'g>,
+    pub(in crate::game) game: &'a mut Game<'g, crate::game::server_side::ServerState>,
     pub(in crate::game) consumer: mod_api::LivingRef,
     pub(in crate::game) id: u32,
     pub(in crate::game) usage: MobConsumption<'a>,

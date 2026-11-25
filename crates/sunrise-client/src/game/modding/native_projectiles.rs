@@ -86,7 +86,7 @@ pub(in crate::game) fn projectile_impact_event(event: &ArrowEvent) -> bool {
 
 /// An owned flight pass restored only if its dispatch unwinds.
 struct ProjectileDispatch<'game, 'resources> {
-    game: &'game mut Game<'resources>,
+    game: &'game mut Game<'resources, crate::game::server_side::ServerState>,
     pass: Option<JoinList<Projectile, false>>,
 }
 impl Drop for ProjectileDispatch<'_, '_> {
@@ -100,7 +100,7 @@ impl Drop for ProjectileDispatch<'_, '_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Snapshot the hit precondition so listener writes can invalidate its
     /// application without rerunning the collision decision.
     pub(in crate::game) fn native_impact_target(&self, hit: Hit) -> Option<ImpactTarget> {

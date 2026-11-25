@@ -310,7 +310,7 @@ pub(in crate::game) fn owner_permission(allow_commands: bool) -> u8 {
     if allow_commands { 4 } else { 0 }
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `PlayerList.isOp` for the single-player owner: the world's Allow Commands.
     pub(in crate::game) fn allow_commands(&self) -> bool {
         self.level.allow_commands == Some(true)

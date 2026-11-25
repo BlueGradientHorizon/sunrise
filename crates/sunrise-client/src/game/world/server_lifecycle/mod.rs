@@ -6,7 +6,7 @@ use sunrise_client::Result;
 
 pub(in crate::game) use sunrise_gameplay::crash_save::CrashSave;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `MinecraftServer.runServer`'s finally: once startup begins, every exit
     /// stops and saves the server, including a failed init or tick.
     pub(in crate::game::server_side) fn run_server_lifecycle(
@@ -110,16 +110,16 @@ impl Game<'_> {
         crashed: bool,
         warn: impl Fn(&str),
     ) {
-        let mut conns = self.server.interrupted_turns.clone();
-        conns.extend(self.server.lan_guest_swaps.iter().copied());
-        conns.extend(self.server.lan_acting);
+        let mut conns = self.side.interrupted_turns.clone();
+        conns.extend(self.side.lan_guest_swaps.iter().copied());
+        conns.extend(self.side.lan_acting);
         conns.sort_unstable();
         conns.dedup();
-        self.server
+        self.side
             .crash_save
-            .note_acting(self.server.lan_acting.is_some());
+            .note_acting(self.side.lan_acting.is_some());
         let Some(host) = self.lan.as_mut() else {
-            if (crashed || !conns.is_empty()) && self.server.crash_save.lose_hub() {
+            if (crashed || !conns.is_empty()) && self.side.crash_save.lose_hub() {
                 warn(
                     "The panic interrupted the network tick: players are not saved, only the world",
                 );
@@ -137,10 +137,10 @@ impl Game<'_> {
                 continue;
             };
             if is_owner {
-                self.server.crash_save.keep_owner_file = true;
+                self.side.crash_save.keep_owner_file = true;
             }
             if let Some(name) = name
-                && self.server.crash_save.exclude(conn)
+                && self.side.crash_save.exclude(conn)
             {
                 warn(&format!(
                     "The panic interrupted a player's turn ({name}): that player keeps the last saved file"
@@ -158,7 +158,7 @@ impl Game<'_> {
         crashed: bool,
         run_error: Option<&str>,
     ) -> Result<()> {
-        let before = self.save.0.record_save_failures();
+        let before = self.side.save.0.record_save_failures();
         // IntegratedServer.teardownPublishedState must happen even if an
         // earlier callback panicked; otherwise lan_close only unpublishes a
         // still-serving server instead of disconnecting and dropping its hub.
@@ -177,7 +177,7 @@ impl Game<'_> {
         // callback), before the save writes the players the exclusion does not name.
         self.exclude_interrupted_players(crashed, |m| log::warn!("{m}"));
         let saved = match catch_unwind(AssertUnwindSafe(|| {
-            if self.server.world_adopted && self.session_lock.0.is_some() {
+            if self.side.world_adopted && self.side.session_lock.0.is_some() {
                 self.save_game()
             } else {
                 Ok(())
@@ -203,7 +203,7 @@ impl Game<'_> {
         {
             result = Err(shutdown_panic(payload.as_ref()).into());
         }
-        match catch_unwind(AssertUnwindSafe(|| self.save.0.flush())) {
+        match catch_unwind(AssertUnwindSafe(|| self.side.save.0.flush())) {
             Ok(saved) => result = result.and(saved),
             Err(payload) => {
                 let message = shutdown_panic(payload.as_ref());
@@ -212,7 +212,7 @@ impl Game<'_> {
                 }
             }
         }
-        let failed = self.save.0.record_save_failures() - before;
+        let failed = self.side.save.0.record_save_failures() - before;
         if crashed && failed != 0 {
             log::warn!(
                 "Partial save during crash shutdown: {failed} chunk records could not be saved"
@@ -236,9 +236,9 @@ impl Game<'_> {
         {
             result = Err(shutdown_panic(payload.as_ref()).into());
         }
-        self.session_lock.0 = None;
-        self.server.interrupted_turns.clear();
-        self.server.crash_save = Default::default();
+        self.side.session_lock.0 = None;
+        self.side.interrupted_turns.clear();
+        self.side.crash_save = Default::default();
         // The integrated client retains these resources after joining this
         // thread. Retire the world's maps here, also on failed opens that
         // published tables before adopting a world.
@@ -247,11 +247,11 @@ impl Game<'_> {
         }
         super::cauldron_interactions::clear();
         self.clear_world_parts();
-        self.server_loot.0.set(None);
+        self.side.server_loot.0.set(None);
         self.server_items = None;
-        self.world_tables.0 = None;
-        self.server.world_adopted = false;
-        self.server.startup_ticket_restore_pending = false;
+        self.side.world_tables.0 = None;
+        self.side.world_adopted = false;
+        self.side.startup_ticket_restore_pending = false;
         result
     }
 }

@@ -3,7 +3,7 @@ use super::Game;
 use crate::game::client_side::entity_sounds::saved_silent;
 use sunrise_client::sound_engine::SoundEntityState;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_play_player_bound_sound(
         &mut self,
         event: &str,

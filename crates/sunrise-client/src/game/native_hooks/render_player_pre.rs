@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Before a player is drawn (NeoForge's `RenderPlayerEvent.Pre`): once a frame for each other
     /// player in view and this window's player in third person, before its `render_living_pre`.
     /// `canceled` skips all of the player's drawing this frame and the other three hooks of the

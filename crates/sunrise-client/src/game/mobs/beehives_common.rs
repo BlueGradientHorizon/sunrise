@@ -2,7 +2,7 @@
 use super::Game;
 use sunrise_client::beehive;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The hive's honey level and front, from its block state.
     pub(in crate::game) fn hive_state(&self, at: [i32; 3]) -> Option<(Option<i32>, [i32; 2])> {
         let state = self.world.block(at[0], at[1], at[2]);

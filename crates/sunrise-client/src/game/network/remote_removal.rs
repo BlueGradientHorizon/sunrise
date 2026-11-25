@@ -2,7 +2,7 @@
 //! which may not grow.
 use super::Game;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn remove_entity(&mut self, id: i32) {
         self.remove_entities(&[id]);
     }
@@ -34,12 +34,12 @@ impl Game<'_> {
             }
         }
         for id in self
-            .text_displays
+            .side.text_displays
             .0
             .values()
             .filter_map(|d| d.vehicle)
             .chain(self.armor_stands.iter().filter_map(|a| a.vehicle))
-            .chain(self.client.interactions.values().filter_map(|i| i.vehicle))
+            .chain(self.side.interactions.values().filter_map(|i| i.vehicle))
             .chain(
                 self.boats
                     .iter()
@@ -56,7 +56,7 @@ impl Game<'_> {
         // precede its vehicle, whose other seat state still needs clearing.
         for &id in ids {
             self.detach_remote_tracking_entity(id);
-            self.audio.0.remove_sound_entity(id as u32);
+            self.side.audio.0.remove_sound_entity(id as u32);
             // Entity.setRemoved detaches every passenger, even when no empty
             // SetPassengers packet preceded the vehicle's removal. Otherwise
             // mobs and other players keep their passenger pose after it is gone.

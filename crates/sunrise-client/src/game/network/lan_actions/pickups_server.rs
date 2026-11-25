@@ -3,7 +3,7 @@ pub(in crate::game::server_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::lan_actions::pickups::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Player.aiStep` touching arrows in the guest's box grown by (1, 0.5, 1):
     /// `AbstractArrow.playerTouch` for a guest, as `touch_arrows` does for the
     /// host's player. The guest's own client plays the pickup sound
@@ -218,7 +218,7 @@ impl Game<'_> {
         }
         // The test below takes items whose position is less than 1.5 from
         // the player's on x and z: their boxes reach these columns.
-        if let Some(columns) = self.server.pickup_columns.as_mut()
+        if let Some(columns) = self.side.pickup_columns.as_mut()
             && !columns.may_reach_area(
                 &self.dropped,
                 (

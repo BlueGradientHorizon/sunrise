@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether `fluid`'s side beside `state` uses the overlay sprite (`overlay` starts with
     /// vanilla's `HalfTransparentBlock`/`LeavesBlock` test); asked for every state and fluid
     /// where `refresh_render_visibility` resolves its tables. Client-side.

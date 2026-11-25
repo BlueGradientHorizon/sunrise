@@ -32,7 +32,7 @@ pub(in crate::game::server_side) use sunrise_client::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_core::nbt::{Compound, JavaString, Tag, parse_snbt};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Entity.load` of new data (`EntityDataAccessor.setData`): the entity is
     /// rebuilt from its compound, keeping its id and UUID. Also what
     /// `TypedEntityData.loadInto` is: a spawn egg's data on the mob it spawned.
@@ -187,19 +187,19 @@ impl Game<'_> {
             }
             Target::Other(id) => {
                 let i = self
-                    .others
+                    .side.others
                     .0
                     .iter()
                     .position(|o| o.id == id)
                     .ok_or_else(stale)?;
-                let slot = &self.others.0[i];
+                let slot = &self.side.others.0[i];
                 let mut new = Self::other_from_nbt(&mut tag, id, &slot.kind).ok_or_else(stale)?;
                 new.join = slot.join;
                 let is_display = matches!(
                     slot.kind.as_str(),
                     "minecraft:block_display" | "minecraft:item_display" | "minecraft:text_display"
                 );
-                self.others.0.update(i, |slot| *slot = new);
+                self.side.others.0.update(i, |slot| *slot = new);
                 // `EntityDataAccessor.setData` keeps the entity's UUID.
                 set_key(&mut tag, "UUID", Tag::IntArray(self.uuid_for(id).to_vec()));
                 if is_display {
@@ -672,7 +672,7 @@ impl Game<'_> {
             }
             Target::Other(id) => {
                 let uuid = self.uuid_for(id);
-                let o = self.others.0.iter().find(|o| o.id == id)?.clone();
+                let o = self.side.others.0.iter().find(|o| o.id == id)?.clone();
                 self.other_tag(&o, uuid, include_id)
             }
             Target::Orb(id) => {
@@ -986,8 +986,8 @@ impl Game<'_> {
         let cooldown_changed = if name == "minecraft:hopper" {
             let state = super::super::machines::HopperState::load(&tag);
             let changed =
-                self.server.hoppers.get(&key).map_or(-1, |s| s.cooldown) != state.cooldown;
-            self.server.hoppers.insert(key, state);
+                self.side.hoppers.get(&key).map_or(-1, |s| s.cooldown) != state.cooldown;
+            self.side.hoppers.insert(key, state);
             changed
         } else {
             false
@@ -1015,7 +1015,7 @@ impl Game<'_> {
     /// The acting player's own UUID: a guest's turn (the window's player on
     /// the server thread) keeps the world owner's in `level`.
     pub(in crate::game::server_side) fn saved_player_uuid(&self) -> Option<[i32; 4]> {
-        self.server
+        self.side
             .lan_acting_uuid
             .map(sunrise_client::lan::playerdata::uuid_ints)
             .or(self.level.player_uuid)
@@ -1041,7 +1041,7 @@ impl Game<'_> {
                 if let Some((_, mut new)) = self.decode_block_entity_at(key, &tag) {
                     let was_auto = self.command_block_auto(key);
                     if self.data_block_name(*p) == "minecraft:hopper" {
-                        self.server
+                        self.side
                             .hoppers
                             .insert(key, super::super::machines::HopperState::load(&tag));
                     }
@@ -1089,14 +1089,14 @@ impl Game<'_> {
         // (PersistentEntitySectionManager.processPendingLoads), and must not
         // take the ids counted as this stack's.
         let mut waiting = std::mem::take(&mut self.world.loaded_entities);
-        let before = self.server.next_entity;
+        let before = self.side.next_entity;
         let mut tag = tag;
         crate::game::persist::mark_fresh(&mut tag);
         self.world.queue_entity_nbt(key, vec![tag]);
         self.spawn_loaded_entities();
         waiting.append(&mut self.world.loaded_entities);
         self.world.loaded_entities = waiting;
-        if self.server.next_entity == before {
+        if self.side.next_entity == before {
             return None;
         }
         // The root of the stack is the first entity spawned.
@@ -1123,7 +1123,7 @@ impl Game<'_> {
             Some(Target::Boat(id))
         } else if self.carts.iter().any(|c| c.id == id) {
             Some(Target::Cart(id))
-        } else if self.others.0.iter().any(|o| o.id == id) {
+        } else if self.side.others.0.iter().any(|o| o.id == id) {
             Some(Target::Other(id))
         } else if self.tnts.iter().any(|t| t.id == id) {
             Some(Target::Tnt(id))

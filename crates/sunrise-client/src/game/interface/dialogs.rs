@@ -121,7 +121,7 @@ fn cycle(open: &mut Open, input: usize, delta: i32) {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `DialogScreen.WarningScreen` uses the local-server disconnect label.
     fn warning_texts(&self) -> (Text, Text, [Text; 2]) {
         let t = |key: &str| Text::translate(key, &[]);
@@ -139,13 +139,13 @@ impl Game<'_> {
 
     /// Whether a dialog screen takes the input.
     pub(in crate::game) fn dialog_open(&self) -> bool {
-        let d = &self.dialogs.0;
+        let d = &self.side.dialogs.0;
         d.open.is_some() || d.waiting.is_some() || d.warning
     }
     /// What tells one dialog screen from another for a controller's focus: a new dialog is a
     /// new screen, and so are the warning and waiting screens.
     pub(in crate::game::client_side) fn dialog_screen_key(&self) -> (bool, bool, Option<u64>) {
-        let d = &self.dialogs.0;
+        let d = &self.side.dialogs.0;
         (
             d.warning,
             d.waiting.is_some(),
@@ -154,7 +154,7 @@ impl Game<'_> {
     }
     /// The warning icon in the dialog's corner, while the dialog itself shows.
     pub(in crate::game::client_side) fn dialog_warning_icon(&self) -> Option<[f32; 4]> {
-        let d = &self.dialogs.0;
+        let d = &self.side.dialogs.0;
         if d.warning || d.waiting.is_some() {
             return None;
         }
@@ -162,10 +162,10 @@ impl Game<'_> {
     }
     /// The focused dialog input, including the initial keyboard focus before any click.
     pub(in crate::game::client_side) fn dialog_navigation_focus(&self) -> Option<[f32; 4]> {
-        if self.dialogs.0.warning || self.dialogs.0.waiting.is_some() {
+        if self.side.dialogs.0.warning || self.side.dialogs.0.waiting.is_some() {
             return None;
         }
-        let open = self.dialogs.0.open.as_ref()?;
+        let open = self.side.dialogs.0.open.as_ref()?;
         let focus = open.focus?;
         self.dialog_layout()?
             .placed(open.scroll.amount)
@@ -181,7 +181,7 @@ impl Game<'_> {
     /// is added last, but has its own earlier tab group.
     pub(in crate::game::client_side) fn dialog_navigation_order(&self) -> Option<Vec<[f32; 4]>> {
         let warning = self.dialog_warning_icon()?;
-        let open = self.dialogs.0.open.as_ref()?;
+        let open = self.side.dialogs.0.open.as_ref()?;
         let layout = self.dialog_layout()?;
         let order = layout
             .placed(open.scroll.amount)
@@ -199,7 +199,7 @@ impl Game<'_> {
     /// Apply a focus path without clicking the dialog's editor or changing its caret.
     pub(in crate::game::client_side) fn set_dialog_navigation_focus(&mut self, target: Target) {
         let focus = if matches!(target.kind, WidgetKind::Field | WidgetKind::Slider { .. }) {
-            self.dialogs.0.open.as_ref().and_then(|open| {
+            self.side.dialogs.0.open.as_ref().and_then(|open| {
                 self.dialog_layout()?
                     .placed(open.scroll.amount)
                     .find_map(|(part, _)| match part {
@@ -214,9 +214,9 @@ impl Game<'_> {
         } else {
             None
         };
-        if !self.dialogs.0.warning
-            && self.dialogs.0.waiting.is_none()
-            && let Some(open) = self.dialogs.0.open.as_mut()
+        if !self.side.dialogs.0.warning
+            && self.side.dialogs.0.waiting.is_none()
+            && let Some(open) = self.side.dialogs.0.open.as_mut()
         {
             open.focus = focus;
         }
@@ -224,11 +224,11 @@ impl Game<'_> {
 
     /// The dialog itself shows, with a text input to start on.
     pub(in crate::game::client_side) fn dialog_starts_typing(&self) -> bool {
-        !self.dialogs.0.warning && self.dialogs.0.waiting.is_none() && self.dialog_has_text_field()
+        !self.side.dialogs.0.warning && self.side.dialogs.0.waiting.is_none() && self.dialog_has_text_field()
     }
     /// The dialog's focus is a text input of many lines, where Enter is a new line.
     pub(in crate::game::client_side) fn dialog_typing_lines(&self) -> bool {
-        self.dialogs.0.open.as_ref().is_some_and(|o| {
+        self.side.dialogs.0.open.as_ref().is_some_and(|o| {
             let field = o.focus.and_then(|f| o.fields.get(f));
             matches!(field, Some(Some(Field::Multi(_))))
         })
@@ -236,7 +236,7 @@ impl Game<'_> {
     /// Whether the dialog's focus is one of its text inputs, which takes the
     /// keys.
     pub(in crate::game::client_side) fn dialog_typing(&self) -> bool {
-        let d = &self.dialogs.0;
+        let d = &self.side.dialogs.0;
         !d.warning
             && d.waiting.is_none()
             && d.open.as_ref().is_some_and(|o| {
@@ -351,8 +351,8 @@ impl Game<'_> {
             })
             .collect();
         self.open_screen_overlay("dialog", |game| {
-            game.dialogs.0.revision = game.dialogs.0.revision.wrapping_add(1);
-            game.dialogs.0.open = Some(Open {
+            game.side.dialogs.0.revision = game.side.dialogs.0.revision.wrapping_add(1);
+            game.side.dialogs.0.open = Some(Open {
                 dialog,
                 configuration,
                 values,
@@ -362,9 +362,9 @@ impl Game<'_> {
                 dragging: None,
                 selecting: None,
             });
-            game.dialogs.0.waiting = None;
+            game.side.dialogs.0.waiting = None;
             game.clear_device_keys();
-            game.client.physical_keys.clear();
+            game.side.physical_keys.clear();
             game.set_mapping_held("key.attack", false);
             game.set_mapping_held("key.use", false);
             game.capture(false);
@@ -374,15 +374,15 @@ impl Game<'_> {
     /// `clearDialog`: the dialog closes (under the warning screen, Back then
     /// returns to what was open before it).
     pub(in crate::game) fn clear_dialog(&mut self) {
-        if self.dialogs.0.open.take().is_some() && !self.dialog_open() {
+        if self.side.dialogs.0.open.take().is_some() && !self.dialog_open() {
             self.dialog_receiver_changed();
         }
     }
 
     /// Every dialog screen goes (a disconnect, or the level loading screen).
     pub(in crate::game::client_side) fn close_dialogs(&mut self) {
-        self.dialogs.0 = DialogState {
-            revision: self.dialogs.0.revision,
+        self.side.dialogs.0 = DialogState {
+            revision: self.side.dialogs.0.revision,
             ..DialogState::default()
         };
     }
@@ -390,9 +390,9 @@ impl Game<'_> {
     fn dialog_receiver_changed(&mut self) {
         self.refresh_screen_widgets();
         if self.player.is_some()
-            && self.client.screen == super::Screen::Playing
+            && self.side.screen == super::Screen::Playing
             && !self.screen_over_playing()
-            && self.title.0.is_none()
+            && self.side.title.0.is_none()
         {
             self.capture(true);
         }
@@ -410,9 +410,9 @@ impl Game<'_> {
     /// The confirmation's no: the dialog again, with what was typed in it.
     pub(in crate::game::client_side) fn reopen_dialog(&mut self, dialog: ClosedDialog) {
         self.open_screen_overlay("dialog", |game| {
-            game.dialogs.0.revision = game.dialogs.0.revision.wrapping_add(1);
-            game.dialogs.0.open = Some(*dialog.0);
-            game.dialogs.0.waiting = None;
+            game.side.dialogs.0.revision = game.side.dialogs.0.revision.wrapping_add(1);
+            game.side.dialogs.0.open = Some(*dialog.0);
+            game.side.dialogs.0.waiting = None;
         });
     }
 
@@ -434,7 +434,7 @@ impl Game<'_> {
         let mut wait = after == AfterAction::WaitForResponse;
         let configuration = match click {
             Some(Click::ShowDialog(_)) => self
-                .dialogs
+                .side.dialogs
                 .0
                 .open
                 .as_ref()
@@ -443,7 +443,7 @@ impl Game<'_> {
         };
         let mut closing = None;
         if after == AfterAction::Close {
-            let open = self.dialogs.0.open.take();
+            let open = self.side.dialogs.0.open.take();
             if matches!(&click, Some(Click::RunCommand(_))) {
                 closing = open;
             }
@@ -461,9 +461,9 @@ impl Game<'_> {
                     if wait {
                         // openSendConfirmationWindow's `currentScreen`: Back
                         // returns to this dialog, not the screen after the command.
-                        let prompted = self.command_prompt.0.is_some();
+                        let prompted = self.side.command_prompt.0.is_some();
                         if prompted {
-                            closing = self.dialogs.0.open.take();
+                            closing = self.side.dialogs.0.open.take();
                         }
                         wait = sent || prompted;
                     }
@@ -486,13 +486,13 @@ impl Game<'_> {
             }
             Some(Click::CopyToClipboard(value)) => {
                 use sunrise_client::clipboard::Clipboard;
-                self.clipboard.0.set(&value);
+                self.side.clipboard.0.set(&value);
             }
             // ConfirmLinkScreen over the screen the dialog leaves. If the
             // confirmation was vetoed, neither it nor its return screen opens.
             Some(Click::OpenUrl(url)) => {
                 self.click_url(url);
-                wait &= self.client.link_prompt.is_some();
+                wait &= self.side.link_prompt.is_some();
             }
             // defaultHandleClickEvent: `activeScreen.insertText(command, true)`.
             // Only the chat screen (opened under the dialog) takes text.
@@ -513,10 +513,10 @@ impl Game<'_> {
         }
         if wait {
             let start_waiting = |game: &mut Self| {
-                game.dialogs.0.open = None;
-                game.dialogs.0.waiting = Some(Instant::now());
+                game.side.dialogs.0.open = None;
+                game.side.dialogs.0.waiting = Some(Instant::now());
             };
-            if self.command_prompt.0.is_some() || self.client.link_prompt.is_some() {
+            if self.side.command_prompt.0.is_some() || self.side.link_prompt.is_some() {
                 // The confirmation already became the receiver. Stage only
                 // the screen it can return to; do not mount it under the prompt.
                 start_waiting(self);
@@ -578,7 +578,7 @@ impl Game<'_> {
     }
 
     fn dialog_layout(&self) -> Option<Layout> {
-        let open = self.dialogs.0.open.as_ref()?;
+        let open = self.side.dialogs.0.open.as_ref()?;
         Some(Layout::new(
             &open.dialog,
             &self.gui.atlas.font,
@@ -592,10 +592,10 @@ impl Game<'_> {
         }
         widgets::cover_frame();
         let (w, h) = (batch.width, batch.height);
-        let cursor = self.client.cursor;
+        let cursor = self.side.cursor;
         let atlas = &self.gui.atlas;
         draw_background(batch, atlas, self.player.is_some());
-        if self.dialogs.0.warning {
+        if self.side.dialogs.0.warning {
             let (title, message, [disconnect, back]) = self.warning_texts();
             // DialogScreen.WarningScreen, a ConfirmScreen: its title and its
             // message.
@@ -611,7 +611,7 @@ impl Game<'_> {
             self.draw_overlay_mounted_widgets(batch, "dialog");
             return;
         }
-        if let Some(since) = self.dialogs.0.waiting {
+        if let Some(since) = self.side.dialogs.0.waiting {
             // HeaderAndFooterLayout(33, 0) centred: the title, the button 33 below.
             let ticks = (since.elapsed().as_millis() / 50) as u32;
             let (label, visible, active) = waiting_button(ticks);
@@ -655,7 +655,7 @@ impl Game<'_> {
             return;
         };
         // Out of `self` while it draws: an item body draws through `self`.
-        let Some(mut open) = self.dialogs.0.open.take() else {
+        let Some(mut open) = self.side.dialogs.0.open.take() else {
             return;
         };
         let atlas = &self.gui.atlas;
@@ -914,7 +914,7 @@ impl Game<'_> {
                 open.scroll.amount,
             );
         }
-        self.dialogs.0.open = Some(open);
+        self.side.dialogs.0.open = Some(open);
         self.draw_overlay_mounted_widgets(batch, "dialog");
         if warn_hover {
             tooltip = Some(Text::translate("menu.custom_screen_info.tooltip", &[]));
@@ -938,36 +938,36 @@ impl Game<'_> {
 
     /// `DialogScreen.WarningScreen`: Back opens its return dialog if still live.
     fn return_from_dialog_warning(&mut self) {
-        if self.dialogs.0.open.is_some() || self.dialogs.0.waiting.is_some() {
-            self.open_screen_overlay("dialog", |game| game.dialogs.0.warning = false);
+        if self.side.dialogs.0.open.is_some() || self.side.dialogs.0.waiting.is_some() {
+            self.open_screen_overlay("dialog", |game| game.side.dialogs.0.warning = false);
         } else {
-            self.dialogs.0.warning = false;
+            self.side.dialogs.0.warning = false;
             self.dialog_receiver_changed();
         }
     }
 
     /// A left click on a dialog screen.
     pub(in crate::game::client_side) fn dialog_click(&mut self) -> Result<bool> {
-        let cursor = self.client.cursor;
-        if self.dialogs.0.warning {
+        let cursor = self.side.cursor;
+        if self.side.dialogs.0.warning {
             let (title, message, _) = self.warning_texts();
             let answer = Confirm::new(&self.gui.atlas.font, self.gui_size(), &title, &message)
                 .answer_at(cursor);
             match answer {
                 Some(true) => {
-                    self.audio.0.play_button_click();
+                    self.side.audio.0.play_button_click();
                     let reason = Text::translate("menu.custom_screen_info.disconnect", &[]);
                     self.leave_server(Some(reason))?;
                 }
                 Some(false) => {
-                    self.audio.0.play_button_click();
+                    self.side.audio.0.play_button_click();
                     self.return_from_dialog_warning();
                 }
                 None => {}
             }
             return Ok(answer.is_some());
         }
-        if let Some(since) = self.dialogs.0.waiting {
+        if let Some(since) = self.side.dialogs.0.waiting {
             let (w, h) = self.gui_size();
             let active = waiting_button((since.elapsed().as_millis() / 50) as u32).2;
             let (bx, by) = (
@@ -975,8 +975,8 @@ impl Game<'_> {
                 ((h - 53.0) / 2.0).trunc() + 33.0,
             );
             if active && ui::hovered(cursor, bx, by, 200.0, 20.0) {
-                self.audio.0.play_button_click();
-                self.dialogs.0.waiting = None;
+                self.side.audio.0.play_button_click();
+                self.side.dialogs.0.waiting = None;
                 self.dialog_receiver_changed();
                 return Ok(true);
             }
@@ -987,12 +987,12 @@ impl Game<'_> {
         };
         let [wx, wy, ww, wh] = layout.warning;
         if ui::hovered(cursor, wx, wy, ww, wh) {
-            self.audio.0.play_button_click();
-            self.open_screen_overlay("dialog", |game| game.dialogs.0.warning = true);
+            self.side.audio.0.play_button_click();
+            self.open_screen_overlay("dialog", |game| game.side.dialogs.0.warning = true);
             return Ok(true);
         }
-        let shift = self.client.modifiers.shift_key();
-        let Some(open) = self.dialogs.0.open.as_mut() else {
+        let shift = self.side.modifiers.shift_key();
+        let Some(open) = self.side.dialogs.0.open.as_mut() else {
             return Ok(false);
         };
         let [_, ay, _, ah] = layout.area;
@@ -1109,11 +1109,11 @@ impl Game<'_> {
             self.run_dialog_action(Some(click), after)?;
             return Ok(true);
         };
-        self.audio.0.play_button_click();
+        self.side.audio.0.play_button_click();
         let Some(index) = action else {
             return Ok(true);
         };
-        let Some(open) = self.dialogs.0.open.as_mut() else {
+        let Some(open) = self.side.dialogs.0.open.as_mut() else {
             return Ok(false);
         };
         Self::dialog_values(open);
@@ -1133,11 +1133,11 @@ impl Game<'_> {
         let Some(layout) = self.dialog_layout() else {
             return false;
         };
-        let cursor = self.client.cursor;
+        let cursor = self.side.cursor;
         let stick_scroll = self.pad_stick_scroll();
         // A focus step past the body's edge scrolls the body, not a box it's leaving.
         let step_scroll = self.pad_step_scroll();
-        if let Some(open) = self.dialogs.0.open.as_mut() {
+        if let Some(open) = self.side.dialogs.0.open.as_mut() {
             let [_, ay, _, ah] = layout.area;
             if delta != 0.0 && cursor.1 >= ay && cursor.1 < ay + ah {
                 let hovered_cycle =
@@ -1194,11 +1194,11 @@ impl Game<'_> {
 
     /// The pointer moved with a text field or slider held.
     pub(in crate::game::client_side) fn dialog_drag(&mut self) -> bool {
-        if self.dialogs.0.warning || self.dialogs.0.waiting.is_some() {
+        if self.side.dialogs.0.warning || self.side.dialogs.0.waiting.is_some() {
             return false;
         }
-        let (cursor, shift) = (self.client.cursor, self.client.modifiers.shift_key());
-        if let Some(open) = self.dialogs.0.open.as_mut()
+        let (cursor, shift) = (self.side.cursor, self.side.modifiers.shift_key());
+        if let Some(open) = self.side.dialogs.0.open.as_mut()
             && let Some(Some(field)) = open.selecting.and_then(|i| open.fields.get_mut(i))
         {
             match field {
@@ -1207,14 +1207,14 @@ impl Game<'_> {
             }
             return true;
         }
-        let Some(input) = self.dialogs.0.open.as_ref().and_then(|o| o.dragging) else {
+        let Some(input) = self.side.dialogs.0.open.as_ref().and_then(|o| o.dragging) else {
             return false;
         };
         let Some(layout) = self.dialog_layout() else {
             return false;
         };
-        let x = self.client.cursor.0;
-        let Some(open) = self.dialogs.0.open.as_mut() else {
+        let x = self.side.cursor.0;
+        let Some(open) = self.side.dialogs.0.open.as_mut() else {
             return false;
         };
         let slider = layout.body.iter().find_map(|p| match p {
@@ -1230,10 +1230,10 @@ impl Game<'_> {
 
     /// The left button released: a held slider lets go and clicks.
     pub(in crate::game::client_side) fn dialog_release(&mut self) -> bool {
-        if self.dialogs.0.warning || self.dialogs.0.waiting.is_some() {
+        if self.side.dialogs.0.warning || self.side.dialogs.0.waiting.is_some() {
             return false;
         }
-        if let Some(open) = self.dialogs.0.open.as_mut() {
+        if let Some(open) = self.side.dialogs.0.open.as_mut() {
             if let Some(selecting) = open.selecting.take() {
                 if let Some(Some(Field::Multi(edit))) = open.fields.get_mut(selecting) {
                     edit.release();
@@ -1241,7 +1241,7 @@ impl Game<'_> {
                 return true;
             }
             if open.dragging.take().is_some() {
-                self.audio.0.play_button_click();
+                self.side.audio.0.play_button_click();
                 return true;
             }
         }
@@ -1257,24 +1257,24 @@ impl Game<'_> {
         shortcut: Option<EditShortcut>,
     ) -> Result<bool> {
         let escape = key == KeyCode::Escape;
-        if self.dialogs.0.warning {
+        if self.side.dialogs.0.warning {
             if escape {
                 self.return_from_dialog_warning();
             }
             return Ok(escape);
         }
-        if let Some(since) = self.dialogs.0.waiting {
+        if let Some(since) = self.side.dialogs.0.waiting {
             // shouldCloseOnEsc: once Back works.
             if escape && waiting_button((since.elapsed().as_millis() / 50) as u32).2 {
-                self.dialogs.0.waiting = None;
+                self.side.dialogs.0.waiting = None;
                 self.dialog_receiver_changed();
                 return Ok(true);
             }
             return Ok(false);
         }
-        let ctrl = self.client.modifiers.control_key() || self.client.modifiers.super_key();
-        let shift = self.client.modifiers.shift_key();
-        let Some(open) = self.dialogs.0.open.as_mut() else {
+        let ctrl = self.side.modifiers.control_key() || self.side.modifiers.super_key();
+        let shift = self.side.modifiers.shift_key();
+        let Some(open) = self.side.dialogs.0.open.as_mut() else {
             return Ok(false);
         };
         if escape {
@@ -1319,7 +1319,7 @@ impl Game<'_> {
         };
         let font = &self.gui.atlas.font;
         if let Some(shortcut) = shortcut {
-            edit.shortcut(font, shortcut, &mut self.clipboard.0);
+            edit.shortcut(font, shortcut, &mut self.side.clipboard.0);
             return Ok(true);
         }
         Ok(edit.key(font, key, ctrl, shift))
@@ -1327,7 +1327,7 @@ impl Game<'_> {
 
     /// Whether the open dialog has a text input.
     pub(in crate::game::client_side) fn dialog_has_text_field(&self) -> bool {
-        self.dialogs
+        self.side.dialogs
             .0
             .open
             .as_ref()
@@ -1337,7 +1337,7 @@ impl Game<'_> {
     /// `type TEXT` with a dialog open: into the focused text input, or the
     /// first one.
     pub(in crate::game::client_side) fn dialog_type(&mut self, text: &str) -> bool {
-        let Some(open) = self.dialogs.0.open.as_mut() else {
+        let Some(open) = self.side.dialogs.0.open.as_mut() else {
             return false;
         };
         let focus = open
@@ -1354,7 +1354,7 @@ impl Game<'_> {
     /// What `state` reports: the open dialog and its values, or the waiting
     /// and warning screens.
     pub(in crate::game::client_side) fn dialog_status(&self) -> serde_json::Value {
-        let d = &self.dialogs.0;
+        let d = &self.side.dialogs.0;
         let screen = if d.warning {
             Some("warning")
         } else if d.waiting.is_some() {

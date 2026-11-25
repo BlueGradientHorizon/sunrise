@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `UseItemOnBlockEvent`: after a phase was chosen, before its Part or
     /// vanilla behaviour. Cancel skips that behaviour and returns
     /// `cancellation_result` (initially `TryWithEmptyHand`). In `ItemBeforeBlock`,

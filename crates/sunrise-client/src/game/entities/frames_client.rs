@@ -31,7 +31,7 @@ pub(in crate::game::client_side) use sunrise_core::{
     random::RandomSource,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// ItemFrameRenderer: the frame model, then the item half size on its face.
     pub(in crate::game) fn frame_geometry(
         &mut self,
@@ -194,10 +194,10 @@ impl Game<'_> {
             };
             if !f.invisible {
                 let model = match (f.glow, map.is_some()) {
-                    (true, true) => &self.client.glow_map_frame_model,
-                    (false, true) => &self.client.map_frame_model,
-                    (true, false) => &self.client.glow_frame_model,
-                    (false, false) => &self.client.frame_model,
+                    (true, true) => &self.side.glow_map_frame_model,
+                    (false, true) => &self.side.map_frame_model,
+                    (true, false) => &self.side.glow_frame_model,
+                    (false, false) => &self.side.frame_model,
                 };
                 for (corners, uv, sprite) in model {
                     let Some(r) = sprites.get(sprite) else {

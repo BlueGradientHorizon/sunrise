@@ -52,7 +52,7 @@ impl RemoteLight {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// A chunk packet's column was adopted, with its block entities in the
     /// level: the client chunk seam (milestone 8) tells `client_chunk_load`.
     pub(in crate::game::client_side) fn client_chunk_load(&mut self, x: i32, z: i32) {
@@ -88,7 +88,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `handleLevelChunkWithLight`: the column replaces any loaded one, and
     /// its block entities load their update tags. `decoded` is the column the
     /// decoder made with `format`; another format since means decode again.

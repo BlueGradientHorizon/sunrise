@@ -26,7 +26,7 @@ use sunrise_world::registry::BlockStateId;
 /// A change `World::edit_runs` reported: position, previous and new state.
 pub(in crate::game) type Tracked = ((i32, i32, i32), u32, u32);
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Make a mod's block edit; how many blocks changed, or why none did.
     /// Every palette entry, filter and run is checked before anything
     /// changes: an invalid typed state or predicate (NBT cannot be represented),
@@ -44,7 +44,7 @@ impl Game<'_> {
         let stateful = self.world.block_entities.stateful_entities();
         let registry = self.pack.assets.registry;
         // (the tags as `block_matches` reads them for commands)
-        let world_items = match &self.world_tables.0 {
+        let world_items = match &self.side.world_tables.0 {
             Some(t) => &t.items,
             None => self.res.items(),
         };

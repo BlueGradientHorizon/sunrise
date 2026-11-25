@@ -30,7 +30,7 @@ pub(in crate::game::client_side) use sunrise_gameplay::potent_sulfur::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::{level::flags, registry::BlockStateId};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `PotentSulfurBlock.getTicker` on the client, for the block entity at
     /// `pos`: a wet or dormant geyser releases gas clouds every second; an
     /// erupting or continuous one shows its plume every second (from its last
@@ -77,11 +77,11 @@ impl Game<'_> {
                         let at = source.map(|c| f64::from(c) + 0.5);
                         // playLocalSound: the seed is the level random's next long; a host's
                         // guests play their own.
-                        let seed = self.particles.0.level_random().next_long();
+                        let seed = self.side.particles.0.level_random().next_long();
                         if self.remote.is_some() {
-                            self.audio.0.play_seeded(sound, Some(at), 1.0, 1.0, seed);
+                            self.side.audio.0.play_seeded(sound, Some(at), 1.0, 1.0, seed);
                         } else {
-                            self.audio.0.play_unshared(sound, Some(at), 1.0, 1.0);
+                            self.side.audio.0.play_unshared(sound, Some(at), 1.0, 1.0);
                         }
                     }
                 }
@@ -131,7 +131,7 @@ impl Game<'_> {
         source: [i32; 3],
     ) {
         let water_blocks = source[1] - sulfur.1 - 1;
-        self.particles.0.add(
+        self.side.particles.0.add(
             &ParticleOptions::geyser(T::Geyser, water_blocks),
             [
                 f64::from(source[0]) + 0.5,
@@ -147,7 +147,7 @@ impl Game<'_> {
         &mut self,
         source: [i32; 3],
     ) {
-        self.particles.0.add(
+        self.side.particles.0.add(
             &ParticleOptions::simple(T::NoxiousGasCloud),
             source.map(|c| f64::from(c) + 0.5),
             [0.0; 3],

@@ -21,7 +21,7 @@ pub(in crate::game::client_side) use sunrise_core::geometry::{Aabb, Axis, Vec3};
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_core::position::BlockPos;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     fn client_walk_entity(&self, id: u32) -> Option<EntityHandle> {
         if let Some(i) = self.mobs.iter().position(|e| e.id == id) {
             return Some(EntityHandle::Mob(i));
@@ -99,7 +99,7 @@ impl Game<'_> {
         }
         let (lo, hi) = match t {
             Target::Other(id) => {
-                let i = self.client.interactions.get(&(id as i32))?;
+                let i = self.side.interactions.get(&(id as i32))?;
                 return Some(corners(i.bounds()));
             }
             Target::DragonPart(id) => {
@@ -128,7 +128,7 @@ impl Game<'_> {
         }
         let (remote, id) = self.native_client_entity_context(entity)?;
         remote.tracked(id)?;
-        self.client
+        self.side
             .interactions
             .get(&id)
             .map(|i| f64::from(i.eye_height()))

@@ -28,7 +28,7 @@ pub(in crate::game::server_side) fn trap_horse_scatter(random: &mut LegacyRandom
     (random.triangle(0.0, 1.1485), random.triangle(0.0, 1.1485))
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Keep the actual removed object only while a passenger still refers to it.
     pub(in crate::game::server_side) fn retain_removed_vehicle(
         &mut self,

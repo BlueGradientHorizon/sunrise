@@ -7,7 +7,7 @@ use super::Game;
 use std::path::PathBuf;
 use sunrise_client::{Result, control};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The endpoint: the one the command line gave, else the default sunrise-ctl looks for.
     fn agent_socket_path(&self) -> PathBuf {
         self.options
@@ -18,7 +18,7 @@ impl Game<'_> {
 
     /// At startup: open the socket if the game was started for an agent or Agent Control is on.
     pub(in crate::game::client_side) fn start_agent_control(&mut self) -> Result<()> {
-        self.client.agent_control_on = self.settings.extras.agent_control;
+        self.side.agent_control_on = self.settings.extras.agent_control;
         if self.options.benchmark.is_some() && self.options.control.is_none() {
             return Ok(());
         }
@@ -37,7 +37,7 @@ impl Game<'_> {
                 .map_err(|e| format!("control socket {}: {e}", path.display()))?;
             log::info!("Sunrise: control socket {}", server.path().display());
             self.control = Some(server);
-        } else if self.client.agent_control_on {
+        } else if self.side.agent_control_on {
             self.open_agent_socket();
         }
         Ok(())
@@ -60,8 +60,8 @@ impl Game<'_> {
     /// closes it.
     pub(in crate::game::client_side) fn sync_agent_control(&mut self) {
         let wanted = self.settings.extras.agent_control;
-        let changed = wanted != self.client.agent_control_on;
-        self.client.agent_control_on = wanted;
+        let changed = wanted != self.side.agent_control_on;
+        self.side.agent_control_on = wanted;
         let open = self
             .control
             .as_ref()
@@ -78,7 +78,7 @@ impl Game<'_> {
 
     /// An agent's command arrived.
     pub(in crate::game::client_side) fn agent_command_seen(&mut self) {
-        self.client.agent_last = Some(std::time::Instant::now());
+        self.side.agent_last = Some(std::time::Instant::now());
     }
 
     /// The AI Agent page's lines: the state, then where agents connect.
@@ -98,10 +98,10 @@ impl Game<'_> {
             });
         let mut lines = status_lines(
             server,
-            self.client.agent_last.map(|t| t.elapsed().as_secs()),
-            self.options.control.is_some() && !self.client.agent_control_on,
+            self.side.agent_last.map(|t| t.elapsed().as_secs()),
+            self.options.control.is_some() && !self.side.agent_control_on,
         );
-        if let Some(line) = self.repro.0.agent_line(self.input_trace.0.events()) {
+        if let Some(line) = self.side.repro.0.agent_line(self.side.input_trace.0.events()) {
             lines.push(line);
         }
         lines

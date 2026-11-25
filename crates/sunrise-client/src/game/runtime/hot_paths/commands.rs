@@ -3,7 +3,7 @@
 use super::{super::Game, Recorder};
 use sunrise_client::Result;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(super) fn hot_commands(&mut self, recorder: &mut Recorder) -> Result<()> {
         for (name, command) in [
             (

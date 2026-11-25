@@ -25,7 +25,7 @@ pub(in crate::game) fn faces_camera(corners: &[glam::DVec3; 4], normal: glam::DV
     normal.dot(-centre) > 0.0
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `HangingEntityItem.useOn` for a painting against `hit`'s face.
     pub(in crate::game::server_side) fn place_painting(
         &mut self,
@@ -37,7 +37,7 @@ impl Game<'_> {
         }
         // HangingEntityItem.mayPlace: never on a top or bottom face (FAIL).
         let Some(facing) = painting_facing(hit.face) else {
-            self.server.use_failed = true;
+            self.side.use_failed = true;
             return true;
         };
         let pos = [
@@ -45,11 +45,11 @@ impl Game<'_> {
             hit.pos[1],
             hit.pos[2] + hit.face[2],
         ];
-        self.server.next_entity += 1;
+        self.side.next_entity += 1;
         let mut candidate = Painting {
             attachment_lifetime: Default::default(),
             join: Default::default(),
-            id: self.server.next_entity,
+            id: self.side.next_entity,
             pos,
             facing,
             variant: Arc::from(""),
@@ -169,7 +169,7 @@ impl Game<'_> {
         self.entity_killed_event_by(at, source);
         let creative = match source {
             Some(super::commands::Target::Player) => self.creative,
-            Some(super::commands::Target::Guest(conn)) if self.server.lan_acting == Some(conn) => {
+            Some(super::commands::Target::Guest(conn)) if self.side.lan_acting == Some(conn) => {
                 self.creative
             }
             Some(super::commands::Target::Guest(conn)) => {

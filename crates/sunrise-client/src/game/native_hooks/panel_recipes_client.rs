@@ -2,7 +2,7 @@
 pub(in crate::game::client_side) use super::*;
 use crate::game::native_hooks::panel_recipes::page_views;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Shows `page` in mod `mod_id`'s item panel instead of its items, cut to the renderer's
     /// limits; `None` shows the items again.
     pub(in crate::game) fn panel_recipes(

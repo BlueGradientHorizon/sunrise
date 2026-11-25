@@ -2,7 +2,7 @@
 use super::{Game, Resources, remote::Remote};
 use sunrise_client::environment::Environment;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The environment attributes of the current dimension.
     pub(in crate::game) fn dim_environment(&self) -> &Environment {
         Self::level_environment(self.remote.as_ref(), &self.res, &self.dimension_type().id)

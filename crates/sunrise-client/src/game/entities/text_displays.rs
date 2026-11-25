@@ -746,14 +746,14 @@ impl RemoteTextDisplay {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn move_remote_text_display(
         &mut self,
         id: i32,
         position: [f64; 3],
         rotation: Option<(f32, f32)>,
     ) {
-        if let Some(d) = self.text_displays.0.get_mut(&id) {
+        if let Some(d) = self.side.text_displays.0.get_mut(&id) {
             d.move_to(position, rotation);
         }
     }
@@ -763,7 +763,7 @@ impl Game<'_> {
         position: Option<[f64; 3]>,
         rotation: Option<(f32, f32)>,
     ) {
-        if let Some(d) = self.text_displays.0.get_mut(&id) {
+        if let Some(d) = self.side.text_displays.0.get_mut(&id) {
             d.move_to_opt(position, rotation);
         }
     }
@@ -775,7 +775,7 @@ impl Game<'_> {
         rotation: Option<(f32, f32)>,
     ) -> bool {
         let Some(pos) = self
-            .text_displays
+            .side.text_displays
             .0
             .get(&id)
             .map(RemoteTextDisplay::position)
@@ -784,7 +784,7 @@ impl Game<'_> {
         };
         let is_ticking = self.is_display_ticking(pos);
         let interpolating = self
-            .text_displays
+            .side.text_displays
             .0
             .get_mut(&id)
             .is_some_and(|d| d.apply_position_sync(position, rotation, is_ticking));
@@ -806,7 +806,7 @@ impl Game<'_> {
         relatives: i32,
     ) -> Option<[f64; 3]> {
         let (resolved, interpolated) = self
-            .text_displays
+            .side.text_displays
             .0
             .get_mut(&id)?
             .apply_teleport_packet(position, yaw, pitch, relatives);
@@ -825,7 +825,7 @@ impl Game<'_> {
     /// through the level callback), before its riders are seated.
     pub(in crate::game::client_side) fn file_snapped_display(&mut self, id: i32) {
         if let Some(at) = self
-            .text_displays
+            .side.text_displays
             .0
             .get(&id)
             .map(RemoteTextDisplay::position)
@@ -901,7 +901,7 @@ impl Game<'_> {
                 .as_ref()
                 .map(|p| glam::DVec3::new(p.position.x, p.position.y, p.position.z));
         }
-        if let Some(d) = self.text_displays.0.get(&(id as i32)) {
+        if let Some(d) = self.side.text_displays.0.get(&(id as i32)) {
             return Some(d.position);
         }
         if let Some(i) = self.mob_index.find_ref(&self.mobs, id) {
@@ -917,7 +917,7 @@ impl Game<'_> {
         if let Some(a) = self.armor_stands.iter().find(|a| a.id == id) {
             return Some(glam::DVec3::new(a.position.x, a.position.y, a.position.z));
         }
-        if let Some(i) = self.client.interactions.get(&(id as i32)) {
+        if let Some(i) = self.side.interactions.get(&(id as i32)) {
             return Some(glam::DVec3::new(i.position.x, i.position.y, i.position.z));
         }
         None
@@ -1010,7 +1010,7 @@ impl Game<'_> {
     /// EntityTickEvent: once for the family, or each alone of a type a mod named, right before
     /// and right after its own tick; a canceled one keeps its state.
     pub(in crate::game::client_side) fn tick_and_file_display(&mut self, id: i32) {
-        if let Some(display) = self.text_displays.0.get_mut(&id) {
+        if let Some(display) = self.side.text_displays.0.get_mut(&id) {
             let from = display.position();
             display.tick();
             let at = display.position();
@@ -1021,8 +1021,8 @@ impl Game<'_> {
     }
 
     pub(in crate::game::client_side) fn tick_text_displays(&mut self, running: bool) {
-        let mut eligible = Vec::with_capacity(self.text_displays.0.len());
-        for (&id, display) in &self.text_displays.0 {
+        let mut eligible = Vec::with_capacity(self.side.text_displays.0.len());
+        for (&id, display) in &self.side.text_displays.0 {
             if self.display_should_tick(id, display, running) {
                 eligible.push(id);
             }
@@ -1041,7 +1041,7 @@ impl Game<'_> {
         let mut alone = Vec::new();
         let mut batch = Vec::new();
         for id in eligible {
-            let Some(display) = self.text_displays.0.get(&id) else {
+            let Some(display) = self.side.text_displays.0.get(&id) else {
                 continue;
             };
             if round.alone_kind(display.shows.kind()) {
@@ -1081,16 +1081,16 @@ impl Game<'_> {
     /// Active render `Camera` yaw and pitch (`DisplayRenderer.extractRenderState`), sharing the
     /// same camera source of truth as `particle_rotation` (`ThirdPersonFront` already baked in).
     pub(in crate::game::client_side) fn display_camera_angles(&self) -> [f32; 2] {
-        if self.client.studio.flying() {
+        if self.side.studio.flying() {
             return [
-                self.client.studio.freecam.yaw,
-                self.client.studio.freecam.pitch,
+                self.side.studio.freecam.yaw,
+                self.side.studio.freecam.pitch,
             ];
         }
         let (yaw, pitch) = self
-            .client
+            .side
             .posed_rotation
-            .unwrap_or((self.client.view.y_rot, self.client.view.x_rot));
+            .unwrap_or((self.side.view.y_rot, self.side.view.x_rot));
         [yaw, pitch]
     }
     /// `DisplayRenderer.getBlockLightLevel` and `getSkyLightLevel`: the
@@ -1181,7 +1181,7 @@ impl Game<'_> {
             partial,
             scale,
             now,
-            self.client.view_frustum.as_ref(),
+            self.side.view_frustum.as_ref(),
         )
     }
     /// `Display.getTeamColor` + `EntityRenderer.extractRenderState` outline color: live
@@ -1213,9 +1213,9 @@ impl Game<'_> {
         let angles = self.display_camera_angles();
         let scale = self.view_scale();
         let now = std::time::Instant::now();
-        let mut slots = std::mem::take(&mut self.client.block_display_parts_scratch);
-        let mut translucent = std::mem::take(&mut self.client.translucent_display_collector);
-        let mut visible = std::mem::take(&mut self.client.display_visible_scratch);
+        let mut slots = std::mem::take(&mut self.side.block_display_parts_scratch);
+        let mut translucent = std::mem::take(&mut self.side.translucent_display_collector);
+        let mut visible = std::mem::take(&mut self.side.display_visible_scratch);
         translucent.clear();
         for shows in [Shows::Block, Shows::Item] {
             let kind = if shows == Shows::Block {
@@ -1228,7 +1228,7 @@ impl Game<'_> {
             // so indirect-passenger vehicle chains across displays resolve accurately.
             visible.clear();
             for (&id, display) in self
-                .text_displays
+                .side.text_displays
                 .0
                 .iter()
                 .filter(|(_, d)| d.shows == shows)
@@ -1241,7 +1241,7 @@ impl Game<'_> {
             for &(id, entity_partial) in &visible {
                 let partial_f32 = entity_partial as f32;
                 let (d, position, rotation, on_fire, shown_block, shown_item, shown_item_display) = {
-                    let Some(display) = self.text_displays.0.get_mut(&id) else {
+                    let Some(display) = self.side.text_displays.0.get_mut(&id) else {
                         continue;
                     };
                     // DisplayRenderer.extractRenderState evaluates progress even before renderState != null.
@@ -1265,7 +1265,7 @@ impl Game<'_> {
                 }
                 let light = Self::display_light(&self.world, &d, position, on_fire);
                 let outline = self
-                    .text_displays
+                    .side.text_displays
                     .0
                     .get(&id)
                     .and_then(|display| self.display_outline(id, display));
@@ -1357,9 +1357,9 @@ impl Game<'_> {
         }
         translucent.flush(out);
         self.mark_entity(out.len(), "");
-        self.client.display_visible_scratch = visible;
-        self.client.block_display_parts_scratch = slots;
-        self.client.translucent_display_collector = translucent;
+        self.side.display_visible_scratch = visible;
+        self.side.block_display_parts_scratch = slots;
+        self.side.translucent_display_collector = translucent;
     }
     pub(in crate::game::client_side) fn text_display_geometry(
         &mut self,
@@ -1368,18 +1368,18 @@ impl Game<'_> {
         normal: &mut Vec<Vertex>,
         see_through: &mut SeeThroughCollector,
     ) {
-        self.client.text_display_vertices = 0;
+        self.side.text_display_vertices = 0;
         self.mark_translucent_entity(normal.len(), "minecraft:text_display");
         let angles = self.display_camera_angles();
         let scale = self.view_scale();
         let background = self.settings.text_background(0.25);
         let now = std::time::Instant::now();
-        let mut inline_profiles = std::mem::take(&mut self.client.display_inline_profiles_scratch);
+        let mut inline_profiles = std::mem::take(&mut self.side.display_inline_profiles_scratch);
         inline_profiles.clear();
-        let mut visible = std::mem::take(&mut self.client.display_visible_scratch);
+        let mut visible = std::mem::take(&mut self.side.display_visible_scratch);
         visible.clear();
         for (&id, display) in self
-            .text_displays
+            .side.text_displays
             .0
             .iter()
             .filter(|(_, d)| d.shows == Shows::Text)
@@ -1392,7 +1392,7 @@ impl Game<'_> {
         for &(id, entity_partial) in &visible {
             let partial_f32 = entity_partial as f32;
             let (d, position, rotation, on_fire, lines) = {
-                let Some(display) = self.text_displays.0.get_mut(&id) else {
+                let Some(display) = self.side.text_displays.0.get_mut(&id) else {
                     continue;
                 };
                 // DisplayRenderer.extractRenderState evaluates progress even before renderState != null.
@@ -1419,7 +1419,7 @@ impl Game<'_> {
                 }
                 None => CachedQuads::new(&self.gui.atlas, &d, background),
             };
-            self.client.map_patches.append(&mut cached.batch.patches);
+            self.side.map_patches.append(&mut cached.batch.patches);
             inline_profiles.append(&mut cached.batch.inline_profiles);
             let mut pose = d.pose((position - camera).as_vec3().to_array(), rotation, angles);
             cached.lines.apply_pose(&mut pose);
@@ -1465,18 +1465,18 @@ impl Game<'_> {
                     let dist_sq = submit_distance_sq(pose.m[12], pose.m[13], pose.m[14]);
                     see_through.finish(st_start, dist_sq);
                 }
-                self.client.text_display_vertices += batch.vertices.len() / 6 * 4;
+                self.side.text_display_vertices += batch.vertices.len() / 6 * 4;
             }
-            if let Some(display) = self.text_displays.0.get_mut(&id) {
+            if let Some(display) = self.side.text_displays.0.get_mut(&id) {
                 display.lines = Some(cached);
             }
         }
-        self.client.display_visible_scratch = visible;
+        self.side.display_visible_scratch = visible;
         if !inline_profiles.is_empty() {
             self.resolve_inline_profiles(&inline_profiles);
         }
         inline_profiles.clear();
-        self.client.display_inline_profiles_scratch = inline_profiles;
+        self.side.display_inline_profiles_scratch = inline_profiles;
     }
 }
 

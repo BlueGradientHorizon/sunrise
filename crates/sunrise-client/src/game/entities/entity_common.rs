@@ -64,7 +64,7 @@ impl sunrise_client::cushion::World for PlacementWorld<'_, '_> {
     }
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `particles::around_self` about mob `id`.
     pub(in crate::game) fn particles_around_mob(
         &mut self,

@@ -32,7 +32,7 @@ impl cauldron::Player for DryHand<'_> {
     fn drop_stack(&mut self, _: ItemStack) {}
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Predict vanilla cauldron clicks without invoking server-registered handlers.
     pub(in crate::game::client_side) fn client_cauldron_prediction(
         &self,

@@ -22,7 +22,7 @@ pub(in crate::game) fn corners(b: Aabb) -> [f64; 6] {
     [lo.x, lo.y, lo.z, hi.x, hi.y, hi.z]
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn level_collision_boxes(
         &self,
         level: mod_api::LevelRef,

@@ -639,9 +639,9 @@ pub(in crate::game) mod side_ops;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::game_client::WindowKeyInput;
 #[allow(dead_code)]
-pub(in crate::game) type ServerGame<'a> = Game<'a>;
+pub(in crate::game) type ServerGame<'a> = Game<'a, server_side::ServerState>;
 #[allow(dead_code)]
-pub(in crate::game) type ClientGame<'a> = Game<'a>;
+pub(in crate::game) type ClientGame<'a> = Game<'a, client_side::ClientState>;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::allays_client;
 #[allow(unused_imports)]
@@ -3615,21 +3615,32 @@ struct TickScratch {
     later: Vec<BlockPos>,
 }
 
-struct Game<'a> {
+
+#[allow(dead_code)]
+pub(in crate::game) trait Side: Sized + crate::game::side_ops::blocks::SideOps + crate::game::side_ops::events::SideOps + crate::game::side_ops::items::SideOps + crate::game::side_ops::lan::SideOps + crate::game::side_ops::mobs_creatures::SideOps + crate::game::side_ops::mobs_rest::SideOps + crate::game::side_ops::modapi::SideOps + crate::game::side_ops::modapi_hooks::SideOps + crate::game::side_ops::modapi_modding::SideOps + crate::game::side_ops::player::SideOps + crate::game::side_ops::presentation::SideOps + crate::game::side_ops::tables::SideOps + crate::game::side_ops::ui::SideOps + crate::game::side_ops::world::SideOps {
+    const IS_SERVER: bool;
+    fn is_server() -> bool { Self::IS_SERVER }
+    fn host_side<'a, 'g>(game: &'g mut Game<'a, Self>) -> mod_api::HostSide<'g>;
+    fn as_host<'a, 'g>(game: &'g Game<'a, Self>) -> &'g dyn mod_api::Host;
+    fn as_config_context<'a, 'g>(game: &'g Game<'a, Self>) -> &'g dyn mod_api::ConfigContext;
+    fn as_reload_context<'a, 'g>(game: &'g Game<'a, Self>) -> &'g dyn mod_api::ReloadContext;
+    fn as_pack_discovery_context_mut<'a, 'g>(game: &'g mut Game<'a, Self>) -> &'g mut dyn mod_api::PackDiscoveryContext;
+    fn as_server_host_mut<'a, 'g>(_game: &'g mut Game<'a, Self>) -> Option<&'g mut dyn mod_api::ServerHost> { None }
+    fn as_client_host_mut<'a, 'g>(_game: &'g mut Game<'a, Self>) -> Option<&'g mut dyn mod_api::ClientHost> { None }
+    fn as_client_text_host<'a, 'g>(_game: &'g Game<'a, Self>) -> Option<&'g dyn mod_api::prelude::ClientTextClientHost> { None }
+    fn attachment_store<'a, 'g>(game: &'g mut Game<'a, Self>) -> &'g mut dyn mod_api::AttachmentStore;
+    fn world_tables(&self) -> Option<&WorldTables> { None }
+    fn lan_acting_uuid(&self) -> Option<u128> { None }
+    fn levels_generation(&self, _id: &str) -> u32 { 0 }
+    fn session_lock_active(&self) -> bool { false }
+    fn level_ref(&self, _dim: Dim, _epoch: Option<mod_api::WorldEpoch>) -> Option<mod_api::LevelRef> { None }
+    fn game_side_tag_items<'a>(&self, _remote: &'a Option<remote::Remote>, _res: &'a Resources) -> Option<&'a Items> { None }
+}
+
+struct Game<'a, S> {
     /// Shared with an integrated server; `collision` and `motion` borrow from it.
     res: Arc<Resources>,
     rest_loader: Option<WorldRestLoader>,
-    pending_entry: client_side::ClientOnly<Option<PendingWorldEntry>>,
-    /// A pack reload staged on a worker until `drive_pack_reload` applies it.
-    pack_reload: client_side::ClientOnly<Option<packs::PackReload>>,
-    /// A server's resource packs (game/world/server_packs.rs).
-    server_packs: client_side::ClientOnly<server_packs::ServerPackState>,
-    /// The window's inbox for server notices, kept across world disconnects.
-    client_reports: client_side::ClientOnly<Arc<sunrise_client::chunk_io::Reports>>,
-    /// A command the player didn't type, waiting for their answer
-    /// (game/network/remote_chat.rs).
-    command_prompt: client_side::ClientOnly<Option<remote_chat::CommandPrompt>>,
-    dialogs: client_side::ClientOnly<dialogs::DialogState>,
     /// Single player's server while it loads its world (`Minecraft.doWorldLoad`).
     integrated_starting: Option<integrated::Starting>,
     collision: &'a BlockCollisionRegistry<'a>,
@@ -3637,10 +3648,6 @@ struct Game<'a> {
     /// This world's frozen damage definitions and reloadable tag snapshot.
     pub(super) health_resources: sunrise_client::health::HealthResources,
     damage_tag_generation: u64,
-    /// This game's resource packs (`reload_packs` replaces them).
-    pending_initial_models:
-        client_side::ClientOnly<Option<Box<initial_client_models::PendingClientStart>>>,
-    stitching_block_atlas: client_side::ClientOnly<Option<Arc<RenderAssets>>>,
     pack: PackResources,
     /// The title and menu bundle (GUI atlas, font and panorama).
     gui: UiResources,
@@ -3651,9 +3658,6 @@ struct Game<'a> {
     /// `world_biomes` as the biome files made it, before `native_biome_colors`.
     world_biomes_base: Option<Arc<Biomes>>,
     streaming: Streaming,
-    lod: client_side::ClientOnly<Option<sunrise_client::lod::Lod>>,
-    /// The server's BlueMap far terrain draws from, when the player named one.
-    lod_blue_map: client_side::ClientOnly<Option<Arc<sunrise_client::bluemap::BlueMap>>>,
     options: Options,
     player: Option<PlayerMotion>,
     spawn: Option<Vec3>,
@@ -3679,39 +3683,13 @@ struct Game<'a> {
     creative: bool,
     /// The game mode; `creative` mirrors `mode == Creative`.
     mode: sunrise_client::command::args::GameMode,
-    /// The monitor whose video modes `settings.video_modes` holds.
-    video_modes: client_side::ClientOnly<sunrise_client::window::VideoModeList>,
     /// Minecraft.pause: a single-player screen that pauses the game is open.
     pause: bool,
-    screen_state: client_side::ClientOnly<screen_build::ScreenState>,
-    window: client_side::ClientShared<Option<Arc<Window>>>,
-    renderer: client_side::ClientShared<Option<Box<Renderer>>>,
-    /// Mob models posed on the GPU (`Frame::skin`, `mobs::skin`): the models stored there,
-    /// and this frame's draws.
-    skin_models:
-        client_side::ClientOnly<std::cell::RefCell<sunrise_client::mobs::skin::SkinModels>>,
-    /// The level random a block part's `animate_tick` holds as `event.random`, while it runs:
-    /// the game's own draws during the call go through it (`with_lent_level_random`).
-    lent_level_random: client_side::ClientOnly<
-        Option<std::rc::Rc<std::cell::RefCell<mod_api::LegacyRandomSource>>>,
-    >,
     previous: Instant,
-    /// Controllers (Sunrise's own).
-    pad: client_side::ClientShared<pad::Pads>,
-    /// Mod screens' living scenes, per mod and clock id (game/modding/native_scene_live.rs).
-    live_scenes: client_side::ClientOnly<std::cell::RefCell<native_scene_live::LiveScenes>>,
-    /// `DebugRenderer.renderers`: active mod renderers and their owners, resolved at refresh.
-    debug_renderers:
-        client_side::ClientOnly<Vec<sunrise_client::debug_entries::ActiveDebugRenderer>>,
     ticks: u64,
     /// What ends the game with an error; kept as it is, so main can tell a debug crash.
     error: Option<Box<dyn std::error::Error>>,
-    save: server_side::ServerShared<Arc<SaveDir>>,
     level: Level,
-    /// Must precede session_lock: dropping the writer drains writes while the world is locked.
-    player_autosaves: server_side::ServerOnly<sunrise_client::lan::playerdata::Autosaves>,
-    session_lock: server_side::ServerShared<Option<sunrise_client::save::SessionLock>>,
-    audio: client_side::ClientShared<Audio>,
     /// The side, registries and mod settings of this game's resource generation, which
     /// its menus lend to the hooks they fire inside a loop; rebuilt by `refresh_loop_context`.
     loop_context: Arc<sunrise_world::native_load_context::LoopContext>,
@@ -3721,20 +3699,11 @@ struct Game<'a> {
     setting_overrides: std::cell::RefCell<std::collections::BTreeMap<(String, String), String>>,
     /// The native damage hooks every level of this game lends to its hits.
     damage_hooks: sunrise_client::health::DamageHooks,
-    paused_mob_hurt: server_side::ServerOnly<Option<Box<sunrise_client::mobs::PausedMobHurt>>>,
     dropped: sunrise_client::join_seq::JoinList<ItemEntity>,
-    particles: client_side::ClientShared<sunrise_client::particles::ParticleEngine>,
-    /// `ItemPickupParticle`s: taken items, orbs and arrows flying to their collector.
-    pickups: client_side::ClientOnly<pickups::Pickups>,
-    /// `CreateWorldScreen.openCreateWorldScreen`'s data read, on a worker,
-    /// while the title says `createWorld.preparing`.
-    creation_job:
-        client_side::ClientOnly<Option<std::thread::JoinHandle<std::result::Result<(), String>>>>,
     mobs: sunrise_client::join_seq::JoinList<Mob>,
     /// `mobs` by network id, for the packets that name one (`game/mobs/mob_index.rs`).
     mob_index: mob_index::MobIndex,
     creatures: creatures::Creatures,
-    raiding: server_side::ServerOnly<raids::Raiding>,
     /// Client-ticked block-entity animation state (`game/blocks/block_entity_anims.rs`).
     be_anims: sunrise_client::block_entity_anim::BlockEntityAnims,
     /// Item being used (eaten): hotbar slot and ticks used.
@@ -3744,7 +3713,6 @@ struct Game<'a> {
     /// What that use began with (`useItem`) and whether a mod set its ticks left
     /// (`game/items/item_use.rs`).
     use_start: using_item::UseStart,
-    title: client_side::ClientShared<Option<Title>>,
     /// Armor slots: head, chest, legs, feet.
     armor: [Option<ItemStack>; 4],
     /// The off hand (Inventory slot 40, saved as slot 150; menu slot 504 here).
@@ -3777,23 +3745,13 @@ struct Game<'a> {
     sleeping: Option<[i32; 3]>,
     sleep_timer: u32,
     dim: Dim,
-    /// The world's data packs' content tables, when it has packs (`None`
-    /// keeps `Resources.rest`'s own in use).
-    world_tables: server_side::ServerShared<Option<WorldTables>>,
-    /// Server-owned loot and item snapshots, independent of client preloads.
-    server_loot: server_side::ServerOnly<sunrise_client::structure_blocks::LootSnapshot>,
     server_items: Option<Arc<Items>>,
     /// The world is superflat (`ServerLevel.isFlat`, for every dimension).
     world_flat: bool,
-    /// A server's levels other than the one in place (game/world/levels.rs).
-    levels: server_side::ServerOnly<levels::Levels>,
     /// Nether portals: the player's, items' and mobs' (game/blocks/nether_portal.rs).
     portals: nether_portal::Portals,
     end: end::EndState,
     block_ticks: Ticks,
-    tickets: server_side::ServerShared<sunrise_client::ticket_levels::ChunkTickets>,
-    random_tick_sections:
-        server_side::ServerOnly<sunrise_client::random_tick_sections::RandomTickSections>,
     level_events: Vec<LevelEvent>,
     falling: sunrise_client::join_seq::JoinList<FallingBlock, false>,
     paintings: sunrise_client::join_seq::JoinList<sunrise_client::entities::Painting>,
@@ -3802,10 +3760,6 @@ struct Game<'a> {
     armor_stands: sunrise_client::join_seq::JoinList<sunrise_client::entities::ArmorStand>,
     /// `Cushion` decoration entities (game/entities/cushions.rs).
     cushions: sunrise_client::join_seq::JoinList<sunrise_client::entities::Cushion>,
-    /// Entities of types Sunrise does not simulate.
-    others:
-        server_side::ServerShared<sunrise_client::join_seq::ResidentList<commands::OtherEntity>>,
-    armor_stand_assets: client_side::ClientOnly<armor_stands::ArmorStandAssets>,
     boats: sunrise_client::join_seq::JoinList<boats::Boat, false>,
     carts: sunrise_client::join_seq::JoinList<minecarts::Minecart, false>,
     bolts: sunrise_client::join_seq::ResidentList<lightning::Bolt>,
@@ -3813,11 +3767,6 @@ struct Game<'a> {
     dragon: native_entity_refs::dragon_parts_table::DragonSlot,
     crystals: sunrise_client::join_seq::JoinList<dragon::Crystal>,
     breath_clouds: sunrise_client::join_seq::ResidentList<dragon::Breath>,
-    text_displays:
-        client_side::ClientOnly<indexmap::IndexMap<i32, text_displays::RemoteTextDisplay>>,
-    /// Player skin downloads, and which skin each atlas skin slot holds
-    /// (least recently shown first).
-    skin_downloads: client_side::ClientOnly<RefCell<sunrise_client::skins::Downloader>>,
     /// `ProfileResolver.Cached`: `Dynamic` profiles (name- or id-only heads
     /// and mannequins) resolve through the services in the background.
     skin_profiles: RefCell<sunrise_client::skins::Resolver>,
@@ -3829,11 +3778,6 @@ struct Game<'a> {
     posed_rider: Option<u32>,
     /// Block entity data of broken blocks waiting for their dropped item.
     pending: spill::Pending,
-    /// Item entities spawned and block entities removed while the block
-    /// behaviour ran (spilled contents, popped resources).
-    spill: server_side::ServerOnly<spill::Spill>,
-    /// The recipe book of the open screen (game/items/recipe_book.rs).
-    recipe_ui: client_side::ClientOnly<recipe_book::RecipeUi>,
     /// The player's fishing hook.
     hook: sunrise_client::join_seq::ResidentSlot<fishing::Hook>,
     tridents: sunrise_client::join_seq::JoinList<trident::ThrownTrident>,
@@ -3841,71 +3785,36 @@ struct Game<'a> {
     /// Ominous trial spawners' item spawners.
     ominous_spawners:
         sunrise_client::join_seq::ResidentList<ominous_item_spawner::OminousItemSpawner>,
-    /// Monster spawners' display mobs (`game/mobs/spawner.rs`).
-    spawners: client_side::ClientOnly<spawner::SpawnerState>,
     tnts: sunrise_client::join_seq::JoinList<tnt::PrimedTnt>,
     /// The open `host.transaction`s, innermost last (`transactions.rs`).
     transactions: transactions::OpenTransactions,
-    /// The mod screen of a menu open on this client (`native_screen`).
-    mod_screen: client_side::ClientOnly<Option<native_hooks::OpenNativeScreen>>,
     /// Block-entity positions retained between ticks for client effects.
     spawner_tick_positions: Vec<sunrise_client::block_entities::Pos>,
     trial_spawner_tick_positions: Vec<sunrise_client::block_entities::Pos>,
     /// The `[[native.loop]]` slots' state, per published loop (`published_loops.rs`).
     loop_states: published_loops::LoopStates,
     item_features: sunrise_items::creative_catalog::ItemFeatureRequirements,
-    creative_catalog: server_side::ServerOnly<Arc<sunrise_items::creative_catalog::Catalog>>,
-    creative_screen: client_side::ClientOnly<Creative>,
     creative_contents: native_hooks::CreativeCache,
     entity_initialization: entity_initialization::EntityInitialization,
     kinetic_feedback: HashMap<i32, i64>,
     control: Option<sunrise_client::control::Server>,
     /// This play session's frame and tick times, for opt-in performance statistics.
     perf: sunrise_client::telemetry::Session,
-    /// Control replies waiting for a rendered frame or a benchmark deadline.
-    pending_screenshot: client_side::ClientOnly<Option<std::sync::mpsc::Sender<String>>>,
-    /// `screenshot-sequence` while it runs.
-    screenshot_sequence: client_side::ClientOnly<Option<screenshot_sequence::Sequence>>,
-    /// `render-capture DIR`: replied once the renderer wrote the scene.
-    pending_render_capture: client_side::ClientOnly<Option<std::sync::mpsc::Sender<String>>>,
-    pending_bench:
-        client_side::ClientOnly<Option<(Instant, std::sync::mpsc::Sender<String>, bool)>>,
     /// Sunrise mods (`game/modding/mods/mod.rs`), none running unless turned on.
     mods: mods::ModsState,
-    /// The in-game browser's worker, separate from the cloneable reload inputs.
-    mod_jobs: client_side::ClientOnly<mod_browser::Jobs>,
     /// Every item and recipe, for mods (`game/modding/native_recipes.rs`), made once.
     recipe_tables: native_recipes::RecipeTables,
-    /// Main-hand input captured by a client mod, independent of living-item use.
-    client_item_use: client_side::ClientShared<Option<native_claimed_items::ActiveClientItemUse>>,
     /// The native lifecycle bookkeeping.
     native_lifecycle: native_lifecycle::NativeLifecycle,
     resident_entities: resident_state::ResidentEntities,
-    /// The mobs lent to the hook calls running now, before they join a level
-    /// (game/modding/native_unspawned_mob.rs).
-    lent_mobs: server_side::ServerOnly<RefCell<native_unspawned_mob::LentMobs>>,
     /// Native mods' config files this game loaded (game/modding/native_configs.rs).
     native_configs: native_configs::NativeConfigs,
     /// Private custom-book connection and placement state.
     native_net: native_net::NativeNet,
-    /// Meshed sections waiting for an upload budget (Sunrise settings).
-    pending_uploads: client_side::ClientOnly<Vec<sunrise_client::streaming::MeshUpload>>,
-    /// Empty between updates. Reuses storage for merging two sorted runs.
-    pending_uploads_merge: client_side::ClientOnly<Vec<sunrise_client::streaming::MeshUpload>>,
-    occlusion: client_side::ClientOnly<entity_culling::EntityOcclusion>,
-    async_particle_culler: client_side::ClientOnly<RefCell<particle_culling::ParticleAsyncState>>,
-    /// A scripted flight from the control socket (`fly`).
-    flight: client_side::ClientOnly<Option<control::Flight>>,
     /// The running agent action from the control socket (game/runtime/agent/mod.rs).
     agent: agent::Agent,
-    /// Widget commands waiting for the frame after a click (game/runtime/ui_control.rs).
-    ui_wait: client_side::ClientOnly<ui_control::UiWait>,
     /// What happened, for `events` and `wait-for` (game/runtime/events.rs).
     events: events::Events,
-    /// Who caused each input event: a person, an agent or the game (game/runtime/input_trace.rs).
-    input_trace: client_side::ClientOnly<input_trace::InputTrace>,
-    /// A repro recording, export or replay (game/runtime/repro.rs).
-    repro: client_side::ClientOnly<repro::Repro>,
     /// The health history and client captures (game/profile_capture.rs).
     profile: profile_capture::Profile,
     /// The overworld's last `sky_darken` and its inputs (time, rain, thunder).
@@ -3918,10 +3827,6 @@ struct Game<'a> {
     attachment_indexes: attachment_index::Indexes,
     /// Connected to a server: the world comes from the network (game/network/remote/mod.rs).
     remote: Option<remote::Remote>,
-    /// Client work survives a disconnect; packets and credits stay with their physical listener.
-    client_tasks: client_side::ClientOnly<sunrise_client::net::ClientTasks>,
-    pending_client_tasks:
-        client_side::ClientOnly<std::collections::VecDeque<sunrise_client::net::ClientTask>>,
     /// The current connection came from Realms (retained for reconnect).
     realm_session: bool,
     /// The current connection came from the LAN list (`ServerData.isLan`).
@@ -3937,70 +3842,25 @@ struct Game<'a> {
     /// The open world is shared behind an invite code (game/network/friends.rs).
     #[cfg(feature = "friends")]
     friends: Option<friends::Sharing>,
-    world_options: client_side::ClientOnly<Option<lan_screen::WorldOptions>>,
-    command_block_screen: client_side::ClientOnly<Option<command_blocks::CommandBlockScreen>>,
-    block_editor: client_side::ClientOnly<Option<block_editor::BlockEditScreen>>,
-    /// The game tests read so far, by id (the test instance registry).
-    test_defs: server_side::ServerOnly<
-        std::cell::RefCell<HashMap<String, Option<test_instances::TestDef>>>,
-    >,
-    /// `GameTestTicker.SINGLETON`: the game tests running on this server.
-    game_tests: server_side::ServerOnly<game_tests::GameTests>,
-    /// Startup declarations shared by F3 options, the overlay and renderer selection.
-    registered_debug_entries: client_side::ClientOnly<
-        std::sync::Arc<[sunrise_client::debug_entries::RegisteredDebugEntry]>,
-    >,
-    /// `Minecraft.debugEntries`: what the overlay and the debug renderers
-    /// show (`debug-profile.json`, F3+F6).
-    debug_entries: client_side::ClientOnly<sunrise_client::debug_entries::DebugEntries>,
     /// The passages mods registered in each level, and a client's copy (`native_passages.rs`).
     passages: native_passages::Passages,
     /// MultiPlayerGameMode.previousLocalPlayerMode (F3+N goes back to it).
     previous_mode: Option<sunrise_client::command::args::GameMode>,
-    /// The system clipboard (`KeyboardHandler.clipboardManager`).
-    clipboard: client_side::ClientOnly<sunrise_client::clipboard::SystemClipboard>,
-    pending_save: client_side::ClientOnly<Option<saving::ClosingSave>>,
     /// `Player.entityInteractionRange` and `blockInteractionRange`, refreshed
     /// each tick from the attribute (a server's reach modifier, creative's
     /// +2): the pick helpers' `&self` reach.
     entity_reach: f64,
     block_reach: f64,
-    /// A mod asked for the command trees again (`native_refresh_commands`):
-    /// the next server tick asks every mod for its commands and resends them.
-    native_commands: server_side::ServerOnly<native_server::NativeCommandState>,
-    /// Other players in the current guest turn, including borrowed ancestor bodies.
-    lan_building_boxes: server_side::ServerOnly<building_players::BuildingPlayers>,
-    /// Bodies and their statistics displaced by guest turns, outer first.
-    lan_displaced_players: server_side::ServerOnly<Vec<lan_actions::DisplacedPlayer>>,
     /// Live attachments and original snapshots retained during player replacement.
     player_state: original_player::PlayerState,
-    /// A fake player's `perform_action` in progress, and what it refused.
-    fake_action: server_side::ServerOnly<std::sync::Arc<native_server::FakeAction>>,
-    /// A dedicated server's operator, whitelist and ban lists, for `/op`,
-    /// `/ban` and friends (`DedicatedPlayerList`).
-    server_lists:
-        server_side::ServerOnly<Option<std::sync::Arc<std::sync::Mutex<dedicated::Lists>>>>,
-    /// State of `/spectate`, `/posteffect`, `/debug`, `/waypoint` and friends.
-    cmds: server_side::ServerOnly<commands::extra::CommandExtras>,
-    /// The retained server reload listeners of the last successful reload.
-    reload_resources: server_side::ServerOnly<mod_api::RetainedListeners>,
     ui: chat::UiState,
-    combat: server_side::ServerOnly<combat::CombatTracker>,
-    /// Each guest's own `CombatTracker`, out of `combat` between turns.
-    guest_combat: server_side::ServerOnly<std::collections::HashMap<u32, combat::CombatTracker>>,
     mount: mounts::MountState,
     stats: stats::Stats,
     score: scoreboard::ScoreState,
-    fns: server_side::ServerOnly<functions::FnState>,
-    exec: server_side::ServerOnly<commands::execute::ExecState>,
     border: sunrise_client::worldborder::WorldBorder,
-    /// `Hud.tabList`: the player list's header, footer and heart states.
-    tab_list: client_side::ClientOnly<sunrise_client::tab_list::TabList>,
     adv: advancements::AdvState,
-    adv_ui: client_side::ClientOnly<advancements_screen::AdvUi>,
     fangs: fangs::FangState,
-    pub(in crate::game) server: ServerState,
-    pub(in crate::game) client: ClientState,
+    pub(in crate::game) side: S,
 }
 /// The open world's dimensions past vanilla's three. One per process, as a window
 /// and its server thread name the same dimensions.
@@ -4337,7 +4197,7 @@ pub(crate) struct OrbFrame {
     up: glam::Vec3,
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `Level.canHaveWeather`, from the level's dimension type (sky light, no
     /// ceiling) and the End, which vanilla names by id. Every rain, thunder
     /// and lightning rule asks this, never the dimension's id.
@@ -5496,7 +5356,7 @@ fn autosave_interval(rate: f32) -> i64 {
 
 /// winit's events for a window's game, with any loop: a headless client (#4951) has no
 /// winit loop and calls these from its own.
-impl Game<'_> {}
+impl<__Side: crate::game::Side> Game<'_, __Side> {}
 /// misc/forcefield.png for the world border wall (square, power of two).
 fn load_forcefield(root: &sunrise_assets::resource_source::ResourceSource) -> (u32, u32, Vec<u8>) {
     root.read("assets/minecraft/textures/misc/forcefield.png")
@@ -6078,7 +5938,7 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
     }
 }
 
-impl<'a> Game<'a> {
+impl<'a, __Side: crate::game::Side> Game<'a, __Side> {
     /// A game with no world open, over the loaded resources: the window's,
     /// or an integrated server's on its own thread.
     fn new(
@@ -6848,7 +6708,7 @@ pub(crate) fn in_own_process(name: &str, body: impl FnOnce()) {
     );
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     fn presence_status(&self) -> sunrise_client::social::PresenceStatus {
         use sunrise_client::social::PresenceStatus;
         if self.integrated.is_some() {

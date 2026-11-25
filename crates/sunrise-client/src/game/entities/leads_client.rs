@@ -34,7 +34,7 @@ pub(in crate::game::client_side) use sunrise_gameplay::leash_knot::{
     Knot, held_by_acting_player, resolve_pending_leash, write_mob_leash_tag,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `LeashFeatureRenderer` for every lead and `LeashKnotRenderer` for the knots.
     pub(in crate::game::client_side) fn leash_geometry(
         &self,
@@ -246,7 +246,7 @@ impl Game<'_> {
             }
         }
         // The knots: a 6 by 8 by 6 pixel block on the fence post.
-        let Some(model) = self.client.entity_models.leash_knot.as_ref() else {
+        let Some(model) = self.side.entity_models.leash_knot.as_ref() else {
             return;
         };
         let Some(r) = atlas.sprites.get("entity/lead_knot/lead_knot").copied() else {
@@ -254,7 +254,7 @@ impl Game<'_> {
         };
         for p in knots {
             if self
-                .client
+                .side
                 .remote_knots
                 .iter()
                 .any(|(&id, &pos)| pos == p && self.hides_as_camera(id))
@@ -292,10 +292,10 @@ impl Game<'_> {
         } else {
             -1.0
         };
-        if self.client.camera_type.is_first_person() {
+        if self.side.camera_type.is_first_person() {
             let (yaw, pitch) = rope_hold_angles(
                 (self.yaw, self.pitch),
-                self.client.rope_rot_old,
+                self.side.rope_rot_old,
                 alpha as f32,
             );
             let v = glam::DVec3::new(0.39 * hand_dir, -0.6, 0.3);
@@ -312,11 +312,11 @@ impl Game<'_> {
         // `getPosition(partialTick)`.
         let (_, x_rot) = rope_hold_angles(
             (self.yaw, self.pitch),
-            self.client.rope_rot_old,
+            self.side.rope_rot_old,
             alpha as f32,
         );
         let t = alpha as f32;
-        let y_rot = self.client.player_model.as_ref().map_or(
+        let y_rot = self.side.player_model.as_ref().map_or(
             f64::from(self.yaw * (std::f32::consts::PI / 180.0)),
             |m| {
                 f64::from(
@@ -335,8 +335,8 @@ impl Game<'_> {
         if p.fall_flying || p.auto_spin_attack_ticks > 0 {
             // getViewVector(partialTick) against getDeltaMovement, flat.
             let look = sunrise_world::view_direction::view_vector(
-                self.client.rope_rot_old.1 + t * (self.pitch - self.client.rope_rot_old.1),
-                self.client.rope_rot_old.0 + t * (self.yaw - self.client.rope_rot_old.0),
+                self.side.rope_rot_old.1 + t * (self.pitch - self.side.rope_rot_old.1),
+                self.side.rope_rot_old.0 + t * (self.yaw - self.side.rope_rot_old.0),
             );
             let movement = p.velocity;
             let speed_len = movement.x * movement.x + movement.z * movement.z;

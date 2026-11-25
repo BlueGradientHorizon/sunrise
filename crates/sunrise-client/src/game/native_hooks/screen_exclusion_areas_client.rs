@@ -4,7 +4,7 @@ pub(in crate::game::client_side) use super::*;
 pub(in crate::game::client_side) use crate::game::native_hooks::screen_exclusion_areas::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Where the open screen draws outside its `rect`, and where mods draw
     /// over it: the recipe book's panel, the creative tab rows, the active
     /// effects beside the inventory, then whatever `native_screen_exclusion_areas`
@@ -16,7 +16,7 @@ impl Game<'_> {
         let Some(view) = self.observed_screen_view() else {
             return Vec::new();
         };
-        let Some(renderer) = self.renderer.0.as_ref() else {
+        let Some(renderer) = self.side.renderer.0.as_ref() else {
             return Vec::new();
         };
         let batch = HudBatch::new(

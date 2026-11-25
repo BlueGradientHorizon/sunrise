@@ -19,7 +19,7 @@ use std::collections::{HashMap, HashSet};
 #[path = "entity_initialization/tests.rs"]
 pub(in crate::game) mod tests;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_bind_constructed_entity_attachments(&mut self, id: u32) {
         if self.native_authoritative()
             && self
@@ -119,7 +119,7 @@ impl TransferredEntityState {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Consume the source object's state before forgetting its persistence metadata.
     /// Retiring the publisher immediately makes retained query write tokens stale.
     /// Inside a transaction the take is journaled: the map's writes in the action roll back
@@ -143,7 +143,7 @@ impl Game<'_> {
         let accepted_hit = self
             .mob_object_mut(id)
             .and_then(|mob| mob.accepted_hit.take());
-        let died = self.server.died.remove(&id);
+        let died = self.side.died.remove(&id);
         TransferredEntityState {
             attachments,
             accepted_hit,
@@ -173,9 +173,9 @@ impl Game<'_> {
             self.journal_travel(source, id);
         }
         let now = self.world.game_time;
-        self.levels.0.note_travel(state.source, id, now);
+        self.side.levels.0.note_travel(state.source, id, now);
         if state.died {
-            self.server.died.insert(id);
+            self.side.died.insert(id);
         }
         if state.transient {
             self.persist.transient.insert(id);

@@ -18,7 +18,7 @@ pub(in crate::game) struct FluidBoxLook {
     luminosity: u8,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Draws `stack` as a still fluid filling `bounds` under `draw`'s pose, sampling the fluid's
     /// still sprite from the block sprite arrays. See `BlockEntityDrawContext::fluid_box`.
     pub(in crate::game) fn native_draw_fluid_box(
@@ -29,7 +29,7 @@ impl Game<'_> {
         options: FluidBoxOptions,
     ) -> Result<(), FluidBoxError> {
         let key = stack.key().ok_or(FluidBoxError::UnsupportedFluid)?;
-        let look = self.client.standalone_geometry.fluid_look(
+        let look = self.side.standalone_geometry.fluid_look(
             mod_api::__private::parts_installation::fluid_key_slot(key),
             || self.resolve_fluid_look(key),
         )?;

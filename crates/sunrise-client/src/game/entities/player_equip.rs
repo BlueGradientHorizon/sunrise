@@ -23,7 +23,7 @@ pub(in crate::game) fn same(a: Option<&ItemStack>, b: Option<&ItemStack>) -> boo
     }
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `onEquipItem` for every slot that changed since `before`: what the
     /// server does for the creative screen, which sends each changed slot
     /// (`handleSetCreativeModeSlot` sets it by player).
@@ -58,7 +58,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The body of `onEquipItem` once the item changed.
     pub(in crate::game) fn player_equipped(&mut self, slot: &str, new: Option<&ItemStack>) {
         self.side_player_equipped(slot, new);

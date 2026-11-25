@@ -11,7 +11,7 @@ pub(in crate::game::server_side) use std::cell::RefCell;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_client::menu::StackedOutcome;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Run the prepared click with the LAN host lifted out of the game, the game lent to it as
     /// the mods' `menu_slot_rules` (their read-only `Host`; what it reads of the LAN host answers
     /// as if none were open) and the mods' answer to the pickup, if they gave one.

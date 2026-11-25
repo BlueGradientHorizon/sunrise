@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A public chat line from `sender` (`sender_name`), shown as `message`, is about to reach the
     /// placed player `recipient`. Set `hidden` and that receiver alone is not sent it.
     /// Server-side.

@@ -37,7 +37,7 @@ pub(in crate::game) enum Target {
     Player(usize),
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The boxes of the mobs a spear can hit: alive, and not the vehicle
     /// ridden (`PiercingWeapon.canHitEntity`), with their index.
     pub(in crate::game) fn hittable_mob_boxes(&self) -> Vec<(usize, Aabb)> {

@@ -2,7 +2,7 @@ use super::*;
 
 /// Helpers for native mods, kept as stable as the hook points.
 // Native mods use these; nothing in Sunrise does.
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Registered enchantments, in registry order.
     pub(in crate::game) fn enchantments(&self) -> Vec<EnchantmentInfo> {
         let enchantments = self.item_enchantments();

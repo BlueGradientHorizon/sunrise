@@ -4,7 +4,7 @@ pub(in crate::game::client_side) use super::Game;
 pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
 
 pub(in crate::game) fn player_teleport(
-    game: &mut Game<'_>,
+    game: &mut Game<'_, crate::game::client_side::ClientState>,
     had_player: bool,
     from: Vec3,
     to: Vec3,
@@ -15,7 +15,7 @@ pub(in crate::game) fn player_teleport(
 }
 
 pub(in crate::game) fn tick_items(
-    game: &mut Game<'_>,
+    game: &mut Game<'_, crate::game::client_side::ClientState>,
     entered: &mut Vec<sunrise_client::entities::ItemSplash>,
 ) {
     let mut items = game.dropped.lift();
@@ -47,7 +47,7 @@ pub(in crate::game) fn tick_items(
     game.put_back_dropped(items);
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientLevel.isTickingEntity`: players always tick; other entities tick while their chunk is loaded.
     pub(in crate::game::client_side) fn remote_entity_is_ticking(&self, id: i32) -> bool {
         let Some(r) = self.remote.as_ref() else {
@@ -58,7 +58,7 @@ impl Game<'_> {
         }
         let pos = if let Some(m) = self.mob_index.get_ref(&self.mobs, id as u32) {
             [m.position.x, m.position.z]
-        } else if let Some(i) = self.client.interactions.get(&id) {
+        } else if let Some(i) = self.side.interactions.get(&id) {
             [i.position.x, i.position.z]
         } else if let Some(a) = self.armor_stands.iter().find(|a| a.id == id as u32) {
             [a.position.x, a.position.z]

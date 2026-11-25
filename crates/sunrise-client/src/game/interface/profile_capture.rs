@@ -431,7 +431,7 @@ pub(in crate::game) fn profiler_words(literals: &[String], name: Option<&str>) -
     words
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `profile [client|server] start|stop|status|mark`; None while a `stop` waits for its file.
     pub(in crate::game::client_side) fn profile_command(
         &mut self,
@@ -568,7 +568,7 @@ impl Game<'_> {
             loaded_view_distance: Some(self.streaming.radius.max(0) as u32),
             simulation_distance: Some(s.simulation_distance.max(0) as u32),
             far_terrain_distance: Some(self.lod_distance()),
-            far_terrain_active: Some(self.lod.0.is_some()),
+            far_terrain_active: Some(self.side.lod.0.is_some()),
             graphics_preset: s.graphics_preset.clone(),
         }
     }
@@ -728,7 +728,7 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn gpu_readout(
         &self,
     ) -> Option<sunrise_client::gfx::pack_timing::GpuReadout> {
-        gpu_readout(self.profile.gpu, self.renderer.0.as_deref())
+        gpu_readout(self.profile.gpu, self.side.renderer.0.as_deref())
     }
 
     pub(in crate::game::client_side) fn client_syntax_failure(
@@ -1074,7 +1074,7 @@ impl Game<'_> {
         });
         let t = self.profile.perf.now();
         if self.profile.gpu != GpuSwitch::Off
-            && let Some(renderer) = self.renderer.0.as_mut()
+            && let Some(renderer) = self.side.renderer.0.as_mut()
         {
             let frames = renderer.take_timed_frames();
             self.profile.perf.gpu_frames(t, cpu_ms, &frames);
@@ -1084,7 +1084,7 @@ impl Game<'_> {
             .as_ref()
             .and_then(|r| r.session.counters.lock().unwrap().clone());
         self.profile.perf.set_connection(connection);
-        let (wanted, renderer) = (self.profile.gpu, self.renderer.0.as_deref());
+        let (wanted, renderer) = (self.profile.gpu, self.side.renderer.0.as_deref());
         let entities = self.client_perf_entity_count() as u32;
         let memory = &mut self.profile.memory;
         self.profile.perf.frame_with_gpu(

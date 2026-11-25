@@ -16,7 +16,7 @@ fn registry_index(id: &str, names: &[&str]) -> Option<u8> {
     names.iter().position(|n| *n == id.path()).map(|i| i as u8)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     fn native_merchant_index(&self, merchant: MerchantRef) -> Option<usize> {
         let Target::Mob(id) = self.native_entity_target(merchant.entity())? else {
             return None;

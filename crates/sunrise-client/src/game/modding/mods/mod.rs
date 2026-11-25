@@ -2109,7 +2109,7 @@ pub(in crate::game) struct ModsReload {
     pub(in crate::game) refused: Arc<Mutex<Vec<MissingJar>>>,
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     #[cfg(test)]
     pub(in crate::game) fn initialize_mod_runtime_for_tests() {
         static INITIALIZED: std::sync::Once = std::sync::Once::new();

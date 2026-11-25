@@ -3,7 +3,7 @@
 mod tests;
 use crate::game::Game;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn text_visual_order(
         &self,
         text: &mod_api::Text,

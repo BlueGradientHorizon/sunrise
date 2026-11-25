@@ -92,7 +92,7 @@ fn save_additional(
     Some(output)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn capture_block_entity_payload(
         &self,
         pos: Pos,

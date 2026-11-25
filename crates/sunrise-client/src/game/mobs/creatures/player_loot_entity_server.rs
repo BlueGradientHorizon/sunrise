@@ -3,7 +3,7 @@ pub(in crate::game::server_side) use super::{Game, to_loot};
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::creatures::player_loot_entity::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The acting player as `INTERACTING_ENTITY`: [`Self::killer_loot_entity`]
     /// with the fire and vehicle state the loot predicates test.
     pub(in crate::game) fn interacting_loot_entity(&mut self) -> sunrise_world::loot::LootEntity {
@@ -62,7 +62,7 @@ impl Game<'_> {
         guest: Option<u32>,
     ) -> sunrise_world::loot::LootEntity {
         let capture_nbt = self
-            .server_loot
+            .side.server_loot
             .0
             .get()
             .is_some_and(|data| data.copies_entity_nbt());
@@ -88,7 +88,7 @@ impl Game<'_> {
             }
             e
         };
-        if let Some(conn) = guest.filter(|_| self.server.lan_acting.is_none())
+        if let Some(conn) = guest.filter(|_| self.side.lan_acting.is_none())
             && let Some(entity) = self.as_guest(conn, |g| own(g))
         {
             return entity;

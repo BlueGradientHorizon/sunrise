@@ -88,7 +88,7 @@ pub(in crate::game) fn land_position_data(world: &mut World, at: Pos, data: &Com
         },
     );
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Runs before with_level returns: no menu, ticker, save or packet sees an old owner.
     pub(in crate::game::server_side) fn finish_piston_position_changes(
         &mut self,
@@ -105,9 +105,9 @@ impl Game<'_> {
                         self.be_anims.remove_position(p);
                         self.world.shulkers.remove(&p);
                         self.world.chest_openers.remove(&at);
-                        self.server.lid_openers.remove(&at);
+                        self.side.lid_openers.remove(&at);
                     }
-                    self.server
+                    self.side
                         .mod_container_viewers
                         .retain(|(_, at), _| *at != from);
                     if self
@@ -162,7 +162,7 @@ impl Game<'_> {
                         self.world
                             .set_block_entity_extras(at, BlockEntityExtras::default());
                         self.world.block_names.remove(&at);
-                        self.server.hoppers.remove(&at);
+                        self.side.hoppers.remove(&at);
                     }
                     self.mark_block_entity_updated(at);
                 }

@@ -603,7 +603,7 @@ impl std::fmt::Display for DatapacksRefused {
 }
 impl std::error::Error for DatapacksRefused {}
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Add the adopted packs' English at the dedicated server-starting notice.
     /// World and registry-load listeners still see only the built-in language.
     fn start_loaded_dedicated_world(&mut self, packs: &super::functions::PackStack) {
@@ -874,7 +874,7 @@ const BROADCAST: &[&str] = &[
     "commands.whitelist.remove.success",
 ];
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// DedicatedServer.initServer and MinecraftServer.runServer.
     // The epoch starts at world open; failures before that send no lifecycle event.
     pub(in crate::game) fn run_dedicated(&mut self) -> Result<()> {
@@ -994,7 +994,7 @@ impl Game<'_> {
         lists.op_level = props.op_permission_level;
         lists.player_idle_timeout = props.player_idle_timeout;
         let lists = Arc::new(Mutex::new(lists));
-        self.server_lists.0 = Some(lists.clone());
+        self.side.server_lists.0 = Some(lists.clone());
         log("INFO", &format!("Preparing level \"{level_name}\""));
         let level_load_started = Instant::now();
         let folder = world_dir.to_string_lossy().into_owned();
@@ -1019,7 +1019,7 @@ impl Game<'_> {
         // now rather than at the first tick (reading parses functions; it runs none), and a broken
         // predicate graph stops the start before anything listens (a partial check: predicate_graph.rs).
         self.ensure_datapacks();
-        let store = &self.fns.0.store;
+        let store = &self.side.fns.0.store;
         let tag = |id: &str| {
             let (ns, path) = id.split_once(':').unwrap_or(("minecraft", id));
             store
@@ -1148,7 +1148,7 @@ impl Game<'_> {
             code_of_conducts,
             // DedicatedServer.serverLinks: `bug-report-link` as the only link
             // (ServerLinks.KnownLinkType.BUG_REPORT is id 0).
-            levels: self.server.level_shapes,
+            levels: self.side.level_shapes,
             sunrise_clients_only: props
                 .raw
                 .get(sunrise_client::lan::SUNRISE_CLIENTS_ONLY)
@@ -1182,8 +1182,8 @@ impl Game<'_> {
             view_distance: props.view_distance.clamp(2, 32),
             simulation_distance: props.simulation_distance.clamp(2, 32),
             dimension: self.dim.id().to_owned(),
-            levels: self.server.level_shapes,
-            level_seeds: self.levels.0.runtime.seeds(),
+            levels: self.side.level_shapes,
+            level_seeds: self.side.levels.0.runtime.seeds(),
             seed: self.level.seed,
             max_players: props.max_players.max(0) as usize,
             integrated: false,
@@ -1302,7 +1302,7 @@ impl Game<'_> {
         let mut next = Instant::now();
         // The panic that ended the tick loop, when one did.
         let mut crashed: Option<String> = None;
-        self.fns.0.permission = Some(props.function_permission_level.clamp(0, 4) as u8);
+        self.side.fns.0.permission = Some(props.function_permission_level.clamp(0, 4) as u8);
         let watchdog = Watchdog::start(
             props.max_tick_time,
             self.options.save_failure_diagnostics.clone(),
@@ -1316,7 +1316,7 @@ impl Game<'_> {
         // `/stop`, or a stop signal (the shutdown hook's `halt`): either way the players and levels are
         // saved below, after the wait `[transfer]` may make (transfer.rs).
         while !self.stop_now(&state) {
-            self.server.server_tick_deadline = Some(next + self.clock.tick_duration());
+            self.side.server_tick_deadline = Some(next + self.clock.tick_duration());
             let tick_start = Instant::now();
             if let Some(watchdog) = &watchdog {
                 watchdog.tick_due(next, self.clock.tick_duration());
@@ -1359,8 +1359,8 @@ impl Game<'_> {
                 // `MinecraftServer.autoSave` keeps its schedule while every level's
                 // `noSave` flag is set, but writes nothing. The tick below counts down
                 // once, so reset one tick early when this save would have been due.
-                if self.server.ticks_until_autosave <= 1 {
-                    self.server.ticks_until_autosave = self.next_autosave_interval() + 1;
+                if self.side.ticks_until_autosave <= 1 {
+                    self.side.ticks_until_autosave = self.next_autosave_interval() + 1;
                 }
             }
             // MinecraftServer.tickServer: while paused only the connections run.
@@ -1698,7 +1698,7 @@ impl Game<'_> {
     /// operators too.
     fn console_reply(&mut self, text: Text) {
         log("INFO", &format!("System chat: {}", text.plain()));
-        if self.server.console_broadcast.is_some()
+        if self.side.console_broadcast.is_some()
             && text
                 .translation_key()
                 .is_some_and(|k| BROADCAST.contains(&k))
@@ -1715,16 +1715,16 @@ impl Game<'_> {
     /// One console line run as `RconConsoleSource` runs an RCON command: the same console at level 4,
     /// its source named `Rcon`, and the operators told when `broadcast-rcon-to-ops` is on.
     fn rcon_line(&mut self, state: &mut ServerState, line: &str) {
-        self.server.rcon_source = true;
+        self.side.rcon_source = true;
         self.console_line_telling(state, line, state.broadcast_rcon);
-        self.server.rcon_source = false;
+        self.side.rcon_source = false;
     }
 
     /// `console_line` with `inform` as `CommandSource.shouldInformAdmins`.
     fn console_line_telling(&mut self, state: &mut ServerState, line: &str, inform: bool) {
-        self.server.console_broadcast = Some(inform);
+        self.side.console_broadcast = Some(inform);
         self.console_command(state, line);
-        self.server.console_broadcast = None;
+        self.side.console_broadcast = None;
         // The fixture panics with the hub out of the game, as a panic in the network tick does.
         crash_fixture("hub", || {
             let placed = self
@@ -1740,7 +1740,7 @@ impl Game<'_> {
             self.run_level_teleports();
             self.send_admin_feedback();
         }
-        self.server.admin_feedback.clear();
+        self.side.admin_feedback.clear();
     }
 
     /// `MinecraftServer.createCommandSourceStack`: the console's source is
@@ -1758,9 +1758,9 @@ impl Game<'_> {
             silent: false,
             ..self.server_source()
         };
-        let outer = self.server.command_source.replace(source);
+        let outer = self.side.command_source.replace(source);
         let out = self.as_console(f);
-        self.server.command_source = outer;
+        self.side.command_source = outer;
         if let Some(back) = back {
             self.enter_command_level(back);
         }
@@ -1769,7 +1769,7 @@ impl Game<'_> {
 
     /// A console or RCON announcement, logged without adding to the source's command output.
     pub(in crate::game::server_side) fn dedicated_console_say(&mut self, message: String) {
-        let name = if self.server.rcon_source {
+        let name = if self.side.rcon_source {
             "Rcon"
         } else {
             "Server"
@@ -1777,7 +1777,7 @@ impl Game<'_> {
         let Some(hidden) = self.chat_hidden_from(|_| (0, name, message.as_str())) else {
             return;
         };
-        let held = self.server.rcon_source.then(|| CAPTURE.take());
+        let held = self.side.rcon_source.then(|| CAPTURE.take());
         log("INFO", &format!("[Not Secure] [{name}] {message}"));
         if let Some(held) = held {
             CAPTURE.set(held);
@@ -2145,13 +2145,13 @@ impl Game<'_> {
     /// through `console_reply` again.
     pub(in crate::game::server_side) fn console_dispatch(&mut self, line: &str) {
         // The game's dispatcher, captured for the console.
-        self.server.chat_capture = Some(Vec::new());
+        self.side.chat_capture = Some(Vec::new());
         // A command a native mod registered goes to the mods first,
         // looked up by the same first word the match above read.
         if !self.perform_native_console_command(line.trim()) {
             self.as_console_in_spawn_level(|g| g.run_command(line));
         }
-        for text in self.server.chat_capture.take().unwrap_or_default() {
+        for text in self.side.chat_capture.take().unwrap_or_default() {
             log("INFO", &format!("System chat: {}", text.plain()));
         }
         // ServerPlayer.onEffectAdded and onEffectUpdated send an effect
@@ -2409,7 +2409,7 @@ impl Game<'_> {
         run_error: Option<&str>,
     ) -> Result<()> {
         self.streaming.abort_generation();
-        self.levels.0.abort_parked_generation();
+        self.side.levels.0.abort_parked_generation();
         // A failed open keeps its opening phase until the final save attempts finish.
         if run_error.is_none() || !self.native_lifecycle.is_opening() {
             self.native_lifecycle.begin_close();
@@ -2482,12 +2482,12 @@ fn console_level(active: super::Dim, spawn: super::Dim) -> Option<super::Dim> {
     (active != spawn).then_some(spawn)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The count is diagnostic; only hard failures stop the lifecycle.
     fn save_dedicated_checkpoint(&mut self, phase: &str) -> Result<u64> {
-        let before = self.save.0.record_save_failures();
+        let before = self.side.save.0.record_save_failures();
         self.save_game()?;
-        let failed = self.save.0.record_save_failures() - before;
+        let failed = self.side.save.0.record_save_failures() - before;
         if failed != 0 {
             log::warn!("Partial save during {phase}: {failed} chunk records could not be saved");
         }

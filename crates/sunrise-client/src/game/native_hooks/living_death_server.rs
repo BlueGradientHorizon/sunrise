@@ -8,7 +8,7 @@ pub(in crate::game::server_side) use crate::game::native_hooks::living_death::hu
 pub(in crate::game::server_side) use crate::game::native_hooks::living_death::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `LivingEntity.die`: a veto skips its whole tail, without supplying revive health.
     pub(in crate::game::server_side) fn mob_death_canceled(
         &mut self,
@@ -47,7 +47,7 @@ impl Game<'_> {
             body.death_canceled = body.health <= 0.0;
             if !body.death_canceled {
                 body.death_time = 0;
-                self.server.died.remove(&mob.id);
+                self.side.died.remove(&mob.id);
             }
         }
         cancel

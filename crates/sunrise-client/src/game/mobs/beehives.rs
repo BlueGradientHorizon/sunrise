@@ -20,13 +20,13 @@ use sunrise_core::{
 use {sunrise_core::nbt::Tag, sunrise_world::registry::BlockStateId};
 
 pub(in crate::game) struct GameHive<'g, 'a> {
-    pub(in crate::game) game: &'g mut Game<'a>,
+    pub(in crate::game) game: &'g mut Game<'a, crate::game::server_side::ServerState>,
     /// `bees_stay_in_hive`, once asked: the time and weather it reads hold
     /// for the hive's turn, and every occupant whose time is up asks.
     pub(in crate::game) stay: std::cell::Cell<Option<bool>>,
 }
 impl<'g, 'a> GameHive<'g, 'a> {
-    pub(in crate::game::server_side) fn new(game: &'g mut Game<'a>) -> Self {
+    pub(in crate::game::server_side) fn new(game: &'g mut Game<'a, crate::game::server_side::ServerState>) -> Self {
         Self {
             game,
             stay: Default::default(),
@@ -34,7 +34,7 @@ impl<'g, 'a> GameHive<'g, 'a> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Route a target assigned outside the mob tick through the same listener
     /// as AI, before changing the player's binding or the mob's state.
     pub(in crate::game) fn set_event_ai_target(
@@ -44,7 +44,7 @@ impl Game<'_> {
         player: Option<u32>,
     ) -> bool {
         if matches!(target, Some(Who::Player))
-            && (self.server.lan_acting_fake
+            && (self.side.lan_acting_fake
                 || player.is_some_and(|conn| {
                     self.lan
                         .as_ref()
@@ -265,7 +265,7 @@ impl Game<'_> {
                         bee::set_stay_out_of_hive_countdown(m);
                     }
                 } else {
-                    self.set_event_ai_target(id, Some(Who::Player), self.server.lan_acting);
+                    self.set_event_ai_target(id, Some(Who::Player), self.side.lan_acting);
                 }
             }
         }
@@ -376,7 +376,7 @@ impl Game<'_> {
                     .map(|m| m.id)
                     .collect();
                 for id in ids {
-                    self.set_event_ai_target(id, Some(Who::Player), self.server.lan_acting);
+                    self.set_event_ai_target(id, Some(Who::Player), self.side.lan_acting);
                 }
             }
         }

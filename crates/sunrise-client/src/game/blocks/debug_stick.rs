@@ -34,7 +34,7 @@ fn text(key: &str, args: &[&str]) -> Text {
     Text::translate(key, &args)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `DebugStickItem.useOn`: a right click cycles the value of the property
     /// in `debug_stick_state` (the first property when none is selected yet).
     /// `Some` is the vanilla result (`SUCCESS`/`FAIL`), `None` another item.

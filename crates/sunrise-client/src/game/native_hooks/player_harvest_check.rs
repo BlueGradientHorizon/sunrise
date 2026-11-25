@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// A player's ability to harvest the block at `pos` may be changed.
     pub(in crate::game) fn native_player_harvest_check(
         &mut self,

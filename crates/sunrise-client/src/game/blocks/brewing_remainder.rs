@@ -16,7 +16,7 @@ impl BrewingRemainder {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn brewing_fuel_remainder(
         &self,
         pos: (i32, i32, i32),

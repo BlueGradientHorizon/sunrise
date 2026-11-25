@@ -4,7 +4,7 @@ pub(in crate::game::server_side) use super::*;
 pub(in crate::game::server_side) use crate::game::native_hooks::client_information_updated::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A placed player's login as the mods hear it: the client information
     /// they joined with (`client_information_updated`, from the defaults),
     /// then `player_logged_in`.

@@ -8,7 +8,7 @@ use mod_api::RailShape;
 use sunrise_core::position::BlockPos;
 use sunrise_world::{level::classes::Class, registry::BlockStateId};
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The candidate selected by `getCurrentBlockPosOrRailBelow` only needs the tag.
     pub(super) fn tagged_rail(&self, state: BlockStateId) -> bool {
         let name = self.res.facts().get(state).name.as_ref();

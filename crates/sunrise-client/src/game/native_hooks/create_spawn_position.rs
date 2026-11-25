@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Before a new server level selects its initial world spawn
     /// (NeoForge's `LevelEvent.CreateSpawnPosition`).
     pub(in crate::game) fn native_create_spawn_position(

@@ -23,7 +23,7 @@ pub(in crate::game::server_side) use sunrise_world::{
     level::classes::Class, worldgen::live::LiveFeatures,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Load the configured/placed feature registry used by saplings, fungi
     /// and bone meal (for fixtures: the plain bundle, unless one is installed; worlds install
     /// their own in `prepare_world`).

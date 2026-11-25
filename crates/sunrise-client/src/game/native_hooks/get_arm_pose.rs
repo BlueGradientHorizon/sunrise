@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The pose of the arm holding `stack` in `hand` (`IClientItemExtensions.getArmPose`); set
     /// `pose` to replace what the item would give. Client-side.
     pub(in crate::game) fn native_get_arm_pose(

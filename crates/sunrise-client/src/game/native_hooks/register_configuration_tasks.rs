@@ -1,5 +1,5 @@
 use super::Game;
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn native_register_configuration_tasks(
         &mut self,
         connection: mod_api::ConfigurationConnection,

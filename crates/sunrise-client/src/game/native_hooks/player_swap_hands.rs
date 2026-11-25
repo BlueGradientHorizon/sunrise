@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Heard before a non-spectator player's swap-hands action.
     /// The two mutable stacks start as the off-hand and main-hand stacks;
     /// the hands receive the listener's outputs unless it cancels.

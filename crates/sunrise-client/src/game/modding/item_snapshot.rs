@@ -31,7 +31,7 @@ impl Deref for ItemSnapshot {
     }
 }
 
-impl super::Game<'_> {
+impl<__Side: crate::game::Side> super::Game<'_, __Side> {
     pub(in crate::game) fn stack_boundary_items(&self) -> Option<ItemSnapshot> {
         Some(ItemSnapshot::capture(
             self.server_items.as_ref(),
@@ -52,7 +52,7 @@ pub(in crate::game) trait ItemBoundary {
     fn boundary_items(&self) -> Option<&Items>;
 }
 
-impl ItemBoundary for super::Game<'_> {
+impl<__Side: crate::game::Side> ItemBoundary for super::Game<'_, __Side> {
     fn boundary_items(&self) -> Option<&Items> {
         Some(self.items())
     }

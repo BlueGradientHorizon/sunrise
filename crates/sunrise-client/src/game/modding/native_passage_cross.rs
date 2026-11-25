@@ -70,7 +70,7 @@ fn chunk_of(point: [f64; 3]) -> (i32, i32) {
     )
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientHost::cross_passage`: the window's player comes out of `passage` with its
     /// feet, its last tick's place, its velocity and its look carried through, and the
     /// server is told the passage and where the feet were; a payload a mod cancels moves
@@ -125,7 +125,7 @@ impl Game<'_> {
         self.previous_position = Motion::new(ox, oy, oz);
         let turn = yaw_turn(&p);
         self.yaw += turn;
-        self.client.rope_rot_old.0 += turn;
+        self.side.rope_rot_old.0 += turn;
         self.passages.crossing = Some(passage);
         self.passages.refused = None;
         Ok(())

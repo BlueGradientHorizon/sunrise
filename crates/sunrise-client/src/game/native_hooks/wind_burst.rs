@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Before a wind burst interacts with blocks, `blocks` holds the shuffled
     /// candidate positions in `dimension`. Remove positions to spare those
     /// blocks; entity knockback and the shuffle's random draws are unchanged.

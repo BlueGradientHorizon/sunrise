@@ -23,7 +23,7 @@ pub(in crate::game::client_side) use sunrise_client::mobs::anim::Poses;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_core::geometry::{Aabb, Vec3};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `CushionRenderer`: the coloured model, rotated to the nearest
     /// direction, with its bottom on the cushion's position.
     pub(in crate::game::client_side) fn cushion_geometry(
@@ -31,7 +31,7 @@ impl Game<'_> {
         camera: glam::DVec3,
         out: &mut Vec<sunrise_client_render::render_geometry::Vertex>,
     ) {
-        let Some(model) = self.client.cushion_model.as_ref() else {
+        let Some(model) = self.side.cushion_model.as_ref() else {
             return;
         };
         let sprites = &self.gui.atlas.sprites;

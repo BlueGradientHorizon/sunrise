@@ -13,11 +13,11 @@ pub(in crate::game::server_side) use sunrise_client::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_protocol::packets::play::{self, Clientbound as C};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `PlayerList.getPlayers` but the player in place: the guests who
     /// joined the world.
     pub(in crate::game::server_side) fn command_players(&self) -> impl Iterator<Item = &Guest> {
-        let acting = self.server.lan_acting;
+        let acting = self.side.lan_acting;
         self.lan
             .iter()
             .flat_map(|h| h.hub.online_players())
@@ -34,7 +34,7 @@ impl Game<'_> {
     ) -> Option<T> {
         let conn = match t {
             Target::Player => return Some(f(self)),
-            Target::Guest(conn) if self.server.lan_acting == Some(conn) => return Some(f(self)),
+            Target::Guest(conn) if self.side.lan_acting == Some(conn) => return Some(f(self)),
             Target::Guest(conn) => conn,
             _ => return None,
         };
@@ -51,9 +51,9 @@ impl Game<'_> {
             log::error!("could not open {}: {e}", dim.id());
         }
         let Some((out, told)) = self.with_guest_swap(conn, back, |game| {
-            let source = game.server.chat_capture.replace(Vec::new());
+            let source = game.side.chat_capture.replace(Vec::new());
             let out = f(game);
-            let told = std::mem::replace(&mut game.server.chat_capture, source).unwrap_or_default();
+            let told = std::mem::replace(&mut game.side.chat_capture, source).unwrap_or_default();
             (out, told)
         }) else {
             if self.dim != back
@@ -85,7 +85,7 @@ impl Game<'_> {
         &self,
         guest: &Guest,
     ) -> bool {
-        !self.server.native_command_filter || self.entity(guest.entity_id as u32).is_some()
+        !self.side.native_command_filter || self.entity(guest.entity_id as u32).is_some()
     }
     /// The guests a selector looks at, in join order (`PlayerList.getPlayers`),
     /// the one in place as `Target::Player`: all of them, or those in the
@@ -101,7 +101,7 @@ impl Game<'_> {
             || s.pos.iter().any(Option::is_some)
             || s.delta.iter().any(Option::is_some);
         let here = self.dim.id();
-        let in_place = self.server.lan_acting.filter(|_| self.player.is_some());
+        let in_place = self.side.lan_acting.filter(|_| self.player.is_some());
         self.lan
             .iter()
             .flat_map(|h| h.hub.online_players())
@@ -123,7 +123,7 @@ impl Game<'_> {
     /// by it, without its `~` or with it (quoted), so `/msg` and `/tell`
     /// reach a player by the name chat shows. No nickname, no change.
     pub(in crate::game::server_side) fn player_named(&self, name: &str) -> Option<Target> {
-        if !self.server.lan_acting_fake
+        if !self.side.lan_acting_fake
             && self.player.is_some()
             && name.eq_ignore_ascii_case(self.acting_player_name())
         {
@@ -137,7 +137,7 @@ impl Game<'_> {
     /// The name of the server's own source: "Rcon" for a command an RCON client sent
     /// (`RconConsoleSource`), "Server" otherwise (`MinecraftServer.createCommandSourceStack`).
     pub(in crate::game::server_side) fn server_name(&self) -> Text {
-        Text::literal(if self.server.rcon_source {
+        Text::literal(if self.side.rcon_source {
             "Rcon"
         } else {
             "Server"
@@ -147,7 +147,7 @@ impl Game<'_> {
     /// command block's or minecart's own name when the source has no entity,
     /// or the server's.
     pub(in crate::game::server_side) fn source_display_name(&self) -> Text {
-        match self.server.command_source {
+        match self.side.command_source {
             Some(source) => match source.entity {
                 Some(target) => self.target_name(target),
                 None => source
@@ -175,7 +175,7 @@ impl Game<'_> {
     /// command typed by the player in place runs as them, the server
     /// console's as nobody.
     pub(in crate::game) fn source_entity(&self) -> Option<Target> {
-        match self.server.command_source {
+        match self.side.command_source {
             Some(s) => s.entity,
             None => self.player.is_some().then_some(Target::Player),
         }
@@ -183,7 +183,7 @@ impl Game<'_> {
     /// `EntitySelector.findEntities` with a UUID: the player with it, else
     /// the entity.
     pub(in crate::game) fn target_by_uuid(&self, uuid: u128) -> Option<Target> {
-        let own = self.server.lan_acting_uuid.or_else(|| {
+        let own = self.side.lan_acting_uuid.or_else(|| {
             self.level.player_uuid.map(|[a, b, c, d]| {
                 (u128::from(a as u32) << 96)
                     | (u128::from(b as u32) << 64)
@@ -192,7 +192,7 @@ impl Game<'_> {
             })
         });
         if self.player.is_some() && own == Some(uuid) {
-            return (!self.server.lan_acting_fake).then_some(Target::Player);
+            return (!self.side.lan_acting_fake).then_some(Target::Player);
         }
         if let Some(g) = self.command_players().find(|g| g.uuid == uuid) {
             return Some(Target::Guest(g.conn));

@@ -60,7 +60,7 @@ pub(in crate::game::client_side) use sunrise_protocol::packets::play::Clientboun
 #[path = "icons_client.rs"]
 pub(in crate::game) mod icons;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The `AdvancementToast` or `RecipeToast` in its slot at `y`.
     pub(in crate::game::client_side) fn draw_advancement_toast(
         &self,
@@ -274,7 +274,7 @@ impl Game<'_> {
             mod_api::ToastKind::Advancement
         };
         if self.admit_toast(kind, &mut toast.title, &mut toast.description) {
-            self.client
+            self.side
                 .toast_manager
                 .queued
                 .push_back(super::toast_manager::Toast::Advancement(toast));

@@ -3,7 +3,7 @@ pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::remote::recipe_properties::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Minecraft.disconnect's `ClientPlayerNetworkEvent.LoggingOut`: on
     /// leaving a world, and on quitting the game from one. Once per
     /// connection, whichever way out runs first.
@@ -21,9 +21,9 @@ impl Game<'_> {
         self.clear_spectated_entity_post_effect();
         self.reset_client_item_use();
         // Camera.reset clears initialization while keeping the last aligned position.
-        self.client.view.initialized = false;
+        self.side.view.initialized = false;
         self.native_client_player_logging_out(player.map(|p| p.0), player.map(|p| p.1));
-        if self.mod_screen.0.is_some() {
+        if self.side.mod_screen.0.is_some() {
             self.remote_close_local();
         }
         self.native_lifecycle.begin_close();

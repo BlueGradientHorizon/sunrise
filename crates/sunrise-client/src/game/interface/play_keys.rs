@@ -14,14 +14,14 @@ pub(in crate::game) const GUI_KEYS: [&str; 5] = [
     "key.command",
 ];
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `new InventoryScreen(player)`: the player's inventory, or in creative
     /// mode the creative inventory `InventoryScreen.init` swaps in.
     pub(in crate::game::client_side) fn open_player_inventory(&mut self) {
         if self.instabuild() {
             self.set_screen(Screen::Creative);
             self.refresh_creative_tabs();
-            self.creative_screen.0.reopen();
+            self.side.creative_screen.0.reopen();
             self.refresh_saved_hotbars();
         } else {
             self.set_screen(Screen::Inventory);
@@ -44,7 +44,7 @@ impl Game<'_> {
             if let Some(slot) = VanillaMappingSlot::by_default_key(key)
                 && Self::tick_mapping(slot.definition().0)
             {
-                self.client.vanilla_mappings.click(slot);
+                self.side.vanilla_mappings.click(slot);
                 return Ok(());
             }
         }
@@ -71,15 +71,15 @@ impl Game<'_> {
         raw: KeyCode,
     ) -> Result<()> {
         self.direct_craft_stop();
-        if self.client.screen == Screen::Playing && self.replay.playing() {
+        if self.side.screen == Screen::Playing && self.replay.playing() {
             self.studio_key(key);
             return Ok(());
         }
         // `CreativeModeInventoryScreen.keyPressed` clears `ignoreTextInput` on
         // every key, before it decides anything.
-        self.client.creative_ignore_text = false;
+        self.side.creative_ignore_text = false;
         if self.sleeping.is_some()
-            && self.client.screen == Screen::Playing
+            && self.side.screen == Screen::Playing
             && !matches!(
                 key,
                 KeyCode::F1 | KeyCode::F2 | KeyCode::F11 | KeyCode::KeyT | KeyCode::Slash
@@ -104,18 +104,18 @@ impl Game<'_> {
             return Ok(());
         }
         match key {
-            KeyCode::Escape => match self.client.screen {
+            KeyCode::Escape => match self.side.screen {
                 Screen::Options => {
                     self.options_key(KeyCode::Escape, None)?;
                 }
                 Screen::Playing => {
-                    if self.replay.playing() && self.client.captured {
+                    if self.replay.playing() && self.side.captured {
                         self.capture(false);
                         return Ok(());
                     }
-                    self.client.pause_focus = None;
+                    self.side.pause_focus = None;
                     self.set_screen(Screen::Paused);
-                    self.client.pause_menu = true;
+                    self.side.pause_menu = true;
                     self.capture(false);
                 }
                 Screen::Creative => {
@@ -128,20 +128,20 @@ impl Game<'_> {
                 Screen::Paused | Screen::Inventory => {
                     // RecipeBookComponent.keyPressed: a narrow window's open
                     // book takes Escape to close itself, not the screen.
-                    if self.client.screen == Screen::Inventory && self.recipe_book_escape() {
+                    if self.side.screen == Screen::Inventory && self.recipe_book_escape() {
                         return Ok(());
                     }
                     // AbstractContainerScreen.onClose closes the menu (on a server, with
                     // a ServerboundContainerClosePacket); PauseScreen.onClose only
                     // swaps the screen.
-                    if self.client.screen == Screen::Inventory {
+                    if self.side.screen == Screen::Inventory {
                         self.close_container_client();
                     } else {
                         self.pad_clear_focus();
                     }
-                    self.client.pause_focus = None;
+                    self.side.pause_focus = None;
                     self.set_screen(Screen::Playing);
-                    self.client.pause_menu = true;
+                    self.side.pause_menu = true;
                     self.capture(true);
                 }
                 Screen::GameModeSwitcher => self.close_gamemode_switcher(false),
@@ -170,19 +170,19 @@ impl Game<'_> {
             },
             KeyCode::F11 => self.toggle_fullscreen(),
             KeyCode::KeyE
-                if self.client.screen == Screen::Creative
-                    && self.creative_screen.0.tab().search => {}
-            KeyCode::KeyE => match self.client.screen {
+                if self.side.screen == Screen::Creative
+                    && self.side.creative_screen.0.tab().search => {}
+            KeyCode::KeyE => match self.side.screen {
                 Screen::Creative | Screen::Inventory => self.close_inventory_key(),
                 _ => {}
             },
-            _ if self.client.screen == Screen::Paused && self.client.pause_menu => {
+            _ if self.side.screen == Screen::Paused && self.side.pause_menu => {
                 let _ = self.pause_key(key)?;
             }
-            _ if self.client.screen == Screen::Dead => {
+            _ if self.side.screen == Screen::Dead => {
                 let _ = self.death_key(key)?;
             }
-            _ if self.client.screen == Screen::Stats => self.stats_key(raw),
+            _ if self.side.screen == Screen::Stats => self.stats_key(raw),
             _ => {}
         }
         Ok(())
@@ -213,7 +213,7 @@ impl Game<'_> {
                             "multiplayer.socialInteractions.not_available",
                             &[],
                         );
-                        self.client.titles.set_overlay(message.clone(), false);
+                        self.side.titles.set_overlay(message.clone(), false);
                         self.say_system_now(&message);
                     }
                     "key.chat" => self.open_chat_method(""),
@@ -253,10 +253,10 @@ impl Game<'_> {
         if self.remote.is_some() && (self.riding_mount_with_menu() || self.riding_chest_boat()) {
             self.remote_request_mount_inventory();
         } else if self.remote.is_some() || !self.spectator() {
-            if self.client.tutorial.open_inventory() {
+            if self.side.tutorial.open_inventory() {
                 self.persist_tutorial_step();
             }
-            self.recipe_ui.0.reset_screen();
+            self.side.recipe_ui.0.reset_screen();
             self.craft_size = 2;
             self.open_player_inventory();
         }

@@ -11,7 +11,7 @@ use sunrise_client::block_pattern::{
     IRON_GOLEM_BASE, IRON_GOLEM_FULL, SNOW_GOLEM_BASE, SNOW_GOLEM_FULL,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn golem_block(&self, p: [i32; 3]) -> &str {
         let state = self.world.block(p[0], p[1], p[2]);
         &self.res.facts().get(state).name
@@ -216,9 +216,9 @@ impl Game<'_> {
         yaw: f32,
     ) -> Option<u32> {
         let t = self.res.mob_types().get(kind).cloned()?;
-        self.server.next_entity += 1;
+        self.side.next_entity += 1;
         let mut mob = sunrise_client::mobs::Mob::new(
-            self.server.next_entity,
+            self.side.next_entity,
             t,
             sunrise_core::geometry::Vec3::new(at[0], at[1], at[2]),
             yaw,

@@ -5,7 +5,7 @@ pub(in crate::game::client_side) use crate::game::cauldrons::is_under_water;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::cauldrons::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// What the cauldron at `pos` answers to `held` on a client, which only
     /// asks (`CauldronInteractions` acts `if (!level.isClientSide())`). A
     /// sneak with something in hand skips `useItemOn`

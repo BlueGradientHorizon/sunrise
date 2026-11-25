@@ -4,13 +4,13 @@
 #[allow(unused_imports)]
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `LevelRenderer.destroyBlockProgress`: any stage outside 0..10 clears the breaker.
     pub(crate) fn destroy_block_progress(&mut self, breaker: i32, pos: [i32; 3], progress: i32) {
         self.expire_client_cracks();
         if (0..10).contains(&progress) {
             let stage = progress as u8;
-            if let Some(crack) = self.client.destroying.get_mut(&breaker)
+            if let Some(crack) = self.side.destroying.get_mut(&breaker)
                 && crack.pos == pos
                 && crack.stage == stage
             {
@@ -19,7 +19,7 @@ impl Game<'_> {
             }
             // Publish the stage before dispatch: a same-stage client setter
             // from this block's part must refresh it, not enter the hook again.
-            self.client.destroying.insert(
+            self.side.destroying.insert(
                 breaker,
                 crate::game::client_cracks::ClientCrack {
                     pos,
@@ -29,7 +29,7 @@ impl Game<'_> {
                 },
             );
             self.with_break_progress_positions(pos, stage, |game, positions| {
-                if let Some(crack) = game.client.destroying.get_mut(&breaker)
+                if let Some(crack) = game.side.destroying.get_mut(&breaker)
                     && crack.pos == pos
                     && crack.stage == stage
                 {
@@ -37,7 +37,7 @@ impl Game<'_> {
                 }
             });
         } else {
-            self.client.destroying.remove(&breaker);
+            self.side.destroying.remove(&breaker);
         }
     }
 }

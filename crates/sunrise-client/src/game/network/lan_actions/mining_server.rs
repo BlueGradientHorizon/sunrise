@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// ServerPlayerGameMode.tick's delayed destroy: the block breaks once its progress since
     /// the digging started is complete, unless something else removed it first.
     pub(in crate::game) fn guest_delayed_destroy(&mut self, conn: u32) {

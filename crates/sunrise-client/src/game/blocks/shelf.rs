@@ -11,7 +11,7 @@ use sunrise_client::{
 use sunrise_client_render::block_entity_reach::Reach;
 use sunrise_core::position::BlockPos;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `ShelfRenderer`: three items face out, aligned to the bottom or centre.
     pub(in crate::game) fn shelf_geometry(&self, camera: glam::DVec3, out: &mut Vec<Vertex>) {
         self.shelf_items(camera, |d| {

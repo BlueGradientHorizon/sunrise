@@ -100,7 +100,7 @@ pub(in crate::game) struct Catcher {
     pub(in crate::game) creative: bool,
     pub(in crate::game) uuid: Option<[i32; 4]>,
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_in_rain(&mut self, at: Vec3, top: f64) -> bool {
         self.in_rain(at, top)
     }
@@ -125,7 +125,7 @@ impl Game<'_> {
         if self.world.light(x, y, z) >> 4 != 15 {
             return;
         }
-        if !self.lightning_strike_allowed(self.server.lan_acting_uuid, [x, y, z], "trident") {
+        if !self.lightning_strike_allowed(self.side.lan_acting_uuid, [x, y, z], "trident") {
             return;
         }
         self.spawn_bolt(at, false);
@@ -253,7 +253,7 @@ impl Game<'_> {
                 );
                 if matches!(lift, Ok(Some(_)))
                     && let (Some(conn), Some(body), Some(host)) = (
-                        self.server.lan_acting,
+                        self.side.lan_acting,
                         self.player.as_ref(),
                         self.lan.as_mut(),
                     )
@@ -275,7 +275,7 @@ impl Game<'_> {
             }
             let sound = format!("minecraft:item.trident.riptide_{}", riptide.min(3));
             // level.playSound(null, player, sound, PLAYERS, 1, 1).
-            match (self.server.lan_acting_entity, at) {
+            match (self.side.lan_acting_entity, at) {
                 (Some(player), Some(at)) => {
                     let sound =
                         LevelSound::new(&sound, at, 1.0, 1.0).in_source(SoundSource::Players);
@@ -288,8 +288,8 @@ impl Game<'_> {
                 }
             }
             if let (Some(player), Some(name)) = (
-                self.server.lan_acting_uuid,
-                self.server.lan_acting_name.clone(),
+                self.side.lan_acting_uuid,
+                self.side.lan_acting_name.clone(),
             ) {
                 self.native_player_riptide(player, &name);
             }
@@ -352,7 +352,7 @@ impl Game<'_> {
             was_touching_water: false,
             age: 0,
             owner: 0,
-            guest: self.server.lan_acting,
+            guest: self.side.lan_acting,
             random: sunrise_client::projectiles::unique_random(start),
             deflected_by: None,
             last_state: None,
@@ -371,7 +371,7 @@ impl Game<'_> {
     /// `settle_dealt_absorbed` for the player who threw a trident: a LAN guest's own
     /// statistics are only reachable inside `as_guest`, so the host is not credited.
     pub(in crate::game::server_side) fn thrower_dealt_absorbed(&mut self, guest: Option<u32>) {
-        let Some(conn) = guest.filter(|c| self.server.lan_acting != Some(*c)) else {
+        let Some(conn) = guest.filter(|c| self.side.lan_acting != Some(*c)) else {
             self.settle_dealt_absorbed(true);
             return;
         };
@@ -389,7 +389,7 @@ impl Game<'_> {
         direct: sunrise_client::advancements::EntityView,
         damage: f32,
     ) {
-        let Some(conn) = guest.filter(|c| self.server.lan_acting != Some(*c)) else {
+        let Some(conn) = guest.filter(|c| self.side.lan_acting != Some(*c)) else {
             self.player_hit(victim, "minecraft:trident", Some(direct), damage);
             return;
         };
@@ -425,11 +425,11 @@ impl Game<'_> {
         let from = [t.previous.x, t.previous.y, t.previous.z];
         self.guest_hit_by(conn, |g| {
             g.with_attack(attack, |g| {
-                g.combat.0.refuse_player_hit = refused;
-                g.combat.0.projectile_attacker = shooter;
+                g.side.combat.0.refuse_player_hit = refused;
+                g.side.combat.0.projectile_attacker = shooter;
                 let hurt = g.mob_hits_player(damage, from, "minecraft:trident");
-                g.combat.0.refuse_player_hit = false;
-                g.combat.0.projectile_attacker = None;
+                g.side.combat.0.refuse_player_hit = false;
+                g.side.combat.0.projectile_attacker = None;
                 hurt
             })
         })
@@ -847,7 +847,7 @@ impl Game<'_> {
                                     let decision =
                                         crate::game::entity::causer_decision!(self, causing);
                                     let mut credit =
-                                        plan.lend(&mut self.server.last_hurt_by_player);
+                                        plan.lend(&mut self.side.last_hurt_by_player);
                                     let from_pos = Some([t.position.x, t.position.y, t.position.z]);
                                     let join = self.mobs[mob_idx].join;
                                     let (victim, lend) = crate::game::entity::victim_and_causer!(

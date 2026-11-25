@@ -7,7 +7,7 @@ use sunrise_client::mobs::random_textures::{Seen, choose, seed};
 use sunrise_core::geometry::Vec3;
 use sunrise_optifine::random::Weather;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn tick_random_textures(&mut self) {
         let res = self.res.clone();
         let textures = res

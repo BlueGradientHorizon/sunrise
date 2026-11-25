@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// An applied item consumption or durability break, with the complete stack
     /// from before the action and its hand (None for non-hand equipment/ammo).
     /// Each logical side reports its own action, including the local player.

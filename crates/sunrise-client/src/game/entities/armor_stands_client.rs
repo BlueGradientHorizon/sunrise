@@ -70,14 +70,14 @@ impl ArmorStandAssets {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The layers of the armour items `worn` (with their stacks when known,
     /// for trims and CIT armour rules), head to feet.
     pub(in crate::game::client_side) fn armor_layers(
         &self,
         worn: [Option<(&str, Option<&ItemStack>)>; 4],
     ) -> Vec<(&Part, [f32; 4], u32, u32, bool)> {
-        let assets = &self.armor_stand_assets.0;
+        let assets = &self.side.armor_stand_assets.0;
         let mut out = Vec::new();
         for (item, (layer, slot)) in worn.into_iter().zip([
             ("helmet", "head"),
@@ -182,8 +182,8 @@ impl Game<'_> {
             let light = self.world.light(probe[0], probe[1], probe[2]);
             let packed = a.render_light(light);
             let skinned = if skinning {
-                let mut models = self.skin_models.0.borrow_mut();
-                let mut frame = self.client.skin_frame.borrow_mut();
+                let mut models = self.side.skin_models.0.borrow_mut();
+                let mut frame = self.side.skin_frame.borrow_mut();
                 let mark = frame.mark();
                 let mut skin = sunrise_client::mobs::skin::Skin::new(&mut models, &mut frame);
                 self.armor_stand_vertices(
@@ -357,7 +357,7 @@ impl Game<'_> {
         out: &mut Vec<Vertex>,
     ) {
         use sunrise_client::mobs::render::put;
-        let assets = &self.armor_stand_assets.0;
+        let assets = &self.side.armor_stand_assets.0;
         let sprites = &self.gui.atlas.sprites;
         let uv_of = |name: &str| sprites.get(name).map(|r| [r.u0, r.v0, r.u1, r.v1]);
         // A texture's OptiFine emissive overlay. The lock is read per lookup and let go:
@@ -662,7 +662,7 @@ impl Game<'_> {
                 * glam::Mat4::from_rotation_x(0.436_332_32)
                 * glam::Mat4::from_rotation_z(std::f32::consts::PI);
         let glints =
-            super::perspective::preview_glint_quads(&verts, gui, 0..0, self.client.glint_frame);
+            super::perspective::preview_glint_quads(&verts, gui, 0..0, self.side.glint_frame);
         let quads =
             super::perspective::player_preview_quads(verts, gui, None, &self.gui.atlas.sprites);
         super::perspective::emit_preview(batch, quads, glints, [x0, y0, x1, y1]);
@@ -679,7 +679,7 @@ impl Game<'_> {
     /// goes into an atlas trim slot, a free one, else the least recently
     /// drawn. Reuse the completed preparation while the requests and atlas stay the same.
     pub(in crate::game::client_side) fn prepare_trims(&mut self) {
-        let assets = &self.armor_stand_assets.0;
+        let assets = &self.side.armor_stand_assets.0;
         let items = self.items();
         let mut wanted: Vec<TrimTexture> = Vec::new();
         let stacks =
@@ -737,11 +737,11 @@ impl Game<'_> {
                 wanted.push(t);
             }
         }
-        self.client.trim_slots.prepare(
+        self.side.trim_slots.prepare(
             wanted,
             &assets.root,
             &mut self.gui.atlas,
-            &mut self.client.map_patches,
+            &mut self.side.map_patches,
         );
     }
     /// `HumanoidArmorLayer` for worn stacks (head to feet), trims included.

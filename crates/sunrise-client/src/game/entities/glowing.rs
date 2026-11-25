@@ -11,7 +11,7 @@ pub(in crate::game::client_side) fn team_color(team: Option<&sb::Team>) -> u32 {
         .unwrap_or(0xFF_FFFF)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `Entity.isCurrentlyGlowing` of an entity that is not living (an item, a projectile):
     /// shared flag 6 as a server sent it.
     pub(in crate::game) fn tracked_entity_glowing(&self, id: u32) -> bool {
@@ -59,7 +59,7 @@ impl Game<'_> {
     /// alpha kept (`OutlineBufferSource`'s team-coloured copy of each draw).
     pub(in crate::game::client_side) fn mark_outline(&self, vertices: &[Vertex], rgb: u32) {
         let color = sunrise_client::mobs::render::abgr(rgb);
-        self.client
+        self.side
             .glowing_vertices
             .borrow_mut()
             .extend(vertices.iter().map(|v| Vertex {

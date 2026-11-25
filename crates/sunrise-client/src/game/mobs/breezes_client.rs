@@ -9,7 +9,7 @@ pub(in crate::game::client_side) use sunrise_client::{
     particles::{ParticleOptions, ParticleType},
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn tick_breeze_effects(&mut self) {
         let Some(camera) = self.player.as_ref().map(|p| p.position) else {
             return;
@@ -60,7 +60,7 @@ impl Game<'_> {
             // the block's sprite it shows, never the level's random.
             let options = ParticleOptions::block(ParticleType::Block, sprite, tint);
             for _ in 0..amount {
-                self.particles.0.add(&options, at, [0.0; 3]);
+                self.side.particles.0.add(&options, at, [0.0; 3]);
             }
         }
     }

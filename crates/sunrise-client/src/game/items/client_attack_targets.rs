@@ -22,7 +22,7 @@ fn target_point(eye: [f64; 3], bounds: [[f64; 3]; 2], reach: f64) -> Option<([f6
     (distance <= reach).then_some((point, distance))
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn targeting_entity_hit(
         &self,
         entity: EntityRef,
@@ -42,7 +42,7 @@ impl Game<'_> {
             | Target::Crystal(_)
             | Target::DragonPart(_)
             | Target::Cushion(_) => true,
-            Target::Other(id) => self.client.interactions.contains_key(&(id as i32)),
+            Target::Other(id) => self.side.interactions.contains_key(&(id as i32)),
             Target::Projectile(id) => self
                 .creatures
                 .projectiles

@@ -7,7 +7,7 @@ use super::native_hooks::ResidentBlockEntityAccess;
 use super::{Game, transactions::After};
 use sunrise_client::{block_entities::Pos, menu::SlotTake};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Deliver a take made by the current click (`Slot.onTake`) to the parts of mod menu type
     /// `menu`. `backing` is the block a block-backed menu is open on, `None` for a blockless
     /// owned menu. Returns `false` when a listener panicked (contained and disabled for

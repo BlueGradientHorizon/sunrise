@@ -10,7 +10,7 @@ use sunrise_client::{
     lan::playerdata::{ints_uuid, uuid_ints},
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Resolve the stable item identity, reusing the caller's known slot while it still matches.
     pub(in crate::game) fn native_item_entity_index(
         &self,

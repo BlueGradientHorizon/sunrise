@@ -159,7 +159,7 @@ pub(in crate::game) mod animal_tame;
 pub(in crate::game) mod animate_tick;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Shared click metadata borrows the already-converted API snapshot for this call.
     pub(in crate::game) fn block_click<'a>(
         &mut self,

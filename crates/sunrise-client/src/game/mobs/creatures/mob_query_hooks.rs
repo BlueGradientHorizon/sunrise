@@ -1,5 +1,5 @@
 // Included in creatures/mod_server.rs (server-only MobHooks impl).
-impl sunrise_client::mobs::MobHooks for Game<'_> {
+impl sunrise_client::mobs::MobHooks for Game<'_, crate::game::server_side::ServerState> {
     fn block_path_type(
         &self,
         state: sunrise_world::registry::BlockStateId,

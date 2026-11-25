@@ -104,7 +104,7 @@ pub(in crate::game) fn place_summoned(tag: &mut Tag, pos: [f64; 3]) {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     // ---- entity data ---------------------------------------------------
 
     /// `NbtPredicate.getEntityTagToCompare`: the entity as saved. An entity

@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The player `tamer` (UUID) and `tamer_entity_id` is about to tame the
     /// mob `entity` of `kind` (`AnimalTameEvent`): its taming roll succeeded
     /// (a wolf's bone, a cat's fish, a parrot's seeds or a nautilus's food;

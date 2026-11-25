@@ -5,27 +5,27 @@ use sunrise_client::keybinds::VanillaMappingSlot;
 use sunrise_client::keymapping::toggle_index;
 use winit::keyboard::KeyCode;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn set_mapping_held(&mut self, name: &str, down: bool) {
         if let Some(slot) = VanillaMappingSlot::by_name(name) {
-            self.client.vanilla_mappings.state_mut(slot).is_down = down;
+            self.side.vanilla_mappings.state_mut(slot).is_down = down;
         }
     }
 
     pub(in crate::game) fn queue_mapping_click(&mut self, name: &str) {
         if let Some(slot) = VanillaMappingSlot::by_name(name) {
-            self.client.vanilla_mappings.click(slot);
+            self.side.vanilla_mappings.click(slot);
         }
     }
 
     pub(in crate::game::client_side) fn consume_mapping_click(&mut self, name: &str) -> bool {
         VanillaMappingSlot::by_name(name)
-            .is_some_and(|slot| self.client.vanilla_mappings.consume_click(slot))
+            .is_some_and(|slot| self.side.vanilla_mappings.consume_click(slot))
     }
 
     pub(in crate::game) fn pending_mapping_clicks(&self, name: &str) -> u32 {
         VanillaMappingSlot::by_name(name).map_or(0, |slot| {
-            self.client.vanilla_mappings.pending_clicks(slot) as u32
+            self.side.vanilla_mappings.pending_clicks(slot) as u32
         })
     }
 
@@ -37,7 +37,7 @@ impl Game<'_> {
     ) -> Result<(), MappingError> {
         let slot = self.vanilla_mapping_slot(mapping)?;
         let enabled = toggle_index(slot).is_some_and(|i| self.toggle_options()[i]);
-        self.client.vanilla_mappings.set_down(slot, down, enabled);
+        self.side.vanilla_mappings.set_down(slot, down, enabled);
         if let ("movement", Some(Ok(key))) = (slot.definition().2, slot.default_input()) {
             // The analog stick (which does not generate digital key presses) also honors
             // explicit writes until a new edge for this direction.
@@ -45,7 +45,7 @@ impl Game<'_> {
                 key,
                 KeyCode::KeyW | KeyCode::KeyS | KeyCode::KeyA | KeyCode::KeyD
             ) {
-                self.client.keys.override_down(key, down);
+                self.side.keys.override_down(key, down);
             }
         }
         Ok(())
@@ -57,7 +57,7 @@ impl Game<'_> {
         mapping: VanillaKeyMappingRef,
     ) -> Result<(), MappingError> {
         let slot = self.vanilla_mapping_slot(mapping)?;
-        self.client.vanilla_mappings.click(slot);
+        self.side.vanilla_mappings.click(slot);
         Ok(())
     }
 }

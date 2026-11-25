@@ -52,11 +52,11 @@ pub(in crate::game) struct BlastCalculator {
 
 pub(in crate::game) use crate::lan::server_effects::BlastEffects;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The damage type the blast deals: the mod's, else `DamageSources.explosion`'s
     /// (`minecraft:player_explosion` for a caused blast).
     pub(in crate::game::server_side) fn blast_damage_type(&self) -> &'static str {
-        match self.combat.0.blast_settings.damage {
+        match self.side.combat.0.blast_settings.damage {
             Some(damage) => damage.name,
             None => super::creatures::damage_type(
                 DamageKind::Explosion,
@@ -67,7 +67,7 @@ impl Game<'_> {
     /// The mobs' side of `blast_damage_type`: the mod's type, else the
     /// explosion kind, which tells a caused blast by its attacker.
     pub(in crate::game::server_side) fn blast_damage_kind(&self) -> DamageKind {
-        let damage = self.combat.0.blast_settings.damage;
+        let damage = self.side.combat.0.blast_settings.damage;
         damage.map_or(DamageKind::Explosion, DamageKind::Named)
     }
     /// What a ray's step through block `name` takes and whether the block is
@@ -82,7 +82,7 @@ impl Game<'_> {
         &self,
         name: &str,
     ) -> Option<(Option<f32>, bool)> {
-        let settings = &self.combat.0.blast_settings;
+        let settings = &self.side.combat.0.blast_settings;
         if let (None, SourceCalculator::PortalProof) =
             (&settings.calculator, &settings.source_calculator)
         {
@@ -100,7 +100,7 @@ impl Game<'_> {
     /// passes one, which replaces every rule of the source's, else a wind
     /// charge's own. None for the default and portal-proof calculators.
     fn blast_simple_calculator(&self) -> Option<&BlastCalculator> {
-        let settings = &self.combat.0.blast_settings;
+        let settings = &self.side.combat.0.blast_settings;
         match (&settings.calculator, &settings.source_calculator) {
             (Some(c), _) | (None, SourceCalculator::WindCharge(c)) => Some(c),
             _ => None,
@@ -127,7 +127,7 @@ impl Game<'_> {
     }
     /// What players see and hear of the blast.
     pub(in crate::game::server_side) fn blast_effects(&self) -> BlastEffects {
-        match &self.combat.0.blast_settings.effects {
+        match &self.side.combat.0.blast_settings.effects {
             Some(effects) => (**effects).clone(),
             None => BlastEffects::default(),
         }

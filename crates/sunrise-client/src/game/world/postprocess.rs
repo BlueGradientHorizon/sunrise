@@ -11,7 +11,7 @@ use sunrise_core::position::BlockPos;
 /// Block.UPDATE_INVISIBLE | UPDATE_KNOWN_SHAPE | UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS.
 const POSTPROCESS_FLAGS: i32 = 276;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn postprocess_chunks(&mut self) -> Result<()> {
         let ready: Vec<(i32, i32)> = self
             .world

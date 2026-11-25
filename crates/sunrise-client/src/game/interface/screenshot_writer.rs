@@ -25,7 +25,7 @@ impl ScreenshotWrite {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn poll_screenshot_writes(&mut self) {
         let mut index = 0;
         while index < self.ui.screenshot_writes.len() {

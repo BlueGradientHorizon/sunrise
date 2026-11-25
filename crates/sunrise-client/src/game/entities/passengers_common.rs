@@ -13,7 +13,7 @@ use sunrise_client::{
 #[allow(unused_imports)]
 use sunrise_core::geometry::Vec3;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The vehicle's attachment for this passenger's actual place in `getPassengers`.
     pub(in crate::game) fn mob_passenger_attachment(
         vehicle: &sunrise_client::mobs::Mob,
@@ -94,7 +94,7 @@ impl Game<'_> {
     pub(in crate::game) fn seat_boat_mobs_with_order(
         &mut self,
         riding: &Riders,
-        order_of: impl Fn(&Game<'_>, u32) -> Vec<u32>,
+        order_of: impl Fn(&Game<'_, __Side>, u32) -> Vec<u32>,
     ) {
         for i in 0..self.boats.len() {
             let id = self.boats[i].id;

@@ -7,7 +7,7 @@ use sunrise_world::level::Ticks;
 /// The floor's height; entities stand at `FLOOR + 1`.
 pub(super) const FLOOR: i32 = 63;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Replace the level with a fresh one seeded `seed`: the chunks within `radius` of the
     /// origin, plains, lit by the sky, with the floor, and no entity or block entity.
     pub(super) fn hot_level(&mut self, seed: i64, radius: i32) -> Result<()> {
@@ -28,19 +28,19 @@ impl Game<'_> {
             }
         }
         self.block_ticks = Ticks::new(0);
-        self.server.tick_chunks.clear();
+        self.side.tick_chunks.clear();
         self.sync_tick_chunks();
         self.mobs.clear();
         self.dropped.clear();
         self.orbs.clear();
-        self.server.hoppers.clear();
+        self.side.hoppers.clear();
         self.level_events.clear();
         self.ui.rules = Default::default();
         self.dim = super::super::Dim::Overworld;
         self.world.shape = self.dim.shape();
         self.ui.difficulty = 2;
         self.level.seed = seed;
-        self.server.rand_sequences = Default::default();
+        self.side.rand_sequences = Default::default();
         self.world.game_time = 0;
         self.world.day_time = 6000;
         for cx in -radius..=radius {
@@ -71,9 +71,9 @@ impl Game<'_> {
 
     /// A setup command that must succeed; its failure message is the error.
     pub(super) fn hot_command(&mut self, command: &str) -> Result<()> {
-        let outer = self.server.chat_capture.replace(Vec::new());
+        let outer = self.side.chat_capture.replace(Vec::new());
         let ran = self.run_command(command);
-        let said = std::mem::replace(&mut self.server.chat_capture, outer).unwrap_or_default();
+        let said = std::mem::replace(&mut self.side.chat_capture, outer).unwrap_or_default();
         if ran {
             return Ok(());
         }

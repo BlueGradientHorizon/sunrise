@@ -26,7 +26,7 @@ pub(in crate::game) use sunrise_gameplay::structure_blocks::{
 };
 pub use sunrise_gameplay::structure_blocks::{create_seed, template_size};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     fn structure_block_at(&self, pos: Pos) -> Option<&StructureBlock> {
         match self.world.block_entities.get(&pos)? {
             BlockEntity::StructureBlock(b) => Some(b),
@@ -43,7 +43,7 @@ impl Game<'_> {
     /// `StructureBlock.setPlacedBy`: the placing player is the author.
     pub(in crate::game) fn structure_block_placed(&mut self, pos: Pos) {
         let author = self
-            .server
+            .side
             .lan_acting_name
             .clone()
             .unwrap_or_else(|| self.options.player_name());
@@ -55,14 +55,14 @@ impl Game<'_> {
     /// `StructureTemplateManager.get`: the cache (misses included), else the
     /// world's saved structures, else the game's own.
     pub(in crate::game) fn template_entry(&mut self, name: &str) -> Option<TemplateEntry> {
-        if let Some(cached) = self.server.structure_templates.get(name) {
+        if let Some(cached) = self.side.structure_templates.get(name) {
             return cached.clone();
         }
         let loaded = self.read_template_tag(name).map(|tag| TemplateEntry {
             tag,
             author: "?".to_owned(),
         });
-        self.server
+        self.side
             .structure_templates
             .insert(name.to_owned(), loaded.clone());
         loaded
@@ -71,7 +71,7 @@ impl Game<'_> {
     /// `StructureTemplateManager.save`: the file under the world's
     /// `generated` folder.
     fn write_template(&self, name: &str, tag: &Tag) -> bool {
-        let Some(file) = template_file(&self.server.world_root, name) else {
+        let Some(file) = template_file(&self.side.world_root, name) else {
             return false;
         };
         let Some(parent) = file.parent() else {
@@ -244,7 +244,7 @@ impl Game<'_> {
             )
         };
         let saved = !to_disk || self.write_template(name, &tag);
-        self.server.structure_templates.insert(
+        self.side.structure_templates.insert(
             name.to_owned(),
             Some(TemplateEntry {
                 tag,
@@ -452,7 +452,7 @@ impl Game<'_> {
             // `unloadStructure`: the manager forgets it, the next use reads the file.
             StructureMode::Corner => {
                 if let Some(name) = self.structure_block_at(pos).and_then(|b| b.name.clone()) {
-                    self.server.structure_templates.remove(&name);
+                    self.side.structure_templates.remove(&name);
                 }
             }
             StructureMode::Data => {}

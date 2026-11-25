@@ -11,7 +11,7 @@ use super::{
 };
 use sunrise_protocol::packets::play::{self, Serverbound as S};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The server opened workstation menu `menu` in window `container`.
     pub(in crate::game) fn remote_open_station(
         &mut self,

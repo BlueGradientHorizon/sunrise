@@ -14,7 +14,7 @@ pub(in crate::game) fn weather_for_level(
     }
 }
 
-impl mod_api::AttachmentHost for Game<'_> {
+impl<__Side: crate::game::Side> mod_api::AttachmentHost for Game<'_, __Side> {
     fn validate_attachment(
         &self,
         namespace: &str,

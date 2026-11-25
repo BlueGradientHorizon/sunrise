@@ -2,7 +2,7 @@
 use super::Game;
 use sunrise_client::lan::hub::Hub;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// What the hub needs to know of the loaded mods each tick.
     pub(in crate::game) fn sync_hub_mod_flags(hub: &mut Hub) {
         hub.mods_loaded = !mod_api::__private::mods().is_empty();

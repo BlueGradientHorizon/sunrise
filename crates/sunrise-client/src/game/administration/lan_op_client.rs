@@ -7,7 +7,7 @@ pub(in crate::game::client_side) use crate::game::lan_op::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::Result;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `sunrise-ctl lan op NAME LEVEL`; `None` for any other command.
     pub(in crate::game::client_side) fn lan_op_control(
         &mut self,

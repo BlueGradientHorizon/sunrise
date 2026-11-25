@@ -27,7 +27,7 @@ pub(in crate::game::client_side) use crate::game::resource_tables::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use std::path::Path;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// A title screen over the current resources and their splash pool.
     pub(crate) fn new_title(&self, saves: PathBuf) -> Title {
         Title::new(saves, &self.options.resources, &self.gui.splashes)

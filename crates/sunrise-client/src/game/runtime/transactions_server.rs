@@ -33,7 +33,7 @@ use sunrise_mod_runtime::attachments::Holder;
 /// Takes the commit it pushed, and any a listener's left, off the stack when it ends, however
 /// it ends.
 struct Telling<'a, 'g> {
-    game: &'a mut Game<'g>,
+    game: &'a mut Game<'g, crate::game::server_side::ServerState>,
     /// The stack's length before the commit was pushed: its place.
     frame: usize,
 }
@@ -44,7 +44,7 @@ impl Drop for Telling<'_, '_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Abort any storage transactions left open above `depth` (for example when a
     /// an engine decision unwinds before it can close its savepoint).
     pub(in crate::game) fn abort_abandoned_transactions(&mut self, depth: usize) {
@@ -404,7 +404,7 @@ impl Game<'_> {
         if let Some(level) = self.transactions.last_mut() {
             level
                 .loot_sequences
-                .get_or_insert_with(|| self.server.rand_sequences.clone());
+                .get_or_insert_with(|| self.side.rand_sequences.clone());
         }
     }
 
@@ -418,7 +418,7 @@ impl Game<'_> {
         level
             .block_entities
             .entry(pos)
-            .or_insert_with(|| Kept::capture(&self.world, &self.server.hoppers, pos));
+            .or_insert_with(|| Kept::capture(&self.world, &self.side.hoppers, pos));
     }
 
     /// Keeps `holder`'s attachment map as it is, if a transaction is open and hasn't yet: a
@@ -499,12 +499,12 @@ impl Game<'_> {
             return;
         };
         let owner = self
-            .server
+            .side
             .lan_acting
             .map_or(JournaledPlayer::Local(uuid), JournaledPlayer::Guest);
         level.keep_player(
             owner,
-            &self.server.ender_items,
+            &self.side.ender_items,
             self.level.player_extra.as_ref(),
             || KeptPlayer {
                 inventory: self.inventory.clone(),
@@ -591,15 +591,15 @@ impl Game<'_> {
                 if local != Some(uuid) {
                     return None;
                 }
-                self.server.lan_guest_swaps.first().copied()
+                self.side.lan_guest_swaps.first().copied()
             }
             JournaledPlayer::Guest(conn) => self
-                .server
+                .side
                 .lan_guest_swaps
                 .iter()
                 .position(|&swapped| swapped == conn)
                 .map_or(Some(conn), |i| {
-                    self.server.lan_guest_swaps.get(i + 1).copied()
+                    self.side.lan_guest_swaps.get(i + 1).copied()
                 }),
         };
         match parked_in {
@@ -614,7 +614,7 @@ impl Game<'_> {
             return;
         };
         let owner = self
-            .server
+            .side
             .lan_acting
             .map_or(JournaledPlayer::Local(uuid), JournaledPlayer::Guest);
         level
@@ -646,7 +646,7 @@ impl Game<'_> {
         else {
             return;
         };
-        let guest = self.server.lan_acting.and_then(|conn| {
+        let guest = self.side.lan_acting.and_then(|conn| {
             let guest = self.lan.as_ref()?.hub.guest(conn)?;
             Some((conn, guest.death_canceled, guest.death_time))
         });
@@ -669,7 +669,7 @@ impl Game<'_> {
                 needs_sync: mob.needs_sync,
                 death_time: mob.death_time,
                 death_canceled: mob.death_canceled,
-                processed: self.server.died.contains(&id),
+                processed: self.side.died.contains(&id),
             });
         }
     }
@@ -749,8 +749,8 @@ impl Game<'_> {
         }
         let owner = JournaledPlayer::Guest(conn);
         let ender = (!level.ender_items.contains_key(&owner)).then(|| {
-            if self.server.lan_acting == Some(conn) {
-                self.server.ender_items.clone()
+            if self.side.lan_acting == Some(conn) {
+                self.side.ender_items.clone()
             } else {
                 g.ender_items.clone()
             }
@@ -850,7 +850,7 @@ impl Game<'_> {
         pos: Pos,
         holder: Option<BlockEntityIdentity>,
     ) -> After {
-        let silent = !self.server.contents_changing.is_empty()
+        let silent = !self.side.contents_changing.is_empty()
             && self.native_level_here().is_some_and(|level| {
                 self.contents_notice_active(level, BlockPos::new(pos.0, pos.1, pos.2))
             });
@@ -928,7 +928,7 @@ impl Game<'_> {
             let world = if dim == self.dim {
                 Some(&mut self.world)
             } else {
-                self.levels.0.parked_mut(dim).map(|level| &mut level.world)
+                self.side.levels.0.parked_mut(dim).map(|level| &mut level.world)
             };
             if let Some(world) = world {
                 world.modified.insert(chunk);
@@ -1319,8 +1319,8 @@ impl Game<'_> {
                     .restore(observer, kept.contents_watches);
             }
             match kept.hopper {
-                Some(hopper) => self.server.hoppers.insert(pos, hopper),
-                None => self.server.hoppers.remove(&pos),
+                Some(hopper) => self.side.hoppers.insert(pos, hopper),
+                None => self.side.hoppers.remove(&pos),
             };
         }
         // After the whole entities: a slot kept here was kept before any whole capture of its
@@ -1369,7 +1369,7 @@ impl Game<'_> {
             *self.world.random = random;
         }
         if let Some(sequences) = level.loot_sequences {
-            self.server.rand_sequences = sequences;
+            self.side.rand_sequences = sequences;
         }
         for (owner, before) in level.parked_level_randoms {
             if let Some(random) = self.level_random_mut(owner) {
@@ -1539,9 +1539,9 @@ impl Game<'_> {
                     mob.death_time = kept.death_time;
                     mob.death_canceled = kept.death_canceled;
                     if kept.processed {
-                        game.server.died.insert(id);
+                        game.side.died.insert(id);
                     } else {
-                        game.server.died.remove(&id);
+                        game.side.died.remove(&id);
                     }
                 }
             });
@@ -1583,7 +1583,7 @@ impl Game<'_> {
         }
         for (owner, kept) in level.ender_items {
             match self.player_storage_home(owner) {
-                Some(PlayerStorageHome::Game) => self.server.ender_items = kept,
+                Some(PlayerStorageHome::Game) => self.side.ender_items = kept,
                 Some(PlayerStorageHome::Guest(index)) => {
                     let host = self.lan.as_mut().expect("resolved guest");
                     host.hub.guests.update(index, |g| g.ender_items = kept);
@@ -1627,10 +1627,10 @@ impl Game<'_> {
 
     /// Identity of the player body currently swapped into `Game`.
     pub(in crate::game) fn acting_player_body(&self) -> PlayerBodyKey {
-        if let Some(conn) = self.server.lan_acting {
+        if let Some(conn) = self.side.lan_acting {
             return PlayerBodyKey::Guest(conn);
         }
-        if let Some(uuid) = self.server.lan_acting_uuid
+        if let Some(uuid) = self.side.lan_acting_uuid
             && let Some(conn) = self
                 .lan
                 .as_ref()
@@ -1646,7 +1646,7 @@ impl Game<'_> {
     /// the acting body when its UUID matches, else the exact guest `conn` resolved in `self.dim`
     /// (online real player across dimensions, or the per-level fake player in `self.dim`).
     pub(in crate::game) fn attachment_player_body(&self, uuid: u128) -> Option<PlayerBodyKey> {
-        if self.server.lan_acting_uuid == Some(uuid) {
+        if self.side.lan_acting_uuid == Some(uuid) {
             return Some(self.acting_player_body());
         }
         let conn = self
@@ -1660,7 +1660,7 @@ impl Game<'_> {
                 }
             })
             .map(|guest| guest.conn)?;
-        (!self.server.lan_guest_swaps.contains(&conn)).then_some(PlayerBodyKey::Guest(conn))
+        (!self.side.lan_guest_swaps.contains(&conn)).then_some(PlayerBodyKey::Guest(conn))
     }
 
     /// Restore a player body's attachment map directly wherever that exact body's state lives
@@ -1674,7 +1674,7 @@ impl Game<'_> {
         let map = if self.acting_player_body() == body {
             Some(&mut self.player_state.attachments)
         } else if let PlayerBodyKey::Guest(conn) = body
-            && !self.server.lan_guest_swaps.contains(&conn)
+            && !self.side.lan_guest_swaps.contains(&conn)
         {
             self.lan
                 .as_mut()
@@ -2126,7 +2126,7 @@ impl Game<'_> {
             self.cushions,
             self.paintings,
             self.item_frames,
-            self.others.0,
+            self.side.others.0,
             self.breath_clouds,
             self.bolts,
             self.fangs.list,

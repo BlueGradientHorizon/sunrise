@@ -2,7 +2,7 @@
 //! attachments (`Mob.convertTo`).
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Transfer the entity-owned state that is stored outside `Mob`.
     pub(in crate::game) fn transfer_conversion_identity(&mut self, from: u32, to: u32) {
         use crate::game::commands::Target;

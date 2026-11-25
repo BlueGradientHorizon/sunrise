@@ -144,7 +144,7 @@ impl ResidentGeneralEntity for ResidentGeneralRow<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Dispatch the authoritative tick of one resident general entity row of type `kind`,
     /// lending its live row sequentially with `ServerHost`.
     pub(in crate::game::server_side) fn tick_general_row_scoped(

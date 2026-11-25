@@ -31,7 +31,7 @@ struct Attack {
     creative: bool,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Runs authoritative boat-attack cases on a server-role `Game`.
     pub(in crate::game::server_side) fn run_boat_authority_attacks(
         &mut self,
@@ -68,7 +68,7 @@ impl Game<'_> {
                 ))?;
             }
             self.yaw = attack.yaw;
-            self.server.attack_ticks = attack.ticks;
+            self.side.attack_ticks = attack.ticks;
             self.creative = attack.creative;
             self.strike_boat(0);
             let player = self.player.as_ref().unwrap();

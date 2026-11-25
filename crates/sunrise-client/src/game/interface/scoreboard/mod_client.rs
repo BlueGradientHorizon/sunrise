@@ -39,7 +39,7 @@ pub(in crate::game::client_side) use sunrise_core::nbt::Tag;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_gameplay::stats::{StatScoreChange, StatScoreOp};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `Hud.extractScoreboardSidebar` / `displayScoreboardSidebar`.
     pub(in crate::game) fn draw_scoreboard(&self, batch: &mut HudBatch) {
         let board = &self.score.board;
@@ -66,9 +66,9 @@ impl Game<'_> {
         // slots: a new frame, with what the last one drew.
         self.flush_skin_slots();
         let key =
-            self.client.screen == super::Screen::Playing && self.held_mapping(Action::Playerlist);
+            self.side.screen == super::Screen::Playing && self.held_mapping(Action::Playerlist);
         let Some(count) = self.remote.as_ref().map(|r| r.listed_player_count()) else {
-            self.tab_list.0.set_visible(false);
+            self.side.tab_list.0.set_visible(false);
             return;
         };
         let has_objective = self.score.board.display_objective(sb::SLOT_LIST).is_some();
@@ -80,7 +80,7 @@ impl Game<'_> {
             count,
             has_objective,
         );
-        let changed = self.tab_list.0.set_visible(shown);
+        let changed = self.side.tab_list.0.set_visible(shown);
         if !tab_players_needed(shown, changed) {
             // World skins still need download polling and atlas residency checks.
             self.update_remote_skins();
@@ -99,7 +99,7 @@ impl Game<'_> {
         }
         // The faces of the players the list shows.
         let faces: std::collections::HashSet<u128> = self
-            .tab_list
+            .side.tab_list
             .0
             .displayed_ids(&players, &self.score.board)
             .iter()
@@ -122,17 +122,17 @@ impl Game<'_> {
             background: tab_list::row_background(true, self.settings.text_background_opacity),
             upside_down: &up,
         };
-        let draws = self.tab_list.0.layout(&inputs, &self.gui.atlas.font);
+        let draws = self.side.tab_list.0.layout(&inputs, &self.gui.atlas.font);
         sunrise_client::hud_layout::paint(batch, &self.gui.atlas, &draws);
     }
     /// Advance the skin slots to a new frame with what the last one drew, and
     /// store any finished skin downloads into the atlas.
     pub(in crate::game::client_side) fn flush_skin_slots(&mut self) {
         let (ready, drawn) = {
-            let mut downloads = self.skin_downloads.0.borrow_mut();
+            let mut downloads = self.side.skin_downloads.0.borrow_mut();
             (downloads.take_ready(), downloads.take_drawn())
         };
-        self.client.skin_slots.next_frame(drawn);
+        self.side.skin_slots.next_frame(drawn);
         for (location, rgba) in ready {
             self.store_skin(location, rgba);
         }

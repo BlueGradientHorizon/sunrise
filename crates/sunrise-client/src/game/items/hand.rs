@@ -87,16 +87,16 @@ pub(in crate::game) fn matches_for_swap(a: Option<&ItemStack>, b: Option<&ItemSt
 
 pub(in crate::game) use super::held_items::{BreakSpeedDispatch, HarvestDispatch};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// A slot of the inventory (`OFFHAND_SLOT` for the off hand) was set to
     /// a new stack: the hand holding it compares it as another `ItemStack`
     /// (`shows_held_stack`) until the hand shows the held stack again.
     pub(in crate::game) fn hand_stack_replaced(&mut self, slot: usize) {
         if slot == self.selected {
-            self.client.hands_replaced[0] = true;
+            self.side.hands_replaced[0] = true;
         }
         if slot == super::held_items::OFFHAND_SLOT {
-            self.client.hands_replaced[1] = true;
+            self.side.hands_replaced[1] = true;
         }
     }
     /// Opening a screen stops breaking before the next game tick (which may pause).
@@ -155,15 +155,15 @@ impl Game<'_> {
         if self.native_window() {
             return;
         }
-        self.client.tick_hit.set(None);
-        self.client.tick_mob = None;
+        self.side.tick_hit.set(None);
+        self.side.tick_mob = None;
         match self.compute_crosshair_decision() {
             super::pick_entity::CrosshairDecision::Block(hit) => {
-                self.client.tick_hit.set(Some(Some(hit)));
-                self.client.tick_mob = Some(None);
+                self.side.tick_hit.set(Some(Some(hit)));
+                self.side.tick_mob = Some(None);
             }
             super::pick_entity::CrosshairDecision::Entity(hit) => {
-                self.client.tick_hit.set(Some(None));
+                self.side.tick_hit.set(Some(None));
                 let mob = self.mob_index.find(&self.mobs, hit.id).map(|i| {
                     let feet = self.mobs[i].position;
                     (
@@ -176,18 +176,18 @@ impl Game<'_> {
                         ],
                     )
                 });
-                self.client.tick_mob = Some(mob);
+                self.side.tick_mob = Some(mob);
             }
             super::pick_entity::CrosshairDecision::Miss => {
-                self.client.tick_hit.set(Some(None));
-                self.client.tick_mob = Some(None);
+                self.side.tick_hit.set(Some(None));
+                self.side.tick_mob = Some(None);
             }
         }
     }
     /// Releases the non-window simulation's tick-local pick caches.
     pub(in crate::game::client_side) fn release_tick_targets(&mut self) {
-        self.client.tick_hit.set(None);
-        self.client.tick_mob = None;
+        self.side.tick_hit.set(None);
+        self.side.tick_mob = None;
     }
     /// `handleKeybinds`' number keys: keys 1 to 9 in that order, one click of each
     /// (`keyHotbarSlots[i].consumeClick`), so the highest key clicked this tick wins and a
@@ -363,7 +363,7 @@ impl Game<'_> {
     pub(in crate::game) fn tick_hand(&mut self) {
         // LocalPlayer.applyInput (the camera is the player's own).
         if self.player.is_some() {
-            self.client.sway.tick_wrapped(self.pitch, self.yaw);
+            self.side.sway.tick_wrapped(self.pitch, self.yaw);
         }
         self.swing.tick();
         let main = self.inventory[self.selected].clone();
@@ -375,34 +375,34 @@ impl Game<'_> {
             item: s.item.to_string(),
             rest: format!("{} {} {:?}", s.count, s.damage, s.extra),
         });
-        let changed = self.client.hand_strength.main_hand_changed(&held);
-        let _ = self.client.hand_strength.tick(held);
+        let changed = self.side.hand_strength.main_hand_changed(&held);
+        let _ = self.side.hand_strength.tick(held);
         if changed {
             self.apply_equipment();
         }
         let next = [(self.selected, main), (OFFHAND, self.offhand.clone())];
         let mut changed = [false; 2];
         for h in 0..2 {
-            let replaced = self.client.hands_replaced[h];
-            let mut same = shows_held_stack(&self.client.visible_hands[h], &next[h], replaced);
+            let replaced = self.side.hands_replaced[h];
+            let mut same = shows_held_stack(&self.side.visible_hands[h], &next[h], replaced);
             self.reequip_part(h, &next[h], &mut same);
             if same {
-                self.client.visible_hands[h] = next[h].clone();
-                self.client.hands_replaced[h] = false;
+                self.side.visible_hands[h] = next[h].clone();
+                self.side.hands_replaced[h] = false;
             }
             changed[h] = !same;
         }
         let speed = self.main_hand_attack_speed();
-        let replace = self.client.heights.tick_with(
+        let replace = self.side.heights.tick_with(
             self.hands_busy(),
-            self.client.hand_strength.swap_scale(1.0, speed),
+            self.side.hand_strength.swap_scale(1.0, speed),
             changed,
             self.pvp_legacy_look(),
         );
         for h in 0..2 {
             if replace[h] {
-                self.client.visible_hands[h] = next[h].clone();
-                self.client.hands_replaced[h] = false;
+                self.side.visible_hands[h] = next[h].clone();
+                self.side.hands_replaced[h] = false;
             }
         }
     }
@@ -420,7 +420,7 @@ impl Game<'_> {
         let Some(stack) = &held.1 else {
             return;
         };
-        let visible = &self.client.visible_hands[h];
+        let visible = &self.side.visible_hands[h];
         if visible.0 == held.0 && visible.1.as_ref() == Some(stack) {
             return;
         }
@@ -448,16 +448,16 @@ impl Game<'_> {
     /// or the replay player's visible stacks.
     pub(in crate::game::client_side) fn reset_studio_hand_state(&mut self) {
         let main = self.inventory.get(self.selected).cloned().flatten();
-        self.client.visible_hands = [(self.selected, main), (OFFHAND, self.offhand.clone())];
-        self.client.hands_replaced = [false; 2];
-        self.client.heights = sunrise_client::first_person::HandHeights {
+        self.side.visible_hands = [(self.selected, main), (OFFHAND, self.offhand.clone())];
+        self.side.hands_replaced = [false; 2];
+        self.side.heights = sunrise_client::first_person::HandHeights {
             main: 1.0,
             old_main: 1.0,
             off: 1.0,
             old_off: 1.0,
         };
         self.swing = Default::default();
-        self.client.sway = Default::default();
+        self.side.sway = Default::default();
     }
 
     /// `Minecraft.crosshairPickEntity` when it is a `LivingEntity`: whether
@@ -608,8 +608,8 @@ impl Game<'_> {
     /// The visible main- and off-hand items.
     pub(in crate::game::client_side) fn visible_hand_items(&self) -> [Option<ItemStack>; 2] {
         [
-            self.client.visible_hands[0].1.clone(),
-            self.client.visible_hands[1].1.clone(),
+            self.side.visible_hands[0].1.clone(),
+            self.side.visible_hands[1].1.clone(),
         ]
     }
 }

@@ -4,7 +4,7 @@ use super::*;
 /// Helpers for native mods, kept as stable as the hook points.
 // Native mods use these; nothing in Sunrise does.
 #[allow(dead_code)]
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// A data file of the game's resources, content mods' included
     /// (`data/mymod/machines.json`), when there is one: what a mod's content
     /// says, read at runtime. Only relative paths of plain names. API 20.

@@ -18,13 +18,13 @@ pub(in crate::game) mod phase_contexts;
 pub(crate) mod services;
 include!(concat!(env!("OUT_DIR"), "/game_host_generated.rs"));
 
-impl Host for Game<'_> {
+impl<__Side: crate::game::Side> Host for Game<'_, __Side> {
     fn backend(&self) -> Option<BackendRef<'_>> {
         Some(BackendRef::of(self))
     }
 }
 
-impl ServerHost for Game<'_> {
+impl ServerHost for Game<'_, crate::game::server_side::ServerState> {
     fn backend_mut(&mut self) -> Option<BackendMutRef<'_>> {
         Some(BackendMutRef::of(self))
     }
@@ -109,12 +109,12 @@ impl ServerHost for Game<'_> {
     }
 }
 
-impl ClientHost for Game<'_> {
+impl ClientHost for Game<'_, crate::game::client_side::ClientState> {
     fn client_backend_mut(&mut self) -> Option<ClientBackendMutRef<'_>> {
         Some(ClientBackendMutRef::of(self))
     }
 }
 
-impl Backend for Game<'_> {}
-impl BackendMut for Game<'_> {}
-impl ClientBackendMut for Game<'_> {}
+impl<__Side: crate::game::Side> Backend for Game<'_, __Side> {}
+impl BackendMut for Game<'_, crate::game::server_side::ServerState> {}
+impl ClientBackendMut for Game<'_, crate::game::client_side::ClientState> {}

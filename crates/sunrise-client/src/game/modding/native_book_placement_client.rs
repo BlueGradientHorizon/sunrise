@@ -6,7 +6,7 @@ use sunrise_client::recipe_book::{
 };
 use sunrise_protocol::packets::{configuration::CustomPayload, play::Serverbound as S};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn send_mod_book_placement(&mut self, frame: sync::Frame) {
         if let Some(data) = settings_codec::encode(&Message::Placement(frame)) {
             self.native_net.placement.deadline =

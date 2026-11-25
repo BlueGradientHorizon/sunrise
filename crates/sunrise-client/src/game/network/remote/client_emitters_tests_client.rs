@@ -29,7 +29,7 @@ pub(in crate::game::client_side) use sunrise_protocol::entity_data::{Value, seri
 // draws. The expected sequence uses the 26.3 TrackingEmitter sampling contract
 // and independent feet/dimensions, never the packet handler's body lookup.
 pub(in crate::game) fn assert_bursts(
-    game: &mut Game<'_>,
+    game: &mut Game<'_, crate::game::client_side::ClientState>,
     random: &mut LegacyRandom,
     bodies: &[(ParticleType, [f64; 3], f32, f32)],
 ) {
@@ -52,7 +52,7 @@ pub(in crate::game) fn assert_bursts(
         }
     }
     let actual: Vec<_> = game
-        .particles
+        .side.particles
         .0
         .requested
         .as_mut()
@@ -63,9 +63,9 @@ pub(in crate::game) fn assert_bursts(
     assert_eq!(actual, expected);
 }
 
-pub(in crate::game) fn capture_requests(game: &mut Game<'_>) -> LegacyRandom {
+pub(in crate::game) fn capture_requests(game: &mut Game<'_, crate::game::client_side::ClientState>) -> LegacyRandom {
     const SEED: i64 = 719;
-    game.particles.0.seed_randoms(SEED, 11, 12);
-    game.particles.0.requested = Some(Vec::new());
+    game.side.particles.0.seed_randoms(SEED, 11, 12);
+    game.side.particles.0.requested = Some(Vec::new());
     LegacyRandom::new(SEED)
 }

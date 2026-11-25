@@ -19,7 +19,7 @@ pub const HELP: &[&str] = &[
     "render-capture on|off|DIR      keep copies of the meshes drawn (on), or write the next frame's scene to DIR for scene_replay",
 ];
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Parse `name[k=v,...]` into a registry state (defaults for missing properties).
     fn parse_state(&self, text: &str) -> Result<BlockStateId> {
         parse_state(self.pack.assets.registry, text)
@@ -85,18 +85,18 @@ impl Game<'_> {
                 };
                 // ServerLevel.sendParticles: count 0 uses the delta as velocity.
                 if count == 0 {
-                    self.particles.0.create(&options, at, delta);
+                    self.side.particles.0.create(&options, at, delta);
                 }
                 for _ in 0..count {
-                    let r = self.particles.0.random();
+                    let r = self.side.particles.0.random();
                     let p = [
                         at[0] + r.next_gaussian() * delta[0],
                         at[1] + r.next_gaussian() * delta[1],
                         at[2] + r.next_gaussian() * delta[2],
                     ];
-                    self.particles.0.create(&options, p, [0.0; 3]);
+                    self.side.particles.0.create(&options, p, [0.0; 3]);
                 }
-                Ok(Some(json!({ "ok": true, "live": self.particles.0.len() })))
+                Ok(Some(json!({ "ok": true, "live": self.side.particles.0.len() })))
             }
             "signedit" => {
                 let key = (int(1)?, int(2)?, int(3)?);

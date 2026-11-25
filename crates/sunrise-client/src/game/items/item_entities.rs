@@ -26,7 +26,7 @@ pub(in crate::game) struct GivenBack {
     pub(in crate::game) next: usize,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn tick_items(&mut self) {
         let mut round = self.item_update_round();
         self.tick_dropped_items(&mut round);
@@ -37,7 +37,7 @@ impl Game<'_> {
     /// An item that joined during this tick's entity pass: it first ticks on
     /// the next one.
     pub(in crate::game::server_side) fn joined_during_entity_pass(&self, id: u32) -> bool {
-        id > self.server.ticked_entities_through || self.server.contact_drops.contains(&id)
+        id > self.side.ticked_entities_through || self.side.contact_drops.contains(&id)
     }
     pub(in crate::game) fn tick_dropped_items(&mut self, round: &mut native_ticks::TickRound) {
         let mut items = self.dropped.lift();
@@ -721,7 +721,7 @@ impl Game<'_> {
         if len_sqr > 0.0 && dot < 0.0 {
             velocity = Vec3::new(-velocity.x, -velocity.y, -velocity.z);
         }
-        self.server.next_entity += 1;
+        self.side.next_entity += 1;
         self.orbs.push(ExperienceOrb {
             size_answer: None,
             attachment_lifetime: Default::default(),
@@ -729,7 +729,7 @@ impl Game<'_> {
             rotation: [0.0, 0.0],
             join: Default::default(),
             no_gravity: false,
-            id: self.server.next_entity,
+            id: self.side.next_entity,
             position: p,
             previous: p,
             velocity,
@@ -750,8 +750,8 @@ impl Game<'_> {
     /// The orbs' tick, but for the movement: that is `run_ordered_ticks`'s,
     /// in join order with the other kinds.
     pub(in crate::game::server_side) fn tick_experience(&mut self) {
-        if self.server.xp_delay > 0 {
-            self.server.xp_delay -= 1;
+        if self.side.xp_delay > 0 {
+            self.side.xp_delay -= 1;
         }
         let spectator = self.spectator();
         let player = self
@@ -801,10 +801,10 @@ impl Game<'_> {
                     && o.position.y < max[1]
                     && o.position.z + 0.25 > min[2]
                     && o.position.z - 0.25 < max[2];
-                if touching && self.server.xp_delay == 0 {
+                if touching && self.side.xp_delay == 0 {
                     // ExperienceOrb.playerTouch: one orb every 2 ticks; a
                     // merged orb gives its value once per count.
-                    self.server.xp_delay = 2;
+                    self.side.xp_delay = 2;
                     gained += o.points();
                     taken.push(o.clone());
                     o.count -= 1;
@@ -927,7 +927,7 @@ impl Game<'_> {
     /// The item entity `spawn_item` just added, unless a native mod kept it
     /// out of the level (`native_entity_join_level`).
     pub(in crate::game) fn just_spawned_item(&mut self) -> Option<&mut ItemEntity> {
-        let id = self.server.next_entity;
+        let id = self.side.next_entity;
         self.dropped.last_mut().filter(|d| d.id == id)
     }
 
@@ -1081,7 +1081,7 @@ impl Game<'_> {
         // Only `drop(.., false)` tosses ask `item_toss`: a death's scatter (`randomly`) does not.
         let id = if randomly {
             self.spawn_item(thrown, at, v, 40);
-            self.server.next_entity
+            self.side.next_entity
         } else {
             self.toss_item(thrown, at, v, uuid)?
         };

@@ -374,8 +374,8 @@ pub(in crate::game) fn start_client_game<'a>(
         handoff,
     });
     if let Some((window, renderer)) = window {
-        game.client.resize_state = Some(game.resize_state_of(window.inner_size()));
-        game.window.0 = Some(window);
+        game.side.resize_state = Some(game.resize_state_of(window.inner_size()));
+        game.side.window.0 = Some(window);
         let ready = game.apply_pending_client_start(
             pending.expect("loading screen has a client"),
             Ok(Some(Box::new(renderer))),
@@ -401,7 +401,7 @@ pub(in crate::game) fn start_client_game<'a>(
             let ready = game.apply_pending_client_start(pending, Ok(None))?;
             Ok(ready.then_some(game))
         } else {
-            game.pending_initial_models.0 = Some(Box::new(pending));
+            game.side.pending_initial_models.0 = Some(Box::new(pending));
             Ok(Some(game))
         }
     } else {
@@ -410,7 +410,7 @@ pub(in crate::game) fn start_client_game<'a>(
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Pump the client connection without movement prediction until the harness server stops.
     pub(in crate::game::client_side) fn wait_command_harness(&mut self) -> Result<()> {
         let server = self.integrated.take().ok_or("command harness: no server")?;
@@ -446,7 +446,7 @@ impl Game<'_> {
         renderer: Result<Option<Box<Renderer>>>,
     ) -> Result<bool> {
         self.apply_initial_model_generation(pending.models, pending.applies, renderer?)?;
-        self.client.world_renderer_ready = self.renderer.0.is_some();
+        self.side.world_renderer_ready = self.side.renderer.0.is_some();
         self.finish_start_game(pending.pack_error, pending.handoff)
     }
 
@@ -516,7 +516,7 @@ impl Game<'_> {
                         .new_title(std::env::current_dir()?.join("saves"))
                         .with_user(|| game.options.player_name());
                     game.show_title(title);
-                    game.pending_entry.0 = Some(PendingWorldEntry::Local {
+                    game.side.pending_entry.0 = Some(PendingWorldEntry::Local {
                         folder,
                         name: None,
                         seed: Some(seed),

@@ -252,7 +252,7 @@ impl WorldDrawContext for GameWorldDrawContext<'_, '_> {
 
 impl<'a, 'g> GameBlockEntityDrawContext<'a, 'g> {
     pub(crate) fn new(
-        game: &'a Game<'g>,
+        game: &'a Game<'g, crate::game::client_side::ClientState>,
         surface: &'a mut crate::game::native_block_entity_draw::BlockEntityDraw,
     ) -> Self {
         Self { game, surface }
@@ -261,7 +261,7 @@ impl<'a, 'g> GameBlockEntityDrawContext<'a, 'g> {
 
 impl<'a, 'g> GameCameraDrawContext<'a, 'g> {
     pub(crate) fn new(
-        game: &'a Game<'g>,
+        game: &'a Game<'g, crate::game::client_side::ClientState>,
         surface: &'a mut crate::screen_effects::CameraQuads,
     ) -> Self {
         Self { game, surface }
@@ -269,7 +269,7 @@ impl<'a, 'g> GameCameraDrawContext<'a, 'g> {
 }
 
 impl<'a, 'g> GameDrawContext<'a, 'g> {
-    pub(crate) fn new(game: &'a Game<'g>, surface: &'a mut crate::hud::HudBatch) -> Self {
+    pub(crate) fn new(game: &'a Game<'g, crate::game::client_side::ClientState>, surface: &'a mut crate::hud::HudBatch) -> Self {
         Self {
             game,
             surface,
@@ -279,7 +279,7 @@ impl<'a, 'g> GameDrawContext<'a, 'g> {
     }
     /// Lend a fresh clip stack and isolate the drawable tail of one listener.
     pub(crate) fn stage(
-        game: &Game<'_>,
+        game: &Game<'_, crate::game::client_side::ClientState>,
         surface: &mut crate::hud::HudBatch,
         listen: &mut dyn FnMut(&mut dyn DrawContext) -> bool,
     ) {
@@ -314,7 +314,7 @@ impl<'a, 'g> GameDrawContext<'a, 'g> {
 
 impl<'a, 'g> GameWorldDrawContext<'a, 'g> {
     pub(crate) fn new(
-        game: &'a Game<'g>,
+        game: &'a Game<'g, crate::game::client_side::ClientState>,
         surface: &'a mut crate::world_geometry::WorldGeometry,
     ) -> Self {
         Self { game, surface }

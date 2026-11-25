@@ -55,7 +55,7 @@ fn cube(center: [i32; 3], radius: i32) -> impl Iterator<Item = [i32; 3]> {
     })
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `CollisionBoxRenderer`: the block collisions within 6 of the camera
     /// entity's box, white.
     pub(in crate::game::client_side) fn debug_renderer_gizmos(&self, g: &mut Gizmos) {
@@ -171,7 +171,7 @@ impl Game<'_> {
                 out,
             ));
         }
-        self.client.map_patches.extend(patches);
+        self.side.map_patches.extend(patches);
     }
 
     /// `WaterDebugRenderer`: each water block within 10 of the feet filled
@@ -274,7 +274,7 @@ impl Game<'_> {
 /// isn't full and the block light where there is some (the light engine's
 /// section data, drawn with them in vanilla, Sunrise doesn't keep).
 fn light_level_texts(
-    game: &Game<'_>,
+    game: &Game<'_, crate::game::client_side::ClientState>,
     eye: [i32; 3],
     block: bool,
     sky: bool,

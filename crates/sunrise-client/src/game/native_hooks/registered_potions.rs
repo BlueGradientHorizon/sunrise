@@ -14,7 +14,7 @@ pub(in crate::game) fn registered_potions() -> &'static [mod_api::PotionInfo] {
     })
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Registered potions, in registry order, each by its registry id.
     pub(in crate::game) fn potions(&self) -> Vec<mod_api::PotionInfo> {
         registered_potions().to_vec()

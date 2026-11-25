@@ -2,7 +2,7 @@
 use super::*;
 #[allow(unused_imports)]
 use mod_api::ModBlockEntity;
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn native_on_chunk_unloaded(
         &mut self,
         pos: [i32; 3],
@@ -13,7 +13,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Tells the parts of the mod block entities in chunk `chunk` of `level` that it
     /// unloads, each once, while they are still in the world's block entities.
     pub(in crate::game) fn notify_chunk_block_entities_unloaded(

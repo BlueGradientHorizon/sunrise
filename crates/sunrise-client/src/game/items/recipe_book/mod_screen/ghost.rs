@@ -1,10 +1,10 @@
 //! Custom ghost slots share the vanilla painter, but never its slot-coordinate fallback.
 use super::*;
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(super) fn draw_mod_book_ghosts(&mut self, batch: &mut HudBatch) {
         let (ox, oy) = self.inventory_origin(batch);
         let ghosts: Vec<GhostView> = self
-            .recipe_ui
+            .side.recipe_ui
             .0
             .ghost
             .iter()

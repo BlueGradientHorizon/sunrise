@@ -82,9 +82,9 @@ pub(in crate::game::server_side) fn wake_hoppers_reaching(
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn hopper_cooldown(&self, pos: Pos) -> i32 {
-        hopper_cooldown_in(&self.server.hoppers, &self.world, pos)
+        hopper_cooldown_in(&self.side.hoppers, &self.world, pos)
     }
 }
 
@@ -851,7 +851,7 @@ impl super::GameLevel<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn containers(&self) -> Containers<'_> {
         Containers {
             world: &self.world,
@@ -1131,8 +1131,8 @@ impl Game<'_> {
         if success && was_empty && view.kind == Kind::Hopper {
             let dest = view.parts[0].0;
             let from_ticked =
-                from_hopper.and_then(|p| self.server.hoppers.get(&p).map(|h| h.ticked));
-            let state = self.server.hoppers.entry(dest).or_default();
+                from_hopper.and_then(|p| self.side.hoppers.get(&p).map(|h| h.ticked));
+            let state = self.side.hoppers.entry(dest).or_default();
             if state.cooldown <= 8 {
                 let skip = i32::from(from_ticked.is_some_and(|t| state.ticked >= t));
                 state.cooldown = 8 - skip;
@@ -1278,7 +1278,7 @@ impl Game<'_> {
         // Every hopper keeps its cooldown and the tick it last ticked
         // (`HopperBlockEntity.tickedGameTime`), idle ones too: a hopper that
         // receives an item reads it for its cooldown (8, or 7 once it ticked).
-        let state = self.server.hoppers.entry(pos).or_default();
+        let state = self.side.hoppers.entry(pos).or_default();
         state.cooldown = state.cooldown.wrapping_sub(1);
         state.ticked = time;
         if state.cooldown > 0 {
@@ -1295,7 +1295,7 @@ impl Game<'_> {
                 .name,
         ) == "minecraft:hopper";
         if !hopper {
-            self.server.hoppers.remove(&pos);
+            self.side.hoppers.remove(&pos);
             return;
         }
         let state = self.world.block(pos.0, pos.1, pos.2);
@@ -1318,14 +1318,14 @@ impl Game<'_> {
     /// every tick, and a feeder that runs later in the same tick reads the
     /// stamp to choose 7 ticks over 8.
     pub(in crate::game) fn tick_sleeping_hopper(&mut self, pos: Pos) {
-        let state = self.server.hoppers.entry(pos).or_default();
+        let state = self.side.hoppers.entry(pos).or_default();
         state.cooldown = state.cooldown.wrapping_sub(1).max(0);
         state.ticked = self.world.game_time;
     }
     /// Drops the cooldowns of hoppers whose block entity is gone.
     pub(in crate::game) fn forget_gone_hoppers(&mut self) {
         let entities = &self.world.block_entities;
-        self.server.hoppers.retain(|p, _| {
+        self.side.hoppers.retain(|p, _| {
             matches!(entities.get(p), Some(BlockEntity::Chest(items)) if items.len() == HOPPER_SLOTS)
         });
     }
@@ -1346,7 +1346,7 @@ impl Game<'_> {
             return false;
         };
         if self
-            .server
+            .side
             .hoppers
             .get(&pos)
             .is_some_and(|h| h.cooldown > 0)
@@ -1365,7 +1365,7 @@ impl Game<'_> {
             changed |= self.hopper_suck(pos, &view);
         }
         if changed {
-            self.server.hoppers.entry(pos).or_default().cooldown = 8;
+            self.side.hoppers.entry(pos).or_default().cooldown = 8;
             self.container_changed(pos);
         }
         changed
@@ -1518,7 +1518,7 @@ impl Game<'_> {
     /// item entity was taken whole.
     pub(in crate::game::server_side) fn hopper_take_item(&mut self, pos: Pos, i: usize) -> bool {
         if self
-            .server
+            .side
             .hoppers
             .get(&pos)
             .is_some_and(|h| h.cooldown > 0)
@@ -1563,7 +1563,7 @@ impl Game<'_> {
             }
         }
         if changed {
-            self.server.hoppers.entry(pos).or_default().cooldown = 8;
+            self.side.hoppers.entry(pos).or_default().cooldown = 8;
             self.container_changed(pos);
         }
         taken
@@ -1876,7 +1876,7 @@ impl Game<'_> {
                 f64::from(pos.2) + 1.0,
             ],
         );
-        if let Some(columns) = self.server.item_columns.as_mut()
+        if let Some(columns) = self.side.item_columns.as_mut()
             && !columns.may_reach(&self.dropped, pos.0, pos.2)
         {
             return false;
@@ -2221,7 +2221,7 @@ impl Game<'_> {
         max: [f64; 3],
     ) -> bool {
         if !self
-            .server
+            .side
             .pickup_columns
             .get_or_insert_with(Default::default)
             .may_reach_area(

@@ -405,7 +405,7 @@ pub(in crate::game::server_side) fn preserve_arrival_cooldown(tag: &mut Tag) {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The world border's extent.
     pub(in crate::game::server_side) fn border_bounds(&self) -> BorderBounds {
         self.border_bounds_of(self.dim)
@@ -416,7 +416,7 @@ impl Game<'_> {
         let border = if dim == self.dim {
             &self.border
         } else {
-            self.levels.0.parked_border(dim).unwrap_or(&self.border)
+            self.side.levels.0.parked_border(dim).unwrap_or(&self.border)
         };
         PortalSide::bounds_of(border)
     }
@@ -436,8 +436,8 @@ impl Game<'_> {
         }
         Some(PortalSide {
             dim,
-            world: self.levels.0.parked_world(dim)?,
-            border: self.levels.0.parked_border(dim)?,
+            world: self.side.levels.0.parked_world(dim)?,
+            border: self.side.levels.0.parked_border(dim)?,
         })
     }
     /// `ServerLevel.isAllowedToEnterPortal`.
@@ -626,7 +626,7 @@ impl Game<'_> {
         &self,
         plan: &Plan,
     ) -> Option<(BlockPos, FoundRectangle)> {
-        self.find_portal_in(&self.in_place_side(), Some(&self.save.0), plan)
+        self.find_portal_in(&self.in_place_side(), Some(&self.side.save.0), plan)
     }
     /// [`Self::find_exit_portal`] in `side`'s level, reading the chunks that are not
     /// loaded from `save` when it is given.
@@ -715,7 +715,7 @@ impl Game<'_> {
     /// Only a server holds levels with tickets of their own.
     pub(in crate::game::server_side) fn place_portal_ticket(&mut self, chunk: (i32, i32)) {
         if !self.options.execution_role.is_client() {
-            self.tickets.0.add_portal(chunk);
+            self.side.tickets.0.add_portal(chunk);
         }
     }
 
@@ -765,7 +765,7 @@ impl Game<'_> {
         let to_nether = plan.dim == Dim::Nether;
         let portals = self.portal_blocks(
             &self.in_place_side(),
-            Some(&self.save.0),
+            Some(&self.side.save.0),
             plan.approximate,
             PortalSide::search_radius(to_nether),
         );
@@ -971,7 +971,7 @@ impl Game<'_> {
     pub(in crate::game::server_side) fn dimension_changing_delay(&self, id: u32) -> i32 {
         if self.boats.iter().any(|b| b.id == id)
             || self.carts.iter().any(|c| c.id == id)
-            || self.server.lan_acting_entity == Some(id)
+            || self.side.lan_acting_entity == Some(id)
             || self
                 .lan
                 .iter()
@@ -1169,7 +1169,7 @@ impl Game<'_> {
                         self.tridents,
                         index,
                         t,
-                        &mut self.server.next_entity,
+                        &mut self.side.next_entity,
                         None
                     );
                 }
@@ -1181,7 +1181,7 @@ impl Game<'_> {
                         self.rockets,
                         index,
                         r,
-                        &mut self.server.next_entity,
+                        &mut self.side.next_entity,
                         None
                     );
                 }
@@ -1440,7 +1440,7 @@ impl Game<'_> {
                 Target::Painting(_) => self.paintings.retain(|e| e.id != id),
                 Target::Falling(_) => self.falling.retain(|e| e.id != id),
                 Target::Cushion(_) => self.cushions.retain(|e| e.id != id),
-                Target::Other(_) => self.others.0.retain(|e| e.id != id),
+                Target::Other(_) => self.side.others.0.retain(|e| e.id != id),
                 Target::Fangs(_) => self.fangs.list.retain(|e| e.id != id),
                 Target::Crystal(_) => self.crystals.retain(|e| e.id != id),
                 Target::Dragon(_) => self.discard_resident_dragon(),
@@ -1955,7 +1955,7 @@ impl Game<'_> {
     // ---- persistence ----
 
     pub(in crate::game::server_side) fn arrivals_path(&self) -> std::path::PathBuf {
-        self.server
+        self.side
             .world_root
             .join("data")
             .join("sunrise_portal_arrivals.dat")
@@ -1999,7 +1999,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {}
+impl Game<'_, crate::game::server_side::ServerState> {}
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
@@ -2745,7 +2745,7 @@ pub(in crate::game) mod cooldown_tests;
 #[path = "nether_portal/arrival_effects_tests.rs"]
 pub(in crate::game) mod arrival_effects_tests;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// PortalShape: an obsidian frame around 2..=21 by 3..=21 empty blocks.
     pub(in crate::game::server_side) fn portal_shape(
         &self,

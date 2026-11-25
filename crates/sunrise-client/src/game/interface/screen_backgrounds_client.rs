@@ -7,7 +7,7 @@ pub(in crate::game::client_side) use crate::game::screen_backgrounds::without_re
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::screen_backgrounds::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `LevelExtractor` / `LevelRenderer`: the world border wall this frame.
     pub(in crate::game) fn border_draw(
         &mut self,
@@ -21,20 +21,20 @@ impl Game<'_> {
             partial,
             camera,
             distance,
-            &mut self.client.border_state,
+            &mut self.side.border_state,
         );
         // `LevelRenderer.repositionCamera`: the wall is rebuilt when the camera
         // enters another `SectionPos` (it only holds the stretch in range).
         let section = camera.map(|c| (c.floor() as i32) >> 4);
-        if self.client.border_section != Some(section) {
-            self.client.border_renderer.invalidate();
-            self.client.border_section = Some(section);
+        if self.side.border_section != Some(section) {
+            self.side.border_renderer.invalidate();
+            self.side.border_section = Some(section);
         }
         // Camera.depthFar, as the renderer's far plane.
         let depth_far =
             sunrise_client::camera::depth_far(self.terrain_distance(), self.settings.cloud_range);
-        if !self.client.border_renderer.prepare(
-            &self.client.border_state,
+        if !self.side.border_renderer.prepare(
+            &self.side.border_state,
             camera,
             distance,
             depth_far,
@@ -43,14 +43,14 @@ impl Game<'_> {
         }
         let millis = self.visual_millis();
         Some(sunrise_client::gfx::BorderDraw {
-            vertices: self.client.border_renderer.vertices,
-            rebuilt: self.client.border_renderer.take_rebuilt(),
-            transforms: self.client.border_renderer.transforms(
-                &self.client.border_state,
+            vertices: self.side.border_renderer.vertices,
+            rebuilt: self.side.border_renderer.take_rebuilt(),
+            transforms: self.side.border_renderer.transforms(
+                &self.side.border_state,
                 camera,
                 millis,
             ),
-            sides: BorderRenderer::sides(&self.client.border_state, camera, distance),
+            sides: BorderRenderer::sides(&self.side.border_state, camera, distance),
         })
     }
     /// Draw the presentation retained by the existing load tracker, if one matched at entry.
@@ -64,10 +64,10 @@ impl Game<'_> {
             return false;
         };
         let paint = batch.paint_checkpoint();
-        let sounds = self.client.mod_sounds.pending_checkpoint();
-        let blur_requested = self.client.screen_blur_requested.get();
-        let clear_particles = self.client.mod_clear_particles.get();
-        let camera_type = self.client.requested_camera_type.get();
+        let sounds = self.side.mod_sounds.pending_checkpoint();
+        let blur_requested = self.side.screen_blur_requested.get();
+        let clear_particles = self.side.mod_clear_particles.get();
+        let camera_type = self.side.requested_camera_type.get();
         if screen.draw(
             self,
             tracker.reason.into(),
@@ -77,10 +77,10 @@ impl Game<'_> {
             return true;
         }
         paint.discard(batch);
-        self.client.mod_sounds.discard_pending_since(sounds);
-        self.client.screen_blur_requested.set(blur_requested);
-        self.client.mod_clear_particles.set(clear_particles);
-        self.client.requested_camera_type.set(camera_type);
+        self.side.mod_sounds.discard_pending_since(sounds);
+        self.side.screen_blur_requested.set(blur_requested);
+        self.side.mod_clear_particles.set(clear_particles);
+        self.side.requested_camera_type.set(camera_type);
         false
     }
     /// `LevelLoadingScreen.extractBackground`.
@@ -189,16 +189,16 @@ impl Game<'_> {
     /// HUD, when `menuBackgroundBlurriness` is at least 1.
     pub(in crate::game) fn menu_blur(&self) -> Option<f32> {
         let blurred = self.remote_loading()
-            || self.title.0.as_ref().is_some_and(|t| {
-                matches!(self.client.screen, Screen::Options | Screen::Win)
+            || self.side.title.0.as_ref().is_some_and(|t| {
+                matches!(self.side.screen, Screen::Options | Screen::Win)
                     || !matches!(t.mode, sunrise_client::title::Mode::Main)
             })
-            || (self.title.0.is_none()
+            || (self.side.title.0.is_none()
                 && self.player.is_some()
-                && (self.client.screen.blurs_background(self.client.pause_menu)
+                && (self.side.screen.blurs_background(self.side.pause_menu)
                     || self.dialog_open()
-                    || (self.client.screen == Screen::Win && self.win_screen_pauses())))
-            || self.client.screen_blur_requested.get();
+                    || (self.side.screen == Screen::Win && self.win_screen_pauses())))
+            || self.side.screen_blur_requested.get();
         let radius = self.settings.menu_blur as f32;
         let mut radius = (blurred && radius >= 1.0).then_some(radius);
         self.native_menu_background(&mut radius);
@@ -241,10 +241,10 @@ impl Game<'_> {
         &self,
         batch: &HudBatch,
     ) -> Option<mod_api::ScreenView<'_>> {
-        let screen = self.client.screen;
+        let screen = self.side.screen;
         if screen == Screen::Playing
-            || self.server_packs.0.prompt.is_some()
-            || self.client.book.is_some()
+            || self.side.server_packs.0.prompt.is_some()
+            || self.side.book.is_some()
             || !self.screen_render_listened()
         {
             return None;
@@ -279,7 +279,7 @@ impl Game<'_> {
     pub(in crate::game) fn shows_panorama(&self) -> bool {
         // The two cases that always had one: the title screen and waiting on
         // a server. Left exactly as they were.
-        self.title.0.is_some() || self.remote_loading() || self.screen_wants_panorama()
+        self.side.title.0.is_some() || self.remote_loading() || self.screen_wants_panorama()
     }
     /// `GameRenderer.update`'s `requestedPostEffects`: `end_of_frame` (a resource
     /// pack's own chain), then the server's `LocalPlayer.postEffects`, then the
@@ -302,13 +302,13 @@ impl Game<'_> {
             *len += 1;
         }
         let mut len = 0;
-        if self.title.0.is_none() && self.player.is_some() {
+        if self.side.title.0.is_none() && self.player.is_some() {
             set_slot(out, &mut len, "minecraft:end_of_frame");
-            for effect in &self.client.post_effects {
+            for effect in &self.side.post_effects {
                 set_slot(out, &mut len, effect);
             }
-            if self.client.spectated_post_effect_active
-                && let Some(effect) = self.client.spectated_post_effect
+            if self.side.spectated_post_effect_active
+                && let Some(effect) = self.side.spectated_post_effect
             {
                 set_slot(out, &mut len, effect);
             }
@@ -326,7 +326,7 @@ impl Game<'_> {
         &self,
         batch: &HudBatch,
     ) -> Option<mod_api::ScreenView<'_>> {
-        if self.client.screen != Screen::Playing
+        if self.side.screen != Screen::Playing
             || self.screen_over_playing()
             || self.remote_loading()
             || !self.screen_render_listened()

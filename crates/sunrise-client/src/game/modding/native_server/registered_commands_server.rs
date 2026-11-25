@@ -22,7 +22,7 @@ pub(in crate::game::server_side) use serde_json::Value;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use std::{collections::HashMap, sync::Arc};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Commands`' constructor with `RegisterCommandsEvent`: asks the mods for their commands and
     /// builds the session's tree, vanilla's for `features` with the mods' on top. Called before
     /// functions are admitted (world open and each reload), so both function checks see them.
@@ -60,7 +60,7 @@ impl Game<'_> {
         for p in problems {
             log::warn!("Sunrise: a native mod's command was left out: {p}");
         }
-        let state = &mut self.native_commands.0;
+        let state = &mut self.side.native_commands.0;
         state.registered = Some(NativeCommands {
             levels,
             tree,
@@ -74,7 +74,7 @@ impl Game<'_> {
     }
     /// Rebind against the new node IDs. True if the display report changed too.
     pub(in crate::game::server_side) fn rebind_native_commands(&mut self) -> bool {
-        let state = &mut self.native_commands.0;
+        let state = &mut self.side.native_commands.0;
         let Some(commands) = &state.registered else {
             return false;
         };
@@ -99,11 +99,11 @@ impl Game<'_> {
     /// Gives the hub the session's mod commands when it lacks them; first asks the mods again
     /// when one asked (`native_refresh_commands`), and then sends every player their tree.
     pub(in crate::game) fn register_native_commands(&mut self) {
-        let refresh = std::mem::take(&mut self.native_commands.0.refresh);
+        let refresh = std::mem::take(&mut self.side.native_commands.0.refresh);
         if self.lan.is_none() {
             return;
         }
-        if refresh || self.native_commands.0.registered.is_none() {
+        if refresh || self.side.native_commands.0.registered.is_none() {
             self.build_native_commands(&self.level.enabled_features.clone());
         }
         self.send_native_command_report(refresh);
@@ -111,7 +111,7 @@ impl Game<'_> {
     /// Restore mod nodes (and rebind their executors) after vanilla replaces the tree.
     pub(in crate::game::server_side) fn restore_native_commands(&mut self) {
         if self.rebind_native_commands() {
-            let revision = &mut self.native_commands.0.display_revision;
+            let revision = &mut self.side.native_commands.0.display_revision;
             *revision = revision.wrapping_add(1);
         }
     }
@@ -121,7 +121,7 @@ impl Game<'_> {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
-        let state = &self.native_commands.0;
+        let state = &self.side.native_commands.0;
         if state.registered.is_none() {
             if force_resend {
                 self.resend_commands_filtered();

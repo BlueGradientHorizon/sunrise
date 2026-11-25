@@ -60,7 +60,7 @@ pub(in crate::game) fn java_double_text(v: f64) -> Text {
     Text::literal(sunrise_core::java_number::double_to_string(v))
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     // ---- /recipe -----------------------------------------------------------
 
     /// Learnable recipes and registered hidden crafting kinds for `/recipe` resolution.
@@ -1868,7 +1868,7 @@ pub(in crate::game) mod vehicle_damage_command_tests {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `PoiTypes`: the point of interest type of a block state.
     pub(in crate::game) fn poi_type(
         &self,

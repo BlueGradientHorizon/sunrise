@@ -38,7 +38,7 @@ pub(in crate::game) struct View {
     pub(in crate::game) index: ModBookIndex,
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn send_guest_mod_book_placement(&self, conn: u32, frame: sync::Frame) {
         if let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn))
             && let Some(data) = settings_codec::encode(&Message::Placement(frame))

@@ -8,7 +8,7 @@ use sunrise_client_render::{block_entity_reach::Reach, render_geometry::Vertex};
 #[allow(unused_imports)]
 use sunrise_world::{piston_shape::MovingPistonState, registry::BlockStateId};
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The section holding the block at `p` (`SectionPos.blockToSection`).
     pub(in crate::game) fn section_of(&self, p: [i32; 3]) -> Option<(i32, i32, i32)> {
         let y = p[1].checked_sub(self.world.layout().min_y())?;

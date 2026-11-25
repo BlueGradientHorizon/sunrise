@@ -7,7 +7,7 @@ thread_local! {
     static FILTERING_CHAT: RefCell<()> = const { RefCell::new(()) };
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The placed, connected players a mod keeps a public line from, asked once each in hub order.
     /// Prepare the sender, name and message only when a mod listens. `None` refuses a line
     /// issued during recipient selection: the listener may not reenter or bypass its own veto.

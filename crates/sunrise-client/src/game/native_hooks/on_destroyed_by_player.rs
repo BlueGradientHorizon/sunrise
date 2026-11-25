@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A player removes the block `state` at `pos` with `tool`, the held stack (`None` for a
     /// bare hand)
     /// (`IBlockExtension.onDestroyedByPlayer`): the block's parts may do the

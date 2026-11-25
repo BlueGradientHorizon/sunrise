@@ -7,7 +7,7 @@ pub(in crate::game::client_side) use sunrise_client::creative::Creative;
 
 /// Helpers for native mods, kept as stable as the hook points.
 // Native mods use these; nothing in Sunrise does.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `screen_hovered_stack` at `(x, y)` in `batch`'s GUI pixels. A creative item tab's display
     /// slot shows the tab's list (`ItemPickerMenu`), scrolled to its first visible row.
     pub(in crate::game::client_side) fn hovered_stack_at(
@@ -16,7 +16,7 @@ impl Game<'_> {
         x: f32,
         y: f32,
     ) -> Option<ItemStack> {
-        if !matches!(self.client.screen, Screen::Inventory | Screen::Creative) {
+        if !matches!(self.side.screen, Screen::Inventory | Screen::Creative) {
             return None;
         }
         let slot = self.slot_at(batch, x, y)?;
@@ -33,11 +33,11 @@ impl Game<'_> {
             return None;
         }
         let size = self
-            .renderer
+            .side.renderer
             .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])?;
         let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
-        self.hovered_stack_at(&batch, self.client.cursor.0, self.client.cursor.1)
+        self.hovered_stack_at(&batch, self.side.cursor.0, self.side.cursor.1)
     }
 }

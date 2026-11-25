@@ -27,7 +27,7 @@ pub(in crate::game) fn level_suffocation_of<'a>(
         .map_or_else(|| res.suffocation(), |t| &t.suffocation)
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Server reads active station enchantments; client reads synced remote enchantments or active items.
     pub(in crate::game) fn item_enchantments(&self) -> &Arc<sunrise_client::enchant::Enchantments> {
         if self.is_logical_server() {
@@ -106,7 +106,7 @@ impl Drop for PopBlockQuery {
     }
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn pack_files(&self) -> sunrise_world::loot::PackOverlay<'_> {
         match self.side_world_tables() {
             Some(t) => sunrise_world::loot::PackOverlay {

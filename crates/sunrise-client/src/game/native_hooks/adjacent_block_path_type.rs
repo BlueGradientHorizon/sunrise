@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Positional `IBlockExtension.getAdjacentBlockPathType`: the neighbour's
     /// own classified `path_type` and position. `None` keeps fluid/vanilla fallback.
     pub(in crate::game) fn native_adjacent_block_path_type(

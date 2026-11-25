@@ -19,7 +19,7 @@ pub(in crate::game::client_side) use sunrise_gameplay::game_modes::{
     loads_chunks, mode_from_id, projectile_predicate_supported,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `MultiPlayerGameMode.canHurtPlayer()` and `hasExperience()` (`localPlayerMode.isSurvival()`).
     pub(in crate::game) fn can_hurt_player(&self) -> bool {
         matches!(self.mode, GameMode::Survival | GameMode::Adventure)

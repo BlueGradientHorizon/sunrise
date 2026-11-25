@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ContainerEntity.isChestVehicleStillValid`: the chest minecart or chest
     /// boat is still there and within the guest's entity interaction range
     /// plus 4 of its box.
@@ -57,7 +57,7 @@ impl Game<'_> {
         pos: (i32, i32, i32),
         open: bool,
     ) {
-        let acting = self.server.lan_acting == Some(conn);
+        let acting = self.side.lan_acting == Some(conn);
         let spectator = if acting {
             self.spectator()
         } else {
@@ -124,7 +124,7 @@ impl Game<'_> {
             !cancel
         };
         // The guest whose turn it is is in place already.
-        if self.server.lan_acting == Some(conn) {
+        if self.side.lan_acting == Some(conn) {
             Some(hook(self))
         } else {
             self.as_guest(conn, hook)

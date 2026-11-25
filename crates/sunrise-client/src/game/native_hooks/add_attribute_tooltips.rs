@@ -5,7 +5,7 @@ use sunrise_client::item_tooltip::{
 };
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `AddAttributeTooltipsEvent`: the lines that follow a stack's attribute lines. Push lines
     /// to `lines`, each with a colour as `rgba` packs it (`u32::MAX` keeps the text's own).
     /// `shown` is whether the stack's display shows the attribute modifiers; the hook is asked
@@ -27,12 +27,12 @@ impl Game<'_> {
 /// `player` is the local player's uuid and entity id, none for the search
 /// text and for a nested stack (a crossbow's projectile).
 pub(in crate::game) struct HookedAttributeTooltips<'a, 'g> {
-    game: &'a Game<'g>,
+    game: &'a Game<'g, crate::game::client_side::ClientState>,
     player: Option<(u128, i32)>,
 }
 
 impl<'a, 'g> HookedAttributeTooltips<'a, 'g> {
-    pub(in crate::game) fn new(game: &'a Game<'g>, player: Option<(u128, i32)>) -> Self {
+    pub(in crate::game) fn new(game: &'a Game<'g, crate::game::client_side::ClientState>, player: Option<(u128, i32)>) -> Self {
         Self { game, player }
     }
 }

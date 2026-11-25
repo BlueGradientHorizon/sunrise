@@ -4,7 +4,7 @@
 #[allow(unused_imports)]
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_update_world(&mut self) {
         debug_assert!(
             !self.is_logical_server(),
@@ -17,14 +17,14 @@ impl Game<'_> {
             log::warn!("Sunrise Studio replay: {e}");
         }
         // A disconnect during poll_remote ends the client session; stop before world work runs.
-        if self.title.0.is_some() || self.remote.is_none() {
+        if self.side.title.0.is_some() || self.remote.is_none() {
             return;
         }
         self.poll_remote_light();
         // The renderer laid translucent quads out again (a shader pack's flat terrain came
         // or went) and dropped every section and far tile: meshed again, as for a new one.
         if self
-            .renderer
+            .side.renderer
             .0
             .as_deref_mut()
             .is_some_and(Renderer::take_dropped_sections)
@@ -36,7 +36,7 @@ impl Game<'_> {
         // The columns the single-player server changed in bulk without sending them, which far terrain still drew
         // as this window last saw them: summarized again (taken every tick, far terrain on or off, so none waits).
         let changed = sunrise_client::lan::handoff::take_changed();
-        if let Some(lod) = &mut self.lod.0 {
+        if let Some(lod) = &mut self.side.lod.0 {
             for chunk in changed {
                 let column = (chunk.x, chunk.z);
                 if self.world.chunks.contains_key(&column) {
@@ -49,7 +49,7 @@ impl Game<'_> {
         self.ask_edited_light_emission();
         let camera_pos = self.visual_camera_position();
         if let (Some(map), Some(pos), Some(lod)) =
-            (&self.lod_blue_map.0, camera_pos, &mut self.lod.0)
+            (&self.side.lod_blue_map.0, camera_pos, &mut self.side.lod.0)
         {
             map.set_center(pos[0].floor() as i32, pos[2].floor() as i32);
             for change in map.take_changed() {
@@ -63,12 +63,12 @@ impl Game<'_> {
         // A headless game has nothing to draw sections with: like a server's, they aren't
         // meshed while it has no renderer.
         if self.options.headless {
-            self.streaming.mesh = self.renderer.0.is_some();
+            self.streaming.mesh = self.side.renderer.0.is_some();
         }
         let areas = self.streaming.extra.len();
         // `Level.getChunk`'s tickets keep their columns until they expire.
         self.streaming.hold_unknown_tickets();
-        self.streaming.upload_backlog = self.pending_uploads.0.len();
+        self.streaming.upload_backlog = self.side.pending_uploads.0.len();
         let plan = sunrise_client::spans::time("streaming_plan", || {
             let mut step = self.streaming.begin_plan_update(&mut self.world);
             loop {
@@ -108,12 +108,12 @@ impl Game<'_> {
         for chunk in &unloaded {
             self.world.modified.unloaded(&(chunk.x, chunk.z));
         }
-        if let Some(lod) = &mut self.lod.0 {
-            self.client
+        if let Some(lod) = &mut self.side.lod.0 {
+            self.side
                 .lod_observe
                 .extend(uploads.iter().map(|upload| (upload.key.0, upload.key.2)));
             for chunk in &unloaded {
-                self.client.lod_observe.remove(&(chunk.x, chunk.z));
+                self.side.lod_observe.remove(&(chunk.x, chunk.z));
             }
             // Unloaded columns first (their summaries are all that remains),
             // then a few resident ones (an edit copies a chunk the worker
@@ -123,9 +123,9 @@ impl Game<'_> {
                     lod.observe(chunk.clone(), self.res.facts());
                 }
                 while lod.observing() < sunrise_client::lod::OBSERVE_AHEAD
-                    && let Some(&key) = self.client.lod_observe.iter().next()
+                    && let Some(&key) = self.side.lod_observe.iter().next()
                 {
-                    self.client.lod_observe.remove(&key);
+                    self.side.lod_observe.remove(&key);
                     if let Some(chunk) = self.world.chunks.get(&key) {
                         lod.observe(chunk.clone(), self.res.facts());
                     }
@@ -161,17 +161,17 @@ impl Game<'_> {
         let now = Instant::now();
         let arriving = {
             let _span = sunrise_client::spans::guard("view_arrival");
-            self.client.view_arrival.arriving(view, now, has) || self.remote_backlog() > 0
+            self.side.view_arrival.arriving(view, now, has) || self.remote_backlog() > 0
         };
         // Which far tiles a zoom magnifies (`lod::ZoomAim`), read before
         // `self.renderer.as_mut()` below borrows self mutably for the rest of
         // this function. Cheap: trigonometry on one angle, or None when the
         // view is not zoomed.
         let lod_aim = camera_pos.and_then(|camera| self.lod_aim(camera));
-        if let Some(renderer) = self.renderer.0.as_mut() {
+        if let Some(renderer) = self.side.renderer.0.as_mut() {
             let g = &self.settings.sunrise;
             let budgeted = g.chunk_updates > 0 || g.upload_budget_kib > 0;
-            let mut raw_flight = self.flight.0.as_mut().filter(|flight| flight.raw);
+            let mut raw_flight = self.side.flight.0.as_mut().filter(|flight| flight.raw);
             let vertex_bytes = |mesh: &sunrise_client::mesher::SectionMesh| {
                 ((mesh.solid.len() + mesh.translucent.len())
                     * std::mem::size_of::<sunrise_client::mesher::TerrainVertex>())
@@ -179,7 +179,7 @@ impl Game<'_> {
             };
             // The meshes, once copied, are freed by a worker (`Streaming::free`).
             if !budgeted
-                && self.pending_uploads.0.is_empty()
+                && self.side.pending_uploads.0.is_empty()
                 && uploads.len() <= AUTO_UPLOADS_AT_ONCE
             {
                 sunrise_client::spans::time("upload", || {
@@ -198,7 +198,7 @@ impl Game<'_> {
                 // sections go first, the rest wait for later frames; a newer
                 // mesh of a waiting section replaces it, and sections of
                 // chunks no longer loaded are dropped.
-                let pending = &mut self.pending_uploads.0;
+                let pending = &mut self.side.pending_uploads.0;
                 let order_span = sunrise_client::spans::guard("order_uploads");
                 let fresh: sunrise_client::fast_hash::FxHashSet<(i32, i32, i32)> =
                     uploads.iter().map(|upload| upload.key).collect();
@@ -225,11 +225,11 @@ impl Game<'_> {
                 let work = order_uploads(
                     pending,
                     &mut uploads,
-                    &mut self.pending_uploads_merge.0,
-                    self.client.pending_uploads_order == order,
+                    &mut self.side.pending_uploads_merge.0,
+                    self.side.pending_uploads_order == order,
                     priority,
                 );
-                self.client.pending_uploads_order = order;
+                self.side.pending_uploads_order = order;
                 drop(order_span);
                 let (limit, budget) = if budgeted {
                     (
@@ -245,7 +245,7 @@ impl Game<'_> {
                 // time, more with a backlog, at most 2 ms; at least one goes): a burst
                 // of finished meshes spreads over frames, nearest first.
                 let auto =
-                    (!budgeted).then(|| self.client.upload_pace.budget(pending.len(), arriving));
+                    (!budgeted).then(|| self.side.upload_pace.budget(pending.len(), arriving));
                 let started = Instant::now();
                 let upload_span = sunrise_client::spans::guard("upload_queue");
                 while let Some(upload) = pending.last() {
@@ -274,12 +274,12 @@ impl Game<'_> {
             }
             renderer.remove_columns(unloaded.iter().map(|c| (c.x, c.z)));
             // Meshes in the works are the view's terrain while it is new, then edits'.
-            let meshing = self.streaming.busy() || !self.pending_uploads.0.is_empty();
-            let sampling = self.lod.0.as_ref().is_some_and(|lod| lod.sampling());
+            let meshing = self.streaming.busy() || !self.side.pending_uploads.0.is_empty();
+            let sampling = self.side.lod.0.as_ref().is_some_and(|lod| lod.sampling());
             renderer.set_terrain_loading(
-                arriving || (meshing && self.client.view_arrival.recent(now)) || sampling,
+                arriving || (meshing && self.side.view_arrival.recent(now)) || sampling,
             );
-            if let (Some(lod), Some(player)) = (&mut self.lod.0, &self.player) {
+            if let (Some(lod), Some(player)) = (&mut self.side.lod.0, &self.player) {
                 let lod_distance =
                     sunrise_client::graphics::lod_distance_capped(far_distance, &renderer.info);
                 lod.set_near_loading(self.streaming.terrain_loading());
@@ -291,8 +291,8 @@ impl Game<'_> {
                     self.streaming.center,
                     self.streaming.radius,
                 );
-                let covered = (self.client.lod_covered_at != Some(at)).then(|| {
-                    self.client.lod_covered_at = Some(at);
+                let covered = (self.side.lod_covered_at != Some(at)).then(|| {
+                    self.side.lod_covered_at = Some(at);
                     sunrise_client::spans::time("lod_covered_set", || {
                         renderer
                             .lod_detail_columns()
@@ -388,19 +388,19 @@ pub(in crate::game::client_side) fn section_distance_sq(
     dx * dx + dy * dy + dz * dz
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn clear_lod(&mut self) {
         // The samplers waiting on the server stop first: dropping the far
         // terrain joins them.
         if let Some(remote) = &self.remote {
             remote.session.cancel_far_terrain();
         }
-        self.lod.0 = None;
-        self.client.lod_source_attempted = false;
-        self.client.lod_observe.clear();
-        self.lod_blue_map.0 = None;
-        self.client.lod_covered_at = None;
-        if let Some(renderer) = &mut self.renderer.0 {
+        self.side.lod.0 = None;
+        self.side.lod_source_attempted = false;
+        self.side.lod_observe.clear();
+        self.side.lod_blue_map.0 = None;
+        self.side.lod_covered_at = None;
+        if let Some(renderer) = &mut self.side.renderer.0 {
             renderer.clear_lods();
         }
     }
@@ -409,11 +409,11 @@ impl Game<'_> {
     }
     pub(in crate::game::client_side) fn prepare_lod(&mut self) {
         let enabled = self.far_terrain_choice().0 > 0
-            && self.renderer.0.is_some()
+            && self.side.renderer.0.is_some()
             && self.player.is_some()
-            && self.title.0.is_none();
+            && self.side.title.0.is_none();
         if !enabled {
-            if self.lod.0.is_some() || self.client.lod_source_attempted {
+            if self.side.lod.0.is_some() || self.side.lod_source_attempted {
                 self.clear_lod();
             }
             return;
@@ -422,18 +422,18 @@ impl Game<'_> {
         // address, a proxy's next server, comes through a new login; a seed
         // changed at a respawn of the same level is a plugin hiding it.)
         if self
-            .client
+            .side
             .lod_level
             .as_ref()
             .is_some_and(|level| self.remote.as_ref().is_some_and(|r| r.level != *level))
         {
             self.clear_lod();
         }
-        if self.client.lod_source_attempted {
+        if self.side.lod_source_attempted {
             return;
         }
-        self.client.lod_source_attempted = true;
-        self.client.lod_level = None;
+        self.side.lod_source_attempted = true;
+        self.side.lod_level = None;
         let dim = self.dim;
         let source = match (&self.integrated, self.server_far_terrain(), &self.remote) {
             (Some(server), ..) => server
@@ -461,7 +461,7 @@ impl Game<'_> {
                 let address = &remote.session.address;
                 let root = home.join("server-terrain");
                 let dir = terrain::level_dir(&root, address, remote.hashed_seed, &remote.level);
-                self.client.lod_level = Some(remote.level.clone());
+                self.side.lod_level = Some(remote.level.clone());
                 // Past them, the server's BlueMap, if the player named it.
                 let maps = root.join(terrain::server_folder(address)).join("BlueMap");
                 let settings = &self.settings.sunrise.blue_map;
@@ -481,15 +481,15 @@ impl Game<'_> {
                     map.start();
                     map
                 });
-                self.lod_blue_map.0 = blue_map.clone();
+                self.side.lod_blue_map.0 = blue_map.clone();
                 terrain::ServerTerrain::new(dir, blue_map) as _
             }),
             // A client without a server connection has no world for far terrain.
             (None, _, None) => None,
         };
         if let Some(source) = source {
-            self.lod.0 = Some(sunrise_client::lod::Lod::new(source, self.worker_context()));
-            self.client
+            self.side.lod.0 = Some(sunrise_client::lod::Lod::new(source, self.worker_context()));
+            self.side
                 .lod_observe
                 .extend(self.world.chunks.keys().copied());
         }

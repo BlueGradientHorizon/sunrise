@@ -21,7 +21,7 @@ pub(in crate::game::client_side) use sunrise_client_render::block_entity_reach::
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_core::position::BlockPos;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `CampfireRenderer`: each cooking item lies on the fire, slot `i`
     /// turned to `Direction.from2DDataValue((i + facing) % 4)`, laid flat
     /// (90° about X), at a corner and three eighths of its size, drawn as a

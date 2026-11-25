@@ -4,7 +4,7 @@ use super::Game;
 use mod_api::CommandResult;
 use sunrise_client::logging;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `console_line` for each line logged since the last server tick, while
     /// an enabled mod listens; the lines its listeners log are not kept.
     pub(in crate::game::server_side) fn native_console_lines(&mut self) {

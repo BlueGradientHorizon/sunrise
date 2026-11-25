@@ -3,7 +3,7 @@ pub(in crate::game::server_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::item_actions::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Asks the mods whether the acting guest may empty `stack` at `pos`
     /// (`native_bucket_empty`): true when one cancelled it. A game's own
     /// player is not asked.
@@ -13,8 +13,8 @@ impl Game<'_> {
         pos: [i32; 3],
     ) -> bool {
         let (Some(uuid), Some(name)) = (
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_name.clone(),
+            self.side.lan_acting_uuid,
+            self.side.lan_acting_name.clone(),
         ) else {
             return false;
         };
@@ -138,7 +138,7 @@ impl Game<'_> {
             // where an anchor cannot set spawn (`canSetSpawn`), a click on it
             // explodes before that comparison.
             respawn_point: self
-                .server
+                .side
                 .respawn_config
                 .filter(|c| self.anchor_works() && c.dim == self.dim)
                 .map(|c| BlockPos::new(c.pos[0], c.pos[1], c.pos[2])),
@@ -154,7 +154,7 @@ impl Game<'_> {
         // but on a server a spectator's use on a block opens the block's
         // menu (ServerPlayerGameMode.useItemOn).
         if self.spectator() {
-            if let Some(GuestUse::OnBlock { hand, .. }) = self.server.guest_use
+            if let Some(GuestUse::OnBlock { hand, .. }) = self.side.guest_use
                 && let Some(hit) = self.pick()
             {
                 self.with_hand(hand, |game| {
@@ -172,7 +172,7 @@ impl Game<'_> {
         // A carrot or warped fungus on a stick boosts the ridden pig or strider.
         // A guest's use packets name one hand and touch no entity: the client
         // sends one per hand and part of its click, and Interact for entities.
-        let guest = self.server.guest_use;
+        let guest = self.side.guest_use;
         if let Some(GuestUse::Entity(hand, target)) = guest {
             return Ok(self
                 .with_hand(hand, |g| g.interact_entity(Some(target)))?
@@ -230,7 +230,7 @@ impl Game<'_> {
         self.apply_use_cooldown(stack);
     }
     pub(in crate::game) fn server_acting_player_ref(&self) -> Option<mod_api::PlayerRef> {
-        let uuid = self.server.lan_acting_uuid.or_else(|| {
+        let uuid = self.side.lan_acting_uuid.or_else(|| {
             self.level
                 .player_uuid
                 .map(sunrise_client::lan::playerdata::ints_uuid)

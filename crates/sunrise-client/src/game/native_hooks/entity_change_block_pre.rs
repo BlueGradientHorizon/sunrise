@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A mob or a player is about to change the block at `pos`: a landing's
     /// trampling (farmland to dirt, a turtle egg breaking), before its
     /// neighbour updates and events. `player` is the player whose landing it

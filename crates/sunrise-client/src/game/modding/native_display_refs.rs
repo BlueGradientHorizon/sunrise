@@ -48,14 +48,14 @@ fn rotation(q: &[f32; 4]) -> bool {
     finite(q) && q.iter().map(|x| x * x).sum::<f32>() > 1.0e-12
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The display's kind and entity id, or None for a stale handle, a client,
     /// or an entity that isn't a display.
     fn display_entity(&self, display: DisplayRef) -> Option<(DisplayKind, u32)> {
         let Target::Other(id) = self.native_entity_target(display.entity())? else {
             return None;
         };
-        let kind = self.others.0.iter().find(|o| o.id == id)?.kind.as_str();
+        let kind = self.side.others.0.iter().find(|o| o.id == id)?.kind.as_str();
         Some((DisplayKind::from_entity_type(kind)?, id))
     }
 
@@ -201,12 +201,12 @@ impl Game<'_> {
             return false;
         }
         let index = self
-            .others
+            .side.others
             .0
             .iter()
             .position(|o| o.id == display.entity().id())
             .unwrap();
-        self.others.0.update(index, |o| {
+        self.side.others.0.update(index, |o| {
             if o.kind == "minecraft:item_display" {
                 o.item_transformation = Some(t.into());
             }

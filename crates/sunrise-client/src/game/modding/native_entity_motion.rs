@@ -56,7 +56,7 @@ pub(in crate::game) fn corners(b: Aabb) -> [[f64; 3]; 2] {
     [axes.map(|a| b.min(a)), axes.map(|a| b.max(a))]
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The simulated entity (one of the shared entity walk's lists) with `id`.
     pub(in crate::game::server_side) fn native_walk_entity(&self, id: u32) -> Option<EntityHandle> {
         self.entity_handles()
@@ -78,7 +78,7 @@ impl Game<'_> {
         t: Target,
     ) -> Option<&sunrise_client::lan::guest::Guest> {
         match t {
-            Target::Player => self.command_guest(self.server.lan_acting?),
+            Target::Player => self.command_guest(self.side.lan_acting?),
             Target::Guest(conn) => self.command_guest(conn),
             _ => None,
         }
@@ -292,13 +292,13 @@ impl Game<'_> {
                 body.position,
                 body.bounds(),
                 // PlayerInput updates the guest row before the sneak callback and the body tick.
-                self.server
+                self.side
                     .lan_acting
                     .and_then(|conn| self.command_guest(conn))
                     .map_or(body.shift_key_down, |guest| guest.sneaking),
                 self.inventory.get(self.selected).and_then(Option::as_ref),
                 &self.armor,
-                self.server.lan_acting,
+                self.side.lan_acting,
             ),
             Target::Guest(conn) => {
                 let Some(guest) = self.command_guest(conn) else {
@@ -307,7 +307,7 @@ impl Game<'_> {
                 let world = if guest.dimension == self.dim.id() {
                     &self.world
                 } else {
-                    self.levels
+                    self.side.levels
                         .0
                         .parked_world_of(&guest.dimension)
                         .ok_or(LevelWriteError::Unavailable)?
@@ -377,7 +377,7 @@ impl Game<'_> {
         let (lo, hi) = match t {
             Target::Other(id) => {
                 return self
-                    .others
+                    .side.others
                     .0
                     .iter()
                     .find(|e| e.id == id)?

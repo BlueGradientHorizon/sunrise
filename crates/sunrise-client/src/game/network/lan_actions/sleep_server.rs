@@ -3,7 +3,7 @@ pub(in crate::game::server_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::lan_actions::sleep::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `PlayerList.broadcastSystemMessage` of the advancements guests made
     /// (their own actions, commands and ticks).
     pub(in crate::game) fn announce_guest_advancements(&mut self) {
@@ -23,8 +23,8 @@ impl Game<'_> {
     /// night" once enough are in bed, on the action bar.
     pub(in crate::game::server_side) fn announce_sleep_status(&mut self) {
         let (active, sleeping, _) = self.sleep_counts();
-        let (old_active, old_sleeping) = self.server.sleep_seen;
-        self.server.sleep_seen = (active, sleeping);
+        let (old_active, old_sleeping) = self.side.sleep_seen;
+        self.side.sleep_seen = (active, sleeping);
         let changed = (old_sleeping > 0 || sleeping > 0)
             && (old_active != active || old_sleeping != sleeping);
         let published = self.lan.is_some() || self.options.dedicated.is_some();
@@ -171,7 +171,7 @@ impl Game<'_> {
                 }
             }
         };
-        if self.player.is_some() && !self.server.lan_acting_fake && !self.spectator() {
+        if self.player.is_some() && !self.side.lan_acting_fake && !self.spectator() {
             count(self.sleeping.is_some(), self.sleep_timer);
         }
         if let Some(host) = self.lan.as_ref() {

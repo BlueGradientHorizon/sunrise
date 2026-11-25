@@ -5,7 +5,7 @@ use crate::game::stations_common::{Kind, Station};
 use sunrise_client::{brewing, containers::BlockEntity, items::ItemStack, stations};
 use sunrise_core::random::RandomSource;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Server arm of [`Game::side_station_changed`].
     pub(in crate::game) fn server_station_changed(&mut self) {
         let Some(mut s) = self.station.take() else {
@@ -164,8 +164,8 @@ impl Game<'_> {
         }
         if mod_api::__private::listened(mod_api::HookId::PlayerXpLevelChange)
             && let (Some(player), Some(name)) = (
-                self.server.lan_acting_uuid,
-                self.server.lan_acting_name.clone(),
+                self.side.lan_acting_uuid,
+                self.side.lan_acting_name.clone(),
             )
         {
             let mut cancel = false;
@@ -262,7 +262,7 @@ impl Game<'_> {
 
     /// `Player.giveExperienceLevels`: all players near its feet hear the sound.
     pub(in crate::game::server_side) fn play_level_up(&mut self, amount: i32, level: i32) {
-        if let Some(volume) = self.server.level_up_sound.give_levels(amount, level) {
+        if let Some(volume) = self.side.level_up_sound.give_levels(amount, level) {
             let at = self
                 .player
                 .as_ref()

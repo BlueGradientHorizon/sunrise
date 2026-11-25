@@ -7,7 +7,7 @@ use sunrise_client::{
 use sunrise_core::nbt::Tag;
 use sunrise_world::registry::BlockStateId;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Server arm of [`Game::side_encode_live_block_entity`].
     pub(in crate::game) fn server_encode_live_block_entity(
         &self,

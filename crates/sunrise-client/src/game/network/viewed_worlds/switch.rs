@@ -30,7 +30,7 @@ struct Travel {
     slot: i32,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `handleRespawn`'s new level: a travel into a viewed level swaps the worlds; any other
     /// Respawn drops every viewed world (the server opens again what it still views) and enters
     /// the level with its loading screen.

@@ -14,7 +14,7 @@ use super::Game;
 use mod_api::{GlobalPos, Identifier, PlayerRef};
 use sunrise_core::position::BlockPos;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The dimension and block of the player's last death
     /// (`Player.getLastDeathLocation`).
     pub(in crate::game) fn player_last_death_location(

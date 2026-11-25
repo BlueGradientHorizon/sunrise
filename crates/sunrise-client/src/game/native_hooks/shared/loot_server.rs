@@ -3,7 +3,7 @@ pub(in crate::game::server_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::native_hooks::loot::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The mods' say on a broken block's drops (`native_loot_drops`).
     pub(in crate::game) fn native_block_loot(
         &mut self,
@@ -20,7 +20,7 @@ impl Game<'_> {
         let Ok(snapshot) = tool.try_into_api() else {
             return;
         };
-        let items = match &self.world_tables.0 {
+        let items = match &self.side.world_tables.0 {
             Some(tables) => &tables.items,
             None => self.res.items(),
         };

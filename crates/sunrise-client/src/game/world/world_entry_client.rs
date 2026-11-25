@@ -9,7 +9,7 @@ pub(in crate::game::client_side) use crate::game::world_entry::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use std::sync::atomic::{AtomicU64, Ordering};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     #[inline(always)]
     pub(in crate::game) fn client_acting_player_uuid(&self) -> Option<u128> {
         self.remote.as_ref().map(|r| r.profile())
@@ -35,13 +35,13 @@ impl Game<'_> {
             return Ok(false);
         }
         self.perf.world_opening();
-        if self.title.0.is_none() {
+        if self.side.title.0.is_none() {
             let title = self
                 .new_title(std::env::current_dir()?.join("saves"))
                 .with_user(|| self.options.player_name());
             self.show_title(title);
         }
-        self.pending_entry.0 = Some(entry);
+        self.side.pending_entry.0 = Some(entry);
         log::info!("Sunrise: world entry waiting for world resources");
         Ok(true)
     }
@@ -49,13 +49,13 @@ impl Game<'_> {
     /// data the create screen describes, on a worker, then open the screen
     /// (`title.preparing`).
     pub(in crate::game::client_side) fn poll_world_creation(&mut self) {
-        let Some(title) = self.title.0.as_ref() else {
+        let Some(title) = self.side.title.0.as_ref() else {
             return;
         };
         if !title.preparing() {
             return;
         }
-        if self.creation_job.0.is_none() {
+        if self.side.creation_job.0.is_none() {
             let dir = self.options.resources.join("worldgen");
             let registry = self.pack.assets.registry;
             // The chosen packs' worldgen over the game's own:
@@ -87,10 +87,10 @@ impl Game<'_> {
                     .map_err(|e| e.to_string())
                 });
             match job {
-                Ok(job) => self.creation_job.0 = Some(job),
+                Ok(job) => self.side.creation_job.0 = Some(job),
                 Err(error) => {
                     log::warn!("Sunrise: world creation worker could not start: {error}");
-                    if let Some(title) = self.title.0.as_mut() {
+                    if let Some(title) = self.side.title.0.as_mut() {
                         title.finish_preparing();
                         title.failed(format!(
                             "{}: {error}",
@@ -102,15 +102,15 @@ impl Game<'_> {
             return;
         }
         if !self
-            .creation_job
+            .side.creation_job
             .0
             .as_ref()
             .is_none_or(std::thread::JoinHandle::is_finished)
         {
             return;
         }
-        let outcome = self.creation_job.0.take().and_then(|job| job.join().ok());
-        if let Some(title) = self.title.0.as_mut() {
+        let outcome = self.side.creation_job.0.take().and_then(|job| job.join().ok());
+        if let Some(title) = self.side.title.0.as_mut() {
             match outcome {
                 Some(Ok(())) => title.finish_preparing(),
                 // `applyNewPackConfig`'s failure: back out of the read with
@@ -142,7 +142,7 @@ impl Game<'_> {
         if self.rest_loader.is_some() {
             return Ok(());
         }
-        let on_world_screens = self.title.0.as_ref().is_some_and(|title| {
+        let on_world_screens = self.side.title.0.as_ref().is_some_and(|title| {
             !matches!(
                 title.mode,
                 sunrise_client::title::Mode::Main | sunrise_client::title::Mode::Multiplayer(_)
@@ -154,10 +154,10 @@ impl Game<'_> {
             &self.pack.data_changes,
             self.pack.assets.registry,
         );
-        if std::mem::take(&mut self.client.pending_pack_reload) {
+        if std::mem::take(&mut self.side.pending_pack_reload) {
             self.reload_packs();
         }
-        match self.pending_entry.0.take() {
+        match self.side.pending_entry.0.take() {
             Some(PendingWorldEntry::Local {
                 folder,
                 name,

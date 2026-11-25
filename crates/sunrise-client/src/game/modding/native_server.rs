@@ -609,7 +609,7 @@ impl PlayerRead<'_> {
 /// Helpers for mods, kept as stable as the hook points.
 // Native mods use these; nothing in Sunrise does.
 #[allow(dead_code)]
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Resolve a real online player by UUID, never a fake.
     pub(in crate::game) fn player(&self, uuid: u128) -> Option<PlayerRef> {
         self.side_player(uuid)

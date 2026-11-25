@@ -9,7 +9,7 @@ pub(crate) struct LookCache {
     look: Look,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// This player's look, re-read only when some crate changed one: one atomic load otherwise.
     #[allow(
         dead_code,
@@ -17,11 +17,11 @@ impl Game<'_> {
     )]
     pub(in crate::game::client_side) fn look(&mut self) -> &Look {
         let generation = look::engine::generation();
-        if self.client.look.generation != generation {
-            self.client.look.look = look::engine::get(sunrise_hooks::seat());
-            self.client.look.generation = generation;
+        if self.side.look.generation != generation {
+            self.side.look.look = look::engine::get(sunrise_hooks::seat());
+            self.side.look.generation = generation;
         }
-        &self.client.look.look
+        &self.side.look.look
     }
 }
 

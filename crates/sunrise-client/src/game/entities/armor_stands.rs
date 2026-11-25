@@ -300,7 +300,7 @@ impl ArmorStandAssets {
         }
     }
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ArmorStandItem.useOn`.
     pub(in crate::game::server_side) fn place_armor_stand(
         &mut self,
@@ -313,7 +313,7 @@ impl Game<'_> {
         let Some((pos, mut stand)) = self.armor_stand_spawn(hit, stack) else {
             return false;
         };
-        stand.id = self.server.next_entity + 1;
+        stand.id = self.side.next_entity + 1;
         // EntityType.create(.., tryMoveDown, movedUp): the new stand falls onto what is under it,
         // up to two blocks (a bottom slab, the block under replaced grass).
         let drop = self.drop_offset_from(0.5, 1.975, (pos[0], pos[1], pos[2]), true);
@@ -345,7 +345,7 @@ impl Game<'_> {
         // EntityType.create's spawn yaw, `level.getRandom().nextFloat() * 360`, before
         // ArmorStandItem.useOn turns the stand to face the player.
         self.world.random.next_float();
-        self.server.next_entity += 1;
+        self.side.next_entity += 1;
         let (_, uuid) = sunrise_client::mobs::living_random();
         self.persist.uuids.insert(stand.id, uuid);
         self.server_play_sound(
@@ -423,8 +423,8 @@ impl Game<'_> {
                 // `Player.interactOn` gives a creative player the count back.
                 self.consume_held();
                 if let (Some(player), Some(player_name), Some(name)) = (
-                    self.server.lan_acting_uuid,
-                    self.server.lan_acting_name.clone(),
+                    self.side.lan_acting_uuid,
+                    self.side.lan_acting_name.clone(),
                     name,
                 ) {
                     self.native_player_name_entity(player, &player_name, id, &name);
@@ -496,8 +496,8 @@ impl Game<'_> {
         if moves
             && target.is_some()
             && let (Some(player), Some(name)) = (
-                self.server.lan_acting_uuid,
-                self.server.lan_acting_name.clone(),
+                self.side.lan_acting_uuid,
+                self.side.lan_acting_name.clone(),
             )
         {
             let stand = self.armor_stands[i].id as i32;
@@ -588,7 +588,7 @@ impl Game<'_> {
         });
         // Player.onAttack: the hit starts the attack strength again, hurt or
         // not (skipAttackInteraction only asks mayInteract).
-        self.server.attack_ticks = 0;
+        self.side.attack_ticks = 0;
         if hurt {
             if admitted {
                 self.special_attack_exhaustion();
@@ -637,7 +637,7 @@ impl Game<'_> {
             direct: attacker,
             position: None,
         };
-        if super::entity::damage_level_of!(self, self.combat.0.attack(), no_push, None)
+        if super::entity::damage_level_of!(self, self.side.combat.0.attack(), no_push, None)
             .invulnerability_check(
                 sunrise_client::health::Hurting::ArmorStand(id as i32, source),
                 vanilla,
@@ -669,16 +669,16 @@ impl Game<'_> {
     /// Run stand turns that precede the level's first shulker. The mob tick
     /// interleaves the remaining turns with shulkers before applying each lid push.
     pub(in crate::game::server_side) fn begin_armor_stand_ticks(&mut self) -> Result<()> {
-        self.server.ordered.armor_stands.extend(
+        self.side.ordered.armor_stands.extend(
             self.armor_stands
                 .iter()
-                .filter(|stand| stand.join < self.server.ordered.born)
+                .filter(|stand| stand.join < self.side.ordered.born)
                 .map(|stand| stand.join),
         );
-        if self.server.ordered.armor_stands.is_empty() {
+        if self.side.ordered.armor_stands.is_empty() {
             return Ok(());
         }
-        self.server
+        self.side
             .ordered
             .armor_stands
             .make_contiguous()
@@ -697,7 +697,7 @@ impl Game<'_> {
         cut: JoinSeq,
     ) -> Result<()> {
         if self
-            .server
+            .side
             .ordered
             .armor_stands
             .front()
@@ -705,12 +705,12 @@ impl Game<'_> {
         {
             return Ok(());
         }
-        let mut pending = std::mem::take(&mut self.server.ordered.armor_stands);
+        let mut pending = std::mem::take(&mut self.side.ordered.armor_stands);
         let count = pending
             .make_contiguous()
             .partition_point(|&join| join < cut);
         let result = self.tick_armor_stand_turns(pending.drain(..count));
-        self.server.ordered.armor_stands = pending;
+        self.side.ordered.armor_stands = pending;
         result
     }
 
@@ -1242,7 +1242,7 @@ impl Game<'_> {
                 .bool_at(sunrise_client::gamerules::vanilla::MOB_DROPS),
             dying,
             |table| {
-                let Some(loot) = self.server_loot.0.get() else {
+                let Some(loot) = self.side.server_loot.0.get() else {
                     return Vec::new();
                 };
                 if !loot.has_table(table) {
@@ -1259,7 +1259,7 @@ impl Game<'_> {
                 match loot.random_sequence(table) {
                     Some(sequence) => loot.roll_entity(
                         table,
-                        self.server.rand_sequences.get(sequence, self.level.seed),
+                        self.side.rand_sequences.get(sequence, self.level.seed),
                         &params,
                     ),
                     None => loot.roll_entity(table, &mut self.world.random, &params),
@@ -1353,7 +1353,7 @@ impl Game<'_> {
             direct: direct as i32,
             position,
         };
-        if super::entity::damage_level_of!(self, self.combat.0.attack(), no_push, None)
+        if super::entity::damage_level_of!(self, self.side.combat.0.attack(), no_push, None)
             .invulnerability_check(
                 sunrise_client::health::Hurting::ArmorStand(id as i32, source),
                 invulnerable,
@@ -1727,7 +1727,7 @@ pub(in crate::game) fn swap_with_equipment_slot(
         to_inventory: current,
     }
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Equippable.swapWithEquipmentSlot`: right-clicking armor swaps it into
     /// its slot (the worn piece comes back to the hand). It runs on a client
     /// too (`Item.use`), as the prediction the server's slot packets confirm.

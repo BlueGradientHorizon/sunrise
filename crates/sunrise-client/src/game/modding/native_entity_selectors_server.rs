@@ -3,7 +3,7 @@ use super::Game;
 use super::commands::Target;
 use sunrise_client::command::args::Selector;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `select_in_level`, then, for a mod's token, only the candidates its type keeps.
     pub(in crate::game) fn native_selector_kept(
         &mut self,

@@ -46,7 +46,7 @@ pub(in crate::game::server_side) use sunrise_core::geometry::Vec3;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use winit::{event::MouseButton, keyboard::KeyCode};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `sunrise-ctl save` and `save-all`.
     pub(in crate::game) fn control_save(&mut self, all: bool) -> Result<()> {
         if all {

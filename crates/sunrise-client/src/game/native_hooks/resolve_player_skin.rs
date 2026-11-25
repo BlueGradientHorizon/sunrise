@@ -3,7 +3,7 @@ use super::Game;
 #[allow(unused_imports)]
 use mod_api::{HookId, PlayerModel, PlayerSkinOverride};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Collect the local player's skin and arm width together, before render extraction.
     pub(in crate::game) fn native_resolve_player_skin(
         &self,

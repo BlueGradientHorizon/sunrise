@@ -25,7 +25,7 @@ use sunrise_world::{
     piston_movement::PistonMovement, piston_push,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Client arm of [`Game::side_move_local_player`]: `Entity.move(mover, …)`
     /// for the window's local player (no server guest-landing handoff).
     pub(in crate::game) fn client_move_local_player(

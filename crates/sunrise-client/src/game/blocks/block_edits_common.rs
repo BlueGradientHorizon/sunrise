@@ -9,7 +9,7 @@ use sunrise_world::{
 /// The most columns one `surface_heights` reads.
 pub(in crate::game) const MAX_COLUMNS: usize = 1 << 16;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Each column's height on `h` as `edit_height` reads it, none where its chunk is not loaded.
     pub(in crate::game) fn loaded_column_heights(
         &self,

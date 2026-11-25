@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A server player took `stack` from a brewing stand bottle slot
     /// (`BrewingStandMenu.PotionSlot.onTake`): `player` is their UUID and
     /// `player_entity_id` their network id.

@@ -2,7 +2,7 @@
 use super::Game;
 use mod_api::LevelRef;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     fn native_tick_position(&self, level: LevelRef, pos: [i32; 3]) -> Option<bool> {
         if !self.level_in_place(level) {
             return None;

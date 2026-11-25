@@ -118,7 +118,7 @@ impl sunrise_client::motion::SideLevel for GameSide<'_> {
 }
 
 /// The game's own side, for a tick that only reads it: each query builds the borrowed tables.
-impl sunrise_client::motion::SideLevel for Game<'_> {
+impl<__Side: crate::game::Side> sunrise_client::motion::SideLevel for Game<'_, __Side> {
     fn is_raining_at(&self, world: &World, pos: BlockPos) -> bool {
         game_side!(self, self.side_game_side_meta()).is_raining_at(world, pos)
     }
@@ -363,7 +363,7 @@ fn query_friction(
     )
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn level_friction(
         &self,
         level: LevelRef,

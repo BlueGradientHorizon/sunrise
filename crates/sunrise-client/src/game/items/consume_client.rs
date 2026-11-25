@@ -16,7 +16,7 @@ pub(in crate::game::client_side) use sunrise_core::random::LegacyRandom;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::consumable::EmissionWorld;
 
-struct ClientEmitter<'a, 'g>(&'a mut Game<'g>);
+struct ClientEmitter<'a, 'g>(&'a mut Game<'g, crate::game::client_side::ClientState>);
 
 impl EmissionWorld for ClientEmitter<'_, '_> {
     type Error = Infallible;
@@ -43,7 +43,7 @@ impl EmissionWorld for ClientEmitter<'_, '_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Client-side `Consumable.emitParticlesAndSounds`.
     pub(in crate::game) fn client_emit_consume(
         &mut self,
@@ -81,7 +81,7 @@ impl Game<'_> {
         };
         let options = ParticleOptions::simple(ParticleType::Portal);
         for (p, v) in spawned {
-            self.particles.0.add(&options, p, v);
+            self.side.particles.0.add(&options, p, v);
         }
     }
     /// `LivingEntity.handleEntityEvent(46)` for this client: 128 portal

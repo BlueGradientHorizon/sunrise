@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// An entity's loot table reads an enchantment's level (NeoForge's
     /// `EnchantedEntityLootEvent`), in the middle of the roll. `level` comes
     /// in as the living attacker's level, 0 without one, and what is left in

@@ -9,7 +9,7 @@ pub(in crate::game::client_side) use crate::game::remote::abilities::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::lan::abilities::PlayerAbilities;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Mirror `Remote::abilities` onto the live `PlayerMotion` body.
     pub(in crate::game::client_side) fn apply_remote_abilities(&mut self) {
         let (Some(player), Some(a)) = (

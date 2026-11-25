@@ -17,7 +17,7 @@ pub(in crate::game::client_side) use sunrise_world::{
     level::data::Sounds, native_load_context::LoopContext, registry::BlockStateId,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// [`Game::block_sound_type`] for this window's own player, as its client asks for the
     /// sounds it plays itself: its steps and the blocks it places.
     pub(in crate::game::client_side) fn own_sound_type(
@@ -37,7 +37,7 @@ impl Game<'_> {
             return;
         }
         let sound = self.block_sound_type(pos, state, None, BlockSoundCause::Break);
-        self.audio.0.play(
+        self.side.audio.0.play(
             &sound.break_sound,
             Some(pos.map(|v| f64::from(v) + 0.5)),
             (sound.volume + 1.0) / 2.0,

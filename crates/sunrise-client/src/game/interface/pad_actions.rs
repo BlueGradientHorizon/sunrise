@@ -56,12 +56,12 @@ fn glyph_at(
     })
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// A key row waits for its key: B is Escape, which unbinds; its buttons aren't pressed. A
     /// prompt over the row has the buttons first.
     pub(in crate::game::client_side) fn pad_binding(&self) -> bool {
         !self.prompt_open()
-            && self.client.screen == Screen::Options
+            && self.side.screen == Screen::Options
             && (self.options_waiting_for_key() || self.ui.options.selected_pad_action.is_some())
     }
 
@@ -99,10 +99,10 @@ impl Game<'_> {
 
     /// Declared buttons show their glyph: the pad drives, and a menu is open. Focus or crosshair.
     pub(in crate::game::client_side) fn pad_action_glyphs_on(&self) -> bool {
-        self.pad.0.in_use
-            && !self.pad.0.menu.keyboard
+        self.side.pad.0.in_use
+            && !self.side.pad.0.menu.keyboard
             && !self.pad_keyboard_captures()
-            && self.pad.0.menu.pos.is_some()
+            && self.side.pad.0.menu.pos.is_some()
             && self.pad_in_menu()
     }
 
@@ -112,7 +112,7 @@ impl Game<'_> {
         if !self.pad_action_glyphs_on() {
             return Vec::new();
         }
-        let focus = self.pad.0.menu.focus.filter(|_| self.pad_focus_mode());
+        let focus = self.side.pad.0.menu.focus.filter(|_| self.pad_focus_mode());
         let atlas = &self.gui.atlas;
         let glyph = |job| self.menu_glyph(job);
         let width = |glyph: Glyph| pad_glyph::width(atlas, glyph);
@@ -122,7 +122,7 @@ impl Game<'_> {
         let confirm = glyph(MenuJob::Confirm);
         if let Some(focus) = focus.filter(|f| {
             f.kind == Kind::Field
-                || matches!(f.kind, Kind::Slider { .. }) && self.pad.0.menu.slider_hold.is_none()
+                || matches!(f.kind, Kind::Slider { .. }) && self.side.pad.0.menu.slider_hold.is_none()
         }) && let Some((x, y)) = glyph_at(focus.rect, width(confirm), view, true)
         {
             glyphs.push((confirm, x, y));

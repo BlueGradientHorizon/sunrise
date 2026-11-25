@@ -11,7 +11,7 @@ pub(in crate::game::server_side) use std::sync::Arc;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_client::{health::AcceptedHit, items::ItemStack};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A veto belongs to the guest's living body, not its replaceable combat history.
     pub(in crate::game::server_side) fn guest_death_canceled(
         &mut self,
@@ -35,7 +35,7 @@ impl Game<'_> {
             return false;
         };
         let entity = guest.entity_id as u32;
-        let acting = self.server.lan_acting == Some(conn);
+        let acting = self.side.lan_acting == Some(conn);
         let source = fatal.source();
         let weapon = fatal.weapon().and_then(|stack| stack.try_into_api().ok());
         let mut cancel = false;
@@ -78,7 +78,7 @@ impl Game<'_> {
     ) -> FatalSource {
         let (damage_type, causing) = self.guest_damage_source(conn);
         let guest = self.lan.as_ref().and_then(|host| host.hub.guests.get(gi));
-        let body = if self.server.lan_acting == Some(conn) {
+        let body = if self.side.lan_acting == Some(conn) {
             self.player.as_ref()
         } else {
             guest.and_then(|guest| guest.motion.as_deref())

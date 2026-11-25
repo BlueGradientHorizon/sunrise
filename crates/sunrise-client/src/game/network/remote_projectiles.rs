@@ -44,7 +44,7 @@ pub(in crate::game) fn has_smoke_trail(kind: &ProjectileKind) -> bool {
     )
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `Arrow.handleEntityEvent(0)`: a tipped arrow stuck for 600 ticks bursts
     /// into twenty particles in its colour. The server turns it into a plain
     /// arrow and does not send the colour again, so it stops here.
@@ -368,7 +368,7 @@ impl Game<'_> {
         );
         let side_server = self.game_side_client();
         let side = game_side!(self, side_server);
-        let sections = self.client.client_pick.sections.get_mut();
+        let sections = self.side.client_pick.sections.get_mut();
         self.tnts.retain_mut(|t| {
             // A fluid lookup that fails leaves it where its move put it.
             let _ = t.tick_among(
@@ -397,7 +397,7 @@ impl Game<'_> {
         let smoking: Vec<Vec3> = self.tnts.iter().map(|t| t.position).collect();
         let smoke = ParticleOptions::simple(ParticleType::Smoke);
         for p in smoking {
-            self.particles
+            self.side.particles
                 .0
                 .add(&smoke, [p.x, p.y + 0.5, p.z], [0.0; 3]);
         }
@@ -819,7 +819,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `Arrow.tick` and `SpectralArrow.tick` on a client: a tipped arrow
     /// sheds two entity-effect swirls in its colour while flying, one every
     /// fifth tick in a block; a spectral arrow an effect sparkle at its
@@ -834,7 +834,7 @@ impl Game<'_> {
             if p.is_spectral_arrow() {
                 if !p.stuck {
                     let options = ParticleOptions::simple(ParticleType::Effect);
-                    self.particles.0.add(&options, [at.x, at.y, at.z], [0.0; 3]);
+                    self.side.particles.0.add(&options, [at.x, at.y, at.z], [0.0; 3]);
                 }
                 continue;
             }
@@ -870,11 +870,11 @@ impl Game<'_> {
         );
         for _ in 0..count {
             // getRandomX(0.5), getRandomY, getRandomZ(0.5).
-            let r = self.particles.0.random();
+            let r = self.side.particles.0.random();
             let x = at.x + SIZE * (2.0 * r.next_double() - 1.0) * 0.5;
             let y = at.y + SIZE * r.next_double();
             let z = at.z + SIZE * (2.0 * r.next_double() - 1.0) * 0.5;
-            self.particles.0.add(&options, [x, y, z], [0.0; 3]);
+            self.side.particles.0.add(&options, [x, y, z], [0.0; 3]);
         }
     }
     /// `DragonFireball.getTrailParticle`: dragon breath, where
@@ -889,7 +889,7 @@ impl Game<'_> {
             .map(|p| p.position)
             .collect();
         for p in at {
-            self.particles
+            self.side.particles
                 .0
                 .add(&trail, [p.x, p.y + 0.5, p.z], [0.0; 3]);
         }
@@ -907,8 +907,8 @@ impl Game<'_> {
         let options = ParticleOptions::simple(ParticleType::EndRod);
         for at in bullets {
             for _ in 0..2 {
-                let p = shulker_bullet_trail_at(at, self.particles.0.random());
-                self.particles.0.add(&options, p, [0.0; 3]);
+                let p = shulker_bullet_trail_at(at, self.side.particles.0.random());
+                self.side.particles.0.add(&options, p, [0.0; 3]);
             }
         }
     }
@@ -917,7 +917,7 @@ impl Game<'_> {
     pub(in crate::game) fn smoke_trails(&mut self, at: impl IntoIterator<Item = Vec3>) {
         let smoke = ParticleOptions::simple(ParticleType::Smoke);
         for p in at {
-            self.particles
+            self.side.particles
                 .0
                 .add(&smoke, [p.x, p.y + 0.5, p.z], [0.0; 3]);
         }
@@ -1039,7 +1039,7 @@ impl Game<'_> {
                     return false;
                 };
                 if k == ProjectileKind::LlamaSpit {
-                    self.particles
+                    self.side.particles
                         .0
                         .llama_spit_burst(position, [velocity.x, velocity.y, velocity.z]);
                 }
@@ -1073,7 +1073,7 @@ impl Game<'_> {
         let bubble = ParticleOptions::simple(ParticleType::Bubble);
         for (position, speed) in at {
             for _ in 0..4 {
-                self.particles.0.add(&bubble, position, speed);
+                self.side.particles.0.add(&bubble, position, speed);
             }
         }
     }
@@ -1081,7 +1081,7 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn tick_remote_clouds(&mut self) {
         for c in &mut self.potions.clouds {
             cloud_client_tick(
-                &mut self.particles.0,
+                &mut self.side.particles.0,
                 &self.world,
                 c.at,
                 c.radius,
@@ -1748,9 +1748,9 @@ pub(in crate::game) mod entity_tick_tests {
 /// The visit of one entity told alone: a passenger counts before its Pre (`tickPassenger`), a
 /// root once `pre` let it through (`tickNonPassenger`).
 pub(in crate::game::client_side) fn told_visit(
-    game: &mut Game<'_>,
+    game: &mut Game<'_, crate::game::client_side::ClientState>,
     id: u32,
-    pre: impl FnOnce(&mut Game<'_>) -> bool,
+    pre: impl FnOnce(&mut Game<'_, crate::game::client_side::ClientState>) -> bool,
 ) {
     let passenger = game.client_passenger(id);
     if passenger {

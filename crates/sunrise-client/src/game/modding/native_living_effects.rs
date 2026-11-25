@@ -51,7 +51,7 @@ pub(in crate::game) fn mob_effect(m: &Mob, e: &sunrise_client::mobs::StoredEffec
     })
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Apply one loaded consumable effect without consuming the item.
     pub(in crate::game) fn living_apply_consume_effect(
         &mut self,
@@ -89,7 +89,7 @@ impl Game<'_> {
     ) -> Option<&PlayerEffects> {
         match t {
             Target::Player => Some(&self.potions.effects),
-            Target::Guest(conn) if self.server.lan_acting == Some(conn) => {
+            Target::Guest(conn) if self.side.lan_acting == Some(conn) => {
                 Some(&self.potions.effects)
             }
             Target::Guest(conn) => Some(&self.lan.as_ref()?.hub.guest(conn)?.effects),

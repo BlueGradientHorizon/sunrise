@@ -23,7 +23,7 @@ fn point_box(feet: [f64; 3], width: f64, height: f64) -> Aabb {
     )
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Enderman.hurtServer` teleports inside the hurt (`teleport()`,
     /// `repeatedlyTryToTeleport()`), and so does `Shulker.hurtServer`
     /// (`teleportSomewhere()`, `hitByShulkerBullet()`). `Mob::damage` has no

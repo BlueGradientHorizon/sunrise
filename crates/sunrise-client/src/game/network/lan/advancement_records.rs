@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `PlayerAdvancements.save`: the existing network player's advancement file.
     pub(in crate::game::server_side) fn save_guest_advancements(
         &self,
@@ -8,7 +8,7 @@ impl Game<'_> {
         guest: &sunrise_client::lan::guest::Guest,
     ) {
         if !guest.joined()
-            || self.server.crash_save.excludes(guest.conn)
+            || self.side.crash_save.excludes(guest.conn)
             || guest.released
             || !guest.participates_in_player_simulation()
             || self.adv.tree.list.is_empty()
@@ -18,7 +18,7 @@ impl Game<'_> {
         let Some(uuid) = self.records_uuid(host, guest.uuid) else {
             return;
         };
-        let path = super::stats::player_json(&self.server.world_root, "advancements", uuid);
+        let path = super::stats::player_json(&self.side.world_root, "advancements", uuid);
         let json = guest
             .advancements
             .to_json(&self.adv.tree, sunrise_world::DATA_VERSION);
@@ -33,7 +33,7 @@ impl Game<'_> {
         guest: &sunrise_client::lan::guest::Guest,
     ) {
         if !guest.joined()
-            || self.server.crash_save.excludes(guest.conn)
+            || self.side.crash_save.excludes(guest.conn)
             || guest.released
             || !guest.participates_in_player_simulation()
             || self.adv.tree.list.is_empty()
@@ -46,7 +46,7 @@ impl Game<'_> {
         self.save_guest_advancements(host, guest);
         if let Some(play) = host.play.get(&guest.conn) {
             play.stats.write(&super::stats::player_json(
-                &self.server.world_root,
+                &self.side.world_root,
                 "stats",
                 uuid,
             ));

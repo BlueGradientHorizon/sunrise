@@ -4,16 +4,16 @@ use super::saving::ClientQuit;
 use super::*;
 use sunrise_client::window::PointerSample;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// A run that a person's stray key, click or mouse move would spoil: a screenshot sequence, a
     /// `SUNRISE_TICK_SCRIPT` scenario or a `record-replay`. While one runs, the keyboard, mouse
     /// and pad at this computer don't reach the game (`locks_out`, `poll_pads`), the window's
     /// focus stays as the run found it (`held_focus`) and its pointer grab stays inside the game
     /// (`internal_grab`).
     pub(in crate::game::client_side) fn scripted_run(&self) -> bool {
-        self.screenshot_sequence.0.is_some()
-            || self.client.tick_script.playing()
-            || self.repro.0.replaying()
+        self.side.screenshot_sequence.0.is_some()
+            || self.side.tick_script.playing()
+            || self.side.repro.0.replaying()
     }
 }
 
@@ -107,7 +107,7 @@ fn held_modifiers(
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// winit's `window_event`. The control socket and the pad menu call it too, with the
     /// input they make up.
     pub(in crate::game) fn handle_window_event(
@@ -150,24 +150,24 @@ impl Game<'_> {
     ) {
         // A headless game has no window: its events (the frame, the control socket's input)
         // carry `WindowId::dummy()`.
-        let ours = match &self.window.0 {
+        let ours = match &self.side.window.0 {
             Some(w) => w.id() == id,
             None => self.options.headless,
         };
         if !ours {
             return;
         }
-        if let Some(modifiers) = held_modifiers(origin, self.client.unclaimed_window, &event) {
-            self.client.unclaimed_modifiers = Some(modifiers);
+        if let Some(modifiers) = held_modifiers(origin, self.side.unclaimed_window, &event) {
+            self.side.unclaimed_modifiers = Some(modifiers);
         }
         if locks_out(origin, self.scripted_run(), &event) {
             return;
         }
         if let Some(focused) = held_focus(origin, self.scripted_run(), &event) {
-            self.client.focus_after_run = Some(focused);
+            self.side.focus_after_run = Some(focused);
             return;
         }
-        match at_unclaimed(origin, self.client.unclaimed_window, &event) {
+        match at_unclaimed(origin, self.side.unclaimed_window, &event) {
             Unclaimed::Claims => self.claim_window(event_loop),
             Unclaimed::Dropped => return,
             Unclaimed::Passes => {}
@@ -176,9 +176,9 @@ impl Game<'_> {
         // MacosUtil.setCtrlClickEmulatesRightClick: Control + left click is a right click.
         if let WindowEvent::MouseInput { state, button, .. } = &mut event
             && *button == MouseButton::Left
-            && self.client.right_click_emulation.is_right_click(
+            && self.side.right_click_emulation.is_right_click(
                 *state == ElementState::Pressed,
-                self.client.modifiers.control_key(),
+                self.side.modifiers.control_key(),
                 cfg!(target_os = "macos") && self.settings.ctrl_click_emulates_right_click,
             )
         {
@@ -204,10 +204,10 @@ impl Game<'_> {
             && let PhysicalKey::Code(key) = event.physical_key
         {
             if event.state == ElementState::Pressed {
-                self.client.physical_keys.insert(key);
+                self.side.physical_keys.insert(key);
                 sunrise_client::keybinds::learn_layout(event);
             } else {
-                self.client.physical_keys.remove(&key);
+                self.side.physical_keys.remove(&key);
             }
         }
         if matches!(
@@ -218,17 +218,17 @@ impl Game<'_> {
             }
         ) && !self.input_made_pointer_event()
         {
-            self.pad.0.keyboard_took_over = true;
+            self.side.pad.0.keyboard_took_over = true;
         }
         if let WindowEvent::MouseInput { state, button, .. } = &event {
             if *state == ElementState::Pressed {
-                self.client.physical_buttons.insert(*button);
-                self.client.physical_presses += 1;
+                self.side.physical_buttons.insert(*button);
+                self.side.physical_presses += 1;
             } else {
-                self.client.physical_buttons.remove(button);
+                self.side.physical_buttons.remove(button);
             }
             // A container hook's press latch ends here, before any hook can cancel the release.
-            self.client.container_owned_up = *state == ElementState::Released
+            self.side.container_owned_up = *state == ElementState::Released
                 && !self.pad_synthetic_input()
                 && self.container_button_up(*button);
         }
@@ -238,7 +238,7 @@ impl Game<'_> {
             Some((
                 glfw_button(*button),
                 *state == ElementState::Pressed,
-                glfw_modifiers(self.client.modifiers),
+                glfw_modifiers(self.side.modifiers),
             ))
         } else {
             None
@@ -280,10 +280,10 @@ impl Game<'_> {
 
     /// The loop ended: close the pads' output, save the world.
     pub(in crate::game) fn shut_down(&mut self) {
-        self.client.client_quit.set(ClientQuit::Stopping);
+        self.side.client_quit.set(ClientQuit::Stopping);
         self.close_client_tasks();
         if self.error.is_none()
-            && let Some(renderer) = &mut self.renderer.0
+            && let Some(renderer) = &mut self.side.renderer.0
         {
             renderer.drop_hdr_marker();
         }
@@ -303,7 +303,7 @@ impl Game<'_> {
     /// winit's `about_to_wait`: what happens between frames (stop requests, the closing
     /// save, world entry, the control socket, pads), then the next frame.
     pub(in crate::game) fn idle(&mut self, event_loop: &dyn EventLoopCtl) {
-        let quit_requested = match self.client.client_quit.get() {
+        let quit_requested = match self.side.client_quit.get() {
             ClientQuit::Running => sunrise_threads::stop_requests() > 0,
             ClientQuit::Requested => true,
             ClientQuit::Stopping => false,
@@ -316,11 +316,11 @@ impl Game<'_> {
                 return;
             }
         }
-        if self.pending_save.0.is_some() {
+        if self.side.pending_save.0.is_some() {
             match self.poll_closing_save() {
                 Ok(true) => event_loop.exit(),
                 Ok(false) => {
-                    if let Some(window) = &self.window.0 {
+                    if let Some(window) = &self.side.window.0 {
                         window.request_redraw();
                     }
                     // Yield between polls even when disk I/O is slow.
@@ -342,7 +342,7 @@ impl Game<'_> {
             return;
         }
         // The world a backup made before its upgrade opens (EditWorldScreen's callback).
-        if let Some(folder) = self.title.0.as_mut().and_then(|t| t.take_open_request())
+        if let Some(folder) = self.side.title.0.as_mut().and_then(|t| t.take_open_request())
             && let Err(error) = self.open_world(&folder, None, None, false, None)
         {
             self.error = Some(error);
@@ -350,7 +350,7 @@ impl Game<'_> {
             return;
         }
         // A Realm's address came back (GetServerDetailsTask hands over to ConnectScreen).
-        if let Some(action) = self.title.0.as_mut().and_then(|t| t.take_connect_request())
+        if let Some(action) = self.side.title.0.as_mut().and_then(|t| t.take_connect_request())
             && let Err(error) = self.title_action(action)
         {
             self.error = Some(error);
@@ -359,20 +359,20 @@ impl Game<'_> {
         }
         sunrise_client::spans::time("server_packs", || self.tick_server_packs());
         sunrise_client::spans::time("control", || self.poll_control(event_loop));
-        if self.pending_save.0.is_some() {
+        if self.side.pending_save.0.is_some() {
             return;
         }
         sunrise_client::spans::time("pads", || self.poll_pads(event_loop));
         self.settle_after_run(event_loop);
         self.pause_if_inactive();
         if let Some(limit) = self.options.time_limit()
-            && self.client.started.elapsed() > limit
+            && self.side.started.elapsed() > limit
         {
             self.error = Some(format!("run timed out after {} s", limit.as_secs()).into());
             event_loop.exit();
             return;
         }
-        if let Some(w) = &self.window.0 {
+        if let Some(w) = &self.side.window.0 {
             if self.options.offscreen {
                 // Offscreen frames don't wait for the window to be drawn: an
                 // occluded window (a locked macOS session) gets no redraws.
@@ -399,23 +399,23 @@ impl Game<'_> {
         // Consume the last frame's result: a hidden compositor may stop sending
         // redraws altogether, leaving a successful result stale indefinitely.
         event_loop.set_control_flow(event_loop::redraw_flow(
-            &mut self.client.frame_drawn,
+            &mut self.side.frame_drawn,
             self.options.offscreen,
             Instant::now(),
         ));
     }
 }
 
-impl ApplicationHandler for Game<'_> {
+impl ApplicationHandler for Game<'_, crate::game::client_side::ClientState> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.window.0.is_some() {
+        if self.side.window.0.is_some() {
             return;
         }
         debug_keys::warm_debug_cpu();
         // The Window constructor: created fullscreen when options.txt or --fullscreen says so.
         let fullscreen = self.settings.fullscreen || self.options.fullscreen;
         let size = self.options.window_size.map(f64::from);
-        self.client.fullscreen = sunrise_client::window::FullscreenState::new(fullscreen);
+        self.side.fullscreen = sunrise_client::window::FullscreenState::new(fullscreen);
         let attributes = sunrise_client::window::with_icon(
             Window::default_attributes().with_title(super::window_title::base()),
         );
@@ -428,7 +428,7 @@ impl ApplicationHandler for Game<'_> {
         // the person keeps their keyboard and pointer until they click it (`unclaimed_window`).
         // X11 activates it anyway, and Windows can too: the focus claims nothing.
         let agent_started = self.options.control.is_some();
-        self.client.unclaimed_window = agent_started && !self.options.offscreen;
+        self.side.unclaimed_window = agent_started && !self.options.offscreen;
         // `--offscreen` renders into a texture: its window would only show white.
         let window_step = startup::step("window.create");
         let window = match event_loop.create_window(
@@ -451,13 +451,13 @@ impl ApplicationHandler for Game<'_> {
             sunrise_threads::system_menu::suppress(hwnd);
         }
         drop(window_step);
-        let pending = self.pending_initial_models.0.take();
+        let pending = self.side.pending_initial_models.0.take();
         let renderer = match &pending {
             Some(start) => self.renderer_for(window.clone(), &start.models.pack, &start.models.gui),
             None => self.new_renderer(window.clone()),
         };
-        self.client.resize_state = Some(self.resize_state_of(window.inner_size()));
-        self.window.0 = Some(window);
+        self.side.resize_state = Some(self.resize_state_of(window.inner_size()));
+        self.side.window.0 = Some(window);
         if let Some(pending) = pending {
             match self.apply_pending_client_start(*pending, renderer.map(Some)) {
                 Ok(true) => {
@@ -480,8 +480,8 @@ impl ApplicationHandler for Game<'_> {
         } else {
             match renderer {
                 Ok(renderer) => {
-                    self.renderer.0 = Some(renderer);
-                    self.client.world_renderer_ready = true;
+                    self.side.renderer.0 = Some(renderer);
+                    self.side.world_renderer_ready = true;
                 }
                 Err(error) => {
                     self.error = Some(error);
@@ -490,22 +490,22 @@ impl ApplicationHandler for Game<'_> {
                 }
             }
         }
-        self.client.ime_allowed = false;
-        self.client.ime_area = None;
+        self.side.ime_allowed = false;
+        self.side.ime_area = None;
         self.apply_settings();
         self.previous = Instant::now();
     }
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
-        let key = if self.window.0.as_ref().is_some_and(|w| w.id() == id)
+        let key = if self.side.window.0.as_ref().is_some_and(|w| w.id() == id)
             && !self.scripted_run()
-            && !self.client.unclaimed_window
+            && !self.side.unclaimed_window
             && let WindowEvent::KeyboardInput {
                 event,
                 is_synthetic: false,
                 ..
             } = &event
         {
-            Some((event.clone(), glfw_modifiers(self.client.modifiers)))
+            Some((event.clone(), glfw_modifiers(self.side.modifiers)))
         } else {
             None
         };
@@ -534,13 +534,13 @@ impl ApplicationHandler for Game<'_> {
     }
     fn device_event(&mut self, event_loop: &ActiveEventLoop, _: DeviceId, event: DeviceEvent) {
         // Offscreen runs do not use native pointer motion.
-        if self.pending_save.0.is_none()
+        if self.side.pending_save.0.is_none()
             && !self.scripted_run()
-            && !self.client.unclaimed_window
-            && self.client.captured
-            && self.client.focused
+            && !self.side.unclaimed_window
+            && self.side.captured
+            && self.side.focused
             && !self.options.offscreen
-            && self.client.screen == Screen::Playing
+            && self.side.screen == Screen::Playing
             && let DeviceEvent::MouseMotion { delta: (x, y) } = event
         {
             if self.pad_radial_captures() {
@@ -554,8 +554,8 @@ impl ApplicationHandler for Game<'_> {
                 input_trace::InputOrigin::User,
                 input_trace::TraceKind::Motion { x, y },
             );
-            self.client.mouse.on_move(0.0, 0.0, x, y, true, true);
-            self.client.last_input = Instant::now();
+            self.side.mouse.on_move(0.0, 0.0, x, y, true, true);
+            self.side.last_input = Instant::now();
         }
     }
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {

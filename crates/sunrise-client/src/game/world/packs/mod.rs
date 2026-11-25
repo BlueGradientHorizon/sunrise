@@ -270,17 +270,17 @@ pub(in crate::game::client_side) fn save_pack_options(
     }
     packs::set_polytone_choices(all);
 }
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn drop_pack_file(&mut self, path: &Path) {
         let size = self.gui_size();
-        let handled = self.client.screen == super::Screen::Options
+        let handled = self.side.screen == super::Screen::Options
             && self
                 .ui
                 .options
                 .drop_resource_pack(path.to_path_buf(), &self.gui.atlas, size);
         if !handled
             && self.title_input_active()
-            && let Some(title) = &mut self.title.0
+            && let Some(title) = &mut self.side.title.0
         {
             title.drop_file(path.to_path_buf());
         }
@@ -289,7 +289,7 @@ impl Game<'_> {
         let additional = self.discover_mod_packs(mod_api::PackType::ClientResources);
         pack_infos(
             &self.vanilla_root(),
-            &self.server_packs.0.active,
+            &self.side.server_packs.0.active,
             &additional,
         )
     }
@@ -298,7 +298,7 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn model_packs_are_vanilla(&self) -> bool {
         self.settings.sunrise.vanilla_models_with_server_packs(
             self.settings.resource_packs.iter().map(String::as_str),
-            self.server_packs
+            self.side.server_packs
                 .0
                 .active
                 .iter()
@@ -313,7 +313,7 @@ impl Game<'_> {
             .sunrise
             .leaf_culling_effective_with_server_packs(
                 self.settings.resource_packs.iter().map(String::as_str),
-                self.server_packs
+                self.side.server_packs
                     .0
                     .active
                     .iter()
@@ -401,9 +401,9 @@ impl Game<'_> {
                 return;
             }
         }
-        if self.client.screen != super::Screen::Options {
+        if self.side.screen != super::Screen::Options {
             self.open_options_at(
-                self.title.0.is_some(),
+                self.side.title.0.is_some(),
                 sunrise_client::options_ui::Page::Packs,
             );
         }
@@ -420,13 +420,13 @@ impl Game<'_> {
         // A selection reload, including startup rollback, needs tail-owned mob metadata.
         // An in-flight reload finishes first (vanilla's `pendingReload`).
         if kind == ReloadKind::Selection
-            && reload_waits(self.rest_loader.is_some(), self.pack_reload.0.is_some())
+            && reload_waits(self.rest_loader.is_some(), self.side.pack_reload.0.is_some())
         {
-            self.client.pending_pack_reload = true;
+            self.side.pending_pack_reload = true;
             return Ok(());
         }
         self.clear_device_keys();
-        self.client.physical_keys.clear();
+        self.side.physical_keys.clear();
         self.set_mapping_held("key.attack", false);
         self.set_mapping_held("key.use", false);
         let vanilla = self.vanilla_root();
@@ -454,7 +454,7 @@ impl Game<'_> {
         let mod_sources = self.mods.clone();
         let (selected, server) = (
             self.settings.resource_packs.clone(),
-            self.server_packs.0.active.clone(),
+            self.side.server_packs.0.active.clone(),
         );
         let (assets, res, context) = (
             self.pack.assets.clone(),
@@ -487,8 +487,8 @@ impl Game<'_> {
         };
         #[cfg(test)]
         let stage = mod_api::testing::inherit_mods(stage);
-        self.pack_reload.0 = Some(PackReload::spawn(kind, stage)?);
-        self.client.reload_overlay = Some(ReloadOverlay::default());
+        self.side.pack_reload.0 = Some(PackReload::spawn(kind, stage)?);
+        self.side.reload_overlay = Some(ReloadOverlay::default());
         Ok(())
     }
     /// One frame of the pack reload's `LoadingOverlay`: its bar eased toward
@@ -497,16 +497,16 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn reload_overlay_frame(
         &mut self,
     ) -> Option<(f32, OverlayFade)> {
-        let overlay = self.client.reload_overlay.as_mut()?;
+        let overlay = self.side.reload_overlay.as_mut()?;
         let now = Instant::now();
         let since = |at: Instant| now.duration_since(at).as_millis() as u64;
         let fade_in = since(*overlay.fade_in.get_or_insert(now));
         let Some(fade) = OverlayFade::at(fade_in, overlay.fade_out.map(since)) else {
-            self.client.reload_overlay = None;
+            self.side.reload_overlay = None;
             return None;
         };
         let actual = self
-            .pack_reload
+            .side.pack_reload
             .0
             .as_ref()
             .map_or(1.0, |reload| reload.progress.fraction());
@@ -517,14 +517,14 @@ impl Game<'_> {
     /// applied on the render thread, and its outcome goes to whoever asked
     /// (`reloadResourcePacks`' callback, or `PackReloadConfig.Callbacks`).
     pub(in crate::game::client_side) fn drive_pack_reload(&mut self) {
-        let Some((kind, staged)) = self.pack_reload.0.as_mut().and_then(PackReload::finished)
+        let Some((kind, staged)) = self.side.pack_reload.0.as_mut().and_then(PackReload::finished)
         else {
             return;
         };
-        self.pack_reload.0 = None;
+        self.side.pack_reload.0 = None;
         let result =
             staged.and_then(|staged| self.apply_staged_pack(staged).map_err(|e| e.to_string()));
-        if let Some(overlay) = &mut self.client.reload_overlay {
+        if let Some(overlay) = &mut self.side.reload_overlay {
             overlay.fade_out = Some(Instant::now());
         }
         match kind {
@@ -573,11 +573,11 @@ impl Game<'_> {
         let standalone_geometry =
             super::native_block_entity_draw::StandaloneGeometry::new(&pack, &gui);
         // Keep the working GPU resources, and hand its window surface over.
-        if let Some(renderer) = &mut self.renderer.0 {
+        if let Some(renderer) = &mut self.side.renderer.0 {
             renderer.release_surface();
         }
         let renderer = match self
-            .window
+            .side.window
             .0
             .clone()
             .map(|window| {
@@ -586,14 +586,14 @@ impl Game<'_> {
                     self.options.offscreen,
                     &pack,
                     &gui,
-                    self.renderer.0.as_deref(),
+                    self.side.renderer.0.as_deref(),
                     Some(textures),
                     self.settings.sunrise.api,
                     self.settings.sunrise.translucent_batching,
                     self.settings.vsync,
                     &self.settings.sunrise,
                     super::shader_packs::picked_pack_shape(&self.settings),
-                    self.renderer
+                    self.side.renderer
                         .0
                         .as_ref()
                         .map(|r| r.display_reading())
@@ -609,7 +609,7 @@ impl Game<'_> {
         {
             Ok(renderer) => renderer,
             Err(error) => {
-                if let Some(renderer) = &mut self.renderer.0 {
+                if let Some(renderer) = &mut self.side.renderer.0 {
                     renderer.recreate_surface().map_err(|restore| {
                         format!(
                             "{error}; could not restore the previous rendering surface: {restore}"
@@ -630,47 +630,47 @@ impl Game<'_> {
         // in the listener order. All renderer and model validation is finished.
         self.apply_client_reload(client_applies, |game| {
             // Refresh modifiers from the newly staged packs, including removals.
-            game.creative_screen.0.set_pack_modifiers(tab_modifiers);
+            game.side.creative_screen.0.set_pack_modifiers(tab_modifiers);
             game.refresh_creative_search_names();
             [
-                game.client.frame_model,
-                game.client.glow_frame_model,
-                game.client.map_frame_model,
-                game.client.glow_map_frame_model,
+                game.side.frame_model,
+                game.side.glow_frame_model,
+                game.side.map_frame_model,
+                game.side.glow_map_frame_model,
             ] = frame_models;
-            game.client.waypoint_styles = waypoint_styles;
-            game.armor_stand_assets
+            game.side.waypoint_styles = waypoint_styles;
+            game.side.armor_stand_assets
                 .0
                 .apply_resources(armor_stand_assets);
-            game.armor_stand_assets.0.extensions = item_extensions;
+            game.side.armor_stand_assets.0.extensions = item_extensions;
             game.side_clear_random_tick_sections();
             game.portals.sections.clear();
             game.options.resources = root.clone();
-            game.client.falling_vertices.get_mut().clear();
+            game.side.falling_vertices.get_mut().clear();
             game.pack = pack;
             // The joined level's environment for the frame has the packs' layers over its type.
             game.build_level_environments();
-            game.client.standalone_geometry = standalone_geometry;
-            game.client.instance_groups.borrow_mut().clear();
+            game.side.standalone_geometry = standalone_geometry;
+            game.side.instance_groups.borrow_mut().clear();
             // The new atlas's skin and map slots are blank: players and maps
             // upload into it again instead of naming sprites it does not have.
-            game.client.skin_slots.forget();
-            game.skin_downloads
+            game.side.skin_slots.forget();
+            game.side.skin_downloads
                 .0
                 .borrow_mut()
                 .set_resource_root(game.pack.source.clone());
             game.maps.slots.forget();
-            game.client.map_patches.clear();
-            game.client.text_patches.get_mut().clear();
+            game.side.map_patches.clear();
+            game.side.text_patches.get_mut().clear();
             // Kept mod block entities name the old atlas's sprites, and their view distances the old
             // registry's states.
-            game.client.kept_block_entities.get_mut().clear();
-            game.live_scenes.0.get_mut().clear();
-            game.client.mod_view_distances.take();
+            game.side.kept_block_entities.get_mut().clear();
+            game.side.live_scenes.0.get_mut().clear();
+            game.side.mod_view_distances.take();
             // The atlas's sprites moved: the particle engine re-reads every rect
             // and the packs' sprite sets, or every particle draws a stale region.
             if !game.is_logical_server() {
-                game.particles.0.reload(
+                game.side.particles.0.reload(
                     &game.pack.source,
                     &game.gui.atlas.sprites,
                     &game.gui.atlas.translucent,
@@ -725,24 +725,24 @@ impl Game<'_> {
                 lang::Language::load(&[&game.pack.source], &code)
             });
             // Book search terms and resolved result icons belong to these resources.
-            game.recipe_ui.0.reset_screen();
+            game.side.recipe_ui.0.reset_screen();
             game.refresh_remote_language();
-            game.audio.0.reload_with(&game.pack.source, sounds);
+            game.side.audio.0.reload_with(&game.pack.source, sounds);
             game.clear_lod();
             // A pack that may replace leaf models falls back to `Off` before the
             // reload marks every section dirty.
             game.streaming.leaf_culling = game.effective_leaf_culling();
             let context = game.worker_context();
             game.streaming.reload_resources(&mut game.world, context);
-            game.pending_uploads.0.clear();
+            game.side.pending_uploads.0.clear();
             game.install_model_upload(upload);
             if has_renderer {
                 game.apply_ui_settings();
             }
             // Sunrise's own shader pack is built again: its sprite tags name the old atlas's
             // layers, and a new renderer runs no pack.
-            game.client.native_shaders = super::native_shaders::NativeShaders::picking(
-                &std::mem::take(&mut game.client.native_shaders.picked),
+            game.side.native_shaders = super::native_shaders::NativeShaders::picking(
+                &std::mem::take(&mut game.side.native_shaders.picked),
             );
             game.ui.chat.rescale(&game.gui.atlas);
             game.install_loop_context(loop_context);

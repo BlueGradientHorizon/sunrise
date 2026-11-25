@@ -1,7 +1,7 @@
 //! Metadata reads use the bootstrap snapshot, never the world's logical side.
 use super::Game;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn dist(&self) -> mod_api::Dist {
         crate::entry::runtime_environment::get().dist()
     }

@@ -1192,7 +1192,7 @@ impl KeptGeometry {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn api_block_entity_render_bounding_box(
         &self,
         pos: [i32; 3],
@@ -1212,7 +1212,7 @@ impl Game<'_> {
     /// The client's mod animation clock: level-running texture ticks plus a phase that holds
     /// across pauses and freezes. Server time updates never change it.
     pub(in crate::game) fn animation_time(&self) -> f64 {
-        self.client.texture_ticks as f64 + self.clock.animation_phase()
+        self.side.texture_ticks as f64 + self.clock.animation_phase()
     }
     /// The mod block entities within view distance of `camera` whose block's
     /// template has none, which the mesher's block entity lists (made from
@@ -1233,7 +1233,7 @@ impl Game<'_> {
     /// The mod block entities' view distances: the parts are asked once for each mod block
     /// (`native_block_entity_view_distance`) the first time they're needed, and kept.
     fn view_distances(&self) -> &ViewDistances {
-        self.client.mod_view_distances.get_or_init(|| {
+        self.side.mod_view_distances.get_or_init(|| {
             let registry = self.pack.assets.registry;
             let states = (0..registry.len() as u32).filter_map(|i| {
                 registry
@@ -1277,18 +1277,18 @@ impl Game<'_> {
             unlit: false,
             lit: Vec::new(),
             prepared: prepared_route(
-                self.client.pack_ids.is_some(),
-                !self.client.native_shaders.picked.is_empty(),
-                self.renderer
+                self.side.pack_ids.is_some(),
+                !self.side.native_shaders.picked.is_empty(),
+                self.side.renderer
                     .0
                     .as_ref()
                     .and_then(|renderer| renderer.prepared_generation()),
-                self.client.standalone_geometry.generation(),
+                self.side.standalone_geometry.generation(),
             ),
             records: Vec::new(),
         };
         let now = self.world.game_time;
-        let mut kept = self.client.kept_block_entities.borrow_mut();
+        let mut kept = self.side.kept_block_entities.borrow_mut();
         kept.sweep(now);
         let distances = self.view_distances();
         let light_at = |b: [i32; 3]| self.world.light(b[0], b[1], b[2]);
@@ -1337,7 +1337,7 @@ impl Game<'_> {
                 },
                 |bounds, start| {
                     if !mod_block_entity_visible(
-                        self.client.view_frustum.as_ref(),
+                        self.side.view_frustum.as_ref(),
                         origin,
                         bounds,
                         eye_visible,
@@ -1363,7 +1363,7 @@ impl Game<'_> {
         incoming: usize,
     ) -> Option<usize> {
         let room = self
-            .renderer
+            .side.renderer
             .0
             .as_ref()
             .map(|renderer| renderer.prepared_instance_room(already, incoming));
@@ -1380,28 +1380,28 @@ impl Game<'_> {
             return;
         }
         if draw.kept || !draw.spins.is_empty() {
-            draw.bake_recorded(&self.client.standalone_geometry.slots);
+            draw.bake_recorded(&self.side.standalone_geometry.slots);
             return;
         }
-        let already = self.client.prepared_model_draws.borrow().len() as u64;
+        let already = self.side.prepared_model_draws.borrow().len() as u64;
         let incoming = draw.records.len();
         let Some(room) = self.prepared_copy_room(already, incoming) else {
-            draw.bake_recorded(&self.client.standalone_geometry.slots);
+            draw.bake_recorded(&self.side.standalone_geometry.slots);
             return;
         };
         if room == 0 {
-            draw.bake_recorded(&self.client.standalone_geometry.slots);
+            draw.bake_recorded(&self.side.standalone_geometry.slots);
             return;
         }
         let overflow = (room < draw.records.len()).then(|| draw.records.split_off(room));
         draw.push_instances(
             origin,
             camera,
-            &mut self.client.prepared_model_draws.borrow_mut(),
+            &mut self.side.prepared_model_draws.borrow_mut(),
         );
         if let Some(overflow) = overflow {
             draw.records = overflow;
-            draw.bake_recorded(&self.client.standalone_geometry.slots);
+            draw.bake_recorded(&self.side.standalone_geometry.slots);
         }
     }
 }
@@ -1410,7 +1410,7 @@ impl Game<'_> {
 /// methods of `BlockEntityDrawContext`.
 // Native mods use these; nothing in Sunrise does.
 #[allow(dead_code)]
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `PoseStack.pushPose`: `pop` comes back to the pose as it is now.
     pub(in crate::game) fn native_draw_push(&self, draw: &mut BlockEntityDraw) {
         draw.push();
@@ -1567,7 +1567,7 @@ impl Game<'_> {
             ),
         };
         // Glyphs new to the atlas upload with this frame (`Game::text_patches`).
-        self.client
+        self.side
             .text_patches
             .borrow_mut()
             .append(&mut batch.patches);
@@ -1710,7 +1710,7 @@ impl Game<'_> {
         id: BlockStateId,
     ) -> Result<ModelRef, ModelError> {
         let slot = self
-            .client
+            .side
             .standalone_geometry
             .state_slot(id.0, || {
                 use sunrise_client::models::catalog::BakedFace;
@@ -1742,7 +1742,7 @@ impl Game<'_> {
             })
             .ok_or(ModelError::UnknownModel)?;
         Ok(mod_api::__private::built::model_ref(
-            self.client.standalone_geometry.generation(),
+            self.side.standalone_geometry.generation(),
             slot,
         ))
     }
@@ -1756,7 +1756,7 @@ impl Game<'_> {
         let catalog = &self.pack.render.model_catalog;
         match catalog.model_by_slot(slot) {
             Some(model) => Some(&model.faces),
-            None => self.client.standalone_geometry.state_faces(slot),
+            None => self.side.standalone_geometry.state_faces(slot),
         }
     }
 
@@ -1780,11 +1780,11 @@ impl Game<'_> {
     ) -> Result<(), ModelError> {
         use mod_api::__private::game::Fields;
         let fields = model.fields();
-        if fields.generation != self.client.standalone_geometry.generation() {
+        if fields.generation != self.side.standalone_geometry.generation() {
             return Err(ModelError::StaleModel);
         }
         let faces = self
-            .client
+            .side
             .standalone_geometry
             .slots
             .get(fields.slot as usize)

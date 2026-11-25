@@ -23,8 +23,8 @@ use sunrise_protocol::{
     },
 };
 
-pub(in crate::game) fn packets_through_pong(
-    game: &mut Game<'_>,
+pub(in crate::game) fn packets_through_pong<__Side: crate::game::Side>(
+    game: &mut Game<'_, __Side>,
     reader: &mut ConnReader,
 ) -> Vec<S> {
     game.handle_packet(C::Ping(Ping { id: 26 })).unwrap();

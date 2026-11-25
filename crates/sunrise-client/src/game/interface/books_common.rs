@@ -1,7 +1,7 @@
 use super::Game;
 use sunrise_client::item_data::WrittenBook;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Write pages into the book and quill at `slot`, or sign it into a written book by `author`.
     pub(in crate::game) fn write_book_with_author(
         &mut self,

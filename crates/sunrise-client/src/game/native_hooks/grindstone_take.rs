@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The server player `player` (UUID) and `player_entity_id` took a
     /// grindstone's result at `pos` (`GrindstoneEvent.OnTakeItem`, in its
     /// result slot's `onTake`): lend the pre-take `inputs` and let listeners

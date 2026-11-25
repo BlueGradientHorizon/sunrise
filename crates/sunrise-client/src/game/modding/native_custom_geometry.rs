@@ -12,7 +12,7 @@ use sunrise_client::screen_effects::{CameraQuads, sampling};
 use sunrise_client::terrain_model;
 use sunrise_client::world_geometry::{self, ModelBatch, WorldGeometry};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// A camera-space quad in solid `argb`, of the atlas's white texel.
     pub(in crate::game) fn native_camera_quad(
         &self,
@@ -55,19 +55,19 @@ impl Game<'_> {
             }
         }
         let states = EntryStates {
-            selection: &self.debug_entries.0,
-            entries: &self.registered_debug_entries.0,
-            overlay: self.client.debug,
+            selection: &self.side.debug_entries.0,
+            entries: &self.side.registered_debug_entries.0,
+            overlay: self.side.debug,
             reduced: self.reduced_debug_info(),
         };
         let renderers = mods::debug_renderers(self.options.execution_role, &states);
-        self.debug_renderers.0 = self.debug_entries.0.active_renderers(renderers);
+        self.side.debug_renderers.0 = self.side.debug_entries.0.active_renderers(renderers);
     }
     /// `DebugRenderer.emitGizmos`'s first half: a selection the list has not seen refreshes it.
     fn follow_debug_selection(&mut self) {
-        let version = self.debug_entries.0.enabled_version();
-        if self.client.debug_renderers_version != Some(version) {
-            self.client.debug_renderers_version = Some(version);
+        let version = self.side.debug_entries.0.enabled_version();
+        if self.side.debug_renderers_version != Some(version) {
+            self.side.debug_renderers_version = Some(version);
             self.refresh_debug_renderers();
         }
     }
@@ -105,7 +105,7 @@ impl Game<'_> {
         draw.begin_stage(*last);
         self.native_submit_custom_geometry(&view, draw);
         self.follow_debug_selection();
-        for renderer in &self.debug_renderers.0 {
+        for renderer in &self.side.debug_renderers.0 {
             renderer.draw(self, &view, &mut GameWorldDrawContext::new(self, draw));
         }
         self.native_render_level_stage(*last, &view, draw);
@@ -118,7 +118,7 @@ impl Game<'_> {
             self.mark_translucent_entity(entities.len(), "minecraft:name_tag");
             entities.extend_from_slice(world);
         }
-        self.client
+        self.side
             .see_through_vertices
             .extend_from_slice(see_through);
     }
@@ -179,7 +179,7 @@ impl Game<'_> {
         // The layout cached any glyph it rasterized; its pixels upload even if the label is
         // refused, or a later label using that glyph would sample an atlas never written.
         let labelled = draw.label(from_camera.length_squared(), &world, &see_through);
-        self.client.text_patches.borrow_mut().append(&mut patches);
+        self.side.text_patches.borrow_mut().append(&mut patches);
         labelled
     }
     /// Submit unlit ARGB world lines atomically. Invalid coordinates or widths,
@@ -231,7 +231,7 @@ impl Game<'_> {
             return Err(InstanceError::CapacityExceeded);
         }
         sunrise_client::world_geometry::validate_instances(instances)?;
-        self.client
+        self.side
             .prepared_model_draws
             .borrow_mut()
             .reserve(instances.len().min(16_384));
@@ -254,28 +254,28 @@ impl Game<'_> {
     ) -> Result<(), InstanceError> {
         use mod_api::__private::game::Fields;
         let fields = model.fields();
-        if fields.generation != self.client.standalone_geometry.generation() {
+        if fields.generation != self.side.standalone_geometry.generation() {
             return Err(InstanceError::Model(mod_api::ModelError::StaleModel));
         }
         let slot = self
-            .client
+            .side
             .standalone_geometry
             .instance_slot(fields.slot)
             .ok_or(InstanceError::Model(mod_api::ModelError::UnknownModel))?;
         let uploaded = self
-            .renderer
+            .side.renderer
             .0
             .as_ref()
             .and_then(|renderer| renderer.prepared_generation());
         #[cfg(test)]
         let uploaded = uploaded.or_else(sunrise_client::gfx::test_prepared_generation);
         let gpu = super::native_block_entity_draw::prepared_route(
-            self.client.pack_ids.is_some(),
-            !self.client.native_shaders.picked.is_empty(),
+            self.side.pack_ids.is_some(),
+            !self.side.native_shaders.picked.is_empty(),
             uploaded,
             fields.generation,
         );
-        let mut staged = self.client.prepared_model_draws.borrow_mut();
+        let mut staged = self.side.prepared_model_draws.borrow_mut();
         let start = staged.len();
         let mut gpu_left = if gpu {
             self.prepared_copy_room(start as u64, instances.len())
@@ -295,7 +295,7 @@ impl Game<'_> {
                 bounds: slot.bounds,
             },
             instances,
-            self.client.view_frustum.as_ref(),
+            self.side.view_frustum.as_ref(),
             |index, copy| {
                 // The instance route draws one fixed index range per model: a copy that needs
                 // other faces, another colour, translucency or a block state takes the CPU route.
@@ -352,18 +352,18 @@ impl Game<'_> {
         entities: &mut Vec<Vertex>,
     ) {
         let mut run_overlay = None;
-        let mut materials = std::mem::take(&mut self.client.model_copy_order);
+        let mut materials = std::mem::take(&mut self.side.model_copy_order);
         materials.clear();
         for index in 0..draw.copy_count() {
             let copy = draw.copy(index);
-            let Some(slot) = self.client.standalone_geometry.instance_slot(copy.slot) else {
+            let Some(slot) = self.side.standalone_geometry.instance_slot(copy.slot) else {
                 continue;
             };
             if slot.translucent || slot.state || copy.color >> 24 != 0xFF {
                 materials.push(index as u32);
                 continue;
             }
-            let Some(faces) = self.client.standalone_geometry.faces(copy.slot) else {
+            let Some(faces) = self.side.standalone_geometry.faces(copy.slot) else {
                 continue;
             };
             let start = entities.len();
@@ -405,7 +405,7 @@ impl Game<'_> {
                     continue;
                 };
                 let state = self
-                    .client
+                    .side
                     .standalone_geometry
                     .instance_slot(copy.slot)
                     .is_some_and(|slot| slot.state);
@@ -439,7 +439,7 @@ impl Game<'_> {
                 );
             }
         }
-        self.client.model_copy_order = materials;
+        self.side.model_copy_order = materials;
         draw.clear_copies();
     }
 }

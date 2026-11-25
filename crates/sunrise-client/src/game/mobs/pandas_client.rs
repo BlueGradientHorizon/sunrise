@@ -14,7 +14,7 @@ pub(in crate::game::client_side) use sunrise_client::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// What a window draws of its pandas: the crumbs of a bite
     /// (`addEatingParticles`) and the sneeze's particle.
     pub(in crate::game::client_side) fn panda_effects(&mut self) {
@@ -37,12 +37,12 @@ impl Game<'_> {
         for (item, crumbs) in bites {
             let options = self.item_particle(&ItemStack::new(&item, 1));
             for (at, velocity) in crumbs {
-                self.particles.0.add(&options, at, velocity);
+                self.side.particles.0.add(&options, at, velocity);
             }
         }
         let options = ParticleOptions::simple(ParticleType::Sneeze);
         for (at, velocity) in sneezes {
-            self.particles.0.add(&options, at, velocity);
+            self.side.particles.0.add(&options, at, velocity);
         }
     }
 }

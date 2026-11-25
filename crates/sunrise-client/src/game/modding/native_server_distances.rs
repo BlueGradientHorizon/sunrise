@@ -2,7 +2,7 @@
 //! of the view and simulation distance.
 use super::Game;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `MinecraftServer.getTickTimesNanos`.
     pub(in crate::game) fn tick_times(&self) -> Vec<u64> {
         self.clock.tick_times()

@@ -17,7 +17,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
 /// let it through, by argument name (CommandSigningContext.SignedArguments).
 type Signed = Vec<(String, ChatMessage)>;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// CommandDispatcher.parse with the guest's permission level.
     fn parse_as(&mut self, permission: u8, command: &str) -> ParseResults {
         let level = std::mem::replace(&mut self.ui.registries.permission, permission);
@@ -191,7 +191,7 @@ impl Game<'_> {
         let hidden = self.chat_hidden_from(|game| {
             let sender = match game.source_entity() {
                 Some(Target::Player) => game
-                    .server
+                    .side
                     .lan_acting_uuid
                     .unwrap_or_else(|| game.own_uuid()),
                 Some(Target::Guest(conn)) => game.command_guest(conn).map_or(0, |guest| guest.uuid),
@@ -212,7 +212,7 @@ impl Game<'_> {
         Some(
             captured_for.is_some()
                 && !self
-                    .server
+                    .side
                     .lan_acting_uuid
                     .is_some_and(|uuid| hidden.contains(&uuid)),
         )
@@ -229,7 +229,7 @@ impl Game<'_> {
         let hidden = self.chat_hidden_from(|game| {
             let sender = match game.source_entity() {
                 Some(Target::Player) => game
-                    .server
+                    .side
                     .lan_acting_uuid
                     .unwrap_or_else(|| game.own_uuid()),
                 Some(Target::Guest(conn)) => game.command_guest(conn).map_or(0, |guest| guest.uuid),
@@ -250,7 +250,7 @@ impl Game<'_> {
         Some(
             captured_for.is_some()
                 && !self
-                    .server
+                    .side
                     .lan_acting_uuid
                     .is_some_and(|uuid| hidden.contains(&uuid)),
         )

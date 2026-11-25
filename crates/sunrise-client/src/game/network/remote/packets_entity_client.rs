@@ -3,7 +3,7 @@ pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::remote::packets_entity::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `C::DamageEvent`: its arms of `apply_packet`, guard and order kept.
     pub(in crate::game) fn apply_damage_event_packet(&mut self, p: play::DamageEvent) {
         // ClientPacketListener.handleDamageEvent: LivingEntity.handleDamageEvent
@@ -81,7 +81,7 @@ impl Game<'_> {
             && let Some(r) = self.remote.as_mut().filter(|r| r.entity_id == p.id)
         {
             r.reduced_debug_info = p.event == 22;
-            self.debug_entries.0.invalidate();
+            self.side.debug_entries.0.invalidate();
         }
         // Ravager.handleEntityEvent 69: the roar's puff and push.
         if p.event == 69 {
@@ -661,7 +661,7 @@ impl Game<'_> {
         if self.remote.as_ref().is_some_and(|r| r.entity_id == p.id) {
             let nameplate = self.remote_nameplate_values(&p.values);
             self.apply_own_attributes(p.values);
-            if let Some(m) = self.client.player_model.as_mut() {
+            if let Some(m) = self.side.player_model.as_mut() {
                 if let Some(value) = nameplate.name_tag {
                     m.set_name_tag_distance(value);
                 }

@@ -2,7 +2,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// NeoForge's `ClientInformationUpdatedEvent`: a server player's client sent new
     /// client information (language, view distance, chat, skin parts, main hand,
     /// filtering, listing, particles) in play. `old` and `new` are the values before and

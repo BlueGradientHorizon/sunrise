@@ -15,7 +15,7 @@ pub(in crate::game) fn dragon_part_index(dragon_id: u32, candidate_id: u32) -> O
     (1..=8).contains(&offset).then(|| (offset - 1) as usize)
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The boxes of the living dragon's parts a projectile can hit, in `getSubEntities` order.
     pub(in crate::game) fn dragon_part_boxes(&self) -> Option<[Aabb; 8]> {
         self.dragon

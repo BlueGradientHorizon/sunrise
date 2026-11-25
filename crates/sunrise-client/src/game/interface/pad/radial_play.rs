@@ -45,7 +45,7 @@ pub(in crate::game::client_side) fn poll_order(
     presses.into_iter().chain(late).chain(releases).collect()
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether the radial menu selects with this stick (0 left, 1 right): while it is open that
     /// stick neither walks nor turns the view.
     pub(in crate::game::client_side) fn pad_radial_selects(&self, stick: usize) -> bool {
@@ -68,13 +68,13 @@ impl Game<'_> {
         let index = match self.settings.controller.radial_stick {
             RadialStick::Right => 1,
             RadialStick::Left => 0,
-            RadialStick::Either => self.pad.0.radial_either.unwrap_or(1),
+            RadialStick::Either => self.side.pad.0.radial_either.unwrap_or(1),
         };
-        let stick = [self.pad.0.state.left, self.pad.0.state.right][index];
+        let stick = [self.side.pad.0.state.left, self.side.pad.0.state.right][index];
         (
             index,
             stick,
-            self.pad.0.peaks[index],
+            self.side.pad.0.peaks[index],
             self.pad_radial_tilts()[index],
         )
     }
@@ -85,23 +85,23 @@ impl Game<'_> {
     /// that takes over selects at once, whatever the other was waiting for.
     fn pad_radial_follow_either(&mut self) {
         let tilts = self.pad_radial_tilts();
-        let sticks = [self.pad.0.state.left, self.pad.0.state.right];
-        let open = self.pad.0.radial.is_open();
+        let sticks = [self.side.pad.0.state.left, self.side.pad.0.state.right];
+        let open = self.side.pad.0.radial.is_open();
         for i in 0..2 {
             if radial::stick_length(sticks[i]) < tilts[i].rest {
-                self.pad.0.radial_rested[i] = true;
+                self.side.pad.0.radial_rested[i] = true;
             }
             let reach =
-                radial::stick_length(sticks[i]).max(radial::stick_length(self.pad.0.peaks[i]));
+                radial::stick_length(sticks[i]).max(radial::stick_length(self.side.pad.0.peaks[i]));
             let over = reach >= tilts[i].select;
-            let may = !open || self.pad.0.radial_rested[i];
-            if over && !self.pad.0.radial_over[i] && may {
-                let before = self.pad.0.radial_either.replace(i).unwrap_or(1);
+            let may = !open || self.side.pad.0.radial_rested[i];
+            if over && !self.side.pad.0.radial_over[i] && may {
+                let before = self.side.pad.0.radial_either.replace(i).unwrap_or(1);
                 if open && before != i {
-                    self.pad.0.radial.took_over();
+                    self.side.pad.0.radial.took_over();
                 }
             }
-            self.pad.0.radial_over[i] = over;
+            self.side.pad.0.radial_over[i] = over;
         }
     }
 
@@ -119,25 +119,25 @@ impl Game<'_> {
     /// The opener went down: always on the first page.
     pub(in crate::game::client_side) fn pad_radial_open(&mut self) {
         let tilts = self.pad_radial_tilts();
-        let sticks = [self.pad.0.state.left, self.pad.0.state.right];
-        self.pad.0.radial_rested =
+        let sticks = [self.side.pad.0.state.left, self.side.pad.0.state.right];
+        self.side.pad.0.radial_rested =
             std::array::from_fn(|i| radial::stick_length(sticks[i]) < tilts[i].rest);
         let (index, stick, _, tilt) = self.pad_radial_selector();
-        self.pad.0.radial.open(index, stick, tilt, Instant::now());
-        self.pad.0.radial_page_said = false;
-        self.pad.0.radial_said.reset();
+        self.side.pad.0.radial.open(index, stick, tilt, Instant::now());
+        self.side.pad.0.radial_page_said = false;
+        self.side.pad.0.radial_said.reset();
     }
 
     /// The opener came up: held, it commits; in toggle mode the menu stays open, until A, the
     /// opener again or B.
     pub(in crate::game::client_side) fn pad_radial_release(&mut self) -> Result<()> {
-        if !self.pad.0.radial.is_open() {
+        if !self.side.pad.0.radial.is_open() {
             return Ok(());
         }
         if self.settings.controller.radial_mode == RadialMode::Toggle
-            && !self.pad.0.radial.latched()
+            && !self.side.pad.0.radial.latched()
         {
-            self.pad.0.radial.latch();
+            self.side.pad.0.radial.latch();
             return Ok(());
         }
         self.pad_radial_commit(false)
@@ -163,7 +163,7 @@ impl Game<'_> {
     /// Which of the page's slots would run now: the overlay dims the others. A missing action
     /// never runs.
     pub(in crate::game::client_side) fn pad_radial_available(&self) -> [bool; radial::SLOTS] {
-        self.pad_radial_available_on(self.pad.0.radial.page())
+        self.pad_radial_available_on(self.side.pad.0.radial.page())
     }
 
     /// `pad_radial_available` on page `page`.
@@ -182,7 +182,7 @@ impl Game<'_> {
             .settings
             .controller
             .radial
-            .page(self.pad.0.radial.page());
+            .page(self.side.pad.0.radial.page());
         !page.slot(slot).is_empty() && self.pad_radial_available()[slot]
     }
 
@@ -192,42 +192,42 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn pad_radial_frame(&mut self) {
         let now = Instant::now();
         self.pad_radial_poll(now);
-        let menu = &self.pad.0.radial;
+        let menu = &self.side.pad.0.radial;
         let seen = menu.shown(now).then(|| Seen {
             page: menu.page(),
             selected: menu.selected(),
             waiting: menu.waiting(),
         });
-        self.pad.0.radial_look.observe(seen, now);
+        self.side.pad.0.radial_look.observe(seen, now);
     }
 
     /// `pad_radial_frame`'s work, before the overlay's look sees the result.
     fn pad_radial_poll(&mut self, now: Instant) {
-        self.pad
+        self.side.pad
             .0
             .radial
-            .sample([self.pad.0.state.left, self.pad.0.state.right], now);
+            .sample([self.side.pad.0.state.left, self.side.pad.0.state.right], now);
         if self.settings.controller.radial_stick == RadialStick::Either {
             self.pad_radial_follow_either();
         }
         let (_, stick, peak, tilt) = self.pad_radial_selector();
-        if let Some((at, rumble)) = self.pad.0.radial_rumble_due
+        if let Some((at, rumble)) = self.side.pad.0.radial_rumble_due
             && now >= at
         {
-            self.pad.0.radial_rumble_due = None;
+            self.side.pad.0.radial_rumble_due = None;
             self.pad_rumble(rumble);
         }
-        if !self.pad.0.radial.is_open() {
+        if !self.side.pad.0.radial.is_open() {
             return;
         }
         if !self.pad_radial_can_open() {
             self.pad_radial_cancel();
             return;
         }
-        let was = self.pad.0.radial.selected();
-        self.pad.0.radial.update_with_peak(stick, peak, tilt, now);
+        let was = self.side.pad.0.radial.selected();
+        self.side.pad.0.radial.update_with_peak(stick, peak, tilt, now);
         // A tick as the stick reaches a slot that would run, so a flick can be felt.
-        let selected = self.pad.0.radial.selected();
+        let selected = self.side.pad.0.radial.selected();
         if selected != was && selected.is_some_and(|slot| self.pad_radial_fills(slot)) {
             self.pad_rumble(Rumble::RadialSlot);
         }
@@ -238,18 +238,18 @@ impl Game<'_> {
     /// and the slot's caption once the selection settles.
     fn pad_radial_narrate(&mut self, now: Instant) {
         if sunrise_narrator::status() == sunrise_narrator::Status::Off
-            || !self.pad.0.radial.shown(now)
+            || !self.side.pad.0.radial.shown(now)
         {
             return;
         }
         let pages = &self.settings.controller.radial;
-        let page = self.pad.0.radial.page();
-        if !std::mem::replace(&mut self.pad.0.radial_page_said, true) {
+        let page = self.side.pad.0.radial.page();
+        if !std::mem::replace(&mut self.side.pad.0.radial_page_said, true) {
             let name = sunrise_client_render::radial_overlay::page_label(pages.page(page));
             self.say_system_now(&Text::literal(name));
         }
-        let at = self.pad.0.radial.selected().map(|slot| (page, slot));
-        if let Some((page, slot)) = self.pad.0.radial_said.poll(at, now) {
+        let at = self.side.pad.0.radial.selected().map(|slot| (page, slot));
+        if let Some((page, slot)) = self.side.pad.0.radial_said.poll(at, now) {
             let slot = pages.page(page).slot(slot);
             let caption = sunrise_client_render::radial_overlay::slot_caption(slot)
                 .unwrap_or_else(|| sunrise_client::lang::get("sunrise.radial.empty"));
@@ -271,7 +271,7 @@ impl Game<'_> {
         match button {
             // Toggle mode, latched open: the opener again commits.
             b if Some(b) == opener => {
-                if self.pad.0.radial.latched() {
+                if self.side.pad.0.radial.latched() {
                     self.pad_radial_commit(false)?;
                 }
             }
@@ -296,17 +296,17 @@ impl Game<'_> {
     fn pad_radial_turn(&mut self, forward: bool) {
         let (_, stick, _, tilt) = self.pad_radial_selector();
         let pages = self.settings.controller.radial.len();
-        let Some(wrapped) = self.pad.0.radial.turn_page(forward, stick, tilt, pages) else {
+        let Some(wrapped) = self.side.pad.0.radial.turn_page(forward, stick, tilt, pages) else {
             return;
         };
-        self.pad.0.radial_look.turned(forward);
+        self.side.pad.0.radial_look.turned(forward);
         self.pad_rumble(Rumble::RadialPage);
         if wrapped {
-            self.pad.0.radial_rumble_due =
+            self.side.pad.0.radial_rumble_due =
                 Some((Instant::now() + radial::WRAP_TICK_GAP, Rumble::RadialWrap));
         }
-        self.pad.0.radial_page_said = false;
-        self.pad.0.radial_said.reset();
+        self.side.pad.0.radial_page_said = false;
+        self.side.pad.0.radial_said.reset();
     }
 
     /// The selected action, pressed and let go, once. Every entry acts on its press, and nothing
@@ -314,14 +314,14 @@ impl Game<'_> {
     /// nothing after something was selected gives a soft buzz.
     /// `by_a`: toggle mode's A, pressed by the thumb that was selecting (`RadialMenu::commit_settled`).
     fn pad_radial_commit(&mut self, by_a: bool) -> Result<()> {
-        let page = self.pad.0.radial.page();
-        let aimed = self.pad.0.radial.aimed();
+        let page = self.side.pad.0.radial.page();
+        let aimed = self.side.pad.0.radial.aimed();
         let selecting = self.pad_radial_selector().0;
         let now = Instant::now();
         let slot = if by_a {
-            self.pad.0.radial.commit_settled(now)
+            self.side.pad.0.radial.commit_settled(now)
         } else {
-            self.pad.0.radial.commit(now)
+            self.side.pad.0.radial.commit(now)
         };
         self.pad_radial_closed(selecting);
         // Social, dimmed in single player, still goes through its key there: vanilla's action
@@ -344,13 +344,13 @@ impl Game<'_> {
             }
             return Ok(());
         };
-        self.pad.0.radial_runs.push(action.id());
+        self.side.pad.0.radial_runs.push(action.id());
         if let Some(slot) = slot {
-            self.pad.0.radial_look.ran(slot);
+            self.side.pad.0.radial_look.ran(slot);
         }
         let shoots = matches!(action, RadialAction::Screenshot | RadialAction::ToggleGui);
         let action = action.action();
-        self.audio
+        self.side.audio
             .0
             .play("minecraft:ui.button.click", None, UI_CLICK_VOLUME, 1.0);
         // The release runs whatever the press did, so no key stays held.
@@ -359,7 +359,7 @@ impl Game<'_> {
         // What opened a screen, takes a screenshot or hides the HUD gets the view to itself at
         // once: no flash or fade over it.
         if shoots || self.pad_in_menu() || self.screen_over_playing() {
-            self.pad.0.radial_look.cut();
+            self.side.pad.0.radial_look.cut();
         }
         pressed.and(released)
     }
@@ -368,9 +368,9 @@ impl Game<'_> {
     /// and nothing runs. (The window's focus is in the context: losing it cancels in
     /// `pad_cancel_inputs`.)
     pub(in crate::game::client_side) fn pad_radial_cancel(&mut self) {
-        if self.pad.0.radial.is_open() {
+        if self.side.pad.0.radial.is_open() {
             let selecting = self.pad_radial_selector().0;
-            self.pad.0.radial.cancel();
+            self.side.pad.0.radial.cancel();
             self.pad_radial_closed(selecting);
         }
     }
@@ -391,19 +391,19 @@ impl Game<'_> {
                 self.settings.controller.move_deadzone,
                 self.settings.controller.look_deadzone,
             ][i];
-            let stick = [self.pad.0.state.left, self.pad.0.state.right][i];
+            let stick = [self.side.pad.0.state.left, self.side.pad.0.state.right][i];
             if gamepad::radial(stick, deadzone) != [0.0; 2] {
-                self.pad.0.blocked_sticks[i] = true;
-                self.pad.0.peaks[i] = [0.0; 2];
+                self.side.pad.0.blocked_sticks[i] = true;
+                self.side.pad.0.peaks[i] = [0.0; 2];
                 match i {
-                    0 => self.pad.0.state.left = [0.0; 2],
-                    _ => self.pad.0.state.right = [0.0; 2],
+                    0 => self.side.pad.0.state.left = [0.0; 2],
+                    _ => self.side.pad.0.state.right = [0.0; 2],
                 }
             }
         }
-        if self.pad.0.held_drop.is_some() {
+        if self.side.pad.0.held_drop.is_some() {
             let delay = Duration::from_secs_f32(self.settings.controller.repeat_delay);
-            self.pad.0.held_drop = Some(gamepad::HeldDrop::new(now, delay));
+            self.side.pad.0.held_drop = Some(gamepad::HeldDrop::new(now, delay));
         }
         if self
             .settings
@@ -411,7 +411,7 @@ impl Game<'_> {
             .binding(gamepad::RADIAL)
             .is_some_and(|b| DPAD.contains(&b))
         {
-            self.pad.0.radial_settle.closed(now);
+            self.side.pad.0.radial_settle.closed(now);
         }
     }
 
@@ -419,10 +419,10 @@ impl Game<'_> {
     /// rolling off it. It is ignored, and so is its release; the opener's own isn't.
     pub(in crate::game::client_side) fn pad_radial_settling(&self, button: Button) -> bool {
         let opener = self.settings.controller.binding(gamepad::RADIAL);
-        let held = opener.is_some_and(|opener| self.pad.0.state.held(opener));
+        let held = opener.is_some_and(|opener| self.side.pad.0.state.held(opener));
         DPAD.contains(&button)
             && self
-                .pad
+                .side.pad
                 .0
                 .radial_settle
                 .quiet(opener == Some(button), held, Instant::now())
@@ -431,7 +431,7 @@ impl Game<'_> {
     /// A button came up: the opener's release starts the D-pad's settle again.
     pub(in crate::game::client_side) fn pad_radial_button_up(&mut self, button: Button) {
         if self.settings.controller.binding(gamepad::RADIAL) == Some(button) {
-            self.pad.0.radial_settle.opener_up(Instant::now());
+            self.side.pad.0.radial_settle.opener_up(Instant::now());
         }
     }
 
@@ -439,12 +439,12 @@ impl Game<'_> {
     /// not compared with the old one's, and the radial menu closes as for a cancel, as a commit
     /// would run on the new body (a death with immediate respawn, the End's exit).
     pub(in crate::game::client_side) fn pad_player_replaced(&mut self) {
-        self.pad.0.player_replaced();
+        self.side.pad.0.player_replaced();
         self.pad_radial_cancel();
     }
 
     pub(in crate::game::client_side) fn pad_radial_status(&self) -> Value {
-        let menu = &self.pad.0.radial;
+        let menu = &self.side.pad.0.radial;
         let pages = &self.settings.controller.radial;
         let page = pages.page(menu.page());
         json!({
@@ -469,8 +469,8 @@ impl Game<'_> {
             "selecting": self.pad_radial_selector().0,
             "mode": self.settings.controller.radial_mode.name(),
             "stick": self.settings.controller.radial_stick.name(),
-            "runs": self.pad.0.radial_runs.last,
-            "run_count": self.pad.0.radial_runs.count,
+            "runs": self.side.pad.0.radial_runs.last,
+            "run_count": self.side.pad.0.radial_runs.count,
         })
     }
 
@@ -487,7 +487,7 @@ impl Game<'_> {
     /// The overlay, over the HUD, in this player's view: while it shows, and while it fades out.
     fn draw_pad_radial(&self, batch: &mut sunrise_client::hud::HudBatch) {
         let clock = self.hud_clock();
-        let look = &self.pad.0.radial_look;
+        let look = &self.side.pad.0.radial_look;
         let Some(seen) = self.pad_radial_drawn(clock) else {
             return;
         };
@@ -515,7 +515,7 @@ impl Game<'_> {
     /// What the overlay draws at `clock`: while it shows, and while it fades out, but never a
     /// fade-out over a screen that came up meanwhile.
     fn pad_radial_drawn(&self, clock: sunrise_client::hud_kit::motion::Clock) -> Option<Seen> {
-        let look = &self.pad.0.radial_look;
+        let look = &self.side.pad.0.radial_look;
         if !look.open() && (self.pad_in_menu() || self.screen_over_playing()) {
             return None;
         }
@@ -524,20 +524,20 @@ impl Game<'_> {
 
     /// The overlay is showing (not only fading out): it holds the view (`overlay_holds_view`).
     pub(in crate::game::client_side) fn pad_radial_shown(&self) -> bool {
-        self.pad.0.radial_look.open()
+        self.side.pad.0.radial_look.open()
     }
 
     /// The toggles the overlay shows the state of.
     fn pad_radial_toggles(&self) -> Toggles {
         use sunrise_client::camera::CameraType;
         Toggles {
-            view: match self.client.camera_type {
+            view: match self.side.camera_type {
                 CameraType::FirstPerson => View::FirstPerson,
                 CameraType::ThirdPersonBack => View::ThirdPersonBack,
                 CameraType::ThirdPersonFront => View::ThirdPersonFront,
             },
             hud_hidden: self.ui.hide_gui,
-            cinematic: self.client.smooth_camera,
+            cinematic: self.side.smooth_camera,
         }
     }
 

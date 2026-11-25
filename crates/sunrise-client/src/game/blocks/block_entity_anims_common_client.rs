@@ -15,7 +15,7 @@ pub(in crate::game::client_side) use sunrise_client::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_core::nbt::Tag;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Start a tick of animated block entities, dropping stale owners and removed pots.
     pub(in crate::game) fn begin_block_entity_anims(&mut self) -> AnimTick {
         let world = &self.world;

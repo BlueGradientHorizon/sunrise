@@ -32,7 +32,7 @@ pub(in crate::game::client_side) use sunrise_core::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_gameplay::container_openers::recheck_opener_count;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `SkullBlockRenderer.getPlayerSkin`: the skin sprite of the profile of
     /// the player head at `pos`. The skin download is started here; while it
     /// is in flight (or when it cannot be got) the profile's default skin
@@ -48,7 +48,7 @@ impl Game<'_> {
         if let Some(texture) = &skin.texture
             && let Some(sprite) = skins::patch_skin(
                 texture,
-                &mut self.skin_downloads.0.borrow_mut(),
+                &mut self.side.skin_downloads.0.borrow_mut(),
                 |location| self.gui.atlas.sprites.contains_key(location),
             )
         {
@@ -68,7 +68,7 @@ impl Game<'_> {
             Some((url, location))
         });
         if let Some((url, location)) = download {
-            let mut downloads = self.skin_downloads.0.borrow_mut();
+            let mut downloads = self.side.skin_downloads.0.borrow_mut();
             if self.gui.atlas.sprites.contains_key(&location) {
                 let _ = downloads.state(skins::Kind::Skin, &url);
                 downloads.drawn(&location);
@@ -152,7 +152,7 @@ impl Game<'_> {
                     color: [channel(16), channel(8), channel(0), channel(24)],
                     ..ParticleOptions::simple(ParticleType::EntityEffect)
                 };
-                self.particles.0.add(&options, p, [0.0; 3]);
+                self.side.particles.0.add(&options, p, [0.0; 3]);
             }
         }
     }
@@ -270,11 +270,11 @@ impl Game<'_> {
                         is_water,
                         is_frame,
                         target,
-                        self.particles.0.level_random(),
+                        self.side.particles.0.level_random(),
                     );
                     let nautilus = ParticleOptions::simple(ParticleType::Nautilus);
                     for (p, v) in particles {
-                        self.particles.0.add(&nautilus, p, v);
+                        self.side.particles.0.add(&nautilus, p, v);
                     }
                 }
                 Ticker::Pot => {}

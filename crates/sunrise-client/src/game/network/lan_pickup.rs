@@ -15,7 +15,7 @@ pub(in crate::game) fn click_of(p: &play::ContainerClick) -> Click {
     (i32::from(p.slot), i32::from(p.button), input(p.input))
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `guest_menu_op`, with `click` (the click `op` makes, if it makes one) decided by the mods
     /// first. With no listener, no click or a click that is not a pickup this is `guest_menu_op`.
     /// A pickup the mods listen to is frozen, decided and then run inside the decision's
@@ -42,7 +42,7 @@ impl Game<'_> {
         click: Option<Click>,
         prepare: Option<&dyn Fn(&mut Menu, &Env)>,
         op: impl FnOnce(&mut Menu, &Env) -> R,
-        write_back: impl FnOnce(&mut Game<'_>, &mut Menu, &R),
+        write_back: impl FnOnce(&mut Game<'_, crate::game::server_side::ServerState>, &mut Menu, &R),
     ) -> Option<R> {
         self.guest_menu_action(gi, menu, click, prepare, |game, menu, stacked| {
             let ran = game.guest_menu_op_with(gi, menu, stacked, op)?;
@@ -60,7 +60,7 @@ impl Game<'_> {
         click: Option<Click>,
         prepare: Option<&dyn Fn(&mut Menu, &Env)>,
         action: impl FnOnce(
-            &mut Game<'_>,
+            &mut Game<'_, crate::game::server_side::ServerState>,
             &mut Menu,
             Option<&sunrise_client::menu::StackedOutcome>,
         ) -> Option<R>,

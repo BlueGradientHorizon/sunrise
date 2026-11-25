@@ -6,14 +6,14 @@ use crate::game::stacked_on_other::{
 use std::rc::Rc;
 use sunrise_client::menu::{Env, Input};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The clicks `menu_ops` was asked for, when they resolve to a pickup of a slot of the local
     /// or creative menu.
     pub(in crate::game::client_side) fn stacked_menu_ops(
         &mut self,
         ops: &[(Option<usize>, i32, Input)],
     ) -> Option<bool> {
-        if self.remote.is_some() && self.client.screen != Screen::Creative {
+        if self.remote.is_some() && self.side.screen != Screen::Creative {
             return None;
         }
         let server = self.is_logical_server();

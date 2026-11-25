@@ -56,7 +56,7 @@ impl HotPathsMods {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(super) fn hot_hook_fanout(
         &mut self,
         recorder: &mut Recorder,

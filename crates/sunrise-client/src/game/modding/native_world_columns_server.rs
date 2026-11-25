@@ -2,7 +2,7 @@
 use super::Game;
 use crate::game::block_edits_common::MAX_COLUMNS;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// For a server mod: each column's height by `heightmap` in the authoritative level `dimension`.
     pub(in crate::game) fn surface_heights(
         &self,

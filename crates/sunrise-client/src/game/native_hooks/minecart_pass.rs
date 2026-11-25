@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A minecart passed over a rail with a part for it. The part gets `&mut dyn ServerHost`
     /// once the cart's batch has ticked, so its writes are not lost to the cart's own tick.
     pub(in crate::game) fn native_minecart_pass(

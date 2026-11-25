@@ -11,7 +11,7 @@ pub(in crate::game::client_side) use crate::game::remote::raw_ingress::packet_er
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::remote::raw_ingress::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientCommonPacketListenerImpl.handlePostEffects`.
     pub(in crate::game::client_side) fn apply_post_effects_packet(
         &mut self,
@@ -27,7 +27,7 @@ impl Game<'_> {
             )
             .into());
         }
-        self.client.post_effects = p.effects;
+        self.side.post_effects = p.effects;
         Ok(())
     }
     pub(in crate::game) fn apply_staged_attachment_sync(
@@ -406,7 +406,7 @@ impl Game<'_> {
                     remote.session.reset_far_terrain();
                 }
                 self.remove_local_player_body();
-                self.client.post_effects.clear();
+                self.side.post_effects.clear();
                 if let Some(r) = self.remote.as_mut() {
                     r.camera = None;
                 }
@@ -520,9 +520,9 @@ impl Game<'_> {
         loop {
             // Capture tasks before checking the packet queue, so a task published after the
             // empty packet boundary cannot overtake a packet that arrived before that task.
-            self.pending_client_tasks
+            self.side.pending_client_tasks
                 .0
-                .append(&mut self.client_tasks.0.take_turn());
+                .append(&mut self.side.client_tasks.0.take_turn());
             let Some(remote) = self.remote.as_mut() else {
                 break;
             };
@@ -549,8 +549,8 @@ impl Game<'_> {
             receive = true;
         }
         self.send_suggestion_request();
-        while self.client_tasks.0.is_open()
-            && let Some(task) = self.pending_client_tasks.0.pop_front()
+        while self.side.client_tasks.0.is_open()
+            && let Some(task) = self.side.pending_client_tasks.0.pop_front()
         {
             task.run(self);
         }

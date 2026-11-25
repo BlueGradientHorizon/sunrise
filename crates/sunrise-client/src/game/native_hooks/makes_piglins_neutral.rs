@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `IItemExtension.makesPiglinsNeutral`: does `stack`, worn by `wearer`,
     /// count as gold armour to a piglin? `neutral` arrives with vanilla's answer
     /// (`#minecraft:piglin_safe_armor`); the parts of the stack's item may set it.

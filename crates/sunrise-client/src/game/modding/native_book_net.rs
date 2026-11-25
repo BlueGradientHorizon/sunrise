@@ -13,7 +13,7 @@ fn registered() -> BTreeSet<String> {
         .map(|key| key.as_str().to_owned())
         .collect()
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn sync_replaced_book_settings(&mut self, uuid: u128) {
         let Some(host) = self.lan.as_ref() else {
             return;
@@ -42,7 +42,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game::server_side) fn clear_guest_book_connection(&mut self, conn: u32) {
-        self.guest_combat.0.remove(&conn);
+        self.side.guest_combat.0.remove(&conn);
         self.native_net.book_connections.remove(&conn);
         self.native_net.placement.servers.remove(&conn);
     }

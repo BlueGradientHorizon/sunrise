@@ -13,7 +13,7 @@ use sunrise_client::{
 };
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `IShearable.isShearable` as live mob `index`'s entity parts answer it: the answering part's
     /// position in dispatch order and its answer, the first part to answer winning; none when no
     /// part answers. A type with no part costs one table lookup. Server-side.
@@ -118,8 +118,8 @@ impl Game<'_> {
             };
         if shearable
             && let (Some(uuid), Some(name)) = (
-                self.server.lan_acting_uuid,
-                self.server.lan_acting_name.clone(),
+                self.side.lan_acting_uuid,
+                self.side.lan_acting_name.clone(),
             )
         {
             let mut cancel = false;

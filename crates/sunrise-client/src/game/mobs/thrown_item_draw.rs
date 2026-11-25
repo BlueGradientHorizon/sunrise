@@ -8,7 +8,7 @@ use sunrise_client::{
     projectiles::{Projectile, ProjectileKind},
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Draws the thrown item projectile `a` at `at` (the frame's position; `c` the same relative
     /// to the camera), lit by `packed` as the entity pass packs it: true when it was one and is
     /// drawn.

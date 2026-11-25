@@ -246,7 +246,7 @@ pub(in crate::game::server_side) fn dist_sqr(a: [i32; 3], b: (i32, i32, i32)) ->
     d(a[0], b.0).pow(2) + d(a[1], b.1).pow(2) + d(a[2], b.2).pow(2)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_post_block_game_event(
         &mut self,
         event: &'static str,
@@ -268,7 +268,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn server_sculk_actor(&self) -> Option<Who> {
-        self.server.sculk.actor
+        self.side.sculk.actor
     }
 
     /// `Entity.gameEvent(event, attributedTo)` at `at`, attributed to `source`
@@ -281,7 +281,7 @@ impl Game<'_> {
     ) {
         use super::commands::Target;
         if let Some(Target::Guest(conn)) = source {
-            if self.server.lan_acting == Some(conn) {
+            if self.side.lan_acting == Some(conn) {
                 let ctx = self.player_context(None);
                 self.post_game_event(event, at, ctx);
                 return;
@@ -415,7 +415,7 @@ impl Game<'_> {
         );
         let ctx = if mod_api::__private::listened(mod_api::HookId::VanillaGameEvent) {
             let ctx = make_ctx(self);
-            let cause = event_cause(ctx.source, self.server.lan_acting_entity);
+            let cause = event_cause(ctx.source, self.side.lan_acting_entity);
             let mut cancel = false;
             self.native_vanilla_game_event(
                 self.dim.id(),
@@ -432,15 +432,15 @@ impl Game<'_> {
         } else {
             None
         };
-        if !self.server.sculk.tables.built {
+        if !self.side.sculk.tables.built {
             return;
         }
         let at = block_of(pos);
         let radius = sculk::notification_radius(event).min(16);
-        let near = self.server.sculk.index.within(at, radius);
+        let near = self.side.sculk.index.within(at, radius);
         // The wardens and allays that may hear it, in the mobs' order, while
         // the slots taken for the mobs' events hold; else every mob is asked.
-        let mobs = self.server.sculk.mob_slots.as_ref().and_then(|s| {
+        let mobs = self.side.sculk.mob_slots.as_ref().and_then(|s| {
             let mut near = Vec::new();
             for &(i, id) in &s.listeners {
                 let mob = self.mobs.get(i)?;
@@ -454,7 +454,7 @@ impl Game<'_> {
                     near.push(i);
                 }
             }
-            (s.next_entity == self.server.next_entity).then_some(near)
+            (s.next_entity == self.side.next_entity).then_some(near)
         });
         if near.is_empty() && mobs.as_ref().is_some_and(Vec::is_empty) {
             return;
@@ -478,8 +478,8 @@ impl Game<'_> {
                         self.mob_listen(i as usize, event, pos, &ctx);
                     }
                 }
-                self.server.sculk.listeners = slots;
-                self.server.sculk.listeners_of = Some(stamp);
+                self.side.sculk.listeners = slots;
+                self.side.sculk.listeners_of = Some(stamp);
             }
         }
     }
@@ -496,7 +496,7 @@ impl Game<'_> {
         state: Option<BlockStateId>,
     ) {
         if let Some(conn) =
-            guest.filter(|conn| owner.is_some() && self.server.lan_acting != Some(*conn))
+            guest.filter(|conn| owner.is_some() && self.side.lan_acting != Some(*conn))
         {
             let posted = self
                 .as_guest(conn, |g| {
@@ -521,10 +521,10 @@ impl Game<'_> {
     pub(in crate::game) fn tick_entity_events(&mut self) {
         self.tick_player_sculk_events();
         self.tick_mob_sculk_events();
-        if !self.server.sculk.falling_items.is_empty() {
+        if !self.side.sculk.falling_items.is_empty() {
             let present: std::collections::HashSet<u32> =
                 self.dropped.iter().map(|item| item.id).collect();
-            self.server
+            self.side
                 .sculk
                 .falling_items
                 .retain(|id| present.contains(id));
@@ -585,10 +585,10 @@ impl Game<'_> {
             .filter(|(_, m)| matches!(m.species(), Species::Warden | Species::Allay))
             .map(|(i, m)| (i, m.id))
             .collect();
-        self.server.sculk.mob_slots = Some(MobSlots {
+        self.side.sculk.mob_slots = Some(MobSlots {
             by_id,
             listeners,
-            next_entity: self.server.next_entity,
+            next_entity: self.side.next_entity,
         });
         // Steps, landings, splashes, flaps and stepping on redstone ore come
         // from the mob's own tick (Entity.move, LivingEntity.aiStep's
@@ -651,16 +651,16 @@ impl Game<'_> {
                 }
             }
             if let Some(t) = damaged
-                && self.server.sculk.damaged.get(&id) != Some(&t)
+                && self.side.sculk.damaged.get(&id) != Some(&t)
             {
-                self.server.sculk.damaged.insert(id, t);
+                self.side.sculk.damaged.insert(id, t);
                 self.post_entity_event("minecraft:entity_damage", Who::Mob(id));
             }
         }
-        self.server.sculk.mob_slots = None;
+        self.side.sculk.mob_slots = None;
         let alive: FxHashSet<u32> = self.mobs.iter().map(|m| m.id).collect();
-        self.server.sculk.damaged.retain(|id, _| alive.contains(id));
-        self.server.sculk.mounts.retain(|who, _| match who {
+        self.side.sculk.damaged.retain(|id, _| alive.contains(id));
+        self.side.sculk.mounts.retain(|who, _| match who {
             Who::Player => true,
             Who::Mob(id) => alive.contains(id),
         });
@@ -692,12 +692,12 @@ impl Game<'_> {
                 flying,
                 false,
             );
-            if let Some(last) = self.server.sculk.last_health
+            if let Some(last) = self.side.sculk.last_health
                 && health < last
             {
                 self.post_entity_event("minecraft:entity_damage", Who::Player);
             }
-            self.server.sculk.last_health = Some(health);
+            self.side.sculk.last_health = Some(health);
         }
     }
     /// The block entity phase for sculk: vibration tickers and catalysts, in
@@ -709,7 +709,7 @@ impl Game<'_> {
         // every player's tickets (`update_chunk_tickets`), once the chunk is
         // lit: asked once per chunk, as the sensors share few chunks. Nothing
         // a sculk tick does loads, unloads or lights a chunk or moves a ticket.
-        let levels = self.tickets.0.levels();
+        let levels = self.side.tickets.0.levels();
         let chunks = &self.world.chunks;
         let pending = &self.world.entities_pending;
         let mut ticking = FxHashMap::<(i32, i32), bool>::default();
@@ -725,7 +725,7 @@ impl Game<'_> {
         // chosen on the next tick at the earliest, as in vanilla).
         let entities = &self.world.block_entities;
         let due: Vec<((i32, i32, i32), bool)> = self
-            .server
+            .side
             .sculk
             .index
             .iter()
@@ -776,9 +776,9 @@ impl Game<'_> {
                 f64::from(at.2) + 0.5,
             ];
             let yaw = mod_api::client::camera::wrap_degrees(self.world.random.next_float() * 360.0);
-            self.server.next_entity += 1;
+            self.side.next_entity += 1;
             let mut mob = Mob::new(
-                self.server.next_entity,
+                self.side.next_entity,
                 kind.clone(),
                 sunrise_core::geometry::Vec3::new(spot[0], spot[1], spot[2]),
                 yaw,
@@ -805,9 +805,9 @@ impl Game<'_> {
 
     /// Run `f` with the player as the cause of the block changes it makes.
     pub(in crate::game) fn with_player_actor<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
-        let prior = self.server.sculk.actor.replace(Who::Player);
+        let prior = self.side.sculk.actor.replace(Who::Player);
         let out = f(self);
-        self.server.sculk.actor = prior;
+        self.side.sculk.actor = prior;
         out
     }
 
@@ -837,7 +837,7 @@ impl Game<'_> {
             }
             Some("warn") => {
                 let level = words.get(2).ok_or("missing level")?.parse::<i32>()?;
-                self.server.sculk.tracker.set_warning_level(level);
+                self.side.sculk.tracker.set_warning_level(level);
                 Ok(serde_json::json!({ "ok": true }))
             }
             _ => Ok(self.sculk_status()),
@@ -846,7 +846,7 @@ impl Game<'_> {
     /// The `sculk` control command's listing.
     pub(in crate::game::server_side) fn sculk_status(&self) -> serde_json::Value {
         let listeners: Vec<serde_json::Value> = self
-            .server
+            .side
             .sculk
             .index
             .iter()
@@ -865,10 +865,10 @@ impl Game<'_> {
             .collect();
         serde_json::json!({
             "listeners": listeners,
-            "warning_level": self.server.sculk.tracker.warning_level,
-            "cooldown": self.server.sculk.tracker.cooldown_ticks,
+            "warning_level": self.side.sculk.tracker.warning_level,
+            "cooldown": self.side.sculk.tracker.cooldown_ticks,
             "darkness": 0.0,
-            "chunks_known": self.server.sculk.known.len(),
+            "chunks_known": self.side.sculk.known.len(),
         })
     }
     /// `WardenSpawnTrackerCommand`: clear the player's tracker or set its
@@ -877,11 +877,11 @@ impl Game<'_> {
         use sunrise_client::text::Text;
         let key = match level {
             Some(level) => {
-                self.server.sculk.tracker.set_warning_level(level);
+                self.side.sculk.tracker.set_warning_level(level);
                 "commands.warden_spawn_tracker.set.success.single"
             }
             None => {
-                self.server.sculk.tracker.reset();
+                self.side.sculk.tracker.reset();
                 "commands.warden_spawn_tracker.clear.success.single"
             }
         };
@@ -898,17 +898,17 @@ impl Game<'_> {
     }
     /// `ServerPlayer`'s `warden_spawn_tracker` from the player data.
     pub(in crate::game) fn load_warden_tracker(&mut self) {
-        if self.server.sculk.tracker_loaded {
+        if self.side.sculk.tracker_loaded {
             return;
         }
-        self.server.sculk.tracker_loaded = true;
+        self.side.sculk.tracker_loaded = true;
         if let Some(tag) = self
             .level
             .player_extra
             .as_ref()
             .and_then(|p| p.get("warden_spawn_tracker"))
         {
-            self.server.sculk.tracker = WardenSpawnTracker::from_nbt(tag);
+            self.side.sculk.tracker = WardenSpawnTracker::from_nbt(tag);
         }
     }
     /// Whether a mod canceled the `ServerPlayer.tick` of the world's owner, whose warden spawn
@@ -928,10 +928,10 @@ impl Game<'_> {
     pub(in crate::game::server_side) fn warden_tracker_tag(
         &self,
     ) -> Option<sunrise_core::nbt::Tag> {
-        self.server
+        self.side
             .sculk
             .tracker_loaded
-            .then(|| self.server.sculk.tracker.to_nbt())
+            .then(|| self.side.sculk.tracker.to_nbt())
     }
     /// Write the tracker into the player data being saved. With a LAN owner,
     /// `store_owner` rewrites that from the owner's guest, so it puts the
@@ -950,13 +950,13 @@ impl Game<'_> {
     }
     /// Who is causing the block changes being processed.
     pub(in crate::game) fn sculk_actor(&self) -> Option<Who> {
-        self.server.sculk.actor
+        self.side.sculk.actor
     }
 
     // ---- setup and the block entity index ----
 
     pub(in crate::game) fn sculk_prepare(&mut self) {
-        if self.server.sculk.tables.built {
+        if self.side.sculk.tables.built {
             return;
         }
         let registry = self.pack.assets.registry;
@@ -1004,10 +1004,10 @@ impl Game<'_> {
             );
         }
         self.world.watched = t.kinds.iter().map(|k| *k != 0).collect();
-        self.server.sculk.tables = t;
+        self.side.sculk.tables = t;
     }
     pub(in crate::game::server_side) fn kind_of_state(&self, state: u32) -> u8 {
-        self.server
+        self.side
             .sculk
             .tables
             .kinds
@@ -1037,13 +1037,13 @@ impl Game<'_> {
         // Chunks that arrived or left (every half second is plenty).
         // Nothing to do while no chunk came or went.
         let revision = self.world.chunks.membership_revision();
-        if self.server.sculk.ticks.is_multiple_of(10)
-            && self.server.sculk.known_revision != Some(revision)
+        if self.side.sculk.ticks.is_multiple_of(10)
+            && self.side.sculk.known_revision != Some(revision)
         {
-            self.server.sculk.known_revision = Some(revision);
+            self.side.sculk.known_revision = Some(revision);
             let loaded: HashSet<(i32, i32)> = self.world.chunks.keys().copied().collect();
             let arrived: Vec<(i32, i32)> = loaded
-                .difference(&self.server.sculk.known)
+                .difference(&self.side.sculk.known)
                 .copied()
                 .collect();
             for key in arrived {
@@ -1052,19 +1052,19 @@ impl Game<'_> {
             // The blocks of every chunk that left, in one pass: a player
             // leaving unloads thousands of chunks at once.
             let gone: HashSet<(i32, i32)> = self
-                .server
+                .side
                 .sculk
                 .known
                 .difference(&loaded)
                 .copied()
                 .collect();
             if !gone.is_empty() {
-                self.server
+                self.side
                     .sculk
                     .index
                     .retain(|p| !gone.contains(&(p.0 >> 4, p.2 >> 4)));
             }
-            self.server.sculk.known = loaded;
+            self.side.sculk.known = loaded;
         }
         self.sculk_sync_writes();
     }
@@ -1101,12 +1101,12 @@ impl Game<'_> {
             ) {
                 self.world.block_entities.remove(&key);
             }
-            self.server.sculk.index.remove(&key);
+            self.side.sculk.index.remove(&key);
             if let Some(e) = Self::entity_for_kind(new_kind) {
                 self.world
                     .block_entities
                     .insert(key, BlockEntity::Sculk(Box::new(e)));
-                self.server.sculk.index.insert(key);
+                self.side.sculk.index.insert(key);
             }
         }
     }
@@ -1151,7 +1151,7 @@ impl Game<'_> {
                     .block_entities
                     .insert(pos, BlockEntity::Sculk(Box::new(e)));
             }
-            self.server.sculk.index.insert(pos);
+            self.side.sculk.index.insert(pos);
         }
     }
     pub(in crate::game::server_side) fn sculk_entity(
@@ -1167,7 +1167,7 @@ impl Game<'_> {
     // ---- contexts ----
 
     pub(in crate::game) fn state_dampens(&self, state: Option<BlockStateId>) -> bool {
-        state.is_some_and(|s| self.state_is(&self.server.sculk.tables.dampens, s))
+        state.is_some_and(|s| self.state_is(&self.side.sculk.tables.dampens, s))
     }
     /// `GameEvent.Context.of(mob, state)`.
     pub(in crate::game) fn mob_context(&mut self, id: u32, state: Option<BlockStateId>) -> Context {
@@ -1178,7 +1178,7 @@ impl Game<'_> {
     /// mobs' events while the mob is still there (mobs are only appended
     /// meanwhile), else from the mob index (as a scan finds it).
     pub(in crate::game) fn mob_slot(&mut self, id: u32) -> Option<usize> {
-        if let Some(slots) = &self.server.sculk.mob_slots
+        if let Some(slots) = &self.side.sculk.mob_slots
             && let Some(&i) = slots.by_id.get(&id)
             && self.mobs.get(i).is_some_and(|m| m.id == id)
         {
@@ -1253,10 +1253,10 @@ impl Game<'_> {
     /// hundreds of such events a tick: one walk serves until the list is next
     /// written to ([`ListStamp`]).
     pub(in crate::game) fn listener_slots(&mut self, stamp: ListStamp) -> Vec<u32> {
-        let mut slots = std::mem::take(&mut self.server.sculk.listeners);
+        let mut slots = std::mem::take(&mut self.side.sculk.listeners);
         // Taken: an event a listener posts while it hears this one finds none
         // and walks the list itself.
-        if self.server.sculk.listeners_of.take() != Some(stamp) {
+        if self.side.sculk.listeners_of.take() != Some(stamp) {
             slots.clear();
             slots.extend(
                 self.mobs
@@ -1342,7 +1342,7 @@ impl Game<'_> {
             .get(&self.mobs, id)
             .and_then(|m| m.last_damage.map(|(_, t)| t))
         {
-            self.server.sculk.damaged.insert(id, t);
+            self.side.sculk.damaged.insert(id, t);
         }
         self.post_entity_event("minecraft:entity_damage", Who::Mob(id));
     }
@@ -1369,14 +1369,14 @@ impl Game<'_> {
         event: &'static str,
         state: Option<BlockStateId>,
     ) {
-        let who = self.server.sculk.actor;
+        let who = self.side.sculk.actor;
         self.post_block_game_event(event, [pos.x, pos.y, pos.z], who, state);
     }
 
     pub(in crate::game::server_side) fn occluded(&self, origin: [f64; 3], dest: [f64; 3]) -> bool {
         sculk::is_occluded(origin, dest, |p| {
             self.state_is(
-                &self.server.sculk.tables.occludes,
+                &self.side.sculk.tables.occludes,
                 self.world.block(p.x, p.y, p.z),
             )
         })
@@ -1390,7 +1390,7 @@ impl Game<'_> {
         ctx: &Context,
     ) {
         let Some(entity) = self.sculk_entity(key) else {
-            self.server.sculk.index.remove(&key);
+            self.side.sculk.index.remove(&key);
             return;
         };
         let (kind, radius, busy) = (
@@ -1499,7 +1499,7 @@ impl Game<'_> {
     ) {
         let now = self.world.game_time;
         let ctx = warden::heard_by(*ctx, &self.mob_teams(), self.mobs[index].id);
-        let (occludes, world) = (&self.server.sculk.tables.occludes, &self.world);
+        let (occludes, world) = (&self.side.sculk.tables.occludes, &self.world);
         let avoided = warden::listen(&mut self.mobs[index], now, event, pos, &ctx, |a, b| {
             sculk::is_occluded(a, b, |p| {
                 let state = world.block(p.x, p.y, p.z);
@@ -1521,7 +1521,7 @@ impl Game<'_> {
         ctx: &Context,
     ) {
         let now = self.world.game_time;
-        let (occludes, world) = (&self.server.sculk.tables.occludes, &self.world);
+        let (occludes, world) = (&self.side.sculk.tables.occludes, &self.world);
         let dimension = self.dim.id();
         allay::listen(
             &mut self.mobs[index],
@@ -1545,7 +1545,7 @@ impl Game<'_> {
     /// tracker (`ServerPlayer.tick`), and the events of entities standing on
     /// and moving over blocks.
     pub(in crate::game) fn tick_sculk_entities(&mut self) {
-        self.server.sculk.ticks = self.server.sculk.ticks.wrapping_add(1);
+        self.side.sculk.ticks = self.side.sculk.ticks.wrapping_add(1);
         // Its steps as spans for `sunrise-report` (nothing is read while spans are off).
         let mut laps = sunrise_client::spans::laps();
         self.sculk_prepare();
@@ -1554,7 +1554,7 @@ impl Game<'_> {
         // ServerPlayer.tick's wardenSpawnTracker: the owner's, which a mod's Pre that canceled
         // the owner's tick stops this tick (game/network/lan_actions/tick.rs).
         if !self.owner_tick_canceled() {
-            self.server.sculk.tracker.tick();
+            self.side.sculk.tracker.tick();
         }
         laps.lap("sculk_wardens");
         self.sculk_step_on();
@@ -1569,7 +1569,7 @@ impl Game<'_> {
     ) -> Result<()> {
         let time = self.world.game_time;
         let Some(entity) = self.sculk_entity(key) else {
-            self.server.sculk.index.remove(&key);
+            self.side.sculk.index.remove(&key);
             return Ok(());
         };
         match entity.kind {
@@ -1699,7 +1699,7 @@ impl Game<'_> {
                 let n = direction.normal();
                 let relative = (key.0 + n[0], key.1 + n[1], key.2 + n[2]);
                 let state = self.world.block(relative.0, relative.1, relative.2);
-                if self.state_is(&self.server.sculk.tables.resonator, state) {
+                if self.state_is(&self.side.sculk.tables.resonator, state) {
                     let ctx = self.event_source_context(source, Some(state));
                     self.post_game_event(
                         sculk::RESONANCE[frequency as usize - 1],
@@ -1750,7 +1750,7 @@ impl Game<'_> {
                 (at[1] - 0.2).floor() as i32,
                 at[2].floor() as i32,
             );
-            if !self.server.sculk.index.contains(&key) {
+            if !self.side.sculk.index.contains(&key) {
                 continue;
             }
             let state = self.world.block(key.0, key.1, key.2);
@@ -1842,9 +1842,9 @@ impl Game<'_> {
                 && (m.position.z - c[2]).abs() < 24.0
         });
         // The only player is the one who set it off.
-        let mut trackers = [self.server.sculk.tracker];
+        let mut trackers = [self.side.sculk.tracker];
         let level = WardenSpawnTracker::try_warn(&mut trackers, warden_nearby);
-        self.server.sculk.tracker = trackers[0];
+        self.side.sculk.tracker = trackers[0];
         match level {
             Some(level) => {
                 if let Some(e) = self.sculk_entity(key) {
@@ -2011,7 +2011,7 @@ impl Game<'_> {
         // order they registered in. The first one takes the experience.
         let source = block_of(at);
         let mut candidates: Vec<(f64, (i32, i32, i32), usize, (i32, i32, i32))> = Vec::new();
-        for (order, key) in self.server.sculk.index.iter().copied().enumerate() {
+        for (order, key) in self.side.sculk.index.iter().copied().enumerate() {
             if dist_sqr(source, key) > 64 {
                 continue;
             }
@@ -2204,13 +2204,13 @@ impl Game<'_> {
     ) {
         let at = [position.x, position.y, position.z];
         if self.in_water_at(at) {
-            self.server.sculk.falling_items.remove(&id);
+            self.side.sculk.falling_items.remove(&id);
             return;
         }
         if position.y < previous.y {
-            self.server.sculk.falling_items.insert(id);
+            self.side.sculk.falling_items.insert(id);
         }
-        if on_ground && self.server.sculk.falling_items.remove(&id) {
+        if on_ground && self.side.sculk.falling_items.remove(&id) {
             // EntityType.ITEM: 0.25 by 0.25.
             let bounds = Aabb::new(
                 Vec3::new(position.x - 0.125, position.y, position.z - 0.125),
@@ -2255,7 +2255,7 @@ impl Game<'_> {
         ];
         self.sculk_prepare();
         let state = self.world.block(pos[0], pos[1], pos[2]);
-        if self.state_is(&self.server.sculk.tables.redstone_ore, state) {
+        if self.state_is(&self.side.sculk.tables.redstone_ore, state) {
             let _ = self.attack_block(pos);
         }
     }
@@ -2307,7 +2307,7 @@ impl Game<'_> {
     /// the rider has now and the one it had last tick. `announce` is false
     /// for a rider first seen riding.
     pub(in crate::game) fn mount_events(&mut self, who: Who, vehicle: Option<u32>, announce: bool) {
-        let last = self.server.sculk.mounts.get(&who).copied();
+        let last = self.side.sculk.mounts.get(&who).copied();
         // Riding nothing, as last tick: nothing to tell or keep.
         if vehicle.is_none() && last.is_none() {
             return;
@@ -2327,10 +2327,10 @@ impl Game<'_> {
         let kept = last.filter(|l| Some(l.0) == vehicle).map(|l| l.1);
         match (vehicle, now.or(kept)) {
             (Some(id), Some(at)) => {
-                self.server.sculk.mounts.insert(who, (id, at));
+                self.side.sculk.mounts.insert(who, (id, at));
             }
             _ => {
-                self.server.sculk.mounts.remove(&who);
+                self.side.sculk.mounts.remove(&who);
             }
         }
     }
@@ -2382,7 +2382,7 @@ impl Game<'_> {
     }
     pub(in crate::game) fn motion_steps_mut(&mut self, who: Who) -> Option<&mut Option<Steps>> {
         match who {
-            Who::Player => Some(&mut self.server.sculk.steps),
+            Who::Player => Some(&mut self.side.sculk.steps),
             Who::Mob(id) => {
                 let slot = self.mob_slot(id)?;
                 Some(&mut self.mobs[slot].movement_emission)
@@ -2462,7 +2462,7 @@ impl Game<'_> {
             (at[1] - 1.0e-5).floor() as i32,
             at[2].floor() as i32,
         );
-        let climbable = self.state_is(&self.server.sculk.tables.climbable, unsupported);
+        let climbable = self.state_is(&self.side.sculk.tables.climbable, unsupported);
         let travelled = if climbable {
             ((dx * dx + dy * dy + dz * dz).sqrt() * f64::from(0.6f32)) as f32
         } else {

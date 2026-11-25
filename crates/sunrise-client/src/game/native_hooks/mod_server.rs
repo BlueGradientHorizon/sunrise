@@ -498,12 +498,12 @@ pub(in crate::game) mod world_helpers;
 
 impl Drop for ContentsChangedGuard<'_, '_> {
     fn drop(&mut self) {
-        self.game.server.contents_changing.pop();
+        self.game.side.contents_changing.pop();
     }
 }
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `AnimalTameEvent` for the mob at `index`, whose taming roll by the
     /// player `tamer` (`tamer_entity_id`) succeeded: true when a mod cancels
     /// it, and the taming fails.
@@ -555,7 +555,7 @@ impl Game<'_> {
             .as_ref()
             .is_some_and(|p| p.entity_id == attacker)
         {
-            self.player_uuid_of(self.server.lan_acting)
+            self.player_uuid_of(self.side.lan_acting)
         } else {
             self.lan
                 .as_ref()
@@ -776,7 +776,7 @@ impl Game<'_> {
     }
     pub(in crate::game) fn server_clicker(&mut self) -> (u128, i32) {
         let entity = self
-            .server
+            .side
             .lan_acting_entity
             .map_or_else(|| self.own_entity_id(), |id| id as i32);
         (self.server_acting_id(), entity)
@@ -972,7 +972,7 @@ impl Game<'_> {
         let veto = mod_api::__private::listened(mod_api::HookId::EntityPlace);
         if veto {
             let against_pos = decision.placed_against_pos();
-            let block = |game: &Game<'_>, pos: BlockPos| game.world.block(pos.x, pos.y, pos.z);
+            let block = |game: &Game<'_, crate::game::server_side::ServerState>, pos: BlockPos| game.world.block(pos.x, pos.y, pos.z);
             let against = block(self, against_pos);
             let target_before = block(self, preview.pos);
             // One proposed state per affected cell. A companion at the pre-clear

@@ -5,12 +5,12 @@ pub(in crate::game::client_side) use crate::game::remote::tracking::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::particles::TrackingBody;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn detach_remote_tracking_entity(&mut self, id: i32) {
         let target = TrackingTarget::Entity(id);
-        if self.particles.0.has_tracking_target(target) {
+        if self.side.particles.0.has_tracking_target(target) {
             let last_body = self.remote_entity_tracking_body(id);
-            self.particles
+            self.side.particles
                 .0
                 .detach_tracking_target(target, || last_body);
         }
@@ -40,7 +40,7 @@ impl Game<'_> {
         {
             return Some(mob_tracking_body(&self.mobs[i]));
         }
-        if let Some(entity) = self.client.interactions.get(&id) {
+        if let Some(entity) = self.side.interactions.get(&id) {
             let Vec3 { x, y, z } = entity.position;
             return Some(TrackingBody {
                 feet: [x, y, z],
@@ -75,7 +75,7 @@ impl Game<'_> {
             }
             "minecraft:fishing_bobber" => {
                 let hook = self
-                    .client
+                    .side
                     .remote_hooks
                     .iter()
                     .find(|hook| hook.id == eid)?;
@@ -83,7 +83,7 @@ impl Game<'_> {
                 [x, y, z]
             }
             _ => self
-                .text_displays
+                .side.text_displays
                 .0
                 .get(&id)
                 .map(|display| display.position().to_array())
@@ -105,10 +105,10 @@ impl Game<'_> {
         if let Some(row) = self.remote.as_ref().and_then(|r| r.general.rows.get(&id)) {
             return Some(row.position);
         }
-        if let Some(entity) = self.client.interactions.get(&id) {
+        if let Some(entity) = self.side.interactions.get(&id) {
             return Some([entity.position.x, entity.position.y, entity.position.z]);
         }
-        if let Some(display) = self.text_displays.0.get(&id) {
+        if let Some(display) = self.side.text_displays.0.get(&id) {
             return Some(display.position().to_array());
         }
         let eid = u32::try_from(id).ok()?;
@@ -197,10 +197,10 @@ impl Game<'_> {
         if let Some((_, p)) = self.end.eye_positions().find(|(eye_id, _)| *eye_id == eid) {
             return Some(p);
         }
-        if let Some(h) = self.client.remote_hooks.iter().find(|h| h.id == eid) {
+        if let Some(h) = self.side.remote_hooks.iter().find(|h| h.id == eid) {
             return Some([h.position.x, h.position.y, h.position.z]);
         }
-        if let Some(&fence) = self.client.remote_knots.get(&eid) {
+        if let Some(&fence) = self.side.remote_knots.get(&eid) {
             let p = sunrise_client::mobs::leash::knot_state(fence).position;
             return Some([p.x, p.y, p.z]);
         }

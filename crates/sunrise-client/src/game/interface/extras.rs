@@ -24,9 +24,9 @@ pub(in crate::game) struct ExtrasState {
     pub(in crate::game) frame_partial_ticks: Option<(f32, f32)>,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     fn extras_now(&self) -> f64 {
-        self.client.started.elapsed().as_secs_f64()
+        self.side.started.elapsed().as_secs_f64()
     }
     /// Mouse buttons while playing, for mods' clicks.
     pub(in crate::game::client_side) fn extras_mouse(
@@ -42,19 +42,19 @@ impl Game<'_> {
         // For mods (`input.clicks-per-second`, `native_clicks`).
         if pressed {
             let now = self.extras_now();
-            self.client.extras.cps[i].click(now);
+            self.side.extras.cps[i].click(now);
         }
     }
     /// Once per frame: update frame timing and the extra HUD state.
     pub(in crate::game) fn extras_frame(&mut self, elapsed: Duration) {
         // For mods (`render.frame-stats`, `native_frame_rate`).
         let now = self.extras_now();
-        self.client
+        self.side
             .extras
             .fps
             .record(now, elapsed.as_secs_f32() * 1000.0);
         let (world_partial_tick, partial_tick) = self.frame_partial_ticks();
-        self.client.extras.frame_partial_ticks = Some((world_partial_tick, partial_tick));
+        self.side.extras.frame_partial_ticks = Some((world_partial_tick, partial_tick));
         self.native_render_frame_pre(elapsed, world_partial_tick, partial_tick);
         // A clear a mod asked for (in this frame's `RenderFrameEvent.Pre`, or after the last
         // frame was drawn) lands before this frame's particles are drawn, paused or not.
@@ -64,13 +64,13 @@ impl Game<'_> {
     }
     /// The frame counter for mods: fps, min, 1% low.
     pub(in crate::game) fn frame_reading(&self) -> (u32, u32, u32) {
-        let r = self.client.extras.fps.reading();
+        let r = self.side.extras.fps.reading();
         (r.fps, r.min, r.low)
     }
     /// Attack and use clicks in the last second.
     pub(in crate::game) fn click_reading(&mut self) -> (u32, u32) {
         let now = self.extras_now();
-        let [l, r] = &mut self.client.extras.cps;
+        let [l, r] = &mut self.side.extras.cps;
         (l.per_second(now) as u32, r.per_second(now) as u32)
     }
     /// A mod's zoom in effect (`native_zoom`): (factor, smooth, turning
@@ -109,7 +109,7 @@ impl Game<'_> {
         // The layers crates registered (`sunrise_hooks::hud`): none, no canvas.
         let layers = sunrise_hooks::hud::engine::all();
         if !layers.is_empty() {
-            let shown = Corner::ALL.map(|corner| !(self.client.debug && corner == Corner::TopLeft));
+            let shown = Corner::ALL.map(|corner| !(self.side.debug && corner == Corner::TopLeft));
             extras_hud::draw_layers(layers, batch, &self.gui.atlas, corners, shown);
         }
     }
@@ -117,7 +117,7 @@ impl Game<'_> {
     /// (`Hud.extractEffects`: beneficial at y 1, harmful at y 26).
     pub(in crate::game::client_side) fn effect_rows_height(&self) -> f32 {
         let effects = &self.potions.effects.list;
-        if effects.is_empty() || self.client.screen != Screen::Playing || self.pvp_effects_shown() {
+        if effects.is_empty() || self.side.screen != Screen::Playing || self.pvp_effects_shown() {
             return 0.0;
         }
         let harmful = effects.iter().any(|e| {

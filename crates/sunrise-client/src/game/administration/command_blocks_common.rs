@@ -9,7 +9,7 @@ use sunrise_world::chunk::BlockState;
 
 pub(in crate::game) type Pos = (i32, i32, i32);
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `Player.canUseGameMasterBlocks`: creative with game master commands.
     pub(in crate::game) fn can_use_game_master_blocks(&self) -> bool {
         self.creative && self.ui.registries.permission >= 2

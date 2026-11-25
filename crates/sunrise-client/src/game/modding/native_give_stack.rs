@@ -5,7 +5,7 @@ use sunrise_client::items::ItemStack;
 /// The most SNBT text `item_from_snbt` reads: `NbtAccounter`'s default quota, 2 MiB.
 const MAX_SNBT_BYTES: usize = 2 * 1024 * 1024;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `ItemStack.CODEC` reading the compound `snbt` stands for (`TagParser`): only that
     /// compound and whitespace. At most 2 MiB and 512 levels: vanilla's SNBT parser has
     /// neither limit (deep text ends in a stack overflow); they are this API's bound so

@@ -567,12 +567,12 @@ fn port_error(value: &str) -> Option<&'static str> {
         _ => Some("lanServer.port.invalid"),
     }
 }
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn remote_world_options_permission(
         &mut self,
         permission: bool,
     ) {
-        if let Some(o) = self.world_options.0.as_mut() {
+        if let Some(o) = self.side.world_options.0.as_mut() {
             let lost = o.gamemaster && !permission;
             o.gamemaster = permission;
             if lost && o.remote {
@@ -585,7 +585,7 @@ impl Game<'_> {
         difficulty: u8,
         locked: bool,
     ) {
-        if let Some(o) = self.world_options.0.as_mut() {
+        if let Some(o) = self.side.world_options.0.as_mut() {
             o.server_difficulty(difficulty, locked);
         }
     }
@@ -605,7 +605,7 @@ impl Game<'_> {
         entries: Vec<play::GameRuleEntry>,
     ) {
         let Some(o) = self
-            .world_options
+            .side.world_options
             .0
             .as_mut()
             .filter(|o| o.view == View::GameRules)
@@ -695,20 +695,20 @@ impl Game<'_> {
             },
         };
         options.initial = options.snapshot();
-        self.world_options.0 = Some(options);
+        self.side.world_options.0 = Some(options);
         self.set_screen(Screen::WorldOptions);
     }
 
     pub(in crate::game) fn close_world_options(&mut self) {
-        self.world_options.0 = None;
+        self.side.world_options.0 = None;
         self.set_screen(Screen::Paused);
     }
 
     /// `WorldOptionsScreen.updatePersonalGameModeButton`: update both the displayed
     /// personal mode and its baseline without discarding unrelated edits.
     pub(in crate::game::client_side) fn update_world_options_personal_mode(&mut self, mode: i32) {
-        if self.client.screen == Screen::WorldOptions
-            && let Some(o) = self.world_options.0.as_mut()
+        if self.side.screen == Screen::WorldOptions
+            && let Some(o) = self.side.world_options.0.as_mut()
         {
             o.update_personal_mode(mode);
         }
@@ -732,7 +732,7 @@ impl Game<'_> {
     /// Escape: the question and RestrictionsScreen return to the options
     /// (their onClose), which close; the game rules ask first.
     pub(in crate::game::client_side) fn world_options_escape(&mut self) {
-        match self.world_options.0.as_mut() {
+        match self.side.world_options.0.as_mut() {
             Some(o) if o.view == View::GameRules => {
                 if o.rules.is_none() {
                     // A server may be slow to answer REQUEST_GAMERULE_VALUES.
@@ -750,7 +750,7 @@ impl Game<'_> {
     /// changed rules (ServerboundSetGameRulePacket), which the server's
     /// handleSetGameRule sets for a gamemaster and tells its operators.
     fn close_game_rules(&mut self, exit: Exit) {
-        if let Some(o) = self.world_options.0.as_mut() {
+        if let Some(o) = self.side.world_options.0.as_mut() {
             o.view = View::Options;
             o.rules = None;
         }
@@ -782,13 +782,13 @@ impl Game<'_> {
     }
 
     pub(in crate::game::client_side) fn draw_world_options(&mut self, batch: &mut HudBatch) {
-        let Some(view) = self.world_options.0.as_ref().map(|o| o.view) else {
+        let Some(view) = self.side.world_options.0.as_ref().map(|o| o.view) else {
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
             return;
         };
         match view {
-            View::Options => self.draw_options_view(batch, self.client.cursor, true),
+            View::Options => self.draw_options_view(batch, self.side.cursor, true),
             View::LockQuestion => {
                 // PopupScreen: the screen behind without the pointer, then the popup.
                 self.draw_options_view(batch, (-1.0, -1.0), false);
@@ -796,8 +796,8 @@ impl Game<'_> {
             }
             View::Restrictions => self.draw_restrictions(batch),
             View::GameRules => {
-                if self.world_options.0.as_ref().unwrap().rules.is_some() {
-                    self.world_options
+                if self.side.world_options.0.as_ref().unwrap().rules.is_some() {
+                    self.side.world_options
                         .0
                         .as_ref()
                         .unwrap()
@@ -810,20 +810,20 @@ impl Game<'_> {
                         sunrise_client::screen_draw::RenderPhase::Background,
                     );
                     let tooltip = self
-                        .world_options
+                        .side.world_options
                         .0
                         .as_mut()
                         .unwrap()
                         .rules
                         .as_mut()
                         .unwrap()
-                        .draw_contents(batch, &self.gui.atlas, self.client.cursor);
+                        .draw_contents(batch, &self.gui.atlas, self.side.cursor);
                     self.draw_screen_phase(
                         batch,
                         sunrise_client::screen_draw::RenderPhase::Foreground,
                     );
                     if let Some(tooltip) = tooltip {
-                        ui::tooltip(batch, &self.gui.atlas, &tooltip, self.client.cursor);
+                        ui::tooltip(batch, &self.gui.atlas, &tooltip, self.side.cursor);
                     }
                 } else {
                     ui::menu_background(
@@ -849,7 +849,7 @@ impl Game<'_> {
     }
 
     fn draw_lock_question(&self, batch: &mut HudBatch) {
-        let o = self.world_options.0.as_ref().unwrap();
+        let o = self.side.world_options.0.as_ref().unwrap();
         // PopupScreen over WorldOptionsScreen: its title and message.
         sunrise_client::widgets::begin_screen(|| {
             let name = Text::translate(
@@ -883,7 +883,7 @@ impl Game<'_> {
         }
         for (i, ((bx, by), key)) in p.buttons.into_iter().zip(["gui.yes", "gui.no"]).enumerate() {
             let is_focused = o.popup_focus == Some(i);
-            let hover = ui::hovered(self.client.cursor, bx, by, POPUP_BUTTON, 20.0) || is_focused;
+            let hover = ui::hovered(self.side.cursor, bx, by, POPUP_BUTTON, 20.0) || is_focused;
             let label = Text::translate(key, &[]);
             ui::button(
                 batch,
@@ -927,17 +927,17 @@ impl Game<'_> {
             batch.text_styled(atlas, line, *x, *y, u32::MAX, true);
         }
         if let Some((ax, ay)) = r.action {
-            let is_focused = self.world_options.0.as_ref().and_then(|o| o.popup_focus) == Some(0);
-            let hover = ui::hovered(self.client.cursor, ax, ay, 200.0, 20.0) || is_focused;
+            let is_focused = self.side.world_options.0.as_ref().and_then(|o| o.popup_focus) == Some(0);
+            let hover = ui::hovered(self.side.cursor, ax, ay, 200.0, 20.0) || is_focused;
             let label = Text::translate("chat_restriction.chat_disabled_by_options.action", &[]);
             ui::button(batch, atlas, ax, ay, 200.0, 20.0, &label, true, hover);
         }
         batch.clip_since(first, 0.0, r.area.0, w, r.area.1);
         let (dx, dy) = Restrictions::done(w, h);
-        let is_focused = self.world_options.0.as_ref().is_some_and(|o| {
+        let is_focused = self.side.world_options.0.as_ref().is_some_and(|o| {
             o.popup_focus == Some(1) || (o.popup_focus == Some(0) && r.action.is_none())
         });
-        let hover = ui::hovered(self.client.cursor, dx, dy, 200.0, 20.0) || is_focused;
+        let hover = ui::hovered(self.side.cursor, dx, dy, 200.0, 20.0) || is_focused;
         let label = Text::translate("gui.done", &[]);
         ui::action_button(
             batch,
@@ -971,7 +971,7 @@ impl Game<'_> {
         if active_screen {
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
         }
-        let o = self.world_options.0.as_mut().unwrap();
+        let o = self.side.world_options.0.as_mut().unwrap();
         o.scroll = o.scroll.clamp(0.0, o.scroll_limit(h));
         let title = Text::translate("options.worldOptions.title", &[]);
         let tw = atlas.font.width_text(&title);
@@ -1142,25 +1142,25 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn world_options_scroll(&mut self, delta: f32) -> bool {
         let (w, h) = self.gui_size();
         let stick_scroll = self.pad_stick_scroll();
-        match self.world_options.0.as_mut() {
+        match self.side.world_options.0.as_mut() {
             Some(o) if o.view == View::Options => {
-                let hit_btn = o.hit(self.client.cursor, (w, h));
+                let hit_btn = o.hit(self.side.cursor, (w, h));
                 if let Some(btn) = hit_btn.filter(|_| !stick_scroll) {
                     let step = if delta > 0.0 { -1 } else { 1 };
                     match btn {
                         Button::DefaultMode => {
                             o.default_mode = (o.default_mode + step).rem_euclid(4);
-                            self.audio.0.play_button_click();
+                            self.side.audio.0.play_button_click();
                             return true;
                         }
                         Button::PersonalMode => {
                             o.personal_mode = (o.personal_mode + step).rem_euclid(4);
-                            self.audio.0.play_button_click();
+                            self.side.audio.0.play_button_click();
                             return true;
                         }
                         Button::Difficulty => {
                             o.difficulty = ((o.difficulty as i32 + step).rem_euclid(4)) as u8;
-                            self.audio.0.play_button_click();
+                            self.side.audio.0.play_button_click();
                             return true;
                         }
                         Button::Cheats => {
@@ -1169,29 +1169,29 @@ impl Game<'_> {
                                 o.default_mode = o.initial.default_mode;
                                 o.personal_mode = o.default_mode;
                             }
-                            self.audio.0.play_button_click();
+                            self.side.audio.0.play_button_click();
                             return true;
                         }
                         Button::Lan => {
                             o.lan = !o.lan;
                             o.port.focused = false;
-                            self.audio.0.play_button_click();
+                            self.side.audio.0.play_button_click();
                             return true;
                         }
                         Button::CommandAccess => {
                             o.guest_commands = !o.guest_commands;
-                            self.audio.0.play_button_click();
+                            self.side.audio.0.play_button_click();
                             return true;
                         }
                         Button::Force => {
                             o.force = !o.force;
-                            self.audio.0.play_button_click();
+                            self.side.audio.0.play_button_click();
                             return true;
                         }
                         _ => {}
                     }
                 }
-                if stick_scroll || (HEADER..h - FOOTER).contains(&self.client.cursor.1) {
+                if stick_scroll || (HEADER..h - FOOTER).contains(&self.side.cursor.1) {
                     o.scroll = (o.scroll - delta * 10.0).clamp(0.0, o.scroll_limit(h));
                     return true;
                 }
@@ -1200,7 +1200,7 @@ impl Game<'_> {
                 return o
                     .rules
                     .as_mut()
-                    .is_some_and(|rules| rules.wheel_at(delta, self.client.cursor.1, h));
+                    .is_some_and(|rules| rules.wheel_at(delta, self.side.cursor.1, h));
             }
             None => {}
         }
@@ -1211,11 +1211,11 @@ impl Game<'_> {
     /// list follows it (AbstractSelectionList.mouseDragged).
     pub(in crate::game::client_side) fn world_options_drag(&mut self) -> bool {
         let h = self.gui_size().1;
-        if let Some(o) = self.world_options.0.as_mut()
+        if let Some(o) = self.side.world_options.0.as_mut()
             && o.view == View::GameRules
             && let Some(rules) = o.rules.as_mut()
         {
-            rules.drag(self.client.cursor.1, h);
+            rules.drag(self.side.cursor.1, h);
             return true;
         }
         false
@@ -1223,7 +1223,7 @@ impl Game<'_> {
 
     /// The button came up: a held scrollbar lets go (onRelease).
     pub(in crate::game::client_side) fn world_options_release(&mut self) -> bool {
-        if let Some(o) = self.world_options.0.as_mut()
+        if let Some(o) = self.side.world_options.0.as_mut()
             && let Some(rules) = o.rules.as_mut()
         {
             return rules.release();
@@ -1232,7 +1232,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game::client_side) fn world_options_click(&mut self) -> bool {
-        let Some(mut o) = self.world_options.0.take() else {
+        let Some(mut o) = self.side.world_options.0.take() else {
             return false;
         };
         let (w, h) = self.gui_size();
@@ -1241,12 +1241,12 @@ impl Game<'_> {
             View::GameRules => {
                 let atlas = &self.gui.atlas;
                 let (exit, handled) = o.rules.as_mut().map_or((None, false), |rules| {
-                    if rules.clicks_button(atlas, self.client.cursor, (w, h)) {
-                        self.audio.0.play_button_click();
+                    if rules.clicks_button(atlas, self.side.cursor, (w, h)) {
+                        self.side.audio.0.play_button_click();
                     }
-                    rules.click(atlas, self.client.cursor, (w, h))
+                    rules.click(atlas, self.side.cursor, (w, h))
                 });
-                self.world_options.0 = Some(o);
+                self.side.world_options.0 = Some(o);
                 if let Some(exit) = exit {
                     self.close_game_rules(exit);
                 }
@@ -1255,10 +1255,10 @@ impl Game<'_> {
             View::LockQuestion => {
                 let p = Popup::lock_question(&self.gui.atlas.font, o.difficulty, (w, h));
                 let hit = p.buttons.iter().position(|&(bx, by)| {
-                    ui::hovered(self.client.cursor, bx, by, POPUP_BUTTON, 20.0)
+                    ui::hovered(self.side.cursor, bx, by, POPUP_BUTTON, 20.0)
                 });
                 if hit.is_some() {
-                    self.audio.0.play_button_click();
+                    self.side.audio.0.play_button_click();
                 }
                 match hit {
                     // Yes: apply, then back to the pause menu; No: back to the options.
@@ -1269,46 +1269,46 @@ impl Game<'_> {
                     Some(_) => o.view = View::Options,
                     None => {}
                 }
-                self.world_options.0 = Some(o);
+                self.side.world_options.0 = Some(o);
                 return hit.is_some();
             }
             View::Restrictions => {
                 let r =
                     Restrictions::new(&self.gui.atlas.font, self.settings.chat_visibility, (w, h));
-                let in_body = self.client.cursor.1 >= r.area.0 && self.client.cursor.1 < r.area.1;
+                let in_body = self.side.cursor.1 >= r.area.0 && self.side.cursor.1 < r.area.1;
                 let action = r.action.is_some_and(|(ax, ay)| {
-                    in_body && ui::hovered(self.client.cursor, ax, ay, 200.0, 20.0)
+                    in_body && ui::hovered(self.side.cursor, ax, ay, 200.0, 20.0)
                 });
                 let (dx, dy) = Restrictions::done(w, h);
-                let done = ui::hovered(self.client.cursor, dx, dy, 200.0, 20.0);
+                let done = ui::hovered(self.side.cursor, dx, dy, 200.0, 20.0);
                 if action || done {
-                    self.audio.0.play_button_click();
+                    self.side.audio.0.play_button_click();
                     o.view = View::Options;
                 }
-                self.world_options.0 = Some(o);
+                self.side.world_options.0 = Some(o);
                 if action {
                     // ChatRestriction.Action.GO_TO_CHAT_SETTINGS: Chat Settings,
                     // which returns to the screen behind RestrictionsScreen.
                     self.open_options_at(false, sunrise_client::options_ui::Page::Chat);
-                    self.client.options_to_world_options = true;
+                    self.side.options_to_world_options = true;
                 }
                 return action || done;
             }
         }
-        let inside = self.client.cursor.1 >= HEADER && self.client.cursor.1 < h - FOOTER;
+        let inside = self.side.cursor.1 >= HEADER && self.side.cursor.1 < h - FOOTER;
         o.port.focused = !o.remote
             && inside
             && ui::hovered(
-                self.client.cursor,
+                self.side.cursor,
                 WorldOptions::left(w) + 158.0,
                 o.top() + PORT_TOP,
                 150.0,
                 20.0,
             );
-        let hit = o.hit(self.client.cursor, (w, h));
+        let hit = o.hit(self.side.cursor, (w, h));
         if let Some(b) = hit {
             o.focused_button = Some(b);
-            self.audio.0.play_button_click();
+            self.side.audio.0.play_button_click();
         }
         match hit {
             Some(Button::DefaultMode) => o.default_mode = (o.default_mode + 1) % 4,
@@ -1341,7 +1341,7 @@ impl Game<'_> {
             Some(Button::CommandAccess) => o.guest_commands = !o.guest_commands,
             Some(Button::Force) => o.force = !o.force,
             Some(Button::Cancel) => {
-                self.world_options.0 = Some(o);
+                self.side.world_options.0 = Some(o);
                 self.close_world_options();
                 return true;
             }
@@ -1354,14 +1354,14 @@ impl Game<'_> {
             None => {}
         }
         let handled = hit.is_some() || o.port.focused;
-        self.world_options.0 = Some(o);
+        self.side.world_options.0 = Some(o);
         handled
     }
 
     fn apply_and_close_world_options(&mut self, o: WorldOptions) {
         let wanted = o.snapshot();
         let before = o.initial;
-        self.world_options.0 = Some(o);
+        self.side.world_options.0 = Some(o);
         self.apply_world_options_client(&before, &wanted);
         self.close_world_options();
     }
@@ -1382,14 +1382,14 @@ impl Game<'_> {
         let shift = self.has_shift_down();
         let (w, h) = self.gui_size();
         let chat_vis = self.settings.chat_visibility;
-        let Some(o) = self.world_options.0.as_mut() else {
+        let Some(o) = self.side.world_options.0.as_mut() else {
             return false;
         };
         if let Some(rules) = o.rules.as_mut().filter(|r| r.typing()) {
             let mut handled = true;
             rules.edit(|b| match shortcut {
                 Some(shortcut) => {
-                    b.shortcut(shortcut, &mut self.clipboard.0);
+                    b.shortcut(shortcut, &mut self.side.clipboard.0);
                 }
                 None => handled = b.key(key, ctrl, false),
             });
@@ -1420,15 +1420,15 @@ impl Game<'_> {
                 winit::keyboard::KeyCode::Enter
                 | winit::keyboard::KeyCode::NumpadEnter
                 | winit::keyboard::KeyCode::Space => {
-                    self.audio.0.play_button_click();
+                    self.side.audio.0.play_button_click();
                     let yes = o.popup_focus == Some(0);
-                    let mut o = self.world_options.0.take().unwrap();
+                    let mut o = self.side.world_options.0.take().unwrap();
                     if yes {
                         self.apply_and_close_world_options(o);
                         return true;
                     } else {
                         o.view = View::Options;
-                        self.world_options.0 = Some(o);
+                        self.side.world_options.0 = Some(o);
                     }
                     return true;
                 }
@@ -1468,12 +1468,12 @@ impl Game<'_> {
                 winit::keyboard::KeyCode::Enter
                 | winit::keyboard::KeyCode::NumpadEnter
                 | winit::keyboard::KeyCode::Space => {
-                    self.audio.0.play_button_click();
+                    self.side.audio.0.play_button_click();
                     let action = r.action.is_some() && o.popup_focus == Some(0);
                     o.view = View::Options;
                     if action {
                         self.open_options_at(false, sunrise_client::options_ui::Page::Chat);
-                        self.client.options_to_world_options = true;
+                        self.side.options_to_world_options = true;
                     }
                     return true;
                 }
@@ -1495,7 +1495,7 @@ impl Game<'_> {
                 return false;
             }
             if let Some(shortcut) = shortcut {
-                o.port.shortcut(shortcut, &mut self.clipboard.0);
+                o.port.shortcut(shortcut, &mut self.side.clipboard.0);
                 return true;
             }
             return o.port.key(key, ctrl, false);
@@ -1607,8 +1607,8 @@ impl Game<'_> {
             | winit::keyboard::KeyCode::NumpadEnter
             | winit::keyboard::KeyCode::Space => {
                 if let Some(btn) = o.focused_button {
-                    self.audio.0.play_button_click();
-                    let mut o = self.world_options.0.take().unwrap();
+                    self.side.audio.0.play_button_click();
+                    let mut o = self.side.world_options.0.take().unwrap();
                     match btn {
                         Button::DefaultMode => o.default_mode = (o.default_mode + 1) % 4,
                         Button::PersonalMode => o.personal_mode = (o.personal_mode + 1) % 4,
@@ -1638,7 +1638,7 @@ impl Game<'_> {
                         Button::CommandAccess => o.guest_commands = !o.guest_commands,
                         Button::Force => o.force = !o.force,
                         Button::Cancel => {
-                            self.world_options.0 = Some(o);
+                            self.side.world_options.0 = Some(o);
                             self.close_world_options();
                             return true;
                         }
@@ -1650,7 +1650,7 @@ impl Game<'_> {
                             return true;
                         }
                     }
-                    self.world_options.0 = Some(o);
+                    self.side.world_options.0 = Some(o);
                     return true;
                 }
             }
@@ -1660,7 +1660,7 @@ impl Game<'_> {
     }
     /// Whether a World Options text box has focus (the port or a game rule box).
     pub(in crate::game::client_side) fn world_options_typing(&self) -> bool {
-        self.world_options.0.as_ref().is_some_and(|o| {
+        self.side.world_options.0.as_ref().is_some_and(|o| {
             o.rules.as_ref().is_some_and(|r| r.typing())
                 || (o.port.focused && o.view == View::Options)
         })
@@ -1669,7 +1669,7 @@ impl Game<'_> {
     /// on-screen keyboard), and its backspace.
     pub(in crate::game::client_side) fn world_options_text(&mut self, text: Option<&str>) {
         if let Some(rules) = self
-            .world_options
+            .side.world_options
             .0
             .as_mut()
             .and_then(|o| o.rules.as_mut())
@@ -1688,7 +1688,7 @@ impl Game<'_> {
             }
             return;
         }
-        let Some(o) = self.world_options.0.as_mut().filter(|o| o.port.focused) else {
+        let Some(o) = self.side.world_options.0.as_mut().filter(|o| o.port.focused) else {
             return;
         };
         match text {

@@ -45,7 +45,7 @@ pub(in crate::game) struct MenuSnapshot {
     pub(in crate::game) native: Option<Vec<Option<NativeMenuSlot>>>,
     block: Option<(u32, Option<u64>, String, usize)>,
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn mod_book_menu_snapshot(
         &mut self,
         conn: u32,

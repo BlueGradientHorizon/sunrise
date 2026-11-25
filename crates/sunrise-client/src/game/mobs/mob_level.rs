@@ -3,7 +3,7 @@ use super::Game;
 use sunrise_client::entities::ItemEntity;
 use sunrise_gameplay::mob_level::{MobLevel, MobParts};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Notify tracking clients of a server-side mob item pickup without client particle bookkeeping.
     pub(in crate::game) fn server_mob_take_item(&mut self, item: &ItemEntity, collector: u32) {
         if let Some(host) = &self.lan {
@@ -17,12 +17,12 @@ impl Game<'_> {
     }
 }
 
-impl MobLevel for Game<'_> {
+impl MobLevel for Game<'_, crate::game::server_side::ServerState> {
     fn parts(&mut self) -> MobParts<'_> {
         MobParts {
             mobs: &mut self.mobs,
             dropped: &mut self.dropped,
-            next_entity: self.server.next_entity,
+            next_entity: self.side.next_entity,
             ticked: &self.creatures.ticked,
             items: world_items!(self),
             facts: self.res.facts(),

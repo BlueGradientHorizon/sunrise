@@ -16,7 +16,7 @@ pub(in crate::game::server_side) use sunrise_core::geometry::Vec3;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_protocol::packets::play::{Clientbound, GameEvent};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Pufferfish.playerTouch`: accepted player damage, the sting game event, then poison with
     /// this fish as source.
     pub(in crate::game) fn touch_pufferfish(&mut self) {
@@ -83,7 +83,7 @@ impl Game<'_> {
     /// stung player's own client plays it (`ClientPacketListener.handleGameEvent`). A server has
     /// no player of its own, so the packet is the only way to reach it.
     pub(in crate::game) fn puffer_fish_sting(&mut self) {
-        self.server
+        self.side
             .guest_packets
             .push(Clientbound::GameEvent(GameEvent {
                 event: PUFFER_FISH_STING,

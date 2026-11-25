@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `GatherSkippedAttributeTooltipsEvent`: the attribute modifiers a stack's tooltip leaves
     /// out. Set `skip_all`, or push modifier ids to `skipped_ids` or `EquipmentSlotGroup` names
     /// to `skipped_groups`. Asked once before the attribute lines are built. Display and

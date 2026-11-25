@@ -300,11 +300,11 @@ pub(in crate::game::client_side) fn wrap(d: f32) -> f32 {
         d
     }
 }
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `key.togglePerspective`: the next camera type, as a mod's `camera_type_cycle` leaves it.
     pub(in crate::game::client_side) fn cycle_camera(&mut self) {
         self.apply_requested_camera_type();
-        let previous = self.client.camera_type;
+        let previous = self.side.camera_type;
         let mut next = previous.cycle();
         self.native_camera_type_cycle(previous, &mut next);
         self.apply_camera_type(next);
@@ -312,19 +312,19 @@ impl Game<'_> {
     /// `Options.setCameraType`, then `Minecraft.handleKeybinds`' check: the chain
     /// follows the first-person view.
     pub(in crate::game::client_side) fn apply_camera_type(&mut self, camera_type: CameraType) {
-        self.client.requested_camera_type.take();
-        let previous = self.client.camera_type;
-        self.client.camera_type = camera_type;
+        self.side.requested_camera_type.take();
+        let previous = self.side.camera_type;
+        self.side.camera_type = camera_type;
         if previous.is_first_person() != camera_type.is_first_person() {
             self.check_entity_post_effect(camera_type.is_first_person());
         }
     }
     /// Apply the last shared-host request through the same path as F5.
     pub(in crate::game) fn apply_requested_camera_type(&mut self) -> bool {
-        let Some(camera_type) = self.client.requested_camera_type.take() else {
+        let Some(camera_type) = self.side.requested_camera_type.take() else {
             return false;
         };
-        let changed = self.client.camera_type != camera_type;
+        let changed = self.side.camera_type != camera_type;
         self.apply_camera_type(camera_type);
         changed
     }
@@ -333,11 +333,11 @@ impl Game<'_> {
     /// front of) it, pulled in where visual shapes are in the way. Returns the
     /// position, yaw and pitch to render from.
     pub(in crate::game) fn camera_view(&mut self, partial: f32) -> Option<(glam::DVec3, f32, f32)> {
-        if self.client.studio.flying() {
+        if self.side.studio.flying() {
             return Some((
-                self.client.studio.freecam.position,
-                self.client.studio.freecam.yaw,
-                self.client.studio.freecam.pitch,
+                self.side.studio.freecam.position,
+                self.side.studio.freecam.yaw,
+                self.side.studio.freecam.pitch,
             ));
         }
         let subject = self.camera_subject()?;
@@ -351,8 +351,8 @@ impl Game<'_> {
         let descending =
             subject.is_local_player && self.player.as_ref().is_some_and(|p| p.shift_key_down);
         let entity_kind = subject.collision_kind;
-        let mut view = self.client.view;
-        let kind = self.client.camera_type;
+        let mut view = self.side.view;
+        let kind = self.side.camera_type;
 
         let context = CollisionContext::for_entity(
             CollisionEntity {
@@ -397,7 +397,7 @@ impl Game<'_> {
                 (!hit.miss).then_some([hit.hit.location.x, hit.hit.location.y, hit.hit.location.z])
             },
         );
-        self.client.view = view;
+        self.side.view = view;
         Some((
             glam::DVec3::from_array(view.position),
             view.y_rot,
@@ -407,13 +407,13 @@ impl Game<'_> {
     /// `Camera.rotation()` as the quads of particles take it: the frame's camera (a
     /// bed's, a front view's, a mod's), not the player's own yaw and pitch.
     pub(in crate::game::client_side) fn particle_rotation(&self) -> glam::Quat {
-        if self.client.studio.flying() {
+        if self.side.studio.flying() {
             return self.camera_orientation();
         }
         let (yaw, pitch) = self
-            .client
+            .side
             .posed_rotation
-            .unwrap_or((self.client.view.y_rot, self.client.view.x_rot));
+            .unwrap_or((self.side.view.y_rot, self.side.view.x_rot));
         super::camera_rotation(CameraType::FirstPerson, yaw, pitch)
     }
     /// The player as `Camera.alignWithEntity` sees it.
@@ -501,10 +501,10 @@ impl Game<'_> {
             },
         );
         let Some(p) = self.player.as_ref() else {
-            self.client.player_model = None;
+            self.side.player_model = None;
             return;
         };
-        if self.client.player_model.is_none() {
+        if self.side.player_model.is_none() {
             let Some(kind) = self.res.player_type().clone() else {
                 return;
             };
@@ -514,7 +514,7 @@ impl Game<'_> {
             let skin = sunrise_client::tab_list::default_skin(self.own_uuid());
             m.skin = Some(skin.into());
             m.slim = skin.contains("/slim/");
-            self.client.player_model = Some(m);
+            self.side.player_model = Some(m);
         }
         let pose = p.pose;
         let crouching = pose == Pose::Crouching;
@@ -554,7 +554,7 @@ impl Game<'_> {
         let armor = self.armor.clone();
         let riding = self.riding.is_some();
         let hurt = p.health.hurt_animation_time;
-        let avatar = self.client.avatar;
+        let avatar = self.side.avatar;
         let previous_position = self.previous_position;
         // LivingEntity.getBedOrientation: the model lies in the bed as
         // another player's does (`villager::sleep_pose`).
@@ -566,7 +566,7 @@ impl Game<'_> {
             .remote
             .as_ref()
             .map_or((0, 0), |r| (r.own_arrows, r.own_stingers));
-        let Some(m) = self.client.player_model.as_mut() else {
+        let Some(m) = self.side.player_model.as_mut() else {
             return;
         };
         m.extra.ints[1] = bed;
@@ -689,10 +689,10 @@ impl Game<'_> {
         m.hurt_time = hurt;
         let poses = self.held_arm_poses_with_stacks(
             self.own_entity_id() as u32,
-            self.client.player_model.as_ref().unwrap(),
+            self.side.player_model.as_ref().unwrap(),
             [self.selected, super::held_items::OFFHAND_SLOT].map(|slot| self.stack_in(slot)),
         );
-        self.client
+        self.side
             .player_model
             .as_mut()
             .unwrap()
@@ -704,26 +704,26 @@ impl Game<'_> {
     /// The model's old pitch is the player's `xRotO`, which the turn moves
     /// with `xRot` (`turn_rotation`).
     pub(in crate::game::client_side) fn turn_player(&mut self, xo: f64, yo: f64) {
-        if self.client.studio.flying() {
-            self.client
+        if self.side.studio.flying() {
+            self.side
                 .studio
                 .freecam
                 .turn((xo * 0.15) as f32, (yo * 0.15) as f32);
             return;
         }
         let pitch_o = self
-            .client
+            .side
             .player_model
             .as_ref()
             .map(|m| m.previous_head_pitch);
         let rotation = turn_rotation(self.yaw, self.pitch, pitch_o, xo, yo);
         // The held lead's old look (`LocalPlayer.getRopeHoldPosition`'s
         // `yRotO`/`xRotO`) turns with the view (#10276).
-        self.client.rope_rot_old =
-            rope_old_after_turn(self.client.rope_rot_old, self.yaw, self.pitch, xo, yo);
+        self.side.rope_rot_old =
+            rope_old_after_turn(self.side.rope_rot_old, self.yaw, self.pitch, xo, yo);
         self.yaw = rotation.y_rot;
         self.pitch = rotation.x_rot;
-        if let Some(m) = self.client.player_model.as_mut() {
+        if let Some(m) = self.side.player_model.as_mut() {
             m.previous_head_pitch = rotation.x_rot_o;
             m.head_pitch = rotation.x_rot;
         }
@@ -737,7 +737,7 @@ impl Game<'_> {
             let (yaw, clamped) = sunrise_client::camera::clamp_boat_rotation(self.yaw, b.yaw);
             self.yaw = yaw;
             // clampRotation moves `yRotO` with the view.
-            self.client.rope_rot_old.0 += clamped;
+            self.side.rope_rot_old.0 += clamped;
         }
     }
     /// What the player rides that sets their body's yaw: a boat's yaw, or a
@@ -756,7 +756,7 @@ impl Game<'_> {
     /// in over the next tick.
     pub(in crate::game) fn snap_player_model_pitch(&mut self) {
         let pitch = self.pitch;
-        if let Some(m) = self.client.player_model.as_mut() {
+        if let Some(m) = self.side.player_model.as_mut() {
             m.previous_head_pitch = pitch;
             m.head_pitch = pitch;
         }
@@ -764,9 +764,9 @@ impl Game<'_> {
     /// `LevelExtractor` submits the local player only when it holds the camera, and
     /// skips the first-person body unless it is sleeping. Studio freecam draws it too.
     pub(in crate::game::client_side) fn own_body_in_view(&self) -> bool {
-        self.client.studio.flying()
+        self.side.studio.flying()
             || (self.controls_camera()
-                && (!self.client.camera_type.is_first_person() || self.sleeping.is_some()))
+                && (!self.side.camera_type.is_first_person() || self.sleeping.is_some()))
     }
     /// Whether the player's own model shows in the world view (its body or,
     /// while invisible, only its armour and held items).
@@ -774,8 +774,8 @@ impl Game<'_> {
         (self.own_body_in_view()
             || (self.controls_camera()
                 && shadow_pass_takes_own_model(
-                    self.occlusion.0.shadow_casters.1,
-                    self.client.pack_ids.is_some(),
+                    self.side.occlusion.0.shadow_casters.1,
+                    self.side.pack_ids.is_some(),
                     self.own_player_is_spectator(),
                 )))
             && self
@@ -814,8 +814,8 @@ impl Game<'_> {
         self.mark_motion(start, crate::game::MOTION_OWN_PLAYER);
         self.player_model_geometry(camera, self.own_player_alpha(), out);
         // A native pack's shadow pass alone gets the first-person model (no per-entity draws).
-        if self.client.pack_ids.is_none() && !body_in_view {
-            self.client
+        if self.side.pack_ids.is_none() && !body_in_view {
+            self.side
                 .shadow_only_vertices
                 .borrow_mut()
                 .extend(out.drain(start..));
@@ -832,7 +832,7 @@ impl Game<'_> {
         if !self.player_model_shown() {
             return;
         }
-        let Some(m) = self.client.player_model.as_ref() else {
+        let Some(m) = self.side.player_model.as_ref() else {
             return;
         };
         let eye = self
@@ -982,7 +982,7 @@ impl Game<'_> {
         size: f32,
         offset_y: f32,
     ) {
-        let Some(m) = self.client.player_model.as_ref() else {
+        let Some(m) = self.side.player_model.as_ref() else {
             return;
         };
         if self
@@ -993,8 +993,8 @@ impl Game<'_> {
             return;
         }
         let (cx, cy) = ((x0 + x1) / 2.0, (y0 + y1) / 2.0);
-        let x_angle = ((cx - self.client.cursor.0) / 40.0).atan();
-        let y_angle = ((cy - self.client.cursor.1) / 40.0).atan();
+        let x_angle = ((cx - self.side.cursor.0) / 40.0).atan();
+        let y_angle = ((cy - self.side.cursor.1) / 40.0).atan();
         let mut m = m.clone();
         // `extractEntityInInventory` divides the size by the entity's scale: the
         // preview is the same size whatever the player's scale.
@@ -1075,7 +1075,7 @@ impl Game<'_> {
             .as_ref()
             .filter(|p| p.is_on_fire() && !p.spectator)
             .map(|p| (p.dimensions.width, p.dimensions.height));
-        let glints = preview_glint_quads(&verts, gui, wings.clone(), self.client.glint_frame);
+        let glints = preview_glint_quads(&verts, gui, wings.clone(), self.side.glint_frame);
         let quads = player_preview_quads_no_cull(verts, gui, fire, &atlas.sprites, wings);
         emit_preview(batch, quads, glints, [x0, y0, x1, y1]);
     }
@@ -1086,7 +1086,7 @@ impl Game<'_> {
         ox: f32,
         oy: f32,
     ) {
-        if self.client.screen == Screen::Inventory {
+        if self.side.screen == Screen::Inventory {
             self.draw_player_preview(
                 batch,
                 ox + 26.0,
@@ -1100,7 +1100,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `WingsLayer` for a player wearing `chest`.
     pub(in crate::game::client_side) fn player_elytra_geometry(
         &self,
@@ -1176,7 +1176,7 @@ impl Game<'_> {
         else {
             return;
         };
-        let assets = &self.armor_stand_assets.0;
+        let assets = &self.side.armor_stand_assets.0;
         let Some(layer) = assets
             .equipment
             .get(&asset)
@@ -1280,7 +1280,7 @@ impl Game<'_> {
         let layers = equippable
             .filter(|e| e.slot == "chest")
             .and_then(|e| e.asset_id)
-            .and_then(|asset| self.armor_stand_assets.0.equipment.get(&asset));
+            .and_then(|asset| self.side.armor_stand_assets.0.equipment.get(&asset));
         if layers.is_some_and(|k| k.contains_key("wings")) {
             return;
         }
@@ -1421,13 +1421,13 @@ impl Game<'_> {
             (
                 m.extra.stuck.arrows,
                 false,
-                self.client.arrow_model.as_ref(),
+                self.side.arrow_model.as_ref(),
                 "entity/projectiles/arrow",
             ),
             (
                 m.extra.stuck.stingers,
                 true,
-                self.client.bee_stinger_model.as_ref(),
+                self.side.bee_stinger_model.as_ref(),
                 "entity/bee/bee_stinger",
             ),
         ];

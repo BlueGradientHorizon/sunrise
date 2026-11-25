@@ -3,7 +3,7 @@ pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use mod_api::SwimmingCheck;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_ask_swim_eligibility(
         &self,
         check: SwimmingCheck,

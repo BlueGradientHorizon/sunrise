@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Decide in the level, ask with the full read-only game host, then apply.
     /// A cake probe stops at `canEat`, before any effect. Other interactions
     /// finish on the first pass and are never repeated.

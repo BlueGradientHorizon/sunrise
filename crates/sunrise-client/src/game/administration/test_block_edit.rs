@@ -132,7 +132,7 @@ impl Editor for TestBlockEditor {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `LocalPlayer.openTestBlock`.
     pub(in crate::game::client_side) fn open_test_block(&mut self, pos: Pos) {
         let Some(BlockEntity::TestBlock(b)) = self.world.block_entities.get(&pos) else {

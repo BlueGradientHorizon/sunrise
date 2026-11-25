@@ -4,7 +4,7 @@ use super::*;
 #[allow(unused_imports)]
 use sunrise_client::fast_hash::FxHashMap;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Query dynamic light emission for chunks newly loaded into this level.
     pub(in crate::game) fn ask_loaded_light_emission(&mut self) {
         if !self.pack.context.light.any_dynamic() {

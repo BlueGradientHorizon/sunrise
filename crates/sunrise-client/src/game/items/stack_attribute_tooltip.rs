@@ -10,7 +10,7 @@ use sunrise_client::items::ItemStack;
 use sunrise_client::text::Text;
 use sunrise_world::attributes::Tooltip;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The attribute modifier lines of `stack`'s tooltip and the lines mods add after them.
     /// `shown` is whether the stack's `minecraft:tooltip_display` shows the modifiers; a
     /// `nested` stack (a bundle's, a crossbow's projectile) has no player.

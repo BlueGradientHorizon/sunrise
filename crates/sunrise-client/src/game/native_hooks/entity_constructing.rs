@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `EntityEvent.EntityConstructing`: a new entity of type `kind`, whose attachments are
     /// `holder`'s, is being made on this side (see `modding/entity_initialization.rs`).
     pub(in crate::game) fn native_entity_constructing(

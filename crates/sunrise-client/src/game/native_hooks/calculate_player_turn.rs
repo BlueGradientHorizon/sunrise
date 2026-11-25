@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The mouse sensitivity and cinematic camera option a grabbed player's
     /// mouse turn reads this frame (`MouseHandler.turnPlayer`). Change either
     /// for this turn only; the options are unchanged. Client-side.

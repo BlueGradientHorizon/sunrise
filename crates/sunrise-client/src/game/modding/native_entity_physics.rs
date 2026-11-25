@@ -12,7 +12,7 @@ use mod_api::EntityRef;
 use sunrise_client::mobs::Species;
 use sunrise_client::projectiles::{Projectile, ProjectileKind};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Entity.noPhysics`: a player's is whether it spectates (`Player.tick`
     /// sets it from `isSpectator`); a mob's is the flag a mod wrote, false
     /// until then (a vex sets it only for the length of its own tick); an
@@ -128,7 +128,7 @@ impl Game<'_> {
                     true
                 }),
             Some(Target::Other(id)) => {
-                if !self.others.0.iter().any(|o| o.id == id) {
+                if !self.side.others.0.iter().any(|o| o.id == id) {
                     return false;
                 }
                 use sunrise_core::nbt::Tag;

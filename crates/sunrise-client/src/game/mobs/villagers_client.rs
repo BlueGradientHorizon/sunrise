@@ -1,7 +1,7 @@
 //! Client-side mob entity-event particle bursts (`Entity.handleEntityEvent`).
 use super::Game;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `handleEntityEvent(event)`'s particles about mob `id`.
     pub(in crate::game) fn entity_event_particles(&mut self, id: u32, event: i8) {
         let Some(m) = self.mobs.iter().find(|m| m.id == id) else {

@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The block's own `Block.setPlacedBy`, before the separate item notice.
     pub(in crate::game) fn native_set_placed_by(
         &mut self,

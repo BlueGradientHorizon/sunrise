@@ -4,18 +4,18 @@ use super::Game;
 use sunrise_client::{hotbar, items::ItemStack, keybinds, text::Text};
 use sunrise_core::nbt::Tag;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether the live mapping is held, regardless of the device's current state.
     pub(in crate::game) fn mapped_key_down(&self, mapping: &str) -> bool {
         keybinds::VanillaMappingSlot::by_name(mapping)
-            .is_some_and(|slot| self.client.vanilla_mappings.is_down(slot))
+            .is_some_and(|slot| self.side.vanilla_mappings.is_down(slot))
     }
 
     /// `CreativeModeInventoryScreen.selectTab` on the HOTBAR tab: each saved
     /// row's nine stacks, or for an empty row a locked paper in that row's own
     /// slot, named after the keys that save it (`inventory.hotbarInfo`).
     pub(in crate::game::client_side) fn refresh_saved_hotbars(&mut self) {
-        if !self.creative_screen.0.tab().hotbar {
+        if !self.side.creative_screen.0.tab().hotbar {
             return;
         }
         let path = crate::game::options_path().with_file_name("hotbar.nbt");
@@ -61,7 +61,7 @@ impl Game<'_> {
                 items.push(paper);
             }
         }
-        self.creative_screen.0.set_saved_hotbars(items);
+        self.side.creative_screen.0.set_saved_hotbars(items);
     }
     /// `CreativeModeInventoryScreen.handleHotbarLoadOrSave` for the hotbar key
     /// `index`: load puts the saved row in the hotbar and, on a server, sends
@@ -95,6 +95,6 @@ impl Game<'_> {
         );
         // handleHotbarLoadOrSave: the overlay, said at once.
         self.say_system_now(&message);
-        self.client.titles.set_overlay(message, false);
+        self.side.titles.set_overlay(message, false);
     }
 }

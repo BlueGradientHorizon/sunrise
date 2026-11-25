@@ -30,7 +30,7 @@ pub(in crate::game::client_side) use sunrise_core::nbt::Tag;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::level::data::BlockSet;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn block_provider_options(
         &self,
         ty: ParticleType,

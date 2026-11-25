@@ -136,7 +136,7 @@ impl super::Containers<'_> {
             .map(std::borrow::Cow::into_owned)
     }
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Vanilla containers and `WorldlyContainerHolder`s keep their direct automation path.
     /// This owner check borrows storage; it never builds a container view on the tick path.
     pub(in crate::game::server_side) fn vanilla_automation_container(&self, pos: Pos) -> bool {

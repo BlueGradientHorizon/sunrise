@@ -3,10 +3,10 @@ pub(in crate::game::server_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::primary_items::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     #[inline(always)]
     pub(in crate::game) fn server_clear_loot_enchantment_answers(&self) {
-        if let Some(loot) = self.server_loot.0.get() {
+        if let Some(loot) = self.side.server_loot.0.get() {
             loot.primary_answers().clear();
             loot.support_answers().clear();
         }
@@ -16,7 +16,7 @@ impl Game<'_> {
         &self,
         support: sunrise_world::enchantment_answers::Answers,
     ) {
-        if let Some(loot) = self.server_loot.0.get() {
+        if let Some(loot) = self.side.server_loot.0.get() {
             loot.support_answers().install(support);
         }
         let enchantments = self.item_enchantments();
@@ -44,7 +44,7 @@ impl Game<'_> {
         for table in self.enchantment_snapshots() {
             table.primary_answers().install(answers.clone());
         }
-        if let Some(loot) = self.server_loot.0.get() {
+        if let Some(loot) = self.side.server_loot.0.get() {
             loot.primary_answers().install(answers);
         }
     }

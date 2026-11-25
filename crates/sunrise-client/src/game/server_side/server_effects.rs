@@ -2,33 +2,33 @@
 use super::Game;
 use sunrise_client_core::sound_source::ServerSound;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     #[inline(always)]
     pub(in crate::game) fn start_audio_capture(&mut self) {
         assert!(
             self.is_logical_server(),
             "start_audio_capture called on Client role"
         );
-        self.server.audio_capture_active = true;
-        self.server.pending_sounds.clear();
+        self.side.audio_capture_active = true;
+        self.side.pending_sounds.clear();
     }
 
     #[inline(always)]
     pub(in crate::game) fn stop_audio_capture(&mut self) {
-        self.server.audio_capture_active = false;
-        self.server.pending_sounds.clear();
+        self.side.audio_capture_active = false;
+        self.side.pending_sounds.clear();
     }
 
     #[allow(dead_code)]
     #[inline(always)]
     pub(in crate::game) fn audio_capture_active(&self) -> bool {
-        self.server.audio_capture_active
+        self.side.audio_capture_active
     }
 
     #[allow(dead_code)]
     #[inline(always)]
     pub(in crate::game) fn audio_capture_len(&self) -> usize {
-        self.server.pending_sounds.len()
+        self.side.pending_sounds.len()
     }
 
     pub(in crate::game) fn server_play_sound(
@@ -42,8 +42,8 @@ impl Game<'_> {
             self.is_logical_server(),
             "server_play_sound called on Client role"
         );
-        if self.server.audio_capture_active {
-            self.server
+        if self.side.audio_capture_active {
+            self.side
                 .pending_sounds
                 .push(ServerSound::new(event, at, volume, pitch));
         }
@@ -61,8 +61,8 @@ impl Game<'_> {
             self.is_logical_server(),
             "server_play_sound_on called on Client role"
         );
-        if self.server.audio_capture_active {
-            self.server.pending_sounds.push(ServerSound {
+        if self.side.audio_capture_active {
+            self.side.pending_sounds.push(ServerSound {
                 event: event.to_owned(),
                 source,
                 position: at,
@@ -87,8 +87,8 @@ impl Game<'_> {
             self.is_logical_server(),
             "server_play_sound_seeded called on Client role"
         );
-        if self.server.audio_capture_active {
-            self.server.pending_sounds.push(ServerSound {
+        if self.side.audio_capture_active {
+            self.side.pending_sounds.push(ServerSound {
                 seed: Some(seed),
                 ..ServerSound::new(event, at, volume, pitch)
             });
@@ -114,8 +114,8 @@ impl Game<'_> {
         if silent {
             return;
         }
-        if self.server.audio_capture_active {
-            self.server.pending_sounds.push(ServerSound {
+        if self.side.audio_capture_active {
+            self.side.pending_sounds.push(ServerSound {
                 event: event.to_owned(),
                 source,
                 position: at,

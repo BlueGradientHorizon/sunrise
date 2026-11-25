@@ -18,7 +18,7 @@ use sunrise_core::position::BlockPos;
 use sunrise_world::climbing::{self, ClimbingWorld};
 use sunrise_world::registry::BlockStateId;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Run a player sleep write in the authoritative body. An acting player's
     /// hub record is displaced until its turn ends; only inactive guests enter
     /// another turn, in the level already in place. Fake players never sleep.
@@ -28,7 +28,7 @@ impl Game<'_> {
         write: impl FnOnce(&mut Self) -> bool,
     ) -> bool {
         match target {
-            Target::Player => !self.server.lan_acting_fake && write(self),
+            Target::Player => !self.side.lan_acting_fake && write(self),
             Target::Guest(conn) => {
                 let Some(gi) = self.guest_index(conn) else {
                     return false;
@@ -38,7 +38,7 @@ impl Game<'_> {
                 if self.lan.as_ref().unwrap().hub.guests[gi].dimension != self.dim.id() {
                     return false;
                 }
-                self.as_guest_at(gi, conn, |game| !game.server.lan_acting_fake && write(game))
+                self.as_guest_at(gi, conn, |game| !game.side.lan_acting_fake && write(game))
                     .unwrap_or(false)
             }
             _ => false,

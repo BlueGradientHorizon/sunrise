@@ -1,7 +1,7 @@
 //! Save visibility while authoritative rows are lent out.
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Keep a held-out entity inaccessible until its copy has been stored back.
     pub(in crate::game) fn with_entity_held_out<R>(
         &mut self,
@@ -12,9 +12,9 @@ impl Game<'_> {
         if mod_api::__private::mods().is_empty() {
             return action(self);
         }
-        self.server.held_out.push(id);
+        self.side.held_out.push(id);
         let result = action(self);
-        self.server.held_out.pop();
+        self.side.held_out.pop();
         result
     }
 }

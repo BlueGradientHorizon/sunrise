@@ -3,7 +3,7 @@ use super::{Game, creatures::ProjectileHitter};
 use sunrise_client::{Result, mobs::Who};
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The common block-state callbacks before projectile-specific breaking.
     pub(in crate::game) fn projectile_block_impact(
         &mut self,
@@ -42,7 +42,7 @@ impl Game<'_> {
             let _ = self.server_process_level_events();
             self.native_target_hit(self.dim.id(), pos, strength);
             if p.owner == Some(Who::Player)
-                && (p.guest.is_none() || p.guest == self.server.lan_acting)
+                && (p.guest.is_none() || p.guest == self.side.lan_acting)
             {
                 self.award_custom_stat("target_hit", 1);
                 let projectile = sunrise_client::advancements::EntityView {

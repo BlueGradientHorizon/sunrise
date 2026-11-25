@@ -5,7 +5,7 @@ pub(in crate::game::client_side) use crate::game::native_hooks::register_preset_
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::native_hooks::register_preset_editors::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn preset_editor_dimensions(&self) -> Option<mod_api::Compound> {
         let sunrise_core::nbt::Tag::Compound(dimensions) =
             self.preset_editor_title()?.preset_editor_dimensions()?
@@ -23,13 +23,13 @@ impl Game<'_> {
         })
     }
     pub(in crate::game) fn preset_editor_title(&self) -> Option<&sunrise_client::title::Title> {
-        if self.client.screen != Screen::Playing
+        if self.side.screen != Screen::Playing
             || self.screen_over_playing()
             || self.remote_loading()
         {
             return None;
         }
-        self.title
+        self.side.title
             .0
             .as_ref()
             .filter(|title| title.preset_editor_session().is_some())

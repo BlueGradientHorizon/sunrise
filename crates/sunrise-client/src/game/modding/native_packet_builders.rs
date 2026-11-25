@@ -2,7 +2,7 @@
 use super::Game;
 use mod_api::{ContainerClickRequest, PacketBuildError, ServerboundPlayPacket};
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(super) fn container_click(
         &self,
         request: &ContainerClickRequest,

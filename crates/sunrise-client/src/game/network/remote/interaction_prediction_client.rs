@@ -3,7 +3,7 @@ pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::remote::interaction_prediction::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn finish_remote_item_on(
         &mut self,
         hand: Hand,
@@ -245,7 +245,7 @@ impl Game<'_> {
             // Interaction.interact answers SUCCESS when it responds and
             // CONSUME otherwise: both end the click (nothing behind the box
             // is used), but only SUCCESS swings; the packet carries the hand.
-            let response = self.client.interactions.get(&hit.id).map(|i| i.response);
+            let response = self.side.interactions.get(&hit.id).map(|i| i.response);
             // Objects whose interact passes (paintings, empty or fixed item frames,
             // boats sneaked at or out of control, carts that pass) leave each hand's
             // turn to its item: a crossbow aimed at it shoots.
@@ -790,7 +790,7 @@ impl Game<'_> {
         entity: mod_api::EntityRef,
     ) -> Option<([[f64; 3]; 2], [f64; 3])> {
         let knot_block = self
-            .client
+            .side
             .remote_knots
             .get(&entity.id())
             .copied()

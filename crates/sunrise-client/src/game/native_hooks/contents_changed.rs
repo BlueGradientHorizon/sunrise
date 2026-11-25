@@ -4,7 +4,7 @@ use super::*;
 use mod_api::__private::game::Fields;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The block's storage calls `setChanged` (`Container.setChanged` and
     /// `BlockEntity.setChanged`), after its contents were written and before
     /// dirty/comparator updates. A native transaction tells it once per backing
@@ -36,7 +36,7 @@ impl Game<'_> {
             .block_entities
             .contents_watches
             .observers((pos.x, pos.y, pos.z));
-        self.server.contents_changing.push((level, pos));
+        self.side.contents_changing.push((level, pos));
         let notice = ContentsChangedGuard { game: self };
         notice
             .game

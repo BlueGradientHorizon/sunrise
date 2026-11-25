@@ -207,15 +207,15 @@ impl FnState {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     // ---- loading -----------------------------------------------------------
 
     fn datapack_settings_path(&self) -> std::path::PathBuf {
-        self.server.world_root.join("datapacks.json")
+        self.side.world_root.join("datapacks.json")
     }
     /// Discover and load the data packs of the world (once, or on `/reload`).
     pub(in crate::game::server_side) fn ensure_datapacks(&mut self) {
-        if self.fns.0.loaded || self.server.world_root.as_os_str().is_empty() {
+        if self.side.fns.0.loaded || self.side.world_root.as_os_str().is_empty() {
             return;
         }
         if let Err(error) = self.reload_datapacks(false, &self.level.enabled_features.clone()) {
@@ -262,11 +262,11 @@ impl Game<'_> {
             .map_or(&self.pack.data_changes, |root| root.data_changes());
         let additional = super::pack_finders::data_packs(&self.mods);
         let stack = pack_stack(
-            &self.server.world_root,
+            &self.side.world_root,
             &resources,
             data,
             changes,
-            self.cmds.0.vanilla_disabled,
+            self.side.cmds.0.vanilla_disabled,
             enabled_features,
             &additional,
         );
@@ -322,13 +322,13 @@ impl Game<'_> {
         }
         self.install_loop_context(context);
         if opening_world {
-            self.fns.0 = Default::default();
+            self.side.fns.0 = Default::default();
         }
-        self.fns.0.packs = stack.packs.clone();
-        self.fns.0.enabled = stack.enabled.clone();
+        self.side.fns.0.packs = stack.packs.clone();
+        self.side.fns.0.enabled = stack.enabled.clone();
         self.pack.additional_data = additional.into();
-        self.fns.0.loaded = true;
-        self.fns.0.load_pending = true;
+        self.side.fns.0.loaded = true;
+        self.side.fns.0.load_pending = true;
         // An explicit reload (`/reload`, `/datapack`) also rebuilds the
         // content tables, as `ReloadableServerResources` does. World open must
         // also install its tables before function admission validates inline holders.
@@ -346,8 +346,8 @@ impl Game<'_> {
         // (`TimerQueue.remove`) drop it from the queue, and a reload only
         // replaces the function library. Read the saved file when the world's
         // data loads, then keep the queue as it is.
-        if !self.fns.0.schedule_loaded {
-            self.fns.0.schedule_loaded = true;
+        if !self.side.fns.0.schedule_loaded {
+            self.side.fns.0.schedule_loaded = true;
             self.load_schedule();
         }
         Ok(stack)
@@ -363,7 +363,7 @@ impl Game<'_> {
     ) {
         // The installed candidate already selected and checked the same winners
         // gameplay uses, including the native contributions.
-        if let Some(tables) = &self.world_tables.0 {
+        if let Some(tables) = &self.side.world_tables.0 {
             let copy = |entries: &std::collections::HashMap<String, serde_json::Value>| {
                 entries
                     .iter()
@@ -381,7 +381,7 @@ impl Game<'_> {
         // argument's `#tag` resolves against them.
         self.sync_pack_tag_ids();
         let mut registries = self.ui.registries.clone();
-        registries.permission = self.fns.0.command_level();
+        registries.permission = self.side.fns.0.command_level();
         registries.functions = store.functions.keys().cloned().collect();
         registries.function_tags = store.function_tags.keys().cloned().collect();
         registries.predicates = store.predicates.keys().cloned().collect();
@@ -427,54 +427,54 @@ impl Game<'_> {
         for (id, e) in &store.errors {
             log::warn!("Sunrise: failed to load function {id}: {e}");
         }
-        self.fns.0.store = store;
+        self.side.fns.0.store = store;
         self.sync_function_registries(stack);
     }
     fn save_datapack_settings(&self) {
         let disabled: Vec<&String> = self
-            .fns
+            .side.fns
             .0
             .packs
             .iter()
-            .filter(|p| !self.fns.0.enabled.contains(&p.id))
+            .filter(|p| !self.side.fns.0.enabled.contains(&p.id))
             .map(|p| &p.id)
             .collect();
-        let json = serde_json::json!({"enabled": self.fns.0.enabled, "disabled": disabled});
+        let json = serde_json::json!({"enabled": self.side.fns.0.enabled, "disabled": disabled});
         let _ = std::fs::write(self.datapack_settings_path(), json.to_string());
     }
     pub(in crate::game::server_side) fn sync_function_registries(&mut self, stack: &PackStack) {
         self.sync_schedule_registry();
         self.sync_enchantment_registries();
         let reg = &mut self.ui.registries;
-        reg.functions = self.fns.0.store.functions.keys().cloned().collect();
-        reg.function_tags = self.fns.0.store.function_tags.keys().cloned().collect();
-        reg.predicates = self.fns.0.store.predicates.keys().cloned().collect();
-        reg.item_modifiers = self.fns.0.store.item_modifiers.keys().cloned().collect();
+        reg.functions = self.side.fns.0.store.functions.keys().cloned().collect();
+        reg.function_tags = self.side.fns.0.store.function_tags.keys().cloned().collect();
+        reg.predicates = self.side.fns.0.store.predicates.keys().cloned().collect();
+        reg.item_modifiers = self.side.fns.0.store.item_modifiers.keys().cloned().collect();
         let sources = reg
             .by_registry
             .entry("minecraft:slot_source".into())
             .or_default();
-        sources.ids = self.fns.0.store.slot_sources.keys().cloned().collect();
+        sources.ids = self.side.fns.0.store.slot_sources.keys().cloned().collect();
         sources.tags = self
-            .fns
+            .side.fns
             .0
             .store
             .slot_source_tags
             .keys()
-            .filter(|id| self.fns.0.store.slot_source_tag(id).is_ok())
+            .filter(|id| self.side.fns.0.store.slot_source_tag(id).is_ok())
             .cloned()
             .collect();
-        reg.schedules = self.fns.0.schedule.iter().map(|s| s.id.clone()).collect();
+        reg.schedules = self.side.fns.0.schedule.iter().map(|s| s.id.clone()).collect();
 
         reg.datapacks_enabled = std::iter::once("vanilla".to_owned())
-            .chain(self.fns.0.enabled.iter().cloned())
+            .chain(self.side.fns.0.enabled.iter().cloned())
             .collect();
         reg.datapacks_disabled = self
-            .fns
+            .side.fns
             .0
             .packs
             .iter()
-            .filter(|p| !self.fns.0.enabled.contains(&p.id))
+            .filter(|p| !self.side.fns.0.enabled.contains(&p.id))
             .map(|p| p.id.clone())
             .collect();
         // A pack's worldgen ids join the completion registries
@@ -521,13 +521,13 @@ impl Game<'_> {
     }
 
     fn sync_schedule_registry(&mut self) {
-        self.ui.registries.schedules = self.fns.0.schedule.iter().map(|s| s.id.clone()).collect();
+        self.ui.registries.schedules = self.side.fns.0.schedule.iter().map(|s| s.id.clone()).collect();
     }
 
     // ---- scheduled events ------------------------------------------------------
 
     fn schedule_path(&self) -> std::path::PathBuf {
-        self.server
+        self.side
             .world_root
             .join("data/minecraft/scheduled_events.dat")
     }
@@ -545,19 +545,19 @@ impl Game<'_> {
                 continue;
             };
             let _ = cb;
-            self.fns.0.next_seq += 1;
-            self.fns.0.schedule.push(Scheduled {
+            self.side.fns.0.next_seq += 1;
+            self.side.fns.0.schedule.push(Scheduled {
                 id: id.to_string_lossy(),
                 time: *time,
-                seq: self.fns.0.next_seq,
+                seq: self.side.fns.0.next_seq,
             });
         }
     }
     pub(in crate::game::server_side) fn save_schedule(&self) {
-        if !self.fns.0.loaded || !self.is_logical_server() {
+        if !self.side.fns.0.loaded || !self.is_logical_server() {
             return;
         }
-        let mut events = self.fns.0.schedule.clone();
+        let mut events = self.side.fns.0.schedule.clone();
         events.sort_by_key(|e| (e.time, e.seq));
         let list = events
             .iter()
@@ -600,15 +600,15 @@ impl Game<'_> {
         if !self.is_logical_server() {
             return;
         }
-        self.exec.0 = ExecState::default();
+        self.side.exec.0 = ExecState::default();
         let source = self.server_source();
-        if self.fns.0.load_pending {
-            self.fns.0.load_pending = false;
-            for f in self.fns.0.store.tag_functions("minecraft:load") {
+        if self.side.fns.0.load_pending {
+            self.side.fns.0.load_pending = false;
+            for f in self.side.fns.0.store.tag_functions("minecraft:load") {
                 self.run_function_by_id(&f, None, source);
             }
         }
-        for f in self.fns.0.store.tag_functions("minecraft:tick") {
+        for f in self.side.fns.0.store.tag_functions("minecraft:tick") {
             self.run_function_by_id(&f, None, source);
         }
     }
@@ -619,12 +619,12 @@ impl Game<'_> {
         if !self.is_logical_server() {
             return;
         }
-        self.exec.0 = ExecState::default();
+        self.side.exec.0 = ExecState::default();
         let source = self.server_source();
         let now = self.world.game_time;
         loop {
             let due = self
-                .fns
+                .side.fns
                 .0
                 .schedule
                 .iter()
@@ -633,10 +633,10 @@ impl Game<'_> {
                 .min_by_key(|(_, e)| (e.time, e.seq))
                 .map(|(i, _)| i);
             let Some(i) = due else { break };
-            let event = self.fns.0.schedule.remove(i);
+            let event = self.side.fns.0.schedule.remove(i);
             match event.id.strip_prefix('#') {
                 Some(tag) => {
-                    for f in self.fns.0.store.tag_functions(tag) {
+                    for f in self.side.fns.0.store.tag_functions(tag) {
                         self.run_function_by_id(&f, None, source);
                     }
                 }
@@ -645,8 +645,8 @@ impl Game<'_> {
         }
     }
     fn run_function_by_id(&mut self, id: &str, args: Option<&Tag>, source: Source) {
-        self.exec.0.commands = 0;
-        if let Some(f) = self.fns.0.store.functions.get(id).cloned() {
+        self.side.exec.0.commands = 0;
+        if let Some(f) = self.side.fns.0.store.functions.get(id).cloned() {
             // `ServerFunctionManager.execute` logs a function that failed to
             // instantiate or run; its lines' own failures stay silent.
             if let Err(e) = self.run_function(&f, args, source) {
@@ -662,7 +662,7 @@ impl Game<'_> {
     /// and execute it as the rewarded player, with suppressed output and GAMEMASTER permission.
     pub(in crate::game::server_side) fn run_advancement_reward_function(&mut self, id: &str) {
         self.ensure_datapacks();
-        let Some(function) = self.fns.0.store.functions.get(id).cloned() else {
+        let Some(function) = self.side.fns.0.store.functions.get(id).cloned() else {
             return;
         };
         let Some(pos) = self.target_position(Target::Player) else {
@@ -678,14 +678,14 @@ impl Game<'_> {
         };
         // The existing runner applies this level to nested function calls too.
         let permission = self
-            .fns
+            .side.fns
             .0
             .permission
             .replace(sunrise_client::command::vanilla::GAMEMASTERS);
-        let callback = self.exec.0.callback.take();
+        let callback = self.side.exec.0.callback.take();
         let result = self.run_function(&function, None, source);
-        self.exec.0.callback = callback;
-        self.fns.0.permission = permission;
+        self.side.exec.0.callback = callback;
+        self.side.fns.0.permission = permission;
         if let Err(error) = result {
             log::warn!(
                 "Sunrise: failed to run advancement reward function {id}: {}",
@@ -715,14 +715,14 @@ impl Game<'_> {
         if let Err((key, a)) = self.parse_macro_lines(f, &lines) {
             return Err(failure(&key, &a));
         }
-        if self.exec.0.functions.len() >= 128 {
+        if self.side.exec.0.functions.len() >= 128 {
             return Ok(Outcome::NoReturn);
         }
-        self.exec.0.functions.push(f.id.clone());
-        let outer = self.exec.0.returned.take();
+        self.side.exec.0.functions.push(f.id.clone());
+        let outer = self.side.exec.0.returned.take();
         let level = std::mem::replace(
             &mut self.ui.registries.permission,
-            self.fns.0.command_level(),
+            self.side.fns.0.command_level(),
         );
         let inner = Source {
             silent: true,
@@ -731,10 +731,10 @@ impl Game<'_> {
         };
         for line in lines {
             let _ = self.execute_line(&line, inner);
-            if self.exec.0.returned.is_some() {
+            if self.side.exec.0.returned.is_some() {
                 break;
             }
-            if self.exec.0.commands
+            if self.side.exec.0.commands
                 > self
                     .ui
                     .rules
@@ -745,8 +745,8 @@ impl Game<'_> {
             }
         }
         self.ui.registries.permission = level;
-        let returned = std::mem::replace(&mut self.exec.0.returned, outer);
-        self.exec.0.functions.pop();
+        let returned = std::mem::replace(&mut self.side.exec.0.returned, outer);
+        self.side.exec.0.functions.pop();
         Ok(match returned {
             None => Outcome::NoReturn,
             Some(Some(v)) => Outcome::Value(v),
@@ -767,7 +767,7 @@ impl Game<'_> {
         }
         let level = std::mem::replace(
             &mut self.ui.registries.permission,
-            self.fns.0.command_level(),
+            self.side.fns.0.command_level(),
         );
         let d = self.function_dispatcher();
         let mut out = Ok(());
@@ -796,20 +796,20 @@ impl Game<'_> {
         match name.strip_prefix('#') {
             // ServerFunctionLibrary.getTag: an unknown tag is empty.
             Some(tag) => {
-                if !self.fns.0.store.function_tags.contains_key(tag) {
+                if !self.side.fns.0.store.function_tags.contains_key(tag) {
                     return Ok(Vec::new());
                 }
                 Ok(self
-                    .fns
+                    .side.fns
                     .0
                     .store
                     .tag_functions(tag)
                     .iter()
-                    .filter_map(|id| self.fns.0.store.functions.get(id).cloned())
+                    .filter_map(|id| self.side.fns.0.store.functions.get(id).cloned())
                     .collect())
             }
             None => self
-                .fns
+                .side.fns
                 .0
                 .store
                 .functions
@@ -827,7 +827,7 @@ impl Game<'_> {
     ) -> R<Vec<Option<i32>>> {
         let functions = self.functions_named(name)?;
         let source = self
-            .server
+            .side
             .command_source
             .unwrap_or_else(|| self.player_source());
         let mut out = Vec::new();
@@ -847,17 +847,17 @@ impl Game<'_> {
     /// prepared call before its body can invoke another function.
     pub(in crate::game::server_side) fn cmd_function(&mut self, ctx: &Context) -> R<i32> {
         let source = self
-            .server
+            .side
             .command_source
             .unwrap_or_else(|| self.player_source());
         let call = if self
-            .exec
+            .side.exec
             .0
             .prepared_function
             .as_ref()
             .is_some_and(|p| p.matches(ctx, source))
         {
-            std::sync::Arc::unwrap_or_clone(self.exec.0.prepared_function.take().unwrap().call)
+            std::sync::Arc::unwrap_or_clone(self.side.exec.0.prepared_function.take().unwrap().call)
         } else {
             let Some(call) = self.prepare_function_call(ctx)? else {
                 return Ok(0);
@@ -935,7 +935,7 @@ impl Game<'_> {
     fn execute_function_call(&mut self, call: FunctionCall) -> R<i32> {
         let FunctionCall { functions, args } = call;
         let source = self
-            .server
+            .side
             .command_source
             .unwrap_or_else(|| self.player_source());
         let mut sum: i32 = 0;
@@ -963,7 +963,7 @@ impl Game<'_> {
                 }
             }
         }
-        self.exec.0.callback = Some(if failed && sum == 0 {
+        self.side.exec.0.callback = Some(if failed && sum == 0 {
             Some((false, 0))
         } else if any {
             Some((true, sum))
@@ -979,10 +979,10 @@ impl Game<'_> {
         ctx: &Context,
         sources: &[Source],
     ) -> Option<Vec<PreparedFunctionCall>> {
-        if !self.fns.0.loaded
+        if !self.side.fns.0.loaded
             || sources.len() < 2
-            || !self.exec.0.functions.is_empty()
-            || self.exec.0.prepared_function.is_some()
+            || !self.side.exec.0.functions.is_empty()
+            || self.side.exec.0.prepared_function.is_some()
             || sources.iter().any(|s| s.silent)
             || ctx.has("with")
             || ctx.get("arguments").is_some()
@@ -992,7 +992,7 @@ impl Game<'_> {
         let Some(Arg::Resource(name)) = ctx.get("name") else {
             return None;
         };
-        if name.starts_with('#') || self.fns.0.store.functions.get(name)?.is_macro() {
+        if name.starts_with('#') || self.side.fns.0.store.functions.get(name)?.is_macro() {
             return None;
         }
         let limit = self
@@ -1000,7 +1000,7 @@ impl Game<'_> {
             .rules
             .int_at(sunrise_client::gamerules::vanilla::MAX_COMMAND_SEQUENCE_LENGTH)
             .max(1) as u32;
-        if sources.len() > limit.saturating_sub(self.exec.0.commands) as usize {
+        if sources.len() > limit.saturating_sub(self.side.exec.0.commands) as usize {
             return None;
         }
         // No start or slot is published until the existing validation succeeds.
@@ -1025,7 +1025,7 @@ impl Game<'_> {
     pub(in crate::game::server_side) fn cmd_return(&mut self, id: &str, ctx: &Context) -> R<i32> {
         if id == "return.fail" {
             self.finish_return(None);
-            self.exec.0.callback = Some(Some((false, 0)));
+            self.side.exec.0.callback = Some(Some((false, 0)));
             return Ok(0);
         }
         let value = match ctx.get("value") {
@@ -1040,9 +1040,9 @@ impl Game<'_> {
             let Some(Arg::Resource(name)) = ctx.get("function").cloned() else {
                 return Ok(0);
             };
-            let before = self.fns.0.schedule.len();
-            self.fns.0.schedule.retain(|e| e.id != name);
-            let count = before - self.fns.0.schedule.len();
+            let before = self.side.fns.0.schedule.len();
+            self.side.fns.0.schedule.retain(|e| e.id != name);
+            let count = before - self.side.fns.0.schedule.len();
             if count == 0 {
                 return Err(err("commands.schedule.cleared.failure", &[&name]));
             }
@@ -1069,7 +1069,7 @@ impl Game<'_> {
             // An unknown tag is empty, and scheduling it is allowed.
             Some(_) => name.clone(),
             None => {
-                let Some(f) = self.fns.0.store.functions.get(&name) else {
+                let Some(f) = self.side.fns.0.store.functions.get(&name) else {
                     return Err(err("arguments.function.unknown", &[&name]));
                 };
                 if f.is_macro() {
@@ -1079,18 +1079,18 @@ impl Game<'_> {
             }
         };
         if replace {
-            self.fns.0.schedule.retain(|e| e.id != schedule_id);
+            self.side.fns.0.schedule.retain(|e| e.id != schedule_id);
         }
         if !self
-            .fns
+            .side.fns
             .0
             .schedule
             .iter()
             .any(|e| e.id == schedule_id && e.time == tick_time)
         {
-            self.fns.0.next_seq += 1;
-            let seq = self.fns.0.next_seq;
-            self.fns.0.schedule.push(Scheduled {
+            self.side.fns.0.next_seq += 1;
+            let seq = self.side.fns.0.next_seq;
+            self.side.fns.0.schedule.push(Scheduled {
                 id: schedule_id,
                 time: tick_time,
                 seq,
@@ -1131,7 +1131,7 @@ impl Game<'_> {
             ..text::Style::default()
         };
         let description = self
-            .fns
+            .side.fns
             .0
             .packs
             .iter()
@@ -1146,7 +1146,7 @@ impl Game<'_> {
         let source = if id == "vanilla" {
             "pack.source.builtin"
         } else if self
-            .fns
+            .side.fns
             .0
             .packs
             .iter()
@@ -1154,7 +1154,7 @@ impl Game<'_> {
         {
             "pack.source.feature"
         } else if self
-            .fns
+            .side.fns
             .0
             .packs
             .iter()
@@ -1175,10 +1175,10 @@ impl Game<'_> {
     }
     /// The selected packs, lowest priority first.
     fn selected_packs(&self) -> Vec<String> {
-        let vanilla = (!self.cmds.0.vanilla_disabled).then(|| "vanilla".to_owned());
+        let vanilla = (!self.side.cmds.0.vanilla_disabled).then(|| "vanilla".to_owned());
         vanilla
             .into_iter()
-            .chain(self.fns.0.enabled.iter().cloned())
+            .chain(self.side.fns.0.enabled.iter().cloned())
             .collect()
     }
     /// `FileUtil.isPathPartPortable`: no trailing dot and no Windows device
@@ -1214,10 +1214,10 @@ impl Game<'_> {
             return Err(err("commands.datapack.create.invalid_full_name", &[&id]));
         }
         // Without a world there is no datapacks folder to write to.
-        if self.server.world_root.as_os_str().is_empty() {
+        if self.side.world_root.as_os_str().is_empty() {
             return Err(err("commands.datapack.create.io_failure", &[&id]));
         }
-        let datapacks = self.server.world_root.join("datapacks");
+        let datapacks = self.side.world_root.join("datapacks");
         let pack = datapacks.join(&id);
         if pack.exists() {
             return Err(err("commands.datapack.create.already_exists", &[&id]));
@@ -1251,7 +1251,7 @@ impl Game<'_> {
         Ok(1)
     }
     fn missing_pack_features(&self, id: &str) -> Vec<String> {
-        self.fns
+        self.side.fns
             .0
             .packs
             .iter()
@@ -1270,17 +1270,17 @@ impl Game<'_> {
             _ => None,
         };
         let selected = self.selected_packs();
-        let previous_enabled = self.fns.0.enabled.clone();
-        let previous_vanilla_disabled = self.cmds.0.vanilla_disabled;
+        let previous_enabled = self.side.fns.0.enabled.clone();
+        let previous_vanilla_disabled = self.side.cmds.0.vanilla_disabled;
         // `DataPackCommand.listAvailablePacks`: a feature pack the world's
         // features do not cover is not available.
         let mut available: Vec<String> = std::iter::once("vanilla".to_owned())
-            .chain(self.fns.0.packs.iter().map(|p| p.id.clone()))
+            .chain(self.side.fns.0.packs.iter().map(|p| p.id.clone()))
             .filter(|p| !selected.contains(p))
             .filter(|p| self.missing_pack_features(p).is_empty())
             .collect();
         available.sort_by(|a, b| datapack::compare_ids(a, b));
-        let known = |g: &Self, n: &str| n == "vanilla" || g.fns.0.packs.iter().any(|p| p.id == n);
+        let known = |g: &Self, n: &str| n == "vanilla" || g.side.fns.0.packs.iter().any(|p| p.id == n);
         match id {
             "datapack.create" => self.create_pack(ctx),
             "datapack.list" => {
@@ -1342,7 +1342,7 @@ impl Game<'_> {
                     ));
                 }
                 if name == "vanilla" {
-                    self.cmds.0.vanilla_disabled = false;
+                    self.side.cmds.0.vanilla_disabled = false;
                 } else {
                     let existing = match ctx.get("existing") {
                         Some(Arg::Str(e)) => Some(e.clone()),
@@ -1351,13 +1351,13 @@ impl Game<'_> {
                     let position = if ctx.has("first") {
                         0
                     } else if let Some(e) = &existing {
-                        let Some(i) = self.fns.0.enabled.iter().position(|p| p == e) else {
+                        let Some(i) = self.side.fns.0.enabled.iter().position(|p| p == e) else {
                             return Err(err("commands.datapack.unknown", &[e]));
                         };
                         if ctx.has("before") { i } else { i + 1 }
                     } else if !ctx.has("last")
                         && self
-                            .fns
+                            .side.fns
                             .0
                             .packs
                             .iter()
@@ -1369,9 +1369,9 @@ impl Game<'_> {
                     {
                         0
                     } else {
-                        self.fns.0.enabled.len()
+                        self.side.fns.0.enabled.len()
                     };
-                    self.fns.0.enabled.insert(position, name.clone());
+                    self.side.fns.0.enabled.insert(position, name.clone());
                 }
                 self.feedback(Text::translate(
                     "commands.datapack.modify.enable",
@@ -1389,7 +1389,7 @@ impl Game<'_> {
                     return Err(err("commands.datapack.disable.failed", &[&name]));
                 }
                 if self
-                    .fns
+                    .side.fns
                     .0
                     .packs
                     .iter()
@@ -1400,7 +1400,7 @@ impl Game<'_> {
                     return Err(err("sunrise.datapack.required", &[&name]));
                 }
                 if self
-                    .fns
+                    .side.fns
                     .0
                     .packs
                     .iter()
@@ -1418,9 +1418,9 @@ impl Game<'_> {
                     ));
                 }
                 if name == "vanilla" {
-                    self.cmds.0.vanilla_disabled = true;
+                    self.side.cmds.0.vanilla_disabled = true;
                 } else {
-                    self.fns.0.enabled.retain(|p| p != &name);
+                    self.side.fns.0.enabled.retain(|p| p != &name);
                 }
                 self.feedback(Text::translate(
                     "commands.datapack.modify.disable",
@@ -1444,21 +1444,21 @@ impl Game<'_> {
         // (`ServerFunctionManager` keeps its queue over a pack change).
         let additional = super::pack_finders::data_packs(&self.mods);
         let mut stack = pack_stack(
-            &self.server.world_root,
+            &self.side.world_root,
             &self.options.resources,
             &self.pack.data_source,
             &self.pack.data_changes,
-            self.cmds.0.vanilla_disabled,
+            self.side.cmds.0.vanilla_disabled,
             &self.level.enabled_features,
             &additional,
         );
         stack.enabled =
-            datapack::selected_ids(stack.packs.iter().map(Arc::as_ref), &self.fns.0.enabled);
+            datapack::selected_ids(stack.packs.iter().map(Arc::as_ref), &self.side.fns.0.enabled);
         let prepared = match self.prepare_pack_condition_reload(&stack) {
             Ok(prepared) => prepared,
             Err(error) => {
-                self.fns.0.enabled = previous_enabled;
-                self.cmds.0.vanilla_disabled = previous_vanilla_disabled;
+                self.side.fns.0.enabled = previous_enabled;
+                self.side.cmds.0.vanilla_disabled = previous_vanilla_disabled;
                 return Err(Self::reload_failure(error));
             }
         };
@@ -1466,8 +1466,8 @@ impl Game<'_> {
         let context = match self.prepare_loop_context(&root) {
             Ok(context) => context,
             Err(error) => {
-                self.fns.0.enabled = previous_enabled;
-                self.cmds.0.vanilla_disabled = previous_vanilla_disabled;
+                self.side.fns.0.enabled = previous_enabled;
+                self.side.cmds.0.vanilla_disabled = previous_vanilla_disabled;
                 return Err(Self::reload_failure(ReloadStageError::DataSource(
                     error.to_string(),
                 )));
@@ -1476,8 +1476,8 @@ impl Game<'_> {
         let world = match self.prepare_world_reload(&stack, &root) {
             Ok(world) => world,
             Err(error) => {
-                self.fns.0.enabled = previous_enabled;
-                self.cmds.0.vanilla_disabled = previous_vanilla_disabled;
+                self.side.fns.0.enabled = previous_enabled;
+                self.side.cmds.0.vanilla_disabled = previous_vanilla_disabled;
                 return Err(Self::reload_failure(ReloadStageError::DataSource(
                     error.to_string(),
                 )));
@@ -1485,11 +1485,11 @@ impl Game<'_> {
         };
         prepared.bind_loot(&world);
         self.install_loop_context(context);
-        self.fns.0.packs = stack.packs.clone();
-        self.fns.0.enabled = stack.enabled.clone();
+        self.side.fns.0.packs = stack.packs.clone();
+        self.side.fns.0.enabled = stack.enabled.clone();
         self.pack.additional_data = additional.into();
         self.save_datapack_settings();
-        self.fns.0.load_pending = true;
+        self.side.fns.0.load_pending = true;
         self.install_world_tables(world);
         self.apply_server_reload(prepared, &stack, &self.level.enabled_features.clone());
         self.run_native_advancement_grants();
@@ -1521,7 +1521,7 @@ impl Game<'_> {
                 .map_err(|e| err("argument.nbt.invalid", &[&e]))?;
             value
         } else {
-            self.fns
+            self.side.fns
                 .0
                 .store
                 .predicates
@@ -1540,7 +1540,7 @@ impl Game<'_> {
                 })?
         };
         let source = self
-            .server
+            .side
             .command_source
             .unwrap_or_else(|| self.player_source());
         let view = source.entity.map(|t| self.entity_view_scored(t, &json));

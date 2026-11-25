@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Whether the fishing bobber `bobber` at `position` in `level`, flying or floating outside
     /// water and not hooked to an entity, is in a medium a mod lets it fish in
     /// (`fishing_medium`): lava, the void below an island, a cloud. `owner` is the player who

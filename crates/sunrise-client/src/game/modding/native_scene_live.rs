@@ -205,7 +205,7 @@ fn entity_refusal(error: GuiEntityError, index: u32) -> SceneError {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `DrawContext::draw_scene`: `blocks` (`scene.blocks`, prepared) into `rect` seen as
     /// `view` says. A scene of blocks alone takes the block-only path before any state
     /// work: no clock read, nothing kept. A living one is drawn with its entities and the
@@ -252,7 +252,7 @@ impl Game<'_> {
         }
         let owner = mod_api::content::crash::current_native_mod().unwrap_or("");
         let mut scenes = self
-            .live_scenes
+            .side.live_scenes
             .0
             .try_borrow_mut()
             .map_err(|_| SceneError::Unavailable)?;
@@ -269,7 +269,7 @@ impl Game<'_> {
                     .zip(&scene.entities)
                     .all(|(a, b)| *a == b.entity)
         };
-        let frame = self.client.frames;
+        let frame = self.side.frames;
         if !scenes.admit(frame, owner, clock.id) {
             // Past the budget: the blocks, and the scene's last state when it is this one's.
             let last = at.filter(|&i| same(&scenes.live[i]));
@@ -413,7 +413,7 @@ impl Game<'_> {
             key,
             entities: scene.entities.iter().map(|e| e.entity.clone()).collect(),
             tick: clock.tick,
-            frame: self.client.frames,
+            frame: self.side.frames,
             world,
             picks,
             engine,
@@ -450,7 +450,7 @@ impl Game<'_> {
         let tables = &self.pack.context.tables;
         let model_offset = |state, x, z| tables.offset(state, x, z);
         let ctx = AnimateContext {
-            enchant_power: &self.client.ambience.enchant_power,
+            enchant_power: &self.side.ambience.enchant_power,
             world,
             facts,
             collision: self.collision,

@@ -7,7 +7,7 @@ use sunrise_core::{
 };
 use sunrise_world::level::hit_slot;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Slot, facing, and powered flag for a click on a shelf's front face.
     pub(in crate::game) fn shelf_hit(&self, hit: &Hit) -> Option<(usize, Direction, bool)> {
         let p = hit.pos;

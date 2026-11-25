@@ -3,7 +3,7 @@ use super::Game;
 use mod_api::{PlayerExperience, PlayerRef};
 use sunrise_client::entities::Experience;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `FoodData.needsFood`: the food level is below 20.
     pub(in crate::game) fn player_needs_food(&self, player: PlayerRef) -> Option<bool> {
         Some(self.player_food(player)?.level < 20)

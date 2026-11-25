@@ -18,7 +18,7 @@ fn refuse_table_count(item: &str, input: u32, answered: u32) {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The stack the table's `row`, costing `cost`, makes of `input` at `seed`: vanilla's
     /// (`sunrise_client::stations::apply_enchantment`), then the parts of the input's item
     /// (`ItemPart::apply_enchantments`) with the list it chose. `None` when the row gives

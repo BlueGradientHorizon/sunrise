@@ -55,7 +55,7 @@ fn env_flag(name: &str, default: bool) -> bool {
     std::env::var(name).map_or(default, |v| v != "0")
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Start sharing the open world.
     pub(in crate::game::client_side) fn friends_start(&mut self) -> Result<()> {
         if self.friends.is_some() {
@@ -63,7 +63,7 @@ impl Game<'_> {
         }
         // Single player on its server thread shares that server, as Open to
         // LAN publishes it; another server can't be shared.
-        if self.title.0.is_some() || (self.remote.is_some() && self.integrated.is_none()) {
+        if self.side.title.0.is_some() || (self.remote.is_some() && self.integrated.is_none()) {
             return Err("open a singleplayer world first".into());
         }
         let opened_lan = self.lan_port().is_none();
@@ -202,7 +202,7 @@ impl Game<'_> {
             return;
         };
         use sunrise_client::clipboard::Clipboard;
-        self.clipboard.0.set(&code);
+        self.side.clipboard.0.set(&code);
         if let Some(s) = self.friends.as_mut() {
             s.copied = Some(Instant::now());
         }
@@ -219,7 +219,7 @@ impl Game<'_> {
         friends_screen::draw(
             batch,
             &self.gui.atlas,
-            self.client.cursor,
+            self.side.cursor,
             &view,
             true,
             &mut |phase, batch| self.draw_screen_phase(batch, phase),
@@ -228,11 +228,11 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn friends_screen_click(&mut self) -> bool {
         let view = self.friends_view();
         let Some(action) =
-            friends_screen::click(&self.gui.atlas, self.gui_size(), self.client.cursor, &view)
+            friends_screen::click(&self.gui.atlas, self.gui_size(), self.side.cursor, &view)
         else {
             return false;
         };
-        self.audio.0.play_button_click();
+        self.side.audio.0.play_button_click();
         match action {
             Action::Share => {
                 if let Err(e) = self.friends_start() {

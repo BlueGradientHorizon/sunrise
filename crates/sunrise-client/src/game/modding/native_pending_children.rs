@@ -47,12 +47,12 @@ pub(in crate::game::server_side) fn sync_listener(
 }
 
 pub(in crate::game::server_side) fn pending_key(
-    game: &Game<'_>,
+    game: &Game<'_, crate::game::server_side::ServerState>,
     mob: UnspawnedMobRef,
 ) -> Result<Option<Borrow>, UnspawnedMobError> {
     sync_listener(
-        &game.lent_mobs.0.borrow().pending,
-        &game.lent_mobs.0.borrow().hook,
+        &game.side.lent_mobs.0.borrow().pending,
+        &game.side.lent_mobs.0.borrow().hook,
     );
     if game.native_lifecycle.epoch() != Some(mob.epoch()) {
         return Err(UnspawnedMobError::Expired);
@@ -84,19 +84,19 @@ impl Children {
     /// mutable ServerHost during dispatch. The caller must still recheck the live world,
     /// parent and read-set versions before accepting the frozen output.
     pub(in crate::game::server_side) fn new(
-        game: &Game<'_>,
+        game: &Game<'_, crate::game::server_side::ServerState>,
         action: Action,
         breeding: bool,
     ) -> Self {
         game.expire_standalone_lends();
         Self {
             resources: game.res.clone(),
-            arena: game.lent_mobs.0.borrow().pending.clone(),
+            arena: game.side.lent_mobs.0.borrow().pending.clone(),
             action,
             epoch: game.lend_epoch(),
             dimension: game.dim,
             breeding,
-            hook: game.lent_mobs.0.borrow().hook.clone(),
+            hook: game.side.lent_mobs.0.borrow().hook.clone(),
         }
     }
 

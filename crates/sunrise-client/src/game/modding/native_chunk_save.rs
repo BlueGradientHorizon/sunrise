@@ -3,7 +3,7 @@ use super::*;
 use sunrise_client::chunk::Chunk;
 use sunrise_client::streaming::{ProtoSave, ProtoSnapshot};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Bind the existing world's identity and immutable resources, before workers start.
     pub(in crate::game::server_side) fn bind_chunk_disk_worker(
         &self,
@@ -48,7 +48,7 @@ impl Game<'_> {
     }
 
     fn native_full_chunk_snapshot(&mut self, _chunk: &Chunk) {
-        self.bind_chunk_disk_worker(&self.save.0, self.dim);
+        self.bind_chunk_disk_worker(&self.side.save.0, self.dim);
     }
 
     /// The proto stays checked out until its immutable save record is submitted.
@@ -73,11 +73,11 @@ impl Game<'_> {
     }
 
     fn native_proto_snapshot(&mut self, _snapshot: ProtoSnapshot<'_>) {
-        self.bind_chunk_disk_worker(&self.save.0, self.dim);
+        self.bind_chunk_disk_worker(&self.side.save.0, self.dim);
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// With a `chunk_data_save` listener, saves wait while an action savepoint
     /// is open, so tentative state is never captured: unloads, and the plan
     /// that causes them, are deferred until it closes (the design's "defer
@@ -102,11 +102,11 @@ impl Game<'_> {
         // is `Game::new`'s placeholder under the working directory.
         if self.world.carrier_fences.is_broken()
             || self.remote.is_some()
-            || self.server.world_root.as_os_str().is_empty()
+            || self.side.world_root.as_os_str().is_empty()
             || self.agent.hold_server
             || self.clock.sprinting()
             || self
-                .server_lists
+                .side.server_lists
                 .0
                 .as_ref()
                 .is_some_and(|lists| !lists.lock().unwrap().autosave)
@@ -117,18 +117,18 @@ impl Game<'_> {
             return;
         }
         let deadline = self
-            .server
+            .side
             .server_tick_deadline
             .unwrap_or_else(|| Instant::now() + self.clock.tick_duration());
         let mut modified = std::mem::take(&mut self.world.modified);
         modified.save_eagerly(
             now,
-            || Instant::now() < deadline && self.save.0.active_chunk_writes() < 128,
+            || Instant::now() < deadline && self.side.save.0.active_chunk_writes() < 128,
             // Only a lit column is a LevelChunk. An unlit one stays queued.
             |key| self.world.chunks.get(&key).map(|chunk| chunk.lit),
             |key, _| {
                 let chunks = self.with_entities([&self.world.chunks[&key]]);
-                match self.save.0.save_later(
+                match self.side.save.0.save_later(
                     &chunks,
                     self.pack.assets.registry,
                     world_biomes!(self),

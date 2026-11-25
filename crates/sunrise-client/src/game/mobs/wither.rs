@@ -10,7 +10,7 @@ use sunrise_client::{
 use sunrise_core::{geometry::Direction, position::BlockPos};
 use sunrise_world::registry::BlockStateId;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `LivingEntity.createWitherRose`: a mob a wither killed leaves a wither
     /// rose where it stood (with mobGriefing, on air that can hold it), else
     /// drops one.
@@ -214,12 +214,12 @@ impl Game<'_> {
             Some(Who::Player) => {
                 // WitherSkull.onHitEntity's source: the wither launched
                 // it, and `magic` names no entity and no position.
-                self.combat.0.projectile_owner = owner;
+                self.side.combat.0.projectile_owner = owner;
                 // EnchantmentHelper.doPostAttackEffects runs only on a
                 // target that lived.
-                self.combat.0.post_attack_if_alive = true;
+                self.side.combat.0.post_attack_if_alive = true;
                 if skull.from.is_none() {
-                    self.combat.0.projectile_direct = None;
+                    self.side.combat.0.projectile_direct = None;
                 }
                 let hit = self.hurt_player_from(
                     amount,
@@ -274,18 +274,18 @@ impl Game<'_> {
                         let plan = self.prepare_knockback_credit(
                             id as i32,
                             source.attacker,
-                            self.combat.0.attack(),
+                            self.side.combat.0.attack(),
                         );
                         // The hit's causing entity, lent to its listeners beside the victim.
                         let causing = self.causer_id(source.attacker);
                         let decision = crate::game::entity::causer_decision!(self, causing);
-                        let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
+                        let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
                         let (victim, lend) =
                             crate::game::entity::victim_and_causer!(self, index, causing, decision);
                         let hit = victim.damage(
                             crate::game::entity::damage_level_of!(
                                 self,
-                                self.combat.0.attack(),
+                                self.side.combat.0.attack(),
                                 &mut credit,
                                 lend
                             ),
@@ -343,8 +343,8 @@ impl Game<'_> {
         }
         // Projectile.onHit emits PROJECTILE_LAND after onHitEntity and before WitherSkull.onHit explodes.
         self.projectile_hit_landed_event(p.id, p.owner, hit);
-        self.combat.0.explosion_owner = owner;
-        self.combat.0.explosion_in_water = p.touching_water;
+        self.side.combat.0.explosion_owner = owner;
+        self.side.combat.0.explosion_in_water = p.touching_water;
         // The blast's source names a player owner, for the dragon's kill credit.
         self.set_blast_by_player(live_owner == Some(Who::Player));
         // WitherSkull.getBlockExplosionResistance: only a blue skull's blast
@@ -353,9 +353,9 @@ impl Game<'_> {
             p.kind,
             sunrise_client::projectiles::ProjectileKind::WitherSkull { dangerous: true }
         ) {
-            self.combat.0.blast_resistance_cap = Some(0.8);
+            self.side.combat.0.blast_resistance_cap = Some(0.8);
         }
-        self.combat.0.explosion_direct = Some(p.id);
+        self.side.combat.0.explosion_direct = Some(p.id);
         let result = self.with_impacting_projectile(p, |g| {
             g.with_hive_emptying_blast(|g| {
                 g.explode(
@@ -372,11 +372,11 @@ impl Game<'_> {
                 )
             })
         });
-        self.combat.0.explosion_direct = None;
-        self.combat.0.blast_resistance_cap = None;
+        self.side.combat.0.explosion_direct = None;
+        self.side.combat.0.blast_resistance_cap = None;
         self.set_blast_by_player(false);
-        self.combat.0.explosion_owner = None;
-        self.combat.0.explosion_in_water = false;
+        self.side.combat.0.explosion_owner = None;
+        self.side.combat.0.explosion_in_water = false;
         result
     }
     /// Runs `blast` with the impacting projectile `p` back among the level's
@@ -412,7 +412,7 @@ impl Game<'_> {
                 }
             }
             // The player (or the guest acting now) who owns the skull.
-            Some(Who::Player) if p.guest.is_none() || p.guest == self.server.lan_acting => {
+            Some(Who::Player) if p.guest.is_none() || p.guest == self.side.lan_acting => {
                 self.apply_effect_action(sunrise_client::effects::EffectAction::Heal(5.0));
             }
             _ => {}

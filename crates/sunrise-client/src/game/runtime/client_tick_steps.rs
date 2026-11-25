@@ -2,7 +2,7 @@
 //! what the server sent (`update_world`).
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Runs `steps` client ticks: each tells `client_tick_pre`, ticks the game unless it is
     /// paused or on the title screen (the level, its block entities' client tickers included),
     /// does the client's own per-tick work and tells `client_tick_post`. With `event_loop`, an
@@ -24,9 +24,9 @@ impl Game<'_> {
             sunrise_client::social::tick();
             // Minecraft.tick: every client tick, paused or not, in menus too.
             self.native_client_tick_pre();
-            if self.title.0.is_none() && !self.pause {
+            if self.side.title.0.is_none() && !self.pause {
                 if let Some(event_loop) = event_loop
-                    && self.client.tick_script.armed()
+                    && self.side.tick_script.armed()
                 {
                     self.tick_script_step(event_loop);
                 }
@@ -39,7 +39,7 @@ impl Game<'_> {
                     if !self.clock.still() {
                         self.tick_ambience();
                     } else if self.clock.runs_normally() {
-                        self.client.ambience.reseed(self.visual_ticks() as i64);
+                        self.side.ambience.reseed(self.visual_ticks() as i64);
                         self.tick_ambience();
                     }
                     self.tick_fov();
@@ -53,7 +53,7 @@ impl Game<'_> {
             // Gui.tick runs ChatListener.tick paused or not; Hud.tickCount advances
             // only when unpaused, including when there is no level on the title screen.
             if !self.pause {
-                self.client.gui_ticks = self.client.gui_ticks.wrapping_add(1);
+                self.side.gui_ticks = self.side.gui_ticks.wrapping_add(1);
             }
             self.tick_chat_queue();
             self.tick_music();
@@ -62,7 +62,7 @@ impl Game<'_> {
             self.native_client_tick_post();
             self.clock.record(started.elapsed());
         }
-        self.clock.update_animation_phase(self.client.texture_ticks);
+        self.clock.update_animation_phase(self.side.texture_ticks);
         Ok(())
     }
     /// The window's own lead of a tick: debug keys and charts, the tutorial and the creative screen.
@@ -70,7 +70,7 @@ impl Game<'_> {
         self.tick_debug_keys()?;
         self.tick_debug_charts();
         self.tick_tutorial();
-        if self.client.screen == Screen::Creative {
+        if self.side.screen == Screen::Creative {
             self.refresh_creative_tabs();
             // CreativeModeInventoryScreen.containerTick: a player without
             // infinite materials gets the survival inventory instead.

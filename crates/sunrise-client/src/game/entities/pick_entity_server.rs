@@ -31,7 +31,7 @@ fn knot_position(block: [i32; 3]) -> [f64; 3] {
 
 /// Server-only entity section walk without client stores (`remote`, `client.remote_knots`, `client.interactions`).
 pub(in crate::game) fn visit_server_section_members(
-    game: &Game<'_>,
+    game: &Game<'_, crate::game::server_side::ServerState>,
     visit: &mut impl FnMut(PickKind, usize, u32, [f64; 3]),
 ) {
     use crate::game::entity::Entity as _;
@@ -113,7 +113,7 @@ pub(in crate::game) fn visit_server_section_members(
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Authoritative server entity hit from `server_pick_ray_decision`.
     pub(in crate::game) fn server_crosshair_entity_hit(&self) -> Option<CrosshairEntityHit> {
         let CrosshairDecision::Entity(hit) = self.server_pick_ray_decision() else {
@@ -145,7 +145,7 @@ impl Game<'_> {
     pub(in crate::game) fn server_pick_knot_fence(&self, id: u32) -> Option<[i32; 3]> {
         self.natural_knot(id).or_else(|| {
             let knot = self
-                .others
+                .side.others
                 .0
                 .iter()
                 .find(|o| o.id == id && o.knot_check.is_some())?;

@@ -8,7 +8,7 @@ use mod_api::{DragKind, LevelReadError, MenuClick, MenuRef, MouseButton, PlayerR
 #[allow(unused_imports)]
 use sunrise_client::{items::ItemStack, menu::Input};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Submit clicks on the local player's live menu through normal prediction
     /// and `ContainerClick`. Slots use the same menu order as `slot`; `None`
     /// is outside (-999). All clicks are validated before any prediction or send.
@@ -18,7 +18,7 @@ impl Game<'_> {
     /// True means submitted, not accepted by the server: its corrections win.
     pub(in crate::game) fn menu_click(&mut self, menu: MenuRef, clicks: &[MenuClick]) -> bool {
         if self.is_logical_server()
-            || self.client.screen == super::Screen::Creative
+            || self.side.screen == super::Screen::Creative
             || self.spectator()
         {
             return false;
@@ -39,7 +39,7 @@ impl Game<'_> {
     /// the inventory menu while playing.
     pub(in crate::game) fn menu_close(&mut self, menu: MenuRef) -> bool {
         if self.is_logical_server()
-            || self.client.screen != super::Screen::Inventory
+            || self.side.screen != super::Screen::Inventory
             || self.native_client_menu_name(menu).is_none()
         {
             return false;
@@ -66,14 +66,14 @@ impl Game<'_> {
 
     pub(in crate::game) fn menu_slot_boxes(&self, menu: MenuRef) -> Option<Vec<Option<[f32; 4]>>> {
         if !matches!(
-            self.client.screen,
+            self.side.screen,
             super::Screen::Inventory | super::Screen::Creative
         ) || !self.screen_hooks_open()
         {
             return None;
         }
         let name = self.native_client_menu_name(menu)?;
-        let renderer = self.renderer.0.as_ref()?;
+        let renderer = self.side.renderer.0.as_ref()?;
         let batch = super::HudBatch::new(
             [renderer.config.width, renderer.config.height],
             self.settings.gui_scale_inputs(),

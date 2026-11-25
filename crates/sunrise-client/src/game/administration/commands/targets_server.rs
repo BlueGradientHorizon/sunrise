@@ -7,13 +7,13 @@ pub(in crate::game::server_side) use crate::game::commands::targets::non_player_
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::commands::targets::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The level `t` is in (`Entity.level`): a server's players have their
     /// own, which need not be the one in place; everything else is in the
     /// level in place.
     pub(in crate::game) fn target_level(&self, t: Target) -> Dim {
         let conn = match t {
-            Target::Player => self.server.lan_acting,
+            Target::Player => self.side.lan_acting,
             Target::Guest(conn) => Some(conn),
             _ => None,
         };
@@ -80,7 +80,7 @@ impl Game<'_> {
                 .find(|c| c.id == id)
                 .map(|c| [c.position.x, c.position.y, c.position.z]),
             Target::Other(id) => self
-                .others
+                .side.others
                 .0
                 .iter()
                 .find(|o| o.id == id)
@@ -194,7 +194,7 @@ impl Game<'_> {
                 .find(|c| c.id == id)
                 .map_or_else(|| "minecraft:minecart".into(), |c| c.kind.id().into()),
             Target::Other(id) => self
-                .others
+                .side.others
                 .0
                 .iter()
                 .find(|o| o.id == id)

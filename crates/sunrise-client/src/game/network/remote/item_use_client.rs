@@ -7,7 +7,7 @@ pub(in crate::game::client_side) use sunrise_client::first_person::Hand;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::items::ItemStack;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `FlintAndSteelItem.useOn` / `FireChargeItem.useOn` on this client's level:
     /// lighting an unlit campfire, candle or candle cake, or placing fire at the hit face.
     /// True when it succeeded (SUCCESS, swings and ends the click); false when
@@ -52,7 +52,7 @@ impl Game<'_> {
             };
             let pitch =
                 sunrise_client::items::fire_starter_pitch(is_fire_charge, &mut self.world.random);
-            self.audio.0.play(sound, Some(at), 1.0, pitch);
+            self.side.audio.0.play(sound, Some(at), 1.0, pitch);
             if is_fire_charge && !self.creative {
                 self.with_hand(hand, Game::consume_held);
             }
@@ -75,7 +75,7 @@ impl Game<'_> {
                 f64::from(target[1]) + 0.5,
                 f64::from(target[2]) + 0.5,
             ];
-            self.audio.0.play(sound, Some(target_at), 1.0, pitch);
+            self.side.audio.0.play(sound, Some(target_at), 1.0, pitch);
             if is_fire_charge && !self.creative {
                 self.with_hand(hand, Game::consume_held);
             }

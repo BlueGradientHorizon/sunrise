@@ -5,7 +5,7 @@ use mod_api::{
     item::recipe_book::{RecipeBookSettings, RecipeBookTypeKey},
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn player_set_recipe_book_settings(
         &mut self,
         player: PlayerRef,

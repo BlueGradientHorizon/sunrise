@@ -64,7 +64,7 @@ impl DisplayResources for Resources<'_, '_> {
     }
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The owning declaration generation, including its typed load refusal.
     /// Cache failures too: malformed input never invokes callbacks every frame.
     pub(super) fn ensure_mod_book_displays(&mut self) {

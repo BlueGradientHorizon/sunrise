@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// a right-click on an entity with the point clicked (`native_entity_interact_specific`).
     pub(in crate::game) fn native_entity_interact_specific(
         &mut self,

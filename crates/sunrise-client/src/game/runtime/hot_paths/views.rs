@@ -30,7 +30,7 @@ pub fn hot_paths_next_block_entity() -> BlockEntityRef {
     })
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(super) fn hot_block_entity_view(
         &mut self,
         recorder: &mut Recorder,

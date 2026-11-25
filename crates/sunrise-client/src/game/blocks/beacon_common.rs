@@ -43,7 +43,7 @@ pub(in crate::game) fn effect_box_hits(
         && hi[2] > z - range
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The beam color of a `BeaconBeamBlock` (stained glass and panes, the beacon).
     pub(in crate::game) fn beam_color(&self, name: &str) -> Option<u32> {
         if name == "minecraft:beacon" {

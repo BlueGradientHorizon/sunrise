@@ -1393,7 +1393,7 @@ impl GameLevel<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// [`GameLevel::roll_block_loot`] for a roll outside a level write:
     /// `entity` is `THIS_ENTITY`'s id. With no listener it builds no level.
     pub(in crate::game) fn roll_block_loot(
@@ -1425,7 +1425,7 @@ impl Game<'_> {
                     state,
                     roll,
                     &mut self.world.random,
-                    Some((&mut self.server.rand_sequences, self.level.seed)),
+                    Some((&mut self.side.rand_sequences, self.level.seed)),
                 )
             })
         })
@@ -1474,7 +1474,7 @@ impl Game<'_> {
                 spawn.delay,
                 spawn.random,
             );
-            self.join_removal_item(self.server.next_entity, spawn.pos);
+            self.join_removal_item(self.side.next_entity, spawn.pos);
         }
         for (at, value, merge_id) in orbs {
             self.award_orb(at, value, merge_id);
@@ -1484,11 +1484,11 @@ impl Game<'_> {
     /// Add the item entities the block behaviour spawned and follow up on the
     /// block entities it removed.
     pub(in crate::game) fn flush_spill(&mut self) {
-        if self.spill.0.is_empty() {
+        if self.side.spill.0.is_empty() {
             return;
         }
         let _save_lease = sunrise_client::join_seq::visibility::PassLease::enter();
-        let mut spill = std::mem::take(&mut self.spill.0);
+        let mut spill = std::mem::take(&mut self.side.spill.0);
         self.finish_piston_position_changes(std::mem::take(&mut spill.piston_positions));
         let used = std::mem::take(&mut spill.used);
         let tool = self.held().cloned();

@@ -2,7 +2,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `IItemExtension.onLeftClickEntity`: `player`, holding `stack`, is
     /// about to attack the entity `entity` of type `kind`, where
     /// `Player.attack` starts, once `attack_entity` let the blow through and
@@ -32,7 +32,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `ItemStack.onEntitySwing` for the player in place swinging `hand`:
     /// true when the item's Part canceled the swing. Nothing runs for a hand
     /// holding nothing or an item without the Part.

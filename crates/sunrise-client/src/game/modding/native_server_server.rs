@@ -100,13 +100,13 @@ pub(in crate::game) mod registered_commands;
 /// Helpers for server mods, kept as stable as the hook points.
 // Native mods use these; nothing in Sunrise does.
 #[allow(dead_code)]
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether the acting player is in the level in place: a guest's own level is their hub
     /// record's, also when a hook of another level borrows them into its turn. A raw throw,
     /// equip sound or block break requires that level in place; `/give`'s effects replay in
     /// that level separately.
     pub(in crate::game) fn acting_in_level_in_place(&self) -> bool {
-        let Some(conn) = self.server.lan_acting else {
+        let Some(conn) = self.side.lan_acting else {
             return true;
         };
         self.lan
@@ -124,7 +124,7 @@ impl Game<'_> {
         host.forget_menus(guest.conn);
         host.poses.remove(&guest.conn);
         host.mob_players.retain(|_, conn| *conn != guest.conn);
-        self.guest_combat.0.remove(&guest.conn);
+        self.side.guest_combat.0.remove(&guest.conn);
     }
     pub(in crate::game) fn cloning_guest(&self, uuid: u128) -> Option<&Guest> {
         let &(_, conn, _) = self
@@ -134,7 +134,7 @@ impl Game<'_> {
             .rev()
             .find(|&&(player, _, _)| player == uuid)?;
         self.command_guest(conn)
-            .filter(|_| !self.server.lan_guest_swaps.contains(&conn))
+            .filter(|_| !self.side.lan_guest_swaps.contains(&conn))
     }
     pub(in crate::game) fn fake_action_actor(
         &self,
@@ -164,9 +164,9 @@ impl Game<'_> {
                 });
             }
         };
-        if !self.server.lan_guest_swaps.is_empty()
+        if !self.side.lan_guest_swaps.is_empty()
             || !self.transactions.is_empty()
-            || self.fake_action.0.acting()
+            || self.side.fake_action.0.acting()
         {
             return Err(ActionRefused::Busy);
         }
@@ -187,10 +187,10 @@ impl Game<'_> {
     /// and, inside `perform_action`, records it for the action's answer. The one check every
     /// effect a fake can't take part in makes where it starts.
     pub(in crate::game) fn fake_blocks(&self, effect: FakeEffect) -> bool {
-        if !self.server.lan_acting_fake {
+        if !self.side.lan_acting_fake {
             return false;
         }
-        self.fake_action.0.block(effect);
+        self.side.fake_action.0.block(effect);
         true
     }
     /// Create or retrieve a connectionless player for the level currently in place.
@@ -201,7 +201,7 @@ impl Game<'_> {
         name: &str,
     ) -> Option<PlayerRef> {
         if !self.level_in_place(level)
-            || !self.server.lan_guest_swaps.is_empty()
+            || !self.side.lan_guest_swaps.is_empty()
             || !sunrise_client::lan::conn::valid_name(name)
         {
             return None;
@@ -235,7 +235,7 @@ impl Game<'_> {
                 uuid,
             ));
         }
-        let id = self.server.next_entity.checked_add(1)?;
+        let id = self.side.next_entity.checked_add(1)?;
         let entity_id = i32::try_from(id).ok()?;
         let motion = PlayerMotion::new(
             self.motion,
@@ -249,7 +249,7 @@ impl Game<'_> {
         host.hub.guests.push(guest);
         host.play
             .insert(conn, super::lan_actions::GuestPlay::default());
-        self.server.next_entity = id;
+        self.side.next_entity = id;
         Some(mod_api::__private::game::player_ref(
             mod_api::EntityRef::new(epoch, id),
             uuid,
@@ -261,11 +261,11 @@ impl Game<'_> {
     /// hook.
     pub(in crate::game) fn native_acting_player(&self) -> Option<PlayerRef> {
         self.player.as_ref()?;
-        self.server.lan_acting_name.as_ref()?;
-        self.server.lan_acting_permission?;
+        self.side.lan_acting_name.as_ref()?;
+        self.side.lan_acting_permission?;
         Some(mod_api::__private::game::player_ref(
             mod_api::EntityRef::new(self.native_lifecycle.epoch()?, self.native_acting_entity()),
-            self.server.lan_acting_uuid?,
+            self.side.lan_acting_uuid?,
         ))
     }
     /// Runs `f` with the player `uuid`'s state in place, against the level in place: theirs
@@ -279,7 +279,7 @@ impl Game<'_> {
         uuid: u128,
         f: impl FnOnce(&mut Self),
     ) -> bool {
-        if self.server.lan_acting_uuid == Some(uuid) {
+        if self.side.lan_acting_uuid == Some(uuid) {
             return self.native_as_acting(f);
         }
         // With no guest's turn running, `native_acting_id` is the world's owner: on a server
@@ -320,10 +320,10 @@ impl Game<'_> {
         use mod_api::CommandSource;
         let permission = mod_api::PermissionLevel::from_level(i32::from(permission));
         let source = self
-            .server
+            .side
             .command_source
             .unwrap_or_else(|| self.player_source());
-        let origin = if let Some(id) = self.exec.0.functions.last() {
+        let origin = if let Some(id) = self.side.exec.0.functions.last() {
             CommandSource::Function {
                 id: mod_api::Identifier::parse(id).map_err(|_| err("command.failed", &[]))?,
                 permission,
@@ -360,7 +360,7 @@ impl Game<'_> {
     /// is whatever the executor returns.
     pub(in crate::game) fn native_failure(&mut self, line: Text) {
         let source = self
-            .server
+            .side
             .command_source
             .unwrap_or_else(|| self.player_source());
         self.with_source(
@@ -378,7 +378,7 @@ impl Game<'_> {
     /// entity's name is read there, the origin block or minecart in its own.
     pub(in crate::game) fn native_feedback(&mut self, line: Text, broadcast_to_admins: bool) {
         let source = self
-            .server
+            .side
             .command_source
             .unwrap_or_else(|| self.player_source());
         self.with_source(source, |game| game.send_success(line, broadcast_to_admins));
@@ -408,7 +408,7 @@ impl Game<'_> {
             if !placed {
                 // A joining player has no world yet: nothing can be told them.
                 self.native_player_commands_sent(uuid, &name, &mut kept);
-            } else if self.server.lan_acting == Some(conn) {
+            } else if self.side.lan_acting == Some(conn) {
                 self.native_player_commands_sent(uuid, &name, &mut kept);
             } else {
                 self.as_guest(conn, |g| {
@@ -428,12 +428,12 @@ impl Game<'_> {
         &self,
         uuid: u128,
     ) -> Option<PlayerRead<'_>> {
-        if self.server.lan_acting_uuid != Some(uuid) {
+        if self.side.lan_acting_uuid != Some(uuid) {
             if let Some(guest) = self.native_player_holder(uuid) {
-                return (!guest.dead && !self.server.lan_guest_swaps.contains(&guest.conn))
+                return (!guest.dead && !self.side.lan_guest_swaps.contains(&guest.conn))
                     .then_some(PlayerRead::Guest(guest));
             }
-            if self.server.lan_acting_uuid.is_some()
+            if self.side.lan_acting_uuid.is_some()
                 || self
                     .level
                     .player_uuid
@@ -446,7 +446,7 @@ impl Game<'_> {
         Some(PlayerRead::Acting {
             mode: Some(self.mode_id()),
             body: Some(self.native_live_acting_body()?),
-            abilities: self.server.acting_abilities,
+            abilities: self.side.acting_abilities,
             last_death: self.level.last_death.as_ref(),
         })
     }
@@ -457,11 +457,11 @@ impl Game<'_> {
     /// happens where no world is open to players, and nothing for a server
     /// whose mods never call it. API @API:refresh_commands@.
     pub(in crate::game) fn native_refresh_commands(&mut self) {
-        self.native_commands.0.refresh = true;
+        self.side.native_commands.0.refresh = true;
     }
     pub(in crate::game) fn native_send_all(&mut self, uuid: u128, packets: Vec<C>) -> bool {
-        if self.server.lan_acting_uuid == Some(uuid) && !self.server.lan_acting_fake {
-            self.server.guest_packets.extend(packets);
+        if self.side.lan_acting_uuid == Some(uuid) && !self.side.lan_acting_fake {
+            self.side.guest_packets.extend(packets);
             return true;
         }
         let Some(host) = &self.lan else {
@@ -502,8 +502,8 @@ impl Game<'_> {
         conn: u32,
         action: PlayerAction,
     ) -> Result<ActionOutcome, ActionRefused> {
-        let acting = Acting::start(&self.fake_action.0);
-        let failed = std::mem::replace(&mut self.server.use_failed, false);
+        let acting = Acting::start(&self.side.fake_action.0);
+        let failed = std::mem::replace(&mut self.side.use_failed, false);
         let consumed = (|| match action {
             PlayerAction::UseOn { hand, pos, hit } => {
                 let hit = super::Hit {
@@ -530,8 +530,8 @@ impl Game<'_> {
             PlayerAction::BreakBlock { pos } => self.guest_break_block(conn, gi, pos),
         })();
         // FAIL ends the click, but is not a consuming InteractionResult.
-        let consumed = consumed.map(|used| used && !self.server.use_failed);
-        self.server.use_failed = failed;
+        let consumed = consumed.map(|used| used && !self.side.use_failed);
+        self.side.use_failed = failed;
         let consumed = consumed?;
         Ok(match acting.blocked() {
             Some(effect) => ActionOutcome::EffectBlocked(effect),
@@ -549,7 +549,7 @@ impl Game<'_> {
         quiet: bool,
     ) -> Option<bool> {
         let host = self.lan.as_ref()?;
-        if self.native_commands.0.level(line)? > permission {
+        if self.side.native_commands.0.level(line)? > permission {
             return None;
         }
         host.hub.guest(conn)?;
@@ -570,19 +570,19 @@ impl Game<'_> {
         &mut self,
         line: &str,
     ) -> bool {
-        if self.lan.is_none() || self.native_commands.0.level(line).is_none() {
+        if self.lan.is_none() || self.side.native_commands.0.level(line).is_none() {
             return false;
         }
         self.as_console_in_spawn_level(|game| {
             let previous = game
-                .server
+                .side
                 .command_source
                 .replace(super::commands::execute::Source {
                     silent: false,
                     ..game.server_source()
                 });
             game.run_command(line);
-            game.server.command_source = previous;
+            game.side.command_source = previous;
         });
         true
     }
@@ -619,7 +619,7 @@ impl Game<'_> {
             else {
                 return None;
             };
-            if self.server.lan_acting.is_some() {
+            if self.side.lan_acting.is_some() {
                 return None;
             }
             let flags = body.collision;
@@ -643,7 +643,7 @@ impl Game<'_> {
         Some(match self.player_handle_read(player)? {
             // The player in place: the host's own, or a guest in their turn.
             PlayerRead::Acting { .. } => {
-                !self.server.lan_acting_fake
+                !self.side.lan_acting_fake
                     && !self.spectator()
                     && (self.sleeping.is_some() || !ignored(self))
             }
@@ -660,7 +660,7 @@ impl Game<'_> {
             return None;
         }
         if self.native_acting_player() == Some(player) {
-            let dim = match self.server.lan_acting {
+            let dim = match self.side.lan_acting {
                 Some(conn) => {
                     let g = self.command_guest(conn)?;
                     Dim::from_id(&g.dimension).key()
@@ -686,14 +686,14 @@ impl Game<'_> {
     }
     pub(in crate::game) fn player_handle_read(&self, player: PlayerRef) -> Option<PlayerRead<'_>> {
         (self.native_lifecycle.epoch()? == player.fields().entity.epoch()).then_some(())?;
-        if self.server.lan_acting_fake
-            && self.server.lan_acting_uuid == Some(player.fields().uuid)
-            && self.server.lan_acting_entity == Some(player.fields().entity.id())
+        if self.side.lan_acting_fake
+            && self.side.lan_acting_uuid == Some(player.fields().uuid)
+            && self.side.lan_acting_entity == Some(player.fields().entity.id())
         {
             return Some(PlayerRead::Acting {
                 mode: Some(self.mode_id()),
                 body: self.player.as_ref(),
-                abilities: self.server.acting_abilities,
+                abilities: self.side.acting_abilities,
                 last_death: self.level.last_death.as_ref(),
             });
         }
@@ -705,7 +705,7 @@ impl Game<'_> {
         let guests = &self.lan.as_ref()?.hub.guests;
         let guest = guests
             .get(guests.identity_index(player.fields().uuid, player.fields().entity.id())?)?;
-        if !guest.placed || !guest.is_fake() || self.server.lan_guest_swaps.contains(&guest.conn) {
+        if !guest.placed || !guest.is_fake() || self.side.lan_guest_swaps.contains(&guest.conn) {
             return None;
         }
         Some(PlayerRead::Guest(guest))
@@ -713,20 +713,20 @@ impl Game<'_> {
     /// Whether a live player handle names a connectionless actor.
     pub(in crate::game) fn player_is_fake(&self, player: PlayerRef) -> Option<bool> {
         match self.player_handle_read(player)? {
-            PlayerRead::Acting { .. } => Some(self.server.lan_acting_fake),
+            PlayerRead::Acting { .. } => Some(self.side.lan_acting_fake),
             PlayerRead::Guest(guest) => Some(guest.is_fake()),
         }
     }
     pub(in crate::game) fn player_lookup(&self, uuid: u128) -> Option<(PlayerRead<'_>, u32)> {
-        if self.server.lan_acting_uuid == Some(uuid) && !self.server.lan_acting_fake {
+        if self.side.lan_acting_uuid == Some(uuid) && !self.side.lan_acting_fake {
             return Some((
                 PlayerRead::Acting {
                     mode: Some(self.mode_id()),
                     body: self.player.as_ref(),
-                    abilities: self.server.acting_abilities,
+                    abilities: self.side.acting_abilities,
                     last_death: self.level.last_death.as_ref(),
                 },
-                self.server.lan_acting_entity?,
+                self.side.lan_acting_entity?,
             ));
         }
         if let Some(guest) = self.cloning_guest(uuid).or_else(|| {
@@ -734,13 +734,13 @@ impl Game<'_> {
                 host.hub.guests.simulation_iter().find(|guest| {
                     host.hub.online(guest)
                         && guest.uuid == uuid
-                        && !self.server.lan_guest_swaps.contains(&guest.conn)
+                        && !self.side.lan_guest_swaps.contains(&guest.conn)
                 })
             })
         }) {
             return Some((PlayerRead::Guest(guest), guest.entity_id as u32));
         }
-        if self.server.lan_acting_uuid.is_none()
+        if self.side.lan_acting_uuid.is_none()
             && self.serving.is_some()
             && self
                 .level
@@ -753,7 +753,7 @@ impl Game<'_> {
                 PlayerRead::Acting {
                     mode: Some(self.mode_id()),
                     body: Some(body),
-                    abilities: self.server.acting_abilities,
+                    abilities: self.side.acting_abilities,
                     last_death: self.level.last_death.as_ref(),
                 },
                 body.entity_id as u32,
@@ -765,7 +765,7 @@ impl Game<'_> {
     /// unavailable player; displaced online players retain their identity.
     pub(in crate::game) fn player_name(&self, player: PlayerRef) -> Option<&str> {
         if self.native_acting_player() == Some(player) {
-            return self.server.lan_acting_name.as_deref();
+            return self.side.lan_acting_name.as_deref();
         }
         Some(&self.online_player_record(player)?.name)
     }
@@ -841,7 +841,7 @@ impl Game<'_> {
             Err(_) => {
                 // ItemEntity.setDefaultPickUpDelay.
                 self.push_item_entity(stack, position, None, 10, None);
-                if self.join_item_entity(self.server.next_entity, position) {
+                if self.join_item_entity(self.side.next_entity, position) {
                     unrepresentable += 1;
                 }
                 None
@@ -854,7 +854,7 @@ impl Game<'_> {
     /// Remove a fake without treating it as a disconnect or saving it.
     pub(in crate::game) fn player_remove_fake(&mut self, player: PlayerRef) -> bool {
         if self.native_lifecycle.epoch() != Some(player.fields().entity.epoch())
-            || !self.server.lan_guest_swaps.is_empty()
+            || !self.side.lan_guest_swaps.is_empty()
         {
             return false;
         }
@@ -889,7 +889,7 @@ impl Game<'_> {
         player: PlayerRef,
     ) -> Option<Option<PlayerRespawnConfig>> {
         let saved = match self.player_handle_read(player)? {
-            PlayerRead::Acting { .. } => self.server.respawn_config.map(|c| c.saved()),
+            PlayerRead::Acting { .. } => self.side.respawn_config.map(|c| c.saved()),
             PlayerRead::Guest(guest) => guest.respawn_elsewhere.clone(),
         };
         let Some((dimension, [x, y, z], yaw, _pitch, forced)) = saved else {
@@ -930,7 +930,7 @@ impl Game<'_> {
         }
         let mut stored_here = false;
         self.native_as_player_handle(player, |game| {
-            let Some(slot) = game.server.acting_abilities.as_mut() else {
+            let Some(slot) = game.side.acting_abilities.as_mut() else {
                 return;
             };
             *slot = stored;
@@ -960,7 +960,7 @@ impl Game<'_> {
         // has none.
         let conn = match self.player_handle_read(player) {
             Some(PlayerRead::Guest(guest)) => Some(guest.conn),
-            Some(PlayerRead::Acting { .. }) => self.server.lan_acting_uuid.and_then(|uuid| {
+            Some(PlayerRead::Acting { .. }) => self.side.lan_acting_uuid.and_then(|uuid| {
                 self.lan
                     .as_ref()?
                     .hub
@@ -1015,7 +1015,7 @@ impl Game<'_> {
     /// tickets keep them only while a mod listens (`update_chunk_tickets`).
     pub(in crate::game::server_side) fn run_chunk_ticket_level_updates(&mut self) {
         use sunrise_client::ticket_levels::UNLOADED;
-        let changes = self.tickets.0.take_changes();
+        let changes = self.side.tickets.0.take_changes();
         if changes.is_empty() {
             return;
         }
@@ -1091,22 +1091,22 @@ impl Game<'_> {
             silent: base.silent && !capture,
             ..base
         };
-        let outer = self.server.command_source.replace(server);
-        let filter = std::mem::replace(&mut self.server.native_command_filter, true);
-        let outer_exec = std::mem::take(&mut self.exec.0);
-        let outer_results = self.cmds.0.results.take();
-        let outer_capture = capture.then(|| self.server.chat_capture.replace(Vec::new()));
+        let outer = self.side.command_source.replace(server);
+        let filter = std::mem::replace(&mut self.side.native_command_filter, true);
+        let outer_exec = std::mem::take(&mut self.side.exec.0);
+        let outer_results = self.side.cmds.0.results.take();
+        let outer_capture = capture.then(|| self.side.chat_capture.replace(Vec::new()));
         let ok = self.as_console(|g| g.run_command(line));
         let lines = match outer_capture {
             Some(outer_capture) => {
-                std::mem::replace(&mut self.server.chat_capture, outer_capture).unwrap_or_default()
+                std::mem::replace(&mut self.side.chat_capture, outer_capture).unwrap_or_default()
             }
             None => Vec::new(),
         };
-        self.exec.0 = outer_exec;
-        self.cmds.0.results = outer_results;
-        self.server.native_command_filter = filter;
-        self.server.command_source = outer;
+        self.side.exec.0 = outer_exec;
+        self.side.cmds.0.results = outer_results;
+        self.side.native_command_filter = filter;
+        self.side.command_source = outer;
         (ok, lines)
     }
     /// The shared command-node executor, also reached by functions and `execute`.
@@ -1122,7 +1122,7 @@ impl Game<'_> {
             .executor
             .filter(|&key| self.ui.dispatcher.0.owns_executor(key))
             .and_then(|key| {
-                self.native_commands
+                self.side.native_commands
                     .0
                     .registered
                     .as_ref()?
@@ -1161,7 +1161,7 @@ impl Game<'_> {
     /// mod keeps its data in a folder of its own there, so the world's
     /// backups carry it. None when no world is open.
     pub(in crate::game) fn world_dir(&self) -> Option<PathBuf> {
-        (!self.server.world_root.as_os_str().is_empty()).then(|| self.server.world_root.clone())
+        (!self.side.world_root.as_os_str().is_empty()).then(|| self.side.world_root.clone())
     }
 
     pub(in crate::game) fn player_perform_action(
@@ -1816,11 +1816,11 @@ impl Game<'_> {
     pub(in crate::game) fn server_world_table_items(
         &self,
     ) -> Option<&Arc<sunrise_client::items::Items>> {
-        self.world_tables.0.as_ref().map(|tables| &tables.items)
+        self.side.world_tables.0.as_ref().map(|tables| &tables.items)
     }
 
     pub(in crate::game) fn server_lid_openers(&self) -> Option<&HashMap<(i32, i32, i32), i32>> {
-        Some(&self.server.lid_openers)
+        Some(&self.side.lid_openers)
     }
 
     pub(in crate::game) fn server_signal_capability_site(

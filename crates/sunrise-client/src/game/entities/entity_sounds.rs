@@ -7,7 +7,7 @@ pub(in crate::game) fn saved_silent(extra: Option<&Tag>) -> bool {
     sunrise_client::save::number(extra.and_then(|tag| tag.get("Silent"))).unwrap_or(0) != 0
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `Entity.isSilent` for the player this window plays.
     #[allow(dead_code)]
     pub(in crate::game::client_side) fn player_silent(&self) -> bool {
@@ -26,7 +26,7 @@ impl Game<'_> {
         let mut sound = LevelSound::new(event, [0.0; 3], volume, pitch)
             .in_source(mod_api::SoundSource::ALL[source]);
         sound.emitter = Some(id);
-        let seed = self.audio.0.next_sound_seed();
+        let seed = self.side.audio.0.next_sound_seed();
         self.play_client_level_sound(sound, seed);
     }
 

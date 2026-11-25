@@ -414,7 +414,7 @@ impl Editor for StructureEditor {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `BlockEntityWithBoundingBoxRenderer`: structure and test-instance boxes within `Reach`.
     pub(in crate::game::client_side) fn bounding_box_gizmos(
         &self,

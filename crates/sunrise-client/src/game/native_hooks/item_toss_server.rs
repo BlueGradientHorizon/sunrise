@@ -4,7 +4,7 @@ pub(in crate::game::server_side) use super::*;
 pub(in crate::game::server_side) use crate::game::native_hooks::item_toss::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Player.drop`'s item entity for `thrown`, at `at` with motion `v`
     /// and `thrower`: made, heard by `item_toss`, then added to the level
     /// (`ServerLevel.addFreshEntity`). Its id, or None when a mod canceled
@@ -17,7 +17,7 @@ impl Game<'_> {
         thrower: Option<[i32; 4]>,
     ) -> Option<u32> {
         self.push_item_entity(thrown, at, Some(v), 40, None);
-        let id = self.server.next_entity;
+        let id = self.side.next_entity;
         if let Some(item) = self.dropped.last_mut() {
             item.thrower = thrower;
         }

@@ -2,7 +2,7 @@
 #[allow(unused_imports)]
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Preserve installed answers when publishing a fresh world-loot snapshot,
     /// including loads after parts install. This never asks a listener twice.
     pub(in crate::game) fn copy_loot_enchantment_answers(

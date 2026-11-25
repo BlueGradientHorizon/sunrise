@@ -55,7 +55,7 @@ impl ResidentBlockEntityReadOnly for ResidentReadBlockEntity<'_> {
 
 /// Shared sequential client block-entity view + mutable `ClientHost` backend.
 pub(in crate::game) struct ClientBlockEntityAccess<'g, 'w> {
-    pub game: &'g mut Game<'w>,
+    pub game: &'g mut Game<'w, crate::game::client_side::ClientState>,
     pub subject: BlockEntityRef,
 }
 
@@ -108,7 +108,7 @@ impl BlockEntityClientAccess for ClientBlockEntityAccess<'_, '_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether block `block`'s block entity ticks on the client
     /// (`EntityBlock.getTicker` asked with the client level): set `ticks` when
     /// it is yours, and `native_block_entity_client_tick` runs for it once per
@@ -130,7 +130,7 @@ pub(in crate::game) fn native_block_entity_client_tick(
     crate::game::native_hooks::fire::fire_block_entity_client_tick(subject);
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientLevel.tickBlockEntities` on a server's client, for the block entities with a client
     /// ticker: spawners, trial spawners, vaults, the animated ones, campfires, beacons, potent
     /// sulfur and mod ones. The client's ticker list

@@ -217,7 +217,7 @@ impl NativeLifecycle {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The role is fixed at construction.
     pub(in crate::game::server_side) fn native_lifecycle_authority(&self) -> Authority {
         match self.options.execution_role {

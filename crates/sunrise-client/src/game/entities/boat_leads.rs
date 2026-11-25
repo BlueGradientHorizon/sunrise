@@ -63,7 +63,7 @@ pub(in crate::game::server_side) fn distance(a: Vec3, b: Vec3) -> f64 {
     ((a.x - b.x).powi(2) + (a.y - b.y).powi(2) + (a.z - b.z).powi(2)).sqrt()
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The player whose lead this is: the lead's `leash_player`, else the
     /// local player.
     pub(in crate::game::server_side) fn boat_leash_player(&self, b: &Boat) -> Option<[i32; 4]> {
@@ -406,7 +406,7 @@ impl Game<'_> {
     /// The fence post of the leash knot with this UUID (`ServerLevel.getEntity`):
     /// a summoned or loaded `minecraft:leash_knot`, which sits on its block.
     pub(in crate::game::server_side) fn knot_by_uuid(&self, uuid: [i32; 4]) -> Option<[i32; 3]> {
-        self.others
+        self.side.others
             .0
             .iter()
             .find(|o| o.kind == "minecraft:leash_knot" && self.persist.uuid_of(o.id) == Some(uuid))
@@ -449,7 +449,7 @@ impl Game<'_> {
     /// `interact`), the ones in reach of `at`. Whether any did.
     pub(in crate::game) fn tie_player_boats(&mut self, at: glam::DVec3, to: Holder) -> bool {
         let knot_id = match to {
-            Holder::Knot(fence) => self.server.knot_ids.get(&fence).copied(),
+            Holder::Knot(fence) => self.side.knot_ids.get(&fence).copied(),
             _ => None,
         };
         let mut any = false;
@@ -513,12 +513,12 @@ impl Game<'_> {
                     .map(|&(_, id)| id)
             }
             Holder::Mob(id) | Holder::Boat(id) => Some(id as i32),
-            Holder::Knot(p) => self.server.knot_ids.get(&p).map(|&id| id as i32),
+            Holder::Knot(p) => self.side.knot_ids.get(&p).map(|&id| id as i32),
         }
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Entity.interact`'s lead part for the boat at `i`; whether it took
     /// the click.
     pub(in crate::game) fn interact_boat_leash(&mut self, i: usize) -> bool {

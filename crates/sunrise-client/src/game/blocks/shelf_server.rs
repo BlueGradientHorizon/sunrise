@@ -7,7 +7,7 @@ fn accepts(limit: Option<u32>, stack: Option<&sunrise_client::items::ItemStack>)
     limit.is_none_or(|limit| stack.is_none_or(|stack| stack.count <= limit))
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `SideChainPartBlock.getAllBlocksConnectedTo`: left to right, at most three.
     fn shelf_chain(&self, pos: [i32; 3], facing: Direction) -> Vec<[i32; 3]> {
         let left = match facing {

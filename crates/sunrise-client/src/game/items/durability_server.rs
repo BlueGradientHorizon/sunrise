@@ -17,7 +17,7 @@ pub(in crate::game::server_side) use sunrise_world::item_durability::{
     self, DurabilityStack, DurabilityWorld,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `damage_stack` for the stack the living entity `id` wears.
     pub(in crate::game) fn damage_living_stack(
         &mut self,

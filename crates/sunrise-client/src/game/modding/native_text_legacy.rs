@@ -2,7 +2,7 @@
 use super::Game;
 use sunrise_client::text::Text;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Legacy formatting codes read as the font draws them.
     pub(super) fn text_from_legacy(&self, legacy: &str) -> Text {
         Text::legacy(legacy)

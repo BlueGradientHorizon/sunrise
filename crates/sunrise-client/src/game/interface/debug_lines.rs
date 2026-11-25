@@ -44,7 +44,7 @@ pub(in crate::game) struct ServerDebug {
     pub chunks: Option<String>,
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `Level.getEntityCount` over the entities Sunrise keeps.
     pub(in crate::game) fn debug_entity_count(&self) -> usize {
         self.mobs.iter().filter(|m| !m.removed).count()

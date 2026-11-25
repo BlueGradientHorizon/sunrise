@@ -61,7 +61,7 @@ fn api_color(team: &sb::Team) -> Option<TeamColor> {
     team.color.as_deref().and_then(TeamColor::from_name)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// What this client has been sent of the scoreboard; None outside a logged-in client world.
     pub(in crate::game) fn client_scoreboard(
         &self,

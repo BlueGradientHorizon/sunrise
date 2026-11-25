@@ -2,7 +2,7 @@
 use super::Game;
 use mod_api::LevelRef;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The datapack registry set of this level's world session: on the logical server, the
     /// server's own set for both the active dimension and any parked loaded dimension
     /// (matching vanilla `Level.registryAccess()` on `ServerLevel`); on a client, the set its

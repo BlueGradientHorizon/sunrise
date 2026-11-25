@@ -820,7 +820,7 @@ pub(in crate::game::server_side) fn decoration_type(sprite: &str) -> Option<&'st
         .map(|(name, _)| *name)
         .or_else(|| sunrise_client::map_decoration_types::registered().id_of(sprite))
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether `sprite` draws one of vanilla's decoration types: a mod's type may not take it.
     pub(in crate::game) fn is_vanilla_decoration_sprite(sprite: &str) -> bool {
         DECORATION_TYPES.iter().any(|(_, s)| *s == sprite)
@@ -907,12 +907,12 @@ pub(in crate::game::server_side) fn decoration_rotation(
         ((adjusted * 16.0 / 360.0) as i32 & 15) as u8
     }
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn dimension_id(&self) -> &'static str {
         self.dim.id()
     }
     pub(in crate::game::server_side) fn map_path(&self, name: &str) -> std::path::PathBuf {
-        self.server
+        self.side
             .world_root
             .join("data/minecraft/maps")
             .join(name)
@@ -953,7 +953,7 @@ impl Game<'_> {
         }
         if !self.maps.data.contains_key(&id) && !self.maps.missing.contains(&id) {
             let path = self
-                .server
+                .side
                 .world_root
                 .join(format!("data/minecraft/maps/{id}.dat"));
             let loaded = sunrise_client::save::read_dat(&path).and_then(|t| MapData::from_nbt(&t));
@@ -1217,8 +1217,8 @@ impl Game<'_> {
         // EmptyMapItem.use: consumed, then counted.
         self.award_stat("used", "minecraft:map", 1);
         if let (Some(player), Some(name)) = (
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_name.clone(),
+            self.side.lan_acting_uuid,
+            self.side.lan_acting_name.clone(),
         ) {
             self.native_player_map_filled(player, &name, id);
         }
@@ -1343,7 +1343,7 @@ impl Game<'_> {
         let game_time = self.world.game_time;
         let invisible = self.map_invisibility_worn(&self.armor);
         // The guest whose turn it is, else the host.
-        let me = self.server.lan_acting.unwrap_or(HOST);
+        let me = self.side.lan_acting.unwrap_or(HOST);
         for (id, targets) in carried {
             let Some(m) = self.map(id) else { continue };
             let h = m.holder(me);
@@ -1491,7 +1491,7 @@ impl Game<'_> {
         if has_ceiling {
             radius /= 2;
         }
-        let h = m.holder(self.server.lan_acting.unwrap_or(HOST));
+        let h = m.holder(self.side.lan_acting.unwrap_or(HOST));
         h.step += 1;
         let step = h.step;
         let mut changes: Vec<(i32, i32, u8)> = Vec::new();
@@ -1623,7 +1623,7 @@ impl Game<'_> {
         for (id, m) in &mut self.maps.data {
             if m.dirty {
                 let path = self
-                    .server
+                    .side
                     .world_root
                     .join("data/minecraft/maps")
                     .join(format!("{id}.dat"));
@@ -1639,7 +1639,7 @@ impl Game<'_> {
             ]);
             if let Err(e) = sunrise_client::save::write_dat(
                 &self
-                    .server
+                    .side
                     .world_root
                     .join("data/minecraft/maps/last_id.dat"),
                 tag,
@@ -1650,7 +1650,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `CompassItem.useOn`: a compass used on a lodestone locks onto it (a
     /// single one in survival changes in place, else one is split off).
     pub(in crate::game::server_side) fn use_lodestone_compass(

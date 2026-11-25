@@ -2,7 +2,7 @@
 #[allow(unused_imports)]
 use super::{Context, Dim, Game, R, err};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `CloneCommands.clone`'s two `Level.hasChunksAt` calls, each in its own
     /// box's level: every chunk column between the corners must be loaded, and
     /// the box only has to overlap the build height (`LevelReader.hasChunksAt`,

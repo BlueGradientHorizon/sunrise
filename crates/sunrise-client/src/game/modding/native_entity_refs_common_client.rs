@@ -9,7 +9,7 @@ pub(in crate::game::client_side) use mod_api::{DimensionKey, EntityRef, LevelRef
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_core::geometry::{Aabb, Vec3};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// What a handle names on a client: the local player or an entity tracked by the server.
     pub(in crate::game) fn native_client_entity_target(&self, entity: EntityRef) -> Option<Target> {
         let (remote, id) = self.native_client_entity_context(entity)?;
@@ -99,7 +99,7 @@ impl Game<'_> {
         if self.ominous_spawners.iter().any(|s| s.id == uid) {
             return Some(Target::Spawner(uid));
         }
-        if self.client.interactions.contains_key(&id) {
+        if self.side.interactions.contains_key(&id) {
             return Some(Target::Other(uid));
         }
         None

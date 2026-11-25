@@ -88,7 +88,7 @@ pub(in crate::game) fn java_int(v: f64) -> i32 {
     v as i32
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The source a command typed by the player starts from.
     pub(in crate::game) fn player_source(&self) -> Source {
         Source {
@@ -148,7 +148,7 @@ impl Game<'_> {
                 _ => self.type_eye_height(&self.target_type(t)),
             },
             Target::Other(id) => self
-                .others
+                .side.others
                 .0
                 .iter()
                 .find(|o| o.id == id)

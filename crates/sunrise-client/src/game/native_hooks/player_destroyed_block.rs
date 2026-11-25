@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A player's break removed the block `state` from `pos`:
     /// `ServerPlayerGameMode.destroyBlock`'s `Block.destroy` call, once
     /// `Level.removeBlock` succeeded. `state` and `block_entity` (the saved

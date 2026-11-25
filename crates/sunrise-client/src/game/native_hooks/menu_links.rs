@@ -1,7 +1,7 @@
 //! Linked containers named by subscribed mods.
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn native_menu_links(
         &mut self,
         player: u128,

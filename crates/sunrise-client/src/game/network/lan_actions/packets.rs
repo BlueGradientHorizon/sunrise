@@ -12,7 +12,7 @@ pub(in crate::game) fn creative_count_exceeds(count: u32, own_max: u32) -> bool 
     count > creative_count_bound(own_max)
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn spawn_protection_for(&self, host: &LanHost, uuid: u128) -> Option<i32> {
         let radius = host.hub.spawn_protection;
         (self.is_dedicated_server()

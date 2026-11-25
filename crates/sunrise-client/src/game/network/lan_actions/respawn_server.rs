@@ -3,7 +3,7 @@ pub(in crate::game::server_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::{commands::Target, server_travel::SpawnAction};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `handleClientCommand(PERFORM_RESPAWN)` calls PlayerList, not ServerPlayer.teleport.
     pub(in crate::game) fn commit_player_respawn(&mut self, conn: u32) {
         let Some(host) = self.lan.as_mut() else {
@@ -45,7 +45,7 @@ impl Game<'_> {
             self.resolve_player_credit(credit)
         } else {
             combat.and_then(|c| c.kill_credit(now)).and_then(|id| {
-                if self.server.lan_acting.is_none()
+                if self.side.lan_acting.is_none()
                     && self
                         .player
                         .as_ref()
@@ -85,7 +85,7 @@ impl Game<'_> {
         // The damage's causing entity: the player in place, another guest, or
         // a mob (`DamageSource.getEntity`).
         let source = attacker.and_then(|id| {
-            if self.server.lan_acting.is_none()
+            if self.side.lan_acting.is_none()
                 && self
                     .player
                     .as_ref()
@@ -155,16 +155,16 @@ impl Game<'_> {
         &self,
         conn: u32,
     ) -> Option<&crate::game::combat::CombatTracker> {
-        if self.server.lan_acting == Some(conn) {
-            Some(&self.combat.0)
+        if self.side.lan_acting == Some(conn) {
+            Some(&self.side.combat.0)
         } else {
-            self.guest_combat.0.get(&conn)
+            self.side.guest_combat.0.get(&conn)
         }
     }
     /// The scalar death-tail/death-message source. `living_death` uses the
     /// full accepted hit retained on the body instead.
     pub(in crate::game::server_side) fn guest_damage_source(&self, conn: u32) -> (String, u32) {
-        let cause = if self.server.lan_acting == Some(conn) {
+        let cause = if self.side.lan_acting == Some(conn) {
             self.ui.death_cause.as_deref()
         } else {
             self.lan
@@ -188,14 +188,14 @@ impl Game<'_> {
         conn: u32,
         me: sunrise_client::text::Text,
     ) -> sunrise_client::text::Text {
-        if self.server.lan_acting == Some(conn) {
+        if self.side.lan_acting == Some(conn) {
             return self.combat_death_message_for(me);
         }
-        let mut tracker = self.guest_combat.0.remove(&conn).unwrap_or_default();
-        std::mem::swap(&mut self.combat.0, &mut tracker);
+        let mut tracker = self.side.guest_combat.0.remove(&conn).unwrap_or_default();
+        std::mem::swap(&mut self.side.combat.0, &mut tracker);
         let text = self.combat_death_message_for(me);
-        std::mem::swap(&mut self.combat.0, &mut tracker);
-        self.guest_combat.0.insert(conn, tracker);
+        std::mem::swap(&mut self.side.combat.0, &mut tracker);
+        self.side.guest_combat.0.insert(conn, tracker);
         text
     }
     /// `ServerPlayer.die` for a guest whose health has run out: the death
@@ -206,7 +206,7 @@ impl Game<'_> {
         };
         let guest = &host.hub.guests[gi];
         let id = guest.entity_id;
-        let acting = self.server.lan_acting == Some(conn);
+        let acting = self.side.lan_acting == Some(conn);
         let dying = |game: &Self, guest: &sunrise_client::lan::guest::Guest| {
             !guest.dead
                 && if acting {
@@ -267,7 +267,7 @@ impl Game<'_> {
             let drops = (!spectator).then(|| [at[0], at[1] + eye - f64::from(0.3f32), at[2]]);
             let cause = if acting {
                 self.mining = None;
-                self.server.destroy_delay = 0;
+                self.side.destroy_delay = 0;
                 self.using = None;
                 self.hook.discard();
                 self.level.last_death = last_death;
@@ -397,9 +397,9 @@ impl Game<'_> {
                     None
                 } else {
                     let credit = if acting {
-                        self.combat.0.take_hurt_by_player(now)
+                        self.side.combat.0.take_hurt_by_player(now)
                     } else {
-                        self.guest_combat
+                        self.side.guest_combat
                             .0
                             .get_mut(&conn)
                             .and_then(|c| c.take_hurt_by_player(now))
@@ -458,7 +458,7 @@ impl Game<'_> {
             // this view of the killer has the player's records without it.
             Some(CombatPlayer::InPlace) => Some(self.player_entity_for_any(&[trigger])),
             Some(CombatPlayer::Displaced(depth, body)) => self.displaced_player_entity_for(
-                &self.lan_displaced_players.0[depth],
+                &self.side.lan_displaced_players.0[depth],
                 body,
                 trigger,
             ),
@@ -493,7 +493,7 @@ impl Game<'_> {
         }
         // A mob that blew up this tick has left the list, but vanilla's player
         // dies inside that blast, before the source is discarded.
-        if let Some((_, kind)) = self.combat.0.exploded_kinds.iter().rfind(|(m, _)| *m == id) {
+        if let Some((_, kind)) = self.side.combat.0.exploded_kinds.iter().rfind(|(m, _)| *m == id) {
             return Some(kind.clone());
         }
         self.dragon
@@ -598,7 +598,7 @@ impl Game<'_> {
                     // Keep the save's legacy point as a literal position, not a block lookup.
                     if let Some([x, y, z]) = legacy {
                         g.spawn = Some(Vec3::new(x, y, z));
-                        g.server.respawn_config = None;
+                        g.side.respawn_config = None;
                     }
                     true
                 });
@@ -626,7 +626,7 @@ impl Game<'_> {
         let ctx = TickCtx {
             world: &mut self.world,
             entities: &[],
-            next_entity: &mut self.server.next_entity,
+            next_entity: &mut self.side.next_entity,
             spawn: world_spawn,
             spawn_angle: self.level.world_spawn_angle,
             spawn_dimension: crate::game::Dim::of_world_spawn(&self.level).id(),
@@ -767,7 +767,7 @@ impl Game<'_> {
     /// Run part of `ServerPlayer.die` on the victim's body. A hit that already
     /// has the body installed must not try to enter the same guest again.
     pub(in crate::game) fn with_dying_guest(&mut self, conn: u32, f: impl FnOnce(&mut Self)) {
-        if self.server.lan_acting == Some(conn) {
+        if self.side.lan_acting == Some(conn) {
             f(self);
         } else {
             self.as_guest(conn, f);

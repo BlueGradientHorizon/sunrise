@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `BlockItemExtension.onBlockPlacedBy`: once the block's final state,
     /// stack data and `Block.setPlacedBy` companions exist, before consumption.
     pub(in crate::game) fn native_on_block_placed_by(

@@ -32,7 +32,7 @@ pub(in crate::game::client_side) use sunrise_client_render::block_entity_reach::
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_core::random::{LegacyRandom, LevelRandom};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `VaultRenderer`: the display item of every vault near the camera that
     /// shows one, turning above its floor.
     pub(in crate::game) fn vault_geometry(

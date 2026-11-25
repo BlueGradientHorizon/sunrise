@@ -6,7 +6,7 @@ use mod_api::{DimensionKey, EntityRef, LevelRef};
 #[allow(unused_imports)]
 use sunrise_core::geometry::{Aabb, Vec3};
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The logged-in window and network id for an entity handle in its current world.
     pub(in crate::game) fn native_client_entity_context(
         &self,

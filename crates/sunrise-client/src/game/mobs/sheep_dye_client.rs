@@ -7,7 +7,7 @@ pub(in crate::game::client_side) use mod_api::SoundSource;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::{first_person::Hand, mobs::sheep_dye};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether `interact_sheep_dye` would act on a client, on a copy of the sheep.
     pub(in crate::game::client_side) fn sheep_would_take_dye(
         &mut self,

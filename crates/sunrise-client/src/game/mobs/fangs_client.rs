@@ -27,7 +27,7 @@ fn p_zrot(p: &mut Poses, part: &str, v: f32) {
     p.zrot(part, v);
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `EvokerFangsRenderer`: the jaws snapping up and closing.
     pub(in crate::game) fn fangs_geometry(
         &self,
@@ -36,7 +36,7 @@ impl Game<'_> {
         out: &mut Vec<sunrise_client_render::render_geometry::Vertex>,
     ) {
         let Some(model) = self.fangs.model.as_ref().or(self
-            .client
+            .side
             .entity_models
             .evoker_fangs
             .as_ref())
@@ -123,7 +123,7 @@ impl Game<'_> {
                 })
             });
         if let Some((pos, pitch)) = sound {
-            self.audio.0.play_unshared(
+            self.side.audio.0.play_unshared(
                 "minecraft:entity.evoker_fangs.attack",
                 Some(pos),
                 1.0,
@@ -150,7 +150,7 @@ impl Game<'_> {
         let crit = ParticleOptions::simple(ParticleType::Crit);
         for crits in bursts {
             for (at, velocity) in crits {
-                self.particles.0.add(&crit, at, velocity);
+                self.side.particles.0.add(&crit, at, velocity);
             }
         }
     }

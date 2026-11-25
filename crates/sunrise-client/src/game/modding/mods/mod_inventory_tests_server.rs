@@ -45,8 +45,8 @@ fn code_only_reload_publishes_one_new_inventory_after_prepare_and_preserves_old_
                 game.pack.data_source = initial.data().clone();
                 game.pack.data_changes = initial.data_changes().clone();
                 game.mods = sources.clone();
-                game.server.world_root = fixture.0.join("world");
-                let pack = game.server.world_root.join("datapacks/inventory");
+                game.side.world_root = fixture.0.join("world");
+                let pack = game.side.world_root.join("datapacks/inventory");
                 let recipes = pack.join("data/inventorytest/recipe");
                 std::fs::create_dir_all(&recipes).unwrap();
                 std::fs::write(pack.join("pack.mcmeta"), serde_json::to_vec(&serde_json::json!({
@@ -98,15 +98,15 @@ fn code_only_reload_publishes_one_new_inventory_after_prepare_and_preserves_old_
                     .expect("prepared command registries");
                 game.ui.registries.fill_from_exported(&registries);
                 game.reload_datapacks(true, &[]).unwrap();
-                let loaded = |game: &Game<'_>, id: &str| {
+                let loaded = |game: &Game<'_, crate::game::server_side::ServerState>, id: &str| {
                     let items = game.items();
                     (
                         items.has_loot_table(id),
                         items.songs.contains_key(id),
                         items.instruments.contains_key(id),
                         items.enchantments.list.iter().any(|e| &*e.id == id),
-                        game.fns.0.store.predicates.contains_key(id),
-                        game.fns.0.store.item_modifiers.contains_key(id),
+                        game.side.fns.0.store.predicates.contains_key(id),
+                        game.side.fns.0.store.item_modifiers.contains_key(id),
                     )
                 };
                 assert_eq!(
@@ -118,8 +118,8 @@ fn code_only_reload_publishes_one_new_inventory_after_prepare_and_preserves_old_
                     (false, false, false, false, false, false)
                 );
                 let old_songs = game.items().songs.clone();
-                let read_tags = |game: &Game<'_>| game.items().item_tags.clone();
-                let read = |game: &Game<'_>| {
+                let read_tags = |game: &Game<'_, crate::game::server_side::ServerState>| game.items().item_tags.clone();
+                let read = |game: &Game<'_, crate::game::server_side::ServerState>| {
                     crate::game::lan::sync::server_sources(
                         &game.options.resources,
                         &game.res.core.item_data,

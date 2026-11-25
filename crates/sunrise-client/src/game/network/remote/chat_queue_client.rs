@@ -5,7 +5,7 @@ pub(in crate::game::client_side) use crate::game::remote::chat_queue::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use std::time::{Duration, Instant};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `ChatListener.messageDelay`: Chat Delay in milliseconds, as Java
     /// truncates it.
     pub(in crate::game) fn chat_delay_ms(&self) -> i64 {

@@ -71,7 +71,7 @@ impl ClientReloadListenerContext for StartupReloadContext<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Registers a later reload's client listeners through the game
     /// (`native_add_client_reload_listeners`), gated on the hook being
     /// listened to.
@@ -133,7 +133,7 @@ thread_local! {
     static APPLY_GENERATIONS: std::cell::RefCell<Option<Vec<u64>>> = const { std::cell::RefCell::new(None) };
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Publish the models in order with the mod listener actions on the game-owning
     /// thread, before the resources-reloaded notice.
     pub(in crate::game::client_side) fn apply_client_reload(

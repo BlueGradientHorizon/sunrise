@@ -72,7 +72,7 @@ pub(in crate::game) mod crafter;
 #[path = "screen.rs"]
 mod screen;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn machine_layout_selector(&self) -> Option<bool> {
         self.machine_screen().map(|s| s == Screen::Hopper)
     }

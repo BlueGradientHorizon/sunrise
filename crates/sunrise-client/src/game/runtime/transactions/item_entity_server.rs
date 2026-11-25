@@ -3,7 +3,7 @@ use super::Game;
 use crate::game::transactions::{After, KeptItemEntity};
 use sunrise_client::items::ItemStack;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Sets the stack of `id` for an item place. A caller that already has a
     /// validated resident slot uses `journal_set_item_entity_at` instead.
     pub(in crate::game) fn journal_set_item_entity(&mut self, id: u32, stack: ItemStack) -> bool {

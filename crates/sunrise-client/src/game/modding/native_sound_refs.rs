@@ -16,7 +16,7 @@ use super::{
 use mod_api::{EntityRef, PlayerRef, SoundSource};
 use sunrise_core::random::RandomSource;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Where `player` is reached now: the window's own player or a guest.
     pub(in crate::game::server_side) fn native_player_sound_target(
         &self,

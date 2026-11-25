@@ -55,7 +55,7 @@ impl ServerState {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Answers the requests waiting on the control endpoint.
     pub(super) fn poll_server_control(&mut self, state: &mut ServerState) {
         while let Some(request) = self.control.as_ref().and_then(|c| c.try_recv()) {
@@ -111,10 +111,10 @@ impl Game<'_> {
             "chunks": self.world.chunks.len(),
             "entities": self.entity_count(),
         })];
-        for dim in self.levels.0.parked_dims() {
+        for dim in self.side.levels.0.parked_dims() {
             if let (Some(world), Some(entities)) = (
-                self.levels.0.parked_world(dim),
-                self.levels.0.parked_entity_count(dim),
+                self.side.levels.0.parked_world(dim),
+                self.side.levels.0.parked_entity_count(dim),
             ) {
                 levels.push(json!({
                     "dimension": dim.id(),

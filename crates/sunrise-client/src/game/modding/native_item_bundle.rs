@@ -17,7 +17,7 @@ fn map_bundle_error(err: CustomBundleError) -> BundleReadError {
     }
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     fn bundle_accepts(&self, config: &BundleConfig, item: &ItemStack) -> bool {
         if !can_be_in_bundle(&self.loop_context, item) {
             return false;

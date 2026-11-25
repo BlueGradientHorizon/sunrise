@@ -6,17 +6,17 @@ use sunrise_client_gameplay::transient_blocks::shows_block;
 use sunrise_client_render::render_geometry::Vertex;
 use sunrise_world::registry::BlockStateId;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientPacketListener.handleAddTransientBlockPacket`.
     pub(in crate::game::client_side) fn add_transient_block(&mut self, pos: [i32; 3], state: i32) {
-        self.client
+        self.side
             .transient_blocks
             .queue(pos, BlockStateId(state as u32));
     }
 
     /// `LevelExtractor.drainTransientBlockQueue`, once a frame.
     pub(in crate::game::client_side) fn drain_transient_block_queue(&mut self) {
-        self.client
+        self.side
             .transient_blocks
             .drain(Instant::now(), self.streaming.sequence());
     }
@@ -30,11 +30,11 @@ impl Game<'_> {
         camera: glam::DVec3,
         out: &mut Vec<Vertex>,
     ) {
-        if self.client.transient_blocks.shown.is_empty() {
+        if self.side.transient_blocks.shown.is_empty() {
             return;
         }
         let now = Instant::now();
-        let mut shown = std::mem::take(&mut self.client.transient_blocks.shown);
+        let mut shown = std::mem::take(&mut self.side.transient_blocks.shown);
         shown.retain(|pos, block| {
             if now >= block.live_until {
                 return false;
@@ -58,6 +58,6 @@ impl Game<'_> {
                 out,
             );
         }
-        self.client.transient_blocks.shown = shown;
+        self.side.transient_blocks.shown = shown;
     }
 }

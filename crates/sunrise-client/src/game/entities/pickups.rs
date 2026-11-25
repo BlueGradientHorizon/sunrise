@@ -94,7 +94,7 @@ pub(in crate::game::client_side) fn position(p: &Pickup, partial: f64) -> [f64; 
     })
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `ItemPickupParticle.updatePosition`: the collector's x and z, halfway up to its eyes.
     fn collector_target(&self, collector: Collector) -> Option<[f64; 3]> {
         let (p, eye) = match collector {
@@ -141,8 +141,8 @@ impl Game<'_> {
             Taken::Arrow(_) => "arrow",
             Taken::Trident(_) => "trident",
         };
-        *self.pickups.0.made.entry(kind).or_default() += 1;
-        self.pickups.0.added.push(Pickup {
+        *self.side.pickups.0.made.entry(kind).or_default() += 1;
+        self.side.pickups.0.added.push(Pickup {
             taken,
             collector,
             life: 0,
@@ -153,7 +153,7 @@ impl Game<'_> {
     /// `ParticleEngine.tick` for the ITEM_PICKUP group: age (removed at
     /// `LIFE_TIME`), follow the collector, then let the new particles in.
     pub(in crate::game::client_side) fn tick_pickups(&mut self) {
-        let mut live = std::mem::take(&mut self.pickups.0.live);
+        let mut live = std::mem::take(&mut self.side.pickups.0.live);
         live.retain_mut(|p| {
             p.life += 1;
             if p.life == LIFE_TIME {
@@ -165,8 +165,8 @@ impl Game<'_> {
             }
             true
         });
-        live.append(&mut self.pickups.0.added);
-        self.pickups.0.live = live;
+        live.append(&mut self.side.pickups.0.added);
+        self.side.pickups.0.live = live;
     }
 }
 

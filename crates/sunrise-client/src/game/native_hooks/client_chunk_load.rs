@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Chunk `chunk` (`[x, z]`, in chunks) of `dimension` came into this
     /// client's level from the server (NeoForge's `ChunkEvent.Load` on the
     /// client), after its column and block entities are in the level.

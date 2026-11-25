@@ -61,7 +61,7 @@ impl LocalRegistry<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The same published provider definitions that `/compute` evaluates.
     pub(in crate::game::server_side) fn context_registry(
         &self,
@@ -76,9 +76,9 @@ impl Game<'_> {
             }
             "minecraft:advancement" => LocalRegistry::Advancements(&self.adv.tree),
             "minecraft:game_rule" => LocalRegistry::Rules(&self.level.rule_registry),
-            "minecraft:predicate" => LocalRegistry::Json(&self.fns.0.store.predicates),
-            "minecraft:item_modifier" => LocalRegistry::Json(&self.fns.0.store.item_modifiers),
-            "minecraft:slot_source" => LocalRegistry::Json(&self.fns.0.store.slot_sources),
+            "minecraft:predicate" => LocalRegistry::Json(&self.side.fns.0.store.predicates),
+            "minecraft:item_modifier" => LocalRegistry::Json(&self.side.fns.0.store.item_modifiers),
+            "minecraft:slot_source" => LocalRegistry::Json(&self.side.fns.0.store.slot_sources),
             "minecraft:loot_table" => LocalRegistry::Loot(self.items()),
             "minecraft:recipe" => LocalRegistry::Recipes(self.recipes()),
             "minecraft:trade_set" => LocalRegistry::HashJson(&self.stations().trades.sets),
@@ -223,7 +223,7 @@ impl Game<'_> {
         if registry == "minecraft:dimension" {
             return identifiers(
                 std::iter::once(self.dim.id())
-                    .chain(self.levels.0.parked.keys().map(|dimension| dimension.id())),
+                    .chain(self.side.levels.0.parked.keys().map(|dimension| dimension.id())),
             );
         }
         if registry == "minecraft:trial_spawner" {
@@ -289,7 +289,7 @@ impl Game<'_> {
         }
         if registry == "minecraft:slot_source" {
             return Some(
-                self.fns
+                self.side.fns
                     .0
                     .store
                     .slot_source_tag(&tag)
@@ -332,7 +332,7 @@ impl Game<'_> {
         {
             return Some(found);
         }
-        if let Some(tables) = &self.world_tables.0
+        if let Some(tables) = &self.side.world_tables.0
             && let Some(kind) = registry.strip_prefix("minecraft:")
             && let Some(tags) = tables.pack_tags.get(kind)
         {

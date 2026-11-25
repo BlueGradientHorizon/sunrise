@@ -17,27 +17,27 @@ pub(in crate::game::server_side) use sunrise_gameplay::chests::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_gameplay::chests::{chest_half, facing_step};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Closing it copies the items back and keeps the block entity, as vanilla's
     /// `EnderChestBlockEntity` persists across open/close (`close_ender_chest`
     /// must not remove it, or `/data get block` loses it after a use).
     pub(in crate::game::server_side) fn close_ender_chest(&mut self) {
-        let Some(key) = self.server.ender_open.take() else {
+        let Some(key) = self.side.ender_open.take() else {
             return;
         };
         // The items go back to the player: an `EnderChestBlockEntity` holds none, so
         // nothing of theirs stays in the chunk or in `/data get block`.
         if let Some(BlockEntity::Chest(items)) = self.world.block_entities.get_mut(&key) {
-            self.server.ender_items = std::mem::replace(items, vec![None; 27]);
+            self.side.ender_items = std::mem::replace(items, vec![None; 27]);
         }
     }
     /// Opening an ender chest shows the player's ender inventory in its place.
     pub(in crate::game::server_side) fn open_ender_chest(&mut self, key: (i32, i32, i32)) {
         self.world
             .block_entities
-            .insert(key, BlockEntity::Chest(self.server.ender_items.clone()));
+            .insert(key, BlockEntity::Chest(self.side.ender_items.clone()));
         self.container = Some(key);
-        self.server.ender_open = Some(key);
+        self.side.ender_open = Some(key);
     }
     /// `ServerPlayerGameMode.useItemOn` for a spectator: the block's menu
     /// (`BlockState.getMenuProvider`) opens, and nothing else happens. The
@@ -99,7 +99,7 @@ impl Game<'_> {
         };
         self.world.block_entities.get_or_insert_with(key, || entity);
         self.container = Some(key);
-        self.server.open_container_slots = Some((key, self.open_container_size()));
+        self.side.open_container_slots = Some((key, self.open_container_size()));
         self.server_set_acting_use(false);
     }
     /// `Container.stillValidBlockEntity`: the open block container closes once
@@ -123,7 +123,7 @@ impl Game<'_> {
         // it. A double chest whose other half broke would otherwise show a
         // shorter container.
         if self
-            .server
+            .side
             .open_container_slots
             .is_some_and(|(open, slots)| {
                 self.container == Some(open) && self.open_container_size() < slots
@@ -148,7 +148,7 @@ impl Game<'_> {
         if !self.is_logical_server() || self.craft_size != 3 {
             return;
         }
-        let (Some(pos), Some(eye)) = (self.server.craft_table, self.eye_position()) else {
+        let (Some(pos), Some(eye)) = (self.side.craft_table, self.eye_position()) else {
             return;
         };
         let state = self.world.block(pos[0], pos[1], pos[2]);

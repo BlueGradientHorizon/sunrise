@@ -69,7 +69,7 @@ fn window(wanted: &Wanted) -> String {
         .map_or_else(|| "until stopped".to_owned(), |s| format!("{s} s"))
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A `sunrise:perf` payload from `conn`.
     pub(in crate::game::server_side) fn guest_perf(&mut self, conn: u32, data: &[u8]) {
         let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {

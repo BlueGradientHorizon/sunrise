@@ -1,7 +1,7 @@
 //! Object-owned passenger memory and typed transfer loading.
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(super) fn mob_at(&self, object: MobObject) -> &Mob {
         match object {
             MobObject::Resident(index) => &self.mobs[index],
@@ -78,13 +78,13 @@ impl Game<'_> {
         uuid: Option<[i32; 4]>,
         transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) {
-        self.server.next_entity += 1;
+        self.side.next_entity += 1;
         // `ItemEntity(EntityType, Level)` first: its own random draws UUID, bobOffs and yaw.
         let mut own = random_source::entity();
         let fresh = sunrise_client::save::insecure_uuid(&mut own);
         let bob = own.next_float() * std::f32::consts::PI * 2.0;
         own.next_float();
-        if let Some(mut e) = entity_nbt::item_entity_from_nbt(&tag, self.server.next_entity, bob) {
+        if let Some(mut e) = entity_nbt::item_entity_from_nbt(&tag, self.side.next_entity, bob) {
             e.random = own;
             if let Some(state) = transferred {
                 self.adopt_transferred_entity_state(e.id, state);
@@ -102,8 +102,8 @@ impl Game<'_> {
         mut transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) {
         for (i, mut orb) in entity_nbt::orbs_from_nbt(&tag).into_iter().enumerate() {
-            self.server.next_entity += 1;
-            orb.id = self.server.next_entity;
+            self.side.next_entity += 1;
+            orb.id = self.side.next_entity;
             let id = orb.id;
             // Sunrise splits a saved `count` into orbs: the first is the saved one.
             if i == 0 {
@@ -137,8 +137,8 @@ impl Game<'_> {
             self.claim_owner(&mut p);
             // An arrow that came through a portal keeps its
             // cooldown: it does not go straight back through.
-            self.server.next_entity += 1;
-            p.id = self.server.next_entity;
+            self.side.next_entity += 1;
+            p.id = self.side.next_entity;
             self.restore_portal_cooldown(p.id, &tag);
             self.remember_tags(p.id, &tag);
             if let Some(state) = transferred {
@@ -161,8 +161,8 @@ impl Game<'_> {
         let target = self.bullet_target(&tag);
         if let Some(mut p) = entity_nbt::spit_or_bullet_from_nbt(&tag, player_uuid, target) {
             self.claim_owner(&mut p);
-            self.server.next_entity += 1;
-            p.id = self.server.next_entity;
+            self.side.next_entity += 1;
+            p.id = self.side.next_entity;
             self.restore_portal_cooldown(p.id, &tag);
             if let Some(state) = transferred {
                 self.adopt_transferred_entity_state(p.id, state);
@@ -185,8 +185,8 @@ impl Game<'_> {
         if let Some(mut p) = entity_nbt::fireball_from_nbt(&tag, player_uuid) {
             self.claim_owner(&mut p);
             // A projectile that came through a portal keeps its cooldown.
-            self.server.next_entity += 1;
-            p.id = self.server.next_entity;
+            self.side.next_entity += 1;
+            p.id = self.side.next_entity;
             self.restore_portal_cooldown(p.id, &tag);
             if let Some(state) = transferred {
                 self.adopt_transferred_entity_state(p.id, state);
@@ -211,8 +211,8 @@ impl Game<'_> {
         {
             self.claim_owner(&mut p);
             // A projectile that came through a portal keeps its cooldown.
-            self.server.next_entity += 1;
-            p.id = self.server.next_entity;
+            self.side.next_entity += 1;
+            p.id = self.side.next_entity;
             self.restore_portal_cooldown(p.id, &tag);
             if let Some(state) = transferred {
                 self.adopt_transferred_entity_state(p.id, state);
@@ -238,20 +238,20 @@ impl Game<'_> {
                 entity_nbt::falling_state_from_nbt(self.pack.assets.registry, &state)
         {
             let (no_gravity, drop_item) = entity_nbt::falling_block_flags(&tag);
-            self.server.next_entity += 1;
+            self.side.next_entity += 1;
             // A summoned one has no UUID yet: `Entity` makes a random one.
             if let Some(state) = transferred {
-                self.adopt_transferred_entity_state(self.server.next_entity, state);
+                self.adopt_transferred_entity_state(self.side.next_entity, state);
             }
-            self.remember_uuid(self.server.next_entity, uuid, &tag);
-            let uuid = self.uuid_for(self.server.next_entity);
+            self.remember_uuid(self.side.next_entity, uuid, &tag);
+            let uuid = self.uuid_for(self.side.next_entity);
             self.falling.push(FallingBlock {
                 size_answer: None,
                 attachment_lifetime: Default::default(),
                 // Entity.load's rotation, which nothing turns afterwards.
                 rotation: entity_nbt::loaded_rotation(&tag),
                 join: Default::default(),
-                id: self.server.next_entity,
+                id: self.side.next_entity,
                 state,
                 blocks_building: false,
                 // DATA_START_POS is not persisted by vanilla.
@@ -346,8 +346,8 @@ impl Game<'_> {
         let mut tag = tag;
         let riders = self.take_passengers(&mut tag);
         if let Some(position) = entity_nbt::position(&tag) {
-            self.server.next_entity += 1;
-            let id = self.server.next_entity;
+            self.side.next_entity += 1;
+            let id = self.side.next_entity;
             // getShortOr uses NumericTag.shortValue: floor floating values
             // to int before short narrowing; integer tags narrow directly.
             let fuse = tnt_fuse(&tag);
@@ -405,8 +405,8 @@ impl Game<'_> {
         if let Some((position, velocity, yaw)) = entity_nbt::boat_from_nbt(&tag) {
             let mut tag = tag;
             let riders = self.take_passengers(&mut tag);
-            self.server.next_entity += 1;
-            let id = self.server.next_entity;
+            self.side.next_entity += 1;
+            let id = self.side.next_entity;
             let (wood, chest) = crate::game::boats::any_boat_wood(k).unwrap_or(("oak", false));
             let mut b =
                 crate::game::boats::Boat::new(id, std::sync::Arc::from(wood), position, yaw);
@@ -458,12 +458,12 @@ impl Game<'_> {
         let kind = crate::game::minecarts::CartKind::from_id(k).unwrap();
         let mut tag = tag;
         let riders = self.take_passengers(&mut tag);
-        let id = self.server.next_entity + 1;
+        let id = self.side.next_entity + 1;
         if let Some(mut c) = crate::game::minecarts::Minecart::from_nbt(&tag, id, kind) {
             crate::game::minecarts::forget_unreadable_display(&mut c, |t| {
                 self.state_from_nbt(t).is_some()
             });
-            self.server.next_entity = id;
+            self.side.next_entity = id;
             if let Some(state) = transferred {
                 self.adopt_transferred_entity_state(id, state);
             }
@@ -506,7 +506,7 @@ impl Game<'_> {
         {
             return Some(id);
         }
-        self.server.next_entity += 1;
+        self.side.next_entity += 1;
         // Structure mobs that generation left to finish: saves from before
         // they were finalized at placement, or a placement that could not.
         let mut tag = tag;
@@ -522,7 +522,7 @@ impl Game<'_> {
         let mob = entity_nbt::mob_from_nbt_with_random(
             &tag,
             self.res.mob_types(),
-            self.server.next_entity,
+            self.side.next_entity,
             Some(self.pack.assets.registry),
             own,
         )?;
@@ -597,7 +597,7 @@ impl Game<'_> {
             self.adopt_transferred_entity_state(id, state);
         } else if m.health <= 0.0 {
             // A saved dying body has already passed die; loading only resumes tickDeath.
-            self.server.died.insert(id);
+            self.side.died.insert(id);
         }
         self.remember(id, Some(uuid), tag);
         if resident {
@@ -714,7 +714,7 @@ impl Game<'_> {
         } else if self.armor_stands.iter().any(|stand| stand.id == root) {
             (VehicleTreeKind::Stand, "minecraft:armor_stand".to_owned())
         } else {
-            let other = self.others.0.iter().find(|other| other.id == root)?;
+            let other = self.side.others.0.iter().find(|other| other.id == root)?;
             (VehicleTreeKind::Other, other.kind.clone())
         };
         let passengers = self
@@ -830,7 +830,7 @@ impl Game<'_> {
                 .ok()
                 .flatten(),
             VehicleTreeKind::Stand => {
-                let id = self.server.next_entity + 1;
+                let id = self.side.next_entity + 1;
                 self.load_armor_stand_transferred(tag, uuid, Some(state));
                 self.armor_stands
                     .iter()

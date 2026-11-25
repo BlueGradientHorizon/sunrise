@@ -24,7 +24,7 @@ pub(in crate::game::server_side) fn hostile_species(species: Species) -> bool {
         )
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The level in place holds the entity: events and game events are
     /// queued in it.
     pub(in crate::game::server_side) fn native_entity_here(&self, entity: EntityRef) -> bool {
@@ -81,7 +81,7 @@ impl Game<'_> {
             return false;
         };
         let except = match target {
-            Target::Player => self.server.lan_acting,
+            Target::Player => self.side.lan_acting,
             Target::Guest(conn) => Some(conn),
             _ => {
                 if self.entity_is_silent(entity) == Some(true) {

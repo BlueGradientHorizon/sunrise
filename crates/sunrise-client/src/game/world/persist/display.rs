@@ -8,7 +8,7 @@ use sunrise_client::{
 use sunrise_core::nbt::Tag;
 use sunrise_items::item_nbt::{item_from_nbt, item_to_nbt};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Display.addAdditionalSaveData`: save the settings as the codecs read
     /// them, including defaults. The raw start delay is only used by tracking.
     pub(super) fn write_display_nbt(&self, entity: &OtherEntity, tag: &mut Tag) {

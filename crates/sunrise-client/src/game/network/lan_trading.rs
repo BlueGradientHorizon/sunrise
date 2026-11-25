@@ -60,7 +60,7 @@ pub(in crate::game) enum MerchantRun<'a> {
     Decided(Option<&'a sunrise_client::menu::StackedOutcome>),
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Development oracle: observe the actual open guest merchant, never a synthetic menu.
     pub(in crate::game::server_side) fn harness_merchant(
         &self,
@@ -305,7 +305,7 @@ impl Game<'_> {
         };
         // Clicks and closes need the player's own inventory, not the body swapped out
         // into their guest entry. Price refreshes below only touch the merchant slots.
-        if self.server.lan_guest_swaps.contains(&conn) {
+        if self.side.lan_guest_swaps.contains(&conn) {
             return false;
         }
         let Some(gm) = host.menus.get(&conn).and_then(|p| p.merchant.as_ref()) else {
@@ -910,7 +910,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The guest whose trading screen is open on mob `mob`.
     pub(in crate::game) fn lan_trade_conn(&self, mob: u32) -> Option<u32> {
         self.lan_trade_screen(mob).map(|(conn, _)| conn)
@@ -1003,12 +1003,12 @@ impl Game<'_> {
         let session = &mut gm.merchant.session;
         for id in stale {
             if let Some(random) = session.sequences.remove(&id) {
-                self.server.rand_sequences.give_back(id, random);
+                self.side.rand_sequences.give_back(id, random);
             }
         }
         for id in needed {
             if let std::collections::btree_map::Entry::Vacant(slot) = session.sequences.entry(id) {
-                let random = self.server.rand_sequences.lend(slot.key(), self.level.seed);
+                let random = self.side.rand_sequences.lend(slot.key(), self.level.seed);
                 slot.insert(random);
             }
         }

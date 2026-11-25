@@ -11,7 +11,7 @@ use sunrise_core::{geometry::Direction, position::BlockPos};
 #[allow(unused_imports)]
 use sunrise_world::level::BucketContent;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `BucketItem.use`'s `emptyContents` for the acting player's `stack`,
     /// poured at `target` from the clicked `hit`: the use's result when the
     /// item's `empty_contents` Part answered, `None` for vanilla's pour. The
@@ -62,18 +62,18 @@ impl Game<'_> {
     /// played the empty or evaporate `sound` from its prediction (#4684), so those go to the
     /// guest's own list instead of being sent back to them.
     pub(in crate::game::server_side) fn keep_guest_bucket_sounds(&mut self, sound: &str) {
-        if self.server.lan_acting.is_none() {
+        if self.side.lan_acting.is_none() {
             return;
         }
-        if !self.server.audio_capture_active {
+        if !self.side.audio_capture_active {
             return;
         }
         let want = sound.trim_start_matches("minecraft:");
-        let mut keep = Vec::with_capacity(self.server.pending_sounds.len());
-        for entry in std::mem::take(&mut self.server.pending_sounds) {
+        let mut keep = Vec::with_capacity(self.side.pending_sounds.len());
+        for entry in std::mem::take(&mut self.side.pending_sounds) {
             let name = entry.event.trim_start_matches("minecraft:");
             if name == want || name == "block.fire.extinguish" {
-                self.server.guest_player_sounds.push((
+                self.side.guest_player_sounds.push((
                     entry.event,
                     entry.position,
                     entry.volume,
@@ -83,6 +83,6 @@ impl Game<'_> {
                 keep.push(entry);
             }
         }
-        self.server.pending_sounds = keep;
+        self.side.pending_sounds = keep;
     }
 }

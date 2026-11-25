@@ -42,7 +42,7 @@ pub(in crate::game) struct WrittenFluid {
     player: Option<PlayerRef>,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A normal player's bucket uses the same plan as a dispenser, but lends a
     /// transactional host to a subscribing container instead of the direct one.
     pub(in crate::game) fn empty_player_bucket(
@@ -259,8 +259,8 @@ impl Game<'_> {
             player,
         } = written;
         self.with_level(|b, level, ticks| b.fluid_write_ticks(level, ticks, &write));
-        debug_assert!(self.spill.0.is_empty(), "a spill left between level calls");
-        self.spill.0 = drops;
+        debug_assert!(self.side.spill.0.is_empty(), "a spill left between level calls");
+        self.side.spill.0 = drops;
         self.flush_spill();
         self.with_level(|b, level, ticks| b.fluid_write_effects(level, ticks, &write));
         let _ = self.server_process_level_events();

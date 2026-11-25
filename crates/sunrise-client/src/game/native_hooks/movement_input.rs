@@ -2,7 +2,7 @@ use super::*;
 use mod_api::{MovementInput, MovementKeys};
 use sunrise_client::sprint::Keys;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Local player input, after sampling and before auto-jump and sprint decisions.
     fn native_movement_input_update(&self, call: mod_api::__private::MovementInputUpdateCall<'_>) {
         self.fire_movement_input_update(call);

@@ -18,7 +18,7 @@ pub(in crate::game) struct NativeNet {
     pub(in crate::game) leave: Option<super::native_disconnect::LeaveRequest>,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// A mod's chat line or command (`/` first), sent as `send_chat` sends
     /// it (ClientPacketListener.sendChat / sendCommand), to any server: no
     /// chat history, and no client chat event (vanilla's `ClientChatEvent`
@@ -54,7 +54,7 @@ impl Game<'_> {
         if self.player.is_none() {
             return Err("no player in a world".into());
         }
-        if self.client.screen != super::Screen::Playing {
+        if self.side.screen != super::Screen::Playing {
             return Err("another screen is open".into());
         }
         self.begin_chat_screen(text, false);

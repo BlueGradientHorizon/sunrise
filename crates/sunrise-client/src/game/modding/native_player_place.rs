@@ -21,7 +21,7 @@ fn placement_flags(update_neighbour_shapes: bool) -> BlockUpdateFlags {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The one block write (`level_set_block`, its block entity included) with a placement's
     /// flags, then `Block.setPlacedBy` in the player's turn; nothing else of `BlockItem.place`.
     pub(in crate::game) fn player_place_block(

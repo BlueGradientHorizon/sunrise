@@ -144,7 +144,7 @@ pub(in crate::game::server_side) fn refuse_xp_repair_ratio(item: &str, ratio: f3
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The wear `ItemStack.hurtAndBreak` goes on to apply for `amount` points
     /// on the stack `wearer` wears or uses: what Unbreaking leaves
     /// (`EnchantmentHelper.processDurabilityChange`), then what the item's
@@ -1261,7 +1261,7 @@ impl Game<'_> {
         let cell = |v: [f64; 3]| v.map(|c| c.floor() as i32);
         // LivingEntity.collectEquipmentChanges: newly worn armor runs its
         // location_changed effects at once, even when standing still.
-        let changed = armor_changes(&mut self.server.location_armor, &self.armor);
+        let changed = armor_changes(&mut self.side.location_armor, &self.armor);
         let moved = cell(from) != cell(at) || (on_ground && !was_on_ground);
         if !moved && !changed.iter().any(|c| *c) {
             return;
@@ -1757,7 +1757,7 @@ pub(in crate::game::server_side) fn soul_speed_tick(
     (particle, pitch)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// One `post_piercing_attack` effect on the player: `AllOf`,
     /// `ChangeItemDamage`, `ApplyExhaustion`, `ApplyEntityImpulse` and
     /// `PlaySoundEffect`.

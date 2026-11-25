@@ -36,7 +36,7 @@ impl CriterionContext for NativeCriterion<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Fires the mod's criteria trigger `trigger` (`mymod:pipe_connected`)
     /// for `player`: vanilla's
     /// `SimpleCriterionTrigger.trigger`. Each criterion of theirs with that

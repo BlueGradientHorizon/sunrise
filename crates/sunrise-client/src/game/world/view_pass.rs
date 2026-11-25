@@ -15,7 +15,7 @@
 use super::{Dim, Game};
 use sunrise_client::{Result, lan::hub::TickCtx};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// What the players' viewed areas ask of level `dim`: None for nothing, else whether one of
     /// them ticks.
     pub(in crate::game::server_side) fn viewed_level(&self, dim: Dim) -> Option<bool> {
@@ -78,7 +78,7 @@ impl Game<'_> {
             sea_level,
             world: &mut self.world,
             entities: states.as_slice(),
-            next_entity: &mut self.server.next_entity,
+            next_entity: &mut self.side.next_entity,
             spawn,
             spawn_angle: self.level.world_spawn_angle,
             spawn_dimension: crate::game::Dim::of_world_spawn(&self.level).id(),

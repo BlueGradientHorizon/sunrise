@@ -22,7 +22,7 @@ pub(in crate::game::server_side) use sunrise_client::{
     particles::{ParticleOptions, ParticleType, TrackingBody, TrackingTarget},
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The `death_effects` of the stack's `minecraft:death_protection`.
     pub(in crate::game) fn death_effects(
         &self,
@@ -59,8 +59,8 @@ impl Game<'_> {
     pub(in crate::game::server_side) fn apply_totem(&mut self, entity: i32) -> Option<Body> {
         // The mods hear a server player's totem before it is used up.
         if let (Some(uuid), Some(name)) = (
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_name.clone(),
+            self.side.lan_acting_uuid,
+            self.side.lan_acting_name.clone(),
         ) {
             self.native_player_totem(uuid, &name);
         }
@@ -103,7 +103,7 @@ impl Game<'_> {
             self.apply_consume_effect(&protector, &effect, None, user);
         }
         self.update_totem_ready();
-        if self.server.lan_acting.is_some()
+        if self.side.lan_acting.is_some()
             && let Some(host) = &self.lan
         {
             host.hub.entity_event(entity, TOTEM_EVENT);
@@ -117,7 +117,7 @@ impl Game<'_> {
     pub(in crate::game) fn finish_guest_damage_before_resume(
         &mut self,
     ) -> Result<(), Vec<MotionEvent>> {
-        let (Some(conn), Some(player)) = (self.server.lan_acting, self.player.as_mut()) else {
+        let (Some(conn), Some(player)) = (self.side.lan_acting, self.player.as_mut()) else {
             return Err(Vec::new());
         };
         let Some(hit) = player.health.damage_completion.take() else {
@@ -161,7 +161,7 @@ impl Game<'_> {
         if let Some(post) = hit.post {
             self.finish_damage_post(entity, "minecraft:player", post);
         }
-        if self.server.lan_acting == Some(conn)
+        if self.side.lan_acting == Some(conn)
             && let Some(player) = self.player.as_mut().filter(|p| p.entity_id == entity)
         {
             events.append(&mut player.events);

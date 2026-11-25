@@ -7,7 +7,7 @@ pub(in crate::game::server_side) use crate::game::developer_launch::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_client::lan::{NetConfig, hub::HubConfig};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Start the network side and the play-state hub: for the LAN (with the
     /// host's own profile reserved) or for a dedicated server (no host).
     pub(in crate::game) fn lan_host(

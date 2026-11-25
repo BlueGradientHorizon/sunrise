@@ -124,7 +124,7 @@ pub(in crate::game::server_side) fn visual_rotation_y_degrees(f: &ItemFrame) -> 
         180.0 + (two_d * 90) as f32 + f32::from(f.rotation) * 45.0 + correction as f32,
     )
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ItemFrame.survives` (not fixed): no collision, a solid block behind
     /// (or a diode for wall frames), no overlapping hanging entity.
     pub(in crate::game) fn frame_survives(&self, f: &ItemFrame) -> bool {
@@ -159,8 +159,8 @@ impl Game<'_> {
     /// cancelled it. A game's own player is not asked.
     pub(in crate::game) fn hanging_place_cancelled(&mut self, kind: &str, pos: [i32; 3]) -> bool {
         let (Some(uuid), Some(name)) = (
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_name.clone(),
+            self.side.lan_acting_uuid,
+            self.side.lan_acting_name.clone(),
         ) else {
             return false;
         };
@@ -179,7 +179,7 @@ impl Game<'_> {
         by_player: bool,
     ) -> bool {
         let player = if by_player {
-            let Some(uuid) = self.server.lan_acting_uuid else {
+            let Some(uuid) = self.side.lan_acting_uuid else {
                 return false;
             };
             Some(uuid)
@@ -209,13 +209,13 @@ impl Game<'_> {
             .contains(&pos[1])
         {
             // ItemFrameItem.mayPlace's FAIL.
-            self.server.use_failed = true;
+            self.side.use_failed = true;
             return true;
         }
         let mut frame = ItemFrame {
             attachment_lifetime: Default::default(),
             join: Default::default(),
-            id: self.server.next_entity + 1,
+            id: self.side.next_entity + 1,
             pos,
             facing: facing_of(hit.face),
             glow,
@@ -252,7 +252,7 @@ impl Game<'_> {
         if self.hanging_place_cancelled(kind, pos) {
             return true;
         }
-        self.server.next_entity += 1;
+        self.side.next_entity += 1;
         self.server_play_sound(&sound(&frame, "place"), center(&frame), 1.0, 1.0);
         // HangingEntityItem.useOn: ENTITY_PLACE at the frame, by the player, before it is
         // added; ItemStack.useOn then counts the use.
@@ -323,8 +323,8 @@ impl Game<'_> {
             self.consume_held();
         }
         if let (Some(player), Some(name)) = (
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_name.clone(),
+            self.side.lan_acting_uuid,
+            self.side.lan_acting_name.clone(),
         ) {
             let frame = self.item_frames.iter().find(|f| f.id == entity_id);
             let item = frame
@@ -356,13 +356,13 @@ impl Game<'_> {
             // (canHurtWhenFixed), so skipAttackInteraction is false and
             // Player.attack goes on to onAttack.
             if !self.creative {
-                self.server.attack_ticks = 0;
+                self.side.attack_ticks = 0;
             }
             return true;
         }
         // `isInvulnerableToBase`: a refused hit goes on to onAttack, as a fixed frame's does.
         if self.native_player_hit_invulnerable(self.item_frames[i].id, self.item_frames[i].kind()) {
-            self.server.attack_ticks = 0;
+            self.side.attack_ticks = 0;
             return true;
         }
         self.hit_frame_by(
@@ -496,8 +496,8 @@ impl Game<'_> {
         self.world.modified.insert((f.pos[0] >> 4, f.pos[2] >> 4));
         if by_player
             && let (Some(player), Some(name)) = (
-                self.server.lan_acting_uuid,
-                self.server.lan_acting_name.clone(),
+                self.side.lan_acting_uuid,
+                self.side.lan_acting_name.clone(),
             )
         {
             self.native_player_item_frame_change(
@@ -594,7 +594,7 @@ impl Game<'_> {
                     / diameter;
             if dist > 1.0
                 || self.item_frames[i].fixed
-                || !self.combat.0.visits(self.item_frames[i].id)
+                || !self.side.combat.0.visits(self.item_frames[i].id)
                 || !self.break_frame_by(i, self.explosion_kill_credit())
             {
                 i += 1;
@@ -824,7 +824,7 @@ pub(in crate::game) mod game_event_tests {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `BlockAttachedEntity.kill`, then `ItemFrame.dropItem(level, causedBy)`
     /// for the frame at `index`, the kill credited to `source`: the break
     /// sound, the frame and its item, then `BLOCK_CHANGE`. False when a mod

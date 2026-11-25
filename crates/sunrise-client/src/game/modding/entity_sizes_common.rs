@@ -13,7 +13,7 @@ pub(in crate::game) fn synced_pose(m: &Mob) -> Pose {
     }
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Ask `entity_size` for an entity whose vanilla size in `pose` is `vanilla`, unless
     /// `previous` was already asked for both. `None`: nothing to ask, keep `previous`.
     pub(in crate::game) fn ask_entity_size(

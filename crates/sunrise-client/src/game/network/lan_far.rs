@@ -29,7 +29,7 @@ fn send(sender: &PlayerSender, data: Vec<u8>) {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A `sunrise:lod` payload from `conn`.
     pub(in crate::game::server_side) fn guest_far_terrain(&mut self, conn: u32, data: &[u8]) {
         let Some(host) = self.lan.as_mut() else {

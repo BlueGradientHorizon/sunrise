@@ -3,7 +3,7 @@ use super::*;
 #[allow(unused_imports)]
 use crate::game::{commands::Target, server_travel::SpawnAction};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerPlayer.die` → `Entity.awardKillScore` on the entity the dying
     /// guest's combat record credits (`LivingEntity.getKillCredit`): the
     /// guest's `entity_killed_player`, with that entity and the death's

@@ -1,7 +1,7 @@
 use super::*;
 use sunrise_core::arm_pose::{ArmPose, application_order};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn transform_selected_arm_poses(
         &self,
         mob: &Mob,

@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// An experience orb looks for a player to follow (NeoForge's
     /// `XpOrbTargetingEvent`, `ExperienceOrb.followNearbyPlayer`), on a
     /// server. `following` starts as the default: the nearest living player

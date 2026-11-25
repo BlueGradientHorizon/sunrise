@@ -13,7 +13,7 @@
 use super::{Game, commands::Target};
 use mod_api::{EntityRef, MobAiPauseRefusal, MobRef};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether a mod paused the mob's AI step. None for a stale or held-out
     /// handle, anything but a mob, the dragon, or on a client.
     pub(in crate::game) fn mob_ai_paused(&self, mob: MobRef) -> Option<bool> {
@@ -57,7 +57,7 @@ impl Game<'_> {
         if self.native_lifecycle.epoch() != Some(entity.epoch()) {
             return Err(MobAiPauseRefusal::Stale);
         }
-        if self.server.held_out.contains(&entity.id()) {
+        if self.side.held_out.contains(&entity.id()) {
             return Err(MobAiPauseRefusal::HeldOut);
         }
         match self.native_entity_target(entity) {

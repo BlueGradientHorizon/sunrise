@@ -7,7 +7,7 @@ pub(in crate::game::client_side) use crate::game::creatures::living_draw::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::mobs::render::FrameDraw;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Draws `mob` into `out` as the frame's mob pass does, or nothing when it is out of range,
     /// out of view, hidden or culled.
     pub(in crate::game) fn living_geometry<const PRECHECK: bool>(
@@ -52,7 +52,7 @@ impl Game<'_> {
         let beam = sunrise_client::mobs::guardian::beam(mob, alpha as f32);
         // EntityRenderer.shouldRender: the renderer's interpolated culling box,
         // grown by 0.5 (GuardianRenderer also draws while its beam is out).
-        if let Some(view) = &self.client.view_frustum
+        if let Some(view) = &self.side.view_frustum
             && beam.is_none()
         {
             let (lo, hi) = super::super::entity_culling::cull_box(mob, alpha);
@@ -101,9 +101,9 @@ impl Game<'_> {
         let entity_start = out.len();
         self.mark_motion(entity_start, (1 << 32) | u64::from(mob.id));
         self.mark_entity(entity_start, &mob.kind.id);
-        self.client
+        self.side
             .rendered_mobs
-            .set(self.client.rendered_mobs.get() + 1);
+            .set(self.side.rendered_mobs.get() + 1);
         let packed = self.mob_packed_light(mob, alpha);
         // The mods' pre hooks (a player's `render_player_pre`, then `render_living_pre`),
         // before any of the vanilla model's parts (a sulfur cube's swallowed block) are
@@ -170,8 +170,8 @@ impl Game<'_> {
         frame_draw.capture_model = !modded
             && (added.is_some() || (listened && self.mob_render_post_listened(who.is_some())));
         if posable {
-            let mut models = self.skin_models.0.borrow_mut();
-            let mut frame = self.client.skin_frame.borrow_mut();
+            let mut models = self.side.skin_models.0.borrow_mut();
+            let mut frame = self.side.skin_frame.borrow_mut();
             let mark = frame.mark();
             let mut skin = sunrise_client::mobs::skin::Skin::new(&mut models, &mut frame);
             sunrise_client::mobs::render::render_skinned(
@@ -273,7 +273,7 @@ impl Game<'_> {
             self.mark_outline(&out[entity_start..], rgb);
             if let Some(((first, _, _), _)) = skinned {
                 let color = sunrise_client::mobs::render::abgr(rgb);
-                self.client
+                self.side
                     .skin_frame
                     .borrow_mut()
                     .outline_since(first, color);

@@ -3,15 +3,15 @@ pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::remote::skin::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether a downloaded skin or cape is in the atlas to draw, marking it
     /// drawn; if not (new, or its slot taken), its image is queued for upload
     /// again and it is drawn from the next frame.
     pub(in crate::game) fn again_skin(&self, location: &str) -> bool {
-        let mut downloads = self.skin_downloads.0.borrow_mut();
+        let mut downloads = self.side.skin_downloads.0.borrow_mut();
         // A slot without its sprite (the atlas was rebuilt, or the upload
         // never happened) counts as missing, so the skin is stored again.
-        if self.client.skin_slots.contains(location)
+        if self.side.skin_slots.contains(location)
             && self.gui.atlas.sprites.contains_key(location)
         {
             downloads.drawn(location);
@@ -45,7 +45,7 @@ impl Game<'_> {
             uuid,
             listed,
             &mut self.skin_profiles.borrow_mut(),
-            &mut self.skin_downloads.0.borrow_mut(),
+            &mut self.side.skin_downloads.0.borrow_mut(),
             |location| self.gui.atlas.sprites.contains_key(location),
             name,
         )
@@ -61,7 +61,7 @@ impl Game<'_> {
             let skin = skins::head_skin(
                 profile,
                 &mut self.skin_profiles.borrow_mut(),
-                &mut self.skin_downloads.0.borrow_mut(),
+                &mut self.side.skin_downloads.0.borrow_mut(),
                 |location| self.gui.atlas.sprites.contains_key(location),
             );
             let id = skins::parse_profile(profile).id;
@@ -94,7 +94,7 @@ impl Game<'_> {
     /// Puts a downloaded skin in an atlas skin slot (`SkinSlots::place`),
     /// unless every slot holds a skin drawn in the last frame.
     pub(in crate::game::client_side) fn store_skin(&mut self, location: String, rgba: Vec<u8>) {
-        let Some((slot, evicted)) = self.client.skin_slots.place(location.clone()) else {
+        let Some((slot, evicted)) = self.side.skin_slots.place(location.clone()) else {
             return;
         };
         if let Some(old) = evicted {
@@ -110,7 +110,7 @@ impl Game<'_> {
             return;
         };
         let (w, h) = (self.gui.atlas.width as f32, self.gui.atlas.height as f32);
-        self.client.map_patches.push(sunrise_client::font::Patch {
+        self.side.map_patches.push(sunrise_client::font::Patch {
             x: (rect.u0 * w).round() as u32,
             y: (rect.v0 * h).round() as u32,
             width: 64,

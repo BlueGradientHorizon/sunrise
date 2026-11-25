@@ -30,7 +30,7 @@ mod query_tests;
 #[cfg(test)]
 mod saved_entity_tests;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn attachment_query(
         &self,
         namespace: &str,

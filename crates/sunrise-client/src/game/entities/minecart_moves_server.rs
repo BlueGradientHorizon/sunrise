@@ -15,7 +15,7 @@ pub(in crate::game::server_side) use sunrise_client::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_core::geometry::{Aabb, Vec3};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Entity.move for a cart: collisions zero the blocked components, the world border's walls
     /// among them (`CollisionGetter.borderCollision`, asked for every entity).
     pub(in crate::game) fn move_cart(&mut self, c: &mut Minecart, delta: Vec3) -> bool {

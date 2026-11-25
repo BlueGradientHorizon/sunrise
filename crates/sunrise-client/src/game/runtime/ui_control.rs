@@ -53,15 +53,15 @@ impl UiWait {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The open screen's widgets: those the last frame drew, then the slots
     /// of an open inventory or menu (`slot-ID`, the ids of `click-slot`).
     pub(in crate::game::client_side) fn ui_nodes(&self) -> Vec<Node> {
         let size = self.gui_batch().map(|b| [b.width, b.height]);
         let mut nodes = widgets::tree(&widgets::last_labelled(), &widgets::last_targets(), size);
-        if matches!(self.client.screen, Screen::Inventory | Screen::Creative)
-            && self.title.0.is_none()
-            && self.client.book.is_none()
+        if matches!(self.side.screen, Screen::Inventory | Screen::Creative)
+            && self.side.title.0.is_none()
+            && self.side.book.is_none()
             && let Ok((ox, oy)) = self.gui_origin()
         {
             nodes.extend(self.slots().into_iter().map(|i| {
@@ -97,8 +97,8 @@ impl Game<'_> {
                         self.craft_result()
                     } else if slot >= Creative::DISPLAY {
                         // An item tab's display slot shows the tab's list.
-                        let first = self.creative_screen.0.first_row(&self.pack.names);
-                        self.creative_screen
+                        let first = self.side.creative_screen.0.first_row(&self.pack.names);
+                        self.side.creative_screen
                             .0
                             .shown(&self.pack.names, first * 9 + slot - Creative::DISPLAY)
                     } else {
@@ -139,8 +139,8 @@ impl Game<'_> {
         if !matches!(words[0], "ui" | "click" | "set") && !first_frame {
             return Ok(Handled::No);
         }
-        if self.ui_wait.0.stale() {
-            self.ui_wait.0.waiting.push(Request {
+        if self.side.ui_wait.0.stale() {
+            self.side.ui_wait.0.waiting.push(Request {
                 line: line.to_owned(),
                 reply: reply.clone(),
             });
@@ -189,7 +189,7 @@ impl Game<'_> {
                     };
                     self.synth_click(event_loop, x, y, button)?;
                 }
-                self.ui_wait.0.clicked();
+                self.side.ui_wait.0.clicked();
                 Ok(Handled::Reply(
                     json!({ "ok": true, "clicked": node.id, "screen": self.screen_label() }),
                 ))
@@ -216,7 +216,7 @@ impl Game<'_> {
                 let x = track[0] + value.clamp(0.0, 1.0) * track[1];
                 let y = node.rect[1] + node.rect[3] / 2.0;
                 self.synth_click(event_loop, x, y, MouseButton::Left)?;
-                self.ui_wait.0.clicked();
+                self.side.ui_wait.0.clicked();
                 Ok(Handled::Reply(
                     json!({ "ok": true, "set": node.id, "screen": self.screen_label() }),
                 ))

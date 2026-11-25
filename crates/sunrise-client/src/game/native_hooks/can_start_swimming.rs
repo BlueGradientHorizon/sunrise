@@ -5,7 +5,7 @@ use mod_api::SwimmingCheck;
 #[allow(unused_imports)]
 use sunrise_client::{motion::SwimEntry, sprint};
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The first answer replaces the shared player swim predicate at this call site.
     pub(in crate::game) fn native_can_start_swimming(
         &self,

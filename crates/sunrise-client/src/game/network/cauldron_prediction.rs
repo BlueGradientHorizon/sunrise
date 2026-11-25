@@ -81,7 +81,7 @@ pub(super) fn use_result(receipt: i64, outcome: UseOnOutcome) -> Clientbound {
     })
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The server's registration snapshot, not the client's installed mods,
     /// determines whether the click needs an authoritative block result.
     pub(super) fn has_server_cauldron_handler(

@@ -301,7 +301,7 @@ pub(in crate::game) fn general_renderers() -> Option<Arc<EntityRendererTable>> {
     TABLE.read().unwrap_or_else(PoisonError::into_inner).clone()
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Resolves the registered renderers against the entity types of the resources now loaded, then
     /// asks for the living renderers' layers: at the first load and on every reload after it. A
     /// registration for no entity type is logged with its id.

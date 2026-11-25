@@ -2,7 +2,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Once a frame, in a world or not, right after the frame was rendered
     /// (`RenderFrameEvent.Post`).
     pub(in crate::game) fn native_render_frame_post(

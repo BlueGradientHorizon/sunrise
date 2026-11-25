@@ -10,7 +10,7 @@ use sunrise_assets::item_model::{Context, DisplayContext, StackView};
 use sunrise_client::item_render::{SpecialModelInput, stack_view};
 
 pub(in crate::game::client_side) fn draw_input<'a>(
-    game: &'a Game<'_>,
+    game: &'a Game<'_, crate::game::client_side::ClientState>,
     stack: &StackView,
     context: &Context<'_>,
 ) -> Option<SpecialModelInput<'a>> {

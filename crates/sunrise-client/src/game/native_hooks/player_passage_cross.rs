@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `player`'s client crossed `passage` from `from` (its feet before), and the server is
     /// about to follow (`guest_passage_cross`): the move to `from` passed and both ends are
     /// tracked. Set `cancel` and the crossing is refused (`Vetoed`); the player goes back

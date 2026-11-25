@@ -16,7 +16,7 @@ use sunrise_core::{geometry::Vec3, position::BlockPos};
 pub(in crate::game::server_side) fn block_of(p: Vec3) -> [i32; 3] {
     [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
 }
-impl villager_brain::TradingPlayers for Game<'_> {
+impl villager_brain::TradingPlayers for Game<'_, crate::game::server_side::ServerState> {
     fn trading_player(&self, villager: u32) -> Option<villager_brain::TradingPlayer> {
         if let Some(station) = &self.station
             && station
@@ -41,7 +41,7 @@ impl villager_brain::TradingPlayers for Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn villager_index(&self, id: u32) -> Option<usize> {
         self.mobs
             .iter()
@@ -190,7 +190,7 @@ impl Game<'_> {
         let Some(kind) = self.res.mob_types().get("minecraft:iron_golem").cloned() else {
             return false;
         };
-        let id = self.server.next_entity + 1;
+        let id = self.side.next_entity + 1;
         let mut random = self.world.random.clone();
         let golem = villager::summon_golem(
             &self.mob_world_base(&[]),
@@ -206,7 +206,7 @@ impl Game<'_> {
         let Some(golem) = golem else {
             return false;
         };
-        self.server.next_entity = id;
+        self.side.next_entity = id;
         let sound = golem.kind.sounds[0];
         if !sound.is_empty() {
             let at = golem.center();
@@ -327,7 +327,7 @@ impl Game<'_> {
             let mut best: Option<(f64, Vec3)> = None;
             let mut scan = nearby
                 .as_mut()
-                .map(|index| index.scan(&self.dropped, self.server.next_entity, area));
+                .map(|index| index.scan(&self.dropped, self.side.next_entity, area));
             let mut j = 0;
             loop {
                 if let Some(indexed) = &mut scan {
@@ -401,7 +401,7 @@ impl Game<'_> {
                 Vec3::new(pos.x - half, pos.y - 0.25, pos.z - half),
                 Vec3::new(pos.x + half, pos.y + top, pos.z + half),
             );
-            let mut scan = near_items.scan(&self.dropped, self.server.next_entity, reach);
+            let mut scan = near_items.scan(&self.dropped, self.side.next_entity, reach);
             if scan.is_empty() {
                 continue;
             }
@@ -466,7 +466,7 @@ impl Game<'_> {
         let uuid = match who {
             None => return self.level.player_uuid,
             // While that guest acts its own UUID is swapped in.
-            Some(conn) if self.server.lan_acting == Some(conn) => self.server.lan_acting_uuid?,
+            Some(conn) if self.side.lan_acting == Some(conn) => self.side.lan_acting_uuid?,
             Some(conn) => self.lan.as_ref()?.hub.guest(conn)?.uuid,
         };
         Some(sunrise_client::lan::playerdata::uuid_ints(uuid))
@@ -549,7 +549,7 @@ impl Game<'_> {
     /// Retain the accepted trade's actual player until the eligible mob AI
     /// phase, including across menu close. XP and rewards stay in the session.
     pub(in crate::game::server_side) fn villager_trade_pending(&mut self, id: u32) {
-        let Some(player) = self.player_uuid_of(self.server.lan_acting) else {
+        let Some(player) = self.player_uuid_of(self.side.lan_acting) else {
             return;
         };
         let Some(i) = self.villager_index(id) else {

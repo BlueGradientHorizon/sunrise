@@ -2,7 +2,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `LivingEntity.die`: the complete accepted killing source and its weapon,
     /// before any loot, experience or death message. Cancelling leaves health
     /// exactly where the listener left it; an unhealed body ticks away without loot.

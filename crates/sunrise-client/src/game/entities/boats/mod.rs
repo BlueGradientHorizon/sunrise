@@ -627,7 +627,7 @@ impl BoatModels {
         }
     }
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Entity.lavaHurt`'s sound once the hurt went through.
     pub(in crate::game) fn lava_hurt_sound(&mut self, at: [f64; 3]) {
         let pitch = 2.0 + self.world.random.next_float() * 0.4;
@@ -1178,8 +1178,8 @@ impl Game<'_> {
         let Some(mut boat) = self.boat_to_place(stack) else {
             return false;
         };
-        self.server.next_entity += 1;
-        boat.id = self.server.next_entity;
+        self.side.next_entity += 1;
+        boat.id = self.side.next_entity;
         let key = (
             boat.position.x.floor() as i32 >> 4,
             boat.position.z.floor() as i32 >> 4,
@@ -1329,7 +1329,7 @@ impl Game<'_> {
         let vanilla =
             self.saved_refuses_damage(id as u32, "minecraft:player_attack", self.creative);
         let invulnerable =
-            crate::game::entity::damage_level_of!(self, self.combat.0.attack(), no_push, None)
+            crate::game::entity::damage_level_of!(self, self.side.combat.0.attack(), no_push, None)
                 .invulnerability_check(
                     sunrise_client::health::Hurting::Entity(id, &kind, source),
                     vanilla,
@@ -1374,7 +1374,7 @@ impl Game<'_> {
             self.special_attack_exhaustion();
         }
         // Player.onAttack: the hit starts the attack strength again.
-        self.server.attack_ticks = 0;
+        self.side.attack_ticks = 0;
     }
     /// `VehicleEntity.hurtServer`: wobble, add the damage and break past 40
     /// (`creative`: a creative player's hit discards it straight away).

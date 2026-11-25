@@ -1076,7 +1076,7 @@ impl Drop for StorageScope<'_, '_> {
     }
 }
 
-impl<'g> Game<'g> {
+impl<'g, __Side: crate::game::Side> Game<'g, __Side> {
     /// Actual transaction/restore events for storage-attempt regression traces.
     #[cfg(test)]
     pub(in crate::game) fn trace_storage_attempt(&self, entry: String) {

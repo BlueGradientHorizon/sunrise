@@ -7,7 +7,7 @@ use sunrise_client::text_grammar::build;
 use sunrise_core::json_nbt::{JsonNbtError, tag_to_json};
 use sunrise_core::nbt::{self, Tag};
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// A component read as `/tellraw` takes it; None when it isn't one (an object with no
     /// content key, an empty list, a content key of the wrong kind).
     pub(super) fn text_from_json(&self, json: &str) -> Read {

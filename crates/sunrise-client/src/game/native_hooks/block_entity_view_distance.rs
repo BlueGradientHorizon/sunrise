@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// How far from the camera the mod block entity of block `block` draws, in blocks
     /// (`BlockEntityRenderer.getViewDistance`): 64 unless a part answers. Asked once for
     /// each mod block, the first time this client draws block entities, and kept.

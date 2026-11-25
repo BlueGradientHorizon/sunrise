@@ -255,7 +255,7 @@ pub(in crate::game) fn num(n: impl std::fmt::Display) -> Text {
     Text::literal(n.to_string())
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `ItemStack.getDisplayName`: hover name in brackets, coloured and carrying show_item hover.
     pub(in crate::game) fn stack_display_name(&self, s: &ItemStack) -> Text {
         let item = &*s.item;

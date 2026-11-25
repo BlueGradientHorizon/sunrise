@@ -24,7 +24,7 @@ pub(in crate::game) struct PlayerFacts {
     pub uuid: [i32; 4],
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Restore a saved anger target after insertion, so the target-change hook
     /// receives a live actor and a currently resolvable living target. A
     /// target that is absent or invalid resolves to none, as EntityReference
@@ -91,7 +91,7 @@ impl Game<'_> {
                 })
             }
             Target::Player => {
-                if self.server.lan_acting_fake {
+                if self.side.lan_acting_fake {
                     return None;
                 }
                 let player = self.player.as_ref()?;
@@ -102,7 +102,7 @@ impl Game<'_> {
                         || player.health.permanently_invulnerable
                         || player.health.invulnerable_time > 0,
                     uuid: self
-                        .server
+                        .side
                         .lan_acting_uuid
                         .map(sunrise_client::lan::playerdata::uuid_ints)
                         .or(self.level.player_uuid)
@@ -120,7 +120,7 @@ pub(in crate::game) enum MobFlag {
     Persistent,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Mob.asValidTarget` and the modeled `canAttack` overrides: the game's
     /// own state as the target's facts, through the one rule set
     /// [`Mob::valid_target`] (#1175) a goal tick's view shares.
@@ -443,7 +443,7 @@ impl Game<'_> {
             None => (None, None),
             Some(target) => match self.native_entity_target(target.entity())? {
                 Target::Mob(id) => (Some(Who::Mob(id)), None),
-                t @ Target::Guest(conn) if self.server.lan_acting_uuid.is_none() => {
+                t @ Target::Guest(conn) if self.side.lan_acting_uuid.is_none() => {
                     self.native_player_facts(t)?;
                     let guest = self.lan.as_ref()?.hub.guest(conn)?;
                     if guest.dimension != self.dim.id() {
@@ -453,7 +453,7 @@ impl Game<'_> {
                 }
                 t @ Target::Player => {
                     self.native_player_facts(t)?;
-                    match self.server.lan_acting {
+                    match self.side.lan_acting {
                         Some(conn) if self.lan.is_some() => (Some(Who::Player), Some(conn)),
                         _ => return None,
                     }

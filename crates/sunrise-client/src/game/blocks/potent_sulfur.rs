@@ -40,7 +40,7 @@ pub(in crate::game::server_side) fn apply_nausea_effect_to_mob(mob: &mut Mob) {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `PotentSulfurBlock.getTicker` on the server, for the block entity at
     /// `pos`: a wet block gives nausea; a dormant one counts down, then gives
     /// nausea; an erupting one pushes entities, then counts down; a continuous
@@ -125,7 +125,7 @@ impl Game<'_> {
         }
         // Applicability listeners can move or remove mobs: never acknowledge their
         // writes against the pre-hook grid.
-        if let Some(pass) = self.server.pass_mobs.as_mut() {
+        if let Some(pass) = self.side.pass_mobs.as_mut() {
             pass.clear();
         }
     }
@@ -137,7 +137,7 @@ impl Game<'_> {
         area: Aabb,
         out: &mut Vec<u32>,
     ) -> bool {
-        let Some(pass) = self.server.pass_mobs.as_mut() else {
+        let Some(pass) = self.side.pass_mobs.as_mut() else {
             return false;
         };
         pass.grid_for(&self.mobs).candidates(area, out)
@@ -290,7 +290,7 @@ impl Game<'_> {
         }
         // A push changes velocities, not boxes: the grid still holds.
         if !near.is_empty()
-            && let Some(pass) = self.server.pass_mobs.as_mut()
+            && let Some(pass) = self.side.pass_mobs.as_mut()
         {
             pass.wrote(&self.mobs);
         }

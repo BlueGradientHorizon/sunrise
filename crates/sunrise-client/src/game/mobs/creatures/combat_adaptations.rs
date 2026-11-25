@@ -3,7 +3,7 @@ use super::{Damage, Game, HurtSource, Who, source_damage_type};
 use sunrise_client::mobs::Species;
 use sunrise_core::random::RandomSource;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn mob_pushes_player(
         &mut self,
         power: f64,

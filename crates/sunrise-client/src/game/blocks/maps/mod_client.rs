@@ -56,7 +56,7 @@ pub(in crate::game::client_side) use sunrise_client::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_core::nbt::{JavaString, Tag};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `renderMap`: map `id` at pose `m`, its background (with a 7-pixel
     /// border) then the map.
     pub(in crate::game::client_side) fn held_map(
@@ -183,7 +183,7 @@ impl Game<'_> {
             m.texture_dirty = false;
             let rgba: Vec<u8> = m.colors.iter().flat_map(|&c| packed_rgba(c)).collect();
             let (w, h) = (self.gui.atlas.width as f32, self.gui.atlas.height as f32);
-            self.client.map_patches.push(sunrise_client::font::Patch {
+            self.side.map_patches.push(sunrise_client::font::Patch {
                 x: (rect.u0 * w).round() as u32,
                 y: (rect.v0 * h).round() as u32,
                 width: 128,
@@ -275,7 +275,7 @@ impl Game<'_> {
                     let mut text_batch = HudBatch::scratch([1, 1]);
                     let behind =
                         text_batch.name_tag(&self.gui.atlas, &text, 0.0, 0xFFFF_FFFF, 0x8000_0000);
-                    self.client.map_patches.append(&mut text_batch.patches);
+                    self.side.map_patches.append(&mut text_batch.patches);
                     let tm = glam::Mat4::from_translation(glam::Vec3::new(
                         f32::from(d.x) / 2.0 + 64.0,
                         f32::from(d.y) / 2.0 + 64.0 + 4.0,

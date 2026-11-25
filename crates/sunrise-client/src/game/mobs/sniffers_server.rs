@@ -10,7 +10,7 @@ pub(in crate::game::server_side) use sunrise_client::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_core::{geometry::Vec3, random::RandomSource};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A snifflet where the egg was.
     pub(in crate::game) fn hatch_sniffer(&mut self, pos: [i32; 3]) {
         let at = [

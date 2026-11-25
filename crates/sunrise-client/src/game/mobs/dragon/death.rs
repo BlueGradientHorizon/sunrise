@@ -1,7 +1,7 @@
 //! The dying ender dragon (`EnderDragon.tickDeath` and its die event), in its
 //! own module so `dragon.rs` keeps its size.
 use super::*;
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `tickDeath`: rising for 200 ticks, explosions, experience, then the
     /// exit portal, the egg and a gateway.
     pub(in crate::game::server_side) fn tick_dragon_death(&mut self) {
@@ -31,7 +31,7 @@ impl Game<'_> {
         // (`/summon`), or summoned in the End after the fight is won, a
         // dragon is worth 500 and its death ends nothing.
         let fight = self.is_fight_dragon();
-        let first_kill = fight && !self.server.fight.previously_killed;
+        let first_kill = fight && !self.side.fight.previously_killed;
         let xp = if first_kill { 12000 } else { 500 };
         let drops = self
             .ui

@@ -4,7 +4,7 @@ use super::Game;
 use mod_api::PlayerRef;
 use sunrise_client::{lan::data::component_nbt, text::Text};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Kicks a network or fake player with `reason` through the shared leave path.
     /// The calling hook finishes before the next poll removes the player, broadcasts
     /// their leave and fires `player_logged_out`; `player_kicked` hears the reason.

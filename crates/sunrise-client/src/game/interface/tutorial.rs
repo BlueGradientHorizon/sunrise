@@ -9,26 +9,26 @@ use sunrise_client::hud::{HudAtlas, HudBatch};
 use sunrise_client_gameplay::tutorial::social_hint_progress;
 pub(in crate::game) use sunrise_client_gameplay::tutorial::{Hint, Previous, Step, Tutorial};
 
-impl super::Game<'_> {
+impl super::Game<'_, crate::game::client_side::ClientState> {
     /// `Tutorial.setStep` persists immediately so it survives leaving a world.
     pub(in crate::game::client_side) fn persist_tutorial_step(&mut self) {
         self.settings.file.set(
             "tutorialStep",
-            sunrise_client::options_file::V::Int(self.client.tutorial.step as i32),
+            sunrise_client::options_file::V::Int(self.side.tutorial.step as i32),
         );
         self.settings.save(&crate::game::options_path());
     }
 }
 
-impl super::Game<'_> {
+impl super::Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn reset_tutorial(&mut self) {
-        self.client.tutorial =
+        self.side.tutorial =
             Tutorial::new(Step::from_option(self.settings.file.int("tutorialStep")));
-        self.client
+        self.side
             .toast_manager
             .queued
             .retain(|entry| !matches!(entry, Toast::Tutorial(_)));
-        self.client
+        self.side
             .toast_manager
             .visible
             .retain(|entry| !matches!(entry.toast, Toast::Tutorial(_)));
@@ -52,7 +52,7 @@ impl super::Game<'_> {
         // guest's tutorial is their own client's to record.
         if self.options.dedicated.is_some()
             || self.serving.is_some()
-            || self.title.0.is_some()
+            || self.side.title.0.is_some()
             || self.player.is_none()
         {
             return;
@@ -62,7 +62,7 @@ impl super::Game<'_> {
         let tree = self.tutorial_tagged(true, "minecraft:completes_find_tree_tutorial", id);
         let log = self.tutorial_tagged(true, "minecraft:logs", id);
         let plank = self.tutorial_tagged(true, "minecraft:planks", id);
-        if self.client.tutorial.get_item(tree, log, plank) {
+        if self.side.tutorial.get_item(tree, log, plank) {
             self.persist_tutorial_step();
         }
     }
@@ -76,14 +76,14 @@ impl super::Game<'_> {
         // guest's tutorial is their own client's to record.
         if self.options.dedicated.is_some()
             || self.serving.is_some()
-            || self.title.0.is_some()
+            || self.side.title.0.is_some()
             || self.player.is_none()
         {
             return;
         }
         let name = &self.res.facts().get(state).name;
         let is_log = self.tutorial_tagged(false, "minecraft:logs", name);
-        if self.client.tutorial.destroy(is_log, progress) {
+        if self.side.tutorial.destroy(is_log, progress) {
             self.persist_tutorial_step();
         }
     }
@@ -91,7 +91,7 @@ impl super::Game<'_> {
     /// Tick the current step and queue `Gui.addSocialInteractionsToast` on the first server.
     pub(in crate::game::client_side) fn tick_tutorial(&mut self) {
         use sunrise_client::actions::Action;
-        if self.title.0.is_some()
+        if self.side.title.0.is_some()
             || self.remote.is_none()
             || self.player.is_none()
             || self.options.dedicated.is_some()
@@ -105,7 +105,7 @@ impl super::Game<'_> {
             && (!self.has_singleplayer_server() || self.is_published())
         {
             if let Some(toast) = self.tutorial_toast(Hint::SocialInteractions, Some(0.0)) {
-                self.client
+                self.side
                     .toast_manager
                     .queued
                     .push_back(Toast::Tutorial(toast));
@@ -116,7 +116,7 @@ impl super::Game<'_> {
             );
             self.settings.save(&crate::game::options_path());
         }
-        if self.client.screen == super::Screen::Playing
+        if self.side.screen == super::Screen::Playing
             && ([
                 Action::Forward,
                 Action::Left,
@@ -130,14 +130,14 @@ impl super::Game<'_> {
                     .input_move()
                     .is_some_and(|[left, forward]| left.abs() > 0.3 || forward.abs() > 0.3))
         {
-            self.client.tutorial.input();
+            self.side.tutorial.input();
         }
         let items = self.res.items();
         let in_tag =
             |tag: &str, id: &str| items.item_tags.get(tag).is_some_and(|set| set.contains(id));
         let mut previous = Previous::default();
-        if self.client.tutorial.waiting == 0
-            && !matches!(self.client.tutorial.step, Step::Movement | Step::None)
+        if self.side.tutorial.waiting == 0
+            && !matches!(self.side.tutorial.step, Step::Movement | Step::None)
         {
             for stack in self
                 .inventory
@@ -168,10 +168,10 @@ impl super::Game<'_> {
             }
         }
         let survival = self.mode == sunrise_client::command::args::GameMode::Survival;
-        if self.client.tutorial.tick(survival, &previous) {
+        if self.side.tutorial.tick(survival, &previous) {
             self.persist_tutorial_step();
         }
-        if self.client.tutorial.step == Step::FindTree
+        if self.side.tutorial.step == Step::FindTree
             && self.pick_entity_hit().is_none()
             && let Some(hit) = self.pick()
         {
@@ -181,7 +181,7 @@ impl super::Game<'_> {
                 .get(self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]))
                 .name;
             if self.tutorial_tagged(false, "minecraft:completes_find_tree_tutorial", name)
-                && self.client.tutorial.look_at_tree()
+                && self.side.tutorial.look_at_tree()
             {
                 self.persist_tutorial_step();
             }
@@ -201,9 +201,9 @@ pub(in crate::game) struct HintToast {
     slide: sunrise_client::toasts::Slide,
 }
 
-impl super::Game<'_> {
+impl super::Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn hide_social_tutorial(&mut self) {
-        if let Some(toast) = self.client.toast_manager.find_mut(|entry| match entry {
+        if let Some(toast) = self.side.toast_manager.find_mut(|entry| match entry {
             Toast::Tutorial(t) if t.hint == Hint::SocialInteractions => Some(t),
             _ => None,
         }) {
@@ -309,12 +309,12 @@ impl super::Game<'_> {
     }
 
     pub(in crate::game::client_side) fn update_tutorial_toasts(&mut self) {
-        let wanted = self.client.tutorial.hint();
-        if wanted.map(|(hint, _)| hint) != self.client.tutorial.cancelled_hint() {
-            self.client.tutorial.set_cancelled_hint(None);
+        let wanted = self.side.tutorial.hint();
+        if wanted.map(|(hint, _)| hint) != self.side.tutorial.cancelled_hint() {
+            self.side.tutorial.set_cancelled_hint(None);
         }
         let mut has_current_hint = false;
-        for entry in self.client.toast_manager.all_mut() {
+        for entry in self.side.toast_manager.all_mut() {
             let Toast::Tutorial(t) = entry else { continue };
             if t.hint == Hint::SocialInteractions {
                 continue;
@@ -326,19 +326,19 @@ impl super::Game<'_> {
             }
         }
         if let Some((hint, progress)) = wanted
-            && self.client.tutorial.cancelled_hint() != Some(hint)
+            && self.side.tutorial.cancelled_hint() != Some(hint)
             && !has_current_hint
         {
             if let Some(toast) = self.tutorial_toast(hint, progress) {
-                self.client
+                self.side
                     .toast_manager
                     .queued
                     .push_back(Toast::Tutorial(toast));
             } else {
-                self.client.tutorial.set_cancelled_hint(Some(hint));
+                self.side.tutorial.set_cancelled_hint(Some(hint));
             }
         }
-        self.client
+        self.side
             .toast_manager
             .queued
             .retain(|entry| !matches!(entry, Toast::Tutorial(t) if !t.wanted));

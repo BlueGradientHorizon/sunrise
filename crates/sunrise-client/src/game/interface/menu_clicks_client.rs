@@ -3,7 +3,7 @@ pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::menu_clicks::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `quickMoveStack` of the open plain menu for a shift-click.
     #[allow(dead_code)]
     pub(in crate::game) fn inventory_quick_move(&mut self, slot: usize) -> bool {
@@ -93,7 +93,7 @@ impl Game<'_> {
         let to_menu = |g: usize| game_of.iter().position(|x| *x == Some(g));
         let mut menu = Menu::new(Kind::Anvil);
         if self.remote.is_some() {
-            menu.set_drop_spam_throttler(self.client.drop_spam_throttler);
+            menu.set_drop_spam_throttler(self.side.drop_spam_throttler);
         }
         // Prediction must dispatch the result update between the two input writes in onTake.
         menu.anvil_hook = true;
@@ -198,9 +198,9 @@ impl Game<'_> {
             self.creative_display_click(slot, button, input);
             return true;
         }
-        if self.client.screen == Screen::Creative
+        if self.side.screen == Screen::Creative
             && input == sunrise_client::menu::Input::Throw
-            && !self.client.drop_spam_throttler.is_under_threshold()
+            && !self.side.drop_spam_throttler.is_under_threshold()
         {
             return true;
         }
@@ -224,15 +224,15 @@ impl Game<'_> {
         input: sunrise_client::menu::Input,
     ) {
         use sunrise_client::creative::DisplayClick;
-        if self.creative_screen.0.tab().search {
+        if self.side.creative_screen.0.tab().search {
             // CreativeModeInventoryScreen.slotClicked: moveCursorToEnd, then
             // setHighlightPos(0), so typing replaces the whole query.
-            let search = &mut self.creative_screen.0.search;
+            let search = &mut self.side.creative_screen.0.search;
             search.move_cursor_to_end(false);
             search.highlight = 0;
         }
         if input == sunrise_client::menu::Input::Throw
-            && !self.client.drop_spam_throttler.is_under_threshold()
+            && !self.side.drop_spam_throttler.is_under_threshold()
         {
             return;
         }
@@ -291,12 +291,12 @@ impl Game<'_> {
     #[inline(always)]
     pub(in crate::game) fn hovered_inventory_slot(&self) -> Option<usize> {
         let size = self
-            .renderer
+            .side.renderer
             .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])?;
         let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
-        self.slot_at(&batch, self.client.cursor.0, self.client.cursor.1)
+        self.slot_at(&batch, self.side.cursor.0, self.side.cursor.1)
     }
     /// Several clicks on one menu instance (a quick craft drag is three).
     pub(in crate::game) fn menu_ops(
@@ -310,7 +310,7 @@ impl Game<'_> {
                 self.unselect_bundle(slot);
             }
         }
-        if !self.is_logical_server() && self.client.screen == Screen::Inventory {
+        if !self.is_logical_server() && self.side.screen == Screen::Inventory {
             return self.remote.is_some() && self.remote_menu_ops(ops);
         }
         if let [(Some(slot), button, input)] = ops {
@@ -318,13 +318,13 @@ impl Game<'_> {
         }
         if let Some(done) = self.stacked_menu_ops(ops) {
             // CreativeModeInventoryScreen.slotClicked: the changed slots go out with the click.
-            if done && self.remote.is_some() && self.client.screen == Screen::Creative {
+            if done && self.remote.is_some() && self.side.screen == Screen::Creative {
                 self.send_creative_slots();
             }
             return done;
         }
         let ops = ops.to_vec();
-        let creative_remote = self.remote.is_some() && self.client.screen == Screen::Creative;
+        let creative_remote = self.remote.is_some() && self.side.screen == Screen::Creative;
         let done = self.menu_session_with_game(move |game, menu, env, to_menu| {
             let mut clicks = Vec::new();
             for &(slot, button, input) in &ops {
@@ -358,7 +358,7 @@ impl Game<'_> {
             Some(true)
         });
         // CreativeModeInventoryScreen.slotClicked: the changed slots go out with the click.
-        if done && self.remote.is_some() && self.client.screen == Screen::Creative {
+        if done && self.remote.is_some() && self.side.screen == Screen::Creative {
             self.send_creative_slots();
         }
         done
@@ -620,7 +620,7 @@ impl Game<'_> {
         };
         let mut menu = Menu::new(kind);
         if self.remote.is_some() {
-            menu.set_drop_spam_throttler(self.client.drop_spam_throttler);
+            menu.set_drop_spam_throttler(self.side.drop_spam_throttler);
         }
         let menu_id = if matches!(kind, Kind::Mount(_)) {
             Some("sunrise:mount_inventory")
@@ -768,10 +768,10 @@ impl Game<'_> {
         // Any creative-screen drop sent live inside `run` already updated `menu`'s
         // throttler; keep `self.drop_spam_throttler` in step even if a later click failed.
         if self.remote.is_some()
-            && self.client.screen == Screen::Creative
+            && self.side.screen == Screen::Creative
             && let Some(throttle) = menu.drop_spam_throttler()
         {
-            self.client.drop_spam_throttler = throttle;
+            self.side.drop_spam_throttler = throttle;
         }
         match outcome {
             None => return false,
@@ -810,7 +810,7 @@ impl Game<'_> {
         if !offhand_mapped {
             self.offhand = menu.player_item(40).cloned();
         }
-        if self.client.screen == Screen::Creative {
+        if self.side.screen == Screen::Creative {
             // `Player.drop` swings even when the creative packet is suppressed. Creative-screen
             // THROW packets already went out live inside `click_with_creative_drop`, before the
             // changed-slot sync.
@@ -862,9 +862,9 @@ impl Game<'_> {
     }
     /// A screen closed or lost its pointer: discard the unfinished click gesture.
     pub(in crate::game) fn reset_inventory_clicks(&mut self) {
-        self.client.inv_clicks.cancel_drag();
-        self.client.inv_drag = None;
-        self.client.last_inv_click = None;
+        self.side.inv_clicks.cancel_drag();
+        self.side.inv_drag = None;
+        self.side.last_inv_click = None;
     }
     /// Run one client anvil click with live `anvil_update` dispatch at every `createResult`.
     pub(in crate::game::client_side) fn run_client_anvil_click(

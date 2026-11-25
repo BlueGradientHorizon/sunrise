@@ -105,7 +105,7 @@ impl TickedKind {
 )]
 pub(crate) struct BlockEntityTick<'g, 'a> {
     /// The game the loop runs on: the level being ticked, `hoppers`, everything the loop has.
-    pub(crate) game: &'g mut Game<'a>,
+    pub(crate) game: &'g mut Game<'a, crate::game::server_side::ServerState>,
     /// The block entity's position.
     pub(crate) pos: Pos,
     /// What it is, from the block entity the dispatch is about to tick.
@@ -275,11 +275,11 @@ pub(in crate::game) type PassScratch = (
 /// Puts the enclosing pass's scratch back when the pass inside it ends, however it ends:
 /// a slot may catch a nested pass's panic and let the enclosing pass go on.
 pub(in crate::game) struct Enclosing<'g, 'a> {
-    pub(in crate::game) game: &'g mut Game<'a>,
+    pub(in crate::game) game: &'g mut Game<'a, crate::game::server_side::ServerState>,
     pub(in crate::game) scratch: Option<PassScratch>,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The published loop `block_entities.tick` (`published_loops.rs`): with no
     /// `[[native.loop]]` mod its slot is `()`, and a mod build installs its own copy of this
     /// function, with the mods' slots, through its replacement cell. A sleeping hopper is
@@ -301,10 +301,10 @@ impl Game<'_> {
         slot: &mut S,
     ) -> Result<()> {
         // Only a pass in progress holds item columns: every pass drops them as it ends.
-        let scratch = self.server.item_columns.is_some().then(|| {
+        let scratch = self.side.item_columns.is_some().then(|| {
             (
-                self.server.item_columns.take(),
-                self.server.pass_mobs.take(),
+                self.side.item_columns.take(),
+                self.side.pass_mobs.take(),
                 std::mem::take(&mut self.spawner_tick_positions),
                 std::mem::take(&mut self.trial_spawner_tick_positions),
             )
@@ -342,8 +342,8 @@ impl Game<'_> {
         let ticking = this.block_ticking_area();
         this.spawner_tick_positions.clear();
         this.trial_spawner_tick_positions.clear();
-        this.server.item_columns = Some(Default::default());
-        this.server.pass_mobs = Some(Default::default());
+        this.side.item_columns = Some(Default::default());
+        this.side.pass_mobs = Some(Default::default());
         let tickers = this.world.block_entity_tickers();
         let mut last_chunk = (i32::MIN, i32::MIN);
         let mut last_chunk_ticking = false;
@@ -452,8 +452,8 @@ impl Game<'_> {
         }
         sunrise_threads::work::clear_work();
         // Items move between passes: the columns hold for this one only.
-        this.server.item_columns = None;
-        this.server.pass_mobs = None;
+        this.side.item_columns = None;
+        this.side.pass_mobs = None;
         this.tick_sign_editors();
         this.scan_for_hearts();
         // `ShulkerBoxBlockEntity.tick`: the lids of the boxes this level
@@ -514,7 +514,7 @@ impl Game<'_> {
     }
     /// Single-position read without copying the pending-entity set.
     pub(in crate::game) fn block_ticking_at(&self, x: i32, z: i32) -> bool {
-        block_ticking_at(&self.tickets.0.levels(), &self.world.entities_pending, x, z)
+        block_ticking_at(&self.side.tickets.0.levels(), &self.world.entities_pending, x, z)
     }
     /// `DaylightDetectorBlock.tickEntity` of the detector at `pos`.
     pub(in crate::game) fn tick_daylight_detector(&mut self, pos: Pos) {

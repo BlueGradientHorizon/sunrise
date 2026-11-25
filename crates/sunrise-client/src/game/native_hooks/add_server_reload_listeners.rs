@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Register server data reload listeners after packs are selected. The
     /// host gives registry access at registration, as
     /// `AddServerReloadListenersEvent.getRegistryAccess` does.

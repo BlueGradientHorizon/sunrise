@@ -7,7 +7,7 @@ use sunrise_client::{
 };
 use sunrise_items::items::ItemStack as EngineStack;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `GuiGraphics.fillGradient` for [`mod_api::DrawContext::fill_gradient`]: `rect` is
     /// `[x, y, w, h]` and `top` / `bottom` are ARGB at `y` / `y + h`. Zero area,
     /// one-axis inversion or non-finite input draws nothing; both axes inverted flips the colours.
@@ -77,9 +77,9 @@ impl Game<'_> {
     /// `ClientHost::modifiers`.
     pub(in crate::game) fn is_key_down(&self, key: &str) -> bool {
         match sunrise_client::keybinds::key_code(key) {
-            Some(key) => self.client.physical_keys.contains(&key),
+            Some(key) => self.side.physical_keys.contains(&key),
             None => sunrise_client::keybinds::mouse_button(key)
-                .is_some_and(|button| self.client.physical_buttons.contains(&button)),
+                .is_some_and(|button| self.side.physical_buttons.contains(&button)),
         }
     }
 }

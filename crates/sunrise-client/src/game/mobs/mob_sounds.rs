@@ -10,7 +10,7 @@ use sunrise_client::{
     sound_engine::{MobSound, RiddenSound, SoundInstance, Sounds},
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `LocalPlayer.startRiding` on a happy ghast or an `AbstractNautilus`:
     /// its riding sound (a minecart's are `start_cart_sounds`'). Then what the
     /// instance reads about the mob the player rides.
@@ -39,7 +39,7 @@ impl Game<'_> {
             })
             .map(|r| r.1);
         if let Some(sound) = started
-            && self.client.riding_sound != Some(sound.id)
+            && self.side.riding_sound != Some(sound.id)
             && !sound.silent
         {
             let nautilus = matches!(
@@ -51,9 +51,9 @@ impl Game<'_> {
             } else {
                 SoundInstance::riding_happy_ghast(&sound, random_source::create())
             };
-            self.audio.0.play_instance(instance, false);
+            self.side.audio.0.play_instance(instance, false);
         }
-        self.client.riding_sound = started.map(|g| g.id);
+        self.side.riding_sound = started.map(|g| g.id);
         ridden.map(|r| r.1)
     }
     /// Start the buzz of each bee that has none (or whose anger changed, which
@@ -99,15 +99,15 @@ impl Game<'_> {
             }
             mobs.push(sound);
         }
-        self.client
+        self.side
             .bee_sounds
             .retain(|id, _| mobs.iter().any(|m| m.id == *id));
         for &idx in &bee_indices {
             let sound = &mobs[idx];
-            if self.client.bee_sounds.get(&sound.id) != Some(&sound.angry) {
-                self.client.bee_sounds.insert(sound.id, sound.angry);
+            if self.side.bee_sounds.get(&sound.id) != Some(&sound.angry) {
+                self.side.bee_sounds.insert(sound.id, sound.angry);
                 let instance = SoundInstance::bee(sound, sound.angry, random_source::create());
-                self.audio.0.play_instance(instance, false);
+                self.side.audio.0.play_instance(instance, false);
             }
         }
         mobs
@@ -135,7 +135,7 @@ impl Game<'_> {
             sniffer_digging: false,
         };
         let instance = SoundInstance::guardian_attack(&sound, random_source::create());
-        self.audio.0.play_instance(instance, false);
+        self.side.audio.0.play_instance(instance, false);
     }
 
     /// `ClientPacketListener.handleEntityEvent` 63: a sniffer's digging
@@ -152,6 +152,6 @@ impl Game<'_> {
             return;
         }
         let instance = SoundInstance::sniffer(id, random_source::create());
-        self.audio.0.play_instance(instance, false);
+        self.side.audio.0.play_instance(instance, false);
     }
 }

@@ -3,7 +3,7 @@ use super::Game;
 use crate::game::maps::{Decoration, decoration_pose, decoration_pose_at, map_id, shown_on_frame};
 use sunrise_client::hud::HudBatch;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `CartographyTableScreen.extractBackground` after the background.
     pub(in crate::game) fn draw_cartography(&mut self, batch: &mut HudBatch, ox: f32, oy: f32) {
         let Some((map, extra)) = self

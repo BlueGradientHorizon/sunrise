@@ -447,7 +447,7 @@ pub(in crate::game) struct Launch {
     pub(in crate::game) owner_profile: Option<Arc<OwnerProfile>>,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_has_singleplayer_server(&self) -> bool {
         false
     }
@@ -515,7 +515,7 @@ impl Game<'_> {
     ) -> Result<()> {
         // `IntegratedServer`'s constructor: `setSingleplayerProfile(minecraft.getGameProfile())`,
         // fixed before the configs and startup hooks, which mods may read it in.
-        self.server.singleplayer_profile = Some(SingleplayerProfile::launched(
+        self.side.singleplayer_profile = Some(SingleplayerProfile::launched(
             launch.player.clone(),
             launch.owner,
             launch.owner_profile.as_deref(),
@@ -573,7 +573,7 @@ impl Game<'_> {
                 self.wait_for_next_server_tick(&mut next, true);
                 continue;
             }
-            self.server.server_tick_deadline = Some(next + self.clock.tick_duration());
+            self.side.server_tick_deadline = Some(next + self.clock.tick_duration());
             let paused = flags.paused.load(Ordering::Relaxed);
             let ticked =
                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<()> {
@@ -729,8 +729,8 @@ impl Game<'_> {
             view_distance,
             simulation_distance: self.settings.simulation_distance.max(2),
             dimension: self.dim.id().to_owned(),
-            levels: self.server.level_shapes,
-            level_seeds: self.levels.0.runtime.seeds(),
+            levels: self.side.level_shapes,
+            level_seeds: self.side.levels.0.runtime.seeds(),
             seed: self.level.seed,
             max_players: MAX_PLAYERS,
             // No player of its own: the hub runs without a host.
@@ -751,12 +751,12 @@ impl Game<'_> {
                 )
                 .then(|| translatable("multiplayer.disconnect.not_whitelisted", &[]))
             })),
-            levels: self.server.level_shapes,
+            levels: self.side.level_shapes,
             owner_profile: launch.owner_profile.clone(),
             // `IntegratedServer.getSingleplayerProfile`: the window's own player logs in
             // through memory as the account's profile, whatever the hello says.
             singleplayer_profile: self
-                .server
+                .side
                 .singleplayer_profile
                 .as_ref()
                 .map(|profile| (profile.name.clone(), profile.uuid)),
@@ -815,7 +815,7 @@ impl Game<'_> {
     ) -> Result<()> {
         // Abort background terrain generation/decoration on shutdown, matching vanilla behavior.
         self.streaming.abort_generation();
-        self.levels.0.abort_parked_generation();
+        self.side.levels.0.abort_parked_generation();
         // A failed open keeps its opening phase until the final save attempts finish.
         if run_error.is_none() || !self.native_lifecycle.is_opening() {
             self.native_lifecycle.begin_close();
@@ -862,7 +862,7 @@ pub(in crate::game) struct ServerOptions {
 }
 
 /// The server thread's side.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// IntegratedServer.teardownPublishedState, also reached when a shutdown
     /// callback unwinds before the normal stop path can retire the server.
     pub(in crate::game::server_side) fn stop_serving(&mut self) {
@@ -902,7 +902,7 @@ impl Game<'_> {
                     let command = command.strip_prefix('/').unwrap_or(command).to_owned();
                     game.recording_command_outcome(|game| {
                         game.as_console(|g| {
-                            g.server.chat_capture = Some(Vec::new());
+                            g.side.chat_capture = Some(Vec::new());
                             // A command a native mod registered goes to the mods
                             // first, as the owner's own chat does (the console is
                             // level 4, so every registered usage is allowed).
@@ -911,7 +911,7 @@ impl Game<'_> {
                             {
                                 g.run_command(&command);
                             }
-                            g.server.chat_capture.take().unwrap_or_default()
+                            g.side.chat_capture.take().unwrap_or_default()
                         })
                     })
                 })
@@ -1304,7 +1304,7 @@ pub(in crate::game::server_side) fn server_game(
     pack: PackResources,
     options: Options,
     settings: Settings,
-) -> Result<Game<'_>> {
+) -> Result<Game<'_, crate::game::server_side::ServerState>> {
     let gui = UiResources::server(&pack.source)?;
     let audio = Audio::silent(&pack.source);
     Game::new(res, pack, gui, options, settings, audio, None)

@@ -341,14 +341,14 @@ impl DataMaps {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Tell the mods the data maps of every registry with a type were merged
     /// (`DataMapsUpdatedEvent`), once the server's tables hold them.
     pub(in crate::game::server_side) fn announce_data_maps_updated(
         &mut self,
         cause: mod_api::DataMapsUpdateCause,
     ) {
-        for registry in self.server.data_map_registries.clone() {
+        for registry in self.side.data_map_registries.clone() {
             self.native_data_maps_updated(&registry, cause);
         }
     }

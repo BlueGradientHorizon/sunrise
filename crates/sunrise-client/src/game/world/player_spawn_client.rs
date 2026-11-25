@@ -3,7 +3,7 @@ pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::player_spawn::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     #[inline(always)]
     #[allow(dead_code)]
     pub(in crate::game) fn spawn_player_client(
@@ -15,7 +15,7 @@ impl Game<'_> {
         // A saved death already dropped inventory/XP and counted the death.
         if player.health.dead_or_dying() {
             self.set_screen(Screen::Dead);
-            self.client.death_focus = None;
+            self.side.death_focus = None;
             self.ui.died_at = Some(Instant::now());
             self.ui.death_text = None;
             self.ui.death_confirm = None;
@@ -33,10 +33,10 @@ impl Game<'_> {
         self.player = Some(player);
         self.bind_local_player_residency();
         self.input_player_replaced();
-        self.client.sway = Default::default();
+        self.side.sway = Default::default();
         self.apply_equipment();
         self.eye = 1.62;
-        self.client.previous_eye = 1.62;
+        self.side.previous_eye = 1.62;
         self.clock.reset();
         self.capture_loaded_world();
     }

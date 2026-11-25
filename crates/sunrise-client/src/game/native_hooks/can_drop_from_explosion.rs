@@ -15,7 +15,7 @@ impl GameLevel<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether the block `state` at `pos`, destroyed by `explosion`, drops, as its parts answer
     /// on a logical server. A panicking part is contained with a warning: None keeps vanilla's
     /// answer.

@@ -88,7 +88,7 @@ impl TrialSpawnerLevel for GameLevel<'_, '_> {
             .is_empty()
     }
     fn loot_items(&self, table: &str, seed: i64) -> Vec<ItemStack> {
-        let Some(loot) = self.game.server_loot.0.get() else {
+        let Some(loot) = self.game.side.server_loot.0.get() else {
             return Vec::new();
         };
         loot.roll_split(table, &mut LegacyRandom::new(seed))
@@ -101,7 +101,7 @@ impl TrialSpawnerLevel for GameLevel<'_, '_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The server tick of the trial spawner at `key`. Its client tick comes
     /// after every block entity's.
     pub(in crate::game) fn tick_trial_spawner(&mut self, key: Pos) -> Result<()> {
@@ -180,7 +180,7 @@ impl Game<'_> {
             &mut self.world.random,
             LevelRandom::for_level(LegacyRandom::new(0)),
         );
-        let mut sequences = std::mem::take(&mut self.server.rand_sequences);
+        let mut sequences = std::mem::take(&mut self.side.rand_sequences);
         let mut events = Vec::new();
         let mut planned: Vec<Planned> = Vec::new();
         let source = Some(mod_api::SpawnSource::Block(mod_api::BlockPos::new(
@@ -194,7 +194,7 @@ impl Game<'_> {
             level.spawner = Some(mod_api::Spawner::Trial {
                 pos: mod_api::BlockPos::new(key.0, key.1, key.2),
             });
-            let loot = self.server_loot.0.get();
+            let loot = self.side.server_loot.0.get();
             let seed = self.level.seed;
             let mut spawn = |l: &GameLevel, rng: &mut LevelRandom, r: &SpawnerSpawn| {
                 let added = l.game.plan_spawner_mob(l, r, source, &mut planned, rng)?;
@@ -248,7 +248,7 @@ impl Game<'_> {
             state
         };
         self.world.random = random;
-        self.server.rand_sequences = sequences;
+        self.side.rand_sequences = sequences;
         let (created, rides) = extras;
         let ids = self.add_planned(planned, created, rides);
         let mut by_uuid = HashMap::new();
@@ -340,7 +340,7 @@ impl Game<'_> {
                 .filter(|_| added)
                 .map(|p| [p.position.x, p.position.y, p.position.z])
         } else {
-            let acting = self.server.lan_acting;
+            let acting = self.side.lan_acting;
             let Some(host) = self.lan.as_mut() else {
                 return;
             };

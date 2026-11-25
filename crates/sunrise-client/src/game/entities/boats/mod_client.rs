@@ -61,7 +61,7 @@ pub(in crate::game::client_side) use sunrise_core::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::collision_context::CollisionContext;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `AbstractBoat.tick` advances the oars even when this client does not move the hull.
     pub(in crate::game::client_side) fn tick_boat_paddles(b: &mut Boat, audio: &mut super::Audio) {
         // Paddle sounds at the top of each stroke.
@@ -100,7 +100,7 @@ impl Game<'_> {
         use sunrise_client::particles::{ParticleOptions, ParticleType};
         let p = self.boats[i].position;
         let pitch = 0.8 + 0.4 * self.world.random.next_float();
-        self.audio.0.play(
+        self.side.audio.0.play(
             "minecraft:entity.generic.splash",
             Some([p.x, p.y, p.z]),
             1.0,
@@ -108,7 +108,7 @@ impl Game<'_> {
         );
         let x = p.x + f64::from(self.world.random.next_float());
         let z = p.z + f64::from(self.world.random.next_float());
-        self.particles.0.add(
+        self.side.particles.0.add(
             &ParticleOptions::simple(ParticleType::Splash),
             [x, p.y + 0.7, z],
             [0.0; 3],
@@ -146,9 +146,9 @@ impl Game<'_> {
             let entity_start = out.len();
             self.mark_motion(entity_start, crate::game::MOTION_OBJECT | u64::from(b.id));
             let models = if b.chest {
-                &self.client.boat_models.chest_models
+                &self.side.boat_models.chest_models
             } else {
-                &self.client.boat_models.models
+                &self.side.boat_models.models
             };
             let Some(model) = models.get(&*b.wood) else {
                 continue;
@@ -224,7 +224,7 @@ impl Game<'_> {
             );
             // BoatRenderer.submitTypeAdditions: the water patch hides the water
             // inside the hull unless the boat is under water (RaftRenderer has none).
-            if let Some(patch) = self.client.boat_models.water_patch.as_ref()
+            if let Some(patch) = self.side.boat_models.water_patch.as_ref()
                 && &*b.wood != "bamboo"
                 && !matches!(b.status, Status::UnderWater | Status::UnderFlowingWater)
             {
@@ -266,8 +266,8 @@ impl Game<'_> {
             [cx >> 3, top >> 3, cz >> 3],
             self.world.game_time.div_euclid(100),
         );
-        if self.client.water_plane_scan.replace(Some(scan)) == Some(scan) {
-            return self.client.water_plane_memo.get();
+        if self.side.water_plane_scan.replace(Some(scan)) == Some(scan) {
+            return self.side.water_plane_memo.get();
         }
         let mut heights = Vec::with_capacity(625);
         for x in (cx - RADIUS..=cx + RADIUS).step_by(STEP) {
@@ -288,13 +288,13 @@ impl Game<'_> {
             }
         }
         if heights.is_empty() {
-            return self.client.water_plane_memo.get();
+            return self.side.water_plane_memo.get();
         }
         heights.sort_by(f32::total_cmp);
         let found = heights[heights.len() / 2];
         // The plane in use stays while a quarter of the columns are still on it, so two
         // lakes at different heights do not make the mirror flicker between them.
-        let plane = match self.client.water_plane_memo.get() {
+        let plane = match self.side.water_plane_memo.get() {
             Some(last)
                 if 4 * heights.iter().filter(|h| (*h - last).abs() < 0.05).count()
                     >= heights.len() =>
@@ -303,7 +303,7 @@ impl Game<'_> {
             }
             _ => found,
         };
-        self.client.water_plane_memo.set(Some(plane));
+        self.side.water_plane_memo.set(Some(plane));
         Some(plane)
     }
 

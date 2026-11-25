@@ -12,7 +12,7 @@ pub(in crate::game::client_side) use sunrise_client::{
     containers::BlockEntity,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The pattern textures and tints of the banner at `pos`, bottom first.
     pub(in crate::game) fn banner_layers_at(&self, pos: [i32; 3]) -> Vec<(String, u32)> {
         let Some(BlockEntity::Banner(b)) = self.world.block_entities.get(&(pos[0], pos[1], pos[2]))

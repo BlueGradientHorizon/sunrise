@@ -5,7 +5,7 @@ use sunrise_client::mobs::{Species, raider, spawn_rules};
 use sunrise_client_core::gamerules::RuleIndex;
 use sunrise_gameplay::custom_spawner::{CustomSpawnerLevel, SpawnerParts, SpawnerPlayer};
 
-impl CustomSpawnerLevel for Game<'_> {
+impl CustomSpawnerLevel for Game<'_, crate::game::server_side::ServerState> {
     fn parts(&mut self) -> SpawnerParts<'_> {
         SpawnerParts {
             world: &mut self.world,

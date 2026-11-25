@@ -136,7 +136,7 @@ impl DigestParts for trident::ThrownTrident {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The end of one level's tick: append its digest line.
     pub(in crate::game::server_side) fn state_digest_tick(
         &mut self,
@@ -253,7 +253,7 @@ impl Game<'_> {
             level_random.0,
             level_random.1,
             self.block_ticks.random_tick_value,
-            self.server.next_entity,
+            self.side.next_entity,
             next_join,
             block_ticks.len(),
             fluid_ticks.len(),
@@ -280,7 +280,7 @@ impl Game<'_> {
         let num = |v: &str| v.parse::<i64>().map_err(|err| format!("{v}: {err}"));
         let (u, e, s) = (num(u)?, num(e)?, num(s)?);
         sunrise_client::random_source::set_thread_uniquifier(u)?;
-        self.server.next_entity = u32::try_from(e).map_err(|err| err.to_string())?;
+        self.side.next_entity = u32::try_from(e).map_err(|err| err.to_string())?;
         sunrise_core::random::RandomSource::set_seed(&mut self.world.random, s);
         JOIN_BASE.store(JoinSeq::upcoming().get(), Ordering::Relaxed);
         Ok(())

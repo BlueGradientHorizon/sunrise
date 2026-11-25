@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The data maps of `registry` (`minecraft:item`) changed on this side
     /// (NeoForge's `DataMapsUpdatedEvent`), after they are readable.
     pub(in crate::game) fn native_data_maps_updated(

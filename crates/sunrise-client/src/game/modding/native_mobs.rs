@@ -12,7 +12,7 @@ const MOB_SLOTS: [&str; 8] = [
     "mainhand", "offhand", "feet", "legs", "chest", "head", "body", "saddle",
 ];
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `LivingEntity.collectEquipmentChanges` for the mobs that tick: each
     /// slot that holds another stack than the mods last heard is told
     /// (`native_living_equipment_change`). A mob new to the level counts from
@@ -54,7 +54,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `LivingEntity.collectEquipmentChanges` for the server's players (they are living entities
     /// too): each slot whose stack differs from what the mods last heard is told, the previous
     /// stack with it, so a hotbar selection that moves the main hand counts. A player new to the
@@ -151,7 +151,7 @@ pub(in crate::game) fn spawnable(pos: [f64; 3]) -> bool {
 
 // Native mods use these; nothing in Sunrise does.
 #[allow(dead_code, reason = "native mod API (docs/native-mods.md)")]
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether this is a level that simulates (not a client's copy) and the one
     /// in place is `dimension`.
     fn native_mob_level(&self, dimension: &str) -> bool {

@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `RenderTooltipEvent.GatherComponents`: the elements of `stack`'s
     /// tooltip (`ItemStack.getTooltipLines` as text lines, plus any component
     /// supplied by the built-in bundle tooltip or the item's `tooltip_image`

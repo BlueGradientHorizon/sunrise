@@ -12,7 +12,7 @@ fn calling_mod() -> Result<&'static str, AudioRefusal> {
     mod_api::content::crash::current_native_mod().ok_or(AudioRefusal::Unavailable)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Opens a stream the mixer pulls from on its worker.
     pub(in crate::game) fn open_audio_stream(
         &self,
@@ -26,7 +26,7 @@ impl Game<'_> {
             StreamPlacement::Entity(entity) => self.entity_position(entity),
             StreamPlacement::Flat | StreamPlacement::At(_) => None,
         };
-        self.audio
+        self.side.audio
             .0
             .open_stream(calling_mod()?, spec, entity_pos, source)
             .map(AudioStreamRef::new)
@@ -34,7 +34,7 @@ impl Game<'_> {
     /// Places every entity-following stream at its entity, or stops it where the client
     /// tracks no such entity. Once a frame, beside the listener's own update.
     pub(in crate::game::client_side) fn follow_audio_stream_entities(&self) {
-        self.audio
+        self.side.audio
             .0
             .follow_stream_entities(|entity| self.entity_position(entity));
     }
@@ -45,7 +45,7 @@ impl Game<'_> {
         if !self.native_window() {
             return Err(MicRefusal::OnServer);
         }
-        self.audio.0.microphone_devices()
+        self.side.audio.0.microphone_devices()
     }
 
     /// Opens a client microphone capture handle for
@@ -54,7 +54,7 @@ impl Game<'_> {
         if !self.native_window() {
             return Err(MicRefusal::OnServer);
         }
-        self.audio.0.open_microphone(spec).map(MicRef::new)
+        self.side.audio.0.open_microphone(spec).map(MicRef::new)
     }
 }
 

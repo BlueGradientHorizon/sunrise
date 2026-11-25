@@ -17,7 +17,7 @@ pub(in crate::game) use crate::game::pick_entity_common::{
     AttackRangePickResult, CrosshairDecision, CrosshairEntityHit, aabb_extents, knot_bounds,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn client_has_pick_result(&self, id: i32) -> bool {
         let uid = id as u32;
         if self.creatures.projectiles.iter().any(|p| p.id == uid)
@@ -43,7 +43,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn client_pick_knot_fence(&self, id: u32) -> Option<[i32; 3]> {
-        self.client.remote_knots.get(&id).copied()
+        self.side.remote_knots.get(&id).copied()
     }
 
     pub(in crate::game) fn client_entity_is_taken(&self, _id: u32) -> bool {
@@ -57,15 +57,15 @@ impl Game<'_> {
                 id: entity.id() as i32,
                 distance,
                 point,
-                pickable: self.client.client_pick.entity_metadata.0,
-                suggest_uuid: self.client.client_pick.entity_metadata.1,
+                pickable: self.side.client_pick.entity_metadata.0,
+                suggest_uuid: self.side.client_pick.entity_metadata.1,
             });
         }
         let hit = self.pick_entity_hit_unified()?;
         let is_synthetic_dragon_part =
             (super::dragon::SPECIAL..super::dragon::SPECIAL + 8).contains(&hit.id);
         let id = hit.id as i32;
-        let pickable = !self.client.interactions.contains_key(&id)
+        let pickable = !self.side.interactions.contains_key(&id)
             && !is_synthetic_dragon_part
             && self.client_has_pick_result(id);
         let suggest_uuid = !is_synthetic_dragon_part && self.resident_dragon_part(hit.id).is_none();
@@ -96,7 +96,7 @@ impl Game<'_> {
 
     /// The stored frame decision on a window; original during dispatch.
     pub(in crate::game) fn crosshair_target(&self) -> Option<CrosshairTarget> {
-        if !self.native_window() || self.title.0.is_some() {
+        if !self.native_window() || self.side.title.0.is_some() {
             return None;
         }
         self.player.as_ref()?;
@@ -122,7 +122,7 @@ impl Game<'_> {
         let mut pick = if subscribed {
             PickAccumulator::recording(
                 max_distance_sq,
-                std::mem::take(&mut self.client.client_pick.rider_candidates),
+                std::mem::take(&mut self.side.client_pick.rider_candidates),
             )
         } else {
             PickAccumulator::new(max_distance_sq)
@@ -130,7 +130,7 @@ impl Game<'_> {
         self.collect_pick_candidates_within(max_distance, &mut pick);
         if subscribed {
             self.storage_scope(|game, _| {
-                game.client.client_pick.rider_candidates = pick.dispatch(game);
+                game.side.client_pick.rider_candidates = pick.dispatch(game);
                 ((), true)
             });
         }
@@ -165,7 +165,7 @@ impl Game<'_> {
         };
         let from = Vec3::new(eye[0], eye[1], eye[2]);
         let max_distance = self.block_reach.max(self.entity_reach);
-        let block_hit = if self.client.client_pick.ray.is_some() {
+        let block_hit = if self.side.client_pick.ray.is_some() {
             None
         } else {
             self.pick_unfiltered()

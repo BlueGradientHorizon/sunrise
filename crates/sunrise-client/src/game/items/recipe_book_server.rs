@@ -63,7 +63,7 @@ pub(in crate::game::server_side) use sunrise_client::{
     ui::EditBox,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Asks `menu_transfer` of the part of mod menu type `menu` (the caller checked that one
     /// listens): its answer, and with `dry_run` the cells it named, both lists kept to the
     /// recipe's known layout (`clamp_cells` to `recipe_cells`: one input for stonecutting, the

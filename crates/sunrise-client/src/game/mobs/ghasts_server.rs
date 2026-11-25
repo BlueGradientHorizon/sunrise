@@ -16,7 +16,7 @@ pub(in crate::game::server_side) use sunrise_core::geometry::Vec3;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_world::registry::BlockStateId;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `HappyGhast.mobInteract`. Returns whether the click was used.
     pub(in crate::game) fn interact_happy_ghast(&mut self, index: usize, item: &str) -> bool {
         let m = &self.mobs[index];

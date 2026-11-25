@@ -63,7 +63,7 @@ pub(in crate::game) fn playable(sound: &BlockSoundType) -> bool {
             .all(|event| Identifier::parse_namespaced(event).is_some())
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The sound type of `state` at `pos` for `cause` (`IBlockExtension.getSoundType`), as the
     /// block's parts answer on this side; `entity` is the id and type of the entity stepping,
     /// landing, placing or digging, and None for a break or a placement by no entity.

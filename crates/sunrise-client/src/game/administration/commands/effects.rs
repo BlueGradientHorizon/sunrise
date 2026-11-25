@@ -29,7 +29,7 @@ impl Tracker {
 pub(in crate::game) fn effect_name(id: &str) -> Text {
     Text::translate(&brewing::description_id(id), &[])
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn effect_arg(
         ctx: &Context,
     ) -> R<&'static brewing::EffectDef> {

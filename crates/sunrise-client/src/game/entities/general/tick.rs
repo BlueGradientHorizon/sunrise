@@ -30,7 +30,7 @@ struct GeneralTickPass<'a> {
     round: TickRound,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The general rows' entity phase: roots in join order, each root's
     /// bookkeeping, subscribed server behavior and the global tick pair,
     /// then its riders — every passenger gets the same Pre, tick and Post
@@ -50,7 +50,7 @@ impl Game<'_> {
         }
         // `begin_ordered_ticks`' cutoff: a row numbered at or above `born`
         // joined during this tick and first ticks the next.
-        let born = self.server.ordered.born;
+        let born = self.side.ordered.born;
         let catalog = general_type_catalog();
         // One bit per type slot, resolved once per pass. The rows keep plain
         // slots, so the walk itself never names a type until a part hears it.
@@ -287,7 +287,7 @@ fn general_tick_subscribed(catalog: &GeneralTypeCatalog) -> Vec<bool> {
 /// removal — `entity_remove` leaves it in the list until the sweep — or
 /// rewrite its mount. The row's identity is its place: nothing in the pass
 /// reorders the storage, so an index read now is the row it names.
-fn general_row_live(game: &Game<'_>, index: usize, mount: Option<u32>) -> bool {
+fn general_row_live(game: &Game<'_, crate::game::server_side::ServerState>, index: usize, mount: Option<u32>) -> bool {
     game.resident_entities
         .general
         .rows

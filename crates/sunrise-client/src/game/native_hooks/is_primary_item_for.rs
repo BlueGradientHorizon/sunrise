@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `IItemExtension.isPrimaryItemFor`: is `stack`'s item primary for `enchantment`, so the
     /// enchanting table, loot `enchant_with_levels`, trades and spawn gear may offer it?
     /// `primary` arrives true for a plain book. For any other item, it starts with the

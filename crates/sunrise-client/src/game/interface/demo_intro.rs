@@ -95,21 +95,21 @@ struct Layout {
     button_x: [f32; 2],
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn apply_demo_event(&mut self, param: f32) {
         // DEMO_EVENT compares the raw float; signed zero matches, but rounded
         // neighbors, unknown phases and NaN do not.
         if param == 0.0 {
             let intro = DemoIntro::new(&self.settings.keys);
-            if self.client.screen == Screen::DemoIntro {
-                self.client.demo_intro = Some(intro);
+            if self.side.screen == Screen::DemoIntro {
+                self.side.demo_intro = Some(intro);
                 self.commit_screen_transition();
             } else {
                 self.set_screen_with(Screen::DemoIntro, |game| {
-                    game.client.demo_intro = Some(intro)
+                    game.side.demo_intro = Some(intro)
                 });
             }
-            if self.client.screen == Screen::DemoIntro {
+            if self.side.screen == Screen::DemoIntro {
                 self.capture(false);
             }
             return;
@@ -131,7 +131,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game::client_side) fn draw_demo_intro(&self, batch: &mut HudBatch) {
-        let Some(intro) = &self.client.demo_intro else {
+        let Some(intro) = &self.side.demo_intro else {
             return;
         };
         let atlas = &self.gui.atlas;
@@ -181,21 +181,21 @@ impl Game<'_> {
                 BUTTON_HEIGHT,
                 label,
                 true,
-                ui::hovered(self.client.cursor, x, y, BUTTON_WIDTH, BUTTON_HEIGHT),
+                ui::hovered(self.side.cursor, x, y, BUTTON_WIDTH, BUTTON_HEIGHT),
             );
         }
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
     }
 
     pub(in crate::game::client_side) fn demo_intro_click(&mut self) -> bool {
-        let Some(intro) = &self.client.demo_intro else {
+        let Some(intro) = &self.side.demo_intro else {
             return false;
         };
         let (w, h) = self.gui_size();
         let layout = intro.layout(&self.gui.atlas, w, h);
         let Some(button) = layout.button_x.into_iter().position(|x| {
             ui::hovered(
-                self.client.cursor,
+                self.side.cursor,
                 x,
                 layout.button_y,
                 BUTTON_WIDTH,
@@ -204,7 +204,7 @@ impl Game<'_> {
         }) else {
             return false;
         };
-        self.audio.0.play_button_click();
+        self.side.audio.0.play_button_click();
         if button == 0 {
             self.confirm_trusted_link(BUY_MINECRAFT_JAVA, Screen::Playing);
         } else {
@@ -219,7 +219,7 @@ impl Game<'_> {
     /// ahead, as every other close to the HUD asks for it.
     pub(in crate::game::client_side) fn close_demo_intro(&mut self) {
         self.set_screen(Screen::Playing);
-        if self.client.screen == Screen::Playing {
+        if self.side.screen == Screen::Playing {
             self.capture(true);
         }
     }

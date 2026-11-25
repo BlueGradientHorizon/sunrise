@@ -51,15 +51,15 @@ fn guide_equippable(
     Some((default_slot?.to_owned(), default_swappable))
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The guide shows while the pad plays: not over a menu, a prompt, the debug screen or a sleeping
     /// or missing player, not once the mouse or keyboard took over, and not when the setting is off.
     fn pad_guide_shows(&self) -> bool {
         let settings = &self.settings.controller;
         settings.enabled
             && settings.guide_detail != GuideDetail::Off
-            && self.pad.0.in_use
-            && !self.pad.0.keyboard_took_over
+            && self.side.pad.0.in_use
+            && !self.side.pad.0.keyboard_took_over
             // Hidden once the radial menu shows, not on the opener's press: a quick tap draws
             // nothing, so the guide doesn't blink.
             && !self.pad_radial_shown()
@@ -67,9 +67,9 @@ impl Game<'_> {
             && !self.screen_over_playing()
             && self.sleeping.is_none()
             && self.player.is_some()
-            && !self.debug_entries.0.any_enabled(
-                &self.registered_debug_entries.0,
-                self.client.debug,
+            && !self.side.debug_entries.0.any_enabled(
+                &self.side.registered_debug_entries.0,
+                self.side.debug,
                 self.reduced_debug_info(),
             )
     }
@@ -85,11 +85,11 @@ impl Game<'_> {
             return;
         }
         // Once a tick: the hit tests and the dry click don't change faster than that.
-        let facts = match self.pad.0.guide_facts {
+        let facts = match self.side.pad.0.guide_facts {
             Some((tick, facts)) if tick == self.ticks => facts,
             _ => {
                 let facts = self.pad_guide_facts();
-                self.pad.0.guide_facts = Some((self.ticks, facts));
+                self.side.pad.0.guide_facts = Some((self.ticks, facts));
                 facts
             }
         };
@@ -152,10 +152,10 @@ impl Game<'_> {
         let settings = &self.settings.controller;
         if !settings.enabled
             || settings.guide_detail == GuideDetail::Off
-            || !self.pad.0.in_use
-            || self.pad.0.keyboard_took_over
+            || !self.side.pad.0.in_use
+            || self.side.pad.0.keyboard_took_over
             || self.prompt_open()
-            || self.title.0.is_some()
+            || self.side.title.0.is_some()
             || self.pad_keyboard_captures()
         {
             return;
@@ -168,7 +168,7 @@ impl Game<'_> {
     }
 
     fn pad_menu_guide_facts(&mut self, batch: &HudBatch) -> MenuFacts {
-        let creative = self.client.screen == Screen::Creative;
+        let creative = self.side.screen == Screen::Creative;
         // The creative grid's items aren't slots: there, only what the screen's buttons do.
         let under = if creative || self.spectator() {
             Under::Nothing
@@ -179,7 +179,7 @@ impl Game<'_> {
             }
         } else if self.recipe_book_under_pointer() {
             Under::Control
-        } else if let Some(slot) = self.slot_at(batch, self.client.cursor.0, self.client.cursor.1) {
+        } else if let Some(slot) = self.slot_at(batch, self.side.cursor.0, self.side.cursor.1) {
             let stack = self.slot_view(slot);
             let same = match (&stack, &self.carried) {
                 (Some(a), Some(b)) => a.same_item_same_components(b),
@@ -271,7 +271,7 @@ impl Game<'_> {
             let plate = Plate::Backing { alpha };
             hint::draw_plated(batch, atlas, &line, &look, plate, [x, y, shown, h]);
             widest = widest.max(rect[2]);
-            self.pad.0.guide_shown.push(Shown {
+            self.side.pad.0.guide_shown.push(Shown {
                 left,
                 row: *row,
                 rect,
@@ -284,7 +284,7 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn pad_guide_status(&self) -> Value {
         let pad = &self.settings.controller;
         let column = |left: bool| -> Vec<Value> {
-            self.pad
+            self.side.pad
                 .0
                 .guide_shown
                 .iter()

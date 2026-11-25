@@ -41,7 +41,7 @@ pub(in crate::game) fn relative(
     ]
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `MultiPlayerGameMode.isSpectator()` on a client; `ServerPlayer.isSpectator()` on a server.
     pub(in crate::game) fn spectator(&self) -> bool {
         self.mode == GameMode::Spectator

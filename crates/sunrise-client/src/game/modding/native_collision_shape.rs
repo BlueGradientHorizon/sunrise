@@ -115,7 +115,7 @@ fn enter_parts(context: &Arc<LoopContext>) -> Option<InParts> {
     })
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Marks the states whose parts answer `collision_shape` in the collision tables, so scans
     /// keep them in the cells around their own. Between ticks, after the parts are resolved.
     pub(in crate::game) fn mark_collision_shape_states(&self) {

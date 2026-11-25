@@ -23,7 +23,7 @@ fn center(p: (i32, i32, i32)) -> [f64; 3] {
     ]
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_post_block_game_event(
         &mut self,
         _event: &'static str,
@@ -52,12 +52,12 @@ impl Game<'_> {
     /// own level (a server's client ticks it in `tick_client_effects`).
     #[allow(dead_code)]
     pub(in crate::game::client_side) fn tick_darkness_blend(&mut self) {
-        self.client.darkness_blend =
-            darkness_blend_tick(&self.potions.effects, self.client.darkness_blend);
+        self.side.darkness_blend =
+            darkness_blend_tick(&self.potions.effects, self.side.darkness_blend);
     }
     /// The darkness effect's blend factor at the partial tick.
     pub(in crate::game) fn darkness_blend(&self, partial: f32) -> f32 {
-        darkness_blend_at(self.client.darkness_blend, partial)
+        darkness_blend_at(self.side.darkness_blend, partial)
     }
     /// The fog's view of the darkness effect, while it is on.
     pub(in crate::game::client_side) fn darkness_fog(&self) -> Option<f32> {
@@ -98,7 +98,7 @@ impl Game<'_> {
             && let Some(eye) = self.eye_position()
         {
             let in_water = self.camera_fog_type(eye) == FogType::Water;
-            return self.client.fog.water_vision(in_water);
+            return self.side.fog.water_vision(in_water);
         }
         0.0
     }
@@ -111,11 +111,11 @@ impl Game<'_> {
         let count = data >> 6;
         if count > 0 {
             // Client-side (LevelEventHandler / particles): the client random.
-            let r = self.particles.0.random();
+            let r = self.side.particles.0.random();
             if r.next_float() < 0.3 + count as f32 * 0.1 {
                 let volume = 0.15 + 0.02 * (count * count) as f32 * r.next_float();
                 let pitch = 0.4 + 0.3 * count as f32 * r.next_float();
-                self.audio
+                self.side.audio
                     .0
                     .play("minecraft:block.sculk.charge", Some(c), volume, pitch);
             }
@@ -152,7 +152,7 @@ impl Game<'_> {
             };
             for (direction, roll, factor) in faces {
                 let repetitions = self
-                    .particles
+                    .side.particles
                     .0
                     .random()
                     .next_int_bound(count + 1)
@@ -162,7 +162,7 @@ impl Game<'_> {
                 }
             }
         } else {
-            self.audio
+            self.side.audio
                 .0
                 .play("minecraft:block.sculk.charge", Some(c), 1.0, 1.0);
             let solid = self
@@ -174,7 +174,7 @@ impl Game<'_> {
             let options = ParticleOptions::simple(ParticleType::SculkChargePop);
             for _ in 0..particles {
                 // Client-side (LevelEventHandler / particles): the client random.
-                let r = self.particles.0.random();
+                let r = self.side.particles.0.random();
                 let v = [
                     2.0 * r.next_float() - 1.0,
                     2.0 * r.next_float() - 1.0,
@@ -190,7 +190,7 @@ impl Game<'_> {
                     f64::from(v[1] * 0.07),
                     f64::from(v[2] * 0.07),
                 ];
-                self.particles.0.add(&options, at, speed);
+                self.side.particles.0.add(&options, at, speed);
             }
         }
     }
@@ -205,7 +205,7 @@ impl Game<'_> {
         let c = center((pos.x, pos.y, pos.z));
         let step = face.normal();
         // Client-side (LevelEventHandler / particles): the client random.
-        let r = self.particles.0.random();
+        let r = self.side.particles.0.random();
         let mut jitter = || r.next_double() - 0.5;
         let mut at = [0.0; 3];
         for i in 0..3 {
@@ -221,7 +221,7 @@ impl Game<'_> {
             let s = (r.next_double() * 2.0 - 1.0) * f64::from(0.005f32);
             speed[i] = if step[i] == 0 { s } else { 0.0 };
         }
-        self.particles
+        self.side.particles
             .0
             .add(&ParticleOptions::sculk_charge(roll), at, speed);
     }
@@ -229,7 +229,7 @@ impl Game<'_> {
     pub(in crate::game) fn shriek_event(&mut self, pos: BlockPos) {
         let top = f64::from(pos.y) + 0.5;
         for i in 0..10 {
-            self.particles.0.add(
+            self.side.particles.0.add(
                 &ParticleOptions::shriek(i * 5),
                 [f64::from(pos.x) + 0.5, top, f64::from(pos.z) + 0.5],
                 [0.0; 3],
@@ -245,8 +245,8 @@ impl Game<'_> {
             .map(String::as_str)
             == Some("true");
         if !waterlogged {
-            let pitch = 0.6 + self.particles.0.random().next_float() * 0.4;
-            self.audio.0.play_unshared(
+            let pitch = 0.6 + self.side.particles.0.random().next_float() * 0.4;
+            self.side.audio.0.play_unshared(
                 "minecraft:block.sculk_shrieker.shriek",
                 Some([f64::from(pos.x) + 0.5, top, f64::from(pos.z) + 0.5]),
                 2.0,
@@ -268,7 +268,7 @@ impl Game<'_> {
         };
         for _ in 0..30 {
             // Client-side (LevelEventHandler / particles): the client random.
-            let r = self.particles.0.random();
+            let r = self.side.particles.0.random();
             let off = |v: f32| f64::from(v * 1.4 - 0.7);
             let p = [
                 at[0] + off(r.next_float()),
@@ -277,7 +277,7 @@ impl Game<'_> {
             ];
             let particle =
                 sunrise_client::particles::Particle::terrain(r, p, [0.0; 3], sprite.clone(), tint);
-            self.particles.0.push(particle);
+            self.side.particles.0.push(particle);
         }
     }
 
@@ -312,10 +312,10 @@ impl Game<'_> {
                 at[axis] = if step[axis] != 0 {
                     0.5 + 0.5625 * f64::from(step[axis])
                 } else {
-                    f64::from(self.particles.0.level_random().next_float())
+                    f64::from(self.side.particles.0.level_random().next_float())
                 };
             }
-            self.particles.0.add(
+            self.side.particles.0.add(
                 &sunrise_client::particles::ParticleOptions::dust([1.0, 0.0, 0.0], 1.0),
                 [
                     f64::from(pos[0]) + at[0],

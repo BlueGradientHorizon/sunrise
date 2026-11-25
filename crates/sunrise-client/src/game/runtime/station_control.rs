@@ -42,31 +42,31 @@ fn stack_json(s: &ItemStack) -> Value {
     })
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     fn click_at(&mut self, x: f32, y: f32, right: bool, shift: bool) {
         use winit::keyboard::KeyCode;
-        let saved = self.client.cursor;
-        self.client.cursor = (x, y);
+        let saved = self.side.cursor;
+        self.side.cursor = (x, y);
         let held = shift.then(|| {
             sunrise_client_input::modifiers::hold(
-                &mut self.client.modifiers,
-                &mut self.client.physical_keys,
+                &mut self.side.modifiers,
+                &mut self.side.physical_keys,
                 KeyCode::ShiftLeft,
             )
         });
         self.click_inventory(right);
         if let Some(held) = held {
             sunrise_client_input::modifiers::restore(
-                &mut self.client.modifiers,
-                &mut self.client.physical_keys,
+                &mut self.side.modifiers,
+                &mut self.side.physical_keys,
                 held,
             );
         }
-        self.client.cursor = saved;
+        self.side.cursor = saved;
     }
     pub(in crate::game::client_side) fn gui_origin(&self) -> Result<(f32, f32)> {
         let size = self
-            .renderer
+            .side.renderer
             .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
@@ -199,7 +199,7 @@ impl Game<'_> {
                     })
                     .collect();
                 Ok(Some(json!({
-                    "screen": if self.client.screen == Screen::Inventory { "inventory" } else { "other" },
+                    "screen": if self.side.screen == Screen::Inventory { "inventory" } else { "other" },
                     "station": self.station.as_ref().map(|s| format!("{:?}", s.kind)),
                     "name": self.station.as_ref().map(|s| s.name.clone()),
                     "info": self.station_info(),

@@ -50,7 +50,7 @@ fn rgb(c: [f32; 4]) -> [f32; 3] {
     [c[0], c[1], c[2]]
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Client-only landing block crumbs (`particle_sprite` + local particle engine,
     /// e.g. sniffer digging).
     pub(in crate::game) fn client_landing_dust(
@@ -71,7 +71,7 @@ impl Game<'_> {
             at[2].floor() as i32,
         ];
         if let Some((sprite, tint)) = self.particle_sprite(state, block) {
-            self.particles.0.send_particles(
+            self.side.particles.0.send_particles(
                 &ParticleOptions::block(ParticleType::Block, sprite, tint)
                     .with_source(&self.res.facts().get(state).name),
                 at,
@@ -87,8 +87,8 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn remote_explode(&mut self, p: &play::Explode) {
         if p.play_sound {
             let pitch = (1.0
-                + (self.particles.0.random().next_float()
-                    - self.particles.0.random().next_float())
+                + (self.side.particles.0.random().next_float()
+                    - self.side.particles.0.random().next_float())
                     * 0.2)
                 * 0.7;
             // The packet's explosionSound: a wind charge's burst, a bed's
@@ -96,10 +96,10 @@ impl Game<'_> {
             let sound = self
                 .remote_sound_name(&p.sound)
                 .unwrap_or_else(|| "minecraft:entity.generic.explode".to_owned());
-            self.audio.0.play(&sound, Some(p.center), 4.0, pitch);
+            self.side.audio.0.play(&sound, Some(p.center), 4.0, pitch);
         }
         if let Some(options) = self.received_particle(&p.particle, p.center) {
-            self.particles.0.add_with_world(
+            self.side.particles.0.add_with_world(
                 Some(&self.world),
                 &options,
                 p.center,
@@ -121,7 +121,7 @@ impl Game<'_> {
                 })
             })
             .collect();
-        self.particles.0.track_explosion(
+        self.side.particles.0.track_explosion(
             p.center,
             p.radius,
             p.block_count.max(0) as usize,
@@ -159,7 +159,7 @@ impl Game<'_> {
         let Some(remote) = &mut self.remote else {
             return;
         };
-        self.particles.0.handle_level_particles(
+        self.side.particles.0.handle_level_particles(
             &mut remote.particle_packet_random,
             &self.world,
             p,

@@ -4,7 +4,7 @@ pub(in crate::game::server_side) use super::*;
 pub(in crate::game::server_side) use crate::game::native_hooks::living_breathe::*;
 
 /// The hook point. It does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Ask `living_breathe` about the air update `step` decided for the player in
     /// `living`, then check with `unchanged` that what the decision read still
     /// stands. The listener's writes and that check are one transaction: a

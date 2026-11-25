@@ -29,7 +29,7 @@ pub(in crate::game::server_side) use sunrise_protocol::packets::play::{self, Cli
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_world::worldgen::structure::Rotation;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `TestCommand.locate`.
     pub(in crate::game) fn test_locate(&mut self, ctx: &Context) -> R<i32> {
         let selected: Vec<String> = match ctx.get("tests") {
@@ -43,7 +43,7 @@ impl Game<'_> {
             _ => Vec::new(),
         };
         // CommandSourceStack.sendSystemMessage: no feedback rule.
-        if !self.server.command_source.is_some_and(|s| s.silent) {
+        if !self.side.command_source.is_some_and(|s| s.silent) {
             self.server_system_message(Text::translate("commands.test.locate.started", &[]));
         }
         let center = self.test_source_block();
@@ -113,7 +113,7 @@ impl Game<'_> {
         // `source.getPlayerOrException().pick(10, 1, false)`: the source
         // player's own eyes and view. A connected player's are in place only
         // for the pick; the test is looked up, and the issuer told, here.
-        let target = match self.server.command_source.map(|s| s.entity) {
+        let target = match self.side.command_source.map(|s| s.entity) {
             Some(Some(super::Target::Guest(conn))) => self
                 .for_player(super::Target::Guest(conn), |g| g.test_pick_block())
                 .ok_or_else(|| err("permissions.requires.player", &[]))?,
@@ -176,8 +176,8 @@ impl Game<'_> {
             &[Text::literal(name), coords],
         ));
         // `player.connection.send(new ClientboundGameTestHighlightPosPacket(..))`.
-        if self.server.lan_acting.is_some() {
-            self.server
+        if self.side.lan_acting.is_some() {
+            self.side
                 .guest_packets
                 .push(C::GameTestHighlightPos(play::GameTestHighlightPos {
                     absolute: [target.0, target.1, target.2],

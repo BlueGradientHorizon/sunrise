@@ -2,7 +2,7 @@
 use super::Game;
 use mod_api::{GlobalPos, PlayerRef};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Player.setLastDeathLocation`: stores where the player died, or
     /// forgets it for None. The client hears of it with the player's next
     /// respawn, as in vanilla. False in the cases a read gives None.

@@ -247,10 +247,10 @@ pub(in crate::game::client_side) fn parse_wait(
     ))
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn snapshot(&self) -> Snapshot {
         let world =
-            (self.title.0.is_none() && self.remote.is_some()).then(|| self.level.name.clone());
+            (self.side.title.0.is_none() && self.remote.is_some()).then(|| self.level.name.clone());
         Snapshot {
             screen: self.screen_label(),
             dimension: self.dim.id().to_string(),
@@ -276,9 +276,9 @@ impl Game<'_> {
     }
 
     pub(in crate::game::client_side) fn loaded(&self) -> bool {
-        self.title.0.is_none()
+        self.side.title.0.is_none()
             && self.player.is_some()
-            && self.streaming.pending() + self.pending_uploads.0.len() == 0
+            && self.streaming.pending() + self.side.pending_uploads.0.len() == 0
     }
 
     /// Once per event loop turn: record what changed, answer the waits that hold.
@@ -311,7 +311,7 @@ impl Game<'_> {
                 {
                     event["position"] = json!(at);
                 }
-                self.repro.0.note_event(self.ticks, &event);
+                self.side.repro.0.note_event(self.ticks, &event);
                 self.events.push(self.ticks, event);
             }
         }

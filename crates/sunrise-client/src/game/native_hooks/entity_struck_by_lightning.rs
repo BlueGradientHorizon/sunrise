@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A lightning bolt is about to hit `entity` (NeoForge's
     /// `EntityStruckByLightningEvent`, before `Entity.thunderHit`): once per
     /// bolt strike for each entity whose box meets the strike box (3 blocks

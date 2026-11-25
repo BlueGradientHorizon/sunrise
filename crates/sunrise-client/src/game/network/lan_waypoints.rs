@@ -4,7 +4,7 @@ use super::{Game, commands::Target};
 use sunrise_client::lan::waypoints::{self, PLAYER_RANGE};
 use sunrise_client::motion::MotionEvent;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerLevel.EntityCallbacks.onTrackingStart`: register from the loaded
     /// attributes. Saved equipment contributes modifiers on the first living tick.
     pub(in crate::game::server_side) fn lan_register_player_waypoint(&mut self, conn: u32) {
@@ -40,7 +40,7 @@ impl Game<'_> {
     }
 
     fn waypoint_player(&self, g: &sunrise_client::lan::guest::Guest) -> waypoints::Player {
-        let body = if self.server.lan_acting == Some(g.conn) {
+        let body = if self.side.lan_acting == Some(g.conn) {
             self.player.as_ref()
         } else {
             g.motion.as_deref()
@@ -56,7 +56,7 @@ impl Game<'_> {
                     .unwrap_or_default()
             }),
             transmitting: self
-                .cmds
+                .side.cmds
                 .0
                 .waypoints
                 .as_ref()
@@ -71,7 +71,7 @@ impl Game<'_> {
                 )
             }),
             icon: self
-                .cmds
+                .side.cmds
                 .0
                 .waypoint_icons
                 .get(&Target::Guest(g.conn))

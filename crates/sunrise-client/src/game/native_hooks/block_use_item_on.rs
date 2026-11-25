@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `BlockBehaviour.useItemOn`: the block's own behaviour, with the
     /// held item, on the server for each player. An answer replaces the
     /// template's behaviour; `TryWithEmptyHand` tries `useWithoutItem` on

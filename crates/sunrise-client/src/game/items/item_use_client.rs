@@ -47,7 +47,7 @@ pub(in crate::game::client_side) use sunrise_client::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_core::use_animation::UseAnimation;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// What `Item.finishUsingItem` leaves in the hand on a server's client: a
     /// stack that is not a consumable stays as it is (a spyglass); a
     /// consumable loses one (`ItemStack.consume`), and once that empties the

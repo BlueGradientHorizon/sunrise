@@ -3,7 +3,7 @@ use super::Game;
 use crate::game::transactions::decision::Residence;
 use mod_api::AttachmentAccess;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_attachment_map(
         &mut self,
         holder: mod_api::Holder,

@@ -17,7 +17,7 @@ fn trim_placement_stacks(drops: &mut [ItemStack], items: &sunrise_client::items:
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn container_fill_hook(
         &mut self,
         table: &str,

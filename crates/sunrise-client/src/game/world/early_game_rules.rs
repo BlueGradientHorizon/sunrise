@@ -2,7 +2,7 @@
 use super::{Game, world_loading::PreparedWorld};
 use sunrise_client::gamerules::{GameRules, Value};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn prepare_world_and_rules(
         &mut self,
         request: super::world_loading::WorldRequest,

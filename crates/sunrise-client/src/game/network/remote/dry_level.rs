@@ -41,7 +41,7 @@ pub(in crate::game) struct DryLevel<'w> {
     pub(in crate::game) asks_mods: bool,
 }
 
-impl crate::game::Game<'_> {
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// Ask for the candidate state without spending the level random or scheduling live ticks.
     /// A directional context's `replace_clicked` is read from the level; a question vanilla
     /// throws on is refused (`Behaviours::state_for_resolved_placement`).

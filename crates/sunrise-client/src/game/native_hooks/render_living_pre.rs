@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Before a living entity is drawn (NeoForge's `RenderLivingEvent.Pre`): once a frame for each
     /// mob and player in view, before its pose, model and layers, with its render state and a draw
     /// posed at its feet, turned with its body. `canceled` skips all of the entity's drawing this

@@ -9,7 +9,7 @@ pub(in crate::game::server_side) use crate::game::world_entry::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use std::sync::atomic::{AtomicU64, Ordering};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Reload the content tables with the world's packs, as
     /// `/reload` reloads a server's (`ReloadableServerResources`).
     /// Publish tables before function admission, leaving advancement rewards queued
@@ -44,11 +44,11 @@ impl Game<'_> {
         }
         self.mods.datapack_registries = datapack_registries.map(Arc::new);
         self.health_resources = health;
-        self.world_tables.0 = tables;
+        self.side.world_tables.0 = tables;
         // Publish the paired item and world evaluators before any callbacks.
         self.load_server_loot();
-        self.server.data_map_registries = self
-            .world_tables
+        self.side.data_map_registries = self
+            .side.world_tables
             .0
             .as_ref()
             .map_or_else(Vec::new, |t| t.data_maps.registries());
@@ -60,13 +60,13 @@ impl Game<'_> {
         self.share_mob_maps();
         self.share_biome_keys();
         self.world.pois.clear();
-        for world in self.levels.0.parked_worlds() {
+        for world in self.side.levels.0.parked_worlds() {
             world.pois.clear();
         }
         sunrise_client::datapack_net::serve(self.mods.datapack_registries.clone());
         self.send_datapack_snapshots();
         self.refresh_recipe_property_context();
-        self.server.structure_spawns = structure_spawns;
+        self.side.structure_spawns = structure_spawns;
         self.refresh_infiniburn();
         self.install_parts(parts);
         self.damage_tag_generation = self.damage_tag_generation.wrapping_add(1);
@@ -95,18 +95,18 @@ impl Game<'_> {
     }
     /// Build and publish one server snapshot for this world load or reload.
     pub(in crate::game) fn load_server_loot(&mut self) {
-        if let Some(tables) = &self.world_tables.0 {
+        if let Some(tables) = &self.side.world_tables.0 {
             self.server_items = Some(tables.items.clone());
             self.copy_loot_enchantment_answers(&tables.loot);
-            self.server_loot.0.set(Some(tables.loot.clone()));
+            self.side.server_loot.0.set(Some(tables.loot.clone()));
             global_loot_modifiers::bind_retained(
-                &self.reload_resources.0,
+                &self.side.reload_resources.0,
                 &tables.loot_modifier_manager,
             );
             return;
         }
         self.server_items = None;
-        let overlay = pack_files(&self.world_tables.0);
+        let overlay = pack_files(&self.side.world_tables.0);
         let loot = match sunrise_world::loot::LootData::load_with_bound_tags(
             &self.options.resources,
             &overlay,
@@ -123,13 +123,13 @@ impl Game<'_> {
                         Ok(context) => context,
                         Err(error) => {
                             log::warn!("Sunrise: server loot inventory unavailable: {error}");
-                            self.server_loot.0.set(None);
+                            self.side.server_loot.0.set(None);
                             return;
                         }
                     };
                     if let Err(error) = loot.apply_native_table_loads(&context) {
                         log::warn!("Sunrise: native loot tables refused: {error}");
-                        self.server_loot.0.set(None);
+                        self.side.server_loot.0.set(None);
                         return;
                     }
                 }
@@ -150,21 +150,21 @@ impl Game<'_> {
         if let Some(loot) = &loot {
             self.copy_loot_enchantment_answers(loot);
         }
-        self.server_loot.0.set(loot);
+        self.side.server_loot.0.set(loot);
     }
     /// A world open's tables, and the first generation of the registries the mods declared.
     pub(in crate::game) fn open_world_tables(
         &mut self,
         staged: super::condition_reload_state::StagedWorldTables,
     ) -> Result<()> {
-        self.world_tables.0 = staged.tables;
+        self.side.world_tables.0 = staged.tables;
         self.health_resources = staged.health;
         self.mods.datapack_registries = staged.datapack_registries.map(Arc::new);
         self.adv.tree = staged.advancements;
         self.adv.reset_tree();
         self.load_server_loot();
-        self.server.data_map_registries = self
-            .world_tables
+        self.side.data_map_registries = self
+            .side.world_tables
             .0
             .as_ref()
             .map_or_else(Vec::new, |t| t.data_maps.registries());
@@ -252,11 +252,11 @@ impl Game<'_> {
     }
     #[inline(always)]
     pub(in crate::game) fn server_acting_player_uuid(&self) -> Option<u128> {
-        self.server.lan_acting_uuid
+        self.side.lan_acting_uuid
     }
     #[inline(always)]
     pub(in crate::game) fn server_clear_random_tick_sections(&mut self) {
-        self.random_tick_sections.0.clear();
+        self.side.random_tick_sections.0.clear();
     }
     pub(in crate::game) fn server_resolve_block_paths(&self) {
         use mod_api::{HookId, PathComputationType};
@@ -282,11 +282,11 @@ impl Game<'_> {
     }
     #[inline(always)]
     pub(in crate::game) fn server_tags_ready(&self) -> bool {
-        self.session_lock.0.is_some()
+        self.side.session_lock.0.is_some()
     }
     #[inline(always)]
     pub(in crate::game) fn server_world_tables(&self) -> Option<&WorldTables> {
-        self.world_tables.0.as_ref()
+        self.side.world_tables.0.as_ref()
     }
     /// Load the world's data packs' content tables (`None`: the world has no
     /// packs, and `Resources.rest` stays in use). This re-reads the tables,
@@ -364,7 +364,7 @@ impl Game<'_> {
             priority_layers: &priority_layers,
         };
         let packed_registry_definitions =
-            if let Some(tables) = self.world_tables.0.as_ref().filter(|_| reload) {
+            if let Some(tables) = self.side.world_tables.0.as_ref().filter(|_| reload) {
                 Ok(tables.packed_registries.clone())
             } else {
                 // Admit the frozen pack definitions with this candidate's bound

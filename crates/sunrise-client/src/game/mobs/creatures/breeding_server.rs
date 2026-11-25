@@ -3,7 +3,7 @@ pub(in crate::game::server_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::creatures::breeding::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Animal.finalizeSpawnChildFromBreeding` before the experience orb.
     pub(in crate::game) fn finalize_breeding(
         &mut self,
@@ -12,7 +12,7 @@ impl Game<'_> {
         child: Option<&Mob>,
         order: OrbOrder,
     ) {
-        if let Some(cause) = breeding_credit(&mut self.server.love_cause, parent.id, partner) {
+        if let Some(cause) = breeding_credit(&mut self.side.love_cause, parent.id, partner) {
             let parent_view = self.mob_entity(parent);
             let partner_view = self
                 .mobs

@@ -281,7 +281,7 @@ impl Parked {
     );
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Resolve through the exact owner, never by trying dimension swaps.
     pub(in crate::game::server_side) fn locate_server_resident_owner(
         &self,
@@ -308,7 +308,7 @@ impl Game<'_> {
             key => Dim::Extra(key),
         };
         // The transactions stay with the game when a level is parked: its pending removals too.
-        self.levels
+        self.side.levels
             .0
             .parked
             .get(&dim)?
@@ -334,7 +334,7 @@ impl Game<'_> {
     ) -> bool {
         let player = match target {
             Target::Guest(conn) => Some(conn),
-            Target::Player => self.server.lan_acting,
+            Target::Player => self.side.lan_acting,
             _ => None,
         };
         if player
@@ -352,7 +352,7 @@ impl Game<'_> {
             DimensionKey::END => Dim::End,
             key => Dim::Extra(key),
         };
-        self.levels.0.parked.get(&dim).is_none_or(|parked| {
+        self.side.levels.0.parked.get(&dim).is_none_or(|parked| {
             !parked.persist.removals.contains(&target)
                 && !parked.persist.destroying_vehicles.contains(&target)
                 && !self.removal_pending_in(dim, &target)
@@ -397,7 +397,7 @@ impl Game<'_> {
                     DimensionKey::END => Dim::End,
                     key => Dim::Extra(key),
                 };
-                if !self.levels.0.parked.contains_key(&dim) {
+                if !self.side.levels.0.parked.contains_key(&dim) {
                     return SlotAccess::Missing;
                 }
             }
@@ -412,7 +412,7 @@ impl Game<'_> {
                 mod_api::DimensionKey::END => Dim::End,
                 key => Dim::Extra(key),
             };
-            self.levels
+            self.side.levels
                 .0
                 .parked
                 .get_mut(&dim)
@@ -428,7 +428,7 @@ impl Game<'_> {
         let EntityLookup::Found { location, value } = self.server_resident_entity(id) else {
             return false;
         };
-        let Some(parked) = (self.levels.0.parked.iter())
+        let Some(parked) = (self.side.levels.0.parked.iter())
             .find(|(dim, _)| dim.key() == location.owner.dimension)
             .map(|(_, parked)| parked)
         else {
@@ -497,7 +497,7 @@ impl Game<'_> {
             return true;
         }
         if self.resident_entities.local_player.location().is_none()
-            && self.server.lan_acting.is_none()
+            && self.side.lan_acting.is_none()
             && self.player.is_some()
             && self.level.player_uuid == Some(uuid)
         {
@@ -541,7 +541,7 @@ impl Game<'_> {
         let journal = table.producer();
         self.bind_resident_owners(&journal, self.dim.key(), self.is_logical_server());
         self.bind_specialized_resident_owners(&journal);
-        for (dim, parked) in &mut self.levels.0.parked {
+        for (dim, parked) in &mut self.side.levels.0.parked {
             parked.bind_resident_owners(&journal, dim.key(), true);
         }
     }
@@ -1043,7 +1043,7 @@ fn box_parked(
     })
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A new level for `dim`, opened from the save (`MinecraftServer.createLevels`).
     fn open_level(&self, dim: Dim) -> Result<Box<Parked>> {
         // A level a mod opened has the seed and generator it asked for.
@@ -1056,9 +1056,9 @@ impl Game<'_> {
             &self.pack,
             &self.options,
             &self.settings,
-            &self.server.world_root,
+            &self.side.world_root,
             dim,
-            self.server.level_shapes.get(dim.id()),
+            self.side.level_shapes.get(dim.id()),
             seed,
             &self.level,
             self.world_biomes
@@ -1066,8 +1066,8 @@ impl Game<'_> {
                 .unwrap_or_else(|| self.res.biomes())
                 .clone(),
             generate.as_ref(),
-            self.save.0.chunk_reports().clone(),
-            self.save.0.save_failure_reporter().clone(),
+            self.side.save.0.chunk_reports().clone(),
+            self.side.save.0.save_failure_reporter().clone(),
         )?;
         self.bind_chunk_disk_worker(&save, dim);
         save.install_profession_snapshot(self.stations().professions.clone());
@@ -1077,7 +1077,7 @@ impl Game<'_> {
         }
         let mut world = crate::game::authoritative_world_for_mods(&self.res, seed);
         world.attachments = save.load_attachments();
-        world.shape = self.server.level_shapes.get(dim.id());
+        world.shape = self.side.level_shapes.get(dim.id());
         world.fast_lava = self.dimension_type_of(dim).fast_lava;
         world.infiniburn = Some(self.resolve_level_infiniburn(self.dimension_type_of(dim)));
         let border = self.load_border(dim);
@@ -1111,12 +1111,12 @@ impl Game<'_> {
             if dim == starting_dim
                 && let Some(level) = starting_level.take()
             {
-                self.levels.0.parked.insert(dim, level);
+                self.side.levels.0.parked.insert(dim, level);
                 self.enter_level(dim)?;
             } else {
                 let mut level = self.open_level(dim)?;
                 let left = self.replace_level(dim, &mut level);
-                self.levels.0.parked.insert(left, level);
+                self.side.levels.0.parked.insert(left, level);
                 self.streaming.radius = crate::game::entity_culling::streaming_radius_for(
                     self.settings.render_distance,
                     None,
@@ -1129,7 +1129,7 @@ impl Game<'_> {
         // built-ins. A saved custom starting level, if any, is published here.
         let publish_starting_level = starting_level.is_some();
         if let Some(level) = starting_level {
-            self.levels.0.parked.insert(starting_dim, level);
+            self.side.levels.0.parked.insert(starting_dim, level);
         }
         self.enter_level(starting_dim)?;
         if publish_starting_level {
@@ -1153,10 +1153,10 @@ impl Game<'_> {
             .chain(matches!(back, Dim::Extra(_)).then_some(back));
         for dim in dims.clone() {
             self.enter_level(dim)?;
-            Self::load_saved_level_tickets(&self.save.0, &mut self.streaming, &mut self.tickets.0);
+            Self::load_saved_level_tickets(&self.side.save.0, &mut self.streaming, &mut self.side.tickets.0);
             self.validate_mod_chunk_tickets(dim);
         }
-        self.server.startup_ticket_restore_pending = false;
+        self.side.startup_ticket_restore_pending = false;
         let deadline = Instant::now() + Duration::from_secs(600);
         for dim in dims {
             self.enter_level(dim)?;
@@ -1202,7 +1202,7 @@ impl Game<'_> {
         }
         loop {
             self.update_chunk_tickets();
-            let levels = self.tickets.0.levels();
+            let levels = self.side.tickets.0.levels();
             let streaming = &self.streaming;
             let ready = streaming
                 .forced
@@ -1240,12 +1240,12 @@ impl Game<'_> {
         swap(&mut locator, &mut p.locator);
         self.end.set_locator(locator);
         self.share_spawn_conditions();
-        swap(&mut self.save.0, &mut p.save);
+        swap(&mut self.side.save.0, &mut p.save);
         swap(&mut self.block_ticks, &mut p.block_ticks);
-        swap(&mut self.server.tick_chunks, &mut p.tick_chunks);
-        swap(&mut self.tickets.0, &mut p.tickets);
+        swap(&mut self.side.tick_chunks, &mut p.tick_chunks);
+        swap(&mut self.side.tickets.0, &mut p.tickets);
         swap(
-            &mut self.random_tick_sections.0,
+            &mut self.side.random_tick_sections.0,
             &mut p.random_tick_sections,
         );
         swap(&mut self.level_events, &mut p.level_events);
@@ -1255,7 +1255,7 @@ impl Game<'_> {
         swap(&mut self.item_frames, &mut p.item_frames);
         swap(&mut self.armor_stands, &mut p.armor_stands);
         swap(&mut self.cushions, &mut p.cushions);
-        swap(&mut self.others.0, &mut p.others);
+        swap(&mut self.side.others.0, &mut p.others);
         swap(&mut self.fangs, &mut p.fangs);
         swap(&mut self.boats, &mut p.boats);
         swap(&mut self.carts, &mut p.carts);
@@ -1267,22 +1267,22 @@ impl Game<'_> {
         swap(&mut self.rockets, &mut p.rockets);
         swap(&mut self.ominous_spawners, &mut p.ominous_spawners);
         swap(&mut self.tnts, &mut p.tnts);
-        swap(&mut self.server.hoppers, &mut p.hoppers);
+        swap(&mut self.side.hoppers, &mut p.hoppers);
         swap(&mut self.mobs, &mut p.mobs);
-        swap(&mut self.server.knot_ids, &mut p.knot_ids);
-        swap(&mut self.server.broken_knots, &mut p.broken_knots);
+        swap(&mut self.side.knot_ids, &mut p.knot_ids);
+        swap(&mut self.side.broken_knots, &mut p.broken_knots);
         swap(&mut self.resident_entities.knots, &mut p.knots);
         swap(&mut self.resident_entities.general, &mut p.general);
         swap(&mut self.creatures.projectiles, &mut p.projectiles);
         swap(&mut self.dropped, &mut p.dropped);
         swap(&mut self.orbs, &mut p.orbs);
         swap(&mut self.persist, &mut p.persist);
-        swap(&mut self.server.lectern_pulses, &mut p.lectern_pulses);
-        swap(&mut self.server.lid_openers, &mut p.lid_openers);
-        swap(&mut self.server.lan_events, &mut p.lan_events);
-        swap(&mut self.server.lan_block_events, &mut p.lan_block_events);
-        swap(&mut self.server.lan_entity_events, &mut p.lan_entity_events);
-        swap(&mut self.server.lan_critical_hits, &mut p.lan_critical_hits);
+        swap(&mut self.side.lectern_pulses, &mut p.lectern_pulses);
+        swap(&mut self.side.lid_openers, &mut p.lid_openers);
+        swap(&mut self.side.lan_events, &mut p.lan_events);
+        swap(&mut self.side.lan_block_events, &mut p.lan_block_events);
+        swap(&mut self.side.lan_entity_events, &mut p.lan_entity_events);
+        swap(&mut self.side.lan_critical_hits, &mut p.lan_critical_hits);
         let (a, b) = (&mut self.be_anims, &mut p.anims);
         swap(&mut a.chests, &mut b.chests);
         swap(&mut a.books, &mut b.books);
@@ -1294,10 +1294,10 @@ impl Game<'_> {
         swap(&mut a.gateways, &mut b.gateways);
         swap(&mut a.gateway_servers, &mut b.gateway_servers);
         swap(&mut a.conduit_servers, &mut b.conduit_servers);
-        self.raiding.0.swap_level(&mut p.raiding);
-        self.server.sculk.swap_level(&mut p.sculk);
-        self.server.creaking.swap_level(&mut p.creaking);
-        swap(&mut self.server.spawn_scratch, &mut p.spawn_scratch);
+        self.side.raiding.0.swap_level(&mut p.raiding);
+        self.side.sculk.swap_level(&mut p.sculk);
+        self.side.creaking.swap_level(&mut p.creaking);
+        swap(&mut self.side.spawn_scratch, &mut p.spawn_scratch);
         swap(&mut self.border, &mut p.border);
     }
 
@@ -1336,12 +1336,12 @@ impl Game<'_> {
             return Ok(());
         }
         if target != self.dim {
-            let (mut p, opened) = match self.levels.0.parked.remove(&target) {
+            let (mut p, opened) = match self.side.levels.0.parked.remove(&target) {
                 Some(p) => (p, false),
                 None => (self.open_runtime_level(target)?, true),
             };
             let left = self.replace_level(target, &mut p);
-            self.levels.0.parked.insert(left, p);
+            self.side.levels.0.parked.insert(left, p);
             if opened {
                 self.streaming.radius = crate::game::entity_culling::streaming_radius_for(
                     self.settings.render_distance,
@@ -1368,7 +1368,7 @@ impl Game<'_> {
         from: Dim,
         mut id: u32,
     ) -> Option<u32> {
-        let p = self.levels.0.parked.get(&from)?;
+        let p = self.side.levels.0.parked.get(&from)?;
         for _ in 0..=p.mobs.len() + p.persist.off_level.len() + 1 {
             let mob = p
                 .mobs
@@ -1404,7 +1404,7 @@ impl Game<'_> {
         from: Dim,
         root: u32,
     ) -> Vec<Mob> {
-        let Some(p) = self.levels.0.parked.get_mut(&from) else {
+        let Some(p) = self.side.levels.0.parked.get_mut(&from) else {
             return Vec::new();
         };
         let mut edges: Vec<_> = p
@@ -1509,7 +1509,7 @@ impl Game<'_> {
         if dim == self.dim {
             return Some(self.streaming.lod_source());
         }
-        let parked = self.levels.0.parked.get(&dim)?;
+        let parked = self.side.levels.0.parked.get(&dim)?;
         Some(parked.streaming.lod_source())
     }
 
@@ -1544,7 +1544,7 @@ impl Game<'_> {
 
     fn tick_server_body(&mut self, paused: bool) -> Result<()> {
         // A panic something caught left a game that carried on: its record ends with the tick.
-        self.server.interrupted_turns.clear();
+        self.side.interrupted_turns.clear();
         // `tickRateManager.tick()` once per server tick, before any level
         // (each `ServerLevel.tick` only reads `runsNormally`), and the native
         // `ServerTickStart` before that level work (NeoForge's
@@ -1553,11 +1553,11 @@ impl Game<'_> {
             self.clock.check_sprint_completion();
             if let Some(report) = self.clock.take_sprint_report() {
                 // ServerTickRateManager.finishTickSprint: the server's sendSuccess.
-                self.server.console_broadcast = Some(true);
+                self.side.console_broadcast = Some(true);
                 self.sprint_report(&report);
-                self.server.console_broadcast = None;
+                self.side.console_broadcast = None;
                 self.send_admin_feedback();
-                self.server.admin_feedback.clear();
+                self.side.admin_feedback.clear();
                 // Then onTickRateChanged, its mods outside the server's broadcast.
                 self.on_tick_rate_changed();
             }
@@ -1624,7 +1624,7 @@ impl Game<'_> {
                 result = Err(e);
                 break;
             }
-            self.server.level_pass = Pass {
+            self.side.level_pass = Pass {
                 first: k == 0,
                 last: k + 1 == n,
                 running,
@@ -1720,7 +1720,7 @@ impl Game<'_> {
         // Vanilla ticks the chunk source of every level, ticked here or not: the levels left
         // parked purge their tickets and forget their recent lookups too.
         if running.is_some() {
-            self.levels
+            self.side.levels
                 .0
                 .tick_parked_chunk_caches(running == Some(true), |dim| !order.contains(&dim));
         }
@@ -1733,7 +1733,7 @@ impl Game<'_> {
         {
             let _ = self.enter_level(first);
         }
-        self.server.level_pass = Pass::default();
+        self.side.level_pass = Pass::default();
         if result.is_err() {
             self.native_lifecycle.cancel_server_tick();
         }
@@ -1912,23 +1912,23 @@ impl Game<'_> {
                 let forced = if *d == self.dim {
                     held(&self.streaming)
                 } else {
-                    self.levels.0
+                    self.side.levels.0
                         .parked
                         .get(d)
                         .is_some_and(|p| held(&p.streaming))
                 };
                 guests.iter().any(|g| g.dimension == d.id() && g.participates_in_player_simulation())
                     // A viewer count not yet told to 0 (`tick_mod_container_viewers`).
-                    || self.server.mod_container_viewers.keys().any(|(k, _)| *k == d.id())
+                    || self.side.mod_container_viewers.keys().any(|(k, _)| *k == d.id())
                     || self.player_bed_levels().any(|b| b == *d)
                     || forced
                     // A game test runs in its own level, players or not.
-                    || self.game_tests.0.has_tests_in(*d)
+                    || self.side.game_tests.0.has_tests_in(*d)
                     || self.pregen_level() == Some(*d)
                     // A pending portal arrival keeps its destination level
                     // running so it can land and tick (the portal ticket).
                     || !self.arrival_chunks(*d).is_empty()
-                    || self.server.server_trips.iter().any(|trip| trip.spawn_destination_areas(*d).next().is_some())
+                    || self.side.server_trips.iter().any(|trip| trip.spawn_destination_areas(*d).next().is_some())
                     // A portal ticket keeps its dimension active
                     // (`TicketType.shouldKeepDimensionActive`).
                     || !self.portal_tickets_in(*d).is_empty()
@@ -1955,9 +1955,9 @@ impl Game<'_> {
             return true;
         }
         if dim == self.dim {
-            self.tickets.0.spawn_areas().next().is_some()
+            self.side.tickets.0.spawn_areas().next().is_some()
         } else {
-            self.levels
+            self.side.levels
                 .0
                 .parked
                 .get(&dim)
@@ -1968,9 +1968,9 @@ impl Game<'_> {
     /// The portal tickets of `dim`'s level (`placePortalTicket`, or saved).
     pub(in crate::game::server_side) fn portal_tickets_in(&self, dim: Dim) -> &[PortalTicket] {
         if dim == self.dim {
-            self.tickets.0.portal_tickets()
+            self.side.tickets.0.portal_tickets()
         } else {
-            self.levels
+            self.side.levels
                 .0
                 .parked
                 .get(&dim)
@@ -1985,7 +1985,7 @@ impl Game<'_> {
     /// (`portal_ticket_can_expire`).
     pub(in crate::game::server_side) fn portal_ticket_areas(&self) -> Vec<((i32, i32), i32)> {
         let block_ticking = i32::from(sunrise_client::ticket_levels::BLOCK_TICKING);
-        self.tickets
+        self.side.tickets
             .0
             .portal_tickets()
             .iter()
@@ -1995,7 +1995,7 @@ impl Game<'_> {
 
     /// Whether saving is currently disabled (`/save-off`, `ServerLevel.noSave`).
     fn saving_disabled(&self) -> bool {
-        self.server_lists
+        self.side.server_lists
             .0
             .as_ref()
             .is_some_and(|lists| !lists.lock().unwrap().autosave)
@@ -2013,7 +2013,7 @@ impl Game<'_> {
         );
         // A vehicle waiting there for its rider's arrival in another level.
         active.extend(
-            self.levels
+            self.side.levels
                 .0
                 .parked
                 .keys()
@@ -2030,7 +2030,7 @@ impl Game<'_> {
         let saving_enabled = !self.saving_disabled();
         let active = self.active_levels();
         let unload_chunks = self
-            .levels
+            .side.levels
             .0
             .plan_builtin_drains(|dim| active.contains(&dim), saving_enabled);
         let drained = !unload_chunks.is_empty();
@@ -2040,8 +2040,8 @@ impl Game<'_> {
             }
             // A chunk-unload listener in an earlier built-in level can force a
             // chunk or otherwise activate this level before its turn.
-            if !self.levels.0.parked.contains_key(&dim) || self.active_levels().contains(&dim) {
-                if let Some(p) = self.levels.0.parked.get_mut(&dim) {
+            if !self.side.levels.0.parked.contains_key(&dim) || self.active_levels().contains(&dim) {
+                if let Some(p) = self.side.levels.0.parked.get_mut(&dim) {
                     p.idle = 0;
                 }
                 continue;
@@ -2057,13 +2057,13 @@ impl Game<'_> {
             (saving_enabled, active)
         };
         let closing = self
-            .levels
+            .side.levels
             .0
             .plan_custom_closes(|dim| active.contains(&dim), saving_enabled);
         for dim in closing {
             let saving_enabled = !self.saving_disabled();
             let now_active = self.active_levels().contains(&dim);
-            let eligible = self.levels.0.parked.get_mut(&dim).is_some_and(|p| {
+            let eligible = self.side.levels.0.parked.get_mut(&dim).is_some_and(|p| {
                 custom_close_still_eligible(dim, &mut p.idle, now_active, saving_enabled)
                     && !p.streaming.has_unknown_tickets()
             });
@@ -2084,11 +2084,11 @@ impl Game<'_> {
         }
         let back = self.dim;
         self.enter_level(dim)?;
-        let spawn_wait = std::mem::take(&mut self.server.spawn_wait);
+        let spawn_wait = std::mem::take(&mut self.side.spawn_wait);
         self.streaming.radius = -1;
         self.streaming.extra.clear();
         self.server_update_world();
-        self.server.spawn_wait = spawn_wait;
+        self.side.spawn_wait = spawn_wait;
         self.enter_level(back)?;
         Ok(())
     }
@@ -2121,24 +2121,24 @@ impl Game<'_> {
             self.entity_attachments.remove_collider(*id);
         }
         self.enter_level(back)?;
-        self.levels.0.parked.remove(&dim);
+        self.side.levels.0.parked.remove(&dim);
         self.native_level_closed(dim);
         Ok(())
     }
 
     /// The mods hear `dim`'s level open (`LevelEvent.Load`), on a server.
     pub(in crate::game) fn native_level_opened(&mut self, dim: Dim) {
-        if !self.is_logical_server() || self.levels.0.has_heard_open(dim) {
+        if !self.is_logical_server() || self.side.levels.0.has_heard_open(dim) {
             return;
         }
         let journal = self.resident_entities.table.borrow().producer();
         if dim == self.dim {
             self.bind_resident_owners(&journal, dim.key(), true);
-        } else if let Some(parked) = self.levels.0.parked.get_mut(&dim) {
+        } else if let Some(parked) = self.side.levels.0.parked.get_mut(&dim) {
             parked.bind_resident_owners(&journal, dim.key(), true);
         }
         self.bind_dimension_attachments(dim);
-        if self.levels.0.note_opened(dim) {
+        if self.side.levels.0.note_opened(dim) {
             self.native_level_load(dim.id());
         }
     }
@@ -2147,12 +2147,12 @@ impl Game<'_> {
     /// each open they heard.
     fn native_level_closed(&mut self, dim: Dim) {
         self.remove_level_fake_players(dim.id());
-        if self.levels.0.note_closed(dim) {
+        if self.side.levels.0.note_closed(dim) {
             self.native_level_unload(dim.id());
         }
         if dim == self.dim {
             self.world.water_tickets.clear();
-        } else if let Some(world) = self.levels.0.parked_world_mut_of(dim.id()) {
+        } else if let Some(world) = self.side.levels.0.parked_world_mut_of(dim.id()) {
             world.water_tickets.clear();
         }
         self.attachment_indexes.remove(&dim);
@@ -2175,7 +2175,7 @@ impl Game<'_> {
         if Self::admit_entity_save().is_err() {
             return;
         }
-        let requested = std::mem::take(&mut self.levels.0.requested_saves);
+        let requested = std::mem::take(&mut self.side.levels.0.requested_saves);
         if requested.is_empty() || !self.is_logical_server() {
             return;
         }
@@ -2196,11 +2196,11 @@ impl Game<'_> {
     /// Save every parked level (`MinecraftServer.saveAllChunks`); the level
     /// in place is the caller's to save.
     pub(in crate::game) fn save_parked_levels(&mut self, wait: bool) -> Result<()> {
-        if self.levels.0.parked.is_empty() {
+        if self.side.levels.0.parked.is_empty() {
             return Ok(());
         }
         let back = self.dim;
-        let parked = self.levels.0.parked_dims();
+        let parked = self.side.levels.0.parked_dims();
         let saved = (|| {
             for dim in parked {
                 self.enter_level(dim)?;
@@ -2222,7 +2222,7 @@ fn slowest_steps(notes: &[(f32, String)]) -> String {
     list.join(", ")
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Level.getChunk(x, z)` (`ServerChunkCache.getChunk(x, z, FULL, true)`) on the server
     /// thread: column `chunk` of the level in place (`parked: None`) or of the parked level
     /// `parked`, without switching levels, loaded or generated to FULL (resident and lit) under
@@ -2282,7 +2282,7 @@ impl Game<'_> {
         match parked {
             None => Some((&mut self.streaming, &mut self.world)),
             Some(id) => {
-                let level = self.levels.0.parked_mut_of(id)?;
+                let level = self.side.levels.0.parked_mut_of(id)?;
                 Some((&mut level.streaming, &mut level.world))
             }
         }
@@ -2297,7 +2297,7 @@ impl Game<'_> {
             return;
         };
         let id = level.dimension_id();
-        let Some(world) = self.levels.0.parked_world_mut_of(id) else {
+        let Some(world) = self.side.levels.0.parked_world_mut_of(id) else {
             return;
         };
         let loaded = std::mem::take(&mut world.loaded_chunks);
@@ -2313,7 +2313,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Rebind only an already-owning transfer, before installing it in this level.
     /// Memory still belongs to the parked source until the caller moves it.
     pub(in crate::game::server_side) fn rebind_transferred_entity(
@@ -3669,7 +3669,7 @@ mod request_save_tests {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Game::tick` as a server runs it for its first level: no window lead, which only the window's `Game` has.
     pub(in crate::game) fn tick_server_first(&mut self) -> Result<()> {
         if !self.is_logical_server() {
@@ -3695,7 +3695,7 @@ impl Game<'_> {
         // their turns (`as_guest`), and the window's player is a client of it.
         self.ticks += 1;
         // `/tick freeze` stops the world but not the player.
-        let running = match self.server.level_pass.running {
+        let running = match self.side.level_pass.running {
             Some(running) => running,
             None => self.clock.world_runs(),
         };
@@ -3728,14 +3728,14 @@ impl Game<'_> {
         let _ = span("player_autosaves", || self.finish_player_autosaves(false));
         // MinecraftServer.tickServer's countdown, then autoSave: three
         // hundred seconds of ticks at the rate the server runs at now.
-        self.server.ticks_until_autosave -= 1;
-        self.autosaving = self.server.ticks_until_autosave <= 0;
+        self.side.ticks_until_autosave -= 1;
+        self.autosaving = self.side.ticks_until_autosave <= 0;
         if let Some(serving) = &self.serving {
             serving.set_saving(self.autosaving);
         }
         if self.autosaving {
             span("autosave", || self.save_game_with(false))?;
-            self.server.ticks_until_autosave = self.next_autosave_interval();
+            self.side.ticks_until_autosave = self.next_autosave_interval();
             if let Some(serving) = &self.serving {
                 serving.set_saving(false);
             }

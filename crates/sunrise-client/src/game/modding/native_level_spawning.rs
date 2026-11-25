@@ -15,7 +15,7 @@ use mod_api::{EntityRef, EntitySpawn, LevelRef, SpawnBody, SpawnFlags, SpawnLimi
 use sunrise_client::{items::ItemStack, lan::playerdata::uuid_ints, projectiles::Projectile};
 use sunrise_core::geometry::Vec3;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `LevelRef::spawn_entity`: a thrown projectile, a mob or a general row of
     /// `kind` at `pos`, each through its family's own route (`Projectile.spawnProjectile`,
     /// `EntityType.spawn`, the general insertion `/summon` reaches), with the
@@ -228,7 +228,7 @@ impl Game<'_> {
             return false;
         }
         set(self
-            .server
+            .side
             .spawn_policies
             .entry(level.dimension())
             .or_default());

@@ -23,7 +23,7 @@ enum Backing {
     Rocket(usize),
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     fn native_projectile_backing(&self, projectile: ProjectileRef) -> Option<Backing> {
         match self.native_entity_target(projectile.entity())? {
             Target::Projectile(id) => (self.creatures.projectiles.iter())
@@ -125,7 +125,7 @@ impl Game<'_> {
             _ => None,
         };
         let (who, guest) = match target {
-            Target::Player => (Some(Who::Player), self.server.lan_acting),
+            Target::Player => (Some(Who::Player), self.side.lan_acting),
             Target::Guest(conn) => (Some(Who::Player), Some(conn)),
             Target::Mob(id) => (Some(Who::Mob(id)), None),
             Target::Hook(_) => return None,

@@ -44,7 +44,7 @@ pub(in crate::game::server_side) use sunrise_protocol::packets::{
     play::{self, Clientbound as C, DialogHolder},
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Changes a player target's `postEffects`; whether `change` did, which
     /// sets `postEffectsDirty` for the packet.
     pub(in crate::game) fn change_post_effects(
@@ -54,7 +54,7 @@ impl Game<'_> {
     ) -> bool {
         let conn = match t {
             Target::Guest(conn) => Some(conn),
-            Target::Player => self.server.lan_acting,
+            Target::Player => self.side.lan_acting,
             _ => return false,
         };
         match conn {
@@ -69,7 +69,7 @@ impl Game<'_> {
                     })
                 })
                 .unwrap_or(false),
-            None => change(&mut self.cmds.0.post_effects),
+            None => change(&mut self.side.cmds.0.post_effects),
         }
     }
     /// `ServerPlayer.closeDialog` for every target of `/dialog clear`.
@@ -81,8 +81,8 @@ impl Game<'_> {
         let packet = C::ClearDialog(Empty);
         for &t in targets {
             match t {
-                Target::Player if self.server.lan_acting.is_some() || self.lan.is_none() => {
-                    self.server.guest_packets.push(packet.clone());
+                Target::Player if self.side.lan_acting.is_some() || self.lan.is_none() => {
+                    self.side.guest_packets.push(packet.clone());
                 }
                 Target::Player => {}
                 Target::Guest(conn) => {
@@ -101,19 +101,19 @@ impl Game<'_> {
         // MinecraftServer.isTimeProfilerRunning / startTimeProfiler /
         // stopTimeProfiler: a stop before the delayed start took effect
         // reports empty results and leaves the start pending.
-        let running = self.cmds.0.profiler_delay || self.cmds.0.profiler.is_some();
+        let running = self.side.cmds.0.profiler_delay || self.side.cmds.0.profiler.is_some();
         if ctx.literals.iter().any(|l| l == "start") {
             if running {
                 return Err(err("commands.debug.alreadyRunning", &[]));
             }
-            self.cmds.0.profiler_delay = true;
+            self.side.cmds.0.profiler_delay = true;
             self.feedback(Text::translate("commands.debug.started", &[]));
             return Ok(0);
         }
         if !running {
             return Err(err("commands.debug.notRunning", &[]));
         }
-        let (seconds, ticks) = match self.cmds.0.profiler.take() {
+        let (seconds, ticks) = match self.side.cmds.0.profiler.take() {
             Some((started, ticks)) => (
                 started.elapsed().as_nanos() as f64 / 1.0e9,
                 (self.ticks - ticks) as f64,
@@ -134,7 +134,7 @@ impl Game<'_> {
     /// `DebugCommand.TraceCustomExecutor`: run the functions with a tracer
     /// writing to `debug/debug-trace-<time>.txt`.
     pub(in crate::game::server_side) fn cmd_debug_function(&mut self, ctx: &Context) -> R<i32> {
-        if !self.exec.0.functions.is_empty() {
+        if !self.side.exec.0.functions.is_empty() {
             return Err(err("commands.debug.function.noRecursion", &[]));
         }
         let Some(Arg::Resource(id)) = ctx.get("name").cloned() else {
@@ -200,11 +200,11 @@ impl Game<'_> {
                 Some(Arg::Str(s)) => s.clone(),
                 _ => String::new(),
             };
-            self.cmds.0.profile_fetches.push(ProfileFetch {
+            self.side.cmds.0.profile_fetches.push(ProfileFetch {
                 key: NameOrId::Name(name.clone()),
                 kind: "name",
                 argument: Text::literal(name),
-                source: self.server.command_source,
+                source: self.side.command_source,
             });
             return Ok(1);
         }
@@ -215,11 +215,11 @@ impl Game<'_> {
             }
             .unwrap_or_default();
             // `Component.translationArg(id)`: the UUID's string form.
-            self.cmds.0.profile_fetches.push(ProfileFetch {
+            self.side.cmds.0.profile_fetches.push(ProfileFetch {
                 key: NameOrId::Id(id),
                 kind: "id",
                 argument: Text::literal(sunrise_protocol::crypto::uuid_string(id)),
-                source: self.server.command_source,
+                source: self.side.command_source,
             });
             return Ok(1);
         }
@@ -248,15 +248,15 @@ impl Game<'_> {
     /// the recording is its own tick timing, dumped as JSON.
     pub(in crate::game::server_side) fn cmd_jfr(&mut self, ctx: &Context) -> R<i32> {
         if ctx.literals.iter().any(|l| l == "start") {
-            if self.cmds.0.jfr.is_some() {
+            if self.side.cmds.0.jfr.is_some() {
                 return Err(err("commands.jfr.start.failed", &[]));
             }
             let stamp = filename_date_time();
-            self.cmds.0.jfr = Some((Instant::now(), self.ticks, stamp));
+            self.side.cmds.0.jfr = Some((Instant::now(), self.ticks, stamp));
             self.feedback(Text::translate("commands.jfr.started", &[]));
             return Ok(1);
         }
-        let Some((started, ticks, stamp)) = self.cmds.0.jfr.take() else {
+        let Some((started, ticks, stamp)) = self.side.cmds.0.jfr.take() else {
             return Err(tr_error(
                 "commands.jfr.dump.failed",
                 &[Text::literal("Not currently profiling")],
@@ -318,14 +318,14 @@ impl Game<'_> {
         }
         // A guest's camera is the hub's: the view moves in the guests' tick.
         let guest = match player {
-            Target::Player => self.server.lan_acting,
+            Target::Player => self.side.lan_acting,
             Target::Guest(conn) => Some(conn),
             _ => None,
         };
         match guest {
             Some(conn) => {
                 let camera = target.and_then(|t| self.network_entity_id(t));
-                self.cmds.0.camera_requests.push((conn, camera));
+                self.side.cmds.0.camera_requests.push((conn, camera));
             }
             None => self.set_camera(target),
         }
@@ -343,7 +343,7 @@ impl Game<'_> {
     }
     /// `VersionCommand`.
     pub(in crate::game::server_side) fn cmd_version(&mut self) -> R<i32> {
-        if !self.server.command_source.is_some_and(|s| s.silent) {
+        if !self.side.command_source.is_some_and(|s| s.silent) {
             self.server_system_message(Text::translate("commands.version.header", &[]));
             for line in self.version_lines() {
                 self.server_system_message(line);
@@ -356,7 +356,7 @@ impl Game<'_> {
     pub(in crate::game) fn post_effects_of(&self, t: Target) -> Vec<String> {
         let conn = match t {
             Target::Guest(conn) => Some(conn),
-            Target::Player => self.server.lan_acting,
+            Target::Player => self.side.lan_acting,
             _ => return Vec::new(),
         };
         match conn {
@@ -364,7 +364,7 @@ impl Game<'_> {
                 .command_guest(conn)
                 .map(|g| g.post_effects.clone())
                 .unwrap_or_default(),
-            None => self.cmds.0.post_effects.clone(),
+            None => self.side.cmds.0.post_effects.clone(),
         }
     }
     /// The answers of the profile lookups that have come in
@@ -373,7 +373,7 @@ impl Game<'_> {
     /// harness waits for them, as vanilla's oracle resolves at once).
     pub(in crate::game::server_side) fn profile_fetches_pending(&mut self) -> bool {
         let mut resolver = self.skin_profiles.borrow_mut();
-        self.cmds
+        self.side.cmds
             .0
             .profile_fetches
             .iter()
@@ -391,8 +391,8 @@ impl Game<'_> {
         });
         for &t in targets {
             match t {
-                Target::Player if self.server.lan_acting.is_some() || self.lan.is_none() => {
-                    self.server.guest_packets.push(packet.clone());
+                Target::Player if self.side.lan_acting.is_some() || self.lan.is_none() => {
+                    self.side.guest_packets.push(packet.clone());
                 }
                 Target::Player => {}
                 Target::Guest(conn) => {
@@ -407,10 +407,10 @@ impl Game<'_> {
     /// `ServerPlayer.setCamera`: a new camera moves the player to it.
     pub(in crate::game::server_side) fn set_camera(&mut self, target: Option<Target>) {
         let target = target.filter(|t| *t != Target::Player);
-        if self.cmds.0.camera == target {
+        if self.side.cmds.0.camera == target {
             return;
         }
-        self.cmds.0.camera = target;
+        self.side.cmds.0.camera = target;
         if let Some(t) = target
             && let Some(p) = self.target_position(t)
             && let Some(player) = self.player.as_mut()
@@ -425,15 +425,15 @@ impl Game<'_> {
             Self::save_waypoint_icon(&icon, &mut self.level.player_extra);
         }
         let t = self.waypoint_target(t);
-        self.cmds.0.waypoint_icons.insert(t, icon);
+        self.side.cmds.0.waypoint_icons.insert(t, icon);
         self.waypoint_transmitters();
-        if let Some(tracked) = self.cmds.0.waypoints.as_mut() {
+        if let Some(tracked) = self.side.cmds.0.waypoints.as_mut() {
             tracked.retain(|x| *x != t);
             tracked.push(t);
         }
     }
     pub(in crate::game) fn set_waypoint_transmitter(&mut self, target: Target, on: bool) {
-        let tracked = self.cmds.0.waypoints.get_or_insert_default();
+        let tracked = self.side.cmds.0.waypoints.get_or_insert_default();
         tracked.retain(|t| *t != target);
         if on {
             tracked.push(target);
@@ -444,7 +444,7 @@ impl Game<'_> {
     }
     /// CommandSourceStack.getPlayerOrException.
     pub(in crate::game::server_side) fn source_player(&self) -> R<Target> {
-        match self.server.command_source.map(|s| s.entity) {
+        match self.side.command_source.map(|s| s.entity) {
             None | Some(Some(Target::Player)) => Ok(Target::Player),
             _ => Err(err("permissions.requires.player", &[])),
         }
@@ -452,7 +452,7 @@ impl Game<'_> {
     /// The camera part of `ServerPlayer.tick`: follow a living camera, drop a
     /// removed one, and stop when the player sneaks or leaves spectator mode.
     pub(in crate::game::server_side) fn tick_camera(&mut self) {
-        let Some(t) = self.cmds.0.camera else {
+        let Some(t) = self.side.cmds.0.camera else {
             return;
         };
         if !self.spectator() {
@@ -475,22 +475,22 @@ impl Game<'_> {
     /// Per-tick server work of these commands: the delayed tick profiler
     /// start, queued messages and the spectator camera.
     pub(in crate::game::server_side) fn tick_command_extras(&mut self) {
-        if self.cmds.0.profiler_delay {
-            self.cmds.0.profiler_delay = false;
-            self.cmds.0.profiler = Some((Instant::now(), self.ticks));
+        if self.side.cmds.0.profiler_delay {
+            self.side.cmds.0.profiler_delay = false;
+            self.side.cmds.0.profiler = Some((Instant::now(), self.ticks));
         }
         self.tick_profile_fetches();
         self.tick_camera();
         self.tick_waypoints();
     }
     pub(in crate::game::server_side) fn tick_profile_fetches(&mut self) {
-        let fetches = std::mem::take(&mut self.cmds.0.profile_fetches);
+        let fetches = std::mem::take(&mut self.side.cmds.0.profile_fetches);
         for fetch in fetches {
             let state = self.skin_profiles.borrow_mut().state(&fetch.key);
             match state {
-                Resolve::Pending => self.cmds.0.profile_fetches.push(fetch),
+                Resolve::Pending => self.side.cmds.0.profile_fetches.push(fetch),
                 Resolve::Done(result) => {
-                    let outer = std::mem::replace(&mut self.server.command_source, fetch.source);
+                    let outer = std::mem::replace(&mut self.side.command_source, fetch.source);
                     match result {
                         Some(profile) => self.report_resolved_profile(
                             &format!("commands.fetchprofile.{}.success", fetch.kind),
@@ -502,7 +502,7 @@ impl Game<'_> {
                             &[fetch.argument],
                         )),
                     }
-                    self.server.command_source = outer;
+                    self.side.command_source = outer;
                 }
             }
         }
@@ -510,7 +510,7 @@ impl Game<'_> {
     /// The waypoint part of a living entity's tick: dirty transmit ranges
     /// track or untrack it.
     pub(in crate::game::server_side) fn tick_waypoints(&mut self) {
-        let dirty = std::mem::take(&mut self.cmds.0.waypoint_dirty);
+        let dirty = std::mem::take(&mut self.side.cmds.0.waypoint_dirty);
         if dirty.is_empty() {
             return;
         }
@@ -556,13 +556,13 @@ impl Game<'_> {
         let Some(key) = catalog.id("minecraft:waypoint_transmit_range") else {
             return 0.0;
         };
-        match self.cmds.0.attributes.get_mut(&t) {
+        match self.side.cmds.0.attributes.get_mut(&t) {
             Some(map) => map.value(key).unwrap_or(0.0),
             None => 0.0,
         }
     }
     pub(in crate::game) fn waypoint_icon(&self, t: Target) -> Icon {
-        self.cmds
+        self.side.cmds
             .0
             .waypoint_icons
             .get(&self.waypoint_target(t))
@@ -579,7 +579,7 @@ impl Game<'_> {
     /// must use its connection so the next server tick still finds that body.
     pub(in crate::game::server_side) fn waypoint_target(&self, t: Target) -> Target {
         match t {
-            Target::Player => self.server.lan_acting.map_or(t, Target::Guest),
+            Target::Player => self.side.lan_acting.map_or(t, Target::Guest),
             _ => t,
         }
     }
@@ -588,25 +588,25 @@ impl Game<'_> {
     /// entity next ticks (`LivingEntity.onAttributeUpdated`), and
     /// `/waypoint modify` re-tracks its waypoint whatever its range.
     pub(in crate::game) fn waypoint_transmitters(&mut self) -> Vec<Target> {
-        if self.cmds.0.waypoints.is_none() {
+        if self.side.cmds.0.waypoints.is_none() {
             let tracked = if self.lan.is_none() && self.transmit_range(Target::Player) > 0.0 {
                 vec![self.waypoint_target(Target::Player)]
             } else {
                 Vec::new()
             };
-            self.cmds.0.waypoints = Some(tracked);
+            self.side.cmds.0.waypoints = Some(tracked);
         }
-        let tracked = self.cmds.0.waypoints.clone().unwrap_or_default();
+        let tracked = self.side.cmds.0.waypoints.clone().unwrap_or_default();
         let alive: Vec<Target> = tracked
             .into_iter()
             .filter(|t| self.target_position(*t).is_some())
             .collect();
-        self.cmds.0.waypoints = Some(alive.clone());
+        self.side.cmds.0.waypoints = Some(alive.clone());
         alive
             .into_iter()
             .filter(|t| self.target_level(*t) == self.dim)
             .map(|t| match t {
-                Target::Guest(conn) if self.server.lan_acting == Some(conn) => Target::Player,
+                Target::Guest(conn) if self.side.lan_acting == Some(conn) => Target::Player,
                 _ => t,
             })
             .collect()

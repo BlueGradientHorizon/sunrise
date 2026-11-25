@@ -22,7 +22,7 @@ use sunrise_client::{
 /// A container screen's block and block entity at the fixture's one position.
 const POS: (i32, i32, i32) = (0, 0, 0);
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Run every case of `spec` ("CASES,OUTPUT") and write the results.
     pub(in crate::game::client_side) fn screen_build_fixture(&mut self, spec: &str) -> Result<()> {
         let (input, output) = spec
@@ -59,8 +59,8 @@ impl Game<'_> {
 
         // The pause menu: the same layout the game builds on open and resize.
         if kind == "pause" {
-            self.client.screen = Screen::Paused;
-            self.title.0 = None;
+            self.side.screen = Screen::Paused;
+            self.side.title.0 = None;
             let batch = HudBatch::new(
                 window,
                 GuiScale {
@@ -70,8 +70,8 @@ impl Game<'_> {
             );
             let gui = GuiSize::new(window, scale, false);
             let layout = self.pause_layout(batch.width, batch.height);
-            self.screen_state.0.build.sync(
-                self.client.screen,
+            self.side.screen_state.0.build.sync(
+                self.side.screen,
                 true,
                 None,
                 gui,
@@ -108,7 +108,7 @@ impl Game<'_> {
             _ => None,
         } {
             let gui = GuiSize::new(window, scale, false);
-            self.title.0 = None;
+            self.side.title.0 = None;
             let rect = |x, y, w, h| serde_json::json!([x, y, w, h]);
             let mut widgets = Vec::new();
             match cart {
@@ -121,21 +121,21 @@ impl Game<'_> {
                     let abilities = ChatAbilities::new(ChatVisibility::Full);
                     let chat = ChatScreen::new(&m, &c, "", false, 0, 1, 1, abilities);
                     self.ui.chat_screen = Some(chat);
-                    self.client.screen = Screen::Chat;
+                    self.side.screen = Screen::Chat;
                 }
                 Some(cart) => {
                     use sunrise_client::command_block::{CommandBlock, Mode};
                     let block = CommandBlock::default();
                     self.open_edit_screen(POS, cart.then_some(0), block, Mode::Redstone, false);
-                    self.client.screen = Screen::CommandBlock;
+                    self.side.screen = Screen::CommandBlock;
                 }
             }
-            self.screen_state.0.build.reopened();
+            self.side.screen_state.0.build.reopened();
             let layout = self.text_screen_layout(None, gui);
-            self.screen_state
+            self.side.screen_state
                 .0
                 .build
-                .sync(self.client.screen, true, None, gui, layout);
+                .sync(self.side.screen, true, None, gui, layout);
             let (w, h) = (gui.size[0] as f32, gui.size[1] as f32);
             if let Some(chat) = &self.ui.chat_screen {
                 let i = &chat.input;
@@ -143,7 +143,7 @@ impl Game<'_> {
                 let (x, y, bw, bh) = self.built_chat(w, h).ok_or("no build")?.leave_bed;
                 widgets.push(rect(x, y, bw, bh));
             }
-            if let Some(screen) = &self.command_block_screen.0 {
+            if let Some(screen) = &self.side.command_block_screen.0 {
                 let (i, p) = (&screen.command.input, screen.previous());
                 widgets.push(rect(i.x, i.y, i.width, i.height));
                 widgets.push(rect(p[0] as i32, p[1] as i32, p[2] as i32, p[3] as i32));
@@ -153,7 +153,7 @@ impl Game<'_> {
                 }
             }
             self.ui.chat_screen = None;
-            self.command_block_screen.0 = None;
+            self.side.command_block_screen.0 = None;
             return Ok(serde_json::json!({
                 "gui": [gui.scale, gui.size[0], gui.size[1]],
                 "widgets": widgets,
@@ -161,8 +161,8 @@ impl Game<'_> {
         }
         // The case's screen: a survival/creative container in the inventory
         // screen, with the block entity the menu shows.
-        self.client.screen = Screen::Inventory;
-        self.title.0 = None;
+        self.side.screen = Screen::Inventory;
+        self.side.title.0 = None;
         self.craft_size = 2;
         self.container = None;
         self.world.block_entities.clear();
@@ -233,8 +233,8 @@ impl Game<'_> {
         let layout = self.container_layout(&batch);
         // The frame's build, the way `observe_screen` makes it: the hit tests
         // and the panel readers below go through it.
-        self.screen_state.0.build.sync(
-            self.client.screen,
+        self.side.screen_state.0.build.sync(
+            self.side.screen,
             true,
             None,
             gui,

@@ -298,7 +298,7 @@ fn bake_model(name: &str, model: &ModelPart) -> std::result::Result<Part, &'stat
     bake(name, model, MAX_ARMOR_MODEL_DEPTH)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn prepare_client_item_extensions(
         gui: &UiResources,
     ) -> std::result::Result<ArmorExtensions, String> {
@@ -332,7 +332,7 @@ fn hide_other_slots(part: &mut Part, slot: super::equipment_piece::ArmorSlot) {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Item-owned tooltip font (`ClientHooks.getTooltipFont` -> `IClientItemExtensions.getFont`).
     ///
     /// Returns `minecraft:default` when no extension is registered, the provider returns `None`,
@@ -343,7 +343,7 @@ impl Game<'_> {
     ) -> Cow<'static, mod_api::Identifier> {
         use super::api_values::TryIntoApi;
         let default = Cow::Borrowed(&*DEFAULT_TOOLTIP_FONT_ID);
-        let state = &self.armor_stand_assets.0.extensions;
+        let state = &self.side.armor_stand_assets.0.extensions;
         if state.items.is_empty() {
             return default;
         }
@@ -378,7 +378,7 @@ impl Game<'_> {
         mut emissive: impl FnMut(&str) -> Option<super::equipment_piece::MaterialBinding<'a>>,
     ) -> Option<Vec<super::equipment_piece::EquipmentMaterial<'a>>> {
         use super::api_values::TryIntoApi;
-        let state = &self.armor_stand_assets.0.extensions;
+        let state = &self.side.armor_stand_assets.0.extensions;
         if state.items.is_empty() {
             return None;
         }

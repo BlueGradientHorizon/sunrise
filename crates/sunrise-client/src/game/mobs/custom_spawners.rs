@@ -4,7 +4,7 @@
 use super::Game;
 use mod_api::{CustomSpawners, SpawnerEntry, SpawnerKind};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The level's list, built (and `modify_custom_spawners` fired) on first use.
     fn level_spawners(&mut self) -> &CustomSpawners {
         let dim = self.dim;

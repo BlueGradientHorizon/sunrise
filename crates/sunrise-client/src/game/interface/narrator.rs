@@ -146,7 +146,7 @@ pub(in crate::game::client_side) fn cycle_status(settings: &mut Settings) -> boo
     was == Status::Off
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether this `Game` is the window's: a server thread's `Game` shares
     /// the process (and its narrator) but has no `Minecraft` to narrate for.
     fn narrates(&self) -> bool {
@@ -187,7 +187,7 @@ impl Game<'_> {
         let id = SystemToastId::Narrator;
         if let Some(toast) = update_status(
             self.settings.narrator(),
-            self.client.toast_manager.system_mut(id),
+            self.side.toast_manager.system_mut(id),
         ) {
             self.add_system_toast(Some(id), toast);
         }
@@ -228,7 +228,7 @@ impl Game<'_> {
         was_disabled: bool,
         trigger: Trigger,
     ) {
-        self.client.narration.status_changed(was_disabled, trigger);
+        self.side.narration.status_changed(was_disabled, trigger);
     }
     /// The open screen's narration, once a turn after the frame's widgets
     /// were read: `handleDelayedNarration` and a new screen's narration.
@@ -238,9 +238,9 @@ impl Game<'_> {
         }
         let pad_focus = self.pad_focus_rect();
         let gui = self.gui_size();
-        self.client
+        self.side
             .narration
-            .frame(gui, self.client.cursor, pad_focus);
+            .frame(gui, self.side.cursor, pad_focus);
     }
     /// `hasNoEditboxFocused`'s opposite: the open screen's focus is an
     /// `EditBox` that `canConsumeInput`. The chat, command block, anvil
@@ -256,8 +256,8 @@ impl Game<'_> {
         if self.dialog_open() {
             return self.dialog_typing();
         }
-        match self.client.screen {
-            Screen::Chat if self.title.0.is_none() => true,
+        match self.side.screen {
+            Screen::Chat if self.side.title.0.is_none() => true,
             Screen::Options => self.ui.options.typing(),
             Screen::WorldOptions => self.world_options_typing(),
             Screen::CommandBlock | Screen::Social => true,
@@ -265,7 +265,7 @@ impl Game<'_> {
             _ => {
                 self.title_input_active()
                     && self
-                        .title
+                        .side.title
                         .0
                         .as_mut()
                         .is_some_and(|t| t.has_caret_field() || t.focused_field().is_some())

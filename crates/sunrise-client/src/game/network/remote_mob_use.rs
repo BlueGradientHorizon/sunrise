@@ -13,7 +13,7 @@ use sunrise_client_gameplay::remote::mob_use::{
     ages_on_food, copper_golem_takes, iron_golem_takes, mob_swings, nautilus_takes,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether mob `i` takes a right click with `hand`'s item on this
     /// client (`Mob.interact`'s result consumes the action).
     pub(in crate::game) fn remote_mob_takes(&mut self, i: usize, hand: Hand) -> bool {
@@ -246,7 +246,7 @@ impl Game<'_> {
         );
         let mut spawned = Vec::new();
         sunrise_client::particles::around_self(
-            self.particles.0.random(),
+            self.side.particles.0.random(),
             feet,
             width,
             height,
@@ -254,7 +254,7 @@ impl Game<'_> {
             |p, v| spawned.push((p, v)),
         );
         for (p, v) in spawned {
-            self.particles.0.add(&options, p, v);
+            self.side.particles.0.add(&options, p, v);
         }
     }
 }

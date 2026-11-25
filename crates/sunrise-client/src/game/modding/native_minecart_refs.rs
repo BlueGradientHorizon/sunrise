@@ -7,7 +7,7 @@ use super::{
 use mod_api::{EntityRef, MinecartKind, MinecartRef};
 use sunrise_world::registry::BlockStateId;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     fn native_minecart_index(&self, cart: MinecartRef) -> Option<usize> {
         let Target::Cart(id) = self.native_entity_target(cart.entity())? else {
             return None;

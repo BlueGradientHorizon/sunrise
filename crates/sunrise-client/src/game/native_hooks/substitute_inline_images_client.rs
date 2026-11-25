@@ -13,7 +13,7 @@ pub(in crate::game::client_side) use sunrise_client::hud::HudAtlas;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::text::{InlineObject, Text};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Only a subscribed client lays out substituted images. Atlas, dynamic sprite geometry and
     /// mod toggles can each invalidate layout, but updating a texture's pixels does not.
     pub(in crate::game::client_side) fn inline_images_revision(&self) -> Option<[u64; 3]> {
@@ -22,7 +22,7 @@ impl Game<'_> {
         .then(|| {
             [
                 self.gui.atlas.revision,
-                self.client.dynamic_textures.geometry_revision(),
+                self.side.dynamic_textures.geometry_revision(),
                 mod_api::__private::mods_switched(),
             ]
         })

@@ -796,7 +796,7 @@ pub(in crate::game) fn number_format(
     }
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     // remote_sound_name: remote/sync.rs
 
     // connect_remote_session: remote/session.rs

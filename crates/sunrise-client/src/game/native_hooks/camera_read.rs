@@ -12,7 +12,7 @@ impl Drop for ProjectionFrame {
 }
 
 /// Helpers for native mods, kept as stable as the hook points.
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Collision boxes in block-local coordinates with an empty collision context.
     pub(in crate::game) fn block_collision(&self, pos: [i32; 3]) -> Vec<[f64; 6]> {
         self.native_block_collision_in(&self.world, pos)

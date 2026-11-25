@@ -80,7 +80,7 @@ pub(in crate::game) fn start_dedicated_game(
     result
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Server-side startup control socket setup: preserves `--control`, benchmark, No AI, and
     /// `settings.extras.agent_control` without touching client state.
     pub(in crate::game::server_side) fn start_server_agent_control(&mut self) -> Result<()> {

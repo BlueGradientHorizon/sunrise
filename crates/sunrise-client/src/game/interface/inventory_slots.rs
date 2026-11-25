@@ -23,7 +23,7 @@ pub(in crate::game) fn container_slot_index(slot: usize) -> Option<usize> {
 #[cfg(test)]
 thread_local! { pub(in crate::game) static SLOT_POSITIONS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) }; }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The stock hopper/dispenser slot layout, unless a mod screen is shown for
     /// that menu: a mod screen places its own container slots
     /// (`native_screen_slot`) and the player's inventory (`native_screen_inventory_y`),
@@ -39,7 +39,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Slot ids: 0..36 player inventory, 100..109 crafting grid, 200 result.
     pub(in crate::game) fn container_kind(&self) -> Option<&BlockEntity> {
         self.container

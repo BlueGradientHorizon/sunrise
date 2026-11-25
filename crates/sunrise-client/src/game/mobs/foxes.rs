@@ -3,7 +3,7 @@
 //! `Dolphin.MoveToItemGoal` walk to.
 use super::Game;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Fox.ALLOWED_ITEMS` and the looting block of `Mob.aiStep` for foxes, once a tick.
     pub(in crate::game) fn tick_foxes(&mut self) {
         sunrise_gameplay::foxes::tick_foxes(self)

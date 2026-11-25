@@ -1,7 +1,7 @@
 //! Shared spike logging for mod column queries.
 use super::Game;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// A read's time logged with `SUNRISE_SPIKES`, as an edit's is.
     pub(in crate::game) fn native_read_logged(
         &self,

@@ -2,14 +2,14 @@
 use super::Game;
 use std::time::Instant;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `MinecraftServer.haveTime`: the current server tick has not reached the
     /// moment the next one is due. A client, and a server outside a scheduled
     /// tick, always has time, as NeoForge's client `LevelTickEvent.hasTime` does.
     pub(in crate::game) fn server_has_time(&self) -> bool {
         !self.is_logical_server()
             || self
-                .server
+                .side
                 .server_tick_deadline
                 .is_none_or(|end| Instant::now() < end)
     }

@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Returns the mod block at `pos` if its declared container opens menu type `menu`.
     pub(in crate::game) fn menu_opener_block(&self, pos: Pos, menu: &str) -> Option<&str> {
         let block = &self
@@ -117,7 +117,7 @@ impl Game<'_> {
         }
         screen.slots.resize_with(backing_slots, || None);
         let title = remote.menu_title_snapshot().cloned();
-        self.mod_screen.0 = Some(OpenNativeScreen {
+        self.side.mod_screen.0 = Some(OpenNativeScreen {
             menu: OpenNativeMenu {
                 key,
                 window: *window,

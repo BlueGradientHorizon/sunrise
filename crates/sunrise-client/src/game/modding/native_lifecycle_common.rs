@@ -1,7 +1,7 @@
 //! Shared lifecycle wrappers and world-close cleanup shared across server and client roles.
 use super::Game;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn finish_world_closed_common(&mut self) {
         self.attachment_indexes.clear();
         self.passages.retire_world();

@@ -87,7 +87,7 @@ pub(in crate::game) fn size_limit_text() -> String {
     sunrise_core::java_number::double_to_string(MAX_SIZE)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     // ---- /forceload ----------------------------------------------------------
 
     pub(in crate::game::server_side) fn column_arg(

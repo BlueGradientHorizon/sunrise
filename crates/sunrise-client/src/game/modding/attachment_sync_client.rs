@@ -3,7 +3,7 @@ use super::Game;
 use sunrise_mod_runtime::attachments::{Attachments, Holder};
 use sunrise_protocol::attachment_sync::Message;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Apply an already decoded sync in play packet order, when its holder should exist.
     pub(in crate::game) fn remote_attachment_sync(&mut self, message: Message) {
         let Some(remote) = self.remote.as_ref() else {

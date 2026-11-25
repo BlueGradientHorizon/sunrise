@@ -76,7 +76,7 @@ fn api_number_format(format: &sb::NumberFormat) -> Result<NumberFormat, TextForm
     })
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The objective a handle names: None for a stale handle, one of an earlier open, or on a
     /// client.
     fn objective_state(&self, objective: ObjectiveRef) -> Option<&sb::Objective> {

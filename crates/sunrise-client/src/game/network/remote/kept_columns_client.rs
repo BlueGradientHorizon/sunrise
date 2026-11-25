@@ -9,7 +9,7 @@ pub(in crate::game::client_side) use sunrise_client::{
     chunk_map::ClientChunkRange, fast_hash::FxHashSet,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Every column goes with the client level, including hidden ring slots.
     pub(in crate::game) fn forget_all_remote_columns(&mut self) -> Vec<Column> {
         self.clear_remote_light();
@@ -66,12 +66,12 @@ impl Game<'_> {
         let freed =
             sunrise_client::streaming::Streaming::take_remote_columns(&mut self.world, gone);
         self.streaming.forget_columns(&mut self.world, gone);
-        if keep_terrain && let Some(lod) = &mut self.lod.0 {
+        if keep_terrain && let Some(lod) = &mut self.side.lod.0 {
             for chunk in &freed {
                 lod.observe(chunk.clone(), self.res.facts());
             }
         }
-        if let Some(renderer) = self.renderer.0.as_mut() {
+        if let Some(renderer) = self.side.renderer.0.as_mut() {
             renderer.remove_columns(gone.iter().copied());
         }
         sunrise_client::chunk::free_columns(freed, gone.len());
@@ -152,7 +152,7 @@ impl Game<'_> {
         range: ClientChunkRange,
     ) {
         let (hidden, shown) = self.world.chunks.set_client_chunk_range(range);
-        if let Some(renderer) = &mut self.renderer.0 {
+        if let Some(renderer) = &mut self.side.renderer.0 {
             renderer.remove_columns(hidden.iter().copied());
         }
         self.streaming

@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `BonemealEvent`: bone meal from `stack` used on the block `state` at
     /// `pos` (`BoneMealItem.growCrop`), by `player` or, when it is `None`, by
     /// a dispenser or a villager. `valid_bonemeal_target` is the block's

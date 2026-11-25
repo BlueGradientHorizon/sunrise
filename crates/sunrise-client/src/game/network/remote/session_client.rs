@@ -9,7 +9,7 @@ pub(in crate::game::client_side) use sunrise_protocol::packets::configuration::{
     ClientInformation, Transfer,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn client_refresh_infiniburn(&mut self) {
         self.world.infiniburn = Some(self.resolve_level_infiniburn(self.dimension_type()));
     }
@@ -37,16 +37,16 @@ impl Game<'_> {
         self.hud_disconnected();
         // Vanilla's Hud also ticks on the title and connect screens, so the
         // action bar has run out by the next world; Sunrise's ticks in one.
-        self.client.titles.overlay_time = 0;
+        self.side.titles.overlay_time = 0;
         // GameRenderer.resetData and narrator.clear (Minecraft.disconnect).
-        self.client.item_activation.reset();
+        self.side.item_activation.reset();
         // Kept mod block entity geometry belongs to the world leaving.
-        self.client.kept_block_entities.get_mut().clear();
-        self.client.debug_density.borrow_mut().clear();
-        self.client.mod_view_distances.take();
+        self.side.kept_block_entities.get_mut().clear();
+        self.side.debug_density.borrow_mut().clear();
+        self.side.mod_view_distances.take();
         self.clear_narrator();
         // A world is leaving either way: its icon attempt goes with it.
-        self.client.world_icon = None;
+        self.side.world_icon = None;
         // Minecraft.disconnect: the client level goes.
         if self.remote.is_some() {
             self.forget_all_remote_columns();
@@ -66,16 +66,16 @@ impl Game<'_> {
         }
         // Minecraft.disconnect -> updateLevelInEngines(null), after logout and level
         // unload: stop even the sounds a listener started during teardown.
-        self.client.ambience.clear(&mut self.audio.0);
-        self.client.music.stop_playing(None, &mut self.audio.0);
-        self.audio.0.leave_level();
-        self.client.jukebox_sounds.clear();
-        self.client.mod_sounds.clear();
+        self.side.ambience.clear(&mut self.side.audio.0);
+        self.side.music.stop_playing(None, &mut self.side.audio.0);
+        self.side.audio.0.leave_level();
+        self.side.jukebox_sounds.clear();
+        self.side.mod_sounds.clear();
         self.update_window_title();
         self.gui.atlas.clear_object_skins();
-        before_pack_cleanup(&mut self.server_packs.0);
+        before_pack_cleanup(&mut self.side.server_packs.0);
         self.server_packs_disconnect();
-        self.client.code_of_conduct = None;
+        self.side.code_of_conduct = None;
         self.reset_tutorial();
         self.close_dialogs();
         // Gui.setScreen -> KeyMapping.releaseAll: the title or disconnect
@@ -110,7 +110,7 @@ impl Game<'_> {
         self.streaming.paused = true;
         self.reset_client_world(0);
         self.remove_local_player_body();
-        self.client.post_effects.clear();
+        self.side.post_effects.clear();
         self.clear_spectated_entity_post_effect();
         // The vehicle went with the level: an id kept here would seat the
         // next login on an entity that is not there.
@@ -120,13 +120,13 @@ impl Game<'_> {
         self.sleep_timer = 0;
         self.client_clear_entities();
         self.score.board = Default::default();
-        self.tab_list.0 = Default::default();
+        self.side.tab_list.0 = Default::default();
         self.border = Default::default();
         self.set_screen(Screen::Playing);
         self.container = None;
         self.clear_lod();
-        self.pending_uploads.0.clear();
-        if let Some(r) = self.renderer.0.as_mut() {
+        self.side.pending_uploads.0.clear();
+        if let Some(r) = self.side.renderer.0.as_mut() {
             r.clear_sections(self.world.layout());
         }
         let saves = std::env::current_dir().unwrap_or_default().join("saves");
@@ -248,7 +248,7 @@ impl Game<'_> {
         r.level = spawn.dimension.clone();
         r.level_key = mod_api::__private::dimension_key(&spawn.dimension);
         if new_logical_player {
-            self.client.drop_spam_throttler = Default::default();
+            self.side.drop_spam_throttler = Default::default();
             r.abilities = sunrise_client::lan::abilities::PlayerAbilities::default();
             r.own_player_info = std::cell::OnceCell::new();
             // The new LocalPlayer, admitted now, counts its ticks from 0.
@@ -264,7 +264,7 @@ impl Game<'_> {
         // A replacement LevelLoadingScreen starts its bar from nothing (the
         // first one carries on from the server's start).
         if self.player.is_some() {
-            self.client.loading_progress = 0.0;
+            self.side.loading_progress = 0.0;
         }
         // startWaitingForNewLevel: `LevelLoadTracker.startClientLoad` and the
         // `LevelLoadingScreen`.
@@ -273,7 +273,7 @@ impl Game<'_> {
         });
         r.level_load.start_client_load(client_millis(), reason);
         // A replacement LocalPlayer has a fresh ambient mood and sendPosition baseline.
-        self.client.ambience.moodiness = 0.0;
+        self.side.ambience.moodiness = 0.0;
         r.position_sender = Default::default();
         r.predictions.clear();
         self.set_local_mode_with_previous(mode, previous);
@@ -344,8 +344,8 @@ impl Game<'_> {
                 r.awaiting_viewed_chunk_center = false;
             }
             self.clear_lod();
-            self.pending_uploads.0.clear();
-            if let Some(renderer) = self.renderer.0.as_mut() {
+            self.side.pending_uploads.0.clear();
+            if let Some(renderer) = self.side.renderer.0.as_mut() {
                 renderer.clear_sections(self.world.layout());
             }
             // The new ClientLevel is told before setLevel drops the old one.
@@ -360,7 +360,7 @@ impl Game<'_> {
             // Minecraft.setLevel -> updateLevelInEngines, after the old-level unload.
             self.stop_sounds_for_new_level();
         }
-        self.audio.0.set_world(&spawn.dimension);
+        self.side.audio.0.set_world(&spawn.dimension);
         self.streaming.relight_resent = relight_resent;
         let has_sky = self
             .remote
@@ -369,7 +369,7 @@ impl Game<'_> {
         self.streaming.sky_light = has_sky;
         self.streaming.nether_shading = self.nether_lighting();
         let player = self.player.as_ref();
-        self.particles
+        self.side.particles
             .0
             .detach_tracking_target(TrackingTarget::LocalPlayer, || {
                 player.map(player_tracking_body)
@@ -477,8 +477,8 @@ impl Game<'_> {
         self.clear_remote_projectiles();
         self.creatures.projectiles.clear();
         self.dropped.clear();
-        self.particles.0.clear();
-        self.pickups.0.clear();
+        self.side.particles.0.clear();
+        self.side.pickups.0.clear();
         self.orbs.clear();
         self.falling.clear();
         self.mining = None;
@@ -496,16 +496,16 @@ impl Game<'_> {
         self.ui.registries.permission = 0;
         self.ui.chat.clear();
         self.set_screen(Screen::Playing);
-        self.title.0 = None;
+        self.side.title.0 = None;
         self.dim = Dim::Overworld;
         self.clear_lod();
-        self.pending_uploads.0.clear();
-        if let Some(r) = self.renderer.0.as_mut() {
+        self.side.pending_uploads.0.clear();
+        if let Some(r) = self.side.renderer.0.as_mut() {
             r.clear_sections(self.world.layout());
         }
         self.apply_settings();
         self.clear_waypoints();
-        self.client.boss_overlay.reset();
+        self.side.boss_overlay.reset();
 
         let chat_tree = self.chat_tree_for(None);
 
@@ -779,13 +779,13 @@ impl Game<'_> {
         self.hide_title();
         self.dim = Dim::Overworld;
         self.clear_lod();
-        self.pending_uploads.0.clear();
-        if let Some(r) = self.renderer.0.as_mut() {
+        self.side.pending_uploads.0.clear();
+        if let Some(r) = self.side.renderer.0.as_mut() {
             r.clear_sections(self.world.layout());
         }
         self.apply_settings();
         self.clear_waypoints();
-        self.client.boss_overlay.reset();
+        self.side.boss_overlay.reset();
         // The chat's tree until the server sends its own, or forever when it
         // sends none: the game's own, plus the commands native mods own.
         let chat_tree = self.chat_tree_for(None);
@@ -1027,7 +1027,7 @@ impl Game<'_> {
                 info.clone(),
                 lang.clone(),
                 item_data,
-                Arc::clone(&self.client_reports.0),
+                Arc::clone(&self.side.client_reports.0),
             ),
             (None, Some(cookies)) => Session::connect_transferred(
                 address,
@@ -1037,7 +1037,7 @@ impl Game<'_> {
                 lang.clone(),
                 cookies,
                 item_data,
-                Arc::clone(&self.client_reports.0),
+                Arc::clone(&self.side.client_reports.0),
             ),
             (None, None) => {
                 let connect = if lan {
@@ -1052,7 +1052,7 @@ impl Game<'_> {
                     info.clone(),
                     lang.clone(),
                     item_data,
-                    Arc::clone(&self.client_reports.0),
+                    Arc::clone(&self.side.client_reports.0),
                 )
             }
         };

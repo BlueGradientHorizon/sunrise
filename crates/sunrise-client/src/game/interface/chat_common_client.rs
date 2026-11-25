@@ -53,7 +53,7 @@ pub(in crate::game::client_side) use sunrise_world::{
     worldgen::terrain::TerrainBlockStates,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `Component.translatable`: the selected language, falling back to `fallback`.
     pub(in crate::game) fn translate_with_fallback(&self, key: &str, fallback: &str) -> String {
         sunrise_client::lang::get_or(key, fallback)

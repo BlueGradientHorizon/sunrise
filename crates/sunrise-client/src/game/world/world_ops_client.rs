@@ -6,7 +6,7 @@ use sunrise_client::join_seq::{
     residency::{Kind, Owner, Source},
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     #[inline(always)]
     pub(in crate::game) fn client_game_side_meta(
         &self,

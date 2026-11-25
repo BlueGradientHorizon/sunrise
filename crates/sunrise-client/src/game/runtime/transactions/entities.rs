@@ -181,7 +181,7 @@ impl EntityJournal {
     }
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The journal a transaction opening now starts with.
     pub(in crate::game) fn entity_journal_open(&self) -> EntityJournal {
         EntityJournal {
@@ -328,7 +328,7 @@ fn remove_entity_attachment(
     attachments.remove(&key)
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Entity `id` is taken for a transfer inside a transaction, its map kept under `id`: the
     /// slot its arrival reads an abort's way back from, if the abort comes first.
     pub(in crate::game) fn journal_in_flight(&mut self, id: u32) -> ArrivalRollback {

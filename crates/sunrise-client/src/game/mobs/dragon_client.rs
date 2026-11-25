@@ -101,17 +101,17 @@ pub(in crate::game::client_side) use sunrise_core::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_protocol::entity_data::Value;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The boss bars' draws on a `w` x `h` GUI.
     pub(in crate::game) fn boss_bar_draws(&self, w: i32, h: i32) -> Vec<hud_layout::GuiDraw> {
         let now = sunrise_client::boss_overlay::now_millis();
-        let bars = self.client.boss_overlay.bars(now);
+        let bars = self.side.boss_overlay.bars(now);
         // NeoForge's `CustomizeGuiOverlayEvent.BossEventProgress`, asked per
         // bar only while a mod listens.
         let customized = mod_api::__private::listened(mod_api::HookId::CustomizeBossEventProgress);
         hud_overlays::boss_overlay(w, h, &bars, &self.gui.atlas.font, |index, at| {
             let Some(bar) = customized
-                .then(|| self.client.boss_overlay.mod_bar(index, now))
+                .then(|| self.side.boss_overlay.mod_bar(index, now))
                 .flatten()
             else {
                 return true;
@@ -132,7 +132,7 @@ impl Game<'_> {
     }
     /// `BossHealthOverlay.shouldPlayMusic`.
     pub(in crate::game::client_side) fn boss_music(&self) -> bool {
-        self.client.boss_overlay.should_play_music()
+        self.side.boss_overlay.should_play_music()
     }
     /// `EnderDragonRenderer.submit` and `EnderDragonModel.setupAnim`, from the real dragon's slot.
     pub(in crate::game::client_side) fn dragon_geometry(
@@ -143,7 +143,7 @@ impl Game<'_> {
         out: &mut Vec<Vertex>,
         additive: &mut Vec<Vertex>,
     ) {
-        let Some(model) = self.client.dragon_model.as_ref() else {
+        let Some(model) = self.side.dragon_model.as_ref() else {
             return;
         };
         let a = alpha as f32;
@@ -508,17 +508,17 @@ impl Game<'_> {
         }
         let breath = ParticleOptions::simple(ParticleType::DragonBreath);
         for (p, v) in puffs {
-            self.particles.0.add(&breath, p, v);
+            self.side.particles.0.add(&breath, p, v);
         }
         if let Some(p) = emitter {
-            self.particles.0.add(
+            self.side.particles.0.add(
                 &ParticleOptions::simple(ParticleType::ExplosionEmitter),
                 p,
                 [0.0; 3],
             );
         }
         if let Some(pitch) = growl {
-            self.audio
+            self.side.audio
                 .0
                 .play("minecraft:entity.ender_dragon.growl", Some(at), 2.5, pitch);
         }
@@ -566,7 +566,7 @@ impl Game<'_> {
                     f64::from((r.next_float() - 0.5) * 4.0),
                     f64::from((r.next_float() - 0.5) * 8.0),
                 ];
-                self.particles.0.add(
+                self.side.particles.0.add(
                     &ParticleOptions::simple(ParticleType::ExplosionEmitter),
                     [p.x + o[0], p.y + 2.0 + o[1], p.z + o[2]],
                     [0.0; 3],
@@ -596,7 +596,7 @@ impl Game<'_> {
                 }
             }
             if let Some((at, pitch)) = growl {
-                self.audio
+                self.side.audio
                     .0
                     .play("minecraft:entity.ender_dragon.growl", Some(at), 2.5, pitch);
             }
@@ -610,7 +610,7 @@ impl Game<'_> {
                 f64::from((r.next_float() - 0.5) * 4.0),
                 f64::from((r.next_float() - 0.5) * 8.0),
             ];
-            self.particles.0.add(
+            self.side.particles.0.add(
                 &ParticleOptions::simple(ParticleType::Explosion),
                 [p.x + o[0], p.y + 2.0 + o[1], p.z + o[2]],
                 [0.0; 3],
@@ -628,7 +628,7 @@ impl Game<'_> {
         let at = [d.position.x, d.position.y, d.position.z];
         if flap_was <= -0.3 && flap_now >= -0.3 {
             let pitch = 0.8 + self.world.random.next_float() * 0.3;
-            self.audio
+            self.side.audio
                 .0
                 .play("minecraft:entity.ender_dragon.flap", Some(at), 5.0, pitch);
         }
@@ -638,7 +638,7 @@ impl Game<'_> {
             if d.growl < 0 {
                 d.growl = 200 + d.random.next_int_bound(200).unwrap_or(0);
                 let pitch = 0.8 + self.world.random.next_float() * 0.3;
-                self.audio
+                self.side.audio
                     .0
                     .play("minecraft:entity.ender_dragon.growl", Some(at), 2.5, pitch);
             }

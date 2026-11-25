@@ -41,7 +41,7 @@ pub(in crate::game) struct AnimTick {
     pub(in crate::game) frames: Option<std::collections::HashSet<String>>,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A player opened (`open`) or closed the container at `key`: the opener
     /// count block event (`ContainerOpenersCounter` / `ShulkerBoxBlockEntity`
     /// `startOpen`/`stopOpen`) for chests, ender chests and shulker boxes,
@@ -153,12 +153,12 @@ impl Game<'_> {
         key: (i32, i32, i32),
         open: bool,
     ) -> (i32, i32) {
-        let count = self.server.lid_openers.entry(key).or_default();
+        let count = self.side.lid_openers.entry(key).or_default();
         let before = *count;
         *count = (before + if open { 1 } else { -1 }).max(0);
         let after = *count;
         if after == 0 {
-            self.server.lid_openers.remove(&key);
+            self.side.lid_openers.remove(&key);
         }
         // `ContainerOpenersCounter.incrementOpeners`: the first opener
         // schedules the five-tick recheck of who still has the container open
@@ -344,7 +344,7 @@ impl Game<'_> {
     /// Sets `be_anims.conduit_servers` to the conduits in the
     /// chunks that tick blocks, keeping the state of those already known.
     pub(in crate::game::server_side) fn find_conduits(&mut self) {
-        let levels = self.tickets.0.levels();
+        let levels = self.side.tickets.0.levels();
         let kinds = &self.be_anims.kinds;
         let is_conduit = |id: u32| matches!(kinds.get(id as usize), Some(Some(Ticker::Conduit)));
         let mut found = Vec::new();
@@ -384,7 +384,7 @@ impl Game<'_> {
             self.be_anims.conduit_servers.remove(&pos);
             return;
         }
-        if !self.tickets.0.levels().block_ticking_at(pos[0], pos[2])
+        if !self.side.tickets.0.levels().block_ticking_at(pos[0], pos[2])
             || !self.border.contains(f64::from(pos[0]), f64::from(pos[2]))
         {
             return;

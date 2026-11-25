@@ -123,11 +123,11 @@ pub(in crate::game::server_side) fn chunk_send_census(hub: &Hub) -> ChunkSend {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Copy one Arc per column, not its sections or block data.
     pub(in crate::game) fn census_chunks(&self) -> Vec<Arc<Chunk>> {
         std::iter::once(&self.world)
-            .chain(self.levels.0.parked_worlds())
+            .chain(self.side.levels.0.parked_worlds())
             .flat_map(|w| w.chunks.values().cloned())
             .collect()
     }
@@ -175,9 +175,9 @@ impl Game<'_> {
                 self.boats.len(),
             ],
         );
-        for dim in self.levels.0.parked_dims() {
-            if let Some(mobs) = self.levels.0.parked_mobs(dim) {
-                let loose = self.levels.0.parked_entity_counts(dim).unwrap_or_default();
+        for dim in self.side.levels.0.parked_dims() {
+            if let Some(mobs) = self.side.levels.0.parked_mobs(dim) {
+                let loose = self.side.levels.0.parked_entity_counts(dim).unwrap_or_default();
                 level(mobs, loose);
             }
         }
@@ -205,7 +205,7 @@ impl Game<'_> {
             let q = self.streaming.queue_census();
             (q.generation, q.light)
         };
-        for streaming in self.levels.0.parked_streamings() {
+        for streaming in self.side.levels.0.parked_streamings() {
             let q = streaming.queue_census();
             generation = (generation.0 + q.generation.0, generation.1 + q.generation.1);
             light = (light.0 + q.light.0, light.1 + q.light.1);

@@ -97,7 +97,7 @@ pub(in crate::game::client_side) use sunrise_protocol::packets::play::{self, Cli
 /// Helpers for server mods, kept as stable as the hook points.
 // Native mods use these; nothing in Sunrise does.
 #[allow(dead_code)]
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Reads live `Remote::abilities` with predicted `flying` and `flying_speed` from the body.
     pub(in crate::game) fn client_abilities(&self) -> Option<PlayerAbilities> {
         let mut a = *self.remote_abilities()?;

@@ -154,7 +154,7 @@ pub(in crate::game::client_side) fn with_studio_commands(base: &Dispatcher) -> D
     d
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The tree the chat box colours, completes and parses with for the
     /// world's connection: `base`, the tree the server sent, or the game's own
     /// before it does. Built where that base changes — once per connection —
@@ -404,9 +404,9 @@ pub(in crate::game) mod hud_mode_tests {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_sound_event_names(&self) -> Vec<String> {
-        self.audio.0.event_names()
+        self.side.audio.0.event_names()
     }
     pub(in crate::game) fn client_sync_pack_tag_ids(&mut self) {}
     pub(in crate::game) fn client_sync_hub_clocks(&mut self) {}
@@ -508,7 +508,7 @@ impl Game<'_> {
         self.ui.chat_draft_shown = false;
         self.refresh_dynamic_registries();
         let size = self
-            .renderer
+            .side.renderer
             .0
             .as_ref()
             .map_or([1280, 720], |r| [r.config.width, r.config.height]);
@@ -550,7 +550,7 @@ impl Game<'_> {
         self.ui.chat_draft_shown = false;
         self.ui.chat_screen = None;
         self.ui.chat.reset_scroll();
-        if self.client.screen == Screen::Chat {
+        if self.side.screen == Screen::Chat {
             self.set_screen(Screen::Playing);
             self.capture(true);
         }
@@ -563,9 +563,9 @@ impl Game<'_> {
         // During PvP & HUD's chat search the box holds the query: the draft is the text the
         // search put aside, whichever way the chat closed.
         let aside;
-        let text = if self.client.pvp.chat_search {
-            self.client.pvp.chat_search = false;
-            aside = std::mem::take(&mut self.client.pvp.chat_search_aside);
+        let text = if self.side.pvp.chat_search {
+            self.side.pvp.chat_search = false;
+            aside = std::mem::take(&mut self.side.pvp.chat_search_aside);
             aside.as_str()
         } else {
             text
@@ -597,7 +597,7 @@ impl Game<'_> {
     /// woken (`onPlayerWokeUp`) it closes, or turns into the plain chat
     /// screen if something was typed.
     pub(in crate::game::client_side) fn tick_in_bed_chat(&mut self) {
-        if self.client.screen != Screen::Chat {
+        if self.side.screen != Screen::Chat {
             self.remove_chat_screen();
         }
         if self.ui.in_bed_chat {
@@ -615,9 +615,9 @@ impl Game<'_> {
                     self.begin_chat_screen(&text, false);
                 }
             }
-        } else if self.sleeping.is_some() && self.client.screen == Screen::Playing {
+        } else if self.sleeping.is_some() && self.side.screen == Screen::Playing {
             self.begin_chat_screen("", false);
-            self.ui.in_bed_chat = self.client.screen == Screen::Chat;
+            self.ui.in_bed_chat = self.side.screen == Screen::Chat;
         }
     }
     /// The Leave Bed button of `InBedChatScreen`: its bounds, laid out once
@@ -696,7 +696,7 @@ impl Game<'_> {
         if !self.ui.chat.shows(source) {
             return;
         }
-        let focused = self.client.screen == Screen::Chat;
+        let focused = self.side.screen == Screen::Chat;
         self.ui.chat.add(
             &self.gui.atlas,
             text,
@@ -719,7 +719,7 @@ impl Game<'_> {
                 registries: &self.ui.registries,
             };
             if let Some(screen) = self.ui.chat_screen.as_mut() {
-                screen.shortcut(&m, &c, shortcut, &mut self.clipboard.0);
+                screen.shortcut(&m, &c, shortcut, &mut self.side.clipboard.0);
                 return true;
             }
             return false;
@@ -741,7 +741,7 @@ impl Game<'_> {
         if self.pvp_chat().search
             && match key {
                 KeyCode::KeyF => ctrl,
-                KeyCode::Enter | KeyCode::NumpadEnter => self.client.pvp.chat_search,
+                KeyCode::Enter | KeyCode::NumpadEnter => self.side.pvp.chat_search,
                 _ => false,
             }
         {
@@ -890,7 +890,7 @@ impl Game<'_> {
                     Text::untrusted(message.as_str()),
                 ],
             );
-            let focused = self.client.screen == Screen::Chat;
+            let focused = self.side.screen == Screen::Chat;
             self.ui.chat.add(
                 &self.gui.atlas,
                 line,
@@ -902,7 +902,7 @@ impl Game<'_> {
         }
     }
     pub(in crate::game::client_side) fn chat_scroll(&mut self, amount: f32) {
-        let cursor = self.client.cursor;
+        let cursor = self.side.cursor;
         let mouse = (cursor.0.floor() as i32, cursor.1.floor() as i32);
         if let Some(screen) = self.ui.chat_screen.as_mut()
             && screen.scroll(mouse, amount as f64)
@@ -915,8 +915,8 @@ impl Game<'_> {
         self.ui.chat.scroll_by(amount as i32, true);
     }
     pub(in crate::game::client_side) fn chat_click(&mut self) -> bool {
-        let cursor = self.client.cursor;
-        let height = self.renderer.0.as_ref().map_or(720.0, |r| {
+        let cursor = self.side.cursor;
+        let height = self.side.renderer.0.as_ref().map_or(720.0, |r| {
             HudBatch::new(
                 [r.config.width, r.config.height],
                 self.settings.gui_scale_inputs(),
@@ -929,7 +929,7 @@ impl Game<'_> {
             registries: &self.ui.registries,
         };
         if self.ui.in_bed_chat && self.sleeping.is_some() {
-            let width = self.renderer.0.as_ref().map_or(1280.0, |r| {
+            let width = self.side.renderer.0.as_ref().map_or(1280.0, |r| {
                 HudBatch::new(
                     [r.config.width, r.config.height],
                     self.settings.gui_scale_inputs(),
@@ -981,10 +981,10 @@ impl Game<'_> {
                     .message_at(height as i32, cursor.0 as f64, cursor.1 as f64)
         {
             use sunrise_client::clipboard::Clipboard;
-            self.clipboard.0.set(message);
+            self.side.clipboard.0.set(message);
             let copied =
                 Text::translate_with_fallback("sunrise.chat.copied", "Message copied", &[]);
-            self.client.titles.set_overlay(copied, false);
+            self.side.titles.set_overlay(copied, false);
             return true;
         }
         let Some(style) = style else {
@@ -1004,7 +1004,7 @@ impl Game<'_> {
         match style.click {
             Some(ClickEvent::CopyToClipboard(value)) => {
                 use sunrise_client::clipboard::Clipboard;
-                self.clipboard.0.set(&value);
+                self.side.clipboard.0.set(&value);
                 true
             }
             Some(ClickEvent::OpenFile(path)) => {
@@ -1070,7 +1070,7 @@ impl Game<'_> {
             return;
         }
         if self.settings.chat_links_prompt {
-            self.open_screen_overlay("link_prompt", |game| game.client.link_prompt = Some(url));
+            self.open_screen_overlay("link_prompt", |game| game.side.link_prompt = Some(url));
         } else {
             super::packs::open_uri(&url);
         }
@@ -1097,7 +1097,7 @@ impl Game<'_> {
         )
     }
     pub(in crate::game::client_side) fn draw_link_prompt(&self, batch: &mut HudBatch) {
-        let Some(url) = &self.client.link_prompt else {
+        let Some(url) = &self.side.link_prompt else {
             return;
         };
         sunrise_client::widgets::cover_frame();
@@ -1120,12 +1120,12 @@ impl Game<'_> {
         ];
         let mut layout = self.link_prompt_layout(url, (w, h));
         layout.declare_no(2);
-        layout.draw(batch, atlas, self.client.cursor, &labels);
+        layout.draw(batch, atlas, self.side.cursor, &labels);
         self.draw_overlay_mounted_widgets(batch, "link_prompt");
     }
     /// The prompt's answer: the link opens on yes; either way the chat is back.
     pub(in crate::game::client_side) fn answer_link_prompt(&mut self, yes: bool) {
-        let Some(url) = self.client.link_prompt.take() else {
+        let Some(url) = self.side.link_prompt.take() else {
             return;
         };
         self.refresh_screen_widgets();
@@ -1134,18 +1134,18 @@ impl Game<'_> {
         }
     }
     pub(in crate::game::client_side) fn link_prompt_click(&mut self) -> bool {
-        let Some(url) = self.client.link_prompt.clone() else {
+        let Some(url) = self.side.link_prompt.clone() else {
             return false;
         };
         let pressed = self
             .link_prompt_layout(&url, self.gui_size())
-            .pressed_at(self.client.cursor);
+            .pressed_at(self.side.cursor);
         if let Some(button) = pressed {
-            self.audio.0.play_button_click();
+            self.side.audio.0.play_button_click();
             if button == LINK_COPY {
                 // ConfirmLinkScreen.copyToClipboard, then the callback's no.
                 use sunrise_client::clipboard::Clipboard;
-                self.clipboard.0.set(&url);
+                self.side.clipboard.0.set(&url);
             }
             self.answer_link_prompt(button == LINK_YES);
         }
@@ -1168,13 +1168,13 @@ impl Game<'_> {
     /// when the search starts and comes back when it stops.
     pub(in crate::game::client_side) fn toggle_chat_search(&mut self) {
         let typed = self.ui.chat_screen.as_ref().map(|s| s.value().to_owned());
-        let next = if self.client.pvp.chat_search {
-            std::mem::take(&mut self.client.pvp.chat_search_aside)
+        let next = if self.side.pvp.chat_search {
+            std::mem::take(&mut self.side.pvp.chat_search_aside)
         } else {
-            self.client.pvp.chat_search_aside = typed.unwrap_or_default();
+            self.side.pvp.chat_search_aside = typed.unwrap_or_default();
             String::new()
         };
-        self.client.pvp.chat_search = !self.client.pvp.chat_search;
+        self.side.pvp.chat_search = !self.side.pvp.chat_search;
         let m = Measure(&self.gui.atlas.font);
         let c = Commands {
             dispatcher: chat_tree(&self.remote),
@@ -1186,25 +1186,25 @@ impl Game<'_> {
     }
     /// Chat lines over the HUD (focused while the chat screen is open).
     pub(in crate::game) fn draw_chat(&mut self, batch: &mut HudBatch) {
-        let focused = self.client.screen == Screen::Chat;
+        let focused = self.side.screen == Screen::Chat;
         let options = self.pvp_chat();
         self.ui.chat.set_qol(&self.gui.atlas, options.qol());
         // A search ends with its option; a chat closed some other way ends it in keep_chat_draft.
-        if self.client.pvp.chat_search && self.ui.chat_screen.is_none() {
+        if self.side.pvp.chat_search && self.ui.chat_screen.is_none() {
             // The chat went without closing (leaving the world): nothing to give back.
-            self.client.pvp.chat_search = false;
-            self.client.pvp.chat_search_aside.clear();
-        } else if self.client.pvp.chat_search && !options.search {
+            self.side.pvp.chat_search = false;
+            self.side.pvp.chat_search_aside.clear();
+        } else if self.side.pvp.chat_search && !options.search {
             self.toggle_chat_search();
         }
         let query = self
             .ui
             .chat_screen
             .as_ref()
-            .filter(|_| focused && self.client.pvp.chat_search)
+            .filter(|_| focused && self.side.pvp.chat_search)
             .map(|s| s.value());
         self.ui.chat.set_search(&self.gui.atlas, query);
-        self.ui.chat.search_prompt = focused && self.client.pvp.chat_search;
+        self.ui.chat.search_prompt = focused && self.side.pvp.chat_search;
         // `ChatComponent`'s queue row: the messages Chat Delay holds back.
         self.ui.chat.queue = self.chat_queue_len();
         if self.ui.hide_gui && !focused {
@@ -1302,8 +1302,8 @@ impl Game<'_> {
             self.settings.text_background(0.0) as i32
         };
         let mouse = (
-            self.client.cursor.0.floor() as i32,
-            self.client.cursor.1.floor() as i32,
+            self.side.cursor.0.floor() as i32,
+            self.side.cursor.1.floor() as i32,
         );
         let blink = self
             .ui
@@ -1326,8 +1326,8 @@ impl Game<'_> {
         // or the text of the message tag under the cursor.
         let height = batch.height as i32;
         let (cx, cy) = (
-            f64::from(self.client.cursor.0),
-            f64::from(self.client.cursor.1),
+            f64::from(self.side.cursor.0),
+            f64::from(self.side.cursor.1),
         );
         // handleTagIcon: the chat-modified icons over the cursor or its message.
         let (tag_tooltip, tag_icons) =
@@ -1352,11 +1352,11 @@ impl Game<'_> {
                     sunrise_client::widgets::Cursor::PointingHand,
                 );
             }
-            self.component_hover_effect(batch, &style, self.client.cursor);
+            self.component_hover_effect(batch, &style, self.side.cursor);
         } else if let Some(tag) = &tag_tooltip {
             // The message tag's text, split at 210.
             let lines = self.wrapped_rows(tag, 210);
-            self.draw_tooltip_lines(batch, &lines, self.client.cursor.0, self.client.cursor.1);
+            self.draw_tooltip_lines(batch, &lines, self.side.cursor.0, self.side.cursor.1);
         }
     }
     /// `GuiGraphicsExtractor.componentHoverEffect`: the hover of the text component under the
@@ -1437,7 +1437,7 @@ impl Game<'_> {
     }
     /// F2: ScreenShot.grab into `screenshots/` with vanilla's file name.
     pub(in crate::game::client_side) fn take_screenshot(&mut self) -> Option<std::path::PathBuf> {
-        if self.screenshot_sequence.0.is_some() {
+        if self.side.screenshot_sequence.0.is_some() {
             return None;
         }
         let dir = sunrise_client::logging::player_dir().join("screenshots");
@@ -1445,7 +1445,7 @@ impl Game<'_> {
             return None;
         }
         let name = screenshot_name(&dir, &self.ui.screenshot_messages);
-        let renderer = self.renderer.0.as_mut()?;
+        let renderer = self.side.renderer.0.as_mut()?;
         let path = dir.join(name);
         // A second shortcut before rendering replaces the queued frame. Release
         // that request's name: no readback will arrive to finish it.
@@ -1480,7 +1480,7 @@ impl Game<'_> {
     /// key.screenshot from any device: not while F3 is down, where F3+F2 is a
     /// debug key.
     pub(in crate::game::client_side) fn screenshot_action(&mut self) -> bool {
-        if self.client.debug_keys.modifier_down {
+        if self.side.debug_keys.modifier_down {
             return false;
         }
         let _ = self.take_screenshot();
@@ -1568,7 +1568,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game::client_side) fn post_screenshot_chat(&mut self, message: Text) {
-        let focused = self.client.screen == Screen::Chat;
+        let focused = self.side.screen == Screen::Chat;
         self.ui.chat.add(
             &self.gui.atlas,
             message,

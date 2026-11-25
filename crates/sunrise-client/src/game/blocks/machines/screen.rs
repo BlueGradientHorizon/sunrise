@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// HopperScreen / DispenserScreen background and labels; false for other containers.
     pub(in crate::game) fn draw_machine_screen(
         &self,

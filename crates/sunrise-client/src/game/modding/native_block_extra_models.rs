@@ -4,7 +4,7 @@
 use super::Game;
 use mod_api::{BlockExtraModelsError, ModelRef};
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `models` (resolved standalone models) replace those drawn as part of the block at `pos`,
     /// its section meshed again when they change. A stale or unknown handle refuses the list.
     pub(in crate::game) fn set_block_extra_models(

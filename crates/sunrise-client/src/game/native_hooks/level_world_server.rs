@@ -7,7 +7,7 @@ pub(in crate::game::server_side) use mod_api::{LevelRef, RandomDraw};
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_core::random::LegacyRandom;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Lend the named level's live stream directly.
     pub(in crate::game) fn with_level_random(&mut self, level: LevelRef, draw: RandomDraw<'_>) {
         let Some(random) = self.level_random_mut(level) else {
@@ -27,7 +27,7 @@ impl Game<'_> {
         let world = if level.dimension() == self.dim.key() {
             &mut self.world
         } else {
-            self.levels.0.parked_world_mut_of(level.dimension_id())?
+            self.side.levels.0.parked_world_mut_of(level.dimension_id())?
         };
         Some(&mut world.random)
     }

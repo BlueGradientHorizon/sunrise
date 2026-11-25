@@ -342,7 +342,7 @@ impl crate::mobs::living::section_writes::WriteObserver for LiveSectionObserver 
     }
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Where boundaries are now: None with no listener (nothing is filed) or no world open.
     pub(in crate::game) fn entity_section_scope(&self) -> Option<Scope> {
         if !mod_api::__private::listened(mod_api::HookId::EntityEnteringSection) {

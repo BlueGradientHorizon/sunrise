@@ -7,7 +7,7 @@ use super::Game;
 use crate::game::level_control_hooks::LevelControl;
 use mod_api::LevelRef;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerLevel.setWeatherParameters(clear, time, raining, thundering)` in the level in
     /// place, as `/weather` and mods set it: `weather_change` may cancel all of it and
     /// `thunder_change` the thunder half.

@@ -2,7 +2,7 @@
 use super::{Game, ominous_item_spawner::OminousItemSpawner};
 use sunrise_client::items::ItemStack;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `handleAddEntity` for a spawner a server sent: its item comes with the
     /// entity data (`ItemStack.EMPTY` until then, which draws nothing).
     pub(in crate::game) fn add_remote_ominous_item_spawner(&mut self, id: u32, position: [f64; 3]) {

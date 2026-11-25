@@ -126,7 +126,7 @@ impl<T: AsRef<[u8]> + Default> Holds<T> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     fn hold_incarnation(&self) -> Option<(u64, u64)> {
         self.remote
             .as_ref()
@@ -227,7 +227,7 @@ impl Game<'_> {
         let _ = holds.queue(packet, |packet| packet.publish(remote, incarnation));
     }
 }
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `Connection.send` for the game's play packets. True only if there is a remote,
     /// `client_packet_send` did not cancel, and the packet was accepted by the active
     /// play writer or hold queue.

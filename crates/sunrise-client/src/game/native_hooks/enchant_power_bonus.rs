@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `IBlockExtension.getEnchantPowerBonus`: the power `state` at `pos` gives the enchanting
     /// table at `table_pos`. `power` is the block's own answer, which its parts may change.
     pub(in crate::game) fn native_enchant_power_bonus(

@@ -3,7 +3,7 @@ use super::Game;
 use mod_api::{HookId, PackType};
 use sunrise_client::packs::Pack;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn discover_mod_packs(&mut self, kind: PackType) -> Vec<Pack> {
         if !mod_api::__private::enabled_listened(HookId::AddPackFinders) {
             return Vec::new();

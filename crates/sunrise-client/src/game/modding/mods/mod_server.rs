@@ -193,7 +193,7 @@ pub(in crate::game::server_side) use sunrise_world::{
     native_load_context::{LoadContext, LoadInputs},
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn begin_condition_reload(
         &mut self,
         stack: &crate::game::server_side::functions::PackStack,
@@ -250,7 +250,7 @@ impl Game<'_> {
         self.mods.selected = reload.selected;
         self.mods.refused = reload.refused;
         self.mods.data_switched = true;
-        if self.server.world_root.as_os_str().is_empty() {
+        if self.side.world_root.as_os_str().is_empty() {
             return;
         }
         if let Err(error) = self.reload_datapacks(true, &self.level.enabled_features.clone()) {

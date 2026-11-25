@@ -44,7 +44,7 @@ pub(in crate::game) fn rotation_for_steps(steps: i32) -> Option<Rotation> {
         .and_then(|i| Rotation::ALL.get(i).copied())
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `StructureUtils.findTestBlocks`: the test instance blocks within
     /// `radius` of `center` (the POI search is a sphere).
     pub(in crate::game::server_side) fn find_test_instance_blocks(

@@ -8,7 +8,7 @@ use sunrise_client::motion::MotionEvent;
 #[allow(unused_imports)]
 use sunrise_core::position::BlockPos;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerLevel.mayInteract` for the player whose turn it is: a player
     /// under spawn protection or outside the world border may not change the
     /// block (`ServerPlayer.mayInteract`). The fire goes out either way.
@@ -17,7 +17,7 @@ impl Game<'_> {
             .geometry()
             .is_within_bounds(f64::from(pos.x), f64::from(pos.z), 0.0)
             && !self
-                .server
+                .side
                 .lan_acting_spawn_protection
                 .is_some_and(|radius| {
                     self.spawn_protects(radius, self.dim.id(), [pos.x, pos.y, pos.z])

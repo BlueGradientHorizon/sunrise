@@ -49,7 +49,7 @@ pub(in crate::game) struct VaultEject {
 /// (`stateUpdatingResumesAt`, once a second), not at every tick.
 pub(in crate::game) struct Players<'g, 'a> {
     pub(in crate::game) time: i64,
-    pub(in crate::game) game: &'g Game<'a>,
+    pub(in crate::game) game: &'g Game<'a, crate::game::server_side::ServerState>,
     pub(in crate::game) players: std::cell::OnceCell<Vec<VaultPlayer>>,
 }
 impl VaultLevel for Players<'_, '_> {
@@ -63,7 +63,7 @@ impl VaultLevel for Players<'_, '_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn vault_players(&self) -> Vec<VaultPlayer> {
         let host = self.player.as_ref().map(|p| VaultPlayer {
             uuid: self.acting_uuid(),
@@ -126,8 +126,8 @@ impl Game<'_> {
             &mut self.world.random,
             LevelRandom::for_level(LegacyRandom::new(0)),
         );
-        let mut sequences = std::mem::take(&mut self.server.rand_sequences);
-        let loot = self.server_loot.0.get();
+        let mut sequences = std::mem::take(&mut self.side.rand_sequences);
+        let loot = self.side.server_loot.0.get();
         let players = Players {
             time: self.world.game_time,
             game: self,
@@ -177,7 +177,7 @@ impl Game<'_> {
         };
         drop(players);
         self.world.random = random;
-        self.server.rand_sequences = sequences;
+        self.side.rand_sequences = sequences;
         self.world
             .block_entities
             .put(lease, BlockEntity::Vault(vault));
@@ -262,7 +262,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn vault_events(
         &mut self,
         key: Pos,

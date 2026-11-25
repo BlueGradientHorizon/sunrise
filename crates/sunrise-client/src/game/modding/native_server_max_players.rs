@@ -3,7 +3,7 @@
 use super::Game;
 use mod_api::PlayerLimitRefusal;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `PlayerList.getMaxPlayers`: the live login limit; None where no server is open to players.
     pub(super) fn server_max_players(&self) -> Option<u32> {
         let host = self.lan.as_ref()?;

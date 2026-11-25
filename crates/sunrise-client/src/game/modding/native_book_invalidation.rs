@@ -1,7 +1,7 @@
 //! Reloads and authoritative knowledge changes revoke published display identities.
 use super::*;
 use sunrise_client::recipe_book::placement_sync::Frame;
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     fn invalidate_mod_book_placement_connection(&mut self, conn: u32) {
         let Some(server) = self.native_net.placement.servers.get_mut(&conn) else {
             return;
@@ -25,7 +25,7 @@ impl Game<'_> {
         }
     }
     pub(in crate::game::server_side) fn invalidate_mod_book_placement_knowledge(&mut self) {
-        let Some(uuid) = self.server.lan_acting_uuid else {
+        let Some(uuid) = self.side.lan_acting_uuid else {
             return;
         };
         let connection = self

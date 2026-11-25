@@ -45,7 +45,7 @@ pub(in crate::game) struct TakePlan {
 }
 
 // Keep typed snapshots in closures so no storage's private representation escapes its owner.
-pub(in crate::game) type Restore = Box<dyn FnOnce(&mut Game<'_>)>;
+pub(in crate::game) type Restore = Box<dyn FnOnce(&mut Game<'_, crate::game::server_side::ServerState>)>;
 #[derive(Default)]
 pub(in crate::game) struct Journal {
     pub(in crate::game) guests: HashMap<u32, Restore>,
@@ -64,7 +64,7 @@ pub(in crate::game) enum Effect {
     Notice(u128, String, u32),
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Any write to an open merchant menu, including a MerchantRef edit to another guest,
     /// belongs to the transaction that first changed it.
     pub(in crate::game) fn journal_guest_merchant(&mut self, conn: u32) {

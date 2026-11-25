@@ -82,7 +82,7 @@ fn pose(mob: &mut Mob, (body, head, pitch, _): (f32, f32, f32, f32)) {
     mob.extra.model_scale = 0.0;
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `DrawContext::entity` on a screen's `batch`.
     pub(in crate::game) fn native_draw_entity(
         &self,
@@ -204,7 +204,7 @@ impl Game<'_> {
     fn existing_gui_entity(&self, handle: mod_api::EntityRef) -> Result<Mob, GuiEntityError> {
         let found = match self.native_entity_read_target(handle) {
             Some(Target::Mob(id)) => self.mobs.iter().find(|m| m.id == id && !m.removed),
-            Some(Target::Player) => self.client.player_model.as_ref(),
+            Some(Target::Player) => self.side.player_model.as_ref(),
             _ => None,
         };
         Ok(found.ok_or(GuiEntityError::NoEntity)?.clone())

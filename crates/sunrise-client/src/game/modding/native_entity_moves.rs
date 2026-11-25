@@ -28,7 +28,7 @@ pub(in crate::game::server_side) fn facing(yaw: f32) -> &'static str {
     BY_2D[((f64::from(yaw) / 90.0 + 0.5).floor() as i32 & 3) as usize]
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Moves the entity to `pos` in its level (`Entity.teleportTo`), as
     /// `/tp` does: a player is placed there and told, a rider gets off. With
     /// `rotation` (yaw, pitch in degrees) it also turns. False for a position
@@ -140,7 +140,7 @@ impl Game<'_> {
         let t = self.native_entity_target(entity)?;
         if matches!(t, Target::Player | Target::Guest(_)) {
             let conn = match t {
-                Target::Player => self.server.lan_acting?,
+                Target::Player => self.side.lan_acting?,
                 Target::Guest(conn) => conn,
                 _ => return None,
             };
@@ -192,10 +192,10 @@ impl Game<'_> {
                 true
             }
             Target::Other(id) => {
-                let Some(i) = self.others.0.iter().position(|o| o.id == id) else {
+                let Some(i) = self.side.others.0.iter().position(|o| o.id == id) else {
                     return false;
                 };
-                self.others.0.update(i, |o| {
+                self.side.others.0.update(i, |o| {
                     o.yaw = yaw;
                     o.pitch = pitch;
                 });
@@ -252,7 +252,7 @@ impl Game<'_> {
             },
             Some(t @ (Target::Player | Target::Guest(_))) => {
                 let conn = match t {
-                    Target::Player => self.server.lan_acting,
+                    Target::Player => self.side.lan_acting,
                     Target::Guest(conn) => Some(conn),
                     _ => None,
                 };
@@ -344,7 +344,7 @@ impl Game<'_> {
         target: Target,
     ) -> Option<(u32, &mut sunrise_client::motion::PlayerMotion)> {
         let conn = match target {
-            Target::Player => self.server.lan_acting,
+            Target::Player => self.side.lan_acting,
             Target::Guest(conn) => Some(conn),
             _ => None,
         }?;

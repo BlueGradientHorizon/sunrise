@@ -1,7 +1,7 @@
 use super::Game;
 use sunrise_client::items::ItemStack;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Sets the stack in a validated item-entity slot, as a hopper's `addItem`
     /// leaves what it couldn't take (`ItemEntity.setItem`). An empty stack
     /// (count 0) discards the entity. Players see it on their next tracker update.

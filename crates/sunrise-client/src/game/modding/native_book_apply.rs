@@ -28,7 +28,7 @@ fn refusal(reason: PlacementRefusal) -> sync::Refusal {
         PlacementRefusal::Changed => R::Changed,
     }
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn server_mod_book_place(
         &mut self,
         conn: u32,

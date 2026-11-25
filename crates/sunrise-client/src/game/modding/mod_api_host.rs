@@ -67,7 +67,7 @@ fn saved_binding_target(target: super::commands::Target) -> bool {
     )
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Attachment membership uses physical presence (except removed mobs), not the
     /// command resolver's pending-removal masks. Limit resolution to this level.
     fn attachment_entity_exists(&self, id: u32) -> bool {
@@ -284,7 +284,7 @@ impl Game<'_> {
             let cloning = self.cloning_guest(uuid).map(|guest| guest.conn);
             if self.entity_initialization.active != Some(holder)
                 && cloning.is_none()
-                && self.server.lan_acting_uuid != Some(uuid)
+                && self.side.lan_acting_uuid != Some(uuid)
                 && self
                     .lan
                     .as_ref()
@@ -294,9 +294,9 @@ impl Game<'_> {
                 return Err(AttachmentError::MissingHolder);
             }
             self.initialize_entity_on_access(holder);
-            if self.server.lan_acting_uuid == Some(uuid) {
+            if self.side.lan_acting_uuid == Some(uuid) {
                 if access == AttachmentAccess::Store
-                    && let Some(conn) = self.server.lan_acting
+                    && let Some(conn) = self.side.lan_acting
                 {
                     self.bind_player_attachments(conn, true);
                 }
@@ -313,7 +313,7 @@ impl Game<'_> {
                     Some(guest.conn)
                 })
                 .ok_or(AttachmentError::MissingHolder)?;
-            if self.server.lan_guest_swaps.contains(&conn) {
+            if self.side.lan_guest_swaps.contains(&conn) {
                 return Err(AttachmentError::MissingHolder);
             }
             if access == AttachmentAccess::Store {

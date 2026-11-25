@@ -222,13 +222,13 @@ impl Bolt {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientLevel.addEntity` for a server's lightning bolt: on a client it
     /// only flashes, sounds and draws (`LightningBolt.tick` off the server).
     pub(in crate::game) fn spawn_remote_bolt(&mut self, id: u32, at: [f64; 3]) {
         self.bolts.retain(|b| b.id != id);
         let (bolt, _) = Bolt::new(id, at, true);
-        self.client.lightning_seen[0] += 1;
+        self.side.lightning_seen[0] += 1;
         self.bolts.push(bolt);
     }
     /// Client-side `LightningBolt.tick`: thunder/impact sounds and sky flash.
@@ -250,13 +250,13 @@ impl Game<'_> {
                         0.5 + b.random.next_float() * 0.2,
                     )
                 });
-                self.audio.0.play(
+                self.side.audio.0.play(
                     "minecraft:entity.lightning_bolt.thunder",
                     Some(at),
                     10000.0,
                     thunder_pitch,
                 );
-                self.audio.0.play(
+                self.side.audio.0.play(
                     "minecraft:entity.lightning_bolt.impact",
                     Some(at),
                     2.0,
@@ -297,7 +297,7 @@ impl Game<'_> {
             }
             if matches!(step, Step::Reflash | Step::Active) {
                 if self.flash == 0 {
-                    self.client.lightning_seen[1] += 1;
+                    self.side.lightning_seen[1] += 1;
                 }
                 self.flash = 2;
             }

@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `IItemExtension.getXpRepairRatio`: the durability points Mending
     /// restores to `stack` per point of `experience`, arriving as vanilla's.
     /// Server-side, including `PlayerRef::give_experience_points`.

@@ -14,7 +14,7 @@ impl Minecart {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `MinecartCommandBase.onUpdated`: copy command and last output into synched data.
     pub(in crate::game::server_side) fn cart_command_updated(&mut self, id: u32) {
         self.edit_command_cart(id, |c| {

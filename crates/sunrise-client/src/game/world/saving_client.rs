@@ -25,13 +25,13 @@ pub(in crate::game::client_side) use std::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::{Result, hud::HudBatch};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn begin_closing_save(&mut self, quit: bool) -> Result<()> {
         if quit {
-            self.client.client_quit.set(ClientQuit::Stopping);
+            self.side.client_quit.set(ClientQuit::Stopping);
             self.close_client_tasks();
         }
-        if let Some(save) = &mut self.pending_save.0 {
+        if let Some(save) = &mut self.side.pending_save.0 {
             save.quit |= quit;
             return Ok(());
         }
@@ -40,7 +40,7 @@ impl Game<'_> {
         if quit && let Some(starting) = self.integrated_starting.take() {
             starting.handle.request_stop();
             self.integrated = Some(starting.handle);
-            self.pending_save.0 = Some(ClosingSave {
+            self.side.pending_save.0 = Some(ClosingSave {
                 quit,
                 close: true,
                 reply: None,
@@ -49,9 +49,9 @@ impl Game<'_> {
             });
             return Ok(());
         }
-        if self.title.0.is_some() || self.client.saved_for_exit {
+        if self.side.title.0.is_some() || self.side.saved_for_exit {
             // A quit from the title still needs the event loop to finish.
-            self.pending_save.0 = Some(ClosingSave {
+            self.side.pending_save.0 = Some(ClosingSave {
                 quit,
                 close: true,
                 reply: None,
@@ -70,7 +70,7 @@ impl Game<'_> {
         self.streaming.abort_generation();
         if let Some(integrated) = &self.integrated {
             integrated.request_stop();
-            self.pending_save.0 = Some(ClosingSave {
+            self.side.pending_save.0 = Some(ClosingSave {
                 quit,
                 close: true,
                 reply: None,
@@ -86,8 +86,8 @@ impl Game<'_> {
             if let Some(mut remote) = self.remote.take() {
                 remote.session.disconnect();
             }
-            self.client.saved_for_exit = true;
-            self.pending_save.0 = Some(ClosingSave {
+            self.side.saved_for_exit = true;
+            self.side.pending_save.0 = Some(ClosingSave {
                 quit,
                 close: true,
                 reply: None,
@@ -95,7 +95,7 @@ impl Game<'_> {
                 stage: Stage::Quit,
             });
         } else {
-            self.pending_save.0 = Some(ClosingSave {
+            self.side.pending_save.0 = Some(ClosingSave {
                 quit,
                 close: true,
                 reply: None,
@@ -122,7 +122,7 @@ impl Game<'_> {
     /// `true` means the window can exit. The session lock stays in Game until
     /// every snapshot has been queued and every writer has synced its files.
     pub(in crate::game::client_side) fn poll_closing_save(&mut self) -> Result<bool> {
-        let Some(mut save) = self.pending_save.0.take() else {
+        let Some(mut save) = self.side.pending_save.0.take() else {
             return Ok(false);
         };
         let result = (|| -> Result<bool> {
@@ -162,10 +162,10 @@ impl Game<'_> {
                     return Ok(false);
                 }
                 if save.quit {
-                    self.client.saved_for_exit = true;
+                    self.side.saved_for_exit = true;
                     Ok(true)
                 } else {
-                    if save.close && self.title.0.is_none() {
+                    if save.close && self.side.title.0.is_none() {
                         self.finish_perf();
                         self.finish_close_world()?;
                     }
@@ -183,20 +183,20 @@ impl Game<'_> {
                 }
                 // Keep ownership (and the lock) on errors too. Native shutdown must
                 // finish a durable barrier before it can declare the save completed.
-                self.pending_save.0 = Some(save);
+                self.side.pending_save.0 = Some(save);
                 other
             }
         }
     }
     pub(in crate::game::client_side) fn render_closing_save(&mut self) -> Result<()> {
         if matches!(
-            self.pending_save.0.as_ref().map(|save| &save.stage),
+            self.side.pending_save.0.as_ref().map(|save| &save.stage),
             Some(Stage::Quit)
         ) {
             return Ok(());
         }
         let waiting = matches!(
-            self.pending_save.0.as_ref().map(|save| &save.stage),
+            self.side.pending_save.0.as_ref().map(|save| &save.stage),
             Some(Stage::Server | Stage::Writes(_))
         );
         if waiting {
@@ -222,14 +222,14 @@ impl Game<'_> {
             )
             .without_navigation()
         });
-        let Some(renderer) = &mut self.renderer.0 else {
+        let Some(renderer) = &mut self.side.renderer.0 else {
             return Ok(());
         };
         let mut hud = HudBatch::new(
             [renderer.config.width, renderer.config.height],
             self.settings.gui_scale_inputs(),
         );
-        let progress = match self.pending_save.0.as_ref().map(|save| &save.stage) {
+        let progress = match self.side.pending_save.0.as_ref().map(|save| &save.stage) {
             Some(Stage::Chunks(_)) => 0.25,
             Some(Stage::Entities(_)) => 0.5,
             Some(Stage::Writes(_)) => 0.9,
@@ -247,12 +247,12 @@ impl Game<'_> {
     /// `Minecraft.stop`: record the request without reentering the client from a hook.
     pub(in crate::game) fn request_client_quit(&self) -> bool {
         if !self.native_window()
-            || self.client.client_quit.get() != ClientQuit::Running
+            || self.side.client_quit.get() != ClientQuit::Running
             || sunrise_threads::stop_requests() > 0
         {
             return false;
         }
-        self.client.client_quit.set(ClientQuit::Requested);
+        self.side.client_quit.set(ClientQuit::Requested);
         true
     }
     /// `GameRenderer.tryTakeScreenshotIfNeeded`: while a local world without a
@@ -260,10 +260,10 @@ impl Game<'_> {
     /// the save has one. The Select World list shows it as the world's preview.
     pub(in crate::game::client_side) fn tick_world_icon(&mut self) {
         // Its grab would take a sequence's frame.
-        if self.screenshot_sequence.0.is_some() {
+        if self.side.screenshot_sequence.0.is_some() {
             return;
         }
-        let Some(icon) = self.client.world_icon.as_ref() else {
+        let Some(icon) = self.side.world_icon.as_ref() else {
             return;
         };
         if icon
@@ -274,18 +274,18 @@ impl Game<'_> {
         }
         if icon.path.is_file() {
             // tryTakeScreenshotIfNeeded's hasWorldScreenshot: it has one, stop asking.
-            self.client.world_icon = None;
+            self.side.world_icon = None;
             return;
         }
         // takeAutoScreenshot only saves with every loaded section rendered, or
         // the icon would picture the holes the streamer has not filled yet.
         if self.streaming.pending() != 0
-            || !self.pending_uploads.0.is_empty()
+            || !self.side.pending_uploads.0.is_empty()
             || self.remote_backlog() != 0
         {
             return;
         }
-        let Some(renderer) = self.renderer.0.as_mut() else {
+        let Some(renderer) = self.side.renderer.0.as_mut() else {
             return;
         };
         // countRenderedSections() > 10: a client that joined its server
@@ -300,7 +300,7 @@ impl Game<'_> {
             return;
         }
         let path = icon.path.clone();
-        if let Some(icon) = self.client.world_icon.as_mut() {
+        if let Some(icon) = self.side.world_icon.as_mut() {
             icon.last_attempt = Some(Instant::now());
         }
         renderer.screenshot = Some(sunrise_client::gfx::ScreenshotRequest {

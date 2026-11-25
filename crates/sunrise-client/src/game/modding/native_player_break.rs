@@ -40,7 +40,7 @@ impl Drop for NestedBreak {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerPlayerGameMode.destroyBlock` at `pos` as `player` breaks it, as FTB Ultimine does
     /// (`PlayerInteractionBackendMut::player_destroy_block` says what holds and what is refused). With
     /// `into_inventory`, the drops `block_drops` leaves go to the player's inventory, and what
@@ -83,7 +83,7 @@ impl Game<'_> {
         }
         // ServerPlayerGameMode.handleBlockBreakAction's `mayInteract`.
         if self
-            .server
+            .side
             .lan_acting_spawn_protection
             .is_some_and(|radius| self.spawn_protects(radius, self.dim.id(), pos))
         {
@@ -91,14 +91,14 @@ impl Game<'_> {
         }
         // A break inside another's hook keeps where the outer one's drops go.
         let outer = std::mem::replace(
-            &mut self.server.break_collect,
+            &mut self.side.break_collect,
             into_inventory.then(Vec::new),
         );
         let broke = self.player_break_block(pos).unwrap_or_else(|e| {
             log::warn!("a mod's break at {pos:?} failed: {e}");
             false
         });
-        let drops = std::mem::replace(&mut self.server.break_collect, outer).unwrap_or_default();
+        let drops = std::mem::replace(&mut self.side.break_collect, outer).unwrap_or_default();
         for stack in drops {
             self.give_or_drop(stack);
         }
@@ -106,7 +106,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerPlayerGameMode.destroyBlock`'s `Level.removeBlock`, then `Block.destroy`: the mods'
     /// `player_destroyed_block` hears the removal once it succeeded, before a creative player's
     /// return and the drops. It is told the block the removal took out, read here, after
@@ -119,7 +119,7 @@ impl Game<'_> {
         correct_tool: bool,
     ) -> bool {
         let source = self
-            .server
+            .side
             .lan_acting_uuid
             .map(sunrise_world::level::LevelEventPlayer);
         let state = self.world.block(pos[0], pos[1], pos[2]);

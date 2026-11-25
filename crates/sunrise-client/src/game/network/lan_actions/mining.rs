@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Guest `conn` (at `gi`) breaks the block at `pos` at once, as a fake player's `BreakBlock`
     /// does: `handleBlockBreakAction`'s reach, build height, spawn protection and border, then
     /// `ServerPlayerGameMode.destroyBlock`, with its game-mode and tool rules, the native mods'

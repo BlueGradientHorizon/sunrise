@@ -4,7 +4,7 @@ use super::*;
 use sunrise_world::block_landing::FarmlandTrample;
 
 /// The hook point. It does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A player or mob that fell onto farmland is about to turn it to its base block
     /// (`BlockEvent.FarmlandTrampleEvent`): `entity` is the landing living entity, `pos` the
     /// farmland and `state` what it is, `fall_distance` the fall. Cancel and the farmland and
@@ -22,7 +22,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn apply_farmland_trample(
         &mut self,
         player: bool,

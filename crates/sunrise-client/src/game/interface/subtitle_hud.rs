@@ -15,32 +15,32 @@ pub(in crate::game) struct SubtitleState {
     overlay: RefCell<SubtitleOverlay>,
     pub(in crate::game) deferred: Cell<bool>,
 }
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Feed the sounds the engine reported since the last tick
     /// (`SoundEventListener.onPlaySound`) while the overlay listens.
     pub(in crate::game) fn tick_subtitles(&mut self) {
-        let mut overlay = self.client.subtitles.overlay.borrow_mut();
+        let mut overlay = self.side.subtitles.overlay.borrow_mut();
         let listening = overlay.listening();
-        self.audio.0.record_heard = listening;
-        let heard = self.audio.0.take_heard();
+        self.side.audio.0.record_heard = listening;
+        let heard = self.side.audio.0.take_heard();
         if !listening {
             return;
         }
         let now = now_ms();
         for h in heard {
-            let at = h.at.unwrap_or(self.audio.0.listener);
+            let at = h.at.unwrap_or(self.side.audio.0.listener);
             overlay.on_play(Some(&h.subtitle), at, h.range, h.looping, now);
         }
     }
     /// Consume a paint scheduled by the original subtitle layer, without dispatching it again.
     pub(in crate::game::client_side) fn draw_deferred_subtitles(&self, batch: &mut HudBatch) {
-        if self.client.subtitles.deferred.take() {
+        if self.side.subtitles.deferred.take() {
             self.draw_subtitles(batch);
         }
     }
 
     pub(in crate::game::client_side) fn draw_subtitles(&self, batch: &mut HudBatch) {
-        let v = &self.client.view;
+        let v = &self.side.view;
         let frame = SubtitleFrame {
             show: self.settings.show_subtitles,
             position: v.position,
@@ -53,7 +53,7 @@ impl Game<'_> {
         };
         let atlas = &self.gui.atlas;
         let draws =
-            self.client
+            self.side
                 .subtitles
                 .overlay
                 .borrow_mut()

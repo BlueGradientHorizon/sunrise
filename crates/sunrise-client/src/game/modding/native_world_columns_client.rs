@@ -2,7 +2,7 @@
 use super::Game;
 use crate::game::block_edits_common::MAX_COLUMNS;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// For a client mod: each column's height by `heightmap` in the world this window shows,
     /// none for a column whose chunk this client does not hold.
     pub(in crate::game) fn client_surface_heights(

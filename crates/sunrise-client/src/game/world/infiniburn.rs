@@ -1,11 +1,11 @@
 //! Fire sources are resolved when a World receives its dimension facts or new tags.
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn refresh_infiniburn(&mut self) {
         self.world.infiniburn = Some(self.resolve_level_infiniburn(self.dimension_type()));
         let parked: Vec<_> = self
-            .levels
+            .side.levels
             .0
             .parked
             .keys()
@@ -18,7 +18,7 @@ impl Game<'_> {
             })
             .collect();
         for (dim, set) in parked {
-            self.levels.0.parked.get_mut(&dim).unwrap().world.infiniburn = Some(set);
+            self.side.levels.0.parked.get_mut(&dim).unwrap().world.infiniburn = Some(set);
         }
     }
 

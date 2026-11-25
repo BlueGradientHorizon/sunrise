@@ -2,7 +2,7 @@
 use super::*;
 use sunrise_client::{mobs::Who, projectiles::Hit};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Expose the actual cast hook to the listener, then resume only that same
     /// cast. Cancellation skips hooking and redirection, never Entity.move.
     pub(in crate::game::server_side) fn fishing_impact(

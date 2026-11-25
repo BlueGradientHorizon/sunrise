@@ -16,7 +16,7 @@ use sunrise_world::food::Difficulty;
 
 /// `Game` seen by a finalizeSpawn `Ctx`.
 pub(in crate::game) struct FinalizeGame<'a, 'g> {
-    pub(in crate::game) game: &'a mut Game<'g>,
+    pub(in crate::game) game: &'a mut Game<'g, crate::game::server_side::ServerState>,
 }
 
 /// A finalizeSpawn biome lookup with its chunk not loaded: the plains' id,
@@ -90,15 +90,15 @@ impl finalize::FinalizeLevel for FinalizeGame<'_, '_> {
             return None;
         }
         let t = t.clone();
-        self.game.server.next_entity += 1;
-        Some(Mob::new(self.game.server.next_entity, t, Vec3::ZERO, 0.0))
+        self.game.side.next_entity += 1;
+        Some(Mob::new(self.game.side.next_entity, t, Vec3::ZERO, 0.0))
     }
     fn spawn_data(&self) -> finalize::SpawnData<'_> {
         self.game.finalize_spawn_data()
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `DimensionType.moonPhase` at the level's day time.
     pub(in crate::game::server_side) fn finalize_moon_phase(&self) -> usize {
         (self.world.day_time.div_euclid(24000).rem_euclid(8)) as usize

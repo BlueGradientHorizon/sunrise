@@ -76,7 +76,7 @@ pub(in crate::game::server_side) fn block(p: [f64; 3]) -> [i32; 3] {
     p.map(|v| v.floor() as i32)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `OminousItemSpawner.create` added at `position`.
     pub(in crate::game::server_side) fn add_ominous_item_spawner(
         &mut self,
@@ -84,11 +84,11 @@ impl Game<'_> {
         position: [f64; 3],
         delay: i32,
     ) {
-        self.server.next_entity += 1;
+        self.side.next_entity += 1;
         self.ominous_spawners.push(OminousItemSpawner {
             attachment_lifetime: Default::default(),
             join: Default::default(),
-            id: self.server.next_entity,
+            id: self.side.next_entity,
             item,
             position,
             spawn_item_after: i64::from(delay),
@@ -115,8 +115,8 @@ impl Game<'_> {
         else {
             return;
         };
-        self.server.next_entity += 1;
-        let id = self.server.next_entity;
+        self.side.next_entity += 1;
+        let id = self.side.next_entity;
         let saved = sunrise_client::entity_nbt::uuid(&tag);
         // Its saved UUID and the attachments saved under it (#7398).
         if let Some(state) = transferred {
@@ -152,7 +152,7 @@ impl Game<'_> {
     pub(in crate::game) fn tick_ominous_item_spawners(&mut self) {
         // ServerLevel.tick: only entities in entity-ticking chunks that joined before the pass tick.
         let ticking = self.entity_ticking_area();
-        let through = self.server.ticked_entities_through;
+        let through = self.side.ticked_entities_through;
         let mut spawners = self.ominous_spawners.lift();
         #[cfg(test)]
         super::entity::taken_pass_tests::after_take(self);

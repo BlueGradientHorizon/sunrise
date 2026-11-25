@@ -8,7 +8,7 @@ pub(in crate::game) struct CloneBlockPayload {
     name: Option<Tag>,
     pending: Option<PendingContainerLoot>,
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn clone_block_payload(
         &self,
         key: (i32, i32, i32),

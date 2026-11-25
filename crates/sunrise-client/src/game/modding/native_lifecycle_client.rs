@@ -23,7 +23,7 @@ pub(in crate::game::client_side) use mod_api::{ScheduleError, TaskId};
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use std::sync::atomic::{AtomicU64, Ordering};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_lifecycle_open_started(&mut self) {
         self.client_reset_entity_residency();
         self.entity_initialization = Default::default();
@@ -41,7 +41,7 @@ impl Game<'_> {
 
     /// Client epochs retire without dispatching server lifecycle hooks.
     pub(in crate::game) fn client_lifecycle_world_closed(&mut self) {
-        self.client.instance_groups.borrow_mut().clear();
+        self.side.instance_groups.borrow_mut().clear();
         let _ = self.native_lifecycle.world_close_final();
         self.finish_world_closed_common();
     }

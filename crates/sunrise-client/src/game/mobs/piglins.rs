@@ -17,7 +17,7 @@ use sunrise_client::{
 };
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ZombifiedPiglin.alertOthers`: keep the source's player binding and
     /// refuse recipients that already have a target or are allied to it.
     pub(in crate::game::server_side) fn piglin_alert_target(
@@ -34,7 +34,7 @@ impl Game<'_> {
             .lan
             .as_ref()
             .and_then(|host| host.mob_players.get(&source).copied())
-            .or(self.server.lan_acting);
+            .or(self.side.lan_acting);
         let target_team = match target {
             Who::Mob(id) => self.mob_team(id),
             Who::Player => match player {
@@ -540,7 +540,7 @@ impl Game<'_> {
             let d2 = m.distance_sqr(p.position);
             if d2 <= range * range && self.can_see(m.center(), eye) {
                 let uuid = self
-                    .server
+                    .side
                     .lan_acting_uuid
                     .map(sunrise_client::lan::playerdata::uuid_ints)
                     .or(self.level.player_uuid);
@@ -568,7 +568,7 @@ impl Game<'_> {
     /// `PiglinAi.angerNearbyPiglins`.
     pub(in crate::game) fn anger_piglins(&mut self, only_if_seen: bool) {
         // Fake players never become a mob's target.
-        if self.server.lan_acting_fake {
+        if self.side.lan_acting_fake {
             return;
         }
         let Some(p) = self.player.as_ref() else {
@@ -580,7 +580,7 @@ impl Game<'_> {
         let at = p.position;
         let eye = [at.x, at.y + 1.62, at.z];
         let player_uuid = self
-            .server
+            .side
             .lan_acting_uuid
             .map(sunrise_client::lan::playerdata::uuid_ints)
             .or(self.level.player_uuid);
@@ -616,7 +616,7 @@ impl Game<'_> {
             let id = self.mobs[i].id;
             let change = if mod_api::__private::listened(mod_api::HookId::LivingChangeTarget) {
                 let original = self
-                    .server
+                    .side
                     .lan_acting_entity
                     .or_else(|| self.player_identity().map(|(_, id)| id))
                     .and_then(|id| self.entity(id))

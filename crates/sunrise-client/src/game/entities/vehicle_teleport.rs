@@ -74,7 +74,7 @@ fn vehicle_id(t: Target) -> Option<u32> {
 #[path = "vehicle_teleport/teleport_cross_tests.rs"]
 mod teleport_cross_tests;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `AbstractMinecart.getDismountLocationForPassenger` for a standing mob.
     pub(in crate::game::server_side) fn cart_dismount_point(
         &self,
@@ -553,7 +553,7 @@ impl Game<'_> {
             let mut players = Vec::new();
             // A command runs with its source player swapped out of the hub.
             if game.riding.is_some_and(|id| tree.contains(&id))
-                && let (Some(conn), Some(player)) = (game.server.lan_acting, game.player.as_ref())
+                && let (Some(conn), Some(player)) = (game.side.lan_acting, game.player.as_ref())
             {
                 players.push((
                     conn,
@@ -564,7 +564,7 @@ impl Game<'_> {
             }
             if let Some(host) = game.lan.as_ref() {
                 for guest in &host.hub.guests {
-                    if Some(guest.conn) != game.server.lan_acting
+                    if Some(guest.conn) != game.side.lan_acting
                         && guest.vehicle.is_some_and(|id| tree.contains(&id))
                     {
                         players.push((
@@ -610,7 +610,7 @@ impl Game<'_> {
                 }
             }
             for (conn, at, rotation, mount) in players {
-                game.server
+                game.side
                     .level_teleports
                     .push(super::server_travel::LevelTeleport {
                         conn,
@@ -786,7 +786,7 @@ impl Game<'_> {
         transition: Transition,
         riding: &mut Vec<u32>,
     ) {
-        let acting = self.server.lan_acting.filter(|_| self.player.is_some());
+        let acting = self.side.lan_acting.filter(|_| self.player.is_some());
         let seated = self.riding;
         if seated == Some(vehicle)
             && let Some(p) = self.player.as_mut()
@@ -917,7 +917,7 @@ impl Game<'_> {
                     self.pitch = pitch;
                 }
                 // A server's player hears the turn alone when its turn ends.
-                self.server.rotation_forced = self.server.lan_acting.is_some();
+                self.side.rotation_forced = self.side.lan_acting.is_some();
             }
             Target::Mob(id) => {
                 if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
@@ -934,8 +934,8 @@ impl Game<'_> {
                 }
             }
             Target::Other(id) => {
-                if let Some(i) = self.others.0.iter().position(|e| e.id == id) {
-                    self.others.0.update(i, |o| {
+                if let Some(i) = self.side.others.0.iter().position(|e| e.id == id) {
+                    self.side.others.0.update(i, |o| {
                         if yaw.is_finite() {
                             o.yaw = yaw;
                         }

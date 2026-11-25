@@ -1,7 +1,7 @@
 //! Dispatch placement intents only after the shared connection boundary admitted them.
 use super::*;
 use sunrise_client::recipe_book::placement_sync as sync;
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn guest_mod_book_placement(
         &mut self,
         conn: u32,

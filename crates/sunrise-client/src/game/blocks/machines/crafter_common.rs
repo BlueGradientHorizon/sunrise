@@ -1,7 +1,7 @@
 use super::Game;
 use sunrise_client::containers::{BlockEntity, Crafter};
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn crafter_open(&self) -> bool {
         matches!(self.container_kind(), Some(BlockEntity::Crafter(_)))
     }

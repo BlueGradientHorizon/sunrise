@@ -21,7 +21,7 @@ pub(in crate::game::server_side) use sunrise_client::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_protocol::packets::play::{self, Clientbound as C};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `AbstractMountInventoryMenu.stillValid`: the mount is alive and the
     /// guest's eyes are within the entity interaction range (3, 5 in creative)
     /// plus 4 of its box (`Player.isWithinEntityInteractionRange(mount, 4.0)`).

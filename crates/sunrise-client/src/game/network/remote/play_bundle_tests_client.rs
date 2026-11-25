@@ -112,7 +112,7 @@ fn a_split_frame_group_bundle_refuses_a_mismatched_companion() {
         assert!(game.remote.is_none());
         let Some(sunrise_client::title::Mode::Multiplayer(
             sunrise_client::multiplayer::Screen::Disconnected { reason, .. },
-        )) = game.title.0.as_ref().map(|title| &title.mode)
+        )) = game.side.title.0.as_ref().map(|title| &title.mode)
         else {
             panic!("expected the multiplayer refusal screen");
         };

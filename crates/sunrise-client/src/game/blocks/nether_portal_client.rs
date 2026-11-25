@@ -54,7 +54,7 @@ pub(in crate::game::client_side) use {
 #[path = "nether_portal/respawn_attributes_client.rs"]
 pub(in crate::game) mod respawn_attributes;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether the inventory key opens nothing while standing in a nether portal.
     pub(in crate::game) fn in_portal_transition(&self) -> bool {
         self.portals.client_was_inside
@@ -83,17 +83,17 @@ impl Game<'_> {
             return false;
         }
         // No screen at all (`screen() == null`) is nothing to close.
-        if self.client.screen != Screen::Playing && !self.client.screen.allowed_in_portal() {
-            if matches!(self.client.screen, Screen::Creative | Screen::Inventory) {
+        if self.side.screen != Screen::Playing && !self.side.screen.allowed_in_portal() {
+            if matches!(self.side.screen, Screen::Creative | Screen::Inventory) {
                 self.close_container_client();
                 self.carried = None;
             }
             self.set_screen(Screen::Playing);
             self.capture(true);
         }
-        if self.client.screen_fx.portal == 0.0 {
+        if self.side.screen_fx.portal == 0.0 {
             let pitch = self.world.random.next_float() * 0.4 + 0.8;
-            self.audio
+            self.side.audio
                 .0
                 .play("minecraft:block.portal.trigger", None, 0.25, pitch);
         }

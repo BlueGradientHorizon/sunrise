@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// A chat completion applied after Tab or a click. `start..end` is in
     /// UTF-16 units of the list's `original` input, including when cycling;
     /// `input` is the resulting length-limited field value. Client-side,

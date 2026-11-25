@@ -1,7 +1,7 @@
 //! Bind actual network members to the existing residency journal.
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn bind_guest_residency(&self, hub: &mut Hub) {
         hub.payload_player_epoch = self.native_lifecycle.epoch();
         hub.guests
@@ -11,7 +11,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The start of a phase vanilla runs before ChunkMap.tick and Sunrise
     /// among the entities' ticks (ServerChunkCache.tickChunks' spawning and
     /// thunder, the raids): the counter to give `lan_synced_since`.

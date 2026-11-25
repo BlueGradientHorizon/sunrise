@@ -1,7 +1,7 @@
 //! Inventory reads preserve CompoundContainer's short-circuit traversal.
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn unpack_inventory_slot(&mut self, view: &View, slot: usize) {
         if let Some((pos, _)) = view.locate(slot) {
             self.unpack_loot(super::super::container_loot::LootTarget::Block(pos), None);

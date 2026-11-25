@@ -60,7 +60,7 @@ impl BlockEntityLevelReadAccess for LevelReadBlockEntityAccess<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// An explicit engine load into an attached instance.
     pub(in crate::game) fn notify_block_entity_load_additional(&self, pos: Pos) {
         if self.is_logical_server()

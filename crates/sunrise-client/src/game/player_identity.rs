@@ -4,7 +4,7 @@ use super::Game;
 #[allow(unused_imports)]
 use mod_api::PlayerRef;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Wire entity id of the acting server player or connected window player (0 if absent).
     pub(in crate::game) fn own_entity_id(&self) -> i32 {
         self.side_own_entity_id()

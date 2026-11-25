@@ -13,7 +13,7 @@ use sunrise_core::random::LegacyRandom;
 /// A table's rolls with a mod listening to `enchanted_entity_loot`: the
 /// randoms stay in the game, where the listener's host reaches them.
 pub(in crate::game) struct ListenedRolls<'g, 'a, 'h> {
-    game: &'g mut Game<'a>,
+    game: &'g mut Game<'a, crate::game::server_side::ServerState>,
     entity: LivingRef,
     source: &'h HurtSource<'h>,
     /// `LootContextParams.ATTACKING_ENTITY`.
@@ -23,7 +23,7 @@ pub(in crate::game) struct ListenedRolls<'g, 'a, 'h> {
 impl<'g, 'a, 'h> ListenedRolls<'g, 'a, 'h> {
     /// A death's rolls: its attacker is the blow's causing entity.
     pub(in crate::game::server_side) fn new(
-        game: &'g mut Game<'a>,
+        game: &'g mut Game<'a, crate::game::server_side::ServerState>,
         entity: LivingRef,
         source: &'h HurtSource<'h>,
     ) -> Self {
@@ -42,7 +42,7 @@ impl<'g, 'a, 'h> ListenedRolls<'g, 'a, 'h> {
 
 impl DeathRolls for ListenedRolls<'_, '_, '_> {
     fn sequences(&mut self) -> &mut RandomSequences {
-        &mut self.game.server.rand_sequences
+        &mut self.game.side.rand_sequences
     }
     fn level_random(&mut self) -> &mut LegacyRandom {
         &mut self.game.world.random
@@ -80,7 +80,7 @@ pub(in crate::game) struct KillRoll<'a> {
     pub(in crate::game) keep_empty: bool,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The entity `/loot ... kill` names, with a mod to ask: `EnchantedEntityLootEvent`
     /// needs a `LivingEntity`, and a table of any other entity is not asked about.
     fn listened_kill_target(&self, target: Target) -> Option<LivingRef> {
@@ -119,7 +119,7 @@ impl Game<'_> {
                 .then(|| self.target_loot_entity(target)),
             _ => None,
         };
-        let loot = live_target.as_ref().and_then(|_| self.server_loot.0.get());
+        let loot = live_target.as_ref().and_then(|_| self.side.server_loot.0.get());
         let matcher = |predicate: &serde_json::Value, entity: &sunrise_world::loot::LootEntity| {
             loot.as_ref()
                 .is_some_and(|data| data.entity_matches(predicate, Some(entity)))
@@ -135,7 +135,7 @@ impl Game<'_> {
             let items = world_items!(self);
             return match sequence {
                 Some(id) => {
-                    let random = self.server.rand_sequences.get(&id, self.level.seed);
+                    let random = self.side.rand_sequences.get(&id, self.level.seed);
                     if let Some(target) = live_target {
                         items.entity_drops_with_target(
                             kind, by_player, held, target, &matcher, random, keep_empty,
@@ -227,7 +227,7 @@ impl CallerLoot {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A roll's `origin` (None when its parameter set has none) and `tool`,
     /// taken before the roll borrows the game.
     pub(in crate::game::server_side) fn caller_loot(
@@ -263,7 +263,7 @@ impl Game<'_> {
         };
         if entity.nbt.is_none()
             && self
-                .server_loot
+                .side.server_loot
                 .0
                 .get()
                 .is_some_and(|data| data.copies_entity_nbt())
@@ -285,7 +285,7 @@ impl Game<'_> {
         held: Option<&ItemStack>,
         this: Option<&sunrise_world::loot::LootEntity>,
     ) -> Option<Vec<ItemStack>> {
-        let loot = self.server_loot.0.get();
+        let loot = self.side.server_loot.0.get();
         let matcher = |predicate: &serde_json::Value, entity: &sunrise_world::loot::LootEntity| {
             loot.as_ref()
                 .is_some_and(|data| data.entity_matches(predicate, Some(entity)))
@@ -300,7 +300,7 @@ impl Game<'_> {
             let items = world_items!(self);
             match items.loot_sequence(table) {
                 Some(sequence) => {
-                    let random = self.server.rand_sequences.get(&sequence, self.level.seed);
+                    let random = self.side.rand_sequences.get(&sequence, self.level.seed);
                     items.roll_loot_table(table, held, this, random)
                 }
                 None => items.roll_loot_table(table, held, this, &mut self.world.random),

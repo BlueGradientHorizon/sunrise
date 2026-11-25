@@ -13,7 +13,7 @@ use sunrise_client::{
     },
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Draws the resolved standalone `model` under `draw`'s pose from the block sprite arrays.
     /// See `BlockEntityDrawContext::terrain_model`.
     pub(in crate::game) fn native_draw_terrain_model(
@@ -24,11 +24,11 @@ impl Game<'_> {
     ) -> Result<(), TerrainModelError> {
         use mod_api::__private::game::Fields;
         let fields = model.fields();
-        if fields.generation != self.client.standalone_geometry.generation() {
+        if fields.generation != self.side.standalone_geometry.generation() {
             return Err(TerrainModelError::Model(ModelError::StaleModel));
         }
         let faces = self
-            .client
+            .side
             .standalone_geometry
             .instance_slot(fields.slot)
             .and_then(|_| self.model_faces(fields.slot))

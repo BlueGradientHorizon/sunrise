@@ -9,7 +9,7 @@ pub(in crate::game::server_side) use crate::game::client_side::play_keys::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_client::keybinds::VanillaMappingSlot;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// handlePlayerAction SWAP_ITEM_WITH_OFFHAND for the window's own player
     /// with no server: the mods hear it as a server's players
     /// (`player_swap_hands`), and may stop it or change what each hand gets.

@@ -27,7 +27,7 @@ pub(in crate::game) struct NativeSoundRequest<'a> {
     pub(in crate::game) seed: Option<i64>,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The level's dimension id, for a handle of this open on the server.
     fn native_level_dimension(&self, level: LevelRef) -> Option<&'static str> {
         self.native_level_world(level)?;

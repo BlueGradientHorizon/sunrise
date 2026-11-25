@@ -242,7 +242,7 @@ impl TickRound {
     }
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// A round for a family about to tick, on the server or on a client, only while a mod
     /// listens (`native_entity_tick_listened`). Its list is kept between ticks.
     pub(in crate::game) fn native_tick_round(&mut self) -> TickRound {

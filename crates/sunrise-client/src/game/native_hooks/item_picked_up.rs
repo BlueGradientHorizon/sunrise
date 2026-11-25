@@ -7,7 +7,7 @@ use sunrise_client::join_seq::JoinList;
 #[allow(unused_imports)]
 use sunrise_core::random::RandomSource;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `player` touches the ground item entity `item`
     /// (`ItemEntity.playerTouch`), before its pickup delay and target are
     /// checked: it is asked on every tick the two touch, even while the item

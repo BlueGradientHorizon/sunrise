@@ -27,7 +27,7 @@ pub(in crate::game) struct Win {
     /// The last drawn frame, for the scroll's game-time delta.
     frame: Instant,
 }
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn open_win_screen(&mut self, poem: bool, finish: Finish) {
         let screen = WinScreen::new(
             poem,
@@ -35,7 +35,7 @@ impl Game<'_> {
             &self.options.player_name(),
             &self.gui.atlas.font,
         );
-        self.client.win = Some(Win {
+        self.side.win = Some(Win {
             screen,
             finish,
             frame: Instant::now(),
@@ -46,16 +46,16 @@ impl Game<'_> {
     }
     /// Stop the scroll `scroll` pixels in (`sunrise-ctl credits ... SCROLL`).
     pub(in crate::game::client_side) fn hold_win_screen(&mut self, scroll: f32) {
-        if let Some(win) = self.client.win.as_mut() {
+        if let Some(win) = self.side.win.as_mut() {
             win.screen.hold(scroll);
         }
     }
     /// `WinScreen.isPauseScreen`: only the credits without the poem pause.
     pub(in crate::game::client_side) fn win_screen_pauses(&self) -> bool {
-        self.client.win.as_ref().is_some_and(|w| !w.screen.poem)
+        self.side.win.as_ref().is_some_and(|w| !w.screen.poem)
     }
     pub(in crate::game::client_side) fn draw_win_screen(&mut self, batch: &mut HudBatch) {
-        let Some(win) = self.client.win.as_mut() else {
+        let Some(win) = self.side.win.as_mut() else {
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
             return;
@@ -82,7 +82,7 @@ impl Game<'_> {
         };
         win.screen.draw_background(batch, &self.gui.atlas, fill);
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
-        self.client
+        self.side
             .win
             .as_mut()
             .unwrap()
@@ -103,7 +103,7 @@ impl Game<'_> {
         let Some(key) = Key::from_code(code) else {
             return Ok(false);
         };
-        if let Some(win) = self.client.win.as_mut() {
+        if let Some(win) = self.side.win.as_mut() {
             win.screen.key(key, pressed);
             return Ok(true);
         }
@@ -113,7 +113,7 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn tick_win_screen(&mut self) -> Result<()> {
         let height = self.gui_size().1;
         if self
-            .client
+            .side
             .win
             .as_ref()
             .is_some_and(|w| w.screen.finished(height))
@@ -124,16 +124,16 @@ impl Game<'_> {
     }
     /// `WinScreen.respawn` (`onFinished`) and `removed`: the credits music stops.
     pub(in crate::game::client_side) fn close_win_screen(&mut self) -> Result<()> {
-        let Some(win) = self.client.win.take() else {
+        let Some(win) = self.side.win.take() else {
             return Ok(());
         };
         let credits = mod_api::client::music::Music::credits();
-        self.client
+        self.side
             .music
-            .stop_playing_music(&credits, None, &mut self.audio.0);
+            .stop_playing_music(&credits, None, &mut self.side.audio.0);
         match win.finish {
             Finish::Options => self.set_screen(Screen::Options),
-            Finish::Closed if self.title.0.is_some() => self.set_screen(Screen::Playing),
+            Finish::Closed if self.side.title.0.is_some() => self.set_screen(Screen::Playing),
             Finish::RemoteRespawn | Finish::Closed => {
                 if win.finish == Finish::RemoteRespawn {
                     self.remote_respawn();

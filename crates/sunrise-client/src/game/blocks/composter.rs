@@ -31,7 +31,7 @@ pub(in crate::game) enum Effects {
 /// Temporarily lends the provider the composter's random owner. Even unwinding restores
 /// Level.random before the transaction guard rolls the local owner back.
 struct ScopedRandom<'a, 'w> {
-    game: &'a mut Game<'w>,
+    game: &'a mut Game<'w, crate::game::server_side::ServerState>,
     pos: [i32; 3],
     world_random: Option<sunrise_core::random::LegacyRandom>,
 }
@@ -44,7 +44,7 @@ impl Drop for ScopedRandom<'_, '_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The composter's `level` at `pos`, None when it isn't a composter.
     pub(in crate::game) fn composter_level(&self, pos: [i32; 3]) -> Option<i32> {
         let state = self.world.block(pos[0], pos[1], pos[2]);

@@ -115,7 +115,7 @@ pub(in crate::game) fn expand(store: &DataStore, source: &Value) -> Result<Value
     }
     resolve(store, source, &mut BTreeSet::new())
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// ItemCommands.getSlotsFromProvider binds CONTAINER separately from THIS_ENTITY.
     /// THIS_ENTITY is `CommandSourceStack.getEntity`: the player who typed the command, the
     /// entity `execute as` names, nobody for the console or a function.

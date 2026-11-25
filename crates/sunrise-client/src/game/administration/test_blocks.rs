@@ -13,7 +13,7 @@ type Pos = (i32, i32, i32);
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay::test_blocks::own_signal;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     fn test_block_mut(&mut self, pos: Pos) -> Option<&mut TestBlock> {
         match self.world.block_entities.get_mut(&pos)? {
             BlockEntity::TestBlock(b) => Some(b),

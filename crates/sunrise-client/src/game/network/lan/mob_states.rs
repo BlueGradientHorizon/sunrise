@@ -1,6 +1,6 @@
 //! Mob metadata and live attributes, built on the owning server thread.
 use super::*;
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn fill_mob_state(
         &self,
         m: &Mob,

@@ -82,7 +82,7 @@ pub(in crate::game) fn float_provider(v: &Value) -> Option<FloatProvider> {
     FloatProvider::from_json(&v.to_string()).ok()
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Projectile.spawnProjectile` once the shot is aimed: adds `projectile`
     /// to the level, then runs `applyOnProjectileSpawned` with `stack`, the
     /// item it was made from (the held or dispensed stack, an arrow's ammo).

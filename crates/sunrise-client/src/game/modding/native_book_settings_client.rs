@@ -5,7 +5,7 @@ use mod_api::{
     item::recipe_book::{RecipeBookSettings, RecipeBookTypeKey},
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn player_synced_recipe_book_settings(
         &self,
         player: PlayerRef,

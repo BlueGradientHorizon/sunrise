@@ -105,7 +105,7 @@ fn unix_secs() -> i64 {
         .map_or(0, |d| d.as_secs() as i64)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether this window is a client of a server it does not run itself.
     pub(in crate::game::client_side) fn profiles_remote_server(&self) -> bool {
         self.integrated.is_none() && self.remote.is_some()

@@ -7,7 +7,7 @@ use crate::game::Screen;
 use mod_api::{BlockPos, SignEditView};
 use winit::keyboard::KeyCode;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `Minecraft.setScreen` through Escape for a container screen, and the
     /// screen's own close for any other: Escape closes a container with the
     /// menu's `ServerboundContainerClosePacket` first (a bare local close would
@@ -25,24 +25,24 @@ impl Game<'_> {
         if let Some(closed) = self.close_foreground() {
             return closed;
         }
-        if self.client.sign_edit.is_some() {
+        if self.side.sign_edit.is_some() {
             self.close_sign_editor();
             return true;
         }
         // A book or a lectern's book is the same kind of overlay: its screen's onClose (a
         // lectern's closes its menu, sending the container close).
-        if self.client.book.is_some() {
+        if self.side.book.is_some() {
             self.close_book();
             return true;
         }
-        if self.client.screen == Screen::Playing {
+        if self.side.screen == Screen::Playing {
             return false;
         }
-        let before = self.client.screen;
+        let before = self.side.screen;
         // The Escape path itself, so every screen's own close and follow-ups
         // (and the screen hooks' closing notices) are exactly the key's.
         let _ = self.key_pressed(KeyCode::Escape, KeyCode::Escape);
-        self.client.screen != before
+        self.side.screen != before
     }
     /// Escape on a screen opened in front of the others, in the order `window_event` gives
     /// it the key: the death-exit confirmation answers no after its delay, a command's or
@@ -50,7 +50,7 @@ impl Game<'_> {
     /// declines (disconnecting for a required pack), and a dialog runs its own Escape.
     /// Returns whether it closed, or `None` when no such screen is open.
     fn close_foreground(&mut self) -> Option<bool> {
-        if self.client.screen == Screen::Dead
+        if self.side.screen == Screen::Dead
             && let Some(shown) = self.ui.death_confirm
         {
             if shown.elapsed().as_millis() >= 1000
@@ -60,18 +60,18 @@ impl Game<'_> {
             }
             return Some(self.ui.death_confirm.is_none());
         }
-        if self.command_prompt.0.is_some() {
+        if self.side.command_prompt.0.is_some() {
             self.command_prompt_key(KeyCode::Escape);
-            return Some(self.command_prompt.0.is_none());
+            return Some(self.side.command_prompt.0.is_none());
         }
-        if self.client.link_prompt.is_some() {
+        if self.side.link_prompt.is_some() {
             self.answer_link_prompt(false);
             return Some(true);
         }
-        if self.client.code_of_conduct.is_some() {
+        if self.side.code_of_conduct.is_some() {
             return Some(false);
         }
-        if self.server_packs.0.prompt.is_some() {
+        if self.side.server_packs.0.prompt.is_some() {
             if let Err(e) = self.answer_pack_prompt(false) {
                 log::warn!("Sunrise: declining the server's resource pack: {e:#}");
             }
@@ -95,8 +95,8 @@ impl Game<'_> {
     /// world.
     pub(in crate::game) fn open_inventory(&mut self) -> bool {
         if self.player.is_none()
-            || self.client.screen != Screen::Playing
-            || self.client.sign_edit.is_some()
+            || self.side.screen != Screen::Playing
+            || self.side.sign_edit.is_some()
             || self.spectator()
             || self.in_portal_transition()
         {
@@ -107,13 +107,13 @@ impl Game<'_> {
             return true;
         }
         self.open_inventory_key_action();
-        self.client.screen != Screen::Playing
+        self.side.screen != Screen::Playing
     }
     /// `AbstractSignEditScreen`'s sign: its block position and the side the
     /// editor is on. None when no sign editor is open, or outside a world.
     pub(in crate::game) fn sign_editor(&self) -> Option<SignEditView> {
         self.player.as_ref()?;
-        let edit = self.client.sign_edit.as_ref()?;
+        let edit = self.side.sign_edit.as_ref()?;
         Some(SignEditView {
             pos: BlockPos::new(edit.pos.0, edit.pos.1, edit.pos.2),
             front: edit.front,

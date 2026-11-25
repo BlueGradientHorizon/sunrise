@@ -3,7 +3,7 @@ pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::native_hooks::muffle_sounds::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Muffles the game's sounds for a while, as ears ringing after a close
     /// blast hear them: `amount` (0 to 1) of every sound's volume is taken
     /// away and `lowpass` (0 to 1) dulls it, from untouched to a 300 Hz
@@ -26,6 +26,6 @@ impl Game<'_> {
         if !self.native_window() || exempt.len() > 64 || !exempt.iter().all(|e| sound_id(e)) {
             return false;
         }
-        self.audio.0.muffle(amount, lowpass, ticks, exempt)
+        self.side.audio.0.muffle(amount, lowpass, ticks, exempt)
     }
 }

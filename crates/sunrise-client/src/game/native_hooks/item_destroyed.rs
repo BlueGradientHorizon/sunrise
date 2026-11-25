@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `IItemExtension.onDestroyed` (vanilla `ItemStack.onDestroyed`): a dropped item entity
     /// holding `stack` has reached zero health from `damage_type` and is about to be discarded.
     /// `drops` starts with any vanilla container spills and returns the validated stacks to spawn.

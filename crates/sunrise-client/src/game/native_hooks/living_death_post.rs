@@ -2,7 +2,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A mob or server player's death has finished, after the loot, the
     /// experience and the death message (`ServerLivingEntityEvents.AFTER_DEATH`).
     pub(in crate::game) fn native_living_death_post(

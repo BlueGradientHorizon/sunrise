@@ -9,10 +9,10 @@ pub(in crate::game) struct ClientCrack {
     pub positions: Vec<[i32; 3]>,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn expire_client_cracks(&mut self) {
         let now = self.world.game_time;
-        self.client
+        self.side
             .destroying
             .retain(|_, crack| now.saturating_sub(crack.updated_at) <= 400);
     }
@@ -24,7 +24,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game::client_side) fn reset_client_world(&mut self, seed: i64) {
-        self.client.destroying.clear();
+        self.side.destroying.clear();
         self.mining = None;
         self.world = crate::game::world_for_mods(self.res.facts().air, seed);
     }

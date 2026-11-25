@@ -489,7 +489,7 @@ impl GameTests {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `TestCommand.trackAndStartRunner`: command summaries retain their
     /// original source. Test-block actions and verify keep their existing path.
     pub(in crate::game::server_side) fn track_and_start_command_runner(
@@ -498,19 +498,19 @@ impl Game<'_> {
         grid: Grid,
     ) {
         let mut source = self
-            .server
+            .side
             .command_source
             .unwrap_or_else(|| self.player_source());
-        let recipient = if self.server.console_broadcast.is_some() {
+        let recipient = if self.side.console_broadcast.is_some() {
             None
         } else {
-            self.server
+            self.side
                 .lan_acting
                 .map(Target::Guest)
                 .or_else(|| self.player.as_ref().map(|_| Target::Player))
         };
         if source.entity == Some(Target::Player)
-            && let Some(conn) = self.server.lan_acting
+            && let Some(conn) = self.side.lan_acting
         {
             source.entity = Some(Target::Guest(conn));
         }
@@ -525,11 +525,11 @@ impl Game<'_> {
 
     /// `GameTestTicker.clear`: a pass in progress halts at its end.
     pub(in crate::game) fn clear_game_tests(&mut self) {
-        if self.game_tests.0.ticking {
-            self.game_tests.0.halting = true;
+        if self.side.game_tests.0.ticking {
+            self.side.game_tests.0.halting = true;
         } else {
-            self.game_tests.0.ticker.clear();
-            if self.game_tests.0.runner.take().is_some() {
+            self.side.game_tests.0.ticker.clear();
+            if self.side.game_tests.0.runner.take().is_some() {
                 // GameTestRunner.stop: endCurrentEnvironment.
                 self.end_test_environment();
             }
@@ -569,7 +569,7 @@ impl Game<'_> {
                 failed: false,
             })
             .collect();
-        self.game_tests.0.runner = Some(Runner {
+        self.side.game_tests.0.runner = Some(Runner {
             batches,
             current: 0,
             batch_pending: 0,
@@ -587,14 +587,14 @@ impl Game<'_> {
             summary_dimensions: Vec::new(),
         });
         // GameTestRunner.start runs the first batch inside the command.
-        self.game_tests.0.command_start = options.from_command;
+        self.side.game_tests.0.command_start = options.from_command;
         self.run_batch(0);
-        self.game_tests.0.command_start = false;
+        self.side.game_tests.0.command_start = false;
     }
 
     /// `GameTestRunner.runBatch`.
     fn run_batch(&mut self, index: usize) {
-        let Some(runner) = self.game_tests.0.runner.as_mut() else {
+        let Some(runner) = self.side.game_tests.0.runner.as_mut() else {
             return;
         };
         if index >= runner.batches.len() {
@@ -639,7 +639,7 @@ impl Game<'_> {
                 }
             });
         }
-        let Some(runner) = self.game_tests.0.runner.as_mut() else {
+        let Some(runner) = self.side.game_tests.0.runner.as_mut() else {
             return;
         };
         let Some(batch) = runner.batches.get_mut(index) else {
@@ -663,7 +663,7 @@ impl Game<'_> {
         match self.test_environment(&environment) {
             Some(definition) => {
                 let activation = self.activate_test_environment(definition);
-                self.game_tests.0.environment = Some(activation);
+                self.side.game_tests.0.environment = Some(activation);
             }
             None => log::error!("Missing test environment {environment}"),
         }
@@ -673,24 +673,24 @@ impl Game<'_> {
             "commands.test.batch.starting",
             &[Text::literal(environment), number(batch_number)],
         );
-        if self.game_tests.0.command_start {
+        if self.side.game_tests.0.command_start {
             self.feedback(starting);
         } else {
-            self.game_tests.0.outbox.push(Out::Console {
+            self.side.game_tests.0.outbox.push(Out::Console {
                 text: starting,
                 broadcast: true,
             });
         }
-        if let Some(runner) = self.game_tests.0.runner.as_mut() {
+        if let Some(runner) = self.side.game_tests.0.runner.as_mut() {
             runner.batch_pending = spawned.len();
             runner.last_batch = spawned.iter().map(|i| (i.dim, i.pos)).collect();
         }
-        self.game_tests.0.ticker.extend(spawned);
+        self.side.game_tests.0.ticker.extend(spawned);
     }
 
     /// `GameTestRunner.endCurrentEnvironment`.
     fn end_test_environment(&mut self) {
-        if let Some(activation) = self.game_tests.0.environment.take() {
+        if let Some(activation) = self.side.game_tests.0.environment.take() {
             self.tear_down_test_environment(activation);
         }
     }
@@ -698,7 +698,7 @@ impl Game<'_> {
     /// `GameTestRunner.runScheduledRerunTests`: the reruns are batched
     /// again and run, or the runner stops.
     fn run_scheduled_reruns(&mut self) {
-        let Some(runner) = self.game_tests.0.runner.as_mut() else {
+        let Some(runner) = self.side.game_tests.0.runner.as_mut() else {
             return;
         };
         if runner.scheduled.is_empty() {
@@ -722,9 +722,9 @@ impl Game<'_> {
 
     /// `GameTestRunner.rerunTest`.
     fn rerun_test(&mut self, info: &Info) {
-        let id = self.game_tests.0.next_id();
+        let id = self.side.game_tests.0.next_id();
         let copy = info.copy_reset(id);
-        let Some(runner) = self.game_tests.0.runner.as_mut() else {
+        let Some(runner) = self.side.game_tests.0.runner.as_mut() else {
             return;
         };
         runner.scheduled.push(copy);
@@ -737,20 +737,20 @@ impl Game<'_> {
     /// `GameTestTicker.SINGLETON.tick()`, for the tests of the level in place.
     pub(in crate::game::server_side) fn tick_game_tests(&mut self) {
         self.flush_game_test_output();
-        if self.game_tests.0.runner.is_none() {
+        if self.side.game_tests.0.runner.is_none() {
             return;
         }
         let dim = self.dim;
-        self.game_tests.0.ticking = true;
-        let mut infos = std::mem::take(&mut self.game_tests.0.ticker);
+        self.side.game_tests.0.ticking = true;
+        let mut infos = std::mem::take(&mut self.side.game_tests.0.ticker);
         for info in infos.iter_mut().filter(|i| i.dim == dim) {
             self.tick_test(info);
         }
         infos.retain(|i| !i.done);
-        infos.append(&mut self.game_tests.0.ticker);
-        self.game_tests.0.ticker = infos;
-        self.game_tests.0.ticking = false;
-        if std::mem::take(&mut self.game_tests.0.halting) {
+        infos.append(&mut self.side.game_tests.0.ticker);
+        self.side.game_tests.0.ticker = infos;
+        self.side.game_tests.0.ticking = false;
+        if std::mem::take(&mut self.side.game_tests.0.halting) {
             self.clear_game_tests();
         }
     }
@@ -776,7 +776,7 @@ impl Game<'_> {
     /// `spawn_test` with the test's level in place.
     fn spawn_test_here(&mut self, info: &mut Info) -> bool {
         let in_place = !self
-            .game_tests
+            .side.game_tests
             .0
             .runner
             .as_ref()
@@ -790,7 +790,7 @@ impl Game<'_> {
             return true;
         }
         let Some(mut grid) = self
-            .game_tests
+            .side.game_tests
             .0
             .runner
             .as_mut()
@@ -830,7 +830,7 @@ impl Game<'_> {
                 }
             }
         }
-        if let Some(runner) = self.game_tests.0.runner.as_mut() {
+        if let Some(runner) = self.side.game_tests.0.runner.as_mut() {
             runner.grid = Some(grid);
         }
         prepared
@@ -876,7 +876,7 @@ impl Game<'_> {
 
     /// `ReportGameListener.testStructureLoaded`.
     fn test_structure_loaded(&mut self, info: &Info) {
-        if let Some(runner) = self.game_tests.0.runner.as_mut() {
+        if let Some(runner) = self.side.game_tests.0.runner.as_mut() {
             *report_of(&mut runner.reports, info.origin).0 += 1;
         }
     }
@@ -1295,7 +1295,7 @@ impl Game<'_> {
         self.report_game_test(info, passed);
         // TestSummaryDisplayer: only the tests the command started (the
         // listener is not passed on to a rerun's copy).
-        let Some(runner) = self.game_tests.0.runner.as_mut() else {
+        let Some(runner) = self.side.game_tests.0.runner.as_mut() else {
             return;
         };
         let tracked = runner.tracked.iter_mut().find(|t| t.id == info.id);
@@ -1322,7 +1322,7 @@ impl Game<'_> {
         let halt = runner.halt_on_error;
         if all_done {
             let context = runner.summary_source;
-            let out = &mut self.game_tests.0.outbox;
+            let out = &mut self.side.game_tests.0.outbox;
             out.push(summary_line(
                 context,
                 Text::translate("commands.test.summary", &[number(total as i32)])
@@ -1363,7 +1363,7 @@ impl Game<'_> {
         }
         // FailedTestTracker.rememberFailedTest
         if !passed && counted {
-            self.game_tests.0.failed.push(info.key.clone());
+            self.side.game_tests.0.failed.push(info.key.clone());
         }
         // GameTestRunner's batch listener clears forces in testInfo.getLevel(),
         // the level tick_test runs with in place.
@@ -1374,7 +1374,7 @@ impl Game<'_> {
             self.clear_game_tests();
             return;
         }
-        let Some(runner) = self.game_tests.0.runner.as_mut() else {
+        let Some(runner) = self.side.game_tests.0.runner.as_mut() else {
             return;
         };
         runner.batch_pending = runner.batch_pending.saturating_sub(1);
@@ -1387,7 +1387,7 @@ impl Game<'_> {
 
     /// `ReportGameListener.testPassed` and `testFailed`.
     fn report_game_test(&mut self, info: &Info, passed: bool) {
-        let Some(runner) = self.game_tests.0.runner.as_mut() else {
+        let Some(runner) = self.side.game_tests.0.runner.as_mut() else {
             return;
         };
         let (attempts, successes) = report_of(&mut runner.reports, info.origin);
@@ -1504,7 +1504,7 @@ impl Game<'_> {
 
     /// `ReportGameListener.say`.
     fn say(&mut self, color: u32, text: String) {
-        self.game_tests
+        self.side.game_tests
             .0
             .outbox
             .push(Out::Players(Text::literal(text).with_color(color)));
@@ -1513,7 +1513,7 @@ impl Game<'_> {
     /// Sends what the runner said: the server's console log (and the
     /// operators, when it broadcasts) and the players' chat.
     fn flush_game_test_output(&mut self) {
-        for out in std::mem::take(&mut self.game_tests.0.outbox) {
+        for out in std::mem::take(&mut self.side.game_tests.0.outbox) {
             match out {
                 Out::Console { text, broadcast } => self.test_console_output(text, broadcast),
                 Out::Source {
@@ -1551,11 +1551,11 @@ impl Game<'_> {
         }
         if broadcast {
             // CommandSourceStack.broadcastToAdmins as the server.
-            self.server.console_broadcast = Some(true);
+            self.side.console_broadcast = Some(true);
             self.broadcast_to_admins(text);
-            self.server.console_broadcast = None;
+            self.side.console_broadcast = None;
             self.send_admin_feedback();
-            self.server.admin_feedback.clear();
+            self.side.admin_feedback.clear();
         }
     }
 
@@ -1577,9 +1577,9 @@ impl Game<'_> {
             }
         } else if !context.source.silent {
             self.with_source(context.source, |g| {
-                let previous = g.server.console_broadcast;
+                let previous = g.side.console_broadcast;
                 g.test_console_output(text, broadcast);
-                g.server.console_broadcast = previous;
+                g.side.console_broadcast = previous;
             });
         }
     }

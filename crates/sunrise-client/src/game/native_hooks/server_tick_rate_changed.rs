@@ -2,7 +2,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `MinecraftServer.onTickRateChanged`, before the autosave wait is adjusted: `/tick rate`
     /// set a rate or a `/tick sprint` ended.
     pub(in crate::game) fn native_server_tick_rate_changed(&mut self) {

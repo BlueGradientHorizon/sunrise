@@ -14,7 +14,7 @@ use sunrise_world::level::{flags, hit_slot};
 
 const BLOCK: &str = "minecraft:chiseled_bookshelf";
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The bookshelf's item or empty-hand method, on the captured block state.
     pub(in crate::game) fn use_chiseled_bookshelf(
         &mut self,

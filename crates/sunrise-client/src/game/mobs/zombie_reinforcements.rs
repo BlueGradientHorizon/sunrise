@@ -25,7 +25,7 @@ fn offset(random: &mut LegacyRandom) -> i32 {
     distance * random.next_int_between_inclusive(-1, 1).unwrap_or(0)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Zombie.hurtServer` after the hit: on Hard, with the zombie's chance
     /// and monsters spawning, a copy of it appears out of sight and takes
     /// `target`; both then call less often.
@@ -83,7 +83,7 @@ impl Game<'_> {
             .lan
             .as_ref()
             .and_then(|host| host.mob_players.get(&caller).copied())
-            .or(self.server.lan_acting);
+            .or(self.side.lan_acting);
         self.set_event_ai_target(id, Some(target), player);
         if let Some(reinforcement) = self.mobs.iter_mut().find(|m| m.id == id) {
             // ZOMBIE_REINFORCEMENT_CALLEE_CHARGE.

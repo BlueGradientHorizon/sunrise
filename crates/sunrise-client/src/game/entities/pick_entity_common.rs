@@ -89,7 +89,7 @@ pub(in crate::game) fn has_pick_result(target: Option<crate::game::commands::Tar
     )
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `Entity.getPickResult` of the entity `id`.
     pub(in crate::game) fn entity_pick_result(&self, id: i32) -> Option<ItemStack> {
         let id = id as u32;

@@ -106,7 +106,7 @@ pub(in crate::game::server_side) fn write_unspawned_attribute(
     Some(done)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `LivingEntity.tick`'s `collectEquipmentChanges` for what the server
     /// simulates besides players: each slot whose item is not the one the map
     /// holds swaps the old item's attribute modifiers for the new one's. An
@@ -364,7 +364,7 @@ impl AttributeWrite {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Applies `write` to the attribute `name` of `t` on the record that the
     /// entity's gameplay and its clients' attribute sync read:
     /// - a player's (or a guest's, in its turn) own attribute map;

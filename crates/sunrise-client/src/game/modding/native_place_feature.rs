@@ -3,7 +3,7 @@
 use super::Game;
 use mod_api::{LevelReadError, LevelRef, PlaceFeatureRefusal};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Feature.place` of `feature` at `pos` in the level in place: the feature's own report of
     /// success. Blocks it set before reporting `false` are kept, as the command keeps them.
     pub(in crate::game) fn level_place_feature(

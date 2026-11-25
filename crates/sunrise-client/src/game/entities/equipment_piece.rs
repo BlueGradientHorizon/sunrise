@@ -38,7 +38,7 @@ impl ArmorSlot {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn equipment_piece<'a>(
         &'a self,
         item: &str,
@@ -68,7 +68,7 @@ impl Game<'_> {
             slot,
             leggings,
             baby,
-            &self.armor_stand_assets.0.equipment,
+            &self.side.armor_stand_assets.0.equipment,
             overlay,
         )
     }
@@ -123,7 +123,7 @@ fn resolve_piece<'a>(
     })
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn mob_equipment_layers(
         &self,
         mob: &Mob,
@@ -204,7 +204,7 @@ pub(in crate::game) struct ResolvedEquipmentLayer<'a> {
     pub final_texture: bool,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn equipment_materials<'a>(
         &'a self,
         piece: &EquipmentPiece<'_>,
@@ -223,7 +223,7 @@ impl Game<'_> {
         let cit = stack.and_then(|s| self.cit_worn_rule(sunrise_optifine::cit::Kind::Armor, s));
         let trim = stack
             .and_then(|s| {
-                self.armor_stand_assets
+                self.side.armor_stand_assets
                     .0
                     .trim_texture(&piece.asset, piece.kind, s)
             })

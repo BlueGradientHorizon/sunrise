@@ -7,7 +7,7 @@ pub(in crate::game::server_side) use crate::game::lan_actions::packets::creative
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::lan_actions::packets::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerPlayer.sendBuildLimitMessage`: the red overlay with the limit.
     pub(in crate::game::server_side) fn build_limit_message(
         &self,
@@ -83,7 +83,7 @@ impl Game<'_> {
             game.native_creative_slot(uuid, &name, slot, item, count, &mut cancel)
         };
         // The guest whose turn it is is in place already.
-        if self.server.lan_acting == Some(conn) {
+        if self.side.lan_acting == Some(conn) {
             hook(self);
         } else {
             self.as_guest(conn, hook);
@@ -1197,9 +1197,9 @@ impl Game<'_> {
                     .and_then(|index| sunrise_client::command::args::GameMode::ALL.get(index))
                 {
                     let lines = self.as_guest(conn, |g| {
-                        g.server.chat_capture = Some(Vec::new());
+                        g.side.chat_capture = Some(Vec::new());
                         g.server_change_game_mode(*mode);
-                        g.server
+                        g.side
                             .chat_capture
                             .take()
                             .unwrap_or_default()

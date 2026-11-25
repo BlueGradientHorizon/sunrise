@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `IItemExtension.onItemUseFirst`: the held item's first say on a click
     /// on a block, after `use_item_on_block` (`ItemBeforeBlock`) passed and
     /// before the block's `useItemOn`. An answer ends the click; `Pass` goes

@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Slot placement, pickup and stack limits for registered vanilla and mod menus: `menu` is the
     /// menu type, `slot` the backing container index, `stack` the stack being asked about.
     /// `may_place`, `may_pickup` and `max_stack` arrive holding the slot's own answers, which the menu type's

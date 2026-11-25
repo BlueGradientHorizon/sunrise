@@ -1,7 +1,7 @@
 //! Profession preparation participates in the existing WorldTables root publication.
 use super::*;
 use mod_api::__private::game::RegistrationContextNew;
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn prepare_professions(
         &self,
         root: &std::path::Path,
@@ -108,7 +108,7 @@ impl Game<'_> {
 #[path = "villager_professions/tests.rs"]
 mod tests;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn resolve_loaded_profession(
         &mut self,
         mob: &mut sunrise_client::mobs::Mob,
@@ -116,7 +116,7 @@ impl Game<'_> {
         self.stations().professions.resolve_loaded(mob);
         if let sunrise_client::mobs::villager::ProfessionState::Unresolved(id) =
             &mob.extra.profession
-            && self.server.missing_professions.insert(id.clone())
+            && self.side.missing_professions.insert(id.clone())
         {
             log::warn!(
                 "Unknown villager profession {id} at {:?}; preserving its saved identity",
@@ -126,15 +126,15 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn install_profession_save_snapshots(&self) {
         let table = self.stations().professions.clone();
-        self.save.0.install_profession_snapshot(table.clone());
-        self.levels.0.install_profession_save_snapshots(table);
+        self.side.save.0.install_profession_snapshot(table.clone());
+        self.side.levels.0.install_profession_save_snapshots(table);
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn with_profession_save_snapshot(
         &self,
         save: Arc<SaveDir>,

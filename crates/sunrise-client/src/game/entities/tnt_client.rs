@@ -21,7 +21,7 @@ pub(in crate::game::client_side) use sunrise_core::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::level::flags as level_flags;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `TntRenderer`: swelling over the last 10 ticks and flashing white every 5 ticks.
     pub(in crate::game) fn tnt_geometry(
         &self,

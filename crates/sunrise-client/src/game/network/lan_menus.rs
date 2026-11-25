@@ -48,7 +48,7 @@ pub(in crate::game) enum ClickReply {
     Offhand,
 }
 
-impl super::Game<'_> {
+impl super::Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn reply_predicted_menu_click(
         &mut self,
         conn: u32,

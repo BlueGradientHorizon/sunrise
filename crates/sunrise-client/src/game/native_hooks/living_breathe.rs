@@ -2,7 +2,7 @@
 use super::*;
 
 /// The hook point. It does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// An entity's breathing this tick (`LivingBreatheEvent`, posted from
     /// `LivingEntity.baseTick` every tick for a living entity with the generic
     /// air logic): `entity` is the player or mob. `can_breathe`, `consume` and

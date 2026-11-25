@@ -11,7 +11,7 @@ use sunrise_client::{
 /// `ContainerOpenersCounter.CHECK_TICK_DELAY`.
 pub(in crate::game) const RECHECK_TICKS: i64 = 5;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `readyForShearing`: the antenna holds a flower shears take.
     pub(in crate::game) fn golem_shearable(&self, index: usize) -> bool {
         self.mobs[index].saddle_item().is_some_and(|a| {

@@ -8,16 +8,16 @@ use sunrise_client::hud_kit::motion::Clock;
 use sunrise_client::hud_kit::room::{Keep, Room};
 use sunrise_client::{boss_overlay, hud_layout, hud_overlays};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The HUD's clock this frame (`hud_kit::motion`): still, so overlays show their motion
     /// settled, while the game is paused, frame-stepped (`SUNRISE_STILL`, a screenshot
     /// sequence) or a repro recording or replay runs.
     pub(in crate::game::client_side) fn hud_clock(&self) -> Clock {
         let still = self.pause
             || self.clock.still()
-            || self.screenshot_sequence.0.is_some()
-            || self.repro.0.recording_active()
-            || self.repro.0.replaying();
+            || self.side.screenshot_sequence.0.is_some()
+            || self.side.repro.0.recording_active()
+            || self.side.repro.0.replaying();
         Clock::new(std::time::Instant::now(), still)
     }
 
@@ -30,7 +30,7 @@ impl Game<'_> {
             return room;
         }
         let (wi, hi) = (w as i32, h as i32);
-        let bars = self.client.boss_overlay.bars(boss_overlay::now_millis());
+        let bars = self.side.boss_overlay.bars(boss_overlay::now_millis());
         let drawn = hud_overlays::boss_bars_drawn(hi, bars.len());
         if drawn > 0 {
             let font = &self.gui.atlas.font;

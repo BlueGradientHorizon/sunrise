@@ -4,7 +4,7 @@ pub(in crate::game::client_side) use super::*;
 use crate::game::api_values::engine_display_context;
 use sunrise_client::cit::Hand as CitHand;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `ItemStackRenderState.usesBlockLight` of `stack` resolved for `context`.
     pub(in crate::game) fn item_uses_block_light(
         &self,

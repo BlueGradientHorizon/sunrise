@@ -25,7 +25,7 @@ pub(in crate::game::client_side) use sunrise_client::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_core::random::RandomSource;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `LivingEntity.makeDrownParticles`: `count` bubbles around the entity
     /// (vanilla's eight), moving with it.
     pub(in crate::game::client_side) fn drown_particles(
@@ -41,11 +41,11 @@ impl Game<'_> {
         let bubble = ParticleOptions::simple(ParticleType::Bubble);
         for _ in 0..count {
             let mut triangle = || {
-                let r = self.particles.0.random();
+                let r = self.side.particles.0.random();
                 r.next_double() - r.next_double()
             };
             let p = [at[0] + triangle(), at[1] + triangle(), at[2] + triangle()];
-            self.particles.0.add(&bubble, p, velocity);
+            self.side.particles.0.add(&bubble, p, velocity);
         }
     }
     /// Entity event 67 from a server, for this client's own player or an

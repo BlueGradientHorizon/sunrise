@@ -47,13 +47,13 @@ pub(in crate::game::server_side) use sunrise_items::creative_catalog::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_items::items::Items;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_creative_holders(&self) -> Option<Holders> {
         self.registry_sync().map(|sync| sync.creative_holders())
     }
 
     pub(in crate::game) fn server_creative_catalog(&self) -> &Arc<Catalog> {
-        &self.creative_catalog.0
+        &self.side.creative_catalog.0
     }
 }
 

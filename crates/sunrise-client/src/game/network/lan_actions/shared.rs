@@ -291,7 +291,7 @@ pub(in crate::game) fn refresh_building_player(host: &LanHost, _conn: u32) {
 }
 
 /// Kept at LAN action scope to preserve its published internals target path.
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn vehicle_has_other_viewers(
         container: Option<(i32, i32, i32)>,
         guests: &[sunrise_client::lan::guest::Guest],

@@ -19,7 +19,7 @@ fn payload<'a>(packet: &'a C, channel: &str) -> Option<&'a [u8]> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// True means this whole bundle was routed. Ordinary bundles still use the
     /// usual dispatch, with the same packet observations in their original order.
     pub(in crate::game) fn route_connection_group_bundle(

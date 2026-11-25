@@ -55,7 +55,7 @@ impl Replay {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// How far the window's own player model is between two ticks: on the replay's clock while a
     /// replay plays, else the game's.
     pub(in crate::game::client_side) fn own_player_alpha(&self) -> f64 {
@@ -355,7 +355,7 @@ impl Game<'_> {
         self.replay.virtual_tick_ms = 0.0;
         if let Some(player) = &self.player {
             self.previous_position = player.position;
-            if let Some(m) = self.client.player_model.as_mut() {
+            if let Some(m) = self.side.player_model.as_mut() {
                 m.previous = player.position;
                 m.position = player.position;
                 m.limb_speed = 0.0;
@@ -470,7 +470,7 @@ impl Game<'_> {
             .driver
             .as_ref()
             .is_some_and(|replay| replay.is_paused());
-        if self.client.player_model.is_none() {
+        if self.side.player_model.is_none() {
             self.tick_player_model();
         }
         if !paused {
@@ -490,7 +490,7 @@ impl Game<'_> {
                         current_pos.z - self.previous_position.z,
                     );
                     let walked = (dx * dx + dz * dz).sqrt() as f32;
-                    if let Some(m) = self.client.player_model.as_mut() {
+                    if let Some(m) = self.side.player_model.as_mut() {
                         m.previous = self.previous_position;
                         m.position = current_pos;
                         m.previous_limb_speed = m.limb_speed;
@@ -529,7 +529,7 @@ impl Game<'_> {
                     self.previous_position = current_pos;
                 }
             }
-        } else if let Some(m) = self.client.player_model.as_mut() {
+        } else if let Some(m) = self.side.player_model.as_mut() {
             m.previous_limb_speed = m.limb_speed;
         }
         self.studio_replay_advanced();
@@ -742,13 +742,13 @@ impl Game<'_> {
         let packets = driver.packet_count();
         self.studio_replay_opened(&driver);
         if self.replay.driver.is_none() {
-            self.replay.previous_camera_type = Some(self.client.camera_type);
+            self.replay.previous_camera_type = Some(self.side.camera_type);
             self.replay.standalone = standalone;
         }
         self.replay.driver = Some(Box::new(driver));
-        self.client.camera_type = sunrise_client::camera::CameraType::FirstPerson;
-        self.title.0 = None;
-        self.client.screen = Screen::Playing;
+        self.side.camera_type = sunrise_client::camera::CameraType::FirstPerson;
+        self.side.title.0 = None;
+        self.side.screen = Screen::Playing;
         self.commit_screen_transition();
         self.capture(false);
         // Apply timestamp-zero login, player pose, and chunk packets before the first rendered
@@ -779,7 +779,7 @@ impl Game<'_> {
                 .is_some_and(|remote| remote.brand == "sunrise-studio");
         self.replay.standalone = false;
         if let Some(camera_type) = self.replay.previous_camera_type.take() {
-            self.client.camera_type = camera_type;
+            self.side.camera_type = camera_type;
         }
         self.replay.last_tick = None;
         self.studio_replay_closed();
@@ -797,15 +797,15 @@ impl Game<'_> {
             self.reset_studio_hand_state();
             // A title-screen replay has no previous world perspective to
             // restore. Start the next world in first person with visible hands.
-            self.client.camera_type = sunrise_client::camera::CameraType::FirstPerson;
-            if let Some(title) = self.title.0.as_mut() {
+            self.side.camera_type = sunrise_client::camera::CameraType::FirstPerson;
+            if let Some(title) = self.side.title.0.as_mut() {
                 title.activate_mode(sunrise_client::title::Mode::Main);
             }
         } else if self.integrated.is_none() && self.lan.is_none() {
             if let Err(error) = self.close_world() {
                 log::error!("Failed to close Studio replay world cleanly: {error}");
             }
-            if let Some(title) = self.title.0.as_mut() {
+            if let Some(title) = self.side.title.0.as_mut() {
                 title.activate_mode(sunrise_client::title::Mode::Main);
             }
         }

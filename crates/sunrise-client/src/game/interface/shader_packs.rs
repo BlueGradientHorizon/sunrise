@@ -158,9 +158,9 @@ pub(in crate::game::client_side) fn plan_shader_toggle(
 /// The Extras page's shader pack key, by identity: the translated key's vanilla name against
 /// the bound one, so a rebind never becomes another mapping's default (Replay Studio's
 /// camera-keyframe shortcut stays physical K's).
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn shader_pack_key_press(&mut self, name: &str) -> bool {
-        if self.client.screen != Screen::Playing
+        if self.side.screen != Screen::Playing
             || name == "key.keyboard.unknown"
             || self.settings.extras.shader_pack_key != name
         {
@@ -317,7 +317,7 @@ impl PackIds {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Loads the pack for the current dimension when it changed, and returns this frame's
     /// inputs to the pack's uniforms.
     pub(in crate::game::client_side) fn shader_pack_inputs(
@@ -330,7 +330,7 @@ impl Game<'_> {
         // A `shaders/` pack lights the faces itself unless `oldLighting=true`: sections mesh
         // without the game's face shading (the pack loaded or dropped below shows next frame).
         let pack_lighting = self
-            .client
+            .side
             .pack_ids
             .as_ref()
             .is_some_and(|ids| !ids.old_lighting);
@@ -339,17 +339,17 @@ impl Game<'_> {
             self.all_sections_changed();
         }
         // Any `shaders/` pack (its `oldLighting` too) draws fluid tops split as Iris does.
-        let shader_pack = self.client.pack_ids.is_some();
+        let shader_pack = self.side.pack_ids.is_some();
         if self.streaming.shader_pack != shader_pack {
             self.streaming.shader_pack = shader_pack;
             self.all_sections_changed();
         }
         // The renderer keeps the meshes' sources while they carry them, and frees them after.
-        if let Some(renderer) = &mut self.renderer.0 {
+        if let Some(renderer) = &mut self.side.renderer.0 {
             renderer.keep_pack_sources(shader_pack);
         }
         let separate_ao = self
-            .client
+            .side
             .pack_ids
             .as_ref()
             .is_some_and(|ids| ids.separate_ao);
@@ -358,7 +358,7 @@ impl Game<'_> {
             self.all_sections_changed();
         }
         let selected = picked_pack(&self.settings).to_owned();
-        let path = self.client.native_shaders.resolve_path(
+        let path = self.side.native_shaders.resolve_path(
             &Self::shader_packs_dir(),
             &selected,
             dev_pack().is_some(),
@@ -369,17 +369,17 @@ impl Game<'_> {
         } else {
             path.to_string_lossy().into_owned()
         };
-        if self.client.native_shaders.picked != picked {
-            self.client.native_shaders.select(&picked);
+        if self.side.native_shaders.picked != picked {
+            self.side.native_shaders.select(&picked);
             self.set_translucent_layers(Vec::new());
-            self.client.pack_ids = None;
-            if let Some(renderer) = &mut self.renderer.0 {
+            self.side.pack_ids = None;
+            if let Some(renderer) = &mut self.side.renderer.0 {
                 renderer.drop_shader_packs();
             }
         }
         // A pack whose pipelines were building runs once they are built, or is turned off.
         if let Some((dimension, name, started, report)) =
-            self.renderer.0.as_mut().and_then(|r| r.poll_shader_pack())
+            self.side.renderer.0.as_mut().and_then(|r| r.poll_shader_pack())
         {
             match report {
                 Ok(Some((programs, notes))) => {
@@ -424,7 +424,7 @@ impl Game<'_> {
         {
             // One of Sunrise's own packs (game/modding/native_shaders.rs).
             self.tick_native_shader_pack(&path);
-        } else if let Some(renderer) = &mut self.renderer.0
+        } else if let Some(renderer) = &mut self.side.renderer.0
             && renderer.shader_pack_dimension() != Some(dimension)
             && !(super::native_shaders::linear_frame_switch() && refused(&path, fingerprint(&path)))
         {
@@ -504,7 +504,7 @@ impl Game<'_> {
                         );
                         let block_items =
                             block_item_ids(self.res.facts(), self.pack.assets.registry, &ids);
-                        self.client.pack_ids = Some(PackIds {
+                        self.side.pack_ids = Some(PackIds {
                             block_items,
                             item_file: text.is_some(),
                             items: items.plain(),
@@ -543,7 +543,7 @@ impl Game<'_> {
                     }
                     Err(e) => {
                         remember(&path, fingerprint(&path), None);
-                        self.client.pack_ids = None;
+                        self.side.pack_ids = None;
                         log::warn!("shader pack {name}: {e}");
                         // Without a pack this can't fail.
                         let _ = renderer.set_shader_pack(dimension, None, &[]);
@@ -650,9 +650,9 @@ impl Game<'_> {
             }
             None => (
                 true,
-                CameraFogEffects::from_effects(&self.potions.effects, self.client.darkness_blend),
+                CameraFogEffects::from_effects(&self.potions.effects, self.side.darkness_blend),
                 self.night_vision_intensity(partial),
-                self.client.ambience.moodiness,
+                self.side.ambience.moodiness,
             ),
         };
         // LivingEntity.getEffectBlendFactor: the fade only while the instance is there.
@@ -743,7 +743,7 @@ impl Game<'_> {
     /// The Shader Options page opened: the picked pack's options, screens and names.
     pub(in crate::game::client_side) fn open_shader_options(&mut self) {
         let mut macros = Macros::standard();
-        if let Some(renderer) = &self.renderer.0 {
+        if let Some(renderer) = &self.side.renderer.0 {
             renderer.define_pack_macros(&mut macros);
         }
         let name = &self.settings.sunrise.shader_pack;
@@ -756,8 +756,8 @@ impl Game<'_> {
             return;
         };
         write_shader_options(&options);
-        self.client.pack_ids = None;
-        if let Some(renderer) = &mut self.renderer.0 {
+        self.side.pack_ids = None;
+        if let Some(renderer) = &mut self.side.renderer.0 {
             renderer.drop_shader_packs();
         }
     }
@@ -774,8 +774,8 @@ impl Game<'_> {
         let path = Self::shader_packs_dir().join(name);
         remember(&path, fingerprint(&path), None);
         log::error!("shader pack {name}: turned off: {error}");
-        self.client.pack_ids = None;
-        if let Some(renderer) = &mut self.renderer.0 {
+        self.side.pack_ids = None;
+        if let Some(renderer) = &mut self.side.renderer.0 {
             // Marks this dimension as loaded, without a pack, so it is not tried again (without
             // a pack this can't fail).
             let _ = renderer.set_shader_pack(dimension, None, &[]);
@@ -792,12 +792,12 @@ impl Game<'_> {
 
     /// Whether the game's vignette draws: the option, unless the loaded pack turns it off.
     pub(in crate::game::client_side) fn vignette_shown(&self) -> bool {
-        self.settings.vignette && self.client.pack_ids.as_ref().is_none_or(|ids| ids.vignette)
+        self.settings.vignette && self.side.pack_ids.as_ref().is_none_or(|ids| ids.vignette)
     }
 
     /// `currentRenderedItemId` of a held `item`, [`rendered_item_id`]'s; 0 without a pack.
     pub(in crate::game::client_side) fn rendered_item_id(&self, item: &str) -> i32 {
-        self.client.pack_ids.as_ref().map_or(0, |ids| {
+        self.side.pack_ids.as_ref().map_or(0, |ids| {
             rendered_item_id(
                 ids.block_items.get(item).copied(),
                 ids.items.get(item).copied(),
@@ -808,11 +808,11 @@ impl Game<'_> {
 
     /// `heldItemId(2)` and `heldBlockLightValue(2)`: main hand, then off hand (5.2, 5.3).
     pub(in crate::game::client_side) fn held_for_pack(&mut self) -> ([i32; 2], [i32; 2]) {
-        if self.client.pack_ids.is_none() {
+        if self.side.pack_ids.is_none() {
             return ([0; 2], [0; 2]);
         }
         let lum = self.luminance();
-        let Some(ids) = &self.client.pack_ids else {
+        let Some(ids) = &self.side.pack_ids else {
             return ([0; 2], [0; 2]);
         };
         let hands = [self.selected, super::shield::OFFHAND_SLOT].map(|slot| {
@@ -832,7 +832,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Starts a span of the entity geometry at vertex `start` for entity type `name`
     /// (`minecraft:zombie`; "" for one the pack cannot name). Nothing without a pack.
     pub(in crate::game) fn mark_entity(&self, start: usize, name: &str) {
@@ -850,7 +850,7 @@ impl Game<'_> {
         name: &str,
         translucent: bool,
     ) {
-        let id = match &self.client.pack_ids {
+        let id = match &self.side.pack_ids {
             Some(ids) => ids
                 .entities
                 .get(name)
@@ -860,9 +860,9 @@ impl Game<'_> {
             None => return,
         };
         self.push_span(start, "ENTITIES", id);
-        if let Some(last) = self.client.entity_spans.borrow_mut().last_mut() {
+        if let Some(last) = self.side.entity_spans.borrow_mut().last_mut() {
             last.translucent = translucent;
-            if let Some(gpu) = self.client.skin_frame.borrow_mut().spans.last_mut() {
+            if let Some(gpu) = self.side.skin_frame.borrow_mut().spans.last_mut() {
                 gpu.translucent = translucent;
             }
         }
@@ -870,7 +870,7 @@ impl Game<'_> {
 
     /// Starts a span for the block entity of block state `state`.
     pub(in crate::game::client_side) fn mark_block_entity(&self, start: usize, state: u32) {
-        let Some(ids) = &self.client.pack_ids else {
+        let Some(ids) = &self.side.pack_ids else {
             if native_spans() {
                 self.push_span(start, "BLOCK_ENTITIES", state as i32);
             }
@@ -896,9 +896,9 @@ impl Game<'_> {
             .facts()
             .get(sunrise_world::registry::BlockStateId(state))
             .emission;
-        if let Some(last) = self.client.entity_spans.borrow_mut().last_mut() {
+        if let Some(last) = self.side.entity_spans.borrow_mut().last_mut() {
             last.emissive = emission > 0;
-            if let Some(gpu) = self.client.skin_frame.borrow_mut().spans.last_mut() {
+            if let Some(gpu) = self.side.skin_frame.borrow_mut().spans.last_mut() {
                 gpu.emissive = emission > 0;
             }
         }
@@ -908,7 +908,7 @@ impl Game<'_> {
     /// pack: block entities, as `BlockEntityDrawContext::model` draws the same model, with the
     /// id of a block the pack doesn't list, since no block owns them. Nothing without a pack.
     pub(in crate::game::client_side) fn mark_model_copies(&self, start: usize) {
-        if let Some(ids) = &self.client.pack_ids {
+        if let Some(ids) = &self.side.pack_ids {
             self.push_span(start, "BLOCK_ENTITIES", ids.missing_block);
         }
     }
@@ -917,12 +917,12 @@ impl Game<'_> {
     /// pack's shadow pass draws it.
     pub(in crate::game::client_side) fn mark_player(&self, start: usize, hidden: bool) {
         self.mark_entity(start, "minecraft:player");
-        if (self.client.pack_ids.is_some() || native_spans())
-            && let Some(last) = self.client.entity_spans.borrow_mut().last_mut()
+        if (self.side.pack_ids.is_some() || native_spans())
+            && let Some(last) = self.side.entity_spans.borrow_mut().last_mut()
         {
             last.player = true;
             last.hidden = hidden;
-            if let Some(gpu) = self.client.skin_frame.borrow_mut().spans.last_mut() {
+            if let Some(gpu) = self.side.skin_frame.borrow_mut().spans.last_mut() {
                 gpu.player = true;
                 gpu.hidden = hidden;
             }
@@ -932,26 +932,26 @@ impl Game<'_> {
     /// Marks vertices `start..end` (one entity) as hidden from the camera, for an entity
     /// Sunrise's culling would drop but a pack's shadow pass still draws (`EntitySpan::hide`).
     pub(in crate::game::client_side) fn hide_spans_from(&self, start: usize, end: usize) -> bool {
-        EntitySpan::hide(&mut self.client.entity_spans.borrow_mut(), start, end)
+        EntitySpan::hide(&mut self.side.entity_spans.borrow_mut(), start, end)
     }
 
     /// Starts a span of geometry that is not an entity (`PARTICLES`, `DESTROY`...).
     pub(in crate::game) fn mark_stage(&self, start: usize, stage: &str) {
-        if self.client.pack_ids.is_some() || native_spans() {
+        if self.side.pack_ids.is_some() || native_spans() {
             self.push_span(start, stage, 0);
         }
     }
 
     pub(in crate::game::client_side) fn push_span(&self, start: usize, stage: &str, id: i32) {
-        let mut spans = self.client.entity_spans.borrow_mut();
+        let mut spans = self.side.entity_spans.borrow_mut();
         let span = EntitySpan {
             start: start as u32,
             stage: sunrise_shaders::render_stage(stage),
             id,
             ..Default::default()
         };
-        if self.client.pack_ids.is_some() && self.skinning() {
-            let mut skin = self.client.skin_frame.borrow_mut();
+        if self.side.pack_ids.is_some() && self.skinning() {
+            let mut skin = self.side.skin_frame.borrow_mut();
             let gpu = EntitySpan {
                 start: skin.vertices,
                 ..span

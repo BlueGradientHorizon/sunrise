@@ -148,7 +148,7 @@ pub(in crate::game) fn mob_pose(at: DVec3, body_yaw: f32) -> Mat4 {
     Mat4::from_translation(at.as_vec3()) * Mat4::from_rotation_y((-body_yaw).to_radians())
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether a mod listens to the render hook pair this frame (asked once, when the frame's
     /// entity pass began): with none, nothing is posed or built for the hooks per entity.
     pub(in crate::game) fn mob_render_listened(&self) -> bool {

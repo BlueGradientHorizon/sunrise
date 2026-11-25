@@ -154,7 +154,7 @@ impl Strike {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether the player a hit landed on stands on the ground.
     pub(in crate::game::server_side) fn pvp_victim_on_ground(&self, victim: Victim) -> bool {
         let Some(host) = self.lan.as_ref() else {
@@ -199,7 +199,7 @@ impl Game<'_> {
         let sweep = self.sweep_attack_position(scale, crit, "minecraft:player");
         let (strength, knockback_attack) = self.extra_knockback("minecraft:player", scale);
         let (xd, zd) = self.extra_knockback_direction();
-        self.server.attack_ticks = 0;
+        self.side.attack_ticks = 0;
         self.swing_arm();
         // LivingEntity.getSecondsToDisableBlocking: the held weapon's value,
         // none while another item is in use.
@@ -211,7 +211,7 @@ impl Game<'_> {
         };
         let ignite = self.weapon_ignite_seconds();
         Some(Strike {
-            attacker: self.server.lan_acting,
+            attacker: self.side.lan_acting,
             creative: self.creative,
             amount,
             scale,
@@ -364,17 +364,17 @@ impl Game<'_> {
             .map_or(self.own_entity_id() as u32, |s| s.0);
         let result = match victim {
             Victim::Guest(conn) => self.guest_hit_by(conn, |g| {
-                g.combat.0.refuse_player_hit = refused;
-                g.combat.0.projectile_attacker = shooter;
+                g.side.combat.0.refuse_player_hit = refused;
+                g.side.combat.0.projectile_attacker = shooter;
                 let saved_effect_attacker = g
-                    .combat
+                    .side.combat
                     .0
                     .enchantment_projectile_attacker
                     .replace(effect_attacker);
                 let r = g.projectile_hit(p, on_player);
-                g.combat.0.refuse_player_hit = false;
-                g.combat.0.projectile_attacker = None;
-                g.combat.0.enchantment_projectile_attacker = saved_effect_attacker;
+                g.side.combat.0.refuse_player_hit = false;
+                g.side.combat.0.projectile_attacker = None;
+                g.side.combat.0.enchantment_projectile_attacker = saved_effect_attacker;
                 r
             }),
         };
@@ -387,7 +387,7 @@ impl Game<'_> {
         let (Some(host), Some(shooter)) = (self.lan.as_ref(), p.guest) else {
             return;
         };
-        if self.server.lan_acting == Some(shooter) || self.entity_silent(p.id) {
+        if self.side.lan_acting == Some(shooter) || self.entity_silent(p.id) {
             return;
         }
         host.hub.send_to(
@@ -453,7 +453,7 @@ impl Game<'_> {
         let attack = self.attack_of(attacker_id);
         let land = |g: &mut Self| {
             g.with_attack(attack.clone(), |g| {
-                g.combat.0.player_attacker = Some((s.from, s.disable_blocking));
+                g.side.combat.0.player_attacker = Some((s.from, s.disable_blocking));
                 if let Some((id, name)) = attacker_note.clone() {
                     g.note_player_attacker(
                         "minecraft:player_attack",
@@ -464,7 +464,7 @@ impl Game<'_> {
                 }
                 let hurt =
                     g.mob_hits_player_from(s.amount, s.from, "minecraft:player_attack", s.creative);
-                g.combat.0.player_attacker = None;
+                g.side.combat.0.player_attacker = None;
                 let (strength, xd, zd) = s.knockback;
                 if hurt && strength > 0.0 {
                     g.knock_back_player_full(
@@ -540,9 +540,9 @@ impl Game<'_> {
             match s.attacker {
                 None => {
                     // The host is checked out here: collect the sweep for the players.
-                    self.combat.0.sweeps = Some(Vec::new());
+                    self.side.combat.0.sweeps = Some(Vec::new());
                     self.sweep_attack(at, Some(s.from), target, s.scale);
-                    for sweep in self.combat.0.sweeps.take().unwrap_or_default() {
+                    for sweep in self.side.combat.0.sweeps.take().unwrap_or_default() {
                         self.sweep_players(&sweep);
                     }
                 }
@@ -620,7 +620,7 @@ impl Game<'_> {
                     self.score_player_killed_named(Some(name), true);
                 }
                 CombatPlayer::Displaced(depth, _) => {
-                    let frame = &self.lan_displaced_players.0[depth];
+                    let frame = &self.side.lan_displaced_players.0[depth];
                     let killer = frame.name.as_deref().unwrap_or(PLAYER_NAME).to_owned();
                     self.award_displaced_stat(depth, "player_kills", 1);
                     self.score_player_kill_for(&killer, Some(&name), true);
@@ -668,7 +668,7 @@ impl Game<'_> {
             self.enchanted_damage("minecraft:player", base, None) * scale
         };
         Sweep {
-            attacker: self.server.lan_acting,
+            attacker: self.side.lan_acting,
             creative: self.creative,
             from,
             damage,
@@ -685,9 +685,9 @@ impl Game<'_> {
     /// turn the host holds the other players (`as_guest`), so it waits for
     /// the turn to end.
     pub(in crate::game::server_side) fn sweep_other_players(&mut self, sweep: Sweep) {
-        if let Some(collect) = self.combat.0.sweeps.as_mut() {
+        if let Some(collect) = self.side.combat.0.sweeps.as_mut() {
             collect.push(sweep);
-        } else if self.server.lan_acting.is_some() {
+        } else if self.side.lan_acting.is_some() {
             self.creatures.sweeps.push(sweep);
         } else {
             self.sweep_players(&sweep);

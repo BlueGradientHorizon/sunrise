@@ -2,7 +2,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `player` tosses the item entity `item` (`ItemTossEvent`, from
     /// `Player.drop`: the drop key, a menu's throw, what no longer fits),
     /// not what scatters when they die. The entity is made but not yet in

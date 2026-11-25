@@ -48,7 +48,7 @@ pub(in crate::game) fn support_of(start: &Prepared, bounds: Aabb, id: u32) -> Op
     best.map(|(_, support)| support)
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Carries bodies on colliders that moved this tick, then shoves bodies in the path of a
     /// translating collider. `start` is the colliders as the tick began. Dispatched by role.
     pub(in crate::game) fn carry_pass(&mut self, start: &Prepared) {

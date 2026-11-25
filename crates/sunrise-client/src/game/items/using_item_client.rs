@@ -1,7 +1,7 @@
 use super::{Game, Hit, item_use};
 use sunrise_client::items::ItemStack;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Client-side `Consumable.startConsuming`: instant consumables await server sync.
     pub(in crate::game::client_side) fn client_start_eating(
         &mut self,

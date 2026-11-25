@@ -22,7 +22,7 @@ pub(in crate::game::client_side) use sunrise_protocol::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::entity_move::MoverType;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The box of a boat, minecart, armor stand, item frame, painting or general row, and
     /// the point an interact packet's location is measured from (the
     /// client's `remote_object_hit` uses the same points).
@@ -32,7 +32,7 @@ impl Game<'_> {
     ) -> Option<([f64; 3], [f64; 3], [f64; 3])> {
         let at = |v: Vec3| [v.x, v.y, v.z];
         let centre = |p: [i32; 3]| p.map(|v| f64::from(v) + 0.5);
-        if let Some(i) = self.client.interactions.get(&id) {
+        if let Some(i) = self.side.interactions.get(&id) {
             let (lo, hi) = corners(i.bounds());
             return Some((lo, hi, at(i.position)));
         }

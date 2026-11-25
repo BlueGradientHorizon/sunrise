@@ -59,7 +59,7 @@ impl MountClickWindow {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerPlayer.openHorseInventory` for mount `mob`: the open menu
     /// closes, the client gets the mount screen and the menu's slots.
     pub(in crate::game) fn lan_open_mount(&mut self, conn: u32, mob: u32) {

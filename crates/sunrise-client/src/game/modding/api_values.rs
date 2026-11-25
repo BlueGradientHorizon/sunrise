@@ -1304,7 +1304,7 @@ impl TryIntoApi for crate::menu::AnvilCraftSnapshot {
     }
 }
 
-impl super::Game<'_> {
+impl super::Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn api_grindstone_place(
         &mut self,
         player: u128,
@@ -1815,7 +1815,7 @@ impl TryIntoApi for crate::containers::ModBlockEntity {
     }
 }
 
-impl super::Game<'_> {
+impl super::Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn api_block_entity_update_tag(
         pos: [i32; 3],
         entity: &crate::containers::ModBlockEntity,

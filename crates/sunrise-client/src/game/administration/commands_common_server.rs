@@ -47,7 +47,7 @@ pub(in crate::game::server_side) use sunrise_core::{
     version::{BUILD_TIME, DATA_VERSION, STABLE, VANILLA_VERSION, VERSION_ID},
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `BlockEntity.saveWithoutMetadata` of the block entity at `pos`, without id or position.
     pub(in crate::game) fn block_entity_tag(&self, pos: [i32; 3]) -> Option<Tag> {
         let e = self.world.block_entities.get(&(pos[0], pos[1], pos[2]))?;

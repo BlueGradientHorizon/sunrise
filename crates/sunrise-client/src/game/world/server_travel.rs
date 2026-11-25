@@ -287,9 +287,9 @@ impl Trip {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn gateway_source_chunks(&self) -> Vec<(i32, i32)> {
-        self.server
+        self.side
             .server_trips
             .iter()
             .filter(|t| t.dim == self.dim)
@@ -301,7 +301,7 @@ impl Game<'_> {
     /// client's moves ignored) until the chunks are lit, then placed there again (#15727).
     pub(in crate::game) fn hold_for_chunks(&mut self, conn: u32, target: Vec3) {
         // The arrival the player was waiting for elsewhere is abandoned.
-        self.server.server_trips.retain(|t| !t.is(conn));
+        self.side.server_trips.retain(|t| !t.is(conn));
         let (cx, cz) = (
             (target.x.floor() as i32) >> 4,
             (target.z.floor() as i32) >> 4,
@@ -309,7 +309,7 @@ impl Game<'_> {
         if (-2..=2).all(|dz| (-2..=2).all(|dx| self.streaming.is_lit(cx + dx, cz + dz))) {
             return;
         }
-        self.server.server_trips.push(Trip {
+        self.side.server_trips.push(Trip {
             conn,
             dim: self.dim,
             source: self.dim,
@@ -337,7 +337,7 @@ impl Game<'_> {
         };
         let level = self.dim.id();
         let moved: Vec<(u32, Vec3)> = self
-            .server
+            .side
             .server_trips
             .iter()
             .filter(|t| t.hold && t.dim == self.dim)
@@ -365,7 +365,7 @@ impl Game<'_> {
             }
             let conn = g.conn;
             if self
-                .server
+                .side
                 .server_trips
                 .iter()
                 .any(|t| t.is(conn) && t.holds_movement())
@@ -373,7 +373,7 @@ impl Game<'_> {
                 continue;
             }
             let landing = self
-                .server
+                .side
                 .server_trips
                 .iter()
                 .any(|t| t.is(conn) && (t.end || t.plan.is_some()));
@@ -388,7 +388,7 @@ impl Game<'_> {
     /// Whether the server leaves the player's body alone until arrival. A player whose
     /// End exit is still being resolved hasn't traveled yet and ticks in the source level.
     pub(in crate::game) fn on_server_trip(&self, conn: u32) -> bool {
-        self.server
+        self.side
             .server_trips
             .iter()
             .any(|t| t.is(conn) && !t.is_resolving_end_exit())
@@ -396,13 +396,13 @@ impl Game<'_> {
 
     /// Portal processing does not start another trip while one is already being resolved.
     fn has_pending_travel(&self, conn: u32) -> bool {
-        self.server.server_trips.iter().any(|t| t.is(conn))
+        self.side.server_trips.iter().any(|t| t.is(conn))
     }
 
     /// Whether a vehicle waits in `dim` for its rider to arrive elsewhere:
     /// that level stays open until it has moved.
     pub(in crate::game::server_side) fn vehicle_waits_in(&self, dim: Dim) -> bool {
-        self.server
+        self.side
             .server_trips
             .iter()
             .any(|t| t.vehicle.is_some() && t.source == dim)
@@ -492,7 +492,7 @@ impl Game<'_> {
             });
             return true;
         }
-        if self.cmds.0.guest_cameras.contains_key(&conn) {
+        if self.side.cmds.0.guest_cameras.contains_key(&conn) {
             self.guest_set_camera(gi, None);
         }
         match name {
@@ -604,7 +604,7 @@ impl Game<'_> {
             return true;
         };
         if visited.contains(&id)
-            || (!self.server.held_out.contains(&id)
+            || (!self.side.held_out.contains(&id)
                 && self
                     .native_entity_target(mod_api::EntityRef::new(epoch, id))
                     .is_none())
@@ -630,7 +630,7 @@ impl Game<'_> {
         if cancel {
             return false;
         }
-        if self.server.held_out.contains(&id) {
+        if self.side.held_out.contains(&id) {
             return true;
         }
         if self
@@ -917,7 +917,7 @@ impl Game<'_> {
                 self.dimension_type_of(target),
             )
         };
-        self.server.end_portal_travel = end;
+        self.side.end_portal_travel = end;
         // Out of the End when the trip starts there, wherever it leads (the world spawn
         // may be in the End too); the credits respawn is always a way out.
         let entering = end && source != Dim::End;
@@ -931,7 +931,7 @@ impl Game<'_> {
         let scaled = own
             .or_else(|| self.end_destination(entering, target))
             .unwrap_or(Vec3::new(from.x * scale, from.y, from.z * scale));
-        self.server.end_portal_travel = false;
+        self.side.end_portal_travel = false;
         let retired_window = if source != target {
             self.guest_close_menus_for_travel(conn)
         } else {
@@ -967,7 +967,7 @@ impl Game<'_> {
                 g.stop_active_item_use();
             }
         });
-        self.server.server_trips.push(Trip {
+        self.side.server_trips.push(Trip {
             conn,
             dim: target,
             source,
@@ -1021,7 +1021,7 @@ impl Game<'_> {
         conn: u32,
         action: SpawnAction,
     ) {
-        if self.server.server_trips.iter().any(|t| {
+        if self.side.server_trips.iter().any(|t| {
             t.is(conn)
                 && t.spawn_search
                     .as_ref()
@@ -1061,7 +1061,7 @@ impl Game<'_> {
             log::error!("could not open {} for player spawn search: {e}", dim.id());
             return;
         }
-        self.server.server_trips.retain(|t| !t.is(conn));
+        self.side.server_trips.retain(|t| !t.is(conn));
         let trip = Trip {
             conn,
             dim,
@@ -1089,10 +1089,10 @@ impl Game<'_> {
             || self.trip_destination_ready(&trip)
         {
             if let Some(pending) = self.resolve_spawn_trip(trip, action) {
-                self.server.server_trips.push(pending);
+                self.side.server_trips.push(pending);
             }
         } else {
-            self.server.server_trips.push(trip);
+            self.side.server_trips.push(trip);
         }
         if let Err(e) = self.enter_level(return_to) {
             log::error!("could not reopen {}: {e}", return_to.id());
@@ -1248,7 +1248,7 @@ impl Game<'_> {
         if let GatewayJob::Known { exact: true, .. } = job {
             return;
         }
-        self.server.server_trips.push(Trip {
+        self.side.server_trips.push(Trip {
             conn,
             dim: self.dim,
             source: self.dim,
@@ -1275,14 +1275,14 @@ impl Game<'_> {
     fn arrive_server_trips(&mut self) {
         self.follow_command_arrivals();
         let mut k = 0;
-        while k < self.server.server_trips.len() {
-            let trip = &self.server.server_trips[k];
+        while k < self.side.server_trips.len() {
+            let trip = &self.side.server_trips[k];
             let Some(host) = self.lan.as_ref() else {
                 return;
             };
             let Some(i) = host.hub.guests.iter().position(|g| g.conn == trip.conn) else {
                 // They left on the way.
-                self.server.server_trips.remove(k);
+                self.side.server_trips.remove(k);
                 continue;
             };
             if trip.holds_movement() {
@@ -1301,10 +1301,10 @@ impl Game<'_> {
                 k += 1;
                 continue;
             }
-            let mut trip = self.server.server_trips.remove(k);
+            let mut trip = self.side.server_trips.remove(k);
             if let Some(action) = trip.spawn_search.as_ref().map(|search| search.action) {
                 if let Some(pending) = self.resolve_spawn_trip(trip, action) {
-                    self.server.server_trips.insert(k, pending);
+                    self.side.server_trips.insert(k, pending);
                     k += 1;
                 }
                 continue;
@@ -1349,7 +1349,7 @@ impl Game<'_> {
                         (at, turned.unwrap_or(yaw))
                     }
                     Ok(None) => {
-                        self.server.server_trips.insert(k, trip);
+                        self.side.server_trips.insert(k, trip);
                         k += 1;
                         continue;
                     }
@@ -1423,7 +1423,7 @@ impl Game<'_> {
             .remove(&id)
             .unwrap_or(Vec3::ZERO);
         let carried = self.portals.carried_cooldown.remove(&id);
-        let Some(parked) = self.levels.0.parked_mut(source) else {
+        let Some(parked) = self.side.levels.0.parked_mut(source) else {
             return;
         };
         let before = parked
@@ -1490,7 +1490,7 @@ impl Game<'_> {
     /// Tells the mods of the teleports a command made inside a level, with
     /// each player's state swapped in: where the move has reached the hub.
     pub(in crate::game::server_side) fn flush_teleport_notes(&mut self) {
-        for note in std::mem::take(&mut self.server.teleport_notes) {
+        for note in std::mem::take(&mut self.side.teleport_notes) {
             let TeleportNote {
                 conn,
                 uuid,
@@ -1500,7 +1500,7 @@ impl Game<'_> {
                 dimension,
             } = note;
             // In place when it is their turn already (as_guest finds them swapped in).
-            if self.server.lan_acting == Some(conn) {
+            if self.side.lan_acting == Some(conn) {
                 self.native_player_teleported(uuid, &name, from, to, &dimension);
             } else {
                 self.as_guest(conn, |g| {
@@ -1518,7 +1518,7 @@ impl Game<'_> {
         if self.lan.is_none() {
             return;
         }
-        for t in std::mem::take(&mut self.server.level_teleports) {
+        for t in std::mem::take(&mut self.side.level_teleports) {
             self.apply_direct_level_teleport(t);
         }
     }
@@ -1633,8 +1633,8 @@ impl Game<'_> {
                 // consecutive direct cross-dimension teleports in one tick never lose
                 // the first transition when `self.server_trips.retain` replaces the trip.
                 self.tell_mods_changed_dimension(t.conn, Some(source), t.dim);
-                self.server.server_trips.retain(|trip| !trip.is(t.conn));
-                self.server.server_trips.push(Trip {
+                self.side.server_trips.retain(|trip| !trip.is(t.conn));
+                self.side.server_trips.push(Trip {
                     conn: t.conn,
                     dim: t.dim,
                     source,

@@ -6,7 +6,7 @@ use super::super::Game;
 use super::Target;
 use sunrise_client::text::Text;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Decoded `CustomName` with `Entity.removeAction` applied, or `None` when
     /// absent or invalid under vanilla's `ComponentSerialization.CODEC`.
     fn custom_name_of(&self, id: u32) -> Option<Text> {

@@ -168,10 +168,10 @@ pub(in crate::game::server_side) use {
     },
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The UUID of the player acting: the guest whose turn it is, else the host.
     pub(crate) fn acting_player_uuid(&mut self) -> [i32; 4] {
-        match self.server.lan_acting_uuid {
+        match self.side.lan_acting_uuid {
             Some(guest) => sunrise_client::lan::playerdata::uuid_ints(guest),
             None => self.level.ensure_player_uuid(),
         }
@@ -179,8 +179,8 @@ impl Game<'_> {
     /// `ItemCooldowns.addCooldown` (a guest also gets the packet).
     pub(crate) fn add_cooldown(&mut self, group: Arc<str>, ticks: i32) {
         self.cooldowns.add(Arc::clone(&group), ticks);
-        if self.server.lan_acting.is_some() {
-            self.server.guest_cooldowns.push((group, ticks));
+        if self.side.lan_acting.is_some() {
+            self.side.guest_cooldowns.push((group, ticks));
         }
     }
     /// Joins an item only after drop hooks have seen its constructor's motion.
@@ -193,7 +193,7 @@ impl Game<'_> {
         random: Option<spill::ItemRandom>,
     ) -> [f64; 3] {
         let velocity = self.push_item_entity(stack, position, velocity, pickup_delay, random);
-        let _ = self.join_item_entity(self.server.next_entity, position);
+        let _ = self.join_item_entity(self.side.next_entity, position);
         velocity
     }
     /// `ItemStack.applyAfterUseComponentSideEffects`: a used stack with a
@@ -212,8 +212,8 @@ impl Game<'_> {
         let group = sunrise_client::cooldowns::group(stack, default.as_ref());
         let mut cancel = false;
         if let (Some(player), Some(name)) = (
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_name.clone(),
+            self.side.lan_acting_uuid,
+            self.side.lan_acting_name.clone(),
         ) {
             self.native_player_item_cooldown(
                 player,
@@ -225,9 +225,9 @@ impl Game<'_> {
         }
         if !cancel {
             self.add_cooldown(group, component.ticks());
-        } else if self.server.lan_acting.is_some() {
+        } else if self.side.lan_acting.is_some() {
             // The guest's client started the cooldown itself; 0 ends it there.
-            self.server.guest_cooldowns.push((group, 0));
+            self.side.guest_cooldowns.push((group, 0));
         }
     }
     pub(in crate::game::server_side) fn break_block_as_player(
@@ -362,7 +362,7 @@ impl Game<'_> {
                     (stacks, exp_to_drop),
                 );
                 let canceled = dropped.canceled;
-                if let Some(kept) = self.server.break_collect.as_mut() {
+                if let Some(kept) = self.side.break_collect.as_mut() {
                     kept.extend(dropped.items.into_iter().map(|item| item.stack));
                     if dropped.experience > 0 {
                         self.spawn_orbs(pos.map(|v| f64::from(v) + 0.5), dropped.experience);
@@ -445,9 +445,9 @@ impl Game<'_> {
     pub(crate) fn clear_entities(&mut self) {
         self.clear_shared_entities();
         self.clear_pending_mob_actions();
-        self.others.0.clear();
+        self.side.others.0.clear();
         self.clear_entities_server_missing_professions();
-        self.levels.0.clear();
+        self.side.levels.0.clear();
     }
     #[inline(always)]
     #[allow(dead_code)]
@@ -478,7 +478,7 @@ impl Game<'_> {
     }
     #[inline(always)]
     pub(in crate::game::server_side) fn clear_entities_server_missing_professions(&mut self) {
-        self.server.missing_professions.clear();
+        self.side.missing_professions.clear();
     }
     pub(crate) fn close_container_server(&mut self) {
         assert!(
@@ -497,10 +497,10 @@ impl Game<'_> {
             }
         }
         self.craft_size = 2;
-        self.server.craft_table = None;
-        self.server.open_container_slots = None;
+        self.side.craft_table = None;
+        self.side.open_container_slots = None;
         if let Some(key) = self.container.take() {
-            if self.server.lan_acting.is_none() {
+            if self.side.lan_acting.is_none() {
                 self.mod_container_player_opener(key, false);
             }
             // A cart's or chest boat's items go back to it.
@@ -523,12 +523,12 @@ impl Game<'_> {
     #[inline(always)]
     pub(in crate::game::server_side) fn finish_close_world_server(&mut self) {
         self.clear_world_parts();
-        self.server_loot.0.set(None);
+        self.side.server_loot.0.set(None);
         self.server_items = None;
-        self.world_tables.0 = None;
-        self.session_lock.0 = None;
-        self.server.world_adopted = false;
-        self.server.startup_ticket_restore_pending = false;
+        self.side.world_tables.0 = None;
+        self.side.session_lock.0 = None;
+        self.side.world_adopted = false;
+        self.side.startup_ticket_restore_pending = false;
     }
     pub(in crate::game) fn finish_open_world(
         &mut self,
@@ -548,14 +548,14 @@ impl Game<'_> {
             loot,
             owner_migration,
         } = prepared;
-        self.server_loot.0 = loot;
+        self.side.server_loot.0 = loot;
         let dim = Dim::from_id(&level.dimension);
-        self.server.level_shapes = shapes;
-        self.server.world_root = save_root.clone();
+        self.side.level_shapes = shapes;
+        self.side.world_root = save_root.clone();
         // The root moves before the prepared level is installed. Until then a
         // final save must not run: the lock below only marks tag tables.
-        self.server.world_adopted = false;
-        self.server.owner_migration = owner_migration;
+        self.side.world_adopted = false;
+        self.side.owner_migration = owner_migration;
         // Saves and chunk readers share the same placeholder IDs.
         self.world_biomes = Some(biomes);
         self.world_biomes_base = self.world_biomes.clone();
@@ -573,10 +573,10 @@ impl Game<'_> {
         let root = self.options.resources.clone();
         self.damage_tag_generation = self.damage_tag_generation.wrapping_add(1);
         // A code-mod switch can have rebuilt the root since `Game::new`.
-        self.server.structure_spawns =
+        self.side.structure_spawns =
             sunrise_client::mobs::spawn_selection::StructureSpawns::load(&root);
         // Native tag reads use the lock to tell that the tag tables are ready.
-        self.session_lock.0 = Some(session_lock);
+        self.side.session_lock.0 = Some(session_lock);
         self.resolve_parts()?;
         self.refresh_recipe_property_context();
         // Warm this world's pack-aware loot data before gameplay can unpack
@@ -584,7 +584,7 @@ impl Game<'_> {
         self.load_server_loot();
         // MinecraftServer's constructor reads CustomBossEvents before any
         // server event.
-        self.server.bosses = Default::default();
+        self.side.bosses = Default::default();
         self.load_bossbars();
         // ServerLevel's constructor reads its Raids saved data before any
         // server event; their randoms are seeded on the first raid tick.
@@ -594,8 +594,8 @@ impl Game<'_> {
         self.announce_data_bound(mod_api::TagsUpdateCause::ServerDataLoad { reload: false });
         self.announce_data_maps_updated(mod_api::DataMapsUpdateCause::ServerReload);
         self.sync_recipe_content();
-        self.server.restore_player_state = true;
-        self.server.rand_sequences = rand_sequences;
+        self.side.restore_player_state = true;
+        self.side.rand_sequences = rand_sequences;
         // ServerLevel.getWorldBorder: the level in place reads its own saved
         // border when it is made, before any command (the parked levels read
         // theirs in `open_level`).
@@ -637,21 +637,21 @@ impl Game<'_> {
         self.world = world;
         self.inventory = inventory;
         self.bind_chunk_disk_worker(&save, dim);
-        self.save.0 = self.with_profession_save_snapshot(save);
+        self.side.save.0 = self.with_profession_save_snapshot(save);
         // MinecraftServer.prepareLevels restores the saved tickets after the
         // built-in levels have been published.
-        self.tickets.0 = Default::default();
-        self.server.startup_ticket_restore_pending =
+        self.side.tickets.0 = Default::default();
+        self.side.startup_ticket_restore_pending =
             self.options.execution_role.is_logical_server();
         // The ride the player's file names, once the vehicle is in the world.
-        self.server.pending_vehicle = level.root_vehicle;
+        self.side.pending_vehicle = level.root_vehicle;
         self.level = level;
         self.check_mod_mismatch();
-        self.server.world_adopted = true;
+        self.side.world_adopted = true;
         if self.options.execution_role.is_logical_server() {
             self.options
                 .save_failure_diagnostics
-                .register(self.save.0.save_failure_reporter());
+                .register(self.side.save.0.save_failure_reporter());
         }
         // ServerRecipeBook.loadUntrusted: recipes the manager does not have are dropped.
         let index = &world_stations!(self).recipe_index;
@@ -661,26 +661,26 @@ impl Game<'_> {
         self.enter_opened_dim(dim);
         self.world_flat = sunrise_client::save::WorldGen::read(&save_root)
             .is_some_and(|w| w.preset == sunrise_client::save::WorldPreset::Flat);
-        self.server.world_debug = sunrise_client::save::WorldGen::read(&save_root)
+        self.side.world_debug = sunrise_client::save::WorldGen::read(&save_root)
             .is_some_and(|w| w.preset == sunrise_client::save::WorldPreset::Debug);
         self.block_ticks = Ticks::new(self.level.seed as i32);
-        self.server.tick_chunks.clear();
+        self.side.tick_chunks.clear();
         self.clear_entities();
         self.player = None;
         self.sleeping = None;
         self.sleep_timer = 0;
-        self.server.player_beds.clear();
+        self.side.player_beds.clear();
         self.spawn = None;
-        self.server.respawn_config = self
+        self.side.respawn_config = self
             .level
             .respawn_elsewhere
             .as_ref()
             .and_then(respawn_anchor::RespawnConfig::from_saved);
-        self.server.spawn_origin = None;
-        self.server.spawn_hook_fired = false;
-        self.server.spawn_hook_cancelled = false;
-        self.server.spawn_spiral = Default::default();
-        self.server.player_spawn = None;
+        self.side.spawn_origin = None;
+        self.side.spawn_hook_fired = false;
+        self.side.spawn_hook_cancelled = false;
+        self.side.spawn_spiral = Default::default();
+        self.side.player_spawn = None;
         self.creatures.reset_trader();
         self.creatures.cat = Default::default();
         self.creatures.custom_spawners.clear();
@@ -753,7 +753,7 @@ impl Game<'_> {
     }
     /// An item-specific POV outline ray at the current rotation and block reach.
     pub(in crate::game::server_side) fn item_pick(&self) -> Option<Hit> {
-        if let Some(hit) = self.server.forced_hit {
+        if let Some(hit) = self.side.forced_hit {
             return Some(hit);
         }
         let (origin, direction) = self.aim()?;
@@ -790,7 +790,7 @@ impl Game<'_> {
             p.teleported_delta = [false; 3];
         }
         self.pitch = 0.0;
-        if self.server.lan_acting.is_none() {
+        if self.side.lan_acting.is_none() {
             self.previous_position = at;
         }
         self.occupy_bed(head);
@@ -806,7 +806,7 @@ impl Game<'_> {
         self.armor = [None, None, None, None];
         self.offhand = None;
         self.equipment = Default::default();
-        self.server.ender_items = if level.ender_items.len() == 27 {
+        self.side.ender_items = if level.ender_items.len() == 27 {
             level.ender_items.clone()
         } else {
             vec![None; 27]
@@ -878,7 +878,7 @@ impl Game<'_> {
         }
         if &*name == "minecraft:crafting_table" {
             self.craft_size = 3;
-            self.server.craft_table = Some(pos);
+            self.side.craft_table = Some(pos);
         } else if &*name == "minecraft:ender_chest" {
             self.open_ender_chest(key);
             // EnderChestBlock.useWithoutItem
@@ -886,7 +886,7 @@ impl Game<'_> {
             self.anger_piglins(true);
             // Guests start the opener only when the handoff installs their menu.
             // EnderChestBlockEntity.startOpen: the first opener's CONTAINER_OPEN.
-            if self.server.lan_acting.is_none() && self.container_opener_event(key, true) {
+            if self.side.lan_acting.is_none() && self.container_opener_event(key, true) {
                 self.post_block_game_event(
                     "minecraft:container_open",
                     [key.0, key.1, key.2],
@@ -916,10 +916,10 @@ impl Game<'_> {
                 self.resolve_container_maps(key, centre);
             });
             self.container = Some(key);
-            self.server.open_container_slots = Some((key, self.open_container_size()));
+            self.side.open_container_slots = Some((key, self.open_container_size()));
             // ChestMenu and ShulkerBoxMenu start the opener in their constructors.
             // For a guest, open_block_menu does that after the turn's handoff.
-            let first = self.server.lan_acting.is_none() && self.container_opener_event(key, true);
+            let first = self.side.lan_acting.is_none() && self.container_opener_event(key, true);
             if first {
                 self.post_block_game_event(
                     "minecraft:container_open",
@@ -951,7 +951,7 @@ impl Game<'_> {
         } else if self.open_mod_menu(key) {
             // A mod block's container (`native_block_entity_container`).
             self.container = Some(key);
-            if self.server.lan_acting.is_none() {
+            if self.side.lan_acting.is_none() {
                 self.mod_container_player_opener(key, true);
             }
         } else if self.open_station(pos, &name) {
@@ -973,7 +973,7 @@ impl Game<'_> {
         let player = self
             .player
             .as_ref()
-            .filter(|p| !p.health.dead_or_dying() && !spectator && !self.server.lan_acting_fake);
+            .filter(|p| !p.health.dead_or_dying() && !spectator && !self.side.lan_acting_fake);
         // ExperienceOrb.followNearbyPlayer: each orb goes for the nearest
         // living player within 8 blocks, the host's own or a guest.
         let uuid = self
@@ -1036,13 +1036,13 @@ impl Game<'_> {
                 }
                 // A prime the mods refused is silent: no fuse sound, no game event.
                 LevelEvent::Sound { pos, ref sound, .. }
-                    if self.server.tnt_refused == Some(pos)
+                    if self.side.tnt_refused == Some(pos)
                         && &**sound == "minecraft:entity.tnt.primed" => {}
                 LevelEvent::GameEvent {
                     pos,
                     event: "minecraft:prime_fuse",
                     ..
-                } if self.server.tnt_refused == Some(pos) => self.server.tnt_refused = None,
+                } if self.side.tnt_refused == Some(pos) => self.side.tnt_refused = None,
                 LevelEvent::Sound {
                     pos,
                     sound,
@@ -1093,13 +1093,13 @@ impl Game<'_> {
                         f64::from(pos.y),
                         f64::from(pos.z) + 0.5,
                     );
-                    self.server.next_entity += 1;
+                    self.side.next_entity += 1;
                     self.falling.push(FallingBlock {
                         size_answer: None,
                         attachment_lifetime: Default::default(),
                         rotation: [0.0, 0.0],
                         join: Default::default(),
-                        id: self.server.next_entity,
+                        id: self.side.next_entity,
                         state,
                         blocks_building: true,
                         start_pos: pos,
@@ -1327,7 +1327,7 @@ impl Game<'_> {
                 // `DRAGON` ticket of radius 9 at (0, 0), so its island ticks out to 7 chunks
                 // whatever the watcher's simulation distance. The fight is where the type has one.
                 dragon: (self.dimension_type().has_ender_dragon_fight
-                    && self.server.fight.arena_watched())
+                    && self.side.fight.arena_watched())
                 .then_some((0, 0)),
                 viewed: self.viewed_tickets(),
                 view_distance: self.settings.render_distance.clamp(2, 32),
@@ -1336,12 +1336,12 @@ impl Game<'_> {
         });
         // The levels' changes are kept only for a listener, so that a tick
         // with none looks at no chunk.
-        self.tickets.0.record_changes(
+        self.side.tickets.0.record_changes(
             notify
                 && self.is_logical_server()
                 && mod_api::__private::listened(mod_api::HookId::ChunkTicketLevelUpdated),
         );
-        self.tickets.0.update(sources);
+        self.side.tickets.0.update(sources);
         if notify {
             self.run_chunk_ticket_level_updates();
         }
@@ -1351,10 +1351,10 @@ impl Game<'_> {
     /// (block ticking, with its neighbours loaded). Chunks become ticking
     /// between ticks in vanilla: before this tick's clock advanced.
     pub(in crate::game::server_side) fn start_ticking_chunks(&mut self) {
-        let levels = self.tickets.0.levels();
+        let levels = self.side.tickets.0.levels();
         let world = &self.world;
         let started = self
-            .server
+            .side
             .tick_chunks
             .start_ticking(|(x, z)| levels.loaded_ticking(x, z) && ticking_chunk(world, x, z));
         let time = self.world.game_time - 1;
@@ -1403,7 +1403,7 @@ impl Game<'_> {
         level.spawn = self.spawn.map(|s| [s.x, s.y, s.z]);
         level.respawn_elsewhere = respawn_anchor::RespawnConfig::kept(
             level.respawn_elsewhere.take(),
-            self.server.respawn_config,
+            self.side.respawn_config,
         );
         level.rotation = [self.yaw, self.pitch];
         level.xp_level = self.experience.level;
@@ -1412,7 +1412,7 @@ impl Game<'_> {
         level.root_vehicle = vehicle
             .as_ref()
             .map(|v| v.2)
-            .or(self.server.pending_vehicle);
+            .or(self.side.pending_vehicle);
         // The ride's tree, or none once the file's own came back.
         if let Some((tag, ..)) = vehicle {
             let extra = level
@@ -1507,12 +1507,12 @@ impl Game<'_> {
         }
         level.dimension = self.dim.id().to_owned();
         // An open ender chest holds the live copy.
-        if let Some(key) = self.server.ender_open
+        if let Some(key) = self.side.ender_open
             && let Some(BlockEntity::Chest(items)) = self.world.block_entities.get(&key)
         {
-            self.server.ender_items = items.clone();
+            self.side.ender_items = items.clone();
         }
-        level.ender_items = self.server.ender_items.clone();
+        level.ender_items = self.side.ender_items.clone();
         level.active_effects = self.potions.effects.saved();
     }
     /// A translated message for the player the game acts for: `overlay` is
@@ -1535,8 +1535,8 @@ impl Game<'_> {
         }
     }
     pub(in crate::game::server_side) fn tick_mining(&mut self) -> Result<()> {
-        if self.server.destroy_delay > 0 {
-            self.server.destroy_delay -= 1;
+        if self.side.destroy_delay > 0 {
+            self.side.destroy_delay -= 1;
         }
         if !self.server_acting_attack() {
             self.mining = None;
@@ -1558,13 +1558,13 @@ impl Game<'_> {
             return Ok(());
         }
         if self.creative {
-            if self.server.destroy_delay == 0 {
+            if self.side.destroy_delay == 0 {
                 self.break_block(hit.pos)?;
-                self.server.destroy_delay = 5;
+                self.side.destroy_delay = 5;
             }
             return Ok(());
         }
-        if self.server.destroy_delay > 0 {
+        if self.side.destroy_delay > 0 {
             return Ok(());
         }
         if self.mining.as_ref().is_none_or(|m| m.pos != hit.pos) {
@@ -1604,11 +1604,11 @@ impl Game<'_> {
         // (`guest_stop_digging`), never breaking it on its own count. Breaking it here would
         // take the block from under the player's crack before the player's client predicts the
         // break, so it gets neither particles nor sound.
-        if m.progress >= 1.0 && (self.server.lan_acting.is_none() || m.ticks == 1) {
+        if m.progress >= 1.0 && (self.side.lan_acting.is_none() || m.ticks == 1) {
             let pos = m.pos;
             self.mining = None;
             self.break_block(pos)?;
-            self.server.destroy_delay = 5;
+            self.side.destroy_delay = 5;
         }
         Ok(())
     }
@@ -1678,7 +1678,7 @@ impl Game<'_> {
             }
             self.wake_guests();
             // SleepStatus.removeAllSleepers: waking everyone is not announced.
-            self.server.sleep_seen.1 = 0;
+            self.side.sleep_seen.1 = 0;
         }
     }
     /// ServerPlayer.startSleepInBed: in reach, not obstructed, night or thunder,
@@ -1757,20 +1757,20 @@ impl Game<'_> {
             // ServerPlayer.setRespawnPosition: the chat message only when the
             // point moved (`isSamePosition`).
             let moved = self
-                .server
+                .side
                 .respawn_config
                 .is_none_or(|c| (c.dim, c.pos) != (config.dim, config.pos));
             // `canSetSpawn` calls the setter every time, the same bed too (it
             // refreshes the angle).
             let cancel = self.spawn_point_change(self.dim, Some(head), false);
             if !cancel {
-                self.server.respawn_config = Some(config);
+                self.side.respawn_config = Some(config);
                 if moved {
                     self.tell_sleeper("block.minecraft.set_spawn", "Respawn point set", false);
                 }
                 // The fallback becomes the world spawn: a guest's is none of its
                 // own, so it follows `setworldspawn`.
-                self.spawn = if self.server.lan_acting.is_some() {
+                self.spawn = if self.side.lan_acting.is_some() {
                     None
                 } else {
                     self.level
@@ -1806,8 +1806,8 @@ impl Game<'_> {
         // problem vanilla found, or add one.
         let mut problem = problem.map(str::to_owned);
         if let (Some(player), Some(name)) = (
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_name.clone(),
+            self.side.lan_acting_uuid,
+            self.side.lan_acting_name.clone(),
         ) {
             self.native_can_player_sleep(player, &name, head, &mut problem);
         }
@@ -1852,8 +1852,8 @@ impl Game<'_> {
             );
         }
         if let (Some(player), Some(name)) = (
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_name.clone(),
+            self.side.lan_acting_uuid,
+            self.side.lan_acting_name.clone(),
         ) {
             let mut cancel = false;
             self.native_player_bed_enter(player, &name, head, &mut cancel);
@@ -1898,8 +1898,8 @@ impl Game<'_> {
             f64::from(pos[1]) + 0.5,
             f64::from(pos[2]) + 0.5,
         ];
-        if self.server.lan_acting.is_some() {
-            self.server
+        if self.side.lan_acting.is_some() {
+            self.side
                 .guest_player_sounds
                 .push((sound.clone(), at, 1.0, 1.0));
         } else {
@@ -1931,7 +1931,7 @@ impl Game<'_> {
         };
         // BucketItem has no useOn: a guest's UseItemOn leaves it to UseItem.
         let bucket = sunrise_client::items::bucket_contents(&stack.item);
-        if matches!(self.server.guest_use, Some(GuestUse::OnBlock { .. }))
+        if matches!(self.side.guest_use, Some(GuestUse::OnBlock { .. }))
             && (item == "bucket" || bucket.is_some())
         {
             return Ok(UseResult::Pass);
@@ -2065,7 +2065,7 @@ impl Game<'_> {
                 self.trigger_block("minecraft:item_used_on_block", hit.pos, stack);
                 self.level_set(hit.pos, state)?;
                 let source = self
-                    .server
+                    .side
                     .lan_acting_uuid
                     .map(sunrise_world::level::LevelEventPlayer);
                 self.level_event_from(source, 3003, hit.pos, 0);
@@ -2191,7 +2191,7 @@ impl Game<'_> {
         // The active guest's live body wakes here; the hub owns its wake
         // animation and sleeping metadata, not the suspended outer actor.
         if let Some(i) = self
-            .server
+            .side
             .lan_acting
             .and_then(|conn| self.guest_index(conn))
             && let Some(host) = self.lan.as_mut()
@@ -2218,7 +2218,7 @@ impl Game<'_> {
         if let Some((at, yaw)) = stand {
             self.yaw = yaw;
             self.pitch = 0.0;
-            if self.server.lan_acting.is_none() {
+            if self.side.lan_acting.is_none() {
                 self.previous_position = at;
             }
         }
@@ -2227,8 +2227,8 @@ impl Game<'_> {
     /// already played it in `predict_item_on_block`.
     pub(in crate::game::server_side) fn wax_on_sound(&mut self, at: [f64; 3]) {
         let sound = "minecraft:item.honeycomb.wax_on";
-        if self.server.lan_acting.is_some() {
-            self.server
+        if self.side.lan_acting.is_some() {
+            self.side
                 .guest_block_sounds
                 .push((sound.to_owned(), at, 1.0, 1.0));
         } else {
@@ -2309,10 +2309,10 @@ impl Game<'_> {
                 .collect();
             let guest_boxes = self.lan_block_trigger_boxes();
             let building_player_boxes = self
-                .server
+                .side
                 .lan_acting
                 .is_some()
-                .then(|| self.lan_building_boxes.0.boxes(self.dim));
+                .then(|| self.side.lan_building_boxes.0.boxes(self.dim));
             let fire_players: Vec<[f64; 3]> = self
                 .player
                 .iter()
@@ -2403,7 +2403,7 @@ impl Game<'_> {
             command_block_transition: None,
             positions: piston_carry_state::PositionState {
                 gateways: &mut self.be_anims.gateway_servers,
-                hoppers: &mut self.server.hoppers,
+                hoppers: &mut self.side.hoppers,
             },
             border: self.border.geometry(),
             redstone_experiments: self
@@ -2452,7 +2452,7 @@ impl Game<'_> {
             loot: if self.remote.is_some() {
                 None
             } else {
-                self.server_loot.0.get()
+                self.side.server_loot.0.get()
             },
             loot_storage: self.score.storage.snapshot(),
             registry: self.pack.assets.registry,
@@ -2460,23 +2460,23 @@ impl Game<'_> {
             rules,
             difficulty: i32::from(self.ui.difficulty),
             fire_players,
-            rand_sequences: &mut self.server.rand_sequences,
+            rand_sequences: &mut self.side.rand_sequences,
             pending: &mut self.pending,
-            spill: &mut self.spill.0,
-            tickets: self.tickets.0.levels(),
-            random_tick_sections: &mut self.random_tick_sections.0,
-            lid_openers: &mut self.server.lid_openers,
+            spill: &mut self.side.spill.0,
+            tickets: self.side.tickets.0.levels(),
+            random_tick_sections: &mut self.side.random_tick_sections.0,
+            lid_openers: &mut self.side.lid_openers,
             open_containers: &open_containers,
             golem_chests: &golem_chests,
             client_side,
             native_authoritative,
-            native_player: self.server.lan_acting_uuid,
-            native_player_entity: self.server.lan_acting_entity.map(|id| id as i32),
+            native_player: self.side.lan_acting_uuid,
+            native_player_entity: self.side.lan_acting_entity.map(|id| id as i32),
             liquid_transaction_open,
-            debug: self.server.world_debug,
-            native_sounds: &mut self.server.pending_native_sounds,
+            debug: self.side.world_debug,
+            native_sounds: &mut self.side.pending_native_sounds,
             loop_context: &self.loop_context,
-            native_particles: &mut self.server.pending_particles,
+            native_particles: &mut self.side.pending_particles,
             sound_seeds: self.lan.as_ref().map(|host| &host.hub),
             drop_tool: None,
             drop_entity: None,
@@ -2485,7 +2485,7 @@ impl Game<'_> {
                 dimension: self.dim.id(),
                 end: &self.end,
                 tags: advancements::TagSources {
-                    pack_tags: self.world_tables.0.as_ref().map(|t| &t.pack_tags),
+                    pack_tags: self.side.world_tables.0.as_ref().map(|t| &t.pack_tags),
                     items: world_items!(self),
                     mob_data: self.res.mob_data(),
                     damage: &self.health_resources.damage,

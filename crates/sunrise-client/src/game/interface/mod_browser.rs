@@ -173,12 +173,12 @@ fn spawn(name: &str, work: impl FnOnce() + Send + 'static) {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Each frame: what the browser's worker finished.
     pub(in crate::game::client_side) fn drive_mod_browser(&mut self) {
         // The Browse mods page's layout reads the browser: a worker's answer
         // arriving makes the built page again at its next draw.
-        let (installed, changed) = self.mod_jobs.0.poll(
+        let (installed, changed) = self.side.mod_jobs.0.poll(
             &mut self.ui.options.mod_browser,
             &mut self.settings.mods,
             self.player.is_some(),

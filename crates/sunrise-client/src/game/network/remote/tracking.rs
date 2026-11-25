@@ -3,7 +3,7 @@ use super::*;
 #[allow(unused_imports)]
 use sunrise_client::particles::TrackingBody;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `recreateFromPacket`: yRot and xRot from the packet, the body and head
     /// both at its head yaw (LivingEntity).
     #[allow(dead_code)]

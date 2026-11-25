@@ -3,7 +3,7 @@ use super::Game;
 use mod_api::{PlayerDataRefusal, PlayerRef};
 use sunrise_client::{items::ItemStack, lan::playerdata};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `GiveCommand.giveItem` for one stack: `Inventory.add`, the rest thrown for the player
     /// alone to pick up in their level, even when the hook is running in another one.
     pub(in crate::game) fn player_give_stack(

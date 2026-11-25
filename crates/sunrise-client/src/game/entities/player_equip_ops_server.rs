@@ -3,7 +3,7 @@ use super::Game;
 use crate::game::player_equip::ARMOR;
 use sunrise_client::items::ItemStack;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_player_equipped(&mut self, slot: &str, new: Option<&ItemStack>) {
         if self.spectator() {
             return;

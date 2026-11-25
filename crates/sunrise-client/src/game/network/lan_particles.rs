@@ -204,7 +204,7 @@ pub(in crate::game::server_side) fn send_soul_particle(
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A snowflake from a vehicle (`PowderSnowBlock.entityInside`), to every player around.
     pub(in crate::game::server_side) fn lan_snowflake(&self, at: [f64; 3], velocity: [f64; 3]) {
         if let Some(host) = self.lan.as_ref() {
@@ -306,7 +306,7 @@ pub(in crate::game::server_side) fn send_hub_level_particles(
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `SonicBoom.tick` uses `ServerLevel.sendParticles` for each ray point.
     /// Connected players receive one at rest.
     pub(in crate::game::server_side) fn lan_sonic_boom(
@@ -464,7 +464,7 @@ impl Game<'_> {
     pub(in crate::game) fn server_send_particles(&mut self, request: ServerQueuedParticle) {
         if self.lan.is_none() {
             if self.is_logical_server() {
-                self.server.pending_particles.push(request);
+                self.side.pending_particles.push(request);
             }
             return;
         }
@@ -612,7 +612,7 @@ impl Game<'_> {
             return;
         }
         // Leave sounds queued by callbacks for the next flush.
-        for sound in std::mem::take(&mut self.server.pending_native_sounds) {
+        for sound in std::mem::take(&mut self.side.pending_native_sounds) {
             if let Some(resolved) = self.resolve_native_sound(sound) {
                 self.send_resolved_native_sound(&resolved);
             }
@@ -624,7 +624,7 @@ impl Game<'_> {
         if self.lan.is_none() {
             return;
         }
-        for request in std::mem::take(&mut self.server.pending_particles) {
+        for request in std::mem::take(&mut self.side.pending_particles) {
             self.server_send_particles(request);
         }
     }
@@ -646,8 +646,8 @@ impl Game<'_> {
         // In a guest's turn (their hit on an end crystal or a minecart) the
         // host holds the players (`as_guest`): the packet waits for the turn
         // to end so that it reaches every player, the guest too.
-        if self.server.lan_acting.is_some() && self.lan.is_none() {
-            self.server.pending_explosions.push(ServerExplosion {
+        if self.side.lan_acting.is_some() && self.lan.is_none() {
+            self.side.pending_explosions.push(ServerExplosion {
                 center,
                 small,
                 radius,
@@ -675,7 +675,7 @@ impl Game<'_> {
 
     /// The explosions guests' turns put off.
     pub(in crate::game) fn flush_lan_explosions(&mut self) {
-        for e in std::mem::take(&mut self.server.pending_explosions) {
+        for e in std::mem::take(&mut self.side.pending_explosions) {
             self.lan_explode(
                 e.center,
                 e.small,

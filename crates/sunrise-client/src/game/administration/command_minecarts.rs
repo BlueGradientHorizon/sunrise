@@ -6,7 +6,7 @@ use super::{Game, command_blocks::CommandBlockScreen, minecarts::CartKind};
 use sunrise_client::{command_block::Mode, text::Text};
 use sunrise_protocol::packets::play::{self, Serverbound as S};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `LocalPlayer.openMinecartCommandBlock`: the editor over the cart's
     /// command (`MinecartCommandBlockEditScreen`).
     pub(in crate::game::client_side) fn open_cart_command_block(&mut self, id: u32) {

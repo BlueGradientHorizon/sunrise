@@ -15,7 +15,7 @@ pub(in crate::game::client_side) use sunrise_gameplay::game_modes::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::world_movement::in_range_of_ground;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `MultiPlayerGameMode.setLocalMode(GameType)`: updates only the local mode and `Abilities`.
     pub(in crate::game) fn set_local_mode(&mut self, mode: GameMode) {
         if mode != self.mode {
@@ -53,12 +53,12 @@ impl Game<'_> {
     /// Whether `Screen::Inventory` currently shows the player's own `InventoryScreen`
     /// rather than a container, crafting table, workstation, mount, or server/mod menu.
     pub(in crate::game) fn is_player_inventory_screen(&self) -> bool {
-        self.client.screen == Screen::Inventory
+        self.side.screen == Screen::Inventory
             && self.container.is_none()
             && self.station.is_none()
             && self.craft_size == 2
             && !self.mount_active()
-            && self.mod_screen.0.is_none()
+            && self.side.mod_screen.0.is_none()
             && self.remote_menu_type().is_none()
     }
     /// Reconcile an open player inventory on its screen tick (`InventoryScreen.containerTick`
@@ -69,19 +69,19 @@ impl Game<'_> {
             return;
         }
         let next = inventory_after_infinite_materials(
-            self.client.screen,
+            self.side.screen,
             self.is_player_inventory_screen(),
             self.instabuild(),
         );
-        if next == self.client.screen {
+        if next == self.side.screen {
             return;
         }
         match next {
             Screen::Creative => {
                 self.set_screen(Screen::Creative);
-                if self.client.screen == Screen::Creative {
+                if self.side.screen == Screen::Creative {
                     self.refresh_creative_tabs();
-                    self.creative_screen.0.reopen();
+                    self.side.creative_screen.0.reopen();
                     self.refresh_saved_hotbars();
                 }
             }

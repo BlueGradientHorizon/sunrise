@@ -29,7 +29,7 @@ pub(in crate::game::client_side) use crate::game::remote::inventory::remote_stat
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::remote::inventory::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Find a game slot in the menu's complete, contiguous slot mapping.
     pub(in crate::game) fn menu_slot_index(menu: &str, internal: usize) -> Option<usize> {
         (0..)

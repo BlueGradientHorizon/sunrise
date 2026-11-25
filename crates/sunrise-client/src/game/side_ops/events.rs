@@ -14,32 +14,14 @@ thread_local! {
     > = const { std::cell::RefCell::new(None) };
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     // Level events and world update.
 
-    pub(in crate::game) fn side_process_level_events(&mut self) -> Result<()> {
-        if self.is_logical_server() {
-            self.server_process_level_events()
-        } else {
-            self.client_process_level_events()
-        }
-    }
+    pub(in crate::game) fn side_process_level_events(&mut self) -> Result<()> { <__Side as SideOps>::side_process_level_events(self) }
 
-    pub(in crate::game) fn side_level_event_at(&mut self, id: i32, pos: [i32; 3], data: i32) {
-        if self.is_logical_server() {
-            self.server_level_event_at(id, pos, data);
-        } else {
-            self.client_level_event_at(id, pos, data);
-        }
-    }
+    pub(in crate::game) fn side_level_event_at(&mut self, id: i32, pos: [i32; 3], data: i32) { <__Side as SideOps>::side_level_event_at(self, id, pos, data) }
 
-    pub(in crate::game) fn side_update_world(&mut self) {
-        if self.is_logical_server() {
-            self.server_update_world();
-        } else {
-            self.client_update_world();
-        }
-    }
+    pub(in crate::game) fn side_update_world(&mut self) { <__Side as SideOps>::side_update_world(self) }
 
     // Sculk and game events.
 
@@ -49,13 +31,7 @@ impl Game<'_> {
         pos: [i32; 3],
         actor: Option<Who>,
         state: Option<BlockStateId>,
-    ) {
-        if self.is_logical_server() {
-            self.server_post_block_game_event(event, pos, actor, state);
-        } else {
-            self.client_post_block_game_event(event, pos, actor, state);
-        }
-    }
+    ) { <__Side as SideOps>::side_post_block_game_event(self, event, pos, actor, state) }
 
     #[allow(dead_code)]
     pub(in crate::game) fn side_post_game_event(
@@ -63,134 +39,259 @@ impl Game<'_> {
         event: &'static str,
         pos: [f64; 3],
         ctx: SculkContext,
-    ) {
-        if self.is_logical_server() {
-            self.server_post_game_event(event, pos, ctx);
-        } else {
-            self.client_post_game_event(event, pos, ctx);
-        }
-    }
+    ) { <__Side as SideOps>::side_post_game_event(self, event, pos, ctx) }
 
-    pub(in crate::game) fn side_sculk_actor(&self) -> Option<Who> {
-        if self.is_logical_server() {
-            self.server_sculk_actor()
-        } else {
-            self.client_sculk_actor()
-        }
-    }
+    pub(in crate::game) fn side_sculk_actor(&self) -> Option<Who> { <__Side as SideOps>::side_sculk_actor(self) }
 
     // Animated block-entity bell hooks.
 
-    pub(in crate::game) fn side_bell_gather(&self, pos: [i32; 3]) -> Vec<u64> {
-        if self.is_logical_server() {
-            self.server_bell_gather(pos)
-        } else {
-            self.client_bell_gather(pos)
-        }
-    }
+    pub(in crate::game) fn side_bell_gather(&self, pos: [i32; 3]) -> Vec<u64> { <__Side as SideOps>::side_bell_gather(self, pos) }
 
-    pub(in crate::game) fn side_bell_heard(&mut self, pos: [i32; 3], time: i64) {
-        if self.is_logical_server() {
-            self.server_bell_heard(pos, time);
-        } else {
-            self.client_bell_heard(pos, time);
-        }
-    }
+    pub(in crate::game) fn side_bell_heard(&mut self, pos: [i32; 3], time: i64) { <__Side as SideOps>::side_bell_heard(self, pos, time) }
 
     #[allow(dead_code)]
     pub(in crate::game) fn side_tick_bell(
         &mut self,
         pos: [i32; 3],
         tags: &sunrise_client::items::EntityTypeTags,
-    ) {
-        if self.is_logical_server() {
-            self.server_tick_bell(pos, tags);
-        } else {
-            self.client_tick_bell(pos, tags);
-        }
-    }
+    ) { <__Side as SideOps>::side_tick_bell(self, pos, tags) }
 
     // Stats and container notifications for common callers.
 
-    pub(in crate::game) fn side_award_stat(&mut self, category: &str, item: &str, amount: i32) {
-        if self.is_logical_server() {
-            self.server_award_stat(category, item, amount);
-        } else {
-            self.client_award_stat(category, item, amount);
-        }
-    }
+    pub(in crate::game) fn side_award_stat(&mut self, category: &str, item: &str, amount: i32) { <__Side as SideOps>::side_award_stat(self, category, item, amount) }
 
-    pub(in crate::game) fn side_award_custom_stat(&mut self, key: &str, amount: i32) {
-        if self.is_logical_server() {
-            self.server_award_custom_stat(key, amount);
-        } else {
-            self.client_award_custom_stat(key, amount);
-        }
-    }
+    pub(in crate::game) fn side_award_custom_stat(&mut self, key: &str, amount: i32) { <__Side as SideOps>::side_award_custom_stat(self, key, amount) }
 
     #[allow(dead_code)]
-    pub(in crate::game) fn side_container_changed(&mut self, key: (i32, i32, i32)) {
-        if self.is_logical_server() {
-            self.server_container_changed(key);
-        } else {
-            self.client_container_changed(key);
-        }
-    }
+    pub(in crate::game) fn side_container_changed(&mut self, key: (i32, i32, i32)) { <__Side as SideOps>::side_container_changed(self, key) }
 
     // Transactions and journals.
 
     pub(in crate::game) fn side_tx_close_storage_transaction(
         &mut self,
         commit: bool,
-    ) -> Option<transactions::StorageSettlement> {
-        if self.is_logical_server() {
-            self.server_tx_close_storage_transaction(commit)
-        } else {
-            self.client_tx_close_storage_transaction(commit)
-        }
-    }
+    ) -> Option<transactions::StorageSettlement> { <__Side as SideOps>::side_tx_close_storage_transaction(self, commit) }
 
-    pub(in crate::game) fn side_tx_run_after(&mut self, after: transactions::After) {
-        if self.is_logical_server() {
-            self.server_tx_run_after(after);
-        } else {
-            self.client_tx_run_after(after);
-        }
-    }
+    pub(in crate::game) fn side_tx_run_after(&mut self, after: transactions::After) { <__Side as SideOps>::side_tx_run_after(self, after) }
 
     pub(in crate::game) fn side_tx_container_change_effect(
         &self,
         pos: (i32, i32, i32),
         holder: Option<BlockEntityIdentity>,
-    ) -> transactions::After {
-        if self.is_logical_server() {
-            self.server_tx_container_change_effect(pos, holder)
-        } else {
-            self.client_tx_container_change_effect(pos, holder)
+    ) -> transactions::After { <__Side as SideOps>::side_tx_container_change_effect(self, pos, holder) }
+
+    pub(in crate::game) fn side_tx_journal_player(&mut self, uuid: u128) { <__Side as SideOps>::side_tx_journal_player(self, uuid) }
+
+    pub(in crate::game) fn side_tx_journal_block_entity(&mut self, pos: (i32, i32, i32)) { <__Side as SideOps>::side_tx_journal_block_entity(self, pos) }
+
+    pub(in crate::game) fn side_tx_journal_menus(&mut self, player: mod_api::PlayerRef) { <__Side as SideOps>::side_tx_journal_menus(self, player) }
+}
+
+
+// Generated by Shape G codemod from side_* role dispatchers.
+pub(in crate::game) trait SideOps: Sized {
+    fn side_process_level_events(game: &mut crate::game::Game<'_, Self>) -> Result<()>;
+    fn side_level_event_at(game: &mut crate::game::Game<'_, Self>, id: i32, pos: [i32; 3], data: i32);
+    fn side_update_world(game: &mut crate::game::Game<'_, Self>);
+    fn side_post_block_game_event(game: &mut crate::game::Game<'_, Self>, event: &'static str, pos: [i32; 3], actor: Option<Who>, state: Option<BlockStateId>);
+    fn side_post_game_event(game: &mut crate::game::Game<'_, Self>, event: &'static str, pos: [f64; 3], ctx: SculkContext);
+    fn side_sculk_actor(game: &crate::game::Game<'_, Self>) -> Option<Who>;
+    fn side_bell_gather(game: &crate::game::Game<'_, Self>, pos: [i32; 3]) -> Vec<u64>;
+    fn side_bell_heard(game: &mut crate::game::Game<'_, Self>, pos: [i32; 3], time: i64);
+    fn side_tick_bell(game: &mut crate::game::Game<'_, Self>, pos: [i32; 3], tags: &sunrise_client::items::EntityTypeTags);
+    fn side_award_stat(game: &mut crate::game::Game<'_, Self>, category: &str, item: &str, amount: i32);
+    fn side_award_custom_stat(game: &mut crate::game::Game<'_, Self>, key: &str, amount: i32);
+    fn side_container_changed(game: &mut crate::game::Game<'_, Self>, key: (i32, i32, i32));
+    fn side_tx_close_storage_transaction(game: &mut crate::game::Game<'_, Self>, commit: bool) -> Option<transactions::StorageSettlement>;
+    fn side_tx_run_after(game: &mut crate::game::Game<'_, Self>, after: transactions::After);
+    fn side_tx_container_change_effect(game: &crate::game::Game<'_, Self>, pos: (i32, i32, i32), holder: Option<BlockEntityIdentity>) -> transactions::After;
+    fn side_tx_journal_player(game: &mut crate::game::Game<'_, Self>, uuid: u128);
+    fn side_tx_journal_block_entity(game: &mut crate::game::Game<'_, Self>, pos: (i32, i32, i32));
+    fn side_tx_journal_menus(game: &mut crate::game::Game<'_, Self>, player: mod_api::PlayerRef);
+}
+#[allow(unused_variables)]
+impl SideOps for crate::game::server_side::ServerState {
+    fn side_process_level_events(game: &mut crate::game::Game<'_, Self>) -> Result<()> {
+        {
+            game.server_process_level_events()
         }
     }
-
-    pub(in crate::game) fn side_tx_journal_player(&mut self, uuid: u128) {
-        if self.is_logical_server() {
-            self.server_tx_journal_player(uuid);
-        } else {
-            self.client_tx_journal_player(uuid);
+    fn side_level_event_at(game: &mut crate::game::Game<'_, Self>, id: i32, pos: [i32; 3], data: i32) {
+        {
+            game.server_level_event_at(id, pos, data);
         }
     }
-
-    pub(in crate::game) fn side_tx_journal_block_entity(&mut self, pos: (i32, i32, i32)) {
-        if self.is_logical_server() {
-            self.server_tx_journal_block_entity(pos);
-        } else {
-            self.client_tx_journal_block_entity(pos);
+    fn side_update_world(game: &mut crate::game::Game<'_, Self>) {
+        {
+            game.server_update_world();
         }
     }
-
-    pub(in crate::game) fn side_tx_journal_menus(&mut self, player: mod_api::PlayerRef) {
-        if self.is_logical_server() {
-            self.server_tx_journal_menus(player);
-        } else {
-            self.client_tx_journal_menus(player);
+    fn side_post_block_game_event(game: &mut crate::game::Game<'_, Self>, event: &'static str, pos: [i32; 3], actor: Option<Who>, state: Option<BlockStateId>) {
+        {
+            game.server_post_block_game_event(event, pos, actor, state);
+        }
+    }
+    fn side_post_game_event(game: &mut crate::game::Game<'_, Self>, event: &'static str, pos: [f64; 3], ctx: SculkContext) {
+        {
+            game.server_post_game_event(event, pos, ctx);
+        }
+    }
+    fn side_sculk_actor(game: &crate::game::Game<'_, Self>) -> Option<Who> {
+        {
+            game.server_sculk_actor()
+        }
+    }
+    fn side_bell_gather(game: &crate::game::Game<'_, Self>, pos: [i32; 3]) -> Vec<u64> {
+        {
+            game.server_bell_gather(pos)
+        }
+    }
+    fn side_bell_heard(game: &mut crate::game::Game<'_, Self>, pos: [i32; 3], time: i64) {
+        {
+            game.server_bell_heard(pos, time);
+        }
+    }
+    fn side_tick_bell(game: &mut crate::game::Game<'_, Self>, pos: [i32; 3], tags: &sunrise_client::items::EntityTypeTags) {
+        {
+            game.server_tick_bell(pos, tags);
+        }
+    }
+    fn side_award_stat(game: &mut crate::game::Game<'_, Self>, category: &str, item: &str, amount: i32) {
+        {
+            game.server_award_stat(category, item, amount);
+        }
+    }
+    fn side_award_custom_stat(game: &mut crate::game::Game<'_, Self>, key: &str, amount: i32) {
+        {
+            game.server_award_custom_stat(key, amount);
+        }
+    }
+    fn side_container_changed(game: &mut crate::game::Game<'_, Self>, key: (i32, i32, i32)) {
+        {
+            game.server_container_changed(key);
+        }
+    }
+    fn side_tx_close_storage_transaction(game: &mut crate::game::Game<'_, Self>, commit: bool) -> Option<transactions::StorageSettlement> {
+        {
+            game.server_tx_close_storage_transaction(commit)
+        }
+    }
+    fn side_tx_run_after(game: &mut crate::game::Game<'_, Self>, after: transactions::After) {
+        {
+            game.server_tx_run_after(after);
+        }
+    }
+    fn side_tx_container_change_effect(game: &crate::game::Game<'_, Self>, pos: (i32, i32, i32), holder: Option<BlockEntityIdentity>) -> transactions::After {
+        {
+            game.server_tx_container_change_effect(pos, holder)
+        }
+    }
+    fn side_tx_journal_player(game: &mut crate::game::Game<'_, Self>, uuid: u128) {
+        {
+            game.server_tx_journal_player(uuid);
+        }
+    }
+    fn side_tx_journal_block_entity(game: &mut crate::game::Game<'_, Self>, pos: (i32, i32, i32)) {
+        {
+            game.server_tx_journal_block_entity(pos);
+        }
+    }
+    fn side_tx_journal_menus(game: &mut crate::game::Game<'_, Self>, player: mod_api::PlayerRef) {
+        {
+            game.server_tx_journal_menus(player);
+        }
+    }
+}
+#[allow(unused_variables)]
+impl SideOps for crate::game::client_side::ClientState {
+    fn side_process_level_events(game: &mut crate::game::Game<'_, Self>) -> Result<()> {
+        {
+            game.client_process_level_events()
+        }
+    }
+    fn side_level_event_at(game: &mut crate::game::Game<'_, Self>, id: i32, pos: [i32; 3], data: i32) {
+        {
+            game.client_level_event_at(id, pos, data);
+        }
+    }
+    fn side_update_world(game: &mut crate::game::Game<'_, Self>) {
+        {
+            game.client_update_world();
+        }
+    }
+    fn side_post_block_game_event(game: &mut crate::game::Game<'_, Self>, event: &'static str, pos: [i32; 3], actor: Option<Who>, state: Option<BlockStateId>) {
+        {
+            game.client_post_block_game_event(event, pos, actor, state);
+        }
+    }
+    fn side_post_game_event(game: &mut crate::game::Game<'_, Self>, event: &'static str, pos: [f64; 3], ctx: SculkContext) {
+        {
+            game.client_post_game_event(event, pos, ctx);
+        }
+    }
+    fn side_sculk_actor(game: &crate::game::Game<'_, Self>) -> Option<Who> {
+        {
+            game.client_sculk_actor()
+        }
+    }
+    fn side_bell_gather(game: &crate::game::Game<'_, Self>, pos: [i32; 3]) -> Vec<u64> {
+        {
+            game.client_bell_gather(pos)
+        }
+    }
+    fn side_bell_heard(game: &mut crate::game::Game<'_, Self>, pos: [i32; 3], time: i64) {
+        {
+            game.client_bell_heard(pos, time);
+        }
+    }
+    fn side_tick_bell(game: &mut crate::game::Game<'_, Self>, pos: [i32; 3], tags: &sunrise_client::items::EntityTypeTags) {
+        {
+            game.client_tick_bell(pos, tags);
+        }
+    }
+    fn side_award_stat(game: &mut crate::game::Game<'_, Self>, category: &str, item: &str, amount: i32) {
+        {
+            game.client_award_stat(category, item, amount);
+        }
+    }
+    fn side_award_custom_stat(game: &mut crate::game::Game<'_, Self>, key: &str, amount: i32) {
+        {
+            game.client_award_custom_stat(key, amount);
+        }
+    }
+    fn side_container_changed(game: &mut crate::game::Game<'_, Self>, key: (i32, i32, i32)) {
+        {
+            game.client_container_changed(key);
+        }
+    }
+    fn side_tx_close_storage_transaction(game: &mut crate::game::Game<'_, Self>, commit: bool) -> Option<transactions::StorageSettlement> {
+        {
+            game.client_tx_close_storage_transaction(commit)
+        }
+    }
+    fn side_tx_run_after(game: &mut crate::game::Game<'_, Self>, after: transactions::After) {
+        {
+            game.client_tx_run_after(after);
+        }
+    }
+    fn side_tx_container_change_effect(game: &crate::game::Game<'_, Self>, pos: (i32, i32, i32), holder: Option<BlockEntityIdentity>) -> transactions::After {
+        {
+            game.client_tx_container_change_effect(pos, holder)
+        }
+    }
+    fn side_tx_journal_player(game: &mut crate::game::Game<'_, Self>, uuid: u128) {
+        {
+            game.client_tx_journal_player(uuid);
+        }
+    }
+    fn side_tx_journal_block_entity(game: &mut crate::game::Game<'_, Self>, pos: (i32, i32, i32)) {
+        {
+            game.client_tx_journal_block_entity(pos);
+        }
+    }
+    fn side_tx_journal_menus(game: &mut crate::game::Game<'_, Self>, player: mod_api::PlayerRef) {
+        {
+            game.client_tx_journal_menus(player);
         }
     }
 }

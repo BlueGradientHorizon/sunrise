@@ -11,7 +11,7 @@ pub(in crate::game) struct LeaveRequest {
     reason: Option<Text>,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Asks to leave the joined server or world at the end of this frame.
     /// Unavailable with no world joined, or while the world is already closing.
     pub(in crate::game) fn disconnect(
@@ -19,7 +19,7 @@ impl Game<'_> {
         reason: Option<Text>,
     ) -> std::result::Result<(), DisconnectError> {
         let epoch = self.native_lifecycle.epoch();
-        let (Some(epoch), Some(_), None) = (epoch, self.remote.as_ref(), &self.pending_save.0)
+        let (Some(epoch), Some(_), None) = (epoch, self.remote.as_ref(), &self.side.pending_save.0)
         else {
             return Err(DisconnectError::Unavailable);
         };

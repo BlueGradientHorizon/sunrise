@@ -2,16 +2,16 @@
 //! chunks the tickets simulate, block events and moving pistons (`tick_blocks`).
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// ServerLevel.tick block phases: scheduled ticks, random ticks in the
     /// chunks the tickets simulate, block events and moving pistons.
     /// The length the block log had after the changed blocks went out
     /// (`ServerChunkCache.tick`'s broadcast), before the block events and the
     /// block entities ran.
     pub(in crate::game) fn tick_blocks(&mut self) -> Result<Option<usize>> {
-        let mut scratch = std::mem::take(&mut self.server.tick_scratch);
+        let mut scratch = std::mem::take(&mut self.side.tick_scratch);
         let result = self.tick_blocks_with_scratch(&mut scratch);
-        self.server.tick_scratch = scratch;
+        self.side.tick_scratch = scratch;
         result
     }
     pub(in crate::game::server_side) fn tick_blocks_with_scratch(
@@ -21,7 +21,7 @@ impl Game<'_> {
         let mut laps = sunrise_client::spans::laps();
         // ServerChunkCache.tick: the tickets that time out.
         let world = &self.world;
-        self.tickets
+        self.side.tickets
             .0
             .tick_portal(|ticket| portal_ticket_can_expire(world, ticket));
         self.sync_tick_chunks();
@@ -114,7 +114,7 @@ impl Game<'_> {
         // applyEffectsFromBlocks runs in their tick: a mob or item past the
         // simulation distance presses, burns and slows on nothing.
         let entity_ticking = self.entity_ticking_area();
-        let first_contact_drop = self.server.next_entity + 1;
+        let first_contact_drop = self.side.next_entity + 1;
         self.with_level(|b, level, ticks| {
             // LilyPadBlock.entityInside: a boat inside a lily pad breaks it.
             scratch.boat_cells.clear();
@@ -215,11 +215,11 @@ impl Game<'_> {
             }
         });
         self.server_process_level_events()?;
-        self.server.contact_drops = first_contact_drop..self.server.next_entity + 1;
+        self.side.contact_drops = first_contact_drop..self.side.next_entity + 1;
         laps.lap("tb_entity_inside");
         // ServerLevel.tick: a Debug world runs no scheduled block or fluid ticks, and
         // ServerChunkCache.tickChunks no random ticks.
-        let debug = self.server.world_debug;
+        let debug = self.side.world_debug;
         if !debug {
             self.tick_scheduled()?;
         }
@@ -303,7 +303,7 @@ impl Game<'_> {
     /// order is the same every run; vanilla's exact order is its fastutil
     /// table's slot order, which follows that table's whole history.
     pub(in crate::game) fn random_tick_chunks(&self, out: &mut Vec<(i32, i32)>) {
-        let levels = self.tickets.0.levels();
+        let levels = self.side.tickets.0.levels();
         let bounds = levels.random_tick_bounds();
         out.clear();
         out.extend(self.world.chunks.keys().copied().filter(|&(x, z)| {
@@ -318,23 +318,23 @@ impl Game<'_> {
     }
     /// Track which chunks are ticking (Ticks needs chunk load/unload).
     pub(in crate::game) fn sync_tick_chunks(&mut self) {
-        if !self.server.tick_chunks.synchronize(&self.world.chunks) {
+        if !self.side.tick_chunks.synchronize(&self.world.chunks) {
             return;
         }
         // Move only the added keys out so registration can borrow all of Game.
-        let added = self.server.tick_chunks.take_added();
+        let added = self.side.tick_chunks.take_added();
         for &key in &added {
             self.register_chunk_ticks(key);
         }
-        for &key in self.server.tick_chunks.removed() {
-            self.random_tick_sections.0.remove(&key);
+        for &key in self.side.tick_chunks.removed() {
+            self.side.random_tick_sections.0.remove(&key);
             self.portals.sections.remove(&key);
             self.block_ticks
                 .remove_chunk(sunrise_core::position::ChunkPos::new(key.0, key.1));
             self.block_ticks
                 .comparator_outputs
                 .retain(|p, _| (p.x >> 4, p.z >> 4) != key);
-            self.server
+            self.side
                 .hoppers
                 .retain(|p, _| (p.0 >> 4, p.2 >> 4) != key);
             // Its moving pistons were saved with it and load back with it.
@@ -342,7 +342,7 @@ impl Game<'_> {
                 .moving_pistons
                 .retain(|(p, _)| (p.x >> 4, p.z >> 4) != key);
         }
-        self.server.tick_chunks.recycle_added(added);
+        self.side.tick_chunks.recycle_added(added);
     }
 
     /// `ServerLevel.tick`: moving block entities push after entity travel.

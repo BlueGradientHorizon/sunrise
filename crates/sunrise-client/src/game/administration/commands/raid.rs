@@ -9,7 +9,7 @@ use sunrise_client::{
 #[allow(unused_imports)]
 use sunrise_core::random::RandomSource;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn cmd_raid(&mut self, id: &str, ctx: &Context) -> R<i32> {
         let Some(player) = self.player.as_ref().map(|p| p.position) else {
             return Ok(0);

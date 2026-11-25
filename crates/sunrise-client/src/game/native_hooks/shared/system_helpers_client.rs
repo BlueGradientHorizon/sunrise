@@ -10,7 +10,7 @@ pub(in crate::game::client_side) use crate::game::native_hooks::system_helpers::
 /// Helpers for native mods, kept as stable as the hook points.
 // Native mods use these; nothing in Sunrise does.
 #[allow(dead_code)]
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The frame counter: frames in the last second, the slowest frame and
     /// the 1% low of the last 5 seconds, in frames per second.
     pub(in crate::game) fn native_frame_rate(&self) -> (u32, u32, u32) {
@@ -31,7 +31,7 @@ impl Game<'_> {
     }
     /// A line in chat from the client.
     pub(in crate::game::client_side) fn native_chat(&mut self, text: &str) {
-        let focused = self.client.screen == Screen::Chat;
+        let focused = self.side.screen == Screen::Chat;
         let line = Text::literal(text);
         let ticks = self.visual_ticks();
         let atlas = &self.gui.atlas;
@@ -53,7 +53,7 @@ impl Game<'_> {
         views: Vec<NativeRecipeView>,
     ) {
         let page = RecipePage::new(title, tabs, tab, views);
-        self.client.panel.show_recipes(mod_id, page);
+        self.side.panel.show_recipes(mod_id, page);
     }
     /// The areas the game itself draws beside the open screen's window: the
     /// container build's, or the frame's own arithmetic with no build yet.
@@ -61,7 +61,7 @@ impl Game<'_> {
         &self,
         batch: &HudBatch,
     ) -> Vec<[f32; 4]> {
-        if !matches!(self.client.screen, Screen::Inventory | Screen::Creative) {
+        if !matches!(self.side.screen, Screen::Inventory | Screen::Creative) {
             return Vec::new();
         }
         match self.built_container(batch) {

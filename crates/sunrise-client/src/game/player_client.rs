@@ -21,13 +21,13 @@ use sunrise_client::{
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_world::stepped_interpolation::PosRot;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     // Hands, inventory & equipment.
     pub(in crate::game) fn client_wear_glider(&mut self, _points: u32) {}
 
     pub(in crate::game) fn client_on_inventory_item_added(&mut self, stack: &ItemStack) {
         if matches!(
-            self.client.tutorial.step,
+            self.side.tutorial.step,
             tutorial::Step::FindTree | tutorial::Step::PunchTree | tutorial::Step::CraftPlanks
         ) {
             self.tutorial_get_item(Some(stack));
@@ -35,7 +35,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn client_reset_attack_strength(&mut self) {
-        self.client.hand_strength.reset();
+        self.side.hand_strength.reset();
     }
 
     pub(in crate::game) fn client_main_hand_attack_speed(&self) -> f64 {
@@ -44,7 +44,7 @@ impl Game<'_> {
                 .attributes
                 .computed_value_of("minecraft:attack_speed")
             && (self.remote.is_some()
-                || !self.client.predicted_equipment_modifiers.is_empty()
+                || !self.side.predicted_equipment_modifiers.is_empty()
                 || self.potions.effects.get("haste").is_some()
                 || self.potions.effects.get("mining_fatigue").is_some())
         {
@@ -86,9 +86,9 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn client_apply_equipment(&mut self) {
-        let mut applied = std::mem::take(&mut self.client.predicted_equipment_modifiers);
+        let mut applied = std::mem::take(&mut self.side.predicted_equipment_modifiers);
         let ran = self.apply_equipment_modifiers_with(&mut applied);
-        self.client.predicted_equipment_modifiers = applied;
+        self.side.predicted_equipment_modifiers = applied;
         if ran && let Some(player) = self.player.as_mut() {
             let _ = player.clamp_health_to_max();
         }
@@ -225,7 +225,7 @@ impl Game<'_> {
     // Aim, raycast & targeting.
     /// Verbatim body of live `game_client.rs::aim`.
     pub(in crate::game) fn client_aim(&self) -> Option<([f64; 3], [f64; 3])> {
-        if let Some(ray) = self.client.client_pick.ray {
+        if let Some(ray) = self.side.client_pick.ray {
             return Some(ray);
         }
         if let Some(e) = self.spectated_camera_snapshot() {
@@ -265,7 +265,7 @@ impl Game<'_> {
                 _ => None,
             };
         }
-        if let Some(hit) = self.client.tick_hit.get() {
+        if let Some(hit) = self.side.tick_hit.get() {
             return hit;
         }
         match self.compute_crosshair_decision() {
@@ -285,7 +285,7 @@ impl Game<'_> {
                 [point[0] - feet.x, point[1] - feet.y, point[2] - feet.z],
             ));
         }
-        if let Some(hit) = self.client.tick_mob {
+        if let Some(hit) = self.side.tick_mob {
             return hit;
         }
         let CrosshairDecision::Entity(hit) = self.compute_crosshair_decision() else {
@@ -509,7 +509,7 @@ impl Game<'_> {
             return None;
         }
         Shows::from_kind(remote.tracked(id)?.0)?;
-        self.text_displays
+        self.side.text_displays
             .0
             .get(&id)
             .map(|d| d.position().to_array())
@@ -622,7 +622,7 @@ impl Game<'_> {
                 .filter(|h| h.id() == id)
                 .map(|h| [h.position.x, h.position.y, h.position.z])
                 .or_else(|| {
-                    self.client
+                    self.side
                         .remote_hooks
                         .iter()
                         .find(|h| h.id() == id)
@@ -640,7 +640,7 @@ impl Game<'_> {
                 .find(|s| s.id == id)
                 .map(|s| s.position),
             Target::Knot(id) => self
-                .client
+                .side
                 .remote_knots
                 .get(&id)
                 .copied()
@@ -704,7 +704,7 @@ impl Game<'_> {
         packet: MovePacket,
         snap_old: Option<PosRot>,
     ) -> bool {
-        let Some(i) = self.client.interactions.get_mut(&id) else {
+        let Some(i) = self.side.interactions.get_mut(&id) else {
             return false;
         };
         let target_pos = Vec3::new(position[0], position[1], position[2]);
@@ -741,7 +741,7 @@ impl Game<'_> {
         position: [f64; 3],
         on_ground: bool,
     ) -> bool {
-        let Some(h) = self.client.remote_hooks.iter_mut().find(|h| h.id() == id) else {
+        let Some(h) = self.side.remote_hooks.iter_mut().find(|h| h.id() == id) else {
             return false;
         };
         h.move_to(position, on_ground);
@@ -749,6 +749,6 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn client_has_remote_text_display(&self, id: i32) -> bool {
-        self.text_displays.0.contains_key(&id)
+        self.side.text_displays.0.contains_key(&id)
     }
 }

@@ -1,7 +1,7 @@
 //! The integrated command inventory shares the frozen custom statistic declarations.
 use super::Game;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(super) fn sync_stat_registries(&mut self) {
         self.ui.registries.sync_damage_type_ids();
         let custom = mod_api::__private::custom_stat_declarations();

@@ -75,7 +75,7 @@ impl Remote {
     }
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The declared type key of general row `id`: the level's own row, or on a client the
     /// one its server shows it.
     pub(in crate::game) fn general_kind(&self, id: u32) -> Option<&'static str> {

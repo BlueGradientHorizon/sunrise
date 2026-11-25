@@ -11,7 +11,7 @@ use sunrise_world::{
     entity_obstruction::EntityIdentity,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Client-side `FallingBlockEntity.tick` motion prediction (no landing, dropping,
     /// impact, portal transfer, lava-hurt, or server-broadcast particles).
     pub(in crate::game) fn client_fall_step(&mut self, f: &mut FallingBlock) -> Result<()> {
@@ -193,7 +193,7 @@ impl Game<'_> {
         };
         // Baked models live at stable addresses until the pack is replaced.
         // Keep multipart order and duplicates: both affect the emitted vertices.
-        let mut cache = self.client.falling_vertices.borrow_mut();
+        let mut cache = self.side.falling_vertices.borrow_mut();
         let entries = cache.entry(state).or_default();
         let index = entries.iter().position(|(ptrs, _)| {
             ptrs.iter()

@@ -95,7 +95,7 @@ impl Recorder {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Run the workloads and write their lines to `output`.
     pub(in crate::game::server_side) fn hot_paths(&mut self, output: &str) -> Result<()> {
         assert!(

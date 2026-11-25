@@ -7,7 +7,7 @@ use super::*;
 #[allow(unused_imports)]
 use mod_api::{BlockEntityClientScope, BlockEntityScope, BlockEntitySideScope};
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Drain attachment notices before either logical side runs block entity tickers.
     pub(in crate::game) fn fire_pending_block_entity_loads(&mut self) {
         self.side_fire_pending_block_entity_loads();

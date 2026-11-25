@@ -17,7 +17,7 @@ use sunrise_client::{
 #[allow(unused_imports)]
 use sunrise_protocol::text::translatable;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// StopCommand: the server loop (game/interface/dedicated/mod.rs) ends after this tick.
     pub(in crate::game::server_side) fn cmd_stop(&mut self) -> R<i32> {
         let lists = self.dedicated_lists()?;

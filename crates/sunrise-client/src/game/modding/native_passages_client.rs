@@ -40,7 +40,7 @@ pub(in crate::game::client_side) use sunrise_client::fast_hash::FxHashMap;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_protocol::passage_sync::{Message, PassageForm};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The window forgot chunk `(x, z)`: the passages of that chunk go with it.
     pub(in crate::game::client_side) fn forget_chunk_passages(&mut self, x: i32, z: i32) {
         if !self.passages.held.is_empty() {

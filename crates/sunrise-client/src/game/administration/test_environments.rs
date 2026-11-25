@@ -9,7 +9,7 @@ pub(in crate::game) use sunrise_gameplay::test_environments::{
     Activation, Environment, Saved, WeatherType, parse,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The data pack entry `data/<ns>/test_environment/<path>.json`.
     fn read_test_environment_json(&self, id: &str) -> Option<Json> {
         let (ns, path) = id.split_once(':').unwrap_or(("minecraft", id));
@@ -182,7 +182,7 @@ impl Game<'_> {
                     silent: true,
                     ..self.server_source()
                 };
-                self.exec.0.commands = 0;
+                self.side.exec.0.commands = 0;
                 let _ = self.run_function(&function, None, source);
             }
             None => log::error!("Test Batch failed for non-existent function {id}"),

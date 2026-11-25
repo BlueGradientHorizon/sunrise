@@ -6,7 +6,7 @@ pub(in crate::game::server_side) use crate::game::native_hooks::farmland_trample
 pub(in crate::game::server_side) use sunrise_world::block_landing::FarmlandTrample;
 
 /// The hook point. It does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Apply the owning-host decision inside `FarmlandBlock.fallOn`, while the
     /// landing is paused. The caller resumes fall damage even when this refuses.
     pub(in crate::game::server_side) fn trample_farmland(
@@ -26,7 +26,7 @@ impl Game<'_> {
         let dimension = self.dim;
         let still = |game: &Self| {
             game.dim == dimension
-                && !game.server.world_debug
+                && !game.side.world_debug
                 && game.world.is_loaded_at(pos.x, pos.y, pos.z)
                 && !game.world.carrier_fences.locks_cell(&at)
                 && game.world.block(pos.x, pos.y, pos.z) == state

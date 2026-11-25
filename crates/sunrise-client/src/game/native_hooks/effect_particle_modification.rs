@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// NeoForge's `EffectParticleModificationEvent`, vanilla's
     /// `LivingEntity.updateSynchronizedMobEffectParticles`: one active
     /// `effect` of the living entity `entity`, hidden or not, as the server

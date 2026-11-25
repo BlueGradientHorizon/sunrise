@@ -25,7 +25,7 @@ pub(in crate::game::server_side) use std::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_client::{Result, hud::HudBatch};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     #[inline(always)]
     #[allow(dead_code)]
     pub(in crate::game) fn poll_closing_save_chunks_server(
@@ -41,7 +41,7 @@ impl Game<'_> {
             self.world.modified.remove(&key);
             let chunks = self.with_entities(self.world.chunks.get(&key));
             self.native_full_chunk_snapshots(&chunks);
-            self.save
+            self.side.save
                 .0
                 .save_later(&chunks, self.pack.assets.registry, world_biomes!(self))?;
             keys.pop_front();
@@ -68,7 +68,7 @@ impl Game<'_> {
         for _ in 0..per_frame {
             let Some(&key) = keys.front() else { break };
             let chunks = self.entity_chunks(&HashSet::from([key]), false);
-            self.save.0.save_entities_later(chunks)?;
+            self.side.save.0.save_entities_later(chunks)?;
             keys.pop_front();
             if started.elapsed() >= budget {
                 break;
@@ -77,10 +77,10 @@ impl Game<'_> {
         if keys.is_empty() {
             self.prune_entity_memory();
             self.save_raids();
-            self.save.0.save_attachments(&self.world.attachments)?;
+            self.side.save.0.save_attachments(&self.world.attachments)?;
             self.save_chunk_tickets()?;
             self.save_game_metadata()?;
-            Ok(Some(self.save.0.flush_later()?))
+            Ok(Some(self.side.save.0.flush_later()?))
         } else {
             Ok(None)
         }
@@ -90,18 +90,18 @@ impl Game<'_> {
     pub(in crate::game) fn poll_closing_save_flush_server(
         &self,
     ) -> Result<Receiver<std::io::Result<()>>> {
-        self.save.0.flush_later()
+        self.side.save.0.flush_later()
     }
     /// Save the level's chunk tickets: `/forceload`'s in vanilla's `chunk_tickets.dat`, the
     /// mods' in Sunrise's own `mod_chunk_tickets.dat`.
     pub(in crate::game::server_side) fn save_chunk_tickets(&self) -> Result<()> {
-        if self.server.startup_ticket_restore_pending {
+        if self.side.startup_ticket_restore_pending {
             return Ok(());
         }
-        self.save
+        self.side.save
             .0
-            .save_chunk_tickets(self.streaming.commanded(), self.tickets.0.portal_tickets())?;
-        self.save
+            .save_chunk_tickets(self.streaming.commanded(), self.side.tickets.0.portal_tickets())?;
+        self.side.save
             .0
             .save_mod_tickets(self.streaming.mod_tickets(), |slot| {
                 mod_api::TicketController::from_slot(slot).map(|c| c.id())
@@ -130,7 +130,7 @@ impl Game<'_> {
             }
         }
         let keys: Vec<_> = self.world.modified.iter().copied().collect();
-        self.save.0.save_attachments(&self.world.attachments)?;
+        self.side.save.0.save_attachments(&self.world.attachments)?;
         // ChunkMap.save calls tryMarkSaved before creating the snapshot. A record failure
         // finishes this attempt and does not put the mark back.
         for key in &keys {
@@ -138,7 +138,7 @@ impl Game<'_> {
         }
         let chunks = self.with_entities(keys.iter().filter_map(|k| self.world.chunks.get(k)));
         self.native_full_chunk_snapshots(&chunks);
-        self.save
+        self.side.save
             .0
             .save_later(&chunks, self.pack.assets.registry, world_biomes!(self))?;
         // Prepare entities while the chunk writer runs, then use one barrier.
@@ -148,7 +148,7 @@ impl Game<'_> {
         self.save_entities(false)?;
         self.save_raids();
         if wait {
-            self.save.0.flush()?;
+            self.side.save.0.flush()?;
         }
         if mod_api::__private::listened(mod_api::HookId::LevelSave) {
             self.native_level_save(self.dim.id());

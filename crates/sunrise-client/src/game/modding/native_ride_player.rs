@@ -16,7 +16,7 @@ use sunrise_client::mobs::{Species, riders};
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_protocol::packets::play;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The server player whose entity id is `id`, in the level in place: the
     /// player in place or a guest here. None on a client, or for any other id.
     pub(in crate::game::server_side) fn player_vehicle(&self, id: u32) -> Option<Target> {

@@ -3,7 +3,7 @@ pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::remote::packets_world::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `C::BlockDestruction`: its arms of `apply_packet`, guard and order kept.
     pub(in crate::game) fn apply_block_destruction_packet(&mut self, p: play::BlockDestruction) {
         // ClientPacketListener.handleBlockDestruction: another player's crack.
@@ -23,7 +23,7 @@ impl Game<'_> {
         let triggered = self.with_level(|b, level, ticks| {
             b.client_block_event(level, ticks, pos, i32::from(p.b0), i32::from(p.b1))
         });
-        self.client.moving_pistons_stale = true;
+        self.side.moving_pistons_stale = true;
         self.client_process_level_events()?;
         if !triggered {
             let state = self.world.block(p.pos[0], p.pos[1], p.pos[2]);
@@ -64,7 +64,7 @@ impl Game<'_> {
             // GUARDIAN_ELDER_EFFECT: the apparition, and the curse sound
             // unless the elder guardian is silent.
             10 => {
-                self.particles.0.elder_guardian();
+                self.side.particles.0.elder_guardian();
                 if p.rounded_param() == 1
                     && let Some(at) = self.player.as_ref().map(|m| m.position)
                 {
@@ -80,7 +80,7 @@ impl Game<'_> {
                 }
             }
             // WIN_GAME: the poem and credits, then PERFORM_RESPAWN.
-            4 if self.client.screen != Screen::Win => {
+            4 if self.side.screen != Screen::Win => {
                 self.open_win_screen(true, super::super::win::Finish::RemoteRespawn);
             }
             // DEMO_EVENT: a parentless popup or a client-system hint.

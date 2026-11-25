@@ -196,7 +196,7 @@ pub(in crate::game::client_side) use sunrise_world::{
 #[path = "package_files_client.rs"]
 pub(in crate::game) mod package_files;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The content mods the resources load with: the ones applied, which a
     /// switch that needs a restart doesn't change.
     pub(in crate::game) fn applied_mods(&self) -> std::collections::BTreeSet<String> {
@@ -211,7 +211,7 @@ impl Game<'_> {
         audio: Option<sunrise_world::native_load_context::LoopContext>,
     ) {
         if let Some(audio) = audio {
-            self.audio.0.set_loop_context(audio);
+            self.side.audio.0.set_loop_context(audio);
         }
     }
 
@@ -219,7 +219,7 @@ impl Game<'_> {
         &self,
         effective: &std::collections::BTreeSet<String>,
     ) {
-        self.client
+        self.side
             .instance_groups
             .borrow_mut()
             .retire_disabled(effective);

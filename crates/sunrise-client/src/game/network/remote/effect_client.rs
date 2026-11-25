@@ -7,7 +7,7 @@ pub(in crate::game::client_side) use crate::game::remote::effect::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::effects::EffectInstance;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientPacketListener.handleUpdateMobEffect` (`LivingEntity.forceAddEffect`): for the
     /// player itself, or another living entity the level holds (a mob, another player or an
     /// armor stand). Any other entity, or an effect the registry doesn't name, changes nothing.
@@ -25,11 +25,11 @@ impl Game<'_> {
         if self.remote.as_ref().is_some_and(|r| r.entity_id == p.id) {
             let list = &mut self.potions.effects.list;
             match force_add_effect(list, e, blend, &["darkness", "nausea"]) {
-                Some(e) if e.id == "darkness" => self.client.darkness_blend = darkness_added(e),
+                Some(e) if e.id == "darkness" => self.side.darkness_blend = darkness_added(e),
                 Some(e) if e.id == "nausea" => {
                     let (o_nausea, nausea) = screen_effects::nausea_blend_added(e, blend);
-                    self.client.screen_fx.o_nausea = o_nausea;
-                    self.client.screen_fx.nausea = nausea;
+                    self.side.screen_fx.o_nausea = o_nausea;
+                    self.side.screen_fx.nausea = nausea;
                 }
                 _ => {}
             }

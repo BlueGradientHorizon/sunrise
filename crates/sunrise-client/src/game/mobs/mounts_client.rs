@@ -41,7 +41,7 @@ pub(in crate::game::client_side) use sunrise_core::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::living_air::escape_vector;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The jump bar when it is the contextual bar.
     pub(in crate::game) fn draw_jump_bar(&self, batch: &mut HudBatch, w: i32, h: i32) {
         let Some(i) = self.mount_index() else {

@@ -48,7 +48,7 @@ fn pathfinder(species: Species) -> bool {
     !matches!(species, Species::Bat | Species::Ghast | Species::Phantom)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `GoalSelector.addGoal(priority, goal)` on a mob's goal selector.
     /// Refuses a stale or unavailable mob, a client, and the dragon (it
     /// keeps no selector); a goal the mob's vanilla class does not hold (a

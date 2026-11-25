@@ -8,7 +8,7 @@ use sunrise_gameplay::chests::chest_half;
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay::chests::{chest_connected_pos, is_shulker_box};
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The other half of the open double chest and whether the open one is
     /// the right half (`ChestBlock.getConnectedDirection`).
     pub(in crate::game) fn chest_partner(

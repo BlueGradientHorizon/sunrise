@@ -128,7 +128,7 @@ impl ServerSide {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Begins this side of a capture, between two ticks; the path of the file.
     pub(in crate::game) fn start_server_capture(
         &mut self,

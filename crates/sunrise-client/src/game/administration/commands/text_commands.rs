@@ -66,7 +66,7 @@ pub(in crate::game) fn compile_selector(
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// ComponentArgument with selectors resolved for the source
     /// (ComponentUtils.updateForEntity: names joined by ", ").
     pub(in crate::game) fn component_arg(&mut self, ctx: &Context, name: &str) -> R<Text> {

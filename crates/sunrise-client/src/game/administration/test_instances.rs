@@ -83,19 +83,19 @@ pub(in crate::game::server_side) fn red(key: &str, args: &[Text]) -> Text {
     Text::translate(key, args).with_color(text::RED)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `registryAccess().get(testKey)`: the test instance from the game's
     /// data (`data/<namespace>/test_instance/<path>.json`).
     pub(in crate::game) fn test_def(&self, id: &str) -> Option<TestDef> {
-        if let Some(known) = self.test_defs.0.borrow().get(id) {
+        if let Some(known) = self.side.test_defs.0.borrow().get(id) {
             return known.clone();
         }
         // A world's test instances are the ones it opened with.
-        if self.server.test_defs_snapshot {
+        if self.side.test_defs_snapshot {
             return None;
         }
         let def = self.read_test_def(id);
-        self.test_defs
+        self.side.test_defs
             .0
             .borrow_mut()
             .insert(id.to_owned(), def.clone());
@@ -109,11 +109,11 @@ impl Game<'_> {
     /// It replaces the previous world's definitions and selector ids.
     pub(in crate::game::server_side) fn snapshot_test_defs(&mut self) {
         let stack = super::functions::pack_stack(
-            &self.server.world_root,
+            &self.side.world_root,
             &self.options.resources,
             &self.pack.data_source,
             &self.pack.data_changes,
-            self.cmds.0.vanilla_disabled,
+            self.side.cmds.0.vanilla_disabled,
             &self.level.enabled_features,
             &super::pack_finders::data_packs(&self.mods),
         );
@@ -160,8 +160,8 @@ impl Game<'_> {
             .entry("minecraft:test_instance".into())
             .or_default()
             .ids = ids;
-        *self.test_defs.0.borrow_mut() = defs;
-        self.server.test_defs_snapshot = true;
+        *self.side.test_defs.0.borrow_mut() = defs;
+        self.side.test_defs_snapshot = true;
     }
     pub(in crate::game::server_side) fn read_test_def(&self, id: &str) -> Option<TestDef> {
         let (ns, path) = id.split_once(':').unwrap_or(("minecraft", id));
@@ -537,7 +537,7 @@ impl Game<'_> {
         self.clear_error_markers(pos);
         // GameTestTicker.SINGLETON.clear(), FailedTestTracker.forgetFailedTests().
         self.clear_game_tests();
-        self.game_tests.0.failed.clear();
+        self.side.game_tests.0.failed.clear();
         let Some(block) = self.test_instance_at(pos) else {
             return;
         };
@@ -552,7 +552,7 @@ impl Game<'_> {
             "test_instance_block.starting",
             &[Text::literal(key.clone())],
         ));
-        let id = self.game_tests.0.next_id();
+        let id = self.side.game_tests.0.next_id();
         let info = Info::new(id, key, def, Some(pos), self.dim, rotation);
         self.track_and_start_runner(vec![info], false, None, false);
     }

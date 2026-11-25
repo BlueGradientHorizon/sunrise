@@ -33,7 +33,7 @@ pub(in crate::game) struct ItemTables<'a> {
     side: crate::game::native_surface::GameSide<'a>,
 }
 
-impl<'w> Game<'w> {
+impl<'w> Game<'w, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn item_tables(&self) -> ItemTables<'_> {
         ItemTables {
             world: &self.world,
@@ -217,7 +217,7 @@ impl Moves {
     /// The moves of the items that will tick (`ticks`), on the helper threads; none while the
     /// parallel tick is off, for few items, or with a mod that could see an item's move.
     pub(in crate::game::server_side) fn work_out(
-        game: &Game<'_>,
+        game: &Game<'_, crate::game::server_side::ServerState>,
         items: &[ItemEntity],
         obstacles: &ObstacleGrid,
         round: &native_ticks::TickRound,

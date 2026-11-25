@@ -3,7 +3,7 @@ pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::remote::ui::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Connecting / loading screens; true when it covered the frame.
     pub(in crate::game::client_side) fn remote_overlay(&mut self, batch: &mut HudBatch) -> bool {
         if !self.remote_screen_up() {
@@ -50,7 +50,7 @@ impl Game<'_> {
                 if self.draw_dimension_transition_screen(
                     batch,
                     &r.level_load,
-                    progress.map(|_| self.client.loading_progress),
+                    progress.map(|_| self.side.loading_progress),
                 ) {
                     return true;
                 }
@@ -62,7 +62,7 @@ impl Game<'_> {
             match self.integrated.as_ref().map(|i| i.load_view()) {
                 Some(view) => {
                     let status = |x: i32, z: i32| view.status(x, z);
-                    let progress = view.has_progress().then_some(self.client.loading_progress);
+                    let progress = view.has_progress().then_some(self.side.loading_progress);
                     sunrise_client::level_loading::draw(batch, atlas, Some(&status), progress);
                 }
                 None => sunrise_client::level_loading::draw(batch, atlas, None, None),
@@ -100,7 +100,7 @@ impl Game<'_> {
             batch,
             atlas,
             &status,
-            self.client.cursor,
+            self.side.cursor,
             cancel,
         );
         true
@@ -126,7 +126,7 @@ impl Game<'_> {
         if damage * (0.2 + strength * strength * 0.8) > 0.0 && self.critical_attack(strength) {
             use sunrise_client::particles::{ParticleOptions, ParticleType};
             let m = &self.mobs[mob];
-            self.particles.0.tracking_emitter(
+            self.side.particles.0.tracking_emitter(
                 ParticleOptions::simple(ParticleType::Crit),
                 TrackingTarget::Entity(m.id as i32),
                 mob_tracking_body(m),

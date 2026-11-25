@@ -3,7 +3,7 @@ pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::remote::interaction_actions::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `Entity.isColliding(pos, state)` for the local player: the state's own
     /// collision shape, at the player's pose, against the player's box.
     pub(in crate::game) fn block_meets_player(&self, pos: [i32; 3], state: BlockStateId) -> bool {
@@ -132,12 +132,12 @@ impl Game<'_> {
     /// (a proxy's reconfiguration too), but the chat: joining clears it and a
     /// reconfiguration keeps it (`ChatComponent.storeState`).
     pub(in crate::game::client_side) fn hud_disconnected(&mut self) {
-        self.tab_list.0.reset();
-        self.client.boss_overlay.reset();
-        self.client.toast_manager = Default::default();
-        self.client.debug_charts.reset();
-        self.client.titles.clear();
-        self.client.titles.reset_times();
+        self.side.tab_list.0.reset();
+        self.side.boss_overlay.reset();
+        self.side.toast_manager = Default::default();
+        self.side.debug_charts.reset();
+        self.side.titles.clear();
+        self.side.titles.reset_times();
     }
     /// `ServerPlayer.dismountTo` lands a rider at the ghast's own (x, maxY, z)
     /// (`HappyGhast.getDismountLocationForPassenger`). A vanilla client
@@ -233,7 +233,7 @@ impl Game<'_> {
         let Some((target, body)) = self.remote_tracking_body(id) else {
             return;
         };
-        self.particles
+        self.side.particles
             .0
             .tracking_emitter(ParticleOptions::simple(particle), target, body);
     }
@@ -256,7 +256,7 @@ impl Game<'_> {
         // A piercing weapon neither breaks blocks nor swings on its own.
         if self.clicks.miss_time > 0
             || self.using.is_some()
-            || self.client_item_use.0.is_some()
+            || self.side.client_item_use.0.is_some()
             || self
                 .held()
                 .is_some_and(|s| sunrise_client::spear::Kinetic::of(&s.item).is_some())
@@ -335,7 +335,7 @@ impl Game<'_> {
         let Some(r) = &self.remote else { return };
         let atlas = &self.gui.atlas;
         let w = batch.width;
-        if self.client.screen == Screen::Dead
+        if self.side.screen == Screen::Dead
             && let Some(message) = &r.death_message
         {
             // DeathScreen draws the styled cause component.
@@ -393,7 +393,7 @@ impl Game<'_> {
         let spear = self
             .held()
             .and_then(|s| sunrise_client::spear::Kinetic::of(&s.item));
-        if spear.is_some() && self.cannot_attack_with_item(self.client.hand_strength.ticker, 0) {
+        if spear.is_some() && self.cannot_attack_with_item(self.side.hand_strength.ticker, 0) {
             return false;
         }
         // InputEvent.InteractionKeyMappingTriggered, after the checks that stop
@@ -430,7 +430,7 @@ impl Game<'_> {
                 direction: 0,
                 sequence: 0,
             }));
-            self.client.hand_strength.reset_attack();
+            self.side.hand_strength.reset_attack();
             self.swing_hand(Hand::Main, kinetic.attack_animation());
             self.client_play_at_feet(kinetic.attack_sound);
             return true;
@@ -478,7 +478,7 @@ impl Game<'_> {
     /// Minecraft.startUseItem: use one crosshair target, then the item itself.
     pub(in crate::game) fn remote_use_inner(&mut self, attempt: mod_api::InteractionAttempt) {
         // Another queued press in the same input drain cannot restart a capture.
-        if self.client_item_use.0.is_some() {
+        if self.side.client_item_use.0.is_some() {
             return;
         }
         // Minecraft.startUseItem returns before resetting rightClickDelay

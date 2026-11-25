@@ -50,10 +50,10 @@ pub const HELP: &[&str] = &[
     "studio path <lock|unlock>      play or stop the camera path",
 ];
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Studio is up (its bars, its camera path, its mouse): a replay plays or the free camera flies.
     pub(in crate::game::client_side) fn studio_up(&self) -> bool {
-        self.replay.playing() || self.client.studio.flying()
+        self.replay.playing() || self.side.studio.flying()
     }
 
     /// Studio's editor words of `/studio` (`freecam`, `keyframe`, `path`).
@@ -67,7 +67,7 @@ impl Game<'_> {
                             &[],
                         ));
                     } else if let Some((position, yaw, pitch)) = self.camera_view(1.0) {
-                        self.client.studio.freecam.activate(
+                        self.side.studio.freecam.activate(
                             position,
                             yaw,
                             pitch,
@@ -86,7 +86,7 @@ impl Game<'_> {
                     }
                 }
                 Some("off") => {
-                    self.client.studio.freecam.deactivate();
+                    self.side.studio.freecam.deactivate();
                     self.capture(false);
                     self.client_system_message(Text::translate(
                         "sunrise.studio.freecam.disabled",
@@ -108,10 +108,10 @@ impl Game<'_> {
                 let time_ms = driver.position_ms();
                 match words.get(1).copied() {
                     Some("add") => {
-                        if !self.client.studio.freecam.active
+                        if !self.side.studio.freecam.active
                             && let Some((position, yaw, pitch)) = self.camera_view(1.0)
                         {
-                            self.client.studio.freecam.activate(
+                            self.side.studio.freecam.activate(
                                 position,
                                 yaw,
                                 pitch,
@@ -119,16 +119,16 @@ impl Game<'_> {
                             );
                         }
                         self.capture(true);
-                        self.client.studio.freecam.add_keyframe_at_current(time_ms);
-                        self.client.studio.camera_track_dirty = true;
+                        self.side.studio.freecam.add_keyframe_at_current(time_ms);
+                        self.side.studio.camera_track_dirty = true;
                         self.client_system_message(Text::tr(
                             "sunrise.studio.keyframe.added",
                             &[&time_ms.to_string()],
                         ));
                     }
                     Some("clear") => {
-                        self.client.studio.freecam.track.clear();
-                        self.client.studio.camera_track_dirty = true;
+                        self.side.studio.freecam.track.clear();
+                        self.side.studio.camera_track_dirty = true;
                         self.client_system_message(Text::translate(
                             "sunrise.studio.keyframe.cleared",
                             &[],
@@ -144,15 +144,15 @@ impl Game<'_> {
                             ));
                             return true;
                         };
-                        if index >= self.client.studio.freecam.track.keyframes.len() {
+                        if index >= self.side.studio.freecam.track.keyframes.len() {
                             self.client_system_message(Text::translate(
                                 "sunrise.studio.keyframe.index_invalid",
                                 &[],
                             ));
                             return true;
                         }
-                        self.client.studio.freecam.track.keyframes.remove(index);
-                        self.client.studio.camera_track_dirty = true;
+                        self.side.studio.freecam.track.keyframes.remove(index);
+                        self.side.studio.camera_track_dirty = true;
                         self.client_system_message(Text::tr(
                             "sunrise.studio.keyframe.removed",
                             &[&index.to_string()],
@@ -165,14 +165,14 @@ impl Game<'_> {
                 }
             }
             "path" => match words.get(1).copied() {
-                Some("lock") if !self.client.studio.freecam.track.is_empty() => {
-                    self.client.studio.freecam.active = true;
-                    self.client.studio.freecam.locked_to_path = true;
+                Some("lock") if !self.side.studio.freecam.track.is_empty() => {
+                    self.side.studio.freecam.active = true;
+                    self.side.studio.freecam.locked_to_path = true;
                     self.capture(true);
                     self.client_system_message(Text::translate("sunrise.studio.path.locked", &[]));
                 }
                 Some("unlock") => {
-                    self.client.studio.freecam.locked_to_path = false;
+                    self.side.studio.freecam.locked_to_path = false;
                     self.client_system_message(Text::translate(
                         "sunrise.studio.path.unlocked",
                         &[],
@@ -194,9 +194,9 @@ impl Game<'_> {
         match action {
             TopBarAction::None => {}
             TopBarAction::OpenPauseMenu => {
-                self.client.pause_focus = None;
-                self.client.screen = Screen::Paused;
-                self.client.pause_menu = true;
+                self.side.pause_focus = None;
+                self.side.screen = Screen::Paused;
+                self.side.pause_menu = true;
                 self.release_mappings_on_screen_open();
                 self.commit_screen_transition();
                 self.capture(false);
@@ -205,7 +205,7 @@ impl Game<'_> {
                 if self.replay.driver.is_some() {
                     self.close_studio_replay();
                 } else {
-                    self.client.studio.freecam.deactivate();
+                    self.side.studio.freecam.deactivate();
                     self.capture(false);
                 }
             }
@@ -231,24 +231,24 @@ impl Game<'_> {
                 } else {
                     (glam::DVec3::ZERO, 0.0, 0.0)
                 };
-                self.client
+                self.side
                     .studio
                     .freecam
                     .activate(position, yaw, pitch, self.settings.fov);
             }
             TopBarAction::ToggleLockToPath => {
-                self.client.studio.freecam.locked_to_path =
-                    !self.client.studio.freecam.locked_to_path;
+                self.side.studio.freecam.locked_to_path =
+                    !self.side.studio.freecam.locked_to_path;
             }
             TopBarAction::ToggleFreecam => {
-                if self.client.studio.freecam.active {
-                    self.client.studio.freecam.deactivate();
+                if self.side.studio.freecam.active {
+                    self.side.studio.freecam.deactivate();
                     self.capture(false);
                 } else {
                     let (position, yaw, pitch) =
                         self.camera_view(0.0)
                             .unwrap_or((glam::DVec3::ZERO, 0.0, 0.0));
-                    self.client
+                    self.side
                         .studio
                         .freecam
                         .activate(position, yaw, pitch, self.settings.fov);
@@ -256,26 +256,26 @@ impl Game<'_> {
                 }
             }
             TopBarAction::AddKeyframe => {
-                self.client
+                self.side
                     .studio
                     .freecam
-                    .add_keyframe_at_current(self.client.studio.timeline.current_time_ms as u32);
-                self.client.studio.camera_track_dirty = true;
+                    .add_keyframe_at_current(self.side.studio.timeline.current_time_ms as u32);
+                self.side.studio.camera_track_dirty = true;
             }
             TopBarAction::AddMarker => self.add_studio_marker(),
             TopBarAction::ClearKeyframes => {
-                self.client.studio.freecam.track.keyframes.clear();
-                self.client.studio.timeline.selected_keyframe = None;
-                self.client.studio.camera_track_dirty = true;
+                self.side.studio.freecam.track.keyframes.clear();
+                self.side.studio.timeline.selected_keyframe = None;
+                self.side.studio.camera_track_dirty = true;
             }
             TopBarAction::ToggleTimeline => {
-                self.client.studio.timeline.visible = !self.client.studio.timeline.visible;
+                self.side.studio.timeline.visible = !self.side.studio.timeline.visible;
             }
             TopBarAction::SplitClip => {
-                self.client
+                self.side
                     .studio
                     .timeline
-                    .split_at(self.client.studio.timeline.current_time_ms);
+                    .split_at(self.side.studio.timeline.current_time_ms);
             }
         }
     }
@@ -288,7 +288,7 @@ impl Game<'_> {
         use sunrise_client::studio::TimelineAction;
         match action {
             TimelineAction::PauseForSeek => {
-                self.client.studio.timeline.playing = false;
+                self.side.studio.timeline.playing = false;
                 if let Some(replay) = self.replay.driver.as_mut() {
                     replay.set_paused(true);
                 }
@@ -305,20 +305,20 @@ impl Game<'_> {
                         as u64;
                     time_ms.max(current)
                 };
-                self.client.studio.timeline.current_time_ms = time_ms;
+                self.side.studio.timeline.current_time_ms = time_ms;
                 if let Err(error) = self.seek_studio_replay(time_ms.min(u32::MAX as u64) as u32) {
                     log::warn!("Studio timeline seek failed: {error}");
                 }
             }
             TimelineAction::TogglePlay => {
-                self.client.studio.timeline.playing = !self.client.studio.timeline.playing;
+                self.side.studio.timeline.playing = !self.side.studio.timeline.playing;
                 if let Some(replay) = self.replay.driver.as_mut() {
-                    replay.set_paused(!self.client.studio.timeline.playing);
+                    replay.set_paused(!self.side.studio.timeline.playing);
                 }
             }
             TimelineAction::StepBack => {
                 let time_ms = self
-                    .client
+                    .side
                     .studio
                     .timeline
                     .current_time_ms
@@ -327,60 +327,60 @@ impl Game<'_> {
             }
             TimelineAction::StepForward => {
                 let time_ms = self
-                    .client
+                    .side
                     .studio
                     .timeline
                     .current_time_ms
                     .saturating_add(1000)
-                    .min(self.client.studio.timeline.duration_ms);
+                    .min(self.side.studio.timeline.duration_ms);
                 self.handle_studio_timeline_action(TimelineAction::Seek(time_ms));
             }
             TimelineAction::SeekStart => {
                 self.handle_studio_timeline_action(TimelineAction::Seek(0))
             }
             TimelineAction::SeekEnd => self.handle_studio_timeline_action(TimelineAction::Seek(
-                self.client.studio.timeline.duration_ms,
+                self.side.studio.timeline.duration_ms,
             )),
             TimelineAction::SetSpeed(speed) => {
-                self.client.studio.timeline.speed = speed;
+                self.side.studio.timeline.speed = speed;
                 if let Some(replay) = self.replay.driver.as_mut() {
                     replay.set_speed(speed);
                 }
             }
             TimelineAction::ToggleFreecam => {
-                if self.client.studio.freecam.active {
-                    self.client.studio.freecam.deactivate();
+                if self.side.studio.freecam.active {
+                    self.side.studio.freecam.deactivate();
                 } else {
                     let (position, yaw, pitch) =
                         self.camera_view(0.0)
                             .unwrap_or((glam::DVec3::ZERO, 0.0, 0.0));
-                    self.client
+                    self.side
                         .studio
                         .freecam
                         .activate(position, yaw, pitch, self.settings.fov);
                 }
             }
             TimelineAction::AddCameraKeyframe => {
-                self.client
+                self.side
                     .studio
                     .freecam
-                    .add_keyframe_at_current(self.client.studio.timeline.current_time_ms as u32);
-                self.client.studio.camera_track_dirty = true;
+                    .add_keyframe_at_current(self.side.studio.timeline.current_time_ms as u32);
+                self.side.studio.camera_track_dirty = true;
             }
             TimelineAction::RemoveCameraKeyframe(index) => {
-                if index < self.client.studio.freecam.track.keyframes.len() {
-                    self.client.studio.freecam.track.keyframes.remove(index);
-                    self.client.studio.camera_track_dirty = true;
+                if index < self.side.studio.freecam.track.keyframes.len() {
+                    self.side.studio.freecam.track.keyframes.remove(index);
+                    self.side.studio.camera_track_dirty = true;
                 }
-                self.client.studio.timeline.selected_keyframe = None;
+                self.side.studio.timeline.selected_keyframe = None;
             }
             TimelineAction::SelectKeyframe(index) => {
-                self.client.studio.timeline.selected_keyframe = Some(index);
+                self.side.studio.timeline.selected_keyframe = Some(index);
             }
             TimelineAction::KeyframeMoved => {
-                self.client.studio.camera_track_dirty = true;
+                self.side.studio.camera_track_dirty = true;
             }
-            TimelineAction::SplitClip(time_ms) => self.client.studio.timeline.split_at(time_ms),
+            TimelineAction::SplitClip(time_ms) => self.side.studio.timeline.split_at(time_ms),
             TimelineAction::None => {}
         }
     }
@@ -401,47 +401,47 @@ impl Game<'_> {
         )
         .plain();
         match replay.add_marker(label) {
-            Ok(_) => self.client.studio.timeline.markers = replay.markers().to_vec(),
+            Ok(_) => self.side.studio.timeline.markers = replay.markers().to_vec(),
             Err(error) => log::warn!("Studio: could not save replay marker: {error}"),
         }
     }
 
     /// Saves the free camera's path into the replay playing, when it changed.
     pub(in crate::game::client_side) fn save_studio_camera_track(&mut self) -> std::io::Result<()> {
-        if self.client.studio.camera_track_dirty
+        if self.side.studio.camera_track_dirty
             && let Some(driver) = self
                 .replay
                 .driver
                 .as_mut()
                 .and_then(|driver| driver.as_any_mut().downcast_mut::<ReplayDriver>())
         {
-            driver.save_camera_track(&self.client.studio.freecam.track)?;
-            self.client.studio.camera_track_dirty = false;
+            driver.save_camera_track(&self.side.studio.freecam.track)?;
+            self.side.studio.camera_track_dirty = false;
         }
         Ok(())
     }
 
     /// A replay opened: the timeline shows it and the free camera takes its saved path.
     pub(in crate::game::client_side) fn studio_replay_opened(&mut self, driver: &ReplayDriver) {
-        self.client.studio.timeline.duration_ms = u64::from(driver.duration_ms());
-        self.client.studio.timeline.current_time_ms = 0;
-        self.client.studio.timeline.playing = !driver.is_paused();
-        self.client.studio.timeline.markers = driver.markers().to_vec();
-        self.client.studio.freecam.track = driver.camera_track().cloned().unwrap_or_default();
-        self.client.studio.camera_track_dirty = false;
+        self.side.studio.timeline.duration_ms = u64::from(driver.duration_ms());
+        self.side.studio.timeline.current_time_ms = 0;
+        self.side.studio.timeline.playing = !driver.is_paused();
+        self.side.studio.timeline.markers = driver.markers().to_vec();
+        self.side.studio.freecam.track = driver.camera_track().cloned().unwrap_or_default();
+        self.side.studio.camera_track_dirty = false;
     }
 
     /// The replay moved on: a camera locked to its path follows it, and the timeline shows where
     /// it is.
     pub(in crate::game::client_side) fn studio_replay_advanced(&mut self) {
-        if self.client.studio.freecam.locked_to_path
+        if self.side.studio.freecam.locked_to_path
             && let Some(position) = self
                 .replay
                 .driver
                 .as_ref()
                 .map(|replay| replay.position_ms())
         {
-            self.client.studio.freecam.update_spline_playback(position);
+            self.side.studio.freecam.update_spline_playback(position);
         }
         if let Some((position, duration, paused, markers)) =
             self.replay.driver.as_ref().map(|replay| {
@@ -457,10 +457,10 @@ impl Game<'_> {
                 )
             })
         {
-            self.client.studio.timeline.current_time_ms = u64::from(position);
-            self.client.studio.timeline.duration_ms = u64::from(duration);
-            self.client.studio.timeline.playing = !paused;
-            self.client.studio.timeline.markers = markers;
+            self.side.studio.timeline.current_time_ms = u64::from(position);
+            self.side.studio.timeline.duration_ms = u64::from(duration);
+            self.side.studio.timeline.playing = !paused;
+            self.side.studio.timeline.markers = markers;
         }
     }
 
@@ -469,39 +469,39 @@ impl Game<'_> {
         if let Err(error) = self.save_studio_camera_track() {
             log::warn!("Studio: could not save camera path: {error}");
         }
-        self.client.studio.camera_track_dirty = false;
+        self.side.studio.camera_track_dirty = false;
     }
 
     /// The replay closed: the timeline empties and the free camera lands.
     pub(in crate::game::client_side) fn studio_replay_closed(&mut self) {
-        self.client.studio.timeline.current_time_ms = 0;
-        self.client.studio.timeline.playing = false;
-        self.client.studio.timeline.markers.clear();
-        self.client.studio.timeline.split_points.clear();
-        self.client.studio.timeline.selected_keyframe = None;
-        self.client.studio.freecam.deactivate();
+        self.side.studio.timeline.current_time_ms = 0;
+        self.side.studio.timeline.playing = false;
+        self.side.studio.timeline.markers.clear();
+        self.side.studio.timeline.split_points.clear();
+        self.side.studio.timeline.selected_keyframe = None;
+        self.side.studio.freecam.deactivate();
     }
 }
 
 /// What the engine's frame, render and window code hand to Studio.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The top bar and the timeline over the HUD, while Studio is up in play.
     pub(in crate::game::client_side) fn draw_studio_bars(&mut self, batch: &mut super::HudBatch) {
-        if !EDITOR || self.ui.hide_gui || self.client.screen != Screen::Playing || !self.studio_up()
+        if !EDITOR || self.ui.hide_gui || self.side.screen != Screen::Playing || !self.studio_up()
         {
             return;
         }
-        self.client.studio.topbar.render(
+        self.side.studio.topbar.render(
             batch,
             &self.gui.atlas,
-            self.client.cursor,
-            self.client.studio.freecam.locked_to_path,
+            self.side.cursor,
+            self.side.studio.freecam.locked_to_path,
         );
-        self.client.studio.timeline.render(
+        self.side.studio.timeline.render(
             batch,
             &self.gui.atlas,
-            self.client.cursor,
-            &self.client.studio.freecam,
+            self.side.cursor,
+            &self.side.studio.freecam,
         );
     }
 
@@ -512,7 +512,7 @@ impl Game<'_> {
     ) {
         if EDITOR && self.studio_up() {
             sunrise_client::studio::render_camera_path(
-                &self.client.studio.freecam.track,
+                &self.side.studio.freecam.track,
                 gizmos,
                 None,
                 100,
@@ -523,19 +523,19 @@ impl Game<'_> {
     /// The pointer moved while the timeline's playhead or a keyframe is dragged: Studio took it.
     pub(in crate::game::client_side) fn studio_mouse_dragged(&mut self, width: f32) -> bool {
         if !EDITOR
-            || self.client.screen != Screen::Playing
-            || !(self.client.studio.timeline.dragging_playhead
-                || self.client.studio.timeline.dragging_keyframe.is_some())
+            || self.side.screen != Screen::Playing
+            || !(self.side.studio.timeline.dragging_playhead
+                || self.side.studio.timeline.dragging_keyframe.is_some())
         {
             return false;
         }
-        let action = self.client.studio.timeline.handle_mouse_drag(
-            self.client.cursor,
+        let action = self.side.studio.timeline.handle_mouse_drag(
+            self.side.cursor,
             width,
-            &mut self.client.studio.freecam,
+            &mut self.side.studio.freecam,
         );
         if matches!(action, TimelineAction::KeyframeMoved) {
-            self.client.studio.camera_track_dirty = true;
+            self.side.studio.camera_track_dirty = true;
         }
         true
     }
@@ -548,68 +548,68 @@ impl Game<'_> {
         button: winit::event::MouseButton,
     ) -> bool {
         if !EDITOR {
-            return self.client.screen == Screen::Playing && self.replay.playing();
+            return self.side.screen == Screen::Playing && self.replay.playing();
         }
         if !pressed && button == winit::event::MouseButton::Left {
-            let action = self.client.studio.timeline.handle_mouse_up();
+            let action = self.side.studio.timeline.handle_mouse_up();
             if !matches!(action, TimelineAction::None) {
                 self.handle_studio_timeline_action(action);
             }
         }
-        if (self.client.studio.freecam.active || self.replay.driver.is_some())
+        if (self.side.studio.freecam.active || self.replay.driver.is_some())
             && button == winit::event::MouseButton::Right
         {
-            if let Some(renderer) = &self.renderer.0 {
+            if let Some(renderer) = &self.side.renderer.0 {
                 let batch = super::HudBatch::new(
                     [renderer.config.width, renderer.config.height],
                     self.settings.gui_scale_inputs(),
                 );
-                if self.client.studio.timeline.visible
-                    && self.client.cursor.1 >= batch.height - self.client.studio.timeline.height()
+                if self.side.studio.timeline.visible
+                    && self.side.cursor.1 >= batch.height - self.side.studio.timeline.height()
                 {
                     if pressed
-                        && let Some(index) = self.client.studio.timeline.keyframe_at_cursor(
-                            self.client.cursor,
+                        && let Some(index) = self.side.studio.timeline.keyframe_at_cursor(
+                            self.side.cursor,
                             batch.width,
                             batch.height,
-                            &self.client.studio.freecam,
+                            &self.side.studio.freecam,
                         )
                     {
-                        if index < self.client.studio.freecam.track.keyframes.len() {
-                            self.client.studio.freecam.track.keyframes.remove(index);
-                            self.client.studio.camera_track_dirty = true;
+                        if index < self.side.studio.freecam.track.keyframes.len() {
+                            self.side.studio.freecam.track.keyframes.remove(index);
+                            self.side.studio.camera_track_dirty = true;
                         }
-                        self.client.studio.timeline.selected_keyframe = None;
+                        self.side.studio.timeline.selected_keyframe = None;
                     }
                     return true;
                 }
             }
             if pressed {
-                self.client.studio.topbar.close_dropdown();
-                self.client.studio.rmb_down = true;
+                self.side.studio.topbar.close_dropdown();
+                self.side.studio.rmb_down = true;
                 self.capture(true);
                 return true;
-            } else if self.client.studio.rmb_down {
-                self.client.studio.rmb_down = false;
+            } else if self.side.studio.rmb_down {
+                self.side.studio.rmb_down = false;
                 self.capture(false);
                 return true;
             }
         }
         if pressed
             && button == winit::event::MouseButton::Left
-            && self.client.screen == Screen::Playing
-            && (self.replay.driver.is_some() || self.client.studio.freecam.active)
+            && self.side.screen == Screen::Playing
+            && (self.replay.driver.is_some() || self.side.studio.freecam.active)
         {
             let size = self
-                .renderer
+                .side.renderer
                 .0
                 .as_ref()
                 .map(|renderer| [renderer.config.width, renderer.config.height])
                 .unwrap_or([1, 1]);
             let batch = super::HudBatch::new(size, self.settings.gui_scale_inputs());
-            let had_open_menu = self.client.studio.topbar.open_menu.is_some();
-            let topbar_action = self.client.studio.topbar.handle_mouse_click(
-                self.client.cursor,
+            let had_open_menu = self.side.studio.topbar.open_menu.is_some();
+            let topbar_action = self.side.studio.topbar.handle_mouse_click(
+                self.side.cursor,
                 batch.width,
                 batch.height,
             );
@@ -617,43 +617,43 @@ impl Game<'_> {
                 self.handle_studio_topbar_action(topbar_action);
                 return true;
             }
-            if had_open_menu || self.client.cursor.1 <= self.client.studio.topbar.height {
+            if had_open_menu || self.side.cursor.1 <= self.side.studio.topbar.height {
                 return true;
             }
-            if self.client.studio.timeline.visible {
-                let action = self.client.studio.timeline.handle_mouse_down(
-                    self.client.cursor,
+            if self.side.studio.timeline.visible {
+                let action = self.side.studio.timeline.handle_mouse_down(
+                    self.side.cursor,
                     batch.width,
                     batch.height,
-                    &self.client.studio.freecam,
+                    &self.side.studio.freecam,
                 );
                 if !matches!(action, TimelineAction::None) {
                     self.handle_studio_timeline_action(action);
                     return true;
                 }
-                if self.client.cursor.1 >= batch.height - self.client.studio.timeline.height() {
+                if self.side.cursor.1 >= batch.height - self.side.studio.timeline.height() {
                     return true;
                 }
             }
         }
-        self.client.screen == Screen::Playing && self.replay.driver.is_some()
+        self.side.screen == Screen::Playing && self.replay.driver.is_some()
     }
 
     /// The free camera flies by the movement keys, once per frame.
     pub(in crate::game::client_side) fn studio_fly(&mut self, elapsed: Duration) {
-        if !self.client.studio.flying()
-            || self.client.screen != Screen::Playing
+        if !self.side.studio.flying()
+            || self.side.screen != Screen::Playing
             || self.dialog_open()
         {
             return;
         }
         use winit::keyboard::KeyCode;
-        let held = |key| f64::from(u8::from(self.client.keys.raw(&key)));
+        let held = |key| f64::from(u8::from(self.side.keys.raw(&key)));
         let forward = held(KeyCode::KeyW) - held(KeyCode::KeyS);
         let strafe = held(KeyCode::KeyD) - held(KeyCode::KeyA);
         let vertical = held(KeyCode::KeyE) - held(KeyCode::KeyQ) + held(KeyCode::Space);
-        let fast = self.client.keys.raw(&KeyCode::ControlRight);
-        self.client.studio.freecam.update_flight_motion(
+        let fast = self.side.keys.raw(&KeyCode::ControlRight);
+        self.side.studio.freecam.update_flight_motion(
             forward,
             strafe,
             vertical,
@@ -670,9 +670,9 @@ impl Game<'_> {
                 self.close_studio_replay();
             }
             KeyCode::KeyP => {
-                self.client.pause_focus = None;
-                self.client.screen = Screen::Paused;
-                self.client.pause_menu = true;
+                self.side.pause_focus = None;
+                self.side.screen = Screen::Paused;
+                self.side.pause_menu = true;
                 self.release_mappings_on_screen_open();
                 self.commit_screen_transition();
                 self.capture(false);
@@ -681,19 +681,19 @@ impl Game<'_> {
             _ if !EDITOR => {}
             KeyCode::KeyF => self.handle_studio_timeline_action(TimelineAction::ToggleFreecam),
             KeyCode::KeyT => {
-                self.client.studio.timeline.visible = !self.client.studio.timeline.visible
+                self.side.studio.timeline.visible = !self.side.studio.timeline.visible
             }
             KeyCode::KeyM => self.add_studio_marker(),
             KeyCode::Home => self.handle_studio_topbar_action(
                 sunrise_client::studio::TopBarAction::ResetCameraToPlayer,
             ),
             KeyCode::KeyL => {
-                self.client.studio.freecam.locked_to_path =
-                    !self.client.studio.freecam.locked_to_path;
+                self.side.studio.freecam.locked_to_path =
+                    !self.side.studio.freecam.locked_to_path;
             }
             KeyCode::KeyK => self.handle_studio_timeline_action(TimelineAction::AddCameraKeyframe),
             KeyCode::Delete => {
-                if let Some(index) = self.client.studio.timeline.selected_keyframe {
+                if let Some(index) = self.side.studio.timeline.selected_keyframe {
                     self.handle_studio_timeline_action(TimelineAction::RemoveCameraKeyframe(index));
                 }
             }

@@ -28,7 +28,7 @@ pub(in crate::game::server_side) use sunrise_core::random::RandomSource;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_protocol::packets::play::{self, Clientbound as C};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `LecternMenu.stillValid` (`Container.stillValidBlockEntity`): the block
     /// entity still holds a book and the guest is within the interaction
     /// range and its buffer.

@@ -2,7 +2,7 @@
 use super::Game;
 use super::api_values::{TryIntoApi, TryIntoEngine};
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn api_anvil_update(
         &mut self,
         player: u128,

@@ -3,7 +3,7 @@ pub(in crate::game::server_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::lan_actions::effects::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `InstrumentItem.play`'s `level.playSound(player, ...)`: the others hear
     /// a guest's horn now, the guest's own client played it as it used it.
     /// The horn is bound to the guest (`playSound(player, player, ...)`).
@@ -24,10 +24,10 @@ impl Game<'_> {
         let Some(horn) = horn else {
             return;
         };
-        if !self.server.audio_capture_active {
+        if !self.side.audio_capture_active {
             return;
         }
-        let capture = &mut self.server.pending_sounds;
+        let capture = &mut self.side.pending_sounds;
         let mut sounds = Vec::new();
         let mut i = heard.min(capture.len());
         while i < capture.len() {
@@ -78,8 +78,8 @@ impl Game<'_> {
             })
             .collect();
         let mut sounds = Vec::new();
-        if self.server.audio_capture_active {
-            let capture = &mut self.server.pending_sounds;
+        if self.side.audio_capture_active {
+            let capture = &mut self.side.pending_sounds;
             let mut i = heard.min(capture.len());
             while i < capture.len() {
                 let (name, at) = (&capture[i].event, &capture[i].position);
@@ -98,8 +98,8 @@ impl Game<'_> {
             && changed.iter().all(|&(x, y, z)| {
                 crate::game::remote::hand_operated(behaviours, self.world.block(x, y, z))
             });
-        if hand_operated && self.server.audio_capture_active {
-            let capture = &mut self.server.pending_sounds;
+        if hand_operated && self.side.audio_capture_active {
+            let capture = &mut self.side.pending_sounds;
             let start = heard.min(capture.len());
             sounds.extend(capture.drain(start..));
         }
@@ -113,7 +113,7 @@ impl Game<'_> {
             return;
         };
         host.broken.clear();
-        let sounds = std::mem::take(&mut self.server.pending_sounds);
+        let sounds = std::mem::take(&mut self.side.pending_sounds);
         for sound in sounds {
             self.send_captured_level_sound(sound, None);
         }
@@ -134,7 +134,7 @@ impl Game<'_> {
             .iter()
             .copied()
             .chain(
-                self.server
+                self.side
                     .lan_events
                     .iter()
                     .filter(|event| event.kind == 2001)
@@ -164,14 +164,14 @@ impl Game<'_> {
         &mut self,
         entities: &[sunrise_client::lan::entity::EntityState],
     ) {
-        if !self.server.audio_capture_active {
+        if !self.side.audio_capture_active {
             return;
         }
         let Some(host) = self.lan.as_ref() else {
             return;
         };
         host.hub
-            .prepare_captured_sounds(&mut self.server.pending_sounds, entities);
+            .prepare_captured_sounds(&mut self.side.pending_sounds, entities);
     }
     /// `LivingEntity.tick`'s arrows and bee stingers falling out of the
     /// players' bodies, and their counts for the players around
@@ -181,11 +181,11 @@ impl Game<'_> {
             return;
         };
         if !paused {
-            self.combat.0.stuck.tick();
+            self.side.combat.0.stuck.tick();
         }
         host.hub.guests.update_all(|g| {
             g.shoulders = crate::game::shoulders::shoulder_variants(g.saved.as_ref());
-            g.stuck = match self.guest_combat.0.get_mut(&g.conn) {
+            g.stuck = match self.side.guest_combat.0.get_mut(&g.conn) {
                 Some(combat) => {
                     if !paused {
                         combat.stuck.tick();

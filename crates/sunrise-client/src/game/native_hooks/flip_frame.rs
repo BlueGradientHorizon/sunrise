@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Once for each frame presented, after `render_frame_post` (`FlipFrameEvent`).
     pub(in crate::game) fn native_flip_frame(&mut self) {
         self.fire_flip_frame();

@@ -3,7 +3,7 @@ pub(in crate::game::server_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::block_breaking::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn break_block(&mut self, pos: [i32; 3]) -> Result<()> {
         self.carrier_break_block(pos)
     }
@@ -92,9 +92,9 @@ impl Game<'_> {
     /// A break inside another (a mod breaking more blocks from its
     /// `native_destroy_block`) keeps the outer break's own events.
     pub(in crate::game) fn player_break_block(&mut self, pos: [i32; 3]) -> Result<bool> {
-        let outer = self.server.lan_break_pos.replace(pos);
+        let outer = self.side.lan_break_pos.replace(pos);
         let broken = self.with_player_actor(|game| game.break_block_as_player(pos));
-        self.server.lan_break_pos = outer;
+        self.side.lan_break_pos = outer;
         broken
     }
 }

@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `IItemExtension.shouldCauseBlockBreakReset`: does the break that began
     /// with `stack` restart now that the main hand holds `held`? `reset`
     /// arrives with vanilla's answer; the parts of `stack`'s item may set it.

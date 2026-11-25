@@ -3,7 +3,7 @@
 #[allow(unused_imports)]
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The end of a piston's `Entity.move(MoverType.PISTON, …)` for falling
     /// block `i` after a step of `moved`: `checkFallDamage` adds the drop and,
     /// on the ground, runs fallOn and posts HIT_GROUND after a fall, then
@@ -60,7 +60,7 @@ impl Game<'_> {
                 }
                 return Ok(());
             }
-            if game.server.ordered.defer_landings {
+            if game.side.ordered.defer_landings {
                 if let Some(mut kept) = game.finish_falling_step(step, f) {
                     // Entity.scale(getAirDrag()) ends the tick of a block that stays.
                     kept.velocity = sunrise_client::entity_rules::scale_air_drag(kept.velocity);
@@ -78,7 +78,7 @@ impl Game<'_> {
                 // Only other falling blocks run before compaction, and their
                 // collision search excludes falling blocks. Finish this entity
                 // now so subsequent falls see its placed block.
-                game.server.ordered.landed.insert(join);
+                game.side.ordered.landed.insert(join);
                 return Ok(());
             }
             // Only terminal owners leave storage. Carry the original lifetime
@@ -121,7 +121,7 @@ impl Game<'_> {
             FallStep::Landed(pos) => {
                 let sample = sunrise_client::spans::SpanTotal::start();
                 let kept = self.finish_falling_block(owner, pos);
-                self.server.ordered.landing_time.add(sample);
+                self.side.ordered.landing_time.add(sample);
                 kept
             }
             FallStep::Falling => unreachable!(),

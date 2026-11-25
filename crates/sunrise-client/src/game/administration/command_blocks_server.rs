@@ -24,7 +24,7 @@ pub(in crate::game::server_side) use {
     sunrise_world::{chunk::BlockState, level::flags},
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Commands.performPrefixedCommand` for a `BaseCommandBlock` at game master level.
     pub(in crate::game::server_side) fn run_as_game_master(
         &mut self,
@@ -33,11 +33,11 @@ impl Game<'_> {
     ) -> i32 {
         // performPrefixedCommand: a leading slash is allowed.
         let line = command.strip_prefix('/').unwrap_or(command).to_owned();
-        let outer = self.cmds.0.results.replace(Vec::new());
+        let outer = self.side.cmds.0.results.replace(Vec::new());
         let level = std::mem::replace(&mut self.ui.registries.permission, 2);
         self.with_source(source, |g| g.run_command(&line));
         self.ui.registries.permission = level;
-        let results = std::mem::replace(&mut self.cmds.0.results, outer).unwrap_or_default();
+        let results = std::mem::replace(&mut self.side.cmds.0.results, outer).unwrap_or_default();
         results.iter().filter(|(success, _)| *success).count() as i32
     }
 

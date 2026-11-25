@@ -510,7 +510,7 @@ impl CartModels {
         Self { models }
     }
 }
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `getCurrentBlockPosOrRailBelow`.
     pub(in crate::game) fn rail_block(&self, p: Vec3, improved: bool) -> [i32; 3] {
         let (x, y, z) = (p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);

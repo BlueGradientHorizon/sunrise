@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Before the open screen draws itself (`ScreenEvent.Render.Pre`): draw
     /// here to put something under it, or set `canceled` and the screen is not
     /// drawn (nor its Background or Foreground phase).

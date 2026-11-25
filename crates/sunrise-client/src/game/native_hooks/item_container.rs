@@ -1,7 +1,7 @@
 use super::*;
 
 /// The registered item-container provider's runtime slot count.
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Item `item` holds items (`Capabilities.Item.ITEM`) when an explicit
     /// per-item registration supplies slots for it. Clamped to 1..=256;
     /// 0 leaves the item without slots, and vanilla's items have none. Asked at each

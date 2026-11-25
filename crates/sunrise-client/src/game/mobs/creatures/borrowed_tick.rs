@@ -101,7 +101,7 @@ pub(in crate::game) struct BorrowedMobTick<'a> {
     pub(in crate::game) stand_result: &'a mut Result<()>,
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn retained_passenger_snapshot(&self, uuid: Option<[i32; 4]>) -> Vec<Seen> {
         if self.persist.off_level.is_empty() {
             Vec::new()

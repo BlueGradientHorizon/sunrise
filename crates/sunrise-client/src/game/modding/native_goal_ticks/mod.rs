@@ -620,7 +620,7 @@ impl BehaviorCxBackend for GoalCx<'_, '_> {
     }
 }
 
-impl mobs::part_goals::GoalHost for Game<'_> {
+impl mobs::part_goals::GoalHost for Game<'_, crate::game::server_side::ServerState> {
     fn epoch(&self) -> Option<mod_api::WorldEpoch> {
         self.native_lifecycle.epoch()
     }
@@ -725,7 +725,7 @@ impl mobs::part_goals::GoalHost for Game<'_> {
     }
 
     fn mob_player_credit(&self, mob: &Mob) -> Option<Option<u32>> {
-        let credit = *self.server.last_hurt_by_player.get(&mob.id)?;
+        let credit = *self.side.last_hurt_by_player.get(&mob.id)?;
         Some(
             self.resolve_player_credit(credit)
                 .and_then(|conn| self.player_entity_id_by_connection(conn))
@@ -903,7 +903,7 @@ impl mobs::part_goals::GoalHost for Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Tell `mob_despawn` for a mob the tick holds out of the game. The handle
     /// resolves through the tick's own read view (#795) — the ticking mob
     /// itself, the player it sees and the snapshot of the others — because the

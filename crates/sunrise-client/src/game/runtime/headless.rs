@@ -45,7 +45,7 @@ impl HeadlessLoop {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Runs the game until it asks to stop (`sunrise-ctl quit`, a signal, an error), then
     /// saves as a window's game does when its loop ends.
     pub(in crate::game::client_side) fn run_headless(&mut self) {

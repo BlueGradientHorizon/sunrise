@@ -1,6 +1,6 @@
 use super::*;
 
-impl mod_api::PackDiscoveryContext for Game<'_> {
+impl<__Side: crate::game::Side> mod_api::PackDiscoveryContext for Game<'_, __Side> {
     fn live_host(&mut self) -> Option<mod_api::HostSide<'_>> {
         Some(super::super::execution_role::host_side(self))
     }
@@ -14,7 +14,7 @@ impl mod_api::PackDiscoveryContext for Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Register sources when a resource or data pack repository is discovered.
     pub(in crate::game) fn native_add_pack_finders(
         &mut self,

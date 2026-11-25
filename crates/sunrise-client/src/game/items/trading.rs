@@ -209,11 +209,11 @@ pub(in crate::game::server_side) fn write_random_sequences(
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `RandomSequences` as `random_sequences.dat` (not on a server's guest).
     pub(in crate::game::server_side) fn save_random_sequences(&mut self) {
         if self.is_logical_server() {
-            write_random_sequences(&self.server.world_root, &mut self.server.rand_sequences);
+            write_random_sequences(&self.side.world_root, &mut self.side.rand_sequences);
         }
     }
     /// `AbstractVillager.addOffersFromTradeSet` with the world's random
@@ -228,7 +228,7 @@ impl Game<'_> {
             return Vec::new();
         };
         self.journal_trade_sequences();
-        let mut random = self.server.rand_sequences.lend(&sequence, self.level.seed);
+        let mut random = self.side.rand_sequences.lend(&sequence, self.level.seed);
         let next_map = self.peek_map_id();
         let tag = |t: &str| self.structure_tag(t);
         let maps = GameMaps {
@@ -249,7 +249,7 @@ impl Game<'_> {
             .trades
             .offers_from_set(&ctx, set, &mut random);
         let made = maps.made.into_inner();
-        self.server.rand_sequences.give_back(sequence, random);
+        self.side.rand_sequences.give_back(sequence, random);
         self.register_exploration_maps(made);
         offers
     }
@@ -393,7 +393,7 @@ impl Game<'_> {
                 &session.profession,
                 level,
             ) {
-                let r = self.server.rand_sequences.lend(&seq, self.level.seed);
+                let r = self.side.rand_sequences.lend(&seq, self.level.seed);
                 session.sequences.insert(seq, r);
             }
         }
@@ -418,7 +418,7 @@ impl Game<'_> {
     pub(in crate::game) fn merchant_closed(&mut self, state: &mut MerchantState) {
         let session = &mut state.session;
         for (id, r) in std::mem::take(&mut session.sequences) {
-            self.server.rand_sequences.give_back(id, r);
+            self.side.rand_sequences.give_back(id, r);
         }
         let Some(id) = state.mob else { return };
         let professions = self.stations().professions.clone();
@@ -627,7 +627,7 @@ impl Game<'_> {
             };
             self.record_merchant_trade(mob, &offer.result);
             // TradeWithVillagerEvent: on the server, in the player's turn.
-            if let (Some(id), Some(_)) = (mob, self.server.lan_acting)
+            if let (Some(id), Some(_)) = (mob, self.side.lan_acting)
                 && let Some(kind) = self
                     .mobs
                     .iter()

@@ -28,7 +28,7 @@ struct PhantomTarget {
     identity: Option<(u128, String)>,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Resolve a hook's complete award before any statistic, scoreboard or packet is changed.
     /// Only listener calls allocate; ordinary per-tick awards keep their borrowed identifiers.
     pub(in crate::game::server_side) fn edited_stat_award(
@@ -98,7 +98,7 @@ impl Game<'_> {
 
     fn stats_path(&self) -> Option<PathBuf> {
         Some(locate_player_json(
-            &self.server.world_root,
+            &self.side.world_root,
             "stats",
             self.level.player_uuid?,
             &self.options.player_name(),
@@ -120,9 +120,9 @@ impl Game<'_> {
             || self.remote.is_some()
             || self.no_player_here()
             || self
-                .server
+                .side
                 .crash_save
-                .holds_interrupted(self.server.lan_acting)
+                .holds_interrupted(self.side.lan_acting)
         {
             return;
         }
@@ -133,7 +133,7 @@ impl Game<'_> {
     /// `ServerPlayer.awardStat`: `n` more of the statistic `ty` (a bare type
     /// such as `used`) and `key`, unless a native mod cancels the award.
     pub(in crate::game) fn award_stat(&mut self, ty: &str, key: &str, n: i32) {
-        if self.server.lan_acting_fake {
+        if self.side.lan_acting_fake {
             return;
         }
         self.award_stat_to(
@@ -141,9 +141,9 @@ impl Game<'_> {
             key,
             n,
             |game| {
-                game.server
+                game.side
                     .lan_acting_uuid
-                    .zip(game.server.lan_acting_name.clone())
+                    .zip(game.side.lan_acting_name.clone())
             },
             |game| &mut game.stats,
         );
@@ -208,7 +208,7 @@ impl Game<'_> {
         key: &str,
         n: i32,
     ) {
-        let frame = &self.lan_displaced_players.0[depth];
+        let frame = &self.side.lan_displaced_players.0[depth];
         if frame.fake {
             return;
         }
@@ -218,7 +218,7 @@ impl Game<'_> {
                 key,
                 n,
                 |game| {
-                    let frame = &game.lan_displaced_players.0[depth];
+                    let frame = &game.side.lan_displaced_players.0[depth];
                     frame.uuid.map(|uuid| {
                         (
                             uuid,
@@ -229,7 +229,7 @@ impl Game<'_> {
                         )
                     })
                 },
-                |game| &mut game.lan_displaced_players.0[depth].stats,
+                |game| &mut game.side.lan_displaced_players.0[depth].stats,
             );
         });
     }

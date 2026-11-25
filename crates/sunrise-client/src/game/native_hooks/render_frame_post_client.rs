@@ -4,10 +4,10 @@ pub(in crate::game::client_side) use super::*;
 pub(in crate::game::client_side) use crate::game::native_hooks::render_frame_post::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn finish_render_frame(&mut self, elapsed: Duration) {
         let (world_partial_tick, partial_tick) = self
-            .client
+            .side
             .extras
             .frame_partial_ticks
             .take()

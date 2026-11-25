@@ -6,7 +6,7 @@ use crate::game::entity::EntityHandle;
 use mod_api::EntityRef;
 use std::collections::HashSet;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerExplosion.explode` posting `onExplosionDetonate` before any block or
     /// entity is hit. The entities are `level.getEntities(source, box)`, the box
     /// the centre ± (2 × radius + 1) floored, without the exploding source; every
@@ -31,10 +31,10 @@ impl Game<'_> {
         let min = center.map(|c| (c - reach).floor());
         let max = center.map(|c| (c + reach).floor());
         let source = self
-            .combat
+            .side.combat
             .0
             .explosion_direct
-            .or(self.combat.0.explosion_source);
+            .or(self.side.combat.0.explosion_source);
         let mut entities = self
             .level(self.dim.id())
             .and_then(|level| self.level_entities_in(level, min, max))
@@ -49,8 +49,8 @@ impl Game<'_> {
         entities.retain(|entity| self.native_entity_target(*entity).is_some());
         let mut seen = HashSet::new();
         entities.retain(|entity| seen.insert(entity.id()));
-        self.combat.0.blast_hit_ids = seen;
-        self.combat.0.blast_hit_list = Some(entities.iter().map(|entity| entity.id()).collect());
+        self.side.combat.0.blast_hit_ids = seen;
+        self.side.combat.0.blast_hit_list = Some(entities.iter().map(|entity| entity.id()).collect());
     }
 
     /// The four entity kinds the entity-list walk misses: item frames,

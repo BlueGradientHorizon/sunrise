@@ -3,7 +3,7 @@ use super::{Game, cartography::LevelMaps, maps::map_id};
 use std::collections::HashMap;
 use sunrise_client::items::ItemStack;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The maps of `stacks` (loaded as needed) for a menu over this level.
     pub(in crate::game) fn level_maps<'s>(
         &mut self,

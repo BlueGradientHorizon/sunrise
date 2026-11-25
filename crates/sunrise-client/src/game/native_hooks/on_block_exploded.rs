@@ -1,5 +1,5 @@
 use super::*;
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn native_on_block_exploded(
         &mut self,
         pos: BlockPos,
@@ -11,7 +11,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn notify_block_exploded(
         &mut self,
         pos: [i32; 3],

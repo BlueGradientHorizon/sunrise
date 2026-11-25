@@ -15,26 +15,26 @@ pub(in crate::game::client_side) use std::rc::Rc;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_core::random::LegacyRandom;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Lend `ClientLevel.random` to a client Part, sharing the stream with any callbacks
     /// and host effects it calls before returning.
     pub(in crate::game) fn lend_client_level_random<R>(
         &mut self,
         f: impl FnOnce(&mut Self, &mut dyn mod_api::RandomSource) -> R,
     ) -> R {
-        if let Some(lent) = self.lent_level_random.0.clone() {
+        if let Some(lent) = self.side.lent_level_random.0.clone() {
             return f(self, &mut LevelRandom(lent));
         }
         let lent: LentRandom = Rc::new(RefCell::new(mod_api::LegacyRandomSource::from(<(
             u64,
             Option<f64>,
         )>::from(
-            &*self.particles.0.level_random(),
+            &*self.side.particles.0.level_random(),
         ))));
-        self.lent_level_random.0 = Some(lent.clone());
+        self.side.lent_level_random.0 = Some(lent.clone());
         let out = f(self, &mut LevelRandom(lent.clone()));
-        self.lent_level_random.0 = None;
-        *self.particles.0.level_random() =
+        self.side.lent_level_random.0 = None;
+        *self.side.particles.0.level_random() =
             LegacyRandom::from(<(u64, Option<f64>)>::from(&*lent.borrow()));
         out
     }
@@ -46,14 +46,14 @@ impl Game<'_> {
         &mut self,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        let Some(lent) = self.lent_level_random.0.clone() else {
+        let Some(lent) = self.side.lent_level_random.0.clone() else {
             return f(self);
         };
-        *self.particles.0.level_random() =
+        *self.side.particles.0.level_random() =
             LegacyRandom::from(<(u64, Option<f64>)>::from(&*lent.borrow()));
         let out = f(self);
         *lent.borrow_mut() = mod_api::LegacyRandomSource::from(<(u64, Option<f64>)>::from(
-            &*self.particles.0.level_random(),
+            &*self.side.particles.0.level_random(),
         ));
         out
     }

@@ -1,7 +1,7 @@
 //! Save visibility while authoritative rows are lent out.
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `EnderDragon.kill` (`/kill`): `Entity.kill` removes the entity, it
     /// does not hurt it (the dragon flies its death flight when its health
     /// runs out). The fight's dragon ends the fight there and then

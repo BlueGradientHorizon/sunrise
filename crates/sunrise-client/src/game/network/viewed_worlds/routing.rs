@@ -168,7 +168,7 @@ pub(super) fn default_clock(r: &Remote, dimension: &DimensionType) -> Option<i32
     r.registries.id("minecraft:world_clock", name)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// A `sunrise:levels` play payload's data: routed, or the connection closes with the reason.
     pub(in crate::game::client_side) fn viewed_levels_payload(
         &mut self,

@@ -3,7 +3,7 @@ use super::{Dim, Game};
 
 pub(in crate::game) use sunrise_gameplay::cat_spawner::CatSpawner;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `CatSpawner.tick` (the overworld's custom spawner).
     pub(in crate::game::server_side) fn tick_cat_spawner(&mut self) {
         if self.dim != Dim::Overworld || !self.creatures.cat.due() {

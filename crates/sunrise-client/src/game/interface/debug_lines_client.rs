@@ -24,7 +24,7 @@ pub(in crate::game::client_side) use sunrise_world::{
     worldgen::terrain::TerrainBlockStates,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `Minecraft.crosshairPickEntity`'s type: the nearest entity under the
     /// crosshair before any block.
     pub(in crate::game::client_side) fn crosshair_entity_type(&self) -> Option<String> {
@@ -92,7 +92,7 @@ impl Game<'_> {
     /// `SectionRenderDispatcher.getStats` (the meshes queued; Sunrise has
     /// no buffer pool, so no buffer is ever free).
     pub(in crate::game::client_side) fn debug_chunk_render_line(&self, d: &mut Displayer) {
-        let Some(r) = self.renderer.0.as_ref() else {
+        let Some(r) = self.side.renderer.0.as_ref() else {
             return;
         };
         let distance = self.settings.render_distance;
@@ -145,7 +145,7 @@ impl Game<'_> {
             .map_or(self.settings.simulation_distance, |r| r.simulation_distance);
         d.line(format!(
             "E: {}/{}, SD: {simulation}",
-            self.client.rendered_mobs.get(),
+            self.side.rendered_mobs.get(),
             self.debug_entity_count()
         ));
     }
@@ -156,10 +156,10 @@ impl Game<'_> {
             .iter()
             .map(|e| e.path)
             .filter(|path| {
-                self.debug_entries.0.enabled(
-                    &self.registered_debug_entries.0,
+                self.side.debug_entries.0.enabled(
+                    &self.side.registered_debug_entries.0,
                     path,
-                    self.client.debug,
+                    self.side.debug,
                     reduced,
                 )
             })
@@ -187,7 +187,7 @@ impl Game<'_> {
                     "Minecraft {v} ({v}/sunrise)",
                     v = sunrise_client::save::VERSION_NAME
                 )),
-                "gpu_utilization" => d.line(overlay::gpu_line(self.client.gpu_utilization)),
+                "gpu_utilization" => d.line(overlay::gpu_line(self.side.gpu_utilization)),
                 "heightmap" => self.debug_heightmap_lines(d, server.as_ref()),
                 "light_levels" => {
                     if let Some(feet) = self.debug_feet() {
@@ -222,11 +222,11 @@ impl Game<'_> {
                     d.group("looking_at_fluid", lines);
                 }
                 "memory" => {
-                    if let Some(lines) = self.client.memory_meter.borrow_mut().lines() {
+                    if let Some(lines) = self.side.memory_meter.borrow_mut().lines() {
                         d.group("memory", lines);
                     }
                 }
-                "particle_render_stats" => d.line(format!("P: {}", self.particles.0.len())),
+                "particle_render_stats" => d.line(format!("P: {}", self.side.particles.0.len())),
                 "player_position" | "player_section_position" => {
                     if let Some(cam) = self.camera_subject() {
                         let mut lines = overlay::position(
@@ -264,18 +264,18 @@ impl Game<'_> {
                 }
                 "simple_performance_impactors" => self.debug_performance_lines(d),
                 "sound_cache" => {
-                    let (buffers, bytes) = self.audio.0.cache_stats();
+                    let (buffers, bytes) = self.side.audio.0.cache_stats();
                     d.line(overlay::sound_cache_line(buffers, bytes));
                 }
                 "sound_mood" => {
                     if self.player.is_some() {
                         d.line(overlay::sound_mood_line(
-                            self.audio.0.engine.used_channels(),
+                            self.side.audio.0.engine.used_channels(),
                             [
                                 sunrise_client::sound_engine::STATIC_CHANNELS,
                                 sunrise_client::sound_engine::STREAMING_CHANNELS,
                             ],
-                            self.client.ambience.moodiness,
+                            self.side.ambience.moodiness,
                         ));
                     }
                 }
@@ -283,20 +283,20 @@ impl Game<'_> {
                     self.debug_system_lines(d, framebuffer);
                     // Sunrise's own: the shader pack's GPU time per pass (an
                     // empty group would move others).
-                    let pass_lines = self.renderer.0.as_ref().map_or_else(Vec::new, |r| {
+                    let pass_lines = self.side.renderer.0.as_ref().map_or_else(Vec::new, |r| {
                         overlay::shader_pass_lines(&r.shader_pass_times())
                     });
-                    if self.client.debug && !pass_lines.is_empty() {
+                    if self.side.debug && !pass_lines.is_empty() {
                         d.group("shader pack", pass_lines);
                     }
                     // Sunrise's own passes, in a group of their own.
-                    let own_lines = self.renderer.0.as_ref().map_or_else(Vec::new, |r| {
+                    let own_lines = self.side.renderer.0.as_ref().map_or_else(Vec::new, |r| {
                         overlay::labelled_pass_lines("Sunrise GPU", &r.own_pass_times())
                     });
-                    if self.client.debug && !own_lines.is_empty() {
+                    if self.side.debug && !own_lines.is_empty() {
                         d.group("Sunrise passes", own_lines);
                     }
-                    let detail_lines = self.renderer.0.as_ref().map_or_else(Vec::new, |r| {
+                    let detail_lines = self.side.renderer.0.as_ref().map_or_else(Vec::new, |r| {
                         let support = r.pass_detail_support().filter(|_| r.pass_detail());
                         support.map_or_else(Vec::new, |support| {
                             overlay::pass_detail_lines(
@@ -306,7 +306,7 @@ impl Game<'_> {
                             )
                         })
                     });
-                    if self.client.debug && !detail_lines.is_empty() {
+                    if self.side.debug && !detail_lines.is_empty() {
                         d.group("Sunrise pass detail", detail_lines);
                     }
                 }
@@ -320,7 +320,7 @@ impl Game<'_> {
                             .as_ref()
                             .and_then(|server| server.terrain(self.dim.id()));
                         let dim = self.dim.id();
-                        let mut cache = self.client.debug_density.borrow_mut();
+                        let mut cache = self.side.debug_density.borrow_mut();
                         let line = cache.line(
                             dim,
                             feet,
@@ -338,10 +338,10 @@ impl Game<'_> {
         }
         // A native mod's entries come after vanilla's, in registration order.
         for (group, lines) in debug_entries::mod_lines(
-            &self.registered_debug_entries.0,
+            &self.side.registered_debug_entries.0,
             self,
-            &self.debug_entries.0,
-            self.client.debug,
+            &self.side.debug_entries.0,
+            self.side.debug,
             reduced,
         ) {
             d.group(debug_entries::group_key(group), lines);

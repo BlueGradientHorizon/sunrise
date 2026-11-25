@@ -9,7 +9,7 @@ pub(in crate::game::server_side) use sunrise_protocol::{
     packets::configuration::UpdateTags, text::translatable,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether a guest's attack on entity `id` ends before `Player.attack` (handleAttack).
     /// The guest who attacks an `ItemEntity`, an `ExperienceOrb`, themselves or an
     /// `AbstractArrow` that is not `isAttackable` is disconnected with

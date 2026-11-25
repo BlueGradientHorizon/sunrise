@@ -9,7 +9,7 @@ use sunrise_client::{
 #[allow(unused_imports)]
 use sunrise_core::{geometry::Vec3, position::BlockPos, random::RandomSource};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The sniffer's client-side effects: `Sniffer.emitDiggingParticles`
     /// and `playSearchingSound`.
     pub(in crate::game) fn tick_sniffer_client(&mut self) {
@@ -44,7 +44,7 @@ impl Game<'_> {
             let id = m.id;
             let at = [m.position.x, m.position.y, m.position.z];
             if sniffer::state(m) == sniffer::SEARCHING && m.age.is_multiple_of(20) {
-                self.audio.0.play_unshared(
+                self.side.audio.0.play_unshared(
                     "minecraft:entity.sniffer.searching",
                     Some(at),
                     1.0,
@@ -93,7 +93,7 @@ impl Game<'_> {
                             mod_api::BlockSoundCause::Dig,
                         )
                         .hit;
-                        self.audio.0.play_unshared(&hit, Some(at), 0.5, 0.5);
+                        self.side.audio.0.play_unshared(&hit, Some(at), 0.5, 0.5);
                     }
                 }
             }

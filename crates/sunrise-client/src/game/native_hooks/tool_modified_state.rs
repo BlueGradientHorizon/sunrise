@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The state the block `state` becomes under the tool action `tool` of the
     /// held `stack` (`IBlockExtension.getToolModifiedState`): `final_state`
     /// starts with vanilla's answer and the block's parts may allow, replace

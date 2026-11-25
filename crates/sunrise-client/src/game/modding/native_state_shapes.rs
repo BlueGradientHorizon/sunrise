@@ -61,7 +61,7 @@ pub(in crate::game) enum Outline<'a> {
     Default(&'a sunrise_client::blocks::StateFacts),
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn selected_outline<'a>(
         &'a self,
         world: &'a World,

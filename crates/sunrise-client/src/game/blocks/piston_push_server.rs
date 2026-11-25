@@ -40,7 +40,7 @@ pub(in crate::game::server_side) use sunrise_world::{
     world_movement::EntityMovementWorld,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Server arm of [`Game::side_push_piston_entities`].
     pub(in crate::game) fn server_push_piston_entities(&mut self, pushes: Vec<Push>) {
         let mut accumulators = std::collections::HashMap::new();
@@ -1084,7 +1084,7 @@ impl Game<'_> {
                 if let Some(hit) = paused_hurt
                     && let Some(index) = self.mob_index.find(&self.mobs, hit.victim)
                 {
-                    self.paused_mob_hurt.0 = Some(hit);
+                    self.side.paused_mob_hurt.0 = Some(hit);
                     self.finish_mob_damage_at(index);
                 }
             }
@@ -1199,12 +1199,12 @@ impl Game<'_> {
         let (before, id, conn, dim) = (
             player.position,
             player.entity_id,
-            self.server.lan_acting,
+            self.side.lan_acting,
             self.dim,
         );
         macro_rules! motion_phase {
             ($world:ident, $body:expr) => {{
-                if self.server.lan_acting != conn || self.dim != dim {
+                if self.side.lan_acting != conn || self.dim != dim {
                     return Ok(None);
                 }
                 let entities = self.entity_collisions(Mover::Player);
@@ -1309,7 +1309,7 @@ impl Game<'_> {
                         let p = self.player.as_ref().filter(|p| !p.spectator)?;
                         (p.bounds(), p.entity_id as u32, None)
                     }
-                    MoveWho::Guest(conn) if Some(conn) != self.server.lan_acting => {
+                    MoveWho::Guest(conn) if Some(conn) != self.side.lan_acting => {
                         let g = self
                             .lan
                             .as_ref()?

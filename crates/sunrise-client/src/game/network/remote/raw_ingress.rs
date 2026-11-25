@@ -25,7 +25,7 @@ pub(in crate::game) struct ListenerTurn {
     pub(in crate::game) packet_error: bool,
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     #[cfg(test)]
     pub(in crate::game) fn wait_for_test_remote_event(&mut self, until: impl Fn(&Event) -> bool) {
         let deadline = Instant::now() + Duration::from_secs(5);

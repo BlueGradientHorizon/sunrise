@@ -14,7 +14,7 @@ use sunrise_core::geometry::Vec3;
 #[allow(unused_imports)]
 use sunrise_world::registry::BlockStateId;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Getting off lands on top of it.
     pub(in crate::game) fn dismount_happy_ghast(&mut self, id: u32) {
         // removePassenger: held still for half a second, and with no one

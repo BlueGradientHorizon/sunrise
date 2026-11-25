@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Level.playSound(player, ...)`: a guest's client already predicted the
     /// fire-starter sound, so play it locally on the server and forward it to
     /// the other guests without leaving it in the broadcast capture.
@@ -11,8 +11,8 @@ impl Game<'_> {
         at: [f64; 3],
         pitch: f32,
     ) {
-        if self.server.lan_acting.is_some() {
-            self.server
+        if self.side.lan_acting.is_some() {
+            self.side
                 .guest_block_sounds
                 .push((sound.to_owned(), at, 1.0, pitch));
         } else {
@@ -23,12 +23,12 @@ impl Game<'_> {
     /// One hand's turn in `startUseItem`: `useItemOn` the block aimed at,
     /// then `useItem`. Whether the click ends here (it acted or failed).
     pub(in crate::game) fn use_hand(&mut self, block_hit: Option<&Hit>) -> Result<bool> {
-        if self.server.guest_use.is_none()
+        if self.side.guest_use.is_none()
             && let Some(hit) = block_hit
         {
             return self.use_target_then_item(hit);
         }
-        self.server.use_failed = false;
+        self.side.use_failed = false;
         // isSecondaryUseActive with something in either hand keeps blocks
         // from reacting.
         let sneaking = self.server_acting_sneak();
@@ -41,7 +41,7 @@ impl Game<'_> {
         // mods' hook, the block's own use, then the item's.
         use mod_api::InteractionResult as Answer;
         use mod_api::TriState;
-        let on_block = matches!(self.server.guest_use, Some(GuestUse::OnBlock { .. }));
+        let on_block = matches!(self.side.guest_use, Some(GuestUse::OnBlock { .. }));
         let mut block_hit = block_hit;
         let (mut use_block, mut use_item) = (TriState::Default, TriState::Default);
         let block_phase = sunrise_client::spans::guard("use_block");
@@ -61,7 +61,7 @@ impl Game<'_> {
                     if matches!(answer, Answer::Success | Answer::SuccessServer) {
                         self.swing_arm();
                     }
-                    self.server.use_failed = answer == Answer::Fail;
+                    self.side.use_failed = answer == Answer::Fail;
                     return Ok(true);
                 }
                 // A canceled PASS permits Item.use but never reaches ItemStack.useOn.
@@ -81,7 +81,7 @@ impl Game<'_> {
             if matches!(answer, Answer::Success | Answer::SuccessServer) {
                 self.swing_arm();
             }
-            self.server.use_failed = answer == Answer::Fail;
+            self.side.use_failed = answer == Answer::Fail;
             return Ok(answer.consumes_action() || answer == Answer::Fail);
         }
         // ServerPlayerGameMode.useItemOn: after the spectator and sneak gates, BlockState.useItemOn first. ITEM_USED_ON_BLOCK sees the stack from before it, whichever phase consumes.
@@ -292,8 +292,8 @@ impl Game<'_> {
                     self.award_custom_stat("pot_flower", 1);
                     self.consume_held();
                     if let (Some(player), Some(name)) = (
-                        self.server.lan_acting_uuid,
-                        self.server.lan_acting_name.clone(),
+                        self.side.lan_acting_uuid,
+                        self.side.lan_acting_name.clone(),
                     ) {
                         self.native_player_flower_pot_manipulate(
                             player, &name, hit.pos, &used.item,
@@ -345,7 +345,7 @@ impl Game<'_> {
         // is about to answer. Record this on the current guest turn only.
         if let Some(GuestUse::OnBlock {
             block_fell_through, ..
-        }) = &mut self.server.guest_use
+        }) = &mut self.side.guest_use
         {
             *block_fell_through = true;
         }
@@ -411,7 +411,7 @@ impl Game<'_> {
                 return Ok(true);
             }
             if answer == Answer::Fail {
-                self.server.use_failed = true;
+                self.side.use_failed = true;
                 return Ok(true);
             }
             if on_block {
@@ -431,7 +431,7 @@ impl Game<'_> {
                 return Ok(true);
             }
             if answer == Answer::Fail {
-                self.server.use_failed = true;
+                self.side.use_failed = true;
                 return Ok(true);
             }
         }
@@ -454,7 +454,7 @@ impl Game<'_> {
             // `Minecraft.startUseItem`: the stick's client-side `useOn` is
             // SUCCESS, so the actor's hand swings; a remote guest swings in
             // its own client, not on the server.
-            if self.server.lan_acting.is_none() {
+            if self.side.lan_acting.is_none() {
                 self.swing_arm();
             }
             if success {
@@ -462,7 +462,7 @@ impl Game<'_> {
                 self.trigger_block("minecraft:item_used_on_block", hit.pos, before);
             } else {
                 // DebugStickItem.useOn's FAIL.
-                self.server.use_failed = true;
+                self.side.use_failed = true;
             }
             return Ok(true);
         }
@@ -489,7 +489,7 @@ impl Game<'_> {
                 return self.finish_item_block_use(block_hit, before);
             }
             UseResult::Fail => {
-                self.server.use_failed = true;
+                self.side.use_failed = true;
                 return Ok(true);
             }
             UseResult::Pass => {}
@@ -659,7 +659,7 @@ impl Game<'_> {
                 self.award_stat("used", &stack.item, 1);
             } else {
                 // BlockItem.place's FAIL.
-                self.server.use_failed = true;
+                self.side.use_failed = true;
             }
             return Ok(true);
         };
@@ -690,7 +690,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn apply_consume_effect(
         &mut self,
         consumed: &sunrise_client::items::ItemStack,
@@ -899,7 +899,7 @@ impl Game<'_> {
             let (player, name, projectile) = (
                 sunrise_client::lan::playerdata::ints_uuid(self.acting_player_uuid()),
                 self.acting_player_name().to_owned(),
-                self.server.next_entity,
+                self.side.next_entity,
             );
             self.native_entity_shoot_bow(player, &name, projectile, power * 3.0);
             // ProjectileWeaponItem.shoot: one point of wear per arrow, and a

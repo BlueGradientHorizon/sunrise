@@ -57,7 +57,7 @@ fn a_mount_chest_beyond_the_slot_range_ends_the_connection() {
                         entity: 41,
                     }))
                     .unwrap();
-                    assert!(game.client.mount_menu.opened_mob().is_none());
+                    assert!(game.side.mount_menu.opened_mob().is_none());
                     let deadline = Instant::now() + Duration::from_secs(5);
                     while game.remote.is_some() && Instant::now() < deadline {
                         game.poll_remote().unwrap();
@@ -96,7 +96,7 @@ fn rejected_menu_packets_retire_the_previous_client_menu() {
                 assert!(remote.menu.as_ref().is_none());
                 assert_ne!(remote.menu.generation, generation);
                 assert!(game.carried.is_none());
-                assert_eq!(game.client.screen, Screen::Playing);
+                assert_eq!(game.side.screen, Screen::Playing);
                 assert!(
                     packets_through_pong(game, &mut reader)
                         .into_iter()
@@ -141,7 +141,7 @@ fn rejected_mounts_preserve_the_previous_client_menu_without_sending_close() {
                     assert_eq!(remote.menu.as_ref(), Some(&previous));
                     assert_eq!(remote.menu.generation, generation);
                     assert_eq!(game.carried.as_ref(), Some(&carried));
-                    assert_eq!(game.client.screen, Screen::Inventory);
+                    assert_eq!(game.side.screen, Screen::Inventory);
                     assert!(
                         !packets_through_pong(game, &mut reader)
                             .into_iter()
@@ -197,7 +197,7 @@ fn remote_mount_is_installed_before_screen_init_and_keeps_all_columns() {
                     }))
                     .unwrap();
                     game.remote.as_mut().unwrap().level_load.finish();
-                    let open = |game: &mut Game<'_>, container, entity, species, columns| {
+                    let open = |game: &mut Game<'_, crate::game::client_side::ClientState>, container, entity, species, columns| {
                         let ty = game.res.mob_types().get(species).unwrap().clone();
                         game.mobs.push(Mob::new(entity as u32, ty, Vec3::ZERO, 0.0));
                         game.handle_packet(C::MountScreenOpen(MountScreenOpen {
@@ -206,8 +206,8 @@ fn remote_mount_is_installed_before_screen_init_and_keeps_all_columns() {
                             entity,
                         }))
                         .unwrap();
-                        assert_eq!(game.client.screen, Screen::Inventory);
-                        assert_eq!(game.client.mount_menu.opened_mob(), Some(entity as u32));
+                        assert_eq!(game.side.screen, Screen::Inventory);
+                        assert_eq!(game.side.mount_menu.opened_mob(), Some(entity as u32));
                     };
                     open(game, 8, 41, "minecraft:horse", 6);
                     assert_eq!(

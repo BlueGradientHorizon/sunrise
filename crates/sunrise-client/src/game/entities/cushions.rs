@@ -39,7 +39,7 @@ pub(in crate::game::server_side) fn overlaps(a: Aabb, b: Aabb) -> bool {
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::entity_common::PlacementWorld;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The cushion under the crosshair, its distance and the hit point.
     pub(in crate::game::server_side) fn cushion_hit(&self) -> Option<(usize, f64, [f64; 3])> {
         let (eye, dir) = self.aim()?;
@@ -105,8 +105,8 @@ impl Game<'_> {
         {
             return false;
         }
-        self.server.next_entity += 1;
-        let id = self.server.next_entity;
+        self.side.next_entity += 1;
+        let id = self.side.next_entity;
         // `BlockAttachedEntity.setPos`: `BlockPos.containing(position)`.
         let attached = [
             position.x.floor() as i32,
@@ -165,7 +165,7 @@ impl Game<'_> {
         // `Cushion.hurtServer` refuses a player who may not build, so
         // skipAttackInteraction is false and Player.attack goes on to onAttack.
         if !self.may_build() {
-            self.server.attack_ticks = 0;
+            self.side.attack_ticks = 0;
             return true;
         }
         self.break_cushion(i, true);
@@ -200,7 +200,7 @@ impl Game<'_> {
             Some(Target::Player) => self.creative,
             // The guest whose turn it is is in place already (the hub is out of
             // `self.lan` while it acts), as `sculk::entity_event_by` reads it.
-            Some(Target::Guest(conn)) if self.server.lan_acting == Some(*conn) => self.creative,
+            Some(Target::Guest(conn)) if self.side.lan_acting == Some(*conn) => self.creative,
             Some(Target::Guest(conn)) => self.command_guest(*conn).is_some_and(|g| g.creative()),
             _ => false,
         }
@@ -225,7 +225,7 @@ impl Game<'_> {
         state: sunrise_world::registry::BlockStateId,
         particle_at: [f64; 3],
     ) {
-        self.server.lan_cushion_breaks.push((state, particle_at));
+        self.side.lan_cushion_breaks.push((state, particle_at));
     }
 
     /// `Cushion.showBreakingParticles`: ten of the matching wool block.
@@ -239,7 +239,7 @@ impl Game<'_> {
         let particle_at = [p.x, p.y + 0.25 * (2.0 / 3.0), p.z];
         // Guest actions temporarily take self.lan; flush once the hub is back.
         // Queue before resolving a sprite: a dedicated server has no renderer.
-        if self.server.audio_capture_active {
+        if self.side.audio_capture_active {
             self.cushion_break_particles_server(state, particle_at);
         }
     }

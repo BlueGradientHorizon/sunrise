@@ -5,7 +5,7 @@ use super::*;
 #[path = "tests/filled_bucket_stat_tests.rs"]
 mod filled_bucket_stat_tests;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The tail of `BucketItem.use` once `emptyContents` succeeded, after the
     /// criteria: `player.awardStat(Stats.ITEM_USED.get(this))`, then
     /// `ItemUtils.createFilledResult(itemStack, player,
@@ -19,7 +19,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn server_bucket_liquid_user_entity_id(&self) -> Option<u32> {
-        self.server
+        self.side
             .lan_acting_entity
             .or_else(|| self.player.as_ref().map(|p| p.entity_id as u32))
     }
@@ -33,7 +33,7 @@ impl Game<'_> {
     /// protection radius (at the block the bucket's own ray met), then
     /// `player.mayUseItemAt` (adventure mode's `can_place_on`).
     pub(in crate::game::server_side) fn bucket_use_refused(&self, pos: [i32; 3]) -> bool {
-        self.server
+        self.side
             .lan_acting_spawn_protection
             .is_some_and(|radius| self.spawn_protects(radius, self.dim.id(), pos))
             || (!self.may_build() && !self.can_place_on_in_adventure(pos))

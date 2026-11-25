@@ -145,7 +145,7 @@ pub(in crate::game) trait Entity: EntityRules {
     /// chunk and the NBT when it lies in `keys` and is saved with its chunk.
     /// Required, so a new kind states how it saves.
     fn save_nbt(
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
         index: usize,
         keys: &HashSet<ChunkKey>,
     ) -> Option<(ChunkKey, Tag)>;
@@ -154,7 +154,7 @@ pub(in crate::game) trait Entity: EntityRules {
     /// Required, so a new kind states how it loads: it cannot be saved and then
     /// dropped silently on the way back in.
     fn load_nbt(
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
         kind: &str,
         uuid: Option<[i32; 4]>,
         player_uuid: Option<[i32; 4]>,
@@ -390,7 +390,7 @@ pub(in crate::game) trait Entity: EntityRules {
     }
     /// `Entity.canUsePortal(false)` for a kind in `portal_size`. A kind that
     /// cannot stays tracked, so its cooldown and process run out.
-    fn can_use_portal(&self, _game: &Game<'_>) -> bool {
+    fn can_use_portal(&self, _game: &Game<'_, crate::game::server_side::ServerState>) -> bool {
         true
     }
     /// A boat or minecart: the kinds whose portal pass opens the tick, before
@@ -460,7 +460,7 @@ pub(in crate::game::server_side) fn shot_alive(shot: &Projectile) -> bool {
 /// cactus contacts are its own tick's (`ItemEntity::environment_tick`), kept
 /// where they were.
 pub(in crate::game) struct ItemInside<'a, 'g> {
-    pub(in crate::game) game: &'a mut Game<'g>,
+    pub(in crate::game) game: &'a mut Game<'g, crate::game::server_side::ServerState>,
     pub(in crate::game) item: &'a mut ItemEntity,
 }
 
@@ -515,7 +515,7 @@ impl sunrise_client::block_contact::InsideWalk for ItemInside<'_, '_> {
 
 /// The projectile's view of the shared inside walk, the item's shape of it.
 pub(in crate::game) struct ProjectileInside<'a, 'g> {
-    pub(in crate::game) game: &'a mut Game<'g>,
+    pub(in crate::game) game: &'a mut Game<'g, crate::game::server_side::ServerState>,
     pub(in crate::game) shot: &'a mut Projectile,
 }
 
@@ -750,7 +750,7 @@ pub(in crate::game) fn apply_contact_writes(
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Block.fallOn` effects for bodies whose `causeFallDamage` does nothing.
     pub(in crate::game) fn nonliving_fall_on(
         &mut self,
@@ -833,13 +833,13 @@ impl Game<'_> {
             Some(mod_api::LevelRef::with_generation(
                 epoch,
                 key,
-                self.levels.0.runtime.generation_of(id),
+                self.side.levels.0.runtime.generation_of(id),
             ))
         });
         (
-            self.server.lan_acting_uuid,
+            self.side.lan_acting_uuid,
             level,
-            self.session_lock.0.is_some(),
+            self.side.session_lock.0.is_some(),
         )
     }
 
@@ -912,7 +912,7 @@ impl Game<'_> {
 /// the `Entity` defaults every kind shares: fluids, move, column, settle,
 /// fluids again. Returns false when the item should be removed. A server's tick
 /// runs the halves itself, with the landing's `Block.fallOn` between them.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Tick an item owned by the caller. The two results are ordinary survival
     /// and explicit consumption by a block-contact handler. `escape_speed`:
     /// the item is inside a block and moves without physics this tick, pushed
@@ -1244,7 +1244,7 @@ macro_rules! define_entity_handles {
             }
         }
 
-        impl Game<'_> {
+        impl Game<'_, crate::game::server_side::ServerState> {
             /// Moves every list out; give it back with `restore_entities`.
             pub(in crate::game::server_side) fn take_entities(&mut self) -> TakenEntities {
                 TakenEntities {
@@ -1866,7 +1866,7 @@ pub(in crate::game::server_side) fn loads_as_tnt(kind: &str) -> bool {
     kind == "minecraft:tnt"
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The type ids the mob kind loads.
     pub(in crate::game::server_side) fn loads_as_mob(&self, kind: &str) -> bool {
         self.res.mob_types().contains_key(kind)
@@ -1933,7 +1933,7 @@ impl Game<'_> {
             .map(|e| e.id)
             .chain(self.item_frames.iter().map(|e| e.id))
             .chain(self.paintings.iter().map(|e| e.id))
-            .chain(self.others.0.iter().map(|e| e.id))
+            .chain(self.side.others.0.iter().map(|e| e.id))
             .chain(self.breath_clouds.iter().map(|e| e.id))
             .chain(self.bolts.iter().map(|e| e.id))
             .chain(self.fangs.list.iter().map(|e| e.id))
@@ -2030,14 +2030,14 @@ impl Entity for Mob {
         super::native_hooks::mob_kind(self).into()
     }
     fn save_nbt(
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
         index: usize,
         keys: &HashSet<ChunkKey>,
     ) -> Option<(ChunkKey, Tag)> {
         game.save_mob(index, keys)
     }
     fn load_nbt(
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
         kind: &str,
         _uuid: Option<[i32; 4]>,
         _player_uuid: Option<[i32; 4]>,
@@ -2057,7 +2057,7 @@ impl Entity for Mob {
     fn sweeps_portals(&self) -> bool {
         true
     }
-    fn can_use_portal(&self, game: &Game<'_>) -> bool {
+    fn can_use_portal(&self, game: &Game<'_, crate::game::server_side::ServerState>) -> bool {
         game.mob_portal_eligible(self)
     }
     /// `PersistentEntitySectionManager.Callback.onRemove`: discard stops
@@ -2171,14 +2171,14 @@ impl Entity for ItemEntity {
         "minecraft:item".into()
     }
     fn save_nbt(
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
         index: usize,
         keys: &HashSet<ChunkKey>,
     ) -> Option<(ChunkKey, Tag)> {
         game.save_item(index, keys)
     }
     fn load_nbt(
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
         kind: &str,
         uuid: Option<[i32; 4]>,
         _player_uuid: Option<[i32; 4]>,
@@ -2252,14 +2252,14 @@ impl Entity for ExperienceOrb {
         "minecraft:experience_orb".into()
     }
     fn save_nbt(
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
         index: usize,
         keys: &HashSet<ChunkKey>,
     ) -> Option<(ChunkKey, Tag)> {
         game.save_orb(index, keys)
     }
     fn load_nbt(
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
         kind: &str,
         uuid: Option<[i32; 4]>,
         _player_uuid: Option<[i32; 4]>,
@@ -2323,14 +2323,14 @@ impl Entity for Boat {
         self.entity_type_name().into()
     }
     fn save_nbt(
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
         index: usize,
         keys: &HashSet<ChunkKey>,
     ) -> Option<(ChunkKey, Tag)> {
         game.save_boat(index, keys)
     }
     fn load_nbt(
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
         kind: &str,
         uuid: Option<[i32; 4]>,
         _player_uuid: Option<[i32; 4]>,
@@ -2362,7 +2362,7 @@ impl Entity for Boat {
     fn portal_size(&self) -> Option<(f32, f32)> {
         Some((super::boats::WIDTH as f32, super::boats::HEIGHT as f32))
     }
-    fn can_use_portal(&self, game: &Game<'_>) -> bool {
+    fn can_use_portal(&self, game: &Game<'_, crate::game::server_side::ServerState>) -> bool {
         game.vehicle_can_use_portal(self.id)
     }
     fn selector_target(&self) -> Option<Target> {
@@ -2417,14 +2417,14 @@ impl Entity for Minecart {
         self.kind.id().into()
     }
     fn save_nbt(
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
         index: usize,
         keys: &HashSet<ChunkKey>,
     ) -> Option<(ChunkKey, Tag)> {
         game.save_cart(index, keys)
     }
     fn load_nbt(
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
         kind: &str,
         uuid: Option<[i32; 4]>,
         _player_uuid: Option<[i32; 4]>,
@@ -2455,7 +2455,7 @@ impl Entity for Minecart {
             super::minecarts::HEIGHT as f32,
         ))
     }
-    fn can_use_portal(&self, game: &Game<'_>) -> bool {
+    fn can_use_portal(&self, game: &Game<'_, crate::game::server_side::ServerState>) -> bool {
         game.vehicle_can_use_portal(self.id)
     }
     fn selector_target(&self) -> Option<Target> {
@@ -2536,14 +2536,14 @@ impl Entity for ArmorStand {
         super::armor_stands::TYPE_ID.into()
     }
     fn save_nbt(
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
         index: usize,
         keys: &HashSet<ChunkKey>,
     ) -> Option<(ChunkKey, Tag)> {
         game.save_armor_stand(index, keys)
     }
     fn load_nbt(
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
         kind: &str,
         uuid: Option<[i32; 4]>,
         _player_uuid: Option<[i32; 4]>,
@@ -2681,14 +2681,14 @@ impl Entity for PrimedTnt {
         "minecraft:tnt".into()
     }
     fn save_nbt(
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
         index: usize,
         keys: &HashSet<ChunkKey>,
     ) -> Option<(ChunkKey, Tag)> {
         game.save_tnt(index, keys)
     }
     fn load_nbt(
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
         kind: &str,
         uuid: Option<[i32; 4]>,
         _player_uuid: Option<[i32; 4]>,
@@ -2711,7 +2711,7 @@ impl Entity for PrimedTnt {
     fn portal_size(&self) -> Option<(f32, f32)> {
         Some((0.98, 0.98))
     }
-    fn can_use_portal(&self, game: &Game<'_>) -> bool {
+    fn can_use_portal(&self, game: &Game<'_, crate::game::server_side::ServerState>) -> bool {
         game.tnt_can_use_portal(self.id)
     }
     fn selector_target(&self) -> Option<Target> {
@@ -2784,14 +2784,14 @@ impl Entity for FallingBlock {
         "minecraft:falling_block".into()
     }
     fn save_nbt(
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
         index: usize,
         keys: &HashSet<ChunkKey>,
     ) -> Option<(ChunkKey, Tag)> {
         game.save_falling(index, keys)
     }
     fn load_nbt(
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
         kind: &str,
         uuid: Option<[i32; 4]>,
         _player_uuid: Option<[i32; 4]>,
@@ -2878,14 +2878,14 @@ impl Entity for Projectile {
         self.entity_type().into()
     }
     fn save_nbt(
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
         index: usize,
         keys: &HashSet<ChunkKey>,
     ) -> Option<(ChunkKey, Tag)> {
         game.save_projectile(index, keys)
     }
     fn load_nbt(
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
         kind: &str,
         uuid: Option<[i32; 4]>,
         player_uuid: Option<[i32; 4]>,
@@ -3045,14 +3045,14 @@ impl Entity for Rocket {
         "minecraft:firework_rocket".into()
     }
     fn save_nbt(
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
         index: usize,
         keys: &HashSet<ChunkKey>,
     ) -> Option<(ChunkKey, Tag)> {
         game.save_rocket(index, keys)
     }
     fn load_nbt(
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
         kind: &str,
         uuid: Option<[i32; 4]>,
         player_uuid: Option<[i32; 4]>,
@@ -3123,14 +3123,14 @@ impl Entity for ThrownTrident {
         "minecraft:trident".into()
     }
     fn save_nbt(
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
         index: usize,
         keys: &HashSet<ChunkKey>,
     ) -> Option<(ChunkKey, Tag)> {
         game.save_trident(index, keys)
     }
     fn load_nbt(
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::server_side::ServerState>,
         kind: &str,
         uuid: Option<[i32; 4]>,
         _player_uuid: Option<[i32; 4]>,

@@ -40,7 +40,7 @@ fn blast_particle(id: &str) -> Result<ServerParticle, ExplodeError> {
     Ok(particle)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// What `entity` names as a blast's source: None for a stale or foreign
     /// handle, or a player in another level than the one in place.
     pub(in crate::game::server_side) fn native_explosion_source(
@@ -95,7 +95,7 @@ impl Game<'_> {
         // behind: that blast gets them back after.
         let outer = self.take_blast_state();
         let mod_calculator = settings.calculator.is_some();
-        self.combat.0.blast_settings = settings;
+        self.side.combat.0.blast_settings = settings;
         if let Some((id, target)) = source {
             self.attribute_native_blast(id, target);
             // `damageCalculator == null ? makeDamageCalculator(source)`: a
@@ -244,19 +244,19 @@ impl Game<'_> {
     /// rocket, a fishing bobber); anything else causes none. The damage
     /// source and kill credit follow the cause.
     pub(in crate::game::server_side) fn attribute_native_blast(&mut self, id: u32, target: Target) {
-        self.combat.0.explosion_source = Some(id);
+        self.side.combat.0.explosion_source = Some(id);
         // `getEntities(this.source, ...)`: the source is no victim of its own blast.
-        self.combat.0.explosion_source_named = true;
+        self.side.combat.0.explosion_source_named = true;
         let owner = match target {
             Target::Tnt(_) => return self.set_tnt_blast_owner(id),
-            Target::Player => Some((Who::Player, self.server.lan_acting)),
+            Target::Player => Some((Who::Player, self.side.lan_acting)),
             Target::Guest(conn) => Some((Who::Player, Some(conn))),
             Target::Dragon(_) | Target::Stand(_) => {
                 let kind = match target {
                     Target::Dragon(_) => "minecraft:ender_dragon",
                     _ => "minecraft:armor_stand",
                 };
-                self.combat.0.blast_owner = Some((id, self.explosion_entity_name(id, kind)));
+                self.side.combat.0.blast_owner = Some((id, self.explosion_entity_name(id, kind)));
                 return;
             }
             Target::Projectile(_) => self
@@ -277,13 +277,13 @@ impl Game<'_> {
             }),
             Target::Hook(_) => self.fishing_hook_by_id(id).map(|(_, caster)| match caster {
                 Target::Guest(conn) => (Who::Player, Some(conn)),
-                _ => (Who::Player, self.server.lan_acting),
+                _ => (Who::Player, self.side.lan_acting),
             }),
             _ => None,
         };
         match owner {
             Some((Who::Player, guest)) => self.set_blast_owner(Some(Who::Player), guest),
-            Some((Who::Mob(mob), _)) => self.combat.0.explosion_owner = Some(mob),
+            Some((Who::Mob(mob), _)) => self.side.combat.0.explosion_owner = Some(mob),
             None => {}
         }
     }
@@ -308,8 +308,8 @@ impl Game<'_> {
                     p.id == id && matches!(p.kind, ProjectileKind::WitherSkull { dangerous: true })
                 }) =>
             {
-                self.combat.0.blast_resistance_cap = Some(0.8);
-                self.combat.0.explosion_direct = Some(id);
+                self.side.combat.0.blast_resistance_cap = Some(0.8);
+                self.side.combat.0.explosion_direct = Some(id);
             }
             // MinecartTNT.isPrimed (fuse > -1).
             Target::Cart(_)
@@ -318,8 +318,8 @@ impl Game<'_> {
                     .iter()
                     .any(|c| c.id == id && c.kind == CartKind::Tnt && c.fuse >= 0) =>
             {
-                self.combat.0.rail_proof_blast = true;
-                self.combat.0.explosion_direct = Some(id);
+                self.side.combat.0.rail_proof_blast = true;
+                self.side.combat.0.explosion_direct = Some(id);
             }
             _ => {}
         }
@@ -347,12 +347,12 @@ impl Game<'_> {
             }
             _ => return,
         };
-        self.combat.0.blast_settings.source_calculator = calculator;
+        self.side.combat.0.blast_settings.source_calculator = calculator;
     }
 
     /// The blast going off now, cleared to a sourceless one.
     pub(in crate::game::server_side) fn take_blast_state(&mut self) -> BlastState {
-        let c = &mut self.combat.0;
+        let c = &mut self.side.combat.0;
         BlastState {
             explicit_cause: c.explicit_explosion_cause.take(),
             blast_owner: c.blast_owner.take(),
@@ -374,7 +374,7 @@ impl Game<'_> {
 
     /// Puts back what `take_blast_state` cleared.
     pub(in crate::game::server_side) fn restore_blast_state(&mut self, s: BlastState) {
-        let c = &mut self.combat.0;
+        let c = &mut self.side.combat.0;
         c.explicit_explosion_cause = s.explicit_cause;
         c.blast_owner = s.blast_owner;
         c.blast_guest = s.blast_guest;

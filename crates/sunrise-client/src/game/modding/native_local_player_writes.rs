@@ -5,7 +5,7 @@ use mod_api::{LevelWriteError, PlayerRef};
 use sunrise_core::geometry::Vec3;
 use sunrise_world::entity_move::MoverType;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `Entity.setDeltaMovement` on the local player. `false`, with the velocity unchanged,
     /// with no player of its own and for a value that is not finite.
     pub(in crate::game) fn set_local_player_velocity(&mut self, velocity: [f64; 3]) -> bool {
@@ -47,7 +47,7 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn can_move_local_player(&self) -> bool {
         self.riding.is_none()
             && self.sleeping.is_none()
-            && self.client.screen != super::Screen::Dead
+            && self.side.screen != super::Screen::Dead
     }
 
     pub(in crate::game) fn player_reset_fall_distance(

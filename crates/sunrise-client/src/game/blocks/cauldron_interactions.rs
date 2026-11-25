@@ -282,7 +282,7 @@ impl mod_api::CauldronInteractions for Registrar<'_> {
         Ok(())
     }
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Invoke a mod's authoritative cauldron interaction on the server.
     pub(in crate::game::server_side) fn use_mod_cauldron(
         &mut self,

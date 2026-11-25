@@ -5,7 +5,7 @@ pub(in crate::game::client_side) use crate::game::server_side::advancements::ico
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_protocol::item::Stack;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `DisplayInfo.fromNetwork`: convert the template once, not while drawing it.
     pub(in crate::game) fn remote_advancement_icon(&self, mut icon: Stack) -> ItemStack {
         let remote = self.remote.as_ref().expect("remote advancement");

@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `IBlockExtension.canEntityDestroy`: the parts of `state` at `pos` may answer whether
     /// `entity` may destroy it. The host is read-only.
     #[inline(always)]

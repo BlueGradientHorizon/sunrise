@@ -4,7 +4,7 @@
 #[allow(unused_imports)]
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The index in `list` of the entity an interact packet's `target` names,
     /// by its server id (`Level.getEntity(id)`), or None for an id this level
     /// does not hold: `handleInteract` finds nothing then either.

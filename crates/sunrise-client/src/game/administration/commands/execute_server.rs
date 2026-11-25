@@ -29,11 +29,11 @@ pub(in crate::game::server_side) use sunrise_core::geometry::trig;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_core::nbt::Tag;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ExecuteCommand.isChunkLoaded`: an entity-ticking loading status and
     /// completed entity loading, rather than merely a retained lit column.
     pub(in crate::game::server_side) fn command_chunk_loaded(&self, x: i32, z: i32) -> bool {
-        self.tickets.0.levels().loaded_entity_ticking(x, z)
+        self.side.tickets.0.levels().loaded_entity_ticking(x, z)
             && self.world.chunks.contains_key(&(x, z))
             && self.streaming.is_lit(x, z)
             // Streaming queues the saved tags before making the column resident;
@@ -69,14 +69,14 @@ impl Game<'_> {
             let p = self
                 .coords(c, "pos")
                 .map(|co| co.block(self.source_position(), self.source_rotation()));
-            let dimension = self.server.command_source.map_or(self.dim, |s| s.dimension);
+            let dimension = self.side.command_source.map_or(self.dim, |s| s.dimension);
             return Ok(flag(
                 dimension == self.dim
                     && p.is_some_and(|p| self.command_chunk_loaded(p[0] >> 4, p[2] >> 4)),
             ));
         }
         if c.has("dimension") {
-            let dimension = self.server.command_source.map_or(self.dim, |s| s.dimension);
+            let dimension = self.side.command_source.map_or(self.dim, |s| s.dimension);
             return Ok(flag(matches!(c.get("dimension"), Some(Arg::Resource(d))
                 if d.as_str() == dimension.id())));
         }
@@ -122,15 +122,15 @@ impl Game<'_> {
         value: i32,
     ) {
         // The outermost source's own CommandResultCallback (harness record).
-        if self.exec.0.functions.is_empty()
-            && let Some(results) = self.cmds.0.results.as_mut()
+        if self.side.exec.0.functions.is_empty()
+            && let Some(results) = self.side.cmds.0.results.as_mut()
         {
             results.push((success, value));
         }
         let mut chain = Vec::new();
         let mut at = store;
         while let Some(i) = at {
-            let Some(e) = self.exec.0.stores.get(i as usize) else {
+            let Some(e) = self.side.exec.0.stores.get(i as usize) else {
                 break;
             };
             chain.push(e.clone());
@@ -143,7 +143,7 @@ impl Game<'_> {
     }
     /// `Frame.returnSuccess`/`returnFailure` then `discard`.
     pub(in crate::game::server_side) fn finish_return(&mut self, value: Option<i32>) {
-        self.exec.0.returned = Some(value);
+        self.side.exec.0.returned = Some(value);
     }
     /// The players among `Entity.getPassengers` of `vehicle`: the player in
     /// place when it rides it, then the other players of the server riding it.
@@ -161,7 +161,7 @@ impl Game<'_> {
                 .iter()
                 .filter(move |g| {
                     g.placed
-                        && Some(g.conn) != self.server.lan_acting
+                        && Some(g.conn) != self.side.lan_acting
                         && host.hub.here(g)
                         && g.vehicle == Some(id)
                 })
@@ -255,7 +255,7 @@ impl Game<'_> {
                         match (owner, p.guest) {
                             // A guest's shot: `Who::Player` is them.
                             (sunrise_client::mobs::Who::Player, Some(conn))
-                                if self.server.lan_acting == Some(conn) =>
+                                if self.side.lan_acting == Some(conn) =>
                             {
                                 Some(Target::Player)
                             }
@@ -346,14 +346,14 @@ impl Game<'_> {
                                     let conn = if attacker {
                                         // `getLastHurtByMob`: the player who hit it,
                                         // not whichever client is reading it.
-                                        self.server.last_hurt_by_player.get(&id).and_then(
+                                        self.side.last_hurt_by_player.get(&id).and_then(
                                             |credit| self.resolve_player_credit(*credit).flatten(),
                                         )
                                     } else {
                                         None
                                     };
                                     Some(
-                                        conn.filter(|&conn| self.server.lan_acting != Some(conn))
+                                        conn.filter(|&conn| self.side.lan_acting != Some(conn))
                                             .map_or(Target::Player, Target::Guest),
                                     )
                                 }
@@ -380,13 +380,13 @@ impl Game<'_> {
     /// Run a parsed command (`root` is the first context; `ctx` the one with
     /// the executable node): `execute` and `return` walk their own chains.
     pub(in crate::game) fn run_chain(&mut self, root: &Context, ctx: &Context) -> R<i32> {
-        self.exec.0.commands += 1;
+        self.side.exec.0.commands += 1;
         let limit = self
             .ui
             .rules
             .int_at(sunrise_client::gamerules::vanilla::MAX_COMMAND_SEQUENCE_LENGTH)
             .max(1) as u32;
-        if self.exec.0.commands > limit {
+        if self.side.exec.0.commands > limit {
             return Err(err("command.failed", &[]));
         }
         match root.literals.first().map(String::as_str) {
@@ -415,7 +415,7 @@ impl Game<'_> {
         let mut total = 0;
         let mut failure: Option<CommandError> = None;
         for s in sources {
-            self.exec.0.callback = None;
+            self.side.exec.0.callback = None;
             let (keep, count) = match self.with_source(s, |g| g.condition(c, want)) {
                 Ok(v) => v,
                 Err(e) => {
@@ -472,7 +472,7 @@ impl Game<'_> {
                 .rules
                 .int_at(sunrise_client::gamerules::vanilla::MAX_COMMAND_FORKS) as usize;
         let mut sources = vec![
-            self.server
+            self.side
                 .command_source
                 .unwrap_or_else(|| self.player_source()),
         ];
@@ -482,7 +482,7 @@ impl Game<'_> {
         // (CommandSourceStack.handleError with `forked`).
         let mut forked = false;
         // Nested execute/conditional/other modifier variants retain the old path.
-        let mut function_batch_path = ctx.range.0 <= 1 && self.exec.0.functions.is_empty();
+        let mut function_batch_path = ctx.range.0 <= 1 && self.side.exec.0.functions.is_empty();
         let mut function_as_seen = false;
         loop {
             let word = c
@@ -514,11 +514,11 @@ impl Game<'_> {
                     let mut failure = None;
                     for s in sources {
                         let result = if let Some(tasks) = prepared.as_mut() {
-                            self.exec.0.prepared_function = tasks.next();
+                            self.side.exec.0.prepared_function = tasks.next();
                             let result = self.with_source(s, |g| g.run_chain(command, last));
                             // Includes a command-cost rejection before the leaf and
                             // a return/error after the slot was consumed.
-                            self.exec.0.prepared_function = None;
+                            self.side.exec.0.prepared_function = None;
                             result
                         } else {
                             self.with_source(s, |g| g.run_chain(command, last))
@@ -539,7 +539,7 @@ impl Game<'_> {
                             Err(e) if many => self.command_failure(e.message),
                             Err(e) => failure = Some(e),
                         }
-                        if self.exec.0.returned.is_some() {
+                        if self.side.exec.0.returned.is_some() {
                             break;
                         }
                     }
@@ -607,10 +607,10 @@ impl Game<'_> {
     }
     /// Run a leaf command and report its outcome to the `store` callbacks.
     pub(in crate::game::server_side) fn run_leaf(&mut self, id: &str, ctx: &Context) -> R<i32> {
-        self.exec.0.callback = None;
-        let store = self.server.command_source.and_then(|s| s.store);
+        self.side.exec.0.callback = None;
+        let store = self.side.command_source.and_then(|s| s.store);
         let result = self.execute_command(id, ctx);
-        let custom = self.exec.0.callback.take();
+        let custom = self.side.exec.0.callback.take();
         let outcome = match (&result, custom) {
             (_, Some(c)) => c,
             (Ok(v), None) => Some((true, *v)),
@@ -640,7 +640,7 @@ impl Game<'_> {
                 self.command_failure(e.message);
             }
         }
-        self.exec.0.callback = Some(None);
+        self.side.exec.0.callback = Some(None);
         Ok(0)
     }
     /// A `store` modifier: a new callback in the source's chain.
@@ -692,13 +692,13 @@ impl Game<'_> {
             };
             StoreTarget::Data(r, path, kind, scale)
         };
-        self.exec.0.stores.push(StoreEntry {
+        self.side.exec.0.stores.push(StoreEntry {
             result,
             target,
             parent: s.store,
         });
         Ok(Source {
-            store: Some(self.exec.0.stores.len() as u32 - 1),
+            store: Some(self.side.exec.0.stores.len() as u32 - 1),
             ..s
         })
     }
@@ -817,7 +817,7 @@ impl Game<'_> {
                 .fishing_hook_by_id(id)
                 .map_or([0.0; 2], |(hook, _)| [hook.yaw, hook.pitch]),
             Target::Other(id) => self
-                .others
+                .side.others
                 .0
                 .iter()
                 .find(|o| o.id == id)
@@ -843,8 +843,8 @@ impl Game<'_> {
     /// so a killed entity and a later summon of the same UUID can both be
     /// in it; the one the level still holds is the entity.
     pub(in crate::game) fn target_with_uuid(&self, uuid: [i32; 4]) -> Option<Target> {
-        if is_player_in_place(uuid, self.server.lan_acting_uuid, self.level.player_uuid) {
-            if self.server.native_command_filter {
+        if is_player_in_place(uuid, self.side.lan_acting_uuid, self.level.player_uuid) {
+            if self.side.native_command_filter {
                 return self
                     .player(sunrise_client::lan::playerdata::ints_uuid(uuid))
                     .and_then(|player| self.native_entity_target(player.entity()));
@@ -866,13 +866,13 @@ impl Game<'_> {
         source: Source,
         f: impl FnOnce(&mut Self) -> T,
     ) -> T {
-        let previous = self.server.command_source.replace(source);
+        let previous = self.side.command_source.replace(source);
         let back = self.enter_command_level(source.dimension);
         let out = f(self);
         if let Some(back) = back {
             self.enter_command_level(back);
         }
-        self.server.command_source = previous;
+        self.side.command_source = previous;
         out
     }
 }

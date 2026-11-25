@@ -5,7 +5,7 @@
 use super::{BlockStateId, Game};
 use std::sync::Arc;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Asks `native_block_render_visibility` again for every state, and the fluid-face parts
     /// for every state and fluid (`resolve_part_tables`), and, when the answers differ from
     /// those in use, remeshes every loaded section with them. While a mod listens to

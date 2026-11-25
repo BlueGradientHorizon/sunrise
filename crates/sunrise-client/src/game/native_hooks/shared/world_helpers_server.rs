@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Sets a block in the current authoritative level through `Level.setBlock`.
     /// Returns false for another dimension, an invalid state, or no change.
     /// `flags` selects vanilla's neighbour, shape and client updates. A block

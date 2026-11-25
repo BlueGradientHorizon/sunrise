@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `EntityTravelToDimensionEvent`: `entity` is about to travel to the level
     /// `dimension` because of `cause` (`nether_portal`, `end_portal`,
     /// `end_gateway` or `teleport`), before it moves. Set `cancel` to keep it

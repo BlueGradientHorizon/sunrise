@@ -1,7 +1,7 @@
 //! Registered effect metadata reads.
 use super::Game;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(super) fn effect_category(
         &self,
         key: mod_api::EffectKey,

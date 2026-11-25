@@ -206,7 +206,7 @@ impl LayerTable {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The layers the last load resolved for `mob` (a player's model's for a player), looked up
     /// once per mob a frame: the answer both decides whether the draw keeps the mob's final model
     /// and is what `mod_layer_geometry` draws. With no layer added at all it is none after one

@@ -7,7 +7,7 @@ pub(in crate::game::client_side) use crate::game::native_hooks::play_hit_sound::
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_core::{geometry::Direction, position::BlockPos};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn play_mining_hit_sound(
         &mut self,
         state: BlockStateId,
@@ -39,6 +39,6 @@ impl Game<'_> {
         } else {
             Audio::play
         };
-        play(&mut self.audio.0, &sounds.hit, at, volume, pitch);
+        play(&mut self.side.audio.0, &sounds.hit, at, volume, pitch);
     }
 }

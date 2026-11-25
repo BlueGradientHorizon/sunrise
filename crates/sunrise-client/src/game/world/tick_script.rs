@@ -10,18 +10,18 @@ use super::Game;
 use super::event_loop::EventLoopCtl;
 pub(in crate::game) use sunrise_client_gameplay::tick_script::{TickScript, parse};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Before a client tick: start the scenario the harness handed over, or play this tick's lines.
     pub(in crate::game::client_side) fn tick_script_step(&mut self, event_loop: &dyn EventLoopCtl) {
         let Some(path) = self
-            .client
+            .side
             .tick_script
             .path()
             .map(std::path::Path::to_path_buf)
         else {
             return;
         };
-        if !self.client.tick_script.playing() {
+        if !self.side.tick_script.playing() {
             let go = path.with_extension("go");
             if self.remote.is_none() || !go.exists() {
                 return;
@@ -31,10 +31,10 @@ impl Game<'_> {
                 log::warn!("Sunrise: tick script {} is not a scenario", path.display());
                 return;
             };
-            self.client.tick_script.start(script);
+            self.side.tick_script.start(script);
             self.send_signed_chat_input("/wire-mark");
         }
-        let Some((lines, finished)) = self.client.tick_script.advance() else {
+        let Some((lines, finished)) = self.side.tick_script.advance() else {
             return;
         };
         for line in lines {
@@ -43,13 +43,13 @@ impl Game<'_> {
             }
         }
         if let Some(name) = finished {
-            self.client.tick_script.finish();
+            self.side.tick_script.finish();
             let _ = std::fs::write(path.with_extension("done"), name);
         }
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `click-slot SLOT [right] [shift]` without a renderer: sunrise-ctl's version clicks where the
     /// slot is drawn, and `--headless` draws nothing. The vanilla driver clicks the menu itself
     /// (`MultiPlayerGameMode.handleContainerInput`), and so does this.

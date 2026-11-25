@@ -22,13 +22,13 @@ pub(in crate::game) enum Mover<'a> {
 }
 
 /// A boat as a solid, in the box a client's copy takes from its `entity_size` answer.
-pub(in crate::game) fn boat(game: &Game<'_>, b: &Boat) -> Candidate {
+pub(in crate::game) fn boat<__Side: crate::game::Side>(game: &Game<'_, __Side>, b: &Boat) -> Candidate {
     let bounds = game.client_copy_box(b.id, b.position, b.bounds());
     Candidate::fixed(SolidKind::Boat, b.id, bounds)
 }
 
 /// [`boat`] for a minecart.
-pub(in crate::game) fn cart(game: &Game<'_>, c: &Minecart) -> Candidate {
+pub(in crate::game) fn cart<__Side: crate::game::Side>(game: &Game<'_, __Side>, c: &Minecart) -> Candidate {
     let bounds = game.client_copy_box(c.id, c.position, c.bounds());
     Candidate::fixed(SolidKind::Cart, c.id, bounds)
 }
@@ -43,7 +43,7 @@ pub(in crate::game) fn cart_reach(c: &Minecart) -> Aabb {
     c.bounds().inflate(Vec3::new(2.0, 2.0, 2.0))
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The boxes of the solid entities for `mover`, in the order its inputs are read.
     pub(in crate::game) fn entity_collisions(&self, mover: Mover<'_>) -> Vec<Aabb> {
         let mut boxes = Vec::new();

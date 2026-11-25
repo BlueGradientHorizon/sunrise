@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A server explosion is about to happen (`ExplosionEvent.Start`, in
     /// `ServerLevel.explode` before `ServerExplosion.explode`): every one,
     /// TNT, creepers, beds and anchors, fireballs, withers, end crystals and

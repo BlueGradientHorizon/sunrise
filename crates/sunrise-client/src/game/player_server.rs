@@ -35,7 +35,7 @@ fn server_knot_bounds(block: [i32; 3]) -> Aabb {
     )
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     // Hands, inventory & equipment.
     pub(in crate::game) fn server_wear_glider(&mut self, points: u32) {
         let mut pieces: Vec<usize> = crate::game::glide_wear::gliding_slots(
@@ -74,7 +74,7 @@ impl Game<'_> {
     pub(in crate::game) fn server_on_inventory_item_added(&mut self, _stack: &ItemStack) {}
 
     pub(in crate::game) fn server_reset_attack_strength(&mut self) {
-        self.server.attack_ticks = 0;
+        self.side.attack_ticks = 0;
     }
 
     pub(in crate::game) fn server_main_hand_attack_speed(&self) -> f64 {
@@ -82,7 +82,7 @@ impl Game<'_> {
             && let Ok(speed) = player
                 .attributes
                 .computed_value_of("minecraft:attack_speed")
-            && (!self.server.applied_modifiers.is_empty()
+            && (!self.side.applied_modifiers.is_empty()
                 || self.potions.effects.get("haste").is_some()
                 || self.potions.effects.get("mining_fatigue").is_some())
         {
@@ -118,8 +118,8 @@ impl Game<'_> {
         {
             return self.mob_speed(i).scale(1.0 / 20.0);
         }
-        if self.server.lan_acting.is_some() {
-            return self.server.known_movement;
+        if self.side.lan_acting.is_some() {
+            return self.side.known_movement;
         }
         self.player
             .as_ref()
@@ -127,7 +127,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn server_apply_equipment(&mut self) {
-        if !self.server.lan_guest_swaps.is_empty() {
+        if !self.side.lan_guest_swaps.is_empty() {
             return;
         }
         self.put_equipment_modifiers();
@@ -135,14 +135,14 @@ impl Game<'_> {
 
     // Game mode & abilities.
     pub(in crate::game) fn server_may_build(&self) -> bool {
-        self.server.acting_abilities.map_or(
+        self.side.acting_abilities.map_or(
             matches!(self.mode, GameMode::Survival | GameMode::Creative),
             |a| a.may_build,
         )
     }
 
     pub(in crate::game) fn server_instabuild(&self) -> bool {
-        self.server
+        self.side
             .acting_abilities
             .map_or(self.creative, |a| a.instabuild)
     }
@@ -173,7 +173,7 @@ impl Game<'_> {
 
     /// Acting guest's UUID during a turn; legacy local body's saved UUID only when that body exists.
     pub(in crate::game) fn server_own_profile_uuid(&self) -> Option<u128> {
-        self.server.lan_acting_uuid.or_else(|| {
+        self.side.lan_acting_uuid.or_else(|| {
             self.player
                 .as_ref()
                 .and(self.level.player_uuid)
@@ -197,7 +197,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn server_bind_local_player_residency(&mut self) {
-        if self.server.lan_acting.is_some() {
+        if self.side.lan_acting.is_some() {
             return;
         }
         let journal = self.resident_entities.table.borrow().producer();
@@ -225,7 +225,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn server_pick_unfiltered(&self) -> Option<Hit> {
-        if let Some(hit) = self.server.forced_hit {
+        if let Some(hit) = self.side.forced_hit {
             return Some(hit);
         }
         let (origin, dir) = self.server_aim()?;
@@ -473,7 +473,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn server_pick(&self) -> Option<Hit> {
-        if let Some(hit) = self.server.forced_hit {
+        if let Some(hit) = self.side.forced_hit {
             return Some(hit);
         }
         match self.server_pick_ray_decision() {
@@ -680,7 +680,7 @@ impl Game<'_> {
     pub(in crate::game) fn server_level(&self, dimension: &str) -> Option<LevelRef> {
         let epoch = self.native_lifecycle.epoch()?;
         let dim = std::iter::once(self.dim)
-            .chain(self.levels.0.parked_dims())
+            .chain(self.side.levels.0.parked_dims())
             .find(|d| d.id() == dimension)?;
         Some(self.level_ref(epoch, dim.key()))
     }

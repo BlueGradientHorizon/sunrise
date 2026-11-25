@@ -15,7 +15,7 @@ pub(in crate::game::client_side) use sunrise_protocol::packets::play::AttributeS
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::attributes::Instance;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `ClientPacketListener.handleUpdateAttributes` of the player's own entity.
     pub(in crate::game::client_side) fn apply_own_attributes(
         &mut self,

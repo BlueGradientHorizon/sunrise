@@ -2,7 +2,7 @@
 //! rule (`canEntityDestroy`), then the mods' veto (`LivingDestroyBlockEvent`).
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `IBlockExtension.canEntityDestroy` of the block at `pos` for the entity `entity`:
     /// `vanilla`, the entity's own rule, unless the block's parts answer otherwise on a
     /// logical server. A panicking part is contained with a warning, and `vanilla` stands.

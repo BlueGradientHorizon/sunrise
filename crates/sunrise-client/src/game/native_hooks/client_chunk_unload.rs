@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Chunk `chunk` (`[x, z]`, in chunks) of `dimension` is leaving this
     /// client's level (NeoForge's `ChunkEvent.Unload` on the client), with its
     /// blocks still there, whichever route frees it. Client-side.

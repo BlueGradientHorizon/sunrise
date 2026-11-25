@@ -16,7 +16,7 @@ pub(in crate::game::client_side) use sunrise_items::creative_catalog::{
     Catalog, Holders, Parameters,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_creative_holders(&self) -> Option<Holders> {
         self.remote.as_ref().map(|remote| {
             sunrise_client::creative::live_holders(&remote.builtin, &remote.registries)
@@ -24,23 +24,23 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn client_creative_catalog(&self) -> &Arc<Catalog> {
-        self.creative_screen.0.catalog()
+        self.side.creative_screen.0.catalog()
     }
 
     pub(in crate::game) fn client_reset_creative_screen(&mut self) {
-        self.creative_screen.0.reset_contents();
+        self.side.creative_screen.0.reset_contents();
     }
 
     /// The name components that replace the creative search's prepared name lines.
     pub(in crate::game::client_side) fn refresh_creative_search_names(&mut self) {
         // Only when the search tab's stacks were made again, not every creative tick.
-        let generation = self.creative_screen.0.search_generation();
-        if self.client.creative_search_named == Some(generation) {
+        let generation = self.side.creative_screen.0.search_generation();
+        if self.side.creative_search_named == Some(generation) {
             return;
         }
-        self.client.creative_search_named = Some(generation);
+        self.side.creative_search_named = Some(generation);
         let names = self
-            .creative_screen
+            .side.creative_screen
             .0
             .search_items()
             .iter()
@@ -52,7 +52,7 @@ impl Game<'_> {
                 }
             })
             .collect();
-        self.creative_screen.0.set_search_names(names);
+        self.side.creative_screen.0.set_search_names(names);
     }
 
     /// The screen uses the completed cache, with the same holder definitions for search text.
@@ -63,7 +63,7 @@ impl Game<'_> {
         if let Some(published) = &self.creative_contents.published
             && Arc::ptr_eq(&lists, &published.lists)
         {
-            self.creative_screen.0.publish(
+            self.side.creative_screen.0.publish(
                 lists,
                 published.holders.clone(),
                 published.items.clone(),
@@ -80,7 +80,7 @@ impl Game<'_> {
         let lists = if let Some(published) = &self.creative_contents.published {
             &published.lists
         } else {
-            preview = self.creative_screen.0.catalog().build(
+            preview = self.side.creative_screen.0.catalog().build(
                 Parameters {
                     features: self.enabled_feature_ids(),
                     operator: false,
@@ -92,7 +92,7 @@ impl Game<'_> {
             );
             &preview
         };
-        self.creative_screen.0.search_order_from(lists)
+        self.side.creative_screen.0.search_order_from(lists)
     }
 }
 

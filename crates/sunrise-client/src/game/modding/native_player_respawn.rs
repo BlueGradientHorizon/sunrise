@@ -4,7 +4,7 @@ use super::{Dim, Game, native_server::PlayerRead, respawn_anchor::RespawnConfig}
 use mod_api::{PlayerRef, RespawnRefusal, RespawnTarget, RespawnTargetUnavailable};
 use sunrise_core::geometry::Vec3;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The Respawn button for a dead player (`handleClientCommand`'s `PERFORM_RESPAWN`), outside
     /// every player's hook. Each refusal is a variant of [`RespawnRefusal`], checked in its order.
     pub(in crate::game) fn player_respawn(
@@ -14,7 +14,7 @@ impl Game<'_> {
         if !self.is_logical_server() {
             return Err(RespawnRefusal::Client);
         }
-        if self.server.lan_acting.is_some() || !self.player_state.cloning_players.is_empty() {
+        if self.side.lan_acting.is_some() || !self.player_state.cloning_players.is_empty() {
             return Err(RespawnRefusal::InPlayerHook);
         }
         let (conn, has_health, won_game) = match self.player_handle_read(player) {
@@ -54,7 +54,7 @@ impl Game<'_> {
             .player_handle_read(player)
             .ok_or(RespawnTargetUnavailable::Stale)?
         {
-            PlayerRead::Acting { .. } => self.server.respawn_config.map(|c| c.saved()),
+            PlayerRead::Acting { .. } => self.side.respawn_config.map(|c| c.saved()),
             PlayerRead::Guest(guest) => guest.respawn_elsewhere.clone(),
         };
         let config = saved.as_ref().and_then(RespawnConfig::from_saved);
@@ -87,7 +87,7 @@ impl Game<'_> {
     ) -> Option<Result<T, RespawnTargetUnavailable>> {
         let dim = dim?;
         if dim != self.dim
-            && (self.server.lan_acting.is_some() || !self.player_state.cloning_players.is_empty())
+            && (self.side.lan_acting.is_some() || !self.player_state.cloning_players.is_empty())
         {
             return Some(Err(RespawnTargetUnavailable::InPlayerHook));
         }
@@ -136,7 +136,7 @@ impl Game<'_> {
             match self.search_spawn([x, y, z].map(|v| v.floor() as i32), &mut None) {
                 Ok(at) => at,
                 Err(chunk) => {
-                    self.tickets.0.add_spawn(
+                    self.side.tickets.0.add_spawn(
                         chunk,
                         sunrise_client::ticket_levels::SpawnTicketKind::Search,
                     );

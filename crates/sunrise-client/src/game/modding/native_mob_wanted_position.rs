@@ -2,7 +2,7 @@
 use super::{Game, commands::Target};
 use mod_api::{MobRef, WantedPositionError};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn mob_set_wanted_position(
         &mut self,
         mob: MobRef,

@@ -40,7 +40,7 @@ impl Dim {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `PlayerRespawnPositionEvent`, once per respawn: guest `conn`
     /// respawns at `found`, final now. `missing` is the respawn point whose
     /// bed or anchor was gone (`TeleportTransition.missingRespawnBlock`).

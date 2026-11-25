@@ -2,7 +2,7 @@
 //! trash slot, search box and clicks.
 #[allow(unused_imports)]
 use super::*;
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn creative_origin(batch: &HudBatch) -> (f32, f32) {
         batch.centered_origin(Creative::WIDTH, Creative::HEIGHT)
     }

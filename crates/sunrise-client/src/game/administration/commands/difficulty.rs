@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn cmd_difficulty(&mut self, ctx: &Context) -> R<i32> {
         let name = |d: u8| {
             Text::translate(

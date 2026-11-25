@@ -91,15 +91,15 @@ pub(in crate::game::server_side) fn first_join<T: Joined>(list: &[T]) -> Option<
     list.iter().map(Joined::join_seq).min()
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A level tick starts: what has joined so far ticks this tick.
     pub(in crate::game::server_side) fn begin_ordered_ticks(&mut self) {
         let _span = sunrise_client::spans::guard("ordered_ticks");
-        let pending_buf = std::mem::take(&mut self.server.ordered.pending_buf);
-        let landed = std::mem::take(&mut self.server.ordered.landed);
-        let mut armor_stands = std::mem::take(&mut self.server.ordered.armor_stands);
+        let pending_buf = std::mem::take(&mut self.side.ordered.pending_buf);
+        let landed = std::mem::take(&mut self.side.ordered.landed);
+        let mut armor_stands = std::mem::take(&mut self.side.ordered.armor_stands);
         armor_stands.clear();
-        let mut falling_ticked = std::mem::take(&mut self.server.ordered.falling_ticked);
+        let mut falling_ticked = std::mem::take(&mut self.side.ordered.falling_ticked);
         falling_ticked.clear();
         let told = self.native_tick_told();
         let firsts = [
@@ -122,8 +122,8 @@ impl Game<'_> {
             lowest = lowest.min(first.unwrap_or(JoinSeq::MAX));
             *slot = lowest;
         }
-        self.server.ordered = OrderedTicks {
-            announced: self.server.ordered.announced,
+        self.side.ordered = OrderedTicks {
+            announced: self.side.ordered.announced,
             born: JoinSeq::upcoming(),
             done: None,
             suffix_min,
@@ -152,16 +152,16 @@ impl Game<'_> {
         // Who ticks in this run, sorted once: entities that join meanwhile are
         // at or above `born`, so the set cannot grow, only lose the removed.
         let (done, born, announced) = (
-            self.server.ordered.done,
-            self.server.ordered.born,
-            self.server.ordered.announced,
+            self.side.ordered.done,
+            self.side.ordered.born,
+            self.side.ordered.announced,
         );
         // The earlier passes never tick a TNT or falling block that joined since
         // the spawn packets (`right_pass`), so the late pass offers none that
         // ticked this tick: an orb that joined after one and ticked in an
         // earlier pass must not move `done` past it.
         let wanted = |j: JoinSeq| (late || done.is_none_or(|d| j > d)) && j < cut && j < born;
-        let mut pending = std::mem::take(&mut self.server.ordered.pending_buf);
+        let mut pending = std::mem::take(&mut self.side.ordered.pending_buf);
         pending.clear();
         let mut offer = |j: JoinSeq, kind: Pending| {
             // Orbs are announced after their tick, always; TNT and falling
@@ -183,9 +183,9 @@ impl Game<'_> {
             offer(dragon.join, Pending::Dragon);
         }
         // Only while a mod hears entity ticks and named the type: otherwise none is offered.
-        let told = self.server.ordered.told;
+        let told = self.side.ordered.told;
         if told.listening() {
-            self.others
+            self.side.others
                 .0
                 .iter()
                 .filter(|o| {
@@ -199,13 +199,13 @@ impl Game<'_> {
         // run and again after an explosion, which can move or remove them.
         let mut obstacles: Option<sunrise_client::entities::ObstacleGrid> = None;
         let mut nearby = Vec::new();
-        self.server.ordered.defer_landings = mod_api::__private::mods().is_empty();
+        self.side.ordered.defer_landings = mod_api::__private::mods().is_empty();
         'entity: for (join, kind) in pending.drain(..) {
             // TNT, orbs and mod tick callbacks may observe the falling list.
             if !matches!(kind, Pending::Falling) {
                 self.remove_landed_falling();
             }
-            self.server.ordered.done = Some(join);
+            self.side.ordered.done = Some(join);
             // ServerLevel.tick: only entities in entity-ticking chunks tick.
             match kind {
                 Pending::Dragon => {
@@ -271,10 +271,10 @@ impl Game<'_> {
                     }
                 }
                 Pending::Other => {
-                    let Some(i) = self.others.0.locate(join) else {
+                    let Some(i) = self.side.others.0.locate(join) else {
                         continue;
                     };
-                    let at = self.others.0[i].position;
+                    let at = self.side.others.0[i].position;
                     if entity_ticking(at.x.floor() as i32, at.z.floor() as i32) {
                         self.native_other_tick_alone(told, i);
                     }
@@ -315,7 +315,7 @@ impl Game<'_> {
                     let orb_id = self.orbs[i].id;
                     let vanilla = self.saved_refuses_damage(orb_id, "minecraft:lava", false);
                     let server = self.is_logical_server();
-                    let lava_random = &mut self.server.ordered.lava_random;
+                    let lava_random = &mut self.side.ordered.lava_random;
                     // ExperienceOrb's lava section uses the orb tick's own random, not level random.
                     let mut next_float = || {
                         lava_random
@@ -419,9 +419,9 @@ impl Game<'_> {
                     let side = game_side!(self);
                     let o = &mut self.orbs[i];
                     o.velocity = velocity;
-                    let pending_sounds = &mut self.server.pending_sounds;
-                    let capture_active = self.server.audio_capture_active;
-                    let lava_random = &mut self.server.ordered.lava_random;
+                    let pending_sounds = &mut self.side.pending_sounds;
+                    let capture_active = self.side.audio_capture_active;
+                    let lava_random = &mut self.side.ordered.lava_random;
                     let mut next_float = || {
                         lava_random
                             .get_or_insert_with(random_source::entity)
@@ -486,10 +486,10 @@ impl Game<'_> {
                 }
             }
         }
-        self.server.ordered.defer_landings = false;
+        self.side.ordered.defer_landings = false;
         self.remove_landed_falling();
-        std::mem::take(&mut self.server.ordered.landing_time).record("fall_finish");
-        self.server.ordered.pending_buf = pending;
+        std::mem::take(&mut self.side.ordered.landing_time).record("fall_finish");
+        self.side.ordered.pending_buf = pending;
         self.deliver_falling_ticks();
         if events && let Err(e) = self.server_process_level_events() {
             first_error.get_or_insert(e);
@@ -499,8 +499,8 @@ impl Game<'_> {
 
     /// Close a run of falling blocks before the next entity can observe the list.
     fn remove_landed_falling(&mut self) {
-        if !self.server.ordered.landed.is_empty() {
-            let landed = &mut self.server.ordered.landed;
+        if !self.side.ordered.landed.is_empty() {
+            let landed = &mut self.side.ordered.landed;
             self.falling.retain(|block| !landed.contains(&block.join));
             landed.clear();
         }
@@ -509,7 +509,7 @@ impl Game<'_> {
     /// Before a batch ticks, run the ordered entities that joined before
     /// everything still to tick in the batches from this one on.
     pub(in crate::game) fn ordered_before(&mut self, batch: Batch) -> Result<()> {
-        let cut = self.server.ordered.suffix_min[batch as usize];
+        let cut = self.side.ordered.suffix_min[batch as usize];
         if cut == JoinSeq::MAX {
             return Ok(());
         }
@@ -517,7 +517,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     #[cfg(test)]
     pub(in crate::game) fn orb_moved(&mut self, i: usize, step: sunrise_client::entities::OrbMove) {
         let o = &self.orbs[i];

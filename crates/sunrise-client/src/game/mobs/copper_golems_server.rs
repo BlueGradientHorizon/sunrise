@@ -26,7 +26,7 @@ pub(in crate::game::server_side) use sunrise_core::random::RandomSource;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_world::chunk::BlockState;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A copper golem opened or closed a chest half: the counter changes, the
     /// first opener posts CONTAINER_OPEN and the last closer CONTAINER_CLOSE
     /// (`ContainerOpenersCounter.incrementOpeners` / `decrementOpeners`), and

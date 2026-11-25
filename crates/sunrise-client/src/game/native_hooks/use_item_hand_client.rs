@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `Player.interactOn`: Fail skips this interaction, not the hand loop.
     pub(in crate::game) fn entity_interaction(&mut self, hand: Hand, id: i32) -> Option<bool> {
         if self.spectator() || !mod_api::__private::listened(mod_api::HookId::EntityInteract) {

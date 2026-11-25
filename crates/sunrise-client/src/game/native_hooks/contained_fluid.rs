@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The fluid a stack of a mod's own container item holds, as its
     /// `neoforge:fluid_container` item model draws it
     /// (`FluidUtil.getFirstStackContained`): `fluid` arrives `None` (holds

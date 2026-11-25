@@ -9,7 +9,7 @@ use super::native_server::PlayerRead;
 use mod_api::{BlockFace, GameMode, PlayerRef};
 use sunrise_client::items::ItemStack;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The player's permission level, 0 to 4 (`Player.permissions()`,
     /// `PlayerList.getProfilePermissions`): an op's level, the
     /// single-player owner's 4 with commands allowed. A displaced connected
@@ -21,7 +21,7 @@ impl Game<'_> {
             .or_else(|| self.online_player_record(player).map(PlayerRead::Guest))?;
         Some(match read {
             PlayerRead::Guest(g) => g.permission,
-            PlayerRead::Acting { .. } if self.server.lan_acting.is_some() => {
+            PlayerRead::Acting { .. } if self.side.lan_acting.is_some() => {
                 self.ui.registries.permission
             }
             PlayerRead::Acting { .. } if self.allow_commands() => 4,

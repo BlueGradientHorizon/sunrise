@@ -30,7 +30,7 @@ pub(in crate::game::server_side) use sunrise_core::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_world::level::Ticks;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerLevel.findLightningRod`: `PoiManager.findClosest` over the
     /// lightning rod points of interest within 128 blocks of `center` whose
     /// block is the top (`WORLD_SURFACE`) of its column; the strike lands one
@@ -653,7 +653,7 @@ impl Game<'_> {
         ];
         if from_command {
             let block = at.map(|v| v.floor() as i32);
-            if !self.lightning_strike_allowed(self.server.lan_acting_uuid, block, "command") {
+            if !self.lightning_strike_allowed(self.side.lan_acting_uuid, block, "command") {
                 return None;
             }
         }
@@ -972,12 +972,12 @@ impl Game<'_> {
         let weather = self.world.shape.sky_light
             && !self.world.shape.has_ceiling
             && self.dim != super::Dim::End;
-        if rain <= 0.2 || thunder <= 0.9 || !weather || self.server.world_debug {
+        if rain <= 0.2 || thunder <= 0.9 || !weather || self.side.world_debug {
             return;
         }
-        let mut scratch = std::mem::take(&mut self.server.spawn_scratch);
+        let mut scratch = std::mem::take(&mut self.side.spawn_scratch);
         self.spawning_chunks(&self.level_players(), &mut scratch);
-        let levels = self.tickets.0.levels();
+        let levels = self.side.tickets.0.levels();
         scratch
             .candidates
             .retain(|&(x, z)| levels.random_ticking(x, z));
@@ -1031,7 +1031,7 @@ impl Game<'_> {
             ];
             self.spawn_bolt(at, trap);
         }
-        self.server.spawn_scratch = scratch;
+        self.side.spawn_scratch = scratch;
     }
 }
 

@@ -10,7 +10,7 @@ pub(in crate::game::client_side) use sunrise_client::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_core::geometry::Direction;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Raw `ClientLevel.addBreakingParticles`: one crumb on the given face, with no sound or hook.
     pub(in crate::game) fn add_breaking_particle(
         &mut self,
@@ -24,7 +24,7 @@ impl Game<'_> {
         let boxes = self.particle_shape(pos, state);
         let Some(p) = self.with_lent_level_random(|game| {
             sunrise_client::particles::breaking_position(
-                game.particles.0.level_random(),
+                game.side.particles.0.level_random(),
                 pos,
                 face.normal(),
                 &boxes,
@@ -32,10 +32,10 @@ impl Game<'_> {
         }) else {
             return false;
         };
-        let mut particle = Particle::terrain(self.particles.0.random(), p, [0.0; 3], sprite, tint);
+        let mut particle = Particle::terrain(self.side.particles.0.random(), p, [0.0; 3], sprite, tint);
         particle.set_power(0.2);
         particle.scale(0.6);
-        self.particles.0.push(particle);
+        self.side.particles.0.push(particle);
         true
     }
     /// `ClientLevel.addDestroyBlockEffect`: decide using the destroyed state, not the block
@@ -53,8 +53,8 @@ impl Game<'_> {
         };
         let boxes = self.particle_shape(pos, state);
         sunrise_client::particles::destroy_positions(pos, &boxes, |p, v| {
-            let particle = Particle::terrain(self.particles.0.random(), p, v, sprite.clone(), tint);
-            self.particles.0.push(particle);
+            let particle = Particle::terrain(self.side.particles.0.random(), p, v, sprite.clone(), tint);
+            self.side.particles.0.push(particle);
         });
     }
     /// `HoneyBlock.showParticles`: the crumb count of entity event 53 or 54.
@@ -77,7 +77,7 @@ impl Game<'_> {
         ];
         if let Some((sprite, tint)) = self.particle_sprite(honey, block) {
             for _ in 0..count {
-                self.particles.0.add(
+                self.side.particles.0.add(
                     &ParticleOptions::block(ParticleType::Block, sprite.clone(), tint),
                     at,
                     [0.0; 3],

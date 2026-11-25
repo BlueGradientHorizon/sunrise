@@ -18,7 +18,7 @@ pub(in crate::game::server_side) use sunrise_client::{
     menu::{Env, Kind, Menu},
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerPlayer.closeContainer` of a guest's menu: queue the client's close before
     /// running normal server teardown.
     pub(in crate::game) fn menu_close_container(&mut self, menu: MenuRef) -> bool {
@@ -141,7 +141,7 @@ impl Game<'_> {
     /// Carried (cursor) stack; outer None means unavailable.
     pub(in crate::game) fn server_menu_carried(&self, menu: MenuRef) -> Option<Option<ItemStack>> {
         let guest = self.native_menu_guest(menu)?;
-        Some(if self.server.lan_acting == Some(guest.conn) {
+        Some(if self.side.lan_acting == Some(guest.conn) {
             self.carried.clone()
         } else {
             guest.carried.clone()
@@ -157,7 +157,7 @@ impl Game<'_> {
     ) -> Option<Option<ItemStack>> {
         let backing = self.menu_slot_backing(menu, slot)?;
         let guest = self.native_menu_guest(menu)?;
-        let acting = self.server.lan_acting == Some(guest.conn);
+        let acting = self.side.lan_acting == Some(guest.conn);
         Some(match backing {
             MenuSlotBacking::BlockEntity { .. } | MenuSlotBacking::Entity { .. } => {
                 let world = self.native_level_world(self.level(&guest.dimension)?)?;
@@ -188,7 +188,7 @@ impl Game<'_> {
             MenuSlotBacking::CraftResult => guest.craft_result.clone(),
             MenuSlotBacking::Ender(n) => {
                 if acting {
-                    self.server.ender_items.get(n)?.clone()
+                    self.side.ender_items.get(n)?.clone()
                 } else {
                     guest.ender_items.get(n)?.clone()
                 }
@@ -366,7 +366,7 @@ impl Game<'_> {
         match self.player_handle_read(player)? {
             super::native_server::PlayerRead::Guest(guest) => Some(guest),
             super::native_server::PlayerRead::Acting { .. } => {
-                self.lan.as_ref()?.hub.guest(self.server.lan_acting?)
+                self.lan.as_ref()?.hub.guest(self.side.lan_acting?)
             }
         }
     }
@@ -440,7 +440,7 @@ impl Game<'_> {
             }
         }
         (slot < rules.slot_count()).then_some(())?;
-        if self.server.lan_acting == Some(guest.conn) {
+        if self.side.lan_acting == Some(guest.conn) {
             for (n, stack) in self.inventory.iter().enumerate().take(36) {
                 rules.set_player_item(n, stack.clone());
             }
@@ -469,9 +469,9 @@ impl Game<'_> {
     ) -> Option<&mut Option<ItemStack>> {
         let backing = self.menu_slot_backing(menu, slot)?;
         if let MenuSlotBacking::Ender(n) = backing
-            && self.server.lan_acting_uuid == Some(menu.fields().player.uuid())
+            && self.side.lan_acting_uuid == Some(menu.fields().player.uuid())
         {
-            return self.server.ender_items.get_mut(n);
+            return self.side.ender_items.get_mut(n);
         }
         let guests = &mut self.lan.as_mut()?.hub.guests;
         let index = guests.iter().position(|g| {

@@ -11,7 +11,7 @@ thread_local! {
     static ASKING_SLOT_RULES: RefCell<()> = const { RefCell::new(()) };
 }
 
-impl SlotRules for Game<'_> {
+impl<__Side: crate::game::Side> SlotRules for Game<'_, __Side> {
     fn listens(&self, menu: &str) -> bool {
         mod_api::__private::has_part_hook(mod_api::HookId::MenuSlotRules)
             && mod_api::__private::menu_listens(mod_api::HookId::MenuSlotRules, menu)

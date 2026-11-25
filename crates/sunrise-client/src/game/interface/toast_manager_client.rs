@@ -15,13 +15,13 @@ pub(in crate::game::client_side) use std::{cell::RefCell, collections::VecDeque}
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::{hud::HudBatch, toasts::SystemToast};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn add_or_update_system_toast(
         &mut self,
         id: SystemToastId,
         new: SystemToast,
     ) -> bool {
-        if let Some(toast) = self.client.toast_manager.system_mut(id) {
+        if let Some(toast) = self.side.toast_manager.system_mut(id) {
             toast.reset_from(new);
             true
         } else {
@@ -40,7 +40,7 @@ impl Game<'_> {
         ) {
             return false;
         }
-        self.client
+        self.side
             .toast_manager
             .queued
             .push_back(Toast::System(id, toast));
@@ -56,22 +56,22 @@ impl Game<'_> {
         self.add_hook_panic_toasts();
         self.update_tutorial_toasts();
         let multiplier = self.settings.notification_display_time;
-        let (visibility_sound, challenge_sound) = self.client.toast_manager.update(multiplier);
+        let (visibility_sound, challenge_sound) = self.side.toast_manager.update(multiplier);
         if let Some(show) = visibility_sound {
             let event = if show {
                 "minecraft:ui.toast.in"
             } else {
                 "minecraft:ui.toast.out"
             };
-            self.audio.0.play(event, None, 1.0, 1.0);
+            self.side.audio.0.play(event, None, 1.0, 1.0);
         }
         if challenge_sound {
-            self.audio
+            self.side.audio
                 .0
                 .play("minecraft:ui.toast.challenge_complete", None, 1.0, 1.0);
         }
         let atlas = &self.gui.atlas;
-        for entry in &self.client.toast_manager.visible {
+        for entry in &self.side.toast_manager.visible {
             let y = entry.slot as f32 * 32.0;
             match &entry.toast {
                 Toast::Diagnostic {

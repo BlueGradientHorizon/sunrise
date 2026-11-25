@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A server player `player` (UUID) and `player_entity_id` reels in a catch:
     /// `ItemFishedEvent` in `FishingHook.retrieve`, after fishing loot and its modifiers roll.
     /// `fished` holds the bobber's id and position; listeners may change `drops` and set

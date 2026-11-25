@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `EnderDragon.checkWalls` over the head, neck and body. A block that is
     /// neither air nor `#dragon_transparent` breaks when griefing is allowed
     /// (`canEntityGrief` for the dragon), its parts let the dragon destroy it

@@ -60,7 +60,7 @@ pub(in crate::game::client_side) use sunrise_core::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_protocol::entity_data::{Value, serializer};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// FishingHookRenderer: camera-facing half-block quads centred on each bobber.
     pub(in crate::game) fn fishing_geometry(
         &self,
@@ -118,14 +118,14 @@ impl Game<'_> {
         if self.remote.is_some() {
             self.hook.discard();
         }
-        self.client.remote_hooks.clear();
+        self.side.remote_hooks.clear();
     }
     /// The hooks drawn here, with their owners' ids (0 for this player's own).
     pub(in crate::game::client_side) fn hooks_status(&self) -> Vec<serde_json::Value> {
         let at = |p: Vec3| [p.x, p.y, p.z];
         let own = self.hook.iter().map(|h| (h.id, 0, h.position));
         let others = self
-            .client
+            .side
             .remote_hooks
             .iter()
             .map(|h| (h.id, h.owner, h.position));
@@ -166,7 +166,7 @@ impl Game<'_> {
                     _ => {}
                 }
             }
-        } else if let Some(h) = self.client.remote_hooks.iter_mut().find(|h| h.id == id) {
+        } else if let Some(h) = self.side.remote_hooks.iter_mut().find(|h| h.id == id) {
             for (index, _, value) in values {
                 match (index, value) {
                     (9, Value::Bool(biting)) => {
@@ -191,7 +191,7 @@ impl Game<'_> {
                 a.z + (b.z - a.z) * alpha,
             )
         };
-        self.client
+        self.side
             .remote_hooks
             .iter()
             .filter_map(|h| {
@@ -227,7 +227,7 @@ impl Game<'_> {
         }
         if let Some(h) = self.hook.as_mut().filter(|h| h.id == id) {
             h.velocity = v;
-        } else if let Some(h) = self.client.remote_hooks.iter_mut().find(|h| h.id == id) {
+        } else if let Some(h) = self.side.remote_hooks.iter_mut().find(|h| h.id == id) {
             h.velocity = v;
         } else {
             return false;
@@ -238,7 +238,7 @@ impl Game<'_> {
         if self.remote.is_some() && self.hook.as_ref().is_some_and(|h| h.id == id) {
             self.hook.discard();
         }
-        remove_remote_hook_from(&mut self.client.remote_hooks, id);
+        remove_remote_hook_from(&mut self.side.remote_hooks, id);
     }
     /// `FishingHookRenderer.getPlayerHandPos`: on the near plane in first
     /// person, beside the body otherwise.
@@ -251,11 +251,11 @@ impl Game<'_> {
         ));
         let feet = self.previous_position.lerp(p.position, alpha);
         let eye = glam::DVec3::new(feet.x, feet.y + f64::from(p.dimensions.eye_height), feet.z);
-        if self.client.camera_type.is_first_person() {
+        if self.side.camera_type.is_first_person() {
             let fov = self.settings.fov as i32 as f32;
             Some(eye + near_plane_hand(self.near_plane(), fov, invert, swing))
         } else {
-            let model = self.client.player_model.as_ref()?;
+            let model = self.side.player_model.as_ref()?;
             let body = mod_api::client::camera::lerp(
                 alpha as f32,
                 model.previous_body_yaw,
@@ -296,7 +296,7 @@ impl Game<'_> {
             self.hook.replace(hook);
         } else {
             push_remote_hook(
-                &mut self.client.remote_hooks,
+                &mut self.side.remote_hooks,
                 id,
                 owner as u32,
                 at,
@@ -328,7 +328,7 @@ impl Game<'_> {
             h.lerp.moved(h.position.subtract(before));
             self.hook.put_back(h);
         }
-        let mut hooks = std::mem::take(&mut self.client.remote_hooks);
+        let mut hooks = std::mem::take(&mut self.side.remote_hooks);
         for h in &mut hooks {
             h.previous = h.position;
             h.position = h.lerp.step(h.position);
@@ -347,7 +347,7 @@ impl Game<'_> {
             );
             h.lerp.moved(h.position.subtract(before));
         }
-        self.client.remote_hooks = hooks;
+        self.side.remote_hooks = hooks;
     }
     /// FishingHookRenderer: each line, 16 black `lines` segments sagging
     /// from a quarter block above the hook to the rod in its owner's hand,

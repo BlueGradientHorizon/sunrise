@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `LevelExtractor.extractPlayerState`: let client listeners choose the overlay renderer
     /// using the overlay's state and position and the world and player interpolation values.
     pub(in crate::game) fn native_extract_block_screen_effect(

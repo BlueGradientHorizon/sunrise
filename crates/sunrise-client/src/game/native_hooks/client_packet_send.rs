@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// A play packet the window's game is about to send to the server
     /// (`Connection.send`): every packet of the play phase it sends, the
     /// selected slot that goes out before an attack or a use included, in the

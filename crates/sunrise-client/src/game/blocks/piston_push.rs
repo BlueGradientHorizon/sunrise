@@ -95,7 +95,7 @@ pub(in crate::game) struct Body {
     pub(in crate::game) supported: bool,
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `Entity.move(mover, …)` for the local player in place, dispatched by role.
     pub(in crate::game) fn move_local_player(
         &mut self,

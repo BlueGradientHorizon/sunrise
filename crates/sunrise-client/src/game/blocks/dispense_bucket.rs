@@ -6,7 +6,7 @@ use sunrise_client::{Result, items::ItemStack};
 use sunrise_core::geometry::Direction;
 use sunrise_world::{fluid::FluidKind, level::BucketContent};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether the dispenser empties `item` as a filled bucket: a bucket of a
     /// mod fluid, or an item with an `empty_contents` Part.
     pub(in crate::game) fn dispenses_as_filled_bucket(&self, item: &str) -> bool {

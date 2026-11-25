@@ -15,7 +15,7 @@ pub(in crate::game::server_side) use sunrise_client::items::ItemStack;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_core::random::RandomSource;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `GiveCommand.giveItem`'s handing over of one stack to the acting player:
     /// `Inventory.add`, then what did not fit thrown from the eyes with no pickup delay and
     /// `owner` (the player's UUID) its only taker, or the pickup sound when it all went in.
@@ -32,7 +32,7 @@ impl Game<'_> {
         // A borrowed player's body is in place but their world may be parked. The shared
         // give effects put that world in place only while replaying the sound or drop.
         let dim = self.target_level(Target::Player);
-        if dim != self.dim && self.levels.0.parked_world(dim).is_none() {
+        if dim != self.dim && self.side.levels.0.parked_world(dim).is_none() {
             return left.then_some(stack);
         }
         if left {
@@ -75,6 +75,6 @@ impl Game<'_> {
             }
         };
         self.push_item_entity(stack, at, Some(velocity), delay, Some(random));
-        self.join_item_entity(self.server.next_entity, at);
+        self.join_item_entity(self.side.next_entity, at);
     }
 }

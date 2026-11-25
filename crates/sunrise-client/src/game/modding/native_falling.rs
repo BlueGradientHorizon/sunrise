@@ -24,7 +24,7 @@ fn start_velocity(velocity: [f64; 3]) -> Option<Vec3> {
     })
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Throws a falling block of `state` from `pos` (its bottom centre) at
     /// `velocity` (blocks a tick) in the level in place, `dimension`: it
     /// falls, lands and places itself as sand does, or drops as an item
@@ -73,13 +73,13 @@ impl Game<'_> {
             damage.max = 40;
         }
         let at = Vec3::new(pos[0], pos[1], pos[2]);
-        self.server.next_entity += 1;
+        self.side.next_entity += 1;
         self.falling.push(FallingBlock {
             size_answer: None,
             attachment_lifetime: Default::default(),
             rotation: [0.0, 0.0],
             join: Default::default(),
-            id: self.server.next_entity,
+            id: self.side.next_entity,
             state,
             blocks_building: true,
             start_pos: cell,

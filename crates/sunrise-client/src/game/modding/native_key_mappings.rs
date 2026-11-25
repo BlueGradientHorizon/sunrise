@@ -15,7 +15,7 @@ fn mod_key_slot(mapping: ModKeyMappingRef) -> ModKeySlot {
     ModKeySlot::from_parts(generation, index)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Binds the mods' mappings to the player's keys (`sunrise-mods.txt`) or their declared
     /// defaults: when the settings apply, at start and after Controls changes one.
     pub(in crate::game::client_side) fn bind_mod_mappings(&mut self) {
@@ -24,7 +24,7 @@ impl Game<'_> {
             mod_api::__private::key_mappings(),
         );
         let settings = &self.settings;
-        self.client
+        self.side
             .mod_keys
             .bind(mappings.iter().map(|(owner, mapping)| {
                 let (input, modifiers) = settings.mods.binding(
@@ -54,7 +54,7 @@ impl Game<'_> {
             return Err(ModKeyRefusal::Unavailable);
         }
         let slot = self
-            .client
+            .side
             .mod_keys
             .resolve(owner, id)
             .ok_or(ModKeyRefusal::NotRegistered)?;
@@ -67,7 +67,7 @@ impl Game<'_> {
         mapping: ModKeyMappingRef,
     ) -> Result<(&str, ClientModifiers), ModKeyRefusal> {
         let row = self
-            .client
+            .side
             .mod_keys
             .get(mod_key_slot(mapping))
             .ok_or(ModKeyRefusal::Stale)?;
@@ -80,7 +80,7 @@ impl Game<'_> {
         mapping: ModKeyMappingRef,
     ) -> Result<Text, MappingError> {
         let row = self
-            .client
+            .side
             .mod_keys
             .get(mod_key_slot(mapping))
             .ok_or(MappingError::Stale)?;
@@ -97,7 +97,7 @@ impl Game<'_> {
         modifiers: ClientModifiers,
     ) -> Result<(), ModKeyRefusal> {
         let (owner, id) = self
-            .client
+            .side
             .mod_keys
             .get(mod_key_slot(mapping))
             .ok_or(ModKeyRefusal::Stale)?
@@ -130,7 +130,7 @@ impl Game<'_> {
         mapping: ModKeyMappingRef,
     ) -> Result<(), ModKeyRefusal> {
         let (owner, id) = self
-            .client
+            .side
             .mod_keys
             .get(mod_key_slot(mapping))
             .ok_or(ModKeyRefusal::Stale)?
@@ -195,7 +195,7 @@ impl Game<'_> {
             _ => &[mod_api::KeyAction::Press, mod_api::KeyAction::Release],
         };
         for action in actions {
-            let modifiers = glfw_modifiers(self.client.modifiers);
+            let modifiers = glfw_modifiers(self.side.modifiers);
             self.key_input(name, layout_key, raw_code, *action, modifiers);
         }
     }
@@ -211,23 +211,23 @@ impl Game<'_> {
             KeyAction::Release
         };
         let screen_open = self.mod_mappings_screen_open();
-        let held = glfw_modifiers(self.client.modifiers);
-        self.client
+        let held = glfw_modifiers(self.side.modifiers);
+        self.side
             .mod_keys
             .button(button, action, screen_open, held);
     }
     fn mod_mappings_input(&mut self, input: &str, action: KeyAction, mouse: bool) {
         let screen_open = self.mod_mappings_screen_open();
-        let held = glfw_modifiers(self.client.modifiers);
-        self.client
+        let held = glfw_modifiers(self.side.modifiers);
+        self.side
             .mod_keys
             .input(input, action, mouse, screen_open, held);
     }
     /// A screen or overlay is open: the mappings hear no presses and are released.
     pub(in crate::game) fn mod_mappings_screen_open(&self) -> bool {
         !gameplay_has_keyboard(
-            self.client.screen,
-            self.title.0.is_some(),
+            self.side.screen,
+            self.side.title.0.is_some(),
             self.screen_over_playing(),
         )
     }
@@ -237,11 +237,11 @@ impl Game<'_> {
         mapping: ModKeyMappingRef,
     ) -> Result<bool, ModKeyRefusal> {
         let screen_open = self.mod_mappings_screen_open();
-        self.client
+        self.side
             .mod_keys
             .is_down(
                 mod_key_slot(mapping),
-                glfw_modifiers(self.client.modifiers),
+                glfw_modifiers(self.side.modifiers),
                 screen_open,
             )
             .ok_or(ModKeyRefusal::Stale)
@@ -251,7 +251,7 @@ impl Game<'_> {
         &mut self,
         mapping: ModKeyMappingRef,
     ) -> Result<bool, ModKeyRefusal> {
-        self.client
+        self.side
             .mod_keys
             .consume_click(mod_key_slot(mapping))
             .ok_or(ModKeyRefusal::Stale)

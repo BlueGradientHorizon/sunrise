@@ -15,7 +15,7 @@ use std::time::Instant;
 use sunrise_client::lan::arrivals;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A proxy's `player-*` request; the reply is one JSON line, `{"ok": true, ...}` or
     /// `{"error": "..."}`. Each request writes one line to the log with what became of it
     /// (`arrivals::request_log`): a hand-over that failed leaves a trace.
@@ -313,7 +313,7 @@ impl Game<'_> {
         let g = host.hub.guests.take_for_save(i);
         let written = sunrise_client::lan::playerdata::save_now(
             &g,
-            &self.server.world_root,
+            &self.side.world_root,
             self.res.items(),
         )
         .and_then(|()| {
@@ -324,7 +324,7 @@ impl Game<'_> {
         host.hub.guests.insert(i, g);
         written?;
         let announced = host.hub.confirm_arrival(uuid, id)?;
-        let directory = sunrise_client::lan::playerdata::directory(&self.server.world_root);
+        let directory = sunrise_client::lan::playerdata::directory(&self.side.world_root);
         self.native_player_save_to_file(uuid, &name, &directory);
         self.arrival_placed(uuid, &name, announced);
         Ok(true)

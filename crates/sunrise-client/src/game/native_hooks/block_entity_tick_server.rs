@@ -84,7 +84,7 @@ impl BlockEntityAccess for ResidentBlockEntityAccess<'_, '_> {
             journal: &mut self.game.transactions,
             chunks: &self.game.world.chunks,
             names: &self.game.world.block_names,
-            hoppers: &self.game.server.hoppers,
+            hoppers: &self.game.side.hoppers,
             menu: matches!(self.loan, Loan::Menu(_))
                 .then_some((&mut self.game.world.modified, &mut self.items_changed)),
             dirty: false,
@@ -130,7 +130,7 @@ impl BlockEntityAccess for ResidentBlockEntityAccess<'_, '_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The resident mod block entity and admitted block state behind a menu callback.
     pub(in crate::game) fn resident_block_entity_target(
         &self,
@@ -187,11 +187,11 @@ impl Game<'_> {
 }
 
 impl<'g, 'w> ResidentBlockEntityAccess<'g, 'w> {
-    pub(in crate::game) fn blockless(game: &'g mut Game<'w>) -> Self {
+    pub(in crate::game) fn blockless(game: &'g mut Game<'w, crate::game::server_side::ServerState>) -> Self {
         Self::new(game, None, Loan::OnLoad)
     }
     pub(in crate::game) fn for_handle(
-        game: &'g mut Game<'w>,
+        game: &'g mut Game<'w, crate::game::server_side::ServerState>,
         subject: BlockEntityRef,
         state: BlockStateId,
     ) -> Self {

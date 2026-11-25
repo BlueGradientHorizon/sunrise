@@ -53,7 +53,7 @@ pub(in crate::game) fn supplied_path_refusal(followed: bool) -> Result<(), MoveT
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `PathNavigation.moveTo(x, y, z, speed)`: true if a path was started.
     /// Refuses a stale or unavailable mob, a client, non-finite arguments,
     /// and coordinates too large for safe block arithmetic. As in vanilla,

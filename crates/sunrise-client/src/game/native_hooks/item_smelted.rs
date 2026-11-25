@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `FurnaceResultSlot.checkTakeAchievements` ran for a server player at a
     /// furnace, blast furnace or smoker's result slot: `player` is their UUID
     /// and `player_entity_id` their network id; `stack` and `amount_removed`

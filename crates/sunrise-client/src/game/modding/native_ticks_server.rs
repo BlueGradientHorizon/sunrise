@@ -9,7 +9,7 @@ pub(in crate::game) fn other_ticks(kind: &str) -> bool {
         && !super::general::quarantined_kind(kind)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_tick_uses_server_sections(&self) -> bool {
         self.entity_section_scope().is_some()
     }
@@ -17,15 +17,15 @@ impl Game<'_> {
     /// The entity the server keeps unsimulated at `others[i]` (`other_ticks`), told alone.
     pub(in crate::game) fn native_other_tick_alone(&mut self, told: Told, i: usize) {
         let mut buffers = std::mem::take(&mut self.creatures.tick_hooks);
-        let (id, join) = (self.others.0[i].id, self.others.0[i].join);
-        buffers.names.push(&self.others.0[i].kind);
+        let (id, join) = (self.side.others.0[i].id, self.side.others.0[i].join);
+        buffers.names.push(&self.side.others.0[i].kind);
         if let Some(kind) = buffers.names.names().next() {
             let mut round = TickRound {
                 told,
                 ..TickRound::default()
             };
             if self.native_tick_pre_one(&mut round, id, kind)
-                && self.others.0.locate(join).is_some()
+                && self.side.others.0.locate(join).is_some()
             {
                 self.native_tick_post_one(&round, id, kind);
             }
@@ -42,7 +42,7 @@ impl Game<'_> {
         let ticking = self.entity_ticking_area();
         let buffers = std::mem::take(&mut self.creatures.tick_hooks);
         let (mut ids, mut names) = (buffers.ids, buffers.names);
-        for o in self.others.0.iter() {
+        for o in self.side.others.0.iter() {
             if o.join < born
                 && other_ticks(&o.kind)
                 && !told.alone_kind(&o.kind)

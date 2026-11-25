@@ -22,7 +22,7 @@ impl ChatTrust {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// A line in the connection's chat, with its styles, click and hover
     /// events (ChatComponent.addMessage). The lines the Chat option hides
     /// are dropped there (its `visibleMessageFilter`).
@@ -146,7 +146,7 @@ impl Game<'_> {
         tag: Option<ChatTag>,
     ) {
         let text = content.plain();
-        let focused = self.client.screen == Screen::Chat;
+        let focused = self.side.screen == Screen::Chat;
         if source == ChatSource::Player {
             self.ui.chat.add_signed(
                 &self.gui.atlas,

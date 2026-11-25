@@ -5,7 +5,7 @@ use super::{Game, item_abilities::ability};
 use sunrise_client::{Result, items::ItemStack};
 use sunrise_core::random::RandomSource;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `PumpkinBlock.useItemOn` with `held` in the hand that acts, the block
     /// at `pos` clicked on `face`: true when shears carved it (SUCCESS).
     pub(in crate::game) fn use_pumpkin(

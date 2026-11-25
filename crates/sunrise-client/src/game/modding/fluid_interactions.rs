@@ -93,7 +93,7 @@ pub(in crate::game) fn declared(
     })
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// [`Self::install_fluid_interactions`] against `items`' tags.
     pub(in crate::game) fn install_fluid_interactions_from(
         &self,

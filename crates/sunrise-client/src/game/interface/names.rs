@@ -111,7 +111,7 @@ impl NameTagLayouts {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `Entity.belowNameDisplay`: the score holder's score in the objective
     /// shown below names, then a space and the objective's name.
     pub(in crate::game::client_side) fn below_name_text(&self, holder: &str) -> Option<Text> {
@@ -147,7 +147,7 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn own_name_tag(&self) -> Option<(&Mob, String)> {
         if !self.settings.extras.own_name_tag
             || !self.controls_camera()
-            || self.client.camera_type.is_first_person()
+            || self.side.camera_type.is_first_person()
             || self.sleeping.is_some()
             || self.spectator()
             || self.own_invisible()
@@ -155,7 +155,7 @@ impl Game<'_> {
         {
             return None;
         }
-        let m = self.client.player_model.as_ref()?;
+        let m = self.side.player_model.as_ref()?;
         Some((m, self.own_profile_name()))
     }
     /// The names the name tags show this frame (the control socket's status).
@@ -547,7 +547,7 @@ impl Game<'_> {
         // decision and per-entity partial tick as the display itself, within 64 blocks.
         let scale = self.view_scale();
         let now = std::time::Instant::now();
-        for (&id, display) in &self.text_displays.0 {
+        for (&id, display) in &self.side.text_displays.0 {
             if !display.has_render_state() {
                 continue;
             }
@@ -617,7 +617,7 @@ impl Game<'_> {
         see_through: &mut super::text_displays::SeeThroughCollector,
     ) {
         let mut patches = Vec::new();
-        let mut layouts = std::mem::take(&mut self.client.name_tag_layouts);
+        let mut layouts = std::mem::take(&mut self.side.name_tag_layouts);
         layouts.begin_frame(&self.gui.atlas);
         let background = self.settings.text_background(0.25);
         let faded = self.settings.faded_text_alpha(0.25);
@@ -625,7 +625,7 @@ impl Game<'_> {
             camera,
             alpha,
             !mod_api::__private::mods().is_empty(),
-            self.client.view_frustum.as_ref(),
+            self.side.view_frustum.as_ref(),
         ) {
             let o = tag.at - camera;
             // `gbuffers_entities` draws name tag text (2.3); a sneaking player's faded tag, on its
@@ -680,8 +680,8 @@ impl Game<'_> {
             see_through.finish(st_start, dist_sq);
         }
         layouts.end_frame();
-        self.client.name_tag_layouts = layouts;
-        self.client.map_patches.extend(patches);
+        self.side.name_tag_layouts = layouts;
+        self.side.map_patches.extend(patches);
     }
     /// The lines of one name tag, `o` from the camera: the text at
     /// `text_alpha` in its layer, on the translucent black background

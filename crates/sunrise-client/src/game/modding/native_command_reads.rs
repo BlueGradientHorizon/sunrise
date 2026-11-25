@@ -9,7 +9,7 @@ use mod_api::{
 };
 use sunrise_client::advancements::{Advancement, Frame, Tree};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A parsed native command with the level and position it executes at: after `execute
     /// in/at/positioned`, or the console's overworld spawn corner.
     pub(in crate::game) fn native_invocation(

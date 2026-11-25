@@ -5,7 +5,7 @@ pub(in crate::game::client_side) use crate::game::light_emission::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::fast_hash::FxHashMap;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Re-query dynamic-light cells in sections touched by a server light update.
     pub(in crate::game) fn ask_updated_light_emission(
         &mut self,

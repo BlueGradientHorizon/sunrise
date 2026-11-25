@@ -32,7 +32,7 @@ pub(in crate::game::client_side) use sunrise_gameplay::trident::{
     HALF, ThrownTrident, breeze_deflect,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// ThrownTridentRenderer.
     pub(in crate::game) fn trident_geometry(
         &self,
@@ -78,7 +78,7 @@ impl Game<'_> {
         tridents: impl Iterator<Item = (&'a ThrownTrident, [f64; 3])>,
         out: &mut Vec<Vertex>,
     ) {
-        let Some(model) = &self.client.trident_model else {
+        let Some(model) = &self.side.trident_model else {
             return;
         };
         let Some(uv) = self
@@ -112,7 +112,7 @@ impl Game<'_> {
             );
             if t.fire_ticks > 0 {
                 // The flames face the camera, turned round in the front view.
-                let fire_yaw = if self.client.camera_type
+                let fire_yaw = if self.side.camera_type
                     == sunrise_client::camera::CameraType::ThirdPersonFront
                 {
                     self.yaw + 180.0
@@ -166,7 +166,7 @@ impl Game<'_> {
     ) {
         // ItemPickupParticle: a picked-up trident flying to its collector,
         // drawn with the render state extracted at partial tick 1.
-        let taken = self.pickups.0.live.iter().filter_map(|p| match &p.taken {
+        let taken = self.side.pickups.0.live.iter().filter_map(|p| match &p.taken {
             super::pickups::Taken::Trident(t) => Some((&**t, super::pickups::position(p, alpha))),
             _ => None,
         });

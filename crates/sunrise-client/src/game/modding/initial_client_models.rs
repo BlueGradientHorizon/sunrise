@@ -15,7 +15,7 @@ pub(in crate::game) struct PendingClientStart {
     pub(in crate::game) handoff: bool,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// AtlasManager.apply: adopt the uploaded textures and the GUI sprites, without
     /// admitting the new model store or its GPU buffers.
     pub(in crate::game::client_side) fn publish_client_atlases(
@@ -27,16 +27,16 @@ impl Game<'_> {
         let mut prepared = None;
         if let Some(mut renderer) = renderer {
             prepared = renderer.take_prepared_models();
-            if let Some(old) = &self.renderer.0 {
+            if let Some(old) = &self.side.renderer.0 {
                 renderer.resize(old.config.width, old.config.height);
             }
-            self.renderer.0 = Some(renderer);
+            self.side.renderer.0 = Some(renderer);
         }
-        self.stitching_block_atlas.0 = Some(atlas.clone());
+        self.side.stitching_block_atlas.0 = Some(atlas.clone());
         self.native_texture_atlas_stitched(mod_api::TextureAtlas::Blocks);
         self.gui = gui;
         let (pool, mut names) = self.gui.atlas.dynamic_names();
-        self.client.dynamic_textures.rebind(pool, &mut names);
+        self.side.dynamic_textures.rebind(pool, &mut names);
         sunrise_client::ui_theme::reset_atlas();
         self.native_texture_atlas_stitched(mod_api::TextureAtlas::Gui);
         prepared
@@ -46,8 +46,8 @@ impl Game<'_> {
         &mut self,
         prepared: Option<PreparedModels>,
     ) {
-        self.stitching_block_atlas.0 = None;
-        if let Some(renderer) = &mut self.renderer.0 {
+        self.side.stitching_block_atlas.0 = None;
+        if let Some(renderer) = &mut self.side.renderer.0 {
             renderer.publish_prepared_models(prepared);
         }
     }
@@ -67,11 +67,11 @@ impl Game<'_> {
         let upload = self.publish_client_atlases(&pack.render, gui, renderer);
         self.apply_client_reload(client_applies, |game| {
             game.pack = pack;
-            game.client.standalone_geometry = geometry;
+            game.side.standalone_geometry = geometry;
             let context = game.worker_context();
             game.streaming.reload_resources(&mut game.world, context);
             game.install_model_upload(upload);
-            game.armor_stand_assets.0.extensions = item_extensions;
+            game.side.armor_stand_assets.0.extensions = item_extensions;
             game.resolve_entity_renderers();
             game.native_model_baking_completed();
         });

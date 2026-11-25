@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `dimension`'s level has loaded the saved chunk tickets of `controller`
     /// (NeoForge's `LoadingValidationCallback.validateTickets`), before its
     /// first tick and after `native_level_load`, once for each open and each

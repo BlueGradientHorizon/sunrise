@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `IBlockExtension.getBeaconColorMultiplier`: the colour `state` at `pos` gives the beam of
     /// the beacon at `beacon_pos`. `color` is the block's own answer, which its parts may change.
     pub(in crate::game) fn native_beacon_color_multiplier(

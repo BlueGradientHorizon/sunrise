@@ -39,7 +39,7 @@ pub(in crate::game::client_side) use sunrise_core::{
     random::RandomSource,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `FireworkEntityRenderer.submit`: ground item facing camera, lit at the rocket's probe.
     pub(in crate::game) fn rocket_geometry(
         &self,
@@ -102,7 +102,7 @@ impl Game<'_> {
         if let Some(r) = self.rockets.iter().find(|r| r.id == id as u32) {
             let at = [r.position.x, r.position.y, r.position.z];
             let v = [r.velocity.x, r.velocity.y, r.velocity.z];
-            self.particles.0.fireworks(
+            self.side.particles.0.fireworks(
                 at,
                 v,
                 r.explosions.as_ref().clone(),
@@ -121,7 +121,7 @@ impl Game<'_> {
             g(&mut self.world.random),
         ];
         let at = [r.position.x, r.position.y, r.position.z];
-        self.particles
+        self.side.particles
             .0
             .add(&ParticleOptions::simple(ParticleType::Firework), at, v);
     }

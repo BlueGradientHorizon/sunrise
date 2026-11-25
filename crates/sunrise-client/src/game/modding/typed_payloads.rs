@@ -2,14 +2,14 @@
 use super::Game;
 use mod_api::{PayloadSendError, PayloadToken};
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Check `token` against this load's frozen typed declarations.
     pub(super) fn check_payload_token(&self, token: &PayloadToken) -> Result<(), PayloadSendError> {
         mod_api::__private::game::check_payload_token(token)
     }
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The drop counts of `Droppable` channel `id`.
     pub(super) fn payload_drop_counts(
         &self,

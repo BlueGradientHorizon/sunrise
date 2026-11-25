@@ -6,7 +6,7 @@ use super::Game;
 use sunrise_core::position::BlockPos;
 use sunrise_world::registry::BlockStateId;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The block at `pos` went from `previous` to `state` in the client's world.
     pub(in crate::game) fn client_block_written(
         &mut self,
@@ -23,7 +23,7 @@ impl Game<'_> {
         let moving = |s: BlockStateId| &*facts.get(s).name == "minecraft:moving_piston";
         if moving(previous) && !moving(state) {
             self.forget_moving_piston(at);
-            self.client.moving_pistons_stale = true;
+            self.side.moving_pistons_stale = true;
         }
         if previous == state {
             return;

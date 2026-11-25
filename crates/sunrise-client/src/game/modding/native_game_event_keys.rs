@@ -1,6 +1,6 @@
 //! Startup game-event registry reads.
 use super::Game;
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn game_event_key(&self, id: &str) -> Option<mod_api::GameEventKey> {
         mod_api::__private::game_event_key(id)
     }

@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A tamed mob's owner message, after eligibility and message construction.
     pub(in crate::game) fn native_living_death_message(
         &mut self,

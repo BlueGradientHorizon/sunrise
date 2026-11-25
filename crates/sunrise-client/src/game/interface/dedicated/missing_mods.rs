@@ -51,7 +51,7 @@ pub(super) fn in_english<R>(f: impl FnOnce() -> R) -> R {
     lang::scoped(lang::Language::load(&[], lang::DEFAULT), f).0
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Refuses to open the world in `dir` while a mod it was saved with is missing and no
     /// `mod_mismatch` listener resolved it, unless `flag` (`--allowMissingMods`) or `server.toml`
     /// allows it; then the same list is a warning and the world opens.

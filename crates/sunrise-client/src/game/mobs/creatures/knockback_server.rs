@@ -9,7 +9,7 @@ pub(in crate::game::server_side) use crate::game::creatures::knockback::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use mod_api::KnockbackEntry;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `LivingEntity.knockback` on the player: pushed `power` away from the
     /// direction (`xd`, `zd`), less its knockback resistance, and up only from
     /// the ground.
@@ -64,7 +64,7 @@ impl Game<'_> {
             None,
             attack,
         );
-        let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
+        let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
         if let Some(p) = self.player.as_mut() {
             let level = crate::game::entity::damage_level_of!(self, attack, &mut credit, None);
             let mut push = |level: &mut sunrise_client::health::DamageLevel<'_>| {

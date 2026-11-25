@@ -85,7 +85,7 @@ impl PlayerStackSlot {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The player a place belongs to, if a player's: a cursor's only while its menu is open.
     pub(in crate::game::server_side) fn place_player(&self, place: &ItemPlace) -> Option<u128> {
         match place {
@@ -342,7 +342,7 @@ impl Game<'_> {
             }
             ItemPlace::PlayerCursor { menu } => {
                 let guest = self.native_menu_guest(*menu)?;
-                if self.server.lan_acting == Some(guest.conn) {
+                if self.side.lan_acting == Some(guest.conn) {
                     self.carried.as_ref()
                 } else {
                     guest.carried.as_ref()
@@ -506,7 +506,7 @@ impl Game<'_> {
                     .native_menu_guest(menu)
                     .ok_or(ItemPlaceEditError::NotHeld)?;
                 let player = guest.uuid;
-                let (parked, carried) = if self.server.lan_acting == Some(guest.conn) {
+                let (parked, carried) = if self.side.lan_acting == Some(guest.conn) {
                     (None, &self.carried)
                 } else {
                     (

@@ -1,7 +1,7 @@
 //! Additional ingredient containers named by subscribed mods.
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn native_recipe_sources(
         &mut self,
         player: u128,

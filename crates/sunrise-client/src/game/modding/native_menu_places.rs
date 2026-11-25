@@ -53,7 +53,7 @@ fn held_identity(stack: &ItemStack) -> ItemStack {
     stack
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The inventory slot holding `hand`'s stack (the selected hotbar slot, or the offhand's 40) and
     /// that stack, of `guest`: read from the game in their own turn, when their record holds the
     /// outer player's.
@@ -62,7 +62,7 @@ impl Game<'_> {
         guest: &'a Guest,
         hand: Hand,
     ) -> (usize, Option<&'a ItemStack>) {
-        let (selected, inventory, offhand) = match self.server.lan_acting == Some(guest.conn) {
+        let (selected, inventory, offhand) = match self.side.lan_acting == Some(guest.conn) {
             true => (self.selected, &self.inventory, &self.offhand),
             false => (guest.selected, &guest.inventory, &guest.offhand),
         };
@@ -99,7 +99,7 @@ impl Game<'_> {
         let conn = self
             .native_conn(uuid)
             .ok_or(MenuSlotBackRefusal::NoPlayerOrWindow)?;
-        let acting = self.server.lan_acting == Some(conn);
+        let acting = self.side.lan_acting == Some(conn);
         let (size, slots, owned) = self
             .lan
             .as_ref()
@@ -420,7 +420,7 @@ impl Game<'_> {
         let inventory = native_menu_inventory_slot(size, slot);
         // The held backpack's own slot takes no click, so it can't go into itself.
         let applied = if inventory.is_none() || inventory != locked {
-            let accepts = |game: &Game<'_>, slot, resource: &ItemResource, amount| {
+            let accepts = |game: &Game<'_, crate::game::server_side::ServerState>, slot, resource: &ItemResource, amount| {
                 if locked.is_some() && native_menu_inventory_slot(size, slot as i32) == locked {
                     return (false, false, 0);
                 }
@@ -493,11 +493,11 @@ impl Game<'_> {
 /// `PICKUP` on menu slot `at`: an empty cursor takes all (or half, `right`) of the slot; a
 /// full one puts all (or one) in, or swaps with a slot of another item. All or nothing.
 fn click_pickup(
-    game: &mut Game<'_>,
+    game: &mut Game<'_, crate::game::server_side::ServerState>,
     menu: MenuRef,
     slot: usize,
     right: bool,
-    accepts: impl Fn(&Game<'_>, usize, &ItemResource, u32) -> (bool, bool, u32),
+    accepts: impl Fn(&Game<'_, crate::game::server_side::ServerState>, usize, &ItemResource, u32) -> (bool, bool, u32),
 ) -> bool {
     let cursor = menu.cursor();
     let at = ItemPlace::MenuSlot { menu, slot };
@@ -560,13 +560,13 @@ fn click_pickup(
 /// Onto matching stacks first, then into empty slots (`moveItemStackTo`), all or
 /// nothing.
 fn click_quick_move(
-    game: &mut Game<'_>,
+    game: &mut Game<'_, crate::game::server_side::ServerState>,
     menu: MenuRef,
     at: usize,
     size: usize,
     player_slots: usize,
     count: usize,
-    accepts: impl Fn(&Game<'_>, usize, &ItemResource, u32) -> (bool, bool, u32),
+    accepts: impl Fn(&Game<'_, crate::game::server_side::ServerState>, usize, &ItemResource, u32) -> (bool, bool, u32),
 ) -> bool {
     let from = ItemPlace::MenuSlot { menu, slot: at };
     let Some(resource) = from.resource(game) else {

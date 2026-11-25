@@ -361,13 +361,13 @@ impl PrimedTnt {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Asks the mods whether the TNT at `pos` may be primed
     /// (`native_tnt_primed`); the acting guest, if any, is its player.
     pub(in crate::game) fn tnt_prime_allowed(&mut self, pos: BlockPos) -> bool {
         let mut cancel = false;
         self.native_tnt_primed(
-            self.server.lan_acting_uuid,
+            self.side.lan_acting_uuid,
             [pos.x, pos.y, pos.z],
             &mut cancel,
         );
@@ -388,7 +388,7 @@ impl Game<'_> {
         }
         // Refused: the level queued the fuse sound and the game event right
         // after the prime; they are dropped as they come up.
-        self.server.tnt_refused = Some(pos);
+        self.side.tnt_refused = Some(pos);
         let Some(tnt) = self.pack.assets.registry.default_state("minecraft:tnt") else {
             return;
         };
@@ -412,18 +412,18 @@ impl Game<'_> {
             f64::from(pos.z) + 0.5,
         );
         // An id from the entity counter at once, so a command can name it.
-        self.server.next_entity += 1;
+        self.side.next_entity += 1;
         // Entity: the UUID is the first two draws of the TNT's own random.
         let uuid =
             sunrise_client::save::insecure_uuid(&mut sunrise_client::random_source::entity());
-        self.persist.uuids.insert(self.server.next_entity, uuid);
+        self.persist.uuids.insert(self.side.next_entity, uuid);
         self.tnts.push(PrimedTnt {
             size_answer: None,
             attachment_lifetime: Default::default(),
             rotation: [0.0, 0.0],
             join: Default::default(),
             no_gravity: false,
-            id: self.server.next_entity,
+            id: self.side.next_entity,
             position,
             previous: position,
             velocity: Vec3::new(-rot.sin() * 0.02, f64::from(0.2f32), -rot.cos() * 0.02),
@@ -603,8 +603,8 @@ impl Game<'_> {
             // ExplosionInteraction.TNT: the tnt_explosion_drop_decay rule.
             let interaction =
                 self.destroy_type(sunrise_client::gamerules::vanilla::TNT_EXPLOSION_DROP_DECAY);
-            self.combat.0.explosion_in_water = in_water;
-            self.combat.0.explosion_direct = Some(id);
+            self.side.combat.0.explosion_in_water = in_water;
+            self.side.combat.0.explosion_direct = Some(id);
             self.set_blast_owner(owner, guest);
             let result = self.with_hive_emptying_blast(|g| {
                 g.server_explode_from(
@@ -622,11 +622,11 @@ impl Game<'_> {
                         ),
                 )
             });
-            self.combat.0.blast_owner = None;
-            self.combat.0.blast_owner_player = false;
-            self.combat.0.blast_guest = None;
-            self.combat.0.explosion_in_water = false;
-            self.combat.0.explosion_direct = None;
+            self.side.combat.0.blast_owner = None;
+            self.side.combat.0.blast_owner_player = false;
+            self.side.combat.0.blast_guest = None;
+            self.side.combat.0.explosion_in_water = false;
+            self.side.combat.0.explosion_direct = None;
             result?;
         }
         Ok(())
@@ -706,8 +706,8 @@ impl Game<'_> {
         owner: Option<Who>,
         guest: Option<u32>,
     ) {
-        self.combat.0.blast_guest = guest;
-        self.combat.0.blast_owner = tnt_blast_owner(
+        self.side.combat.0.blast_guest = guest;
+        self.side.combat.0.blast_owner = tnt_blast_owner(
             owner,
             || match guest {
                 Some(_) => self.player_attacker(guest),
@@ -718,8 +718,8 @@ impl Game<'_> {
             },
             |id| self.mob_display_name(id),
         );
-        self.combat.0.blast_owner_player =
-            owner == Some(Who::Player) && self.combat.0.blast_owner.is_some();
+        self.side.combat.0.blast_owner_player =
+            owner == Some(Who::Player) && self.side.combat.0.blast_owner.is_some();
     }
     /// The attack a player-owned blast's hits land in: its causing player's,
     /// so a mob it kills is that player's kill.
@@ -727,13 +727,13 @@ impl Game<'_> {
         &self,
     ) -> sunrise_client::health::Attack {
         let id = self
-            .combat
+            .side.combat
             .0
             .blast_owner
             .as_ref()
             .map_or(0, |(id, _)| *id as i32);
         let mut attack = self.attack_of(id);
-        attack.player_uuid = self.player_uuid_of(self.combat.0.blast_guest);
+        attack.player_uuid = self.player_uuid_of(self.side.combat.0.blast_guest);
         attack
     }
     /// `PrimedTnt.getOwner` for TNT loaded with an `owner`: looked up when
@@ -790,7 +790,7 @@ impl Game<'_> {
         if !self.tnt_prime_allowed(pos) {
             return Ok(true);
         }
-        let guest = self.server.lan_acting;
+        let guest = self.side.lan_acting;
         self.spawn_primed_tnt(pos, false, Some(Who::Player), guest);
         let air = self.world.air;
         self.with_level(|b, level, ticks| {
@@ -830,7 +830,7 @@ pub(in crate::game) fn tnt_general_seat(tnt: Vec3) -> Vec3 {
     tnt_seat(tnt, 0.0)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `new PrimedTnt(level, x + 0.5, y, z + 0.5, owner)`; `short` applies
     /// `wasExploded`'s random short fuse. Plays `entity.tnt.primed` for primes.
     pub(in crate::game) fn spawn_primed_tnt(

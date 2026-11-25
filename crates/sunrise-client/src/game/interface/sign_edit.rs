@@ -48,7 +48,7 @@ pub(in crate::game::client_side) fn done_button(w: f32, h: f32) -> (f32, f32) {
     )
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `SignBlock.openTextEdit` for the front side after placement.
     pub(in crate::game) fn open_sign_editor(&mut self, pos: (i32, i32, i32), front: bool) {
         self.open_screen_overlay("sign_editor", |game| {
@@ -59,7 +59,7 @@ impl Game<'_> {
                 Some(BlockEntity::Sign(sign)) => sign.back.lines.clone(),
                 _ => Default::default(),
             };
-            game.client.sign_edit = Some(SignEditor {
+            game.side.sign_edit = Some(SignEditor {
                 pos,
                 front,
                 line: 0,
@@ -77,7 +77,7 @@ impl Game<'_> {
     /// than 4 blocks beyond the block interaction range
     /// (`SignBlockEntity.playerIsTooFarAwayToEdit`).
     pub(in crate::game::client_side) fn tick_sign_editor(&mut self) {
-        let Some(edit) = &self.client.sign_edit else {
+        let Some(edit) = &self.side.sign_edit else {
             return;
         };
         let (x, y, z) = edit.pos;
@@ -102,7 +102,7 @@ impl Game<'_> {
     /// `AbstractSignEditScreen.removed`: send what the client wrote, or
     /// keep it in the window's own world and send its guests the block update.
     pub(in crate::game::client_side) fn remove_sign_editor(&mut self) -> bool {
-        let Some(edit) = self.client.sign_edit.take() else {
+        let Some(edit) = self.side.sign_edit.take() else {
             return false;
         };
         if self.remote.is_some() {
@@ -171,7 +171,7 @@ impl Game<'_> {
         key: Option<KeyCode>,
         typed: Option<&str>,
     ) {
-        if self.client.sign_edit.is_none() {
+        if self.side.sign_edit.is_none() {
             return;
         }
         match key {
@@ -204,14 +204,14 @@ impl Game<'_> {
     /// Up or down a line: the box writes the line it leaves and loads the next.
     pub(in crate::game::client_side) fn sign_move_line(&mut self, by: usize) {
         self.sign_write();
-        if let Some(edit) = self.client.sign_edit.as_mut() {
+        if let Some(edit) = self.side.sign_edit.as_mut() {
             edit.line = (edit.line + by) & 3;
         }
         self.sign_load();
     }
     /// The edited line's text.
     pub(in crate::game::client_side) fn sign_current(&self) -> Option<String> {
-        let edit = self.client.sign_edit.as_ref()?;
+        let edit = self.side.sign_edit.as_ref()?;
         let BlockEntity::Sign(sign) = self.world.block_entities.get(&edit.pos)? else {
             return None;
         };
@@ -223,21 +223,21 @@ impl Game<'_> {
         let Some(text) = self.sign_current() else {
             return;
         };
-        if let Some(edit) = self.client.sign_edit.as_mut() {
+        if let Some(edit) = self.side.sign_edit.as_mut() {
             edit.edit.set_value(&text);
         }
     }
     /// The box's text onto the editor's lines and the sign
     /// (`AbstractSignEditScreen.setMessage`), when it still fits the line.
     pub(in crate::game::client_side) fn sign_write(&mut self) {
-        let Some(edit) = self.client.sign_edit.as_ref() else {
+        let Some(edit) = self.side.sign_edit.as_ref() else {
             return;
         };
         let (pos, front, line, value) = (edit.pos, edit.front, edit.line, edit.edit.value.clone());
         if !self.sign_fits(&value) {
             return;
         }
-        if let Some(edit) = self.client.sign_edit.as_mut() {
+        if let Some(edit) = self.side.sign_edit.as_mut() {
             edit.lines[line].clone_from(&value);
         }
         let Some(BlockEntity::Sign(sign)) = self.world.block_entities.get_mut(&pos) else {
@@ -252,7 +252,7 @@ impl Game<'_> {
     }
     /// TextFieldHelper: `font.width(s) <= maxTextLineWidth`.
     pub(in crate::game::client_side) fn sign_fits(&self, value: &str) -> bool {
-        let Some(edit) = self.client.sign_edit.as_ref() else {
+        let Some(edit) = self.side.sign_edit.as_ref() else {
             return false;
         };
         let Some(BlockEntity::Sign(sign)) = self.world.block_entities.get(&edit.pos) else {
@@ -263,11 +263,11 @@ impl Game<'_> {
     /// Edit the line, then keep the result only when it still fits.
     pub(in crate::game::client_side) fn sign_change(&mut self, f: impl FnOnce(&mut EditBox)) {
         let before = self
-            .client
+            .side
             .sign_edit
             .as_ref()
             .map(|e| (e.edit.value.clone(), e.edit.cursor, e.edit.highlight));
-        if let Some(edit) = self.client.sign_edit.as_mut() {
+        if let Some(edit) = self.side.sign_edit.as_mut() {
             f(&mut edit.edit);
             let clean = sunrise_client::clipboard::strip_formatting(&edit.edit.value);
             if clean != edit.edit.value {
@@ -285,7 +285,7 @@ impl Game<'_> {
         before: Option<(String, usize, usize)>,
     ) {
         let value = self
-            .client
+            .side
             .sign_edit
             .as_ref()
             .map(|e| e.edit.value.clone())
@@ -293,7 +293,7 @@ impl Game<'_> {
         if self.sign_fits(&value) {
             self.sign_write();
         } else if let (Some(edit), Some((value, cursor, highlight))) =
-            (self.client.sign_edit.as_mut(), before)
+            (self.side.sign_edit.as_mut(), before)
         {
             edit.edit.value = value;
             edit.edit.cursor = cursor;
@@ -308,18 +308,18 @@ impl Game<'_> {
         shortcut: sunrise_client::clipboard::EditShortcut,
     ) {
         if shortcut == sunrise_client::clipboard::EditShortcut::Paste {
-            let raw = sunrise_client::clipboard::Clipboard::get(&mut self.clipboard.0);
+            let raw = sunrise_client::clipboard::Clipboard::get(&mut self.side.clipboard.0);
             let text = sunrise_client::clipboard::helper_clipboard_contents(&raw);
             self.sign_change(|edit| edit.insert_text(&text));
             return;
         }
         let before = self
-            .client
+            .side
             .sign_edit
             .as_ref()
             .map(|e| (e.edit.value.clone(), e.edit.cursor, e.edit.highlight));
-        if let Some(edit) = self.client.sign_edit.as_mut() {
-            edit.edit.shortcut(shortcut, &mut self.clipboard.0);
+        if let Some(edit) = self.side.sign_edit.as_mut() {
+            edit.edit.shortcut(shortcut, &mut self.side.clipboard.0);
             let clean = sunrise_client::clipboard::strip_formatting(&edit.edit.value);
             if clean != edit.edit.value {
                 let n = sunrise_client::ui::char_len(&clean);
@@ -335,9 +335,9 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn sign_edit_click(&mut self, size: [u32; 2]) -> bool {
         let b = HudBatch::new(size, self.settings.gui_scale_inputs());
         let (x, y) = done_button(b.width, b.height);
-        let (mx, my) = self.client.cursor;
+        let (mx, my) = self.side.cursor;
         if mx >= x && mx < x + 200.0 && my >= y && my < y + 20.0 {
-            self.audio.0.play_button_click();
+            self.side.audio.0.play_button_click();
             self.close_sign_editor();
             return true;
         }
@@ -351,19 +351,19 @@ impl Game<'_> {
             if mx < left || mx >= left + max_width || my < ly || my >= ly + line_height {
                 continue;
             }
-            let current = self.client.sign_edit.as_ref().map(|e| e.line);
+            let current = self.side.sign_edit.as_ref().map(|e| e.line);
             if current != Some(i) {
                 self.sign_move_line((i + 4 - current.unwrap_or(0)) & 3);
             }
             let value = self
-                .client
+                .side
                 .sign_edit
                 .as_ref()
                 .map(|e| e.edit.value.clone())
                 .unwrap_or_default();
             let lw = HudBatch::text_width(&self.gui.atlas, &value);
             let text_x = cx - (lw as i32 / 2) as f32;
-            if let Some(edit) = self.client.sign_edit.as_mut() {
+            if let Some(edit) = self.side.sign_edit.as_mut() {
                 edit.edit.x = text_x;
                 edit.edit.y = ly;
                 edit.edit.width = max_width;
@@ -379,7 +379,7 @@ impl Game<'_> {
         &self,
         width: f32,
     ) -> Option<(f32, f32, f32, f32, Vec<String>)> {
-        let edit = self.client.sign_edit.as_ref()?;
+        let edit = self.side.sign_edit.as_ref()?;
         let BlockEntity::Sign(sign) = self.world.block_entities.get(&edit.pos)? else {
             return None;
         };
@@ -396,7 +396,7 @@ impl Game<'_> {
         ))
     }
     pub(in crate::game::client_side) fn draw_sign_editor(&self, batch: &mut HudBatch) {
-        let Some(edit) = &self.client.sign_edit else {
+        let Some(edit) = &self.side.sign_edit else {
             return;
         };
         let Some(BlockEntity::Sign(sign)) = self.world.block_entities.get(&edit.pos) else {

@@ -7,7 +7,7 @@ pub(in crate::game::client_side) use crate::game::remote::client_level_tick::*;
 
 /// Per-level client work bracketed by the shared LevelTickEvent hooks.
 /// No level means no event; failed ticks never emit the post event.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn tick_remote_level(&mut self) -> Result<()> {
         self.tick_remote_level_with(Self::tick_remote_level_body)
     }
@@ -47,7 +47,7 @@ impl Game<'_> {
         // Minecraft.tick: TickRateManager.tick; ClientLevel.tickTime advances
         // the time only while the level runs normally.
         let running = self.clock.world_runs();
-        self.client.boss_overlay.tick_darken(running);
+        self.side.boss_overlay.tick_darken(running);
         // Under `SUNRISE_STILL` the frame's countdowns (this one, the hotbar's pop, the HUD's
         // below) wait for the world, as the border's size change does in any frozen level: a
         // frozen client keeps ticking, as many ticks as the run took.

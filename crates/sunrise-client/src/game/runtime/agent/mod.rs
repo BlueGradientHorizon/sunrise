@@ -392,7 +392,7 @@ pub(in crate::game) enum Handled {
     No,
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn block_json(&self, pos: [i32; 3]) -> Value {
         let state = self.world.block(pos[0], pos[1], pos[2]);
         let mut v = json!({
@@ -452,21 +452,21 @@ impl Game<'_> {
         }
     }
     pub(in crate::game::client_side) fn need_world(&self) -> Result<()> {
-        if self.title.0.is_some() {
+        if self.side.title.0.is_some() {
             return Err("no world open (title screen); use: open WORLD [SEED] [creative]".into());
         }
         Ok(())
     }
     pub(in crate::game::client_side) fn require_playing_screen(&self) -> Result<()> {
-        if self.title.0.is_some() {
+        if self.side.title.0.is_some() {
             return Err("no world open (title screen); use: open WORLD [SEED] [creative]".into());
         }
         if self.player.is_none() {
             return Err("the player has not spawned yet; try wait-ready".into());
         }
-        if self.client.screen != Screen::Playing
-            || self.client.book.is_some()
-            || self.client.sign_edit.is_some()
+        if self.side.screen != Screen::Playing
+            || self.side.book.is_some()
+            || self.side.sign_edit.is_some()
         {
             return Err(format!(
                 "the {} screen is open; close it first (close, or click-button)",
@@ -480,16 +480,16 @@ impl Game<'_> {
         if self.dialog_open() {
             return "dialog";
         }
-        if self.title.0.is_some() {
+        if self.side.title.0.is_some() {
             return "title";
         }
-        if self.client.book.is_some() {
+        if self.side.book.is_some() {
             return "book";
         }
-        if self.client.sign_edit.is_some() {
+        if self.side.sign_edit.is_some() {
             return "sign";
         }
-        match self.client.screen {
+        match self.side.screen {
             Screen::Playing => "playing",
             Screen::GameModeSwitcher => "gamemode-switcher",
             Screen::Paused => "paused",
@@ -569,7 +569,7 @@ impl Game<'_> {
                 "fall_flying": p.fall_flying,
                 "sneaking": self.held_mapping(Action::Sneak),
                 "sprinting": p.sprinting,
-                "fov_modifier": self.client.view.fov_modifier,
+                "fov_modifier": self.side.view.fov_modifier,
                 "health": p.health.health(),
                 "absorption": p.health.absorption(),
                 // The hurt animation's ticks left (the camera's hurt tilt).
@@ -578,7 +578,7 @@ impl Game<'_> {
                 "death_time": self.death_time(),
                 "air": p.air,
                 // LocalPlayer.portalEffectIntensity: the Nether portal overlay.
-                "portal_effect": self.client.screen_fx.portal,
+                "portal_effect": self.side.screen_fx.portal,
                 "food": p.health.food.food,
                 "saturation": p.health.food.saturation,
                 "shield_cooldown": self
@@ -603,8 +603,8 @@ impl Game<'_> {
         let mut state = json!({
             "dialog": self.dialog_status(),
             "screen": self.screen_label(),
-            "menu": self.title.0.is_some().then(|| self.title_value()),
-            "world": (self.title.0.is_none()).then(|| match &self.integrated {
+            "menu": self.side.title.0.is_some().then(|| self.title_value()),
+            "world": (self.side.title.0.is_none()).then(|| match &self.integrated {
                 Some(server) => server.world_name.clone(),
                 None => self.level.name.clone(),
             }),
@@ -623,7 +623,7 @@ impl Game<'_> {
             "paused": self.pause,
             // Mouse movement turns the camera (`apply_mouse_look`): the real
             // pointer is grabbed, or an agent's `mouse-move` stands in for it.
-            "pointer_grabbed": self.client.captured || self.client.agent_pointer,
+            "pointer_grabbed": self.side.captured || self.side.agent_pointer,
             "player": player,
             "selected": self.selected + 1,
             "held": self.held().map(|s| self.stack_value(s)),
@@ -632,17 +632,17 @@ impl Game<'_> {
             "ticks": self.ticks,
         });
         // Who caused the input, and whether a repro recording runs.
-        let mut input = self.input_trace.0.summary();
-        self.repro
+        let mut input = self.side.input_trace.0.summary();
+        self.side.repro
             .0
-            .fill_summary(&mut input, self.input_trace.0.events());
+            .fill_summary(&mut input, self.side.input_trace.0.events());
         state["input"] = input;
         state
     }
 
     pub(in crate::game::client_side) fn title_value(&self) -> Value {
         use sunrise_client::title::Mode;
-        let Some(title) = &self.title.0 else {
+        let Some(title) = &self.side.title.0 else {
             return Value::Null;
         };
         let worlds = || {
@@ -875,10 +875,10 @@ impl Game<'_> {
             v["chat_input"] = json!(chat.input.value);
             v["chat_suggestions"] = json!(chat.suggestions_visible());
         }
-        if self.title.0.is_some() {
+        if self.side.title.0.is_some() {
             v["menu"] = self.title_value();
         }
-        if self.client.screen == Screen::Inventory && self.title.0.is_none() {
+        if self.side.screen == Screen::Inventory && self.side.title.0.is_none() {
             let mut slots = Vec::new();
             for i in self.slots() {
                 let stack = if i == 200 {
@@ -925,7 +925,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game::client_side) fn messages_value(&self, n: usize) -> Value {
-        let titles = &self.client.titles;
+        let titles = &self.side.titles;
         json!({
             "chat": self.remote_chat(n).unwrap_or_else(|| self.ui.chat.recent_lines(n)),
             "order": "newest first",
@@ -1097,7 +1097,7 @@ impl Game<'_> {
         points: &[(f32, f32)],
         button: MouseButton,
     ) -> Result<()> {
-        let id = self.window.0.as_ref().ok_or("no window yet")?.id();
+        let id = self.side.window.0.as_ref().ok_or("no window yet")?.id();
         let projection = self
             .renderer_pointer_projection()
             .ok_or("no renderer yet")?;
@@ -1705,7 +1705,7 @@ impl Game<'_> {
             "scroll-at" => {
                 let (x, y) = (a.f64(0, "X")? as f32, a.f64(1, "Y")? as f32);
                 let steps = a.f64(2, "STEPS")? as f32;
-                let id = self.window.0.as_ref().ok_or("no window yet")?.id();
+                let id = self.side.window.0.as_ref().ok_or("no window yet")?.id();
                 let projection = self
                     .renderer_pointer_projection()
                     .ok_or("no renderer yet")?;
@@ -1744,7 +1744,7 @@ impl Game<'_> {
                 self.synth_click(event_loop, x, y, button)?;
                 ok(json!({ "ok": true, "screen": self.screen_label() }))
             }
-            "type" if self.title.0.is_some() => {
+            "type" if self.side.title.0.is_some() => {
                 // type [--field name|seed] [--replace] TEXT on the title screens.
                 let mut text = line
                     .trim_start()
@@ -1768,7 +1768,7 @@ impl Game<'_> {
                     }
                 }
                 let editing_preset = self.preset_editor_title().is_some();
-                let title = self.title.0.as_mut().ok_or("no title screen")?;
+                let title = self.side.title.0.as_mut().ok_or("no title screen")?;
                 if let Some(field) = &field {
                     match &mut title.mode {
                         sunrise_client::title::Mode::Create { focus, options, .. } => {
@@ -1935,7 +1935,7 @@ impl Game<'_> {
             started: now,
             over,
             picks: self.client_picks(),
-            fed_frame: self.client.frames,
+            fed_frame: self.side.frames,
             deadline: now + over + Duration::from_secs(10),
             reply: reply.clone(),
             aim,
@@ -1980,15 +1980,15 @@ impl Game<'_> {
         let due = (g.total.0 * f, g.total.1 * f);
         let step = (due.0 - g.fed.0, due.1 - g.fed.1);
         if step != (0.0, 0.0) {
-            self.client.mouse.add_motion(step.0, step.1);
-            self.client.agent_pointer = true;
+            self.side.mouse.add_motion(step.0, step.1);
+            self.side.agent_pointer = true;
             g.fed = due;
-            g.fed_frame = self.client.frames;
+            g.fed_frame = self.side.frames;
         }
         let turned = if g.total == (0.0, 0.0) {
             self.client_picks() > g.picks
         } else {
-            self.client.frames > g.fed_frame
+            self.side.frames > g.fed_frame
         };
         if t >= 1.0 && turned {
             let extra = match g.aim {
@@ -2100,9 +2100,9 @@ impl Game<'_> {
         timed_out: bool,
     ) -> Option<Value> {
         // Leaving the world (death, a screen, the title) ends movement tasks.
-        let interrupted = if self.title.0.is_some() || self.player.is_none() {
+        let interrupted = if self.side.title.0.is_some() || self.player.is_none() {
             Some("the world closed")
-        } else if self.client.screen == Screen::Dead {
+        } else if self.side.screen == Screen::Dead {
             Some("the player died")
         } else {
             None
@@ -2154,7 +2154,7 @@ impl Game<'_> {
                 if let Some(why) = interrupted {
                     return Some(json!({ "error": why, "position": self.position() }));
                 }
-                if self.client.screen != Screen::Playing {
+                if self.side.screen != Screen::Playing {
                     return Some(
                         json!({ "error": format!("the {} screen opened", self.screen_label()), "position": self.position() }),
                     );
@@ -2224,7 +2224,7 @@ impl Game<'_> {
                     && pos.is_some()
                     && !changed
                     && self.remote.is_some()
-                    && self.client.screen == Screen::Playing
+                    && self.side.screen == Screen::Playing
                     && *inventory == self.inventory_counts()
                     && self.ticks < *report_tick + 20
                     && !timed_out
@@ -2474,7 +2474,7 @@ impl Game<'_> {
                     "block": self.state_string(state), "ticks": self.ticks - b.started_tick,
                     "held": self.held().map(|s| self.stack_value(s)),
                 }));
-            } else if self.client.screen != Screen::Playing {
+            } else if self.side.screen != Screen::Playing {
                 return Some(
                     json!({ "error": format!("the {} screen opened", self.screen_label()), "pos": b.pos }),
                 );

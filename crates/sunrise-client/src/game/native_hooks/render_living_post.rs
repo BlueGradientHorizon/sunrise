@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// After a living entity is drawn (NeoForge's `RenderLivingEvent.Post`): once a frame for each
     /// mob and player in view whose pre hook wasn't canceled, after its model and its layers, with
     /// its render state, the final body model if available, and a draw posed at its feet.

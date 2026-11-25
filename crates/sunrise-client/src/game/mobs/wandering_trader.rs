@@ -13,9 +13,9 @@ impl Creatures {
         self.trader = Spawner::default();
     }
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     fn trader_path(&self) -> std::path::PathBuf {
-        self.server
+        self.side
             .world_root
             .join("data")
             .join("minecraft")
@@ -57,7 +57,7 @@ impl Game<'_> {
         }
     }
 }
-impl TraderLevel for Game<'_> {
+impl TraderLevel for Game<'_, crate::game::server_side::ServerState> {
     fn motion_top(&self, x: i32, z: i32) -> i32 {
         Game::motion_top(self, x, z)
     }

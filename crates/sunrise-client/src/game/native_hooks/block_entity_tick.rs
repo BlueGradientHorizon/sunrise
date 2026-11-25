@@ -45,7 +45,7 @@ pub(in crate::game) enum Loan {
 }
 
 pub(in crate::game) struct ResidentBlockEntityAccess<'g, 'w> {
-    pub(in crate::game) game: &'g mut Game<'w>,
+    pub(in crate::game) game: &'g mut Game<'w, crate::game::server_side::ServerState>,
     pub(in crate::game) subject: Option<BlockEntityRef>,
     pub(in crate::game) loan: Loan,
     pub(in crate::game) items_changed: bool,
@@ -53,7 +53,7 @@ pub(in crate::game) struct ResidentBlockEntityAccess<'g, 'w> {
 
 impl<'g, 'w> ResidentBlockEntityAccess<'g, 'w> {
     pub(in crate::game) fn new(
-        game: &'g mut Game<'w>,
+        game: &'g mut Game<'w, crate::game::server_side::ServerState>,
         subject: Option<BlockEntityRef>,
         loan: Loan,
     ) -> Self {
@@ -65,7 +65,7 @@ impl<'g, 'w> ResidentBlockEntityAccess<'g, 'w> {
         }
     }
 
-    pub(in crate::game) fn on_load(game: &'g mut Game<'w>, subject: BlockEntityRef) -> Self {
+    pub(in crate::game) fn on_load(game: &'g mut Game<'w, crate::game::server_side::ServerState>, subject: BlockEntityRef) -> Self {
         Self::new(game, Some(subject), Loan::OnLoad)
     }
 }

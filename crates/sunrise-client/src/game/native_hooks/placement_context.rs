@@ -1,7 +1,7 @@
 use super::*;
 use sunrise_core::geometry::Vec3;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `BlockPlaceContext.getPlayer`: the active server player or the client doing prediction.
     pub(in crate::game) fn placement_placer(&self) -> Option<mod_api::PlacementPlacer> {
         let player = self.side_acting_or_local_player()?;

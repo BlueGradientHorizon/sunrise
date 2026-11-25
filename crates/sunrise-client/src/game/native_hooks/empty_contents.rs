@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `IDispensibleContainerItemExtension.emptyContents`: `stack` is about
     /// to be emptied at `pos` by `player`, who clicked `hit`, or by a
     /// dispenser (both `None`). `None` keeps vanilla's emptying; `Some(true)`
@@ -18,7 +18,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether `item` has an `empty_contents` Part.
     pub(in crate::game) fn empty_contents_listens(&self, item: &str) -> bool {
         mod_api::__private::has_part_hook(mod_api::HookId::EmptyContents)

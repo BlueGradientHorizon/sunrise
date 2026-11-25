@@ -30,14 +30,14 @@ pub(in crate::game::server_side) use {
     },
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `PlaceCommand.checkLoaded`: every chunk of the inclusive range.
     pub(in crate::game::server_side) fn place_check_loaded(
         &self,
         min: [i32; 2],
         max: [i32; 2],
     ) -> R<()> {
-        let dimension = self.server.command_source.map_or(self.dim, |s| s.dimension);
+        let dimension = self.side.command_source.map_or(self.dim, |s| s.dimension);
         for cx in min[0]..=max[0] {
             for cz in min[1]..=max[1] {
                 if dimension != self.dim || !self.world.chunks.contains_key(&(cx, cz)) {
@@ -55,7 +55,7 @@ impl Game<'_> {
             return None;
         }
         let saved = self
-            .server
+            .side
             .world_root
             .join("generated")
             .join(ns)
@@ -68,7 +68,7 @@ impl Game<'_> {
             .join(ns)
             .join(format!("{path}.nbt"));
         let name = format!("data/{ns}/structure/{path}.nbt");
-        let resource = self.fns.0.data_resource(&name).or_else(|| {
+        let resource = self.side.fns.0.data_resource(&name).or_else(|| {
             self.pack
                 .data_source
                 .contains(&name)

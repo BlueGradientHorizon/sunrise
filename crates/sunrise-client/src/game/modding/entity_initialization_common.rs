@@ -13,7 +13,7 @@ pub(in crate::game) struct EntityInitialization {
     pub(in crate::game) active: Option<Holder>,
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Tell the listeners about a new entity of type `kind`, unless it was already told.
     pub(in crate::game) fn initialize_entity(&mut self, holder: Holder, kind: &str) {
         if !mod_api::__private::listened(mod_api::HookId::EntityConstructing) {

@@ -9,7 +9,7 @@ use super::{Game, spill};
 use mod_api::{EntityRef, LevelRef};
 use sunrise_items::items::ItemStack;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether vanilla could make an item entity of `stack`: not empty
     /// (`ItemStack.isEmpty`) and of an item the registry has.
     pub(in crate::game::server_side) fn stack_spawns(&self, stack: &ItemStack) -> bool {
@@ -29,7 +29,7 @@ impl Game<'_> {
         pickup_delay: u32,
     ) -> Option<EntityRef> {
         // `spawn_item` takes the next id.
-        let id = self.server.next_entity + 1;
+        let id = self.side.next_entity + 1;
         self.add_item_entity(stack, at, motion, pickup_delay);
         self.dropped
             .iter()

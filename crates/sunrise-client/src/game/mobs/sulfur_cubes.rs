@@ -15,7 +15,7 @@ use sunrise_client::{
 #[allow(unused_imports)]
 use sunrise_core::position::BlockPos;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Spit the swallowed block out on top (`EntityAttachment.PASSENGER`).
     pub(in crate::game::server_side) fn eject_sulfur_block(&mut self, index: usize) {
         let m = &mut self.mobs[index];
@@ -148,8 +148,8 @@ impl Game<'_> {
         // ItemUtils.createFilledResult.
         self.filled_result(filled);
         if let (Some(player), Some(name)) = (
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_name.clone(),
+            self.side.lan_acting_uuid,
+            self.side.lan_acting_name.clone(),
         ) {
             self.native_player_bucket_entity(player, &name, id as i32, "minecraft:sulfur_cube");
         }
@@ -299,7 +299,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn sulfur_sound(&mut self, index: usize, sound: &str) {
         let at = self.mobs[index].center();
         self.server_play_sound(&format!("minecraft:{sound}"), at, 1.0, 1.0);

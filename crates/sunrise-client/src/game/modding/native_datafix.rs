@@ -2,7 +2,7 @@
 use super::Game;
 use mod_api::{Compound, NbtDataType, NbtUpgradeError};
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn upgrade_nbt(
         kind: NbtDataType,
         data_version: i32,

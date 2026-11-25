@@ -25,11 +25,11 @@ pub(in crate::game::server_side) use sunrise_client::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_protocol::packets::play::{self, Clientbound as C};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn cmd_pregen(&mut self, id: &str, ctx: &Context) -> R<i32> {
         match id {
             "pregen.start" => {
-                if self.cmds.0.pregen.is_some() {
+                if self.side.cmds.0.pregen.is_some() {
                     return Err(failure(
                         "Pregeneration is already running: /pregen cancel stops it",
                     ));
@@ -57,7 +57,7 @@ impl Game<'_> {
                         Shape::Circle => "circle",
                     },
                 )));
-                self.cmds.0.pregen = Some(PregenTask {
+                self.side.cmds.0.pregen = Some(PregenTask {
                     pregen,
                     dim: self.dim,
                     paused: false,
@@ -65,14 +65,14 @@ impl Game<'_> {
                     resumed: now,
                     reported: now,
                     moved: now,
-                    owner: self.server.lan_acting,
+                    owner: self.side.lan_acting,
                 });
                 Ok(total as i32)
             }
             "pregen.pause" | "pregen.continue" => {
                 let pause = id == "pregen.pause";
                 let task = self
-                    .cmds
+                    .side.cmds
                     .0
                     .pregen
                     .as_mut()
@@ -96,7 +96,7 @@ impl Game<'_> {
             }
             "pregen.cancel" => {
                 let task = self
-                    .cmds
+                    .side.cmds
                     .0
                     .pregen
                     .take()
@@ -109,7 +109,7 @@ impl Game<'_> {
             }
             _ => {
                 let task = self
-                    .cmds
+                    .side.cmds
                     .0
                     .pregen
                     .as_ref()
@@ -123,12 +123,12 @@ impl Game<'_> {
     }
     /// The level a running task needs ticked, whoever is in it.
     pub(in crate::game::server_side) fn pregen_level(&self) -> Option<Dim> {
-        self.cmds.0.pregen.as_ref().map(|t| t.dim)
+        self.side.cmds.0.pregen.as_ref().map(|t| t.dim)
     }
     /// Whether the level in place has a running task, which the server pumps
     /// between its ticks (`pump_chunks`).
     pub(in crate::game::server_side) fn pregen_runs_here(&self) -> bool {
-        self.cmds
+        self.side.cmds
             .0
             .pregen
             .as_ref()
@@ -152,7 +152,7 @@ impl Game<'_> {
         // time. Not while a respawn search waits for a chunk: its area is
         // only asked for by the tick's own `update_world`.
         // A viewed area's chunks (#3716) as the forced ones.
-        let players = !paused && self.server.spawn_wait.is_empty();
+        let players = !paused && self.side.spawn_wait.is_empty();
         let viewed = self.viewed_level(self.dim).is_some();
         let mut idle = Duration::ZERO;
         while self.pregen_runs_here()
@@ -174,7 +174,7 @@ impl Game<'_> {
     /// level's streaming, and report the progress now and then. Runs before
     /// each streaming update of the level in place.
     pub(in crate::game::server_side) fn tick_pregen(&mut self) {
-        let Some(task) = self.cmds.0.pregen.as_mut() else {
+        let Some(task) = self.side.cmds.0.pregen.as_mut() else {
             return;
         };
         if task.dim != self.dim || task.paused {
@@ -218,7 +218,7 @@ impl Game<'_> {
                 message = Text::literal("Done. ")
                     .append(message)
                     .with_color(text::GREEN);
-                self.cmds.0.pregen = None;
+                self.side.cmds.0.pregen = None;
             }
             self.pregen_report(owner, message);
         }

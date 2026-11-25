@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Items' default components are bound on this side (NeoForge's
     /// `DefaultDataComponentsBoundEvent`), right before `native_tags_updated`.
     pub(in crate::game) fn native_default_components_bound(

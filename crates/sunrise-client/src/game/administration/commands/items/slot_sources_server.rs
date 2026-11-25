@@ -21,7 +21,7 @@ pub(in crate::game::server_side) use sunrise_client::datapack::DataStore;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_core::nbt::Tag;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Literal ranges retain priority; all remaining consumers resolve the same holder snapshot.
     pub(in crate::game::server_side) fn resolved_slot_source(&self, raw: &str) -> R<Option<Value>> {
         if sunrise_client::command::args::slot_ranges()
@@ -30,14 +30,14 @@ impl Game<'_> {
         {
             return Ok(None);
         }
-        let value = if self.fns.0.store.slot_sources.contains_key(&id(raw)) {
+        let value = if self.side.fns.0.store.slot_sources.contains_key(&id(raw)) {
             Value::String(id(raw))
         } else {
             let (tag, _) = sunrise_core::nbt::parse_snbt(raw)
                 .map_err(|error| err("argument.resource_or_id.failed_to_parse", &[&error]))?;
             typed_source(&tag)
         };
-        expand(&self.fns.0.store, &value)
+        expand(&self.side.fns.0.store, &value)
             .map(Some)
             .map_err(|error| err("argument.resource_or_id.failed_to_parse", &[&error]))
     }

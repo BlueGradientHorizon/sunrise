@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `IItemExtension.getCreatorModId`: the mod that made `stack`.
     /// `mod_id` arrives as the item id's namespace; set it to another mod,
     /// or `None`.

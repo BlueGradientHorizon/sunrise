@@ -9,7 +9,7 @@ use sunrise_client::{
     particles::{ParticleOptions, ParticleType},
 };
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `Breeze.emitGroundParticles`'s block: `getInBlockState`, else
     /// `getBlockStateOn`, which is `Entity.getOnPos(1.0E-5F)` — the supporting
     /// block the feet rest on, or the cell just below them. A fence, a wall and

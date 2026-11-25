@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The camera this frame is drawn from, `partial` ticks past the last tick, after vanilla
     /// placed it (`Camera.setup`): its position, and its yaw and pitch in degrees. Set them to
     /// draw the world from anywhere: a cinematic or replay camera. Only the picture, the sound's

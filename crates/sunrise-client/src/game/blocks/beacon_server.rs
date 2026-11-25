@@ -11,7 +11,7 @@ fn effect_id(name: &str) -> Option<&'static str> {
     EFFECTS.iter().map(|(e, _)| *e).find(|e| *e == n)
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `BeaconBlockEntity.tick` of the beacon at `key`.
     pub(in crate::game) fn tick_beacon_at(&mut self, key: (i32, i32, i32)) {
         let Some((lease, BlockEntity::Beacon(mut b))) = self.world.block_entities.take(&key) else {

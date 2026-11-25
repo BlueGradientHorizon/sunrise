@@ -15,7 +15,7 @@ impl PickAccumulator {
 
     pub(in crate::game::client_side) fn dispatch(
         &mut self,
-        game: &mut Game<'_>,
+        game: &mut Game<'_, crate::game::client_side::ClientState>,
     ) -> Vec<PickCandidate> {
         let candidates = self.take_candidates();
         let camera = game.pick_camera_id();
@@ -45,7 +45,7 @@ impl PickAccumulator {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn pick_camera_id(&self) -> Option<u32> {
         if let Some(remote) = self.remote.as_ref() {
             if let Some(id) = remote.camera {

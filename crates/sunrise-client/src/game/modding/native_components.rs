@@ -43,7 +43,7 @@ pub(in crate::game) fn stack_attack_bonus_preview(
     enchanted + smash
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Metadata backing ItemResource::damageable through the gameplay property path.
     pub(in crate::game) fn item_resource_damageable(&self, stack: &ItemStack) -> bool {
         sunrise_client::stations::is_damageable(self.items(), stack)
@@ -352,7 +352,7 @@ impl Game<'_> {
 
 // Native mods use these helpers.
 #[allow(dead_code)]
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Read a native component, including the item's default when not patched.
     pub(in crate::game) fn native_component<'a>(
         &'a self,

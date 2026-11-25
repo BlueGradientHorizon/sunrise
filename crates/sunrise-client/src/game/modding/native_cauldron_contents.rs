@@ -12,7 +12,7 @@ fn export(content: &CauldronContent) -> Option<mod_api::CauldronContent> {
     ))
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(super) fn cauldron_content_for_block(
         &self,
         block: mod_api::BlockKey,

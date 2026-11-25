@@ -377,7 +377,7 @@ pub(in crate::game::client_side) fn keyframe_state(mut state: Value) -> Value {
     state
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `record-*` and `repro-export`; None for other commands, Some(None) when deferred.
     pub(in crate::game::client_side) fn repro_command(
         &mut self,
@@ -388,7 +388,7 @@ impl Game<'_> {
         match words[0] {
             "record-start" => self.record_start_command(&words[1..], Some(reply.clone())),
             "record-stop" => self.record_stop_command(&words[1..], Some(reply.clone())),
-            "record-status" => Ok(Some(Some(self.record_status(self.input_trace.0.events())))),
+            "record-status" => Ok(Some(Some(self.record_status(self.side.input_trace.0.events())))),
             "record-list" => Ok(Some(Some(self.record_list()))),
             "record-replay" => self.replay_command(&words[1..], Some(reply.clone())),
             "repro-export" => self.export_command(&words[1..], Some(reply.clone())),
@@ -406,26 +406,26 @@ impl Game<'_> {
     /// Once per tick: the state keyframes. Stops a recording that outgrew its caps.
     pub(in crate::game::client_side) fn repro_tick(&mut self) {
         let Some((start_tick, started, start_inputs, inputs)) =
-            self.repro.0.recording.as_ref().map(|rec| {
+            self.side.repro.0.recording.as_ref().map(|rec| {
                 (
                     rec.start_tick,
                     rec.started,
                     rec.input_base,
-                    self.input_trace.0.events(),
+                    self.side.input_trace.0.events(),
                 )
             })
         else {
             return;
         };
-        let ticking = self.title.0.is_none() && self.client.screen == Screen::Playing;
+        let ticking = self.side.title.0.is_none() && self.side.screen == Screen::Playing;
         let elapsed = self.ticks.saturating_sub(start_tick);
         if ticking && elapsed.is_multiple_of(KEYFRAME_TICKS) {
             let state = self.state_value();
-            self.repro.0.record_state(self.ticks, state);
+            self.side.repro.0.record_state(self.ticks, state);
         }
         if ticking && elapsed.is_multiple_of(ENTITIES_TICKS) {
             let entities = self.entities_value(48.0, None);
-            self.repro.0.record_entities(self.ticks, entities);
+            self.side.repro.0.record_entities(self.ticks, entities);
         }
         let too_many = inputs.saturating_sub(start_inputs) >= MAX_INPUT_EVENTS;
         let too_long = started.elapsed().as_secs() >= MAX_RECORDING_SECS;
@@ -440,7 +440,7 @@ impl Game<'_> {
     /// A native exit: finish the recording and write its bundle, so a crash or a
     /// quit still leaves a repro.
     pub(in crate::game::client_side) fn repro_on_exit(&mut self) {
-        if self.repro.0.recording.is_none() {
+        if self.side.repro.0.recording.is_none() {
             return;
         }
         if let Err(e) = self.stop_recording(true, None) {
@@ -452,7 +452,7 @@ impl Game<'_> {
     /// The world is closing (quit to title, another world): a recording cannot
     /// cross it, and a replay feeding the title screen is nonsense.
     pub(in crate::game::client_side) fn repro_world_closed(&mut self) {
-        if self.repro.0.recording.is_some()
+        if self.side.repro.0.recording.is_some()
             && let Err(e) = self.stop_recording(false, None)
         {
             log::warn!("Sunrise: stopping the recording at the world close: {e}");
@@ -464,10 +464,10 @@ impl Game<'_> {
 
     /// F3+R: start a recording, or stop the running one and write its bundle.
     pub(in crate::game::client_side) fn toggle_recording_key(&mut self) {
-        if self.repro.0.replay.is_some() || self.repro.0.pending_replay.is_some() {
+        if self.side.repro.0.replay.is_some() || self.side.repro.0.pending_replay.is_some() {
             return;
         }
-        if self.repro.0.recording.is_some() {
+        if self.side.repro.0.recording.is_some() {
             if let Err(e) = self.stop_recording(true, None) {
                 self.repro_say(
                     "sunrise.repro.error",
@@ -481,7 +481,7 @@ impl Game<'_> {
 
     /// F3+E: write a bundle now, from the running or the newest recording.
     pub(in crate::game::client_side) fn export_repro_key(&mut self) {
-        if self.repro.0.recording.is_some() {
+        if self.side.repro.0.recording.is_some() {
             if let Err(e) = self.stop_recording(true, None) {
                 self.repro_say(
                     "sunrise.repro.error",
@@ -538,13 +538,13 @@ impl Game<'_> {
         no_world: bool,
         key: bool,
     ) -> Result<Value> {
-        if self.repro.0.recording.is_some() {
+        if self.side.repro.0.recording.is_some() {
             return Err("a recording is already running; record-stop first".into());
         }
-        if self.repro.0.replay.is_some() || self.repro.0.pending_replay.is_some() {
+        if self.side.repro.0.replay.is_some() || self.side.repro.0.pending_replay.is_some() {
             return Err("a replay is running; record-replay --stop first".into());
         }
-        if self.pending_save.0.is_some() {
+        if self.side.pending_save.0.is_some() {
             return Err("a world save is in progress".into());
         }
         // Single player is a client of its own integrated server too: that is
@@ -554,7 +554,7 @@ impl Game<'_> {
             "local"
         } else if self.remote.is_some() {
             "remote"
-        } else if self.title.0.is_some() {
+        } else if self.side.title.0.is_some() {
             return Err("open a world first".into());
         } else {
             return Err(
@@ -629,7 +629,7 @@ impl Game<'_> {
         let (inputs, inputs_joined) = spawn_lines(&dir.join("inputs.jsonl"))?;
         let (events, events_joined) = spawn_lines(&dir.join("events.jsonl"))?;
         let (states, states_joined) = spawn_lines(&dir.join("state.jsonl"))?;
-        self.input_trace.0.start_file(inputs);
+        self.side.input_trace.0.start_file(inputs);
         fs::write(dir.join("README.txt"), readme())?;
         let rec = Recording {
             name: name.clone(),
@@ -637,7 +637,7 @@ impl Game<'_> {
             start_tick: start_step,
             started: Instant::now(),
             started_at: SystemTime::now(),
-            input_base: self.input_trace.0.events(),
+            input_base: self.side.input_trace.0.events(),
             start: start_state,
             mode,
             world: world.clone(),
@@ -654,7 +654,7 @@ impl Game<'_> {
             dir.join("session.json"),
             serde_json::to_vec_pretty(&recording_meta(&rec, None, start_step))?,
         )?;
-        self.repro.0.recording = Some(rec);
+        self.side.repro.0.recording = Some(rec);
         prune_dir(&recordings_dir(), Some(&dir), KEPT_RECORDINGS);
         if key {
             self.repro_say("sunrise.repro.started", &[]);
@@ -694,11 +694,11 @@ impl Game<'_> {
         export: bool,
         reply: Option<Sender<String>>,
     ) -> Result<Option<Value>> {
-        let Some(mut rec) = self.repro.0.recording.take() else {
+        let Some(mut rec) = self.side.repro.0.recording.take() else {
             return Err("no recording is running".into());
         };
         // A last keyframe after the last input, so a replay's end is covered.
-        if self.title.0.is_none() {
+        if self.side.title.0.is_none() {
             let state = keyframe_state(self.state_value());
             let entities = self.entities_value(48.0, None);
             let tick = self.ticks;
@@ -720,7 +720,7 @@ impl Game<'_> {
                 }
             }
         }
-        rec.inputs_written = self.input_trace.0.stop_file();
+        rec.inputs_written = self.side.input_trace.0.stop_file();
         drop(rec.events.take());
         drop(rec.states.take());
         if let Some(handle) = rec.inputs.take() {
@@ -764,7 +764,7 @@ impl Game<'_> {
 
     pub(in crate::game::client_side) fn record_status(&self, inputs: u64) -> Value {
         json!({
-            "recording": self.repro.0.recording.as_ref().map(|r| json!({
+            "recording": self.side.repro.0.recording.as_ref().map(|r| json!({
                 "name": r.name,
                 "dir": r.dir.display().to_string(),
                 "seconds": r.started.elapsed().as_secs_f64(),
@@ -776,7 +776,7 @@ impl Game<'_> {
                 "mode": r.mode,
                 "world": r.world,
             })),
-            "replay": self.repro.0.replay.as_ref().map(|r| json!({
+            "replay": self.side.repro.0.replay.as_ref().map(|r| json!({
                 "name": r.name,
                 "sent": r.sent,
                 "skipped": r.skipped,
@@ -849,7 +849,7 @@ impl Game<'_> {
                 other => return Err(format!("repro-export: unexpected {other}").into()),
             }
         }
-        if self.repro.0.recording.is_some() {
+        if self.side.repro.0.recording.is_some() {
             // Exporting the run as it stands: stop it first so the files are closed.
             match self.stop_recording(false, None)? {
                 Some(_) => {}
@@ -882,7 +882,7 @@ impl Game<'_> {
                 .unwrap_or_else(|| "repro".into());
             bundles_dir().join(format!("{name}.zip"))
         });
-        let started_at = self.repro.0.recording.as_ref().map_or_else(
+        let started_at = self.side.repro.0.recording.as_ref().map_or_else(
             || {
                 recording_started_at(&dir)
                     .unwrap_or_else(|| SystemTime::now() - Duration::from_secs(MAX_RECORDING_SECS))
@@ -906,13 +906,13 @@ impl Game<'_> {
                 };
             let _ = tx.send(value);
         });
-        self.repro.0.exports.push(Export { rx, reply, key });
+        self.side.repro.0.exports.push(Export { rx, reply, key });
         Ok(())
     }
 
     pub(in crate::game::client_side) fn poll_exports(&mut self) {
         let mut done = Vec::new();
-        for (i, export) in self.repro.0.exports.iter().enumerate() {
+        for (i, export) in self.side.repro.0.exports.iter().enumerate() {
             match export.rx.try_recv() {
                 Ok(value) => done.push((i, value)),
                 Err(TryRecvError::Empty) => {}
@@ -923,7 +923,7 @@ impl Game<'_> {
             }
         }
         for (i, value) in done.into_iter().rev() {
-            let export = self.repro.0.exports.remove(i);
+            let export = self.side.repro.0.exports.remove(i);
             if let Some(path) = value.get("path").and_then(Value::as_str) {
                 prune_dir(&bundles_dir(), Some(Path::new(path)), KEPT_RECORDINGS);
             }
@@ -945,9 +945,9 @@ impl Game<'_> {
 
     pub(in crate::game::client_side) fn drain_exports(&mut self, timeout: Duration) {
         let deadline = Instant::now() + timeout;
-        while !self.repro.0.exports.is_empty() && Instant::now() < deadline {
+        while !self.side.repro.0.exports.is_empty() && Instant::now() < deadline {
             self.poll_exports();
-            if !self.repro.0.exports.is_empty() {
+            if !self.side.repro.0.exports.is_empty() {
                 std::thread::sleep(Duration::from_millis(5));
             }
         }
@@ -995,10 +995,10 @@ impl Game<'_> {
             return Ok(Some(Some(json!({ "ok": true, "stopped": stopped }))));
         }
         let name = name.ok_or("record-replay NAME: a recording from record-list")?;
-        if self.repro.0.recording.is_some() {
+        if self.side.repro.0.recording.is_some() {
             return Err("a recording is running; record-stop first".into());
         }
-        if self.repro.0.replay.is_some() || self.repro.0.pending_replay.is_some() {
+        if self.side.repro.0.replay.is_some() || self.side.repro.0.pending_replay.is_some() {
             return Err("a replay is already running; record-replay --stop first".into());
         }
         let dir = resolve_recording(&name)?;
@@ -1019,7 +1019,7 @@ impl Game<'_> {
             .max(base_tick);
         let deadline = Instant::now() + Duration::from_secs(timeout);
         if in_place {
-            if self.title.0.is_some() {
+            if self.side.title.0.is_some() {
                 return Err("--in-place needs an open world to feed the input into".into());
             }
             let pending = PendingReplay {
@@ -1047,10 +1047,10 @@ impl Game<'_> {
         }
         let folder = format!("{}-replay-{}", slug(&name), stamp());
         copy_tree(&world, &saves_dir().join(&folder))?;
-        if self.title.0.is_none() {
+        if self.side.title.0.is_none() {
             self.close_world()?;
         }
-        self.repro.0.pending_replay = Some(PendingReplay {
+        self.side.repro.0.pending_replay = Some(PendingReplay {
             reply,
             name,
             folder,
@@ -1068,7 +1068,7 @@ impl Game<'_> {
 
     pub(in crate::game::client_side) fn poll_pending_replay(&mut self) {
         let Some((in_place, opened, folder, deadline)) = self
-            .repro
+            .side.repro
             .0
             .pending_replay
             .as_ref()
@@ -1077,18 +1077,18 @@ impl Game<'_> {
             return;
         };
         if Instant::now() >= deadline {
-            let pending = self.repro.0.pending_replay.take().unwrap();
+            let pending = self.side.repro.0.pending_replay.take().unwrap();
             self.discard_replay_world(&pending);
             self.reply_error(pending.reply, "the replay's world did not load in time");
             return;
         }
         if !in_place {
             if !opened {
-                if self.pending_save.0.is_some() || self.title.0.is_none() {
+                if self.side.pending_save.0.is_some() || self.side.title.0.is_none() {
                     return;
                 }
                 if let Err(e) = self.open_world(&folder, None, None, false, None) {
-                    let pending = self.repro.0.pending_replay.take().unwrap();
+                    let pending = self.side.repro.0.pending_replay.take().unwrap();
                     self.discard_replay_world(&pending);
                     self.reply_error(
                         pending.reply,
@@ -1096,15 +1096,15 @@ impl Game<'_> {
                     );
                     return;
                 }
-                if let Some(pending) = self.repro.0.pending_replay.as_mut() {
+                if let Some(pending) = self.side.repro.0.pending_replay.as_mut() {
                     pending.opened = true;
                 }
             }
-            if !self.loaded() || self.pending_entry.0.is_some() {
+            if !self.loaded() || self.side.pending_entry.0.is_some() {
                 return;
             }
         }
-        let pending = self.repro.0.pending_replay.take().unwrap();
+        let pending = self.side.repro.0.pending_replay.take().unwrap();
         self.begin_replay(pending);
     }
 
@@ -1149,8 +1149,8 @@ impl Game<'_> {
         }
         let start_tick = self.ticks.saturating_add(3);
         let end_at = start_tick.saturating_add(pending.end_tick.saturating_sub(pending.base_tick));
-        self.input_trace.0.set_suppress(true);
-        self.repro.0.replay = Some(Replay {
+        self.side.input_trace.0.set_suppress(true);
+        self.side.repro.0.replay = Some(Replay {
             name: name.clone(),
             base_tick: pending.base_tick,
             start_tick,
@@ -1188,7 +1188,7 @@ impl Game<'_> {
         let mut due = Vec::new();
         let mut timed_out = false;
         {
-            let Some(replay) = self.repro.0.replay.as_mut() else {
+            let Some(replay) = self.side.repro.0.replay.as_mut() else {
                 return;
             };
             if Instant::now() >= replay.deadline {
@@ -1209,7 +1209,7 @@ impl Game<'_> {
         }
         for event in due {
             let outcome = self.replay_event(event, event_loop);
-            if let Some(replay) = self.repro.0.replay.as_mut() {
+            if let Some(replay) = self.side.repro.0.replay.as_mut() {
                 if outcome {
                     replay.sent += 1;
                 } else {
@@ -1218,7 +1218,7 @@ impl Game<'_> {
             }
         }
         let mut finished = timed_out;
-        if let Some(replay) = &self.repro.0.replay {
+        if let Some(replay) = &self.side.repro.0.replay {
             // The recording's span, not just its last input: its trailing wait
             // and deceleration are part of what the bug needed.
             if replay.index >= replay.events.len() && self.ticks >= replay.end_at {
@@ -1232,9 +1232,9 @@ impl Game<'_> {
                     "sent": replay.sent,
                     "total": replay.events.len(),
                 });
-                self.repro.0.note_event(self.ticks, &value);
+                self.side.repro.0.note_event(self.ticks, &value);
                 self.events.note(self.ticks, value);
-                if let Some(replay) = self.repro.0.replay.as_mut() {
+                if let Some(replay) = self.side.repro.0.replay.as_mut() {
                     replay.last_progress = replay.sent;
                 }
             }
@@ -1250,7 +1250,7 @@ impl Game<'_> {
         event: TraceEvent,
         event_loop: &dyn EventLoopCtl,
     ) -> bool {
-        let id = match &self.window.0 {
+        let id = match &self.side.window.0 {
             Some(window) => window.id(),
             None => WindowId::dummy(),
         };
@@ -1336,15 +1336,15 @@ impl Game<'_> {
                 true
             }
             TraceKind::Motion { x, y } => {
-                self.client.mouse.on_move(0.0, 0.0, x, y, true, true);
-                self.client.last_input = Instant::now();
+                self.side.mouse.on_move(0.0, 0.0, x, y, true, true);
+                self.side.last_input = Instant::now();
                 true
             }
             TraceKind::Pad { button, action } => {
                 let Some(button) = Button::ALL.into_iter().find(|b| b.name() == button) else {
                     return false;
                 };
-                self.pad.0.inject_button(button, action == "down");
+                self.side.pad.0.inject_button(button, action == "down");
                 true
             }
         }
@@ -1353,20 +1353,20 @@ impl Game<'_> {
     /// Let go of everything a replay (or a person) held.
     pub(in crate::game::client_side) fn release_replay_inputs(&mut self) {
         self.clear_device_keys();
-        self.client.physical_keys.clear();
-        self.client.physical_buttons.clear();
+        self.side.physical_keys.clear();
+        self.side.physical_buttons.clear();
         self.set_mapping_held("key.attack", false);
         self.set_mapping_held("key.use", false);
-        self.client.modifiers = winit::keyboard::ModifiersState::empty();
-        self.client.debug_keys.modifier_down = false;
-        self.pad.0.clear_injected();
+        self.side.modifiers = winit::keyboard::ModifiersState::empty();
+        self.side.debug_keys.modifier_down = false;
+        self.side.pad.0.clear_injected();
     }
 
     pub(in crate::game::client_side) fn finish_replay(&mut self, timed_out: bool) {
-        let Some(replay) = self.repro.0.replay.take() else {
+        let Some(replay) = self.side.repro.0.replay.take() else {
             return;
         };
-        self.input_trace.0.set_suppress(false);
+        self.side.input_trace.0.set_suppress(false);
         self.release_replay_inputs();
         if !replay.keep_world
             && let Some(folder) = &replay.world_folder
@@ -1394,14 +1394,14 @@ impl Game<'_> {
     /// Stop a running or waiting replay; whether there was one.
     pub(in crate::game::client_side) fn stop_replay(&mut self) -> bool {
         let mut stopped = false;
-        if let Some(pending) = self.repro.0.pending_replay.take() {
+        if let Some(pending) = self.side.repro.0.pending_replay.take() {
             self.discard_replay_world(&pending);
             self.reply_error(pending.reply, "the replay was stopped before it started");
-            self.input_trace.0.set_suppress(false);
+            self.side.input_trace.0.set_suppress(false);
             self.release_replay_inputs();
             stopped = true;
         }
-        if self.repro.0.replay.is_some() {
+        if self.side.repro.0.replay.is_some() {
             self.finish_replay(false);
             stopped = true;
         }

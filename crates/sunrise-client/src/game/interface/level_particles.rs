@@ -17,7 +17,7 @@ use sunrise_world::level::LevelEvent;
 #[allow(unused_imports)]
 use sunrise_world::registry::BlockStateId;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerLevel.globalLevelEvent`: heard by every player on the server
     /// (an end portal opening, the dragon's death roar): here, and sent to
     /// every guest whatever their dimension, each at their own position
@@ -40,8 +40,8 @@ impl Game<'_> {
             self.server_level_event_at(id, pos, data);
             return;
         }
-        if self.server.audio_capture_active {
-            self.server
+        if self.side.audio_capture_active {
+            self.side
                 .lan_global_events
                 .push((self.dim.id(), id, pos, data));
         }
@@ -64,8 +64,8 @@ impl Game<'_> {
         }
         if let Some(host) = self.lan.as_ref() {
             host.hub.global_level_event(self.dim.id(), id, pos, data);
-        } else if self.server.audio_capture_active {
-            self.server
+        } else if self.side.audio_capture_active {
+            self.side
                 .lan_global_events
                 .push((self.dim.id(), id, pos, data));
         }
@@ -85,7 +85,7 @@ impl Game<'_> {
         data: i32,
     ) {
         let saved_level_events = std::mem::take(&mut self.level_events);
-        let saved_lan_events = std::mem::take(&mut self.server.lan_events);
+        let saved_lan_events = std::mem::take(&mut self.side.lan_events);
         self.level_events.push(LevelEvent::LevelEvent {
             id,
             pos: BlockPos::new(pos[0], pos[1], pos[2]),
@@ -93,7 +93,7 @@ impl Game<'_> {
             source: None,
         });
         let _ = self.server_process_level_events();
-        let recorded = std::mem::replace(&mut self.server.lan_events, saved_lan_events);
+        let recorded = std::mem::replace(&mut self.side.lan_events, saved_lan_events);
         let extra_level_events = std::mem::replace(&mut self.level_events, saved_level_events);
         self.level_events.extend(extra_level_events);
         if let Some(host) = self.lan.as_mut() {
@@ -103,7 +103,7 @@ impl Game<'_> {
             }
             host.hub.level_event(id, pos, data, None);
         } else {
-            self.server.lan_events.extend(recorded);
+            self.side.lan_events.extend(recorded);
         }
     }
 

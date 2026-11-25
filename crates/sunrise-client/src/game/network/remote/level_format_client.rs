@@ -25,7 +25,7 @@ pub(in crate::game::client_side) use sunrise_protocol::{packets::play, registry:
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::dimension_type::DimensionFacts;
 
-impl crate::game::Game<'_> {
+impl crate::game::Game<'_, crate::game::client_side::ClientState> {
     /// The client's table of the server's levels on entering `entered`: a level past vanilla's
     /// three that the process does not know yet is added, so that [`Dim::from_id`] finds it, and
     /// the level left is dropped when the server opened it after Login (a runtime level), so that a

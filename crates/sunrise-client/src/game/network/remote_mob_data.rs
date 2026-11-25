@@ -491,7 +491,7 @@ fn swirls(list: &Particles, builtin: &Builtin) -> Vec<ParticleOptions> {
 
 use super::villager_client::villager_data;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// SetEntityData for a mob of the server's.
     pub(in crate::game::client_side) fn remote_mob_data(
         &mut self,
@@ -531,7 +531,7 @@ impl Game<'_> {
                 m.extra.ints[1] = code;
             }
             if let Some(at) = stare_sound {
-                self.audio
+                self.side.audio
                     .0
                     .play_unshared("minecraft:entity.enderman.stare", Some(at), 2.5, 1.0);
             }

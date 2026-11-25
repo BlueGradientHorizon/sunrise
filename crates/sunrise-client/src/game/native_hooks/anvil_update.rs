@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// An anvil at `pos` made vanilla's result with a left input, for
     /// `player` (UUID) and `player_entity_id` (`AnvilUpdateEvent`, after
     /// `AnvilMenu.createResult`), whenever an input or the name changed:

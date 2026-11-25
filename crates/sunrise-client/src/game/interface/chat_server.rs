@@ -46,7 +46,7 @@ pub(in crate::game::server_side) use sunrise_world::registry::{BlockRegistry, Bl
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use winit::keyboard::KeyCode;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn server_sound_event_names(&self) -> Vec<String> {
         // Server sound events come from command-registries.json, not client audio.
         for dir in [&self.options.resources, &self.ui.vanilla_root] {
@@ -100,7 +100,7 @@ impl Game<'_> {
         self.ui.difficulty = self.level.difficulty_id();
         self.ui.active_clock = OVERWORLD_CLOCK.to_owned();
         if let Ok(bytes) = std::fs::read(
-            self.server
+            self.side
                 .world_root
                 .join("data/minecraft/world_clocks.dat"),
         ) && let Ok(raw) = sunrise_world::compression::Compression::Gzip.decode(&bytes, 1 << 20)
@@ -148,7 +148,7 @@ impl Game<'_> {
     /// second writer of game_rules.dat could leave it with the rules loaded
     /// when the world opened).
     pub(in crate::game::server_side) fn save_world_state(&mut self) {
-        if self.server.world_root.as_os_str().is_empty() {
+        if self.side.world_root.as_os_str().is_empty() {
             return;
         }
         use sunrise_core::nbt::Tag;
@@ -156,7 +156,7 @@ impl Game<'_> {
         // stay as saved, and (like vanilla's codec) rate, partial tick and pause are omitted
         // while they have their defaults.
         let path = self
-            .server
+            .side
             .world_root
             .join("data/minecraft/world_clocks.dat");
         let existing = sunrise_client::save::read_dat(&path);
@@ -220,12 +220,12 @@ impl Game<'_> {
             self.is_logical_server(),
             "server_system_message called on Client role"
         );
-        if let Some(capture) = self.server.chat_capture.as_mut() {
+        if let Some(capture) = self.side.chat_capture.as_mut() {
             capture.push(text);
             return;
         }
-        if self.server.lan_acting.is_some() {
-            self.server.guest_packets.push(
+        if self.side.lan_acting.is_some() {
+            self.side.guest_packets.push(
                 sunrise_protocol::packets::play::Clientbound::SystemChat(
                     sunrise_protocol::packets::play::SystemChat {
                         content: sunrise_client::lan::data::component_nbt(&text.component()),
@@ -243,7 +243,7 @@ impl Game<'_> {
     }
     /// Command suggestions include the world's currently named random sequences.
     pub(in crate::game::server_side) fn suggestion_registries(&mut self) -> &mut Registries {
-        self.ui.registries.random_sequences = self.server.rand_sequences.ids();
+        self.ui.registries.random_sequences = self.side.rand_sequences.ids();
         &mut self.ui.registries
     }
     pub(in crate::game) fn server_block_entity_nbt(

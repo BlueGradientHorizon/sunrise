@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `ToastAddEvent`: admit one client toast before it enters a visible queue.
     pub(in crate::game) fn native_toast_add(
         &self,

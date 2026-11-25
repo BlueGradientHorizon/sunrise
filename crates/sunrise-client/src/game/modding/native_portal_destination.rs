@@ -28,7 +28,7 @@ enum Probe {
     Nether(Plan, Option<FoundRectangle>),
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     fn portal_error(error: mod_api::LevelReadError) -> PortalError {
         match error {
             mod_api::LevelReadError::Stale => PortalError::LevelMissing,

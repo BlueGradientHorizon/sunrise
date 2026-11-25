@@ -36,7 +36,7 @@ use sunrise_client::pose::{Dimensions, SizeAnswer};
 #[allow(unused_imports)]
 use sunrise_core::geometry::{Aabb, Vec3};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The server's mobs whose pose or size changed since they were last asked.
     pub(in crate::game) fn native_mob_sizes(&mut self) {
         if !mod_api::__private::listened(mod_api::HookId::EntitySize) {
@@ -71,14 +71,14 @@ impl Game<'_> {
                 with_entity_mut!(self, handle, e => e.set_size_answer(answer));
             }
         }
-        for i in 0..self.others.0.len() {
-            let e = &self.others.0[i];
+        for i in 0..self.side.others.0.len() {
+            let e = &self.side.others.0[i];
             let (id, previous) = (e.id, e.size_answer);
             let Some(vanilla) = e.vanilla_dimensions() else {
                 continue;
             };
             if let Some(answer) = self.ask_entity_size(id, Pose::Standing, vanilla, previous) {
-                self.others.0.update(i, |e| e.size_answer = Some(answer));
+                self.side.others.0.update(i, |e| e.size_answer = Some(answer));
             }
         }
         for i in 0..self.crystals.len() {

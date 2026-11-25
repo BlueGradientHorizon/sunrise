@@ -6,7 +6,7 @@ use sunrise_client::block_sprites::{BlockSprites, Lookup, SpriteRef};
 use sunrise_client::chunk::Chunk;
 use sunrise_world::registry::BlockStateId;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// For a client mod: what each block (`minecraft:grass_block`, `oak_log[axis=x]`; properties left out take the
     /// block's default) draws on each of its six sides, as the mesher bakes its model: each face's sprite (array and
     /// layer, as `WorldDrawn::block_sprites` cuts them), where it lies on the side, how its texture runs across it,
@@ -30,12 +30,12 @@ impl Game<'_> {
     /// model uses. API 380.
     pub(in crate::game) fn texture_sprites(&self, textures: &[&str]) -> Vec<Option<SpriteRef>> {
         let atlas = self
-            .stitching_block_atlas
+            .side.stitching_block_atlas
             .0
             .as_ref()
             .unwrap_or(&self.pack.render);
         let split = self
-            .renderer
+            .side.renderer
             .0
             .as_ref()
             .map_or(u32::MAX, |r| r.sprite_split());
@@ -123,7 +123,7 @@ impl Game<'_> {
     /// For a client mod: changes each time the resources load (a resource pack turned on or off can move every
     /// sprite): ask `block_sprites` again then. API 380.
     pub(in crate::game) fn block_sprites_version(&self) -> u64 {
-        self.stitching_block_atlas
+        self.side.stitching_block_atlas
             .0
             .as_ref()
             .unwrap_or(&self.pack.render)
@@ -146,7 +146,7 @@ impl Game<'_> {
     fn native_sprite_lookup(&self) -> Lookup<'_> {
         // (no renderer, no arrays: every layer counts as array 0's)
         let split = self
-            .renderer
+            .side.renderer
             .0
             .as_ref()
             .map_or(u32::MAX, |r| r.sprite_split());

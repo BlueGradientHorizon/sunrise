@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// NeoForge's `PlayerFlyableFallEvent`: server player `player` (`name`) landed after
     /// falling `distance` blocks at damage multiplier `multiplier` while allowed to fly (a
     /// creative or spectator player walking), so `Player.causeFallDamage` returned early

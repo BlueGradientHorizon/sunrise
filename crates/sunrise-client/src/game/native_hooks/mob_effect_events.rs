@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// NeoForge's `MobEffectEvent.Applicable`, vanilla's
     /// `LivingEntity.canBeAffected`: asked wherever the game checks whether
     /// the effect `effect` can land on the living entity `entity` (a

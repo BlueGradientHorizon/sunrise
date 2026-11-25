@@ -18,7 +18,7 @@ impl UseStart {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Consumable.startConsuming` on the server for a held consumable.
     pub(in crate::game) fn server_start_eating(
         &mut self,
@@ -84,7 +84,7 @@ impl Game<'_> {
     }
     pub(in crate::game) fn server_on_start_using_item(&mut self, stack: &ItemStack) {
         self.use_vibration(stack, "minecraft:item_interact_start");
-        self.server.crossbow_sounds = [false; 2];
+        self.side.crossbow_sounds = [false; 2];
     }
     pub(in crate::game) fn tick_using_server(&mut self) {
         assert!(
@@ -332,7 +332,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether the use effects of `stack` ask for interaction vibrations.
     pub(in crate::game::server_side) fn use_vibrates(&self, stack: &ItemStack) -> bool {
         item_use::interact_vibrations(

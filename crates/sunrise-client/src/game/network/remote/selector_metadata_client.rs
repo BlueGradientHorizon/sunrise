@@ -5,7 +5,7 @@ pub(in crate::game::client_side) use crate::game::remote::selector_metadata::hur
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::remote::selector_metadata::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn receive_selector_tokens(&mut self, data: &[u8]) -> Result<()> {
         let Some(remote) = self.remote.as_mut() else {
             return Ok(());

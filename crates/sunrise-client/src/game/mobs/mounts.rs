@@ -129,7 +129,7 @@ pub(in crate::game) fn seat_of(m: &sunrise_client::mobs::Mob, attachment: [f64; 
     )
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `FoodOnAStickItem.use` while riding: boost the mount, wear the stick.
     pub(in crate::game) fn use_steering_stick(&mut self, item: &str) -> bool {
         let (species, wear) = match item {
@@ -525,9 +525,9 @@ impl Game<'_> {
         self.post_game_event("minecraft:eat", at, ctx);
         // Animal.setInLove: entity event 18.
         if loved {
-            self.server.love_cause.insert(id, self.server.lan_acting);
+            self.side.love_cause.insert(id, self.side.lan_acting);
             let kind = self.mobs[index].kind.id.clone();
-            self.native_entity_enter_love_mode(id, &kind, self.server.lan_acting_uuid);
+            self.native_entity_enter_love_mode(id, &kind, self.side.lan_acting_uuid);
             self.mob_event_particles(id, 18);
         }
         self.consume_held();
@@ -607,7 +607,7 @@ impl Game<'_> {
             sneak: keys.shift,
             // A server's player (a LAN guest, single player's window) drives
             // a horse from its own client (`handleMoveVehicle`).
-            client: self.server.lan_acting.is_some(),
+            client: self.side.lan_acting.is_some(),
         });
         true
     }
@@ -955,7 +955,7 @@ impl Game<'_> {
             block_registries: Some(&self.pack.block_registries),
         }
         .cause_mount_fall(distance, modifier);
-        if self.server.lan_acting.is_some() {
+        if self.side.lan_acting.is_some() {
             self.finish_guest_damage();
         }
     }
@@ -1019,7 +1019,7 @@ pub(in crate::game) trait DismountWorld {
     /// `DismountHelper.canDismountTo(level, passenger, box)`.
     fn can_dismount_to(&self, bounds: Aabb) -> bool;
 }
-pub(in crate::game) struct GameDismountWorld<'a, 'g>(pub(in crate::game) &'a Game<'g>);
+pub(in crate::game) struct GameDismountWorld<'a, 'g>(pub(in crate::game) &'a Game<'g, crate::game::server_side::ServerState>);
 impl DismountWorld for GameDismountWorld<'_, '_> {
     fn lava(&self, p: [i32; 3]) -> bool {
         let g = self.0;

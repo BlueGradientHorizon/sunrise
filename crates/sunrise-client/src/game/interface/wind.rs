@@ -211,7 +211,7 @@ pub(in crate::game::server_side) fn triggers(name: &str) -> bool {
         || n == "lever"
         || n == "bell"
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `WindChargeItem.use`.
     pub(in crate::game) fn throw_wind_charge(&mut self, stack: &ItemStack) -> Result<bool> {
         let (Some(eye), Some(p)) = (self.eye_position(), self.player.as_ref()) else {
@@ -446,18 +446,18 @@ impl Game<'_> {
                 let plan = self.prepare_knockback_credit(
                     id as i32,
                     source.attacker,
-                    self.combat.0.attack(),
+                    self.side.combat.0.attack(),
                 );
                 // The hit's causing entity, lent to its listeners beside the victim.
                 let causing = self.causer_id(source.attacker);
                 let decision = crate::game::entity::causer_decision!(self, causing);
-                let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
+                let mut credit = plan.lend(&mut self.side.last_hurt_by_player);
                 let (victim, lend) =
                     crate::game::entity::victim_and_causer!(self, index, causing, decision);
                 let hurt = victim.damage(
                     crate::game::entity::damage_level_of!(
                         self,
-                        self.combat.0.attack(),
+                        self.side.combat.0.attack(),
                         &mut credit,
                         lend
                     ),
@@ -582,7 +582,7 @@ impl Game<'_> {
         // each swapped in as the player. In a guest's turn (a mace's wind
         // burst) the player is that guest.
         let own = self.wind_push_player(center, radius, multiplier, src, blocks);
-        let mut pushed: Vec<_> = self.server.lan_acting.zip(own).into_iter().collect();
+        let mut pushed: Vec<_> = self.side.lan_acting.zip(own).into_iter().collect();
         if let Some(host) = self.lan.as_ref() {
             let guests: Vec<u32> = host
                 .hub
@@ -615,7 +615,7 @@ impl Game<'_> {
             spared: None,
         };
         let source = self.creatures.wind_source;
-        let (done, announced) = (self.server.ordered.done, self.server.ordered.announced);
+        let (done, announced) = (self.side.ordered.done, self.side.ordered.announced);
         let mut late = Vec::new();
         let mut entities = self.take_entities();
         for_each_entity_mut!(entities, entity => {
@@ -763,7 +763,7 @@ impl Game<'_> {
         // In a guest's turn (their charge landing, their mace's burst) the
         // host holds the other players (`as_guest`): the burst waits for the
         // turn to end so that it reaches every player, the guest too.
-        if self.server.lan_acting.is_some() && self.lan.is_none() {
+        if self.side.lan_acting.is_some() && self.lan.is_none() {
             self.creatures.wind_bursts.push(Burst {
                 center,
                 radius,
@@ -850,7 +850,7 @@ impl Game<'_> {
             let swap = self.world.random.next_int_bound(i as i32).unwrap_or(0) as usize;
             targets.swap(i - 1, swap);
         }
-        let breeze = self.combat.0.explosion_source.is_some_and(|id| {
+        let breeze = self.side.combat.0.explosion_source.is_some_and(|id| {
             self.creatures
                 .projectiles
                 .iter()

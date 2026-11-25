@@ -14,7 +14,7 @@ use sunrise_world::registry::BlockRegistry;
 use sunrise_world::worldgen::structure::{StateTransforms, StructureTemplate};
 
 /// Native mods use this; nothing in Sunrise does.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// For a server mod: template `source` placed at `at` the way `/place
     /// template` and a structure block's load place one, with `rotation`,
     /// `mirror` and `pivot`, the level position the turn and the mirroring go

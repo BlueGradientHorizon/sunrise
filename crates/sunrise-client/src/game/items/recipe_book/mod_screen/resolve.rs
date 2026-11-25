@@ -4,14 +4,14 @@ use mod_api::{RecipeBookDisplay as Display, RecipeSlotDisplay as Slot};
 use sunrise_client::{crafting::Ingredient, items::ItemStack, menu::place::Stacked};
 
 pub(super) struct Resolver<'a, 'w> {
-    game: &'a Game<'w>,
+    game: &'a Game<'w, crate::game::client_side::ClientState>,
     stocks: &'a Stacked,
     placement_stocks: &'a [(ItemStack, i32)],
 }
 
 impl<'a, 'w> Resolver<'a, 'w> {
     pub(super) fn new(
-        game: &'a Game<'w>,
+        game: &'a Game<'w, crate::game::client_side::ClientState>,
         stocks: &'a Stacked,
         placement_stocks: &'a [(ItemStack, i32)],
     ) -> Self {

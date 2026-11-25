@@ -3,7 +3,7 @@
 use super::{Game, commands::Target};
 use mod_api::{EntityRef, FishingHookRef};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Narrows an entity to a cast fishing hook. None for another kind, a
     /// stale handle, a client, or a hook taken out for its tick.
     pub(in crate::game) fn fishing_hook(&self, entity: EntityRef) -> Option<FishingHookRef> {
@@ -21,7 +21,7 @@ impl Game<'_> {
         let (_, owner) = self.fishing_hook_by_id(hook.entity().id())?;
         let id = match owner {
             // The one whose turn it is: their handle is the acting entity.
-            Target::Player => self.server.lan_acting_entity?,
+            Target::Player => self.side.lan_acting_entity?,
             guest => u32::try_from(self.network_entity_id(guest)?).ok()?,
         };
         self.entity(id)

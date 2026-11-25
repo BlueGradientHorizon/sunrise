@@ -15,7 +15,7 @@ static COUNTER: mod_api::AttachmentType<u32> = mod_api::AttachmentType {
 
 const CALLS: u64 = 100_000;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(super) fn hot_mods(&mut self, recorder: &mut Recorder, listening: bool) -> Result<()> {
         let hook = if listening {
             "mod.hook.native_listener"

@@ -37,7 +37,7 @@ pub(in crate::game::client_side) use std::collections::HashMap;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use std::collections::hash_map::Entry;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn client_pick_section_move(&mut self, id: u32, to: [f64; 3]) {
         self.pick_section_move(id, to);
     }

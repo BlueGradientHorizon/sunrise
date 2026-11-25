@@ -71,7 +71,7 @@ pub(in crate::game) struct CreativeCache {
     pub(in crate::game) active: Option<ActiveBuild>,
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Fire after one tab's generator with the live edit session installed.
     pub(in crate::game) fn native_build_creative_mode_tab_contents(
         &mut self,

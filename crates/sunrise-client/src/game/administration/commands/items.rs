@@ -99,7 +99,7 @@ pub(in crate::game) fn matches_name(pattern: &str, name: &str) -> bool {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn owner_of(
         &mut self,
         ctx: &Context,

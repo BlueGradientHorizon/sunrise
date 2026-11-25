@@ -1,7 +1,7 @@
 //! Player hit-source adapters.
 use super::Game;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Damage of a given type to the player from a point.
     pub(in crate::game::server_side) fn mob_hits_player_kind(
         &mut self,

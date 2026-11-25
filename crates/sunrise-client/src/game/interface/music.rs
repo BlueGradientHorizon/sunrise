@@ -9,7 +9,7 @@ use sunrise_client::{
     sound_engine::{SoundInstance, Sounds, TickContext},
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `Minecraft.tick` -> `MusicManager.tick`, once per client tick.
     pub(in crate::game::client_side) fn tick_music(&mut self) {
         let (mut music, mut volume) = self.situational_music();
@@ -17,11 +17,11 @@ impl Game<'_> {
         self.native_music(&mut music, &mut volume);
         let mut layers = Vec::new();
         self.native_music_layers(&mut layers);
-        self.client.music_layers.tick(&layers, &mut self.audio.0);
+        self.side.music_layers.tick(&layers, &mut self.side.audio.0);
         // Options.musicFrequency's listener: MusicManager.setMinutesBetweenSongs.
         let frequency = MusicFrequency::parse(&self.settings.file.name("musicFrequency"));
-        if frequency != self.client.music.frequency {
-            self.client.music.set_frequency(frequency, music.as_ref());
+        if frequency != self.side.music.frequency {
+            self.side.music.set_frequency(frequency, music.as_ref());
         }
         // The Music page's off tracks leave every pool they play in (the
         // extra off: nothing is filtered, vanilla's pools play as they are).
@@ -30,31 +30,31 @@ impl Game<'_> {
         } else {
             &[][..]
         };
-        self.client.music.set_off(off);
+        self.side.music.set_off(off);
         // LevelLoadingScreen: no new track before the player is in the world.
         // A reconfiguration's ServerReconfigScreen is a plain Screen, not a
         // LevelLoadingScreen: its menu music starts as on any other screen.
-        let loading = self.title.0.is_none()
+        let loading = self.side.title.0.is_none()
             && self.player.is_none()
-            && self.client.win.is_none()
+            && self.side.win.is_none()
             && !self
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.reconfiguring.is_some());
-        self.client
+        self.side
             .music
-            .tick(music.as_ref(), volume, loading, &mut self.audio.0);
+            .tick(music.as_ref(), volume, loading, &mut self.side.audio.0);
         // Options.musicToast's listener: ToastManager.setMusicToastDisplayState.
         let state = self.settings.file.int("musicToast").clamp(0, 2) as u8;
-        if state != self.client.music_toast_state {
-            self.client.music_toast_state = state;
+        if state != self.side.music_toast_state {
+            self.side.music_toast_state = state;
             self.set_music_toast_state(state);
         }
         // MusicManager's showNowPlayingToast and hideNowPlayingToast calls.
-        for show in std::mem::take(&mut self.client.music.toast_requests) {
+        for show in std::mem::take(&mut self.side.music.toast_requests) {
             if show {
                 self.show_music_toast();
-            } else if let Some(toast) = &mut self.client.now_playing {
+            } else if let Some(toast) = &mut self.side.now_playing {
                 toast.hide();
             }
         }
@@ -62,13 +62,13 @@ impl Game<'_> {
     /// The Music page's groups: every track the loaded `sounds.json` can play,
     /// by situation (see `music::track_groups`).
     pub(in crate::game::client_side) fn music_groups(&self) -> Vec<MusicGroup> {
-        sunrise_client::music::track_groups(&self.audio.0.engine.registry)
+        sunrise_client::music::track_groups(&self.side.audio.0.engine.registry)
     }
     /// A Music page row: play this track of `event` now.
     pub(in crate::game::client_side) fn play_music_track(&mut self, event: &str, track: &str) {
-        self.client
+        self.side
             .music
-            .play_track(event, track, &mut self.audio.0);
+            .play_track(event, track, &mut self.side.audio.0);
     }
     /// `Options.getFinalSoundSourceVolume(SoundSource.MUSIC)`.
     fn final_music_volume(&self) -> f32 {
@@ -78,13 +78,13 @@ impl Game<'_> {
     /// the toast (the second one shows it at once while music is audible),
     /// Never drops it.
     fn set_music_toast_state(&mut self, state: u8) {
-        self.client.now_playing = (state != 0).then(Default::default);
+        self.side.now_playing = (state != 0).then(Default::default);
         if state == 2 && self.final_music_volume() > 0.0 {
             self.show_music_toast();
         }
     }
     fn show_music_toast(&mut self) {
-        if self.client.now_playing.is_none() {
+        if self.side.now_playing.is_none() {
             return;
         }
         let Some(song) = self.now_playing_song() else {
@@ -93,7 +93,7 @@ impl Game<'_> {
         let mut title = song;
         let mut description = None;
         if self.admit_toast(mod_api::ToastKind::Other, &mut title, &mut description)
-            && let Some(toast) = &mut self.client.now_playing
+            && let Some(toast) = &mut self.side.now_playing
         {
             toast.title = title;
             toast.description = description;
@@ -104,9 +104,9 @@ impl Game<'_> {
     /// `NowPlayingToast.getNowPlayingString` of the song the music manager
     /// plays: its file's short language key, slashes as dots.
     fn now_playing_song(&self) -> Option<sunrise_client::text::Text> {
-        let id = self.client.music.current_instance()?;
+        let id = self.side.music.current_instance()?;
         let location = self
-            .audio
+            .side.audio
             .0
             .engine
             .instance(id)?
@@ -139,46 +139,46 @@ impl Game<'_> {
         hidden: bool,
     ) {
         let song = self.now_playing_song();
-        let Some(toast) = self.client.now_playing.as_mut() else {
+        let Some(toast) = self.side.now_playing.as_mut() else {
             return;
         };
-        toast.update(song.is_some(), &mut self.client.music_notes);
+        toast.update(song.is_some(), &mut self.side.music_notes);
         let Some(song) = song else {
             return;
         };
-        if self.client.screen == super::Screen::Paused {
-            if self.client.pause_menu && self.final_music_volume() > 0.0 {
-                self.client.music_notes.tick();
+        if self.side.screen == super::Screen::Paused {
+            if self.side.pause_menu && self.final_music_volume() > 0.0 {
+                self.side.music_notes.tick();
                 sunrise_client::toasts::draw_now_playing(
                     &self.gui.atlas,
                     batch,
                     0.0,
                     &song,
-                    self.client.music_notes.color,
+                    self.side.music_notes.color,
                 );
             }
         } else if !hidden
-            && self.client.music_toast_state == 2
-            && let Some(toast) = &self.client.now_playing
+            && self.side.music_toast_state == 2
+            && let Some(toast) = &self.side.now_playing
         {
-            toast.draw(&self.gui.atlas, batch, &self.client.music_notes);
+            toast.draw(&self.gui.atlas, batch, &self.side.music_notes);
         }
     }
     /// `Minecraft.tick` -> `SoundManager.tick(pause)`, after the music, with
     /// `pauseAllExcept(MUSIC, UI)` when the game pauses and `resume` when it
     /// carries on.
     pub(in crate::game) fn tick_sound_engine(&mut self) {
-        update_bound_entities(self.audio.0.engine.bound_entities(), |id| {
+        update_bound_entities(self.side.audio.0.engine.bound_entities(), |id| {
             self.sound_entity_state(id)
         });
 
-        if self.pause != self.client.sound_paused {
+        if self.pause != self.side.sound_paused {
             if self.pause {
-                self.audio.0.pause();
+                self.side.audio.0.pause();
             } else {
-                self.audio.0.resume();
+                self.side.audio.0.resume();
             }
-            self.client.sound_paused = self.pause;
+            self.side.sound_paused = self.pause;
         }
         let (vehicle, carts) = self.start_cart_sounds();
         let mobs = self.start_mob_sounds();
@@ -194,13 +194,13 @@ impl Game<'_> {
             });
         // LocalPlayer.onSyncedDataUpdated: starting to glide starts the
         // elytra's flying sound.
-        if player_fall_flying && !self.client.was_fall_flying {
+        if player_fall_flying && !self.side.was_fall_flying {
             let instance = SoundInstance::elytra(player_position, random_source::create());
-            self.audio.0.play_instance(instance, false);
+            self.side.audio.0.play_instance(instance, false);
         }
-        self.client.was_fall_flying = player_fall_flying;
+        self.side.was_fall_flying = player_fall_flying;
         let ctx = TickContext {
-            player_underwater: self.client.ambience.was_underwater(),
+            player_underwater: self.side.ambience.was_underwater(),
             player_removed: self.player.is_none(),
             vehicle,
             carts,
@@ -210,35 +210,35 @@ impl Game<'_> {
             player_speed_sqr,
             player_fall_flying,
             ridden,
-            camera_position: self.audio.0.listener,
+            camera_position: self.side.audio.0.listener,
         };
-        self.audio
+        self.side.audio
             .0
             .set_listener_reserve(self.settings.extras.ui_sound_reserve);
         // Client mods' sounds asked for since the last update start with it, then their stops
         // and fades apply.
         self.apply_mod_sounds();
-        self.audio.0.tick(self.pause, &ctx);
+        self.side.audio.0.tick(self.pause, &ctx);
     }
     /// `Minecraft.setLevel` -> `updateLevelInEngines`: `SoundManager.stop()`.
     /// The music manager keeps its stopped track and, on its next tick, waits
     /// the level's music delay before the next one.
     pub(in crate::game::client_side) fn stop_sounds_for_new_level(&mut self) {
-        self.client.ambience.clear(&mut self.audio.0);
-        self.audio.0.leave_level();
-        self.client.jukebox_sounds.clear();
+        self.side.ambience.clear(&mut self.side.audio.0);
+        self.side.audio.0.leave_level();
+        self.side.jukebox_sounds.clear();
         // Mod plays still queued for the next audio update go too.
-        self.client.mod_sounds.clear();
+        self.side.mod_sounds.clear();
     }
     /// `getSituationalMusic` and `getMusicVolume`.
     pub(in crate::game::client_side) fn situational_music(&self) -> (Option<Music>, f32) {
         // Login creates the client level before its first player teleport;
         // reconfiguration clears it again. Use the render camera's probe
         // while the level is present, not the local player's eyes.
-        let in_world = self.title.0.is_none()
+        let in_world = self.side.title.0.is_none()
             && (self.player.is_some() || self.remote.as_ref().is_some_and(|r| r.has_level()));
         let (background, probe_volume) = if in_world {
-            let biome = self.biome_at(self.client.view.position);
+            let biome = self.biome_at(self.side.view.position);
             self.res
                 .music()
                 .at(self.dim.id(), biome, world_biomes!(self).pack_file(biome))
@@ -248,7 +248,7 @@ impl Game<'_> {
         let situation = Situation {
             // WinScreen.getBackgroundMusic.
             screen_music: self
-                .client
+                .side
                 .win
                 .is_some()
                 .then(mod_api::client::music::Music::credits),
@@ -258,7 +258,7 @@ impl Game<'_> {
             background: &background,
             probe_volume,
             creative: self.creative,
-            underwater: self.client.ambience.was_underwater(),
+            underwater: self.side.ambience.was_underwater(),
         };
         (situation.music(), situation.volume())
     }
@@ -293,7 +293,7 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// The local player's ambient sound handlers (LocalPlayer.tick).
     pub(in crate::game::client_side) fn tick_ambience(&mut self) {
         let Some(p) = self.player.as_ref() else {
@@ -346,7 +346,7 @@ impl Game<'_> {
             light: &light,
             bubble_column,
         };
-        self.client.ambience.tick(&ctx, &mut self.audio.0);
+        self.side.ambience.tick(&ctx, &mut self.side.audio.0);
     }
 }
 

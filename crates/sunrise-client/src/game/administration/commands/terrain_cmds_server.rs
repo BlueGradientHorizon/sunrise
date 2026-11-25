@@ -27,7 +27,7 @@ pub(in crate::game::server_side) use sunrise_client::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_core::{position::ChunkPos, random::RandomSource};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `LootCommand.dropBlockLoot`: copy the actual block entity's components
     /// into the mine result without removing the source block or its contents.
     pub(in crate::game::server_side) fn cmd_loot(&mut self, id: &str, ctx: &Context) -> R<i32> {
@@ -55,7 +55,7 @@ impl Game<'_> {
                     };
                     let drops = match json["random_sequence"].as_str() {
                         Some(sequence) => {
-                            let random = self.server.rand_sequences.get(sequence, self.level.seed);
+                            let random = self.side.rand_sequences.get(sequence, self.level.seed);
                             world_items!(self).inline_loot_table_for_command(
                                 &json,
                                 held.as_ref(),
@@ -82,7 +82,7 @@ impl Game<'_> {
                     };
                     let drops = match world_items!(self).loot_sequence(&table) {
                         Some(seq) => {
-                            let random = self.server.rand_sequences.get(&seq, self.level.seed);
+                            let random = self.side.rand_sequences.get(&seq, self.level.seed);
                             world_items!(self).loot_table_for_command(
                                 &table,
                                 false,
@@ -120,7 +120,7 @@ impl Game<'_> {
                 // LootCommand.dropKillLoot: the source's entity is the killer.
                 // A connected player is the last damage player, and its own
                 // stack counts; it is in place only to read that stack.
-                let guest = match self.server.command_source.map(|s| s.entity) {
+                let guest = match self.side.command_source.map(|s| s.entity) {
                     Some(Some(Target::Guest(conn))) => self.for_player(Target::Guest(conn), |g| {
                         g.slot_get(&super::items::Slot::Inv(g.selected))
                     }),
@@ -130,7 +130,7 @@ impl Game<'_> {
                     Some(held) => (true, held),
                     None => (
                         matches!(
-                            self.server.command_source.map(|s| s.entity),
+                            self.side.command_source.map(|s| s.entity),
                             None | Some(Some(Target::Player))
                         ),
                         self.slot_get(&super::items::Slot::Inv(self.selected)),
@@ -141,7 +141,7 @@ impl Game<'_> {
                     table: &table,
                     target: t,
                     killer: self
-                        .server
+                        .side
                         .command_source
                         .map(|s| s.entity)
                         .unwrap_or(Some(Target::Player)),
@@ -170,7 +170,7 @@ impl Game<'_> {
                     pending.record_saved(p, &saved);
                 }
                 // LootCommand: the source's entity is `this`, if it has one.
-                let entity = match self.server.command_source.map(|s| s.entity) {
+                let entity = match self.side.command_source.map(|s| s.entity) {
                     None | Some(Some(Target::Player)) => Some(self.native_clicker().1 as u32),
                     Some(Some(Target::Guest(conn))) => self
                         .player_entity_id_by_connection(Some(conn))
@@ -411,7 +411,7 @@ impl Game<'_> {
             }));
         }
         let entity = self
-            .server
+            .side
             .command_source
             .and_then(|s| s.entity)
             .unwrap_or(Target::Player);

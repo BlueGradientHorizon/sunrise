@@ -34,7 +34,7 @@ struct ParentState {
     tame: bool,
 }
 
-fn parent_state(game: &Game<'_>, id: u32) -> Option<ParentState> {
+fn parent_state(game: &Game<'_, crate::game::server_side::ServerState>, id: u32) -> Option<ParentState> {
     if game.resident_target_dimension(super::commands::Target::Mob(id)) != Some(game.dim) {
         return None;
     }
@@ -62,7 +62,7 @@ impl Drop for HookScope {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Lends `initial` to the listeners `fire` calls, then issues and applies the accepted list
     /// inside the action savepoint. Commit callbacks cannot intervene between validation and
     /// applying the list. Returns `None` for a cancel (including a contained listener panic), a
@@ -116,7 +116,7 @@ impl Game<'_> {
             })
             .collect();
         let (arena, hook_cell) = {
-            let lent = self.lent_mobs.0.borrow();
+            let lent = self.side.lent_mobs.0.borrow();
             (lent.pending.clone(), lent.hook.clone())
         };
         let run = catch_unwind(AssertUnwindSafe(|| {
@@ -206,8 +206,8 @@ impl Game<'_> {
         } = child;
         let fresh = mob.id == 0;
         if fresh {
-            self.server.next_entity += 1;
-            mob.id = self.server.next_entity;
+            self.side.next_entity += 1;
+            mob.id = self.side.next_entity;
         }
         if let Some(uuid) = uuid {
             self.persist.uuids.insert(mob.id, uuid);
@@ -236,9 +236,9 @@ impl Game<'_> {
         }
         if !mod_api::__private::listened(mod_api::HookId::MobSplit) {
             for i in 0..drawn {
-                self.server.next_entity += 1;
+                self.side.next_entity += 1;
                 let mut child = Mob::new(
-                    self.server.next_entity,
+                    self.side.next_entity,
                     dying.kind.clone(),
                     dying.position,
                     0.0,
@@ -251,7 +251,7 @@ impl Game<'_> {
         }
         // The numbers are issued when the children join, so a listener's own spawns cannot
         // collide; the constructor still seeds from the number the child would have.
-        let first = self.server.next_entity + 1;
+        let first = self.side.next_entity + 1;
         let children = (0..drawn)
             .map(|i| {
                 let mut child = Mob::new(first + i, dying.kind.clone(), dying.position, 0.0);

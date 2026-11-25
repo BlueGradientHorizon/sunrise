@@ -89,7 +89,7 @@ impl super::super::mods::ModsState {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Starts a report: the recording the game side needs and the capture beside it.
     pub(super) fn record_report(
         &self,
@@ -219,7 +219,7 @@ impl Game<'_> {
             &self.creatures.projectiles,
             &self.resident_entities.general.rows,
             &self.resident_entities.knots,
-            &self.others.0
+            &self.side.others.0
         )
     }
 
@@ -231,7 +231,7 @@ impl Game<'_> {
     /// Health samples count every typed family using lengths only.
     pub(in crate::game::server_side) fn perf_world_counts(&self) -> WorldCounts {
         let (mut chunks, mut entities) = (self.world.chunks.len(), self.perf_entity_count());
-        for (_, world, view) in self.levels.0.parked_perf_views() {
+        for (_, world, view) in self.side.levels.0.parked_perf_views() {
             chunks += world.chunks.len();
             entities += view.total();
         }
@@ -266,7 +266,7 @@ impl Game<'_> {
         };
         std::iter::once(level(self.dim, &self.world, self.active_perf_view()))
             .chain(
-                self.levels
+                self.side.levels
                     .0
                     .parked_perf_views()
                     .map(|(dim, world, view)| level(dim, world, view)),

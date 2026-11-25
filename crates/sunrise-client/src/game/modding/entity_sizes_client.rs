@@ -11,7 +11,7 @@ pub(in crate::game::client_side) use sunrise_client::pose::{Dimensions, SizeAnsw
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_core::geometry::{Aabb, Vec3};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// What the client copy `id`'s size refresh computes now: its pose and vanilla size, with
     /// the answer it holds.
     pub(in crate::game::client_side) fn client_copy_size(
@@ -165,7 +165,7 @@ impl Game<'_> {
         if let Some(a) = self.armor_stands.iter().find(|a| a.id == id) {
             return Some(a.default_dimensions());
         }
-        if let Some(i) = self.client.interactions.get(&(id as i32)) {
+        if let Some(i) = self.side.interactions.get(&(id as i32)) {
             // Interaction.getDimensions: EntityDimensions.scalable(width, height).
             return Some([i.width, i.height, i.height * 0.85]);
         }

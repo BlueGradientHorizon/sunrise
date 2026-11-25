@@ -24,10 +24,10 @@ fn brighter<'a>(
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// How brightly each item glows, built on first use.
     pub(in crate::game::client_side) fn luminance(&self) -> &Luminance {
-        self.client
+        self.side
             .luminance
             .get_or_init(|| Luminance::new(self.res.facts(), self.pack.assets.registry))
     }
@@ -113,12 +113,12 @@ impl Game<'_> {
         alpha: f64,
     ) {
         let _span = sunrise_client::spans::guard("pr_light_gather");
-        let mut out = std::mem::take(&mut self.client.dynamic_lights);
+        let mut out = std::mem::take(&mut self.side.dynamic_lights);
         dynamic_light::select_iter(
             self.dynamic_light_sources(alpha).map(|(s, _)| s),
             camera,
             &mut out,
         );
-        self.client.dynamic_lights = out;
+        self.side.dynamic_lights = out;
     }
 }

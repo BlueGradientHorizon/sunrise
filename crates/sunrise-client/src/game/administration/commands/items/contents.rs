@@ -105,7 +105,7 @@ impl Component {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn contents_slots(
         &mut self,
         parent: Slot,

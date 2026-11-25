@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// A physical key or mouse button bound to the gameplay mapping `mapping` (`key.jump`) changes
     /// state while playing, before the game acts on it (`pressed` for a press, repeats included,
     /// and not for a release). Set `canceled` on a press to drop it for every mapping bound to its

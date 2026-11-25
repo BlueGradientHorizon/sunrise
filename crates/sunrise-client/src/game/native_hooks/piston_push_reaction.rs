@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     // See #3242: fold with resolve_block_paths when it lands
     pub(in crate::game) fn resolve_piston_reactions(&self) {
         let asked = mod_api::__private::has_scoped_hook(mod_api::HookId::PistonPushReaction);

@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `IBlockExtension.getRespawnPosition`: where an entity of type `entity_type` whose
     /// respawn point is `state` at `pos`, saved facing `orientation`, stands up. `position` is
     /// vanilla's answer (position, yaw, pitch), which the block's parts may change.

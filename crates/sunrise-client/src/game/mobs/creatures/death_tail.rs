@@ -2,7 +2,7 @@
 //! equipment, and the notice `living_death_post` hears once it has all run.
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `LivingEntity.die` after `dropAllDeathLoot`: the wither rose, the
     /// equipment `dropEquipment` owes the copper golem, and then the
     /// `broadcastEntityEvent` moment (`ServerLivingEntityEvents.AFTER_DEATH`).

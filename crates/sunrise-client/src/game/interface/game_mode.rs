@@ -13,7 +13,7 @@ pub(in crate::game) use crate::game::game_mode_common::{
     relative,
 };
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn set_mode_id(&mut self, id: i32) {
         self.set_mode(mode_from_id(id));
     }
@@ -30,7 +30,7 @@ impl Game<'_> {
         self.mode = mode;
         self.creative = mode == GameMode::Creative;
         // GameType.updatePlayerAbilities applies at once.
-        if let Some(a) = self.server.acting_abilities.as_mut() {
+        if let Some(a) = self.side.acting_abilities.as_mut() {
             a.update_for_mode(mode.id());
         }
         if let Some(p) = self.player.as_mut() {
@@ -74,7 +74,7 @@ impl Game<'_> {
                 && let Some(p) = self.player.as_mut()
             {
                 p.flying = false;
-                if let Some(a) = self.server.acting_abilities.as_mut() {
+                if let Some(a) = self.side.acting_abilities.as_mut() {
                     a.flying = false;
                 }
             }

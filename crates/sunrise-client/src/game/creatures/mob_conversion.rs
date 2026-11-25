@@ -3,7 +3,7 @@
 use super::*;
 use sunrise_client::mobs::conversion;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// A mob turned into `kind` in its place (`conversion::single`). The
     /// after-step (`Pig.thunderHit`'s gear and persistence, the finalization of
     /// `Villager.thunderHit` and `Tadpole.ageUp`, the nausea a zombifying

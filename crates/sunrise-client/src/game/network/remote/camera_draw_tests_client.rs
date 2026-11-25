@@ -74,7 +74,7 @@ pub(in crate::game) fn run_local_player_and_camera_entity_draw_like_the_real_cli
         for row in witness.lines().filter(|l| !l.starts_with('#')) {
             let f: Vec<&str> = row.split(' ').collect();
             game.remote.as_mut().unwrap().camera = (f[0] == "villager").then_some(31);
-            game.client.camera_type = match f[1] {
+            game.side.camera_type = match f[1] {
                 "0" => CameraType::FirstPerson,
                 "1" => CameraType::ThirdPersonBack,
                 _ => CameraType::ThirdPersonFront,

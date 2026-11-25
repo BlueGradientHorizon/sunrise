@@ -3,7 +3,7 @@ pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::remote::packets_player::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `C::AwardStats`: its arms of `apply_packet`, guard and order kept.
     pub(in crate::game) fn apply_award_stats_packet(&mut self, p: play::AwardStats) -> Result<()> {
         // handleAwardStats: StatsCounter.setValue for each.
@@ -36,9 +36,9 @@ impl Game<'_> {
     }
     /// `C::ClearTitles`: its arms of `apply_packet`, guard and order kept.
     pub(in crate::game::client_side) fn apply_clear_titles_packet(&mut self, p: play::Bool1) {
-        self.client.titles.clear();
+        self.side.titles.clear();
         if p.value {
-            self.client.titles.reset_times();
+            self.side.titles.reset_times();
         }
     }
     /// `C::Commands`: its arms of `apply_packet`, guard and order kept.
@@ -147,7 +147,7 @@ impl Game<'_> {
                 s => (s as usize - 36, self.inventory[s as usize - 36].as_ref()),
             };
             if old.is_none_or(|old| old.count < new.count) {
-                self.client.hotbar_pop[pop] = 5;
+                self.side.hotbar_pop[pop] = 5;
             }
         }
         let before = self.creative_stacks();
@@ -174,10 +174,10 @@ impl Game<'_> {
         // Configuration's tags, over the block ids the parts just bound.
         self.install_remote_tags();
         self.refresh_render_visibility();
-        self.client.test_highlights.clear();
+        self.side.test_highlights.clear();
         // handleLogin: `debugSubscriber.clear()`.
-        self.client.debug_charts.clear_subscriptions();
-        self.client.debug_density.borrow_mut().clear();
+        self.side.debug_charts.clear_subscriptions();
+        self.side.debug_density.borrow_mut().clear();
         self.forget_synced_recipes();
         self.level.hardcore = p.hardcore;
         // handleLogin: startWaitingForNewLevel with Reason.OTHER, which
@@ -198,7 +198,7 @@ impl Game<'_> {
         self.potions.effects.clear();
         // handleLogin creates a fresh LocalPlayer only when none exists yet.
         if self.remote.as_ref().is_none_or(|r| !r.logged_in) {
-            self.client.post_effects.clear();
+            self.side.post_effects.clear();
         }
         self.riding = None;
         if let Some(player) = self.player.as_mut() {
@@ -235,7 +235,7 @@ impl Game<'_> {
         self.bind_local_player_residency();
         self.refresh_debug_renderers();
         // LocalPlayer.setReducedDebugInfo always rebuilds, also on a second login.
-        self.debug_entries.0.invalidate();
+        self.side.debug_entries.0.invalidate();
         self.streaming.radius = crate::game::entity_culling::streaming_radius_for(
             self.settings.render_distance,
             Some(p.chunk_radius),
@@ -403,7 +403,7 @@ impl Game<'_> {
         // ClientPacketListener.handlePlayerCombatKill: the death
         // screen, whatever health was last sent, or `respawn()` at
         // once when it is hidden.
-        if me && self.client.screen != Screen::Dead && self.player.is_some() {
+        if me && self.side.screen != Screen::Dead && self.player.is_some() {
             if self.remote.as_ref().is_none_or(|r| r.show_death_screen) {
                 self.close_dialogs();
                 self.set_screen(Screen::Dead);
@@ -551,18 +551,18 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn apply_respawn_packet(&mut self, p: play::Respawn) {
         self.reset_client_item_use();
         // The new LocalPlayer copies reduced debug info through its setter.
-        self.debug_entries.0.invalidate();
+        self.side.debug_entries.0.invalidate();
         let old_player = self.remote.as_ref().map(|r| (r.entity_id, r.profile));
         if let Some((_, uuid)) = old_player {
             self.forget_entity_initialization(Holder::Player(uuid));
         }
         if let Some(r) = self.remote.as_ref() {
-            self.audio.0.remove_sound_entity(r.entity_id as u32);
+            self.side.audio.0.remove_sound_entity(r.entity_id as u32);
         }
         // A new player, without effects (the server sends them
         // again) and with no item in use.
         self.potions.effects.clear();
-        self.client.post_effects.clear();
+        self.side.post_effects.clear();
         // Every synced attachment but the player's is sent again; the viewed
         // levels go or stay with the level entered (`enter_respawn_level`).
         if let Some(r) = self.remote.as_mut() {
@@ -600,7 +600,7 @@ impl Game<'_> {
             .remote
             .as_ref()
             .is_some_and(|r| r.level != p.spawn.dimension);
-        let died = self.client.screen == Screen::Dead
+        let died = self.side.screen == Screen::Dead
             || self
                 .player
                 .as_ref()
@@ -645,11 +645,11 @@ impl Game<'_> {
         }
         if dimension_changed {
             // LevelExtractor.setLevel: a new level drops the highlights.
-            self.client.test_highlights.clear();
+            self.side.test_highlights.clear();
             let (music, _) = self.situational_music();
-            self.client
+            self.side
                 .music
-                .stop_playing(music.as_ref(), &mut self.audio.0);
+                .stop_playing(music.as_ref(), &mut self.side.audio.0);
         }
         self.set_screen(Screen::Playing);
         if let Some(r) = self.remote.as_mut() {
@@ -721,7 +721,7 @@ impl Game<'_> {
         // The death screen opens (or the respawn is asked for) with the
         // death packet when the rule hides it.
         let shown = self.remote.as_ref().is_none_or(|r| r.show_death_screen);
-        if p.health <= 0.0 && shown && self.client.screen != Screen::Dead && self.player.is_some() {
+        if p.health <= 0.0 && shown && self.side.screen != Screen::Dead && self.player.is_some() {
             self.close_dialogs();
             self.set_screen(Screen::Dead);
             self.ui.death_time = 0;
@@ -796,7 +796,7 @@ impl Game<'_> {
         }
         if p.overlay {
             self.say_system_queued(&text);
-            self.client.titles.set_overlay(text, false);
+            self.side.titles.set_overlay(text, false);
         } else if self.add_chat_line(text.clone(), sunrise_client::chat::ChatSource::Server) {
             // handleSystemMessage: said once the chat takes it.
             self.say_system_chat_queued(&text);
@@ -814,7 +814,7 @@ impl Game<'_> {
                 .any(|span| !span.text.is_empty())
                 .then_some(text)
         };
-        self.tab_list.0.header = text(&p.header);
-        self.tab_list.0.footer = text(&p.footer);
+        self.side.tab_list.0.header = text(&p.header);
+        self.side.tab_list.0.footer = text(&p.footer);
     }
 }

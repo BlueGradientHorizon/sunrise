@@ -81,13 +81,13 @@ impl ModSounds {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Plays the sounds client mods asked for since the last update, then applies their stops
     /// and fades, and forgets the instances the engine let go. A play stopped (or faded to 0 at
     /// once) before this update never reaches the engine. Called from the audio update
     /// (`tick_sound_engine`), before the engine's own tick.
     pub(in crate::game::client_side) fn apply_mod_sounds(&mut self) {
-        let sounds = &mut self.client.mod_sounds;
+        let sounds = &mut self.side.mod_sounds;
         let stopped: Vec<u64> = sounds
             .changes
             .get_mut()
@@ -99,7 +99,7 @@ impl Game<'_> {
             if stopped.contains(&id) {
                 continue;
             }
-            let instance = self.audio.0.play_mod_sound(&sound, after);
+            let instance = self.side.audio.0.play_mod_sound(&sound, after);
             sounds.started.insert(id, instance);
         }
         for (id, change) in sounds.changes.get_mut().drain(..) {
@@ -107,18 +107,18 @@ impl Game<'_> {
                 continue;
             };
             match change {
-                Change::Stop => self.audio.0.stop_mod_sound(instance),
+                Change::Stop => self.side.audio.0.stop_mod_sound(instance),
                 Change::Fade { volume, ticks } => {
-                    self.audio.0.fade_mod_sound(instance, volume, ticks)
+                    self.side.audio.0.fade_mod_sound(instance, volume, ticks)
                 }
-                Change::Move { position } => self.audio.0.move_mod_sound(instance, position),
-                Change::Pitch { pitch } => self.audio.0.set_mod_sound_pitch(instance, pitch),
+                Change::Move { position } => self.side.audio.0.move_mod_sound(instance, position),
+                Change::Pitch { pitch } => self.side.audio.0.set_mod_sound_pitch(instance, pitch),
             }
             if change.stops() {
                 sounds.started.remove(&id);
             }
         }
-        let audio = &self.audio.0;
+        let audio = &self.side.audio.0;
         sounds
             .started
             .retain(|_, instance| audio.mod_sound_state(*instance) != SoundState::Stopped);
@@ -130,7 +130,7 @@ impl Game<'_> {
             return None;
         }
         let id = sound.fields().id;
-        let sounds = &self.client.mod_sounds;
+        let sounds = &self.side.mod_sounds;
         if sounds
             .changes
             .borrow()
@@ -152,7 +152,7 @@ impl Game<'_> {
                 .started
                 .get(&id)
                 .map_or(SoundState::Stopped, |&instance| {
-                    self.audio.0.mod_sound_state(instance)
+                    self.side.audio.0.mod_sound_state(instance)
                 }),
         )
     }
@@ -203,7 +203,7 @@ impl Game<'_> {
         match self.sound_state(sound) {
             Some(SoundState::Waiting | SoundState::Playing) => {
                 let id = sound.fields().id;
-                self.client
+                self.side
                     .mod_sounds
                     .changes
                     .borrow_mut()
@@ -220,7 +220,7 @@ impl Game<'_> {
         if !self.native_window() {
             return Vec::new();
         }
-        self.audio
+        self.side.audio
             .0
             .event_names()
             .iter()
@@ -244,7 +244,7 @@ impl Game<'_> {
         if !self.native_window() {
             return String::new();
         }
-        self.audio.0.device().to_owned()
+        self.side.audio.0.device().to_owned()
     }
 }
 

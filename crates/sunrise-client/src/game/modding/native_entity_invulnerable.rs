@@ -10,7 +10,7 @@ use super::{Game, commands::Target};
 use mod_api::EntityRef;
 use sunrise_client::mobs::Damage;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Whether a named causing entity is a creative player.
     pub(in crate::game::server_side) fn creative_damage_source_id(&self, id: i32) -> bool {
         id != 0
@@ -30,7 +30,7 @@ impl Game<'_> {
         source: sunrise_client::health::HurtSource<'_>,
         vanilla: bool,
     ) -> bool {
-        crate::game::entity::damage_level_of!(self, self.combat.0.attack(), no_push, None)
+        crate::game::entity::damage_level_of!(self, self.side.combat.0.attack(), no_push, None)
             .invulnerability_check(
                 sunrise_client::health::Hurting::Entity(id as i32, kind, source),
                 vanilla,

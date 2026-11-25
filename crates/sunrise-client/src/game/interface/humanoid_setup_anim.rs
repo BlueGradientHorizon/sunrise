@@ -1,7 +1,7 @@
 use super::*;
 use sunrise_client::mobs::{anim, render};
 
-impl render::RenderDataSource for Game<'_> {
+impl render::RenderDataSource for Game<'_, crate::game::client_side::ClientState> {
     fn mob_data(&self) -> &sunrise_client::mobs::MobData {
         self.res.mob_data()
     }
@@ -20,7 +20,7 @@ impl render::RenderDataSource for Game<'_> {
     }
 }
 
-impl anim::HumanoidSetup for Game<'_> {
+impl anim::HumanoidSetup for Game<'_, crate::game::client_side::ClientState> {
     fn before_arm_pose(&self, mob: &Mob, state: &anim::State<'_>, poses: &mut anim::Poses) {
         use super::api_values::TryIntoApi;
         let stacks = [false, true].map(|off| {
@@ -46,7 +46,7 @@ impl anim::HumanoidSetup for Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Lends the live pose to listeners at the shared humanoid seam.
     pub(in crate::game) fn setup_humanoid_parts(
         &self,
@@ -61,7 +61,7 @@ impl Game<'_> {
             entity_type,
             humanoid,
             partial_tick,
-            game_time: self.title.0.is_none().then_some(self.world.game_time),
+            game_time: self.side.title.0.is_none().then_some(self.world.game_time),
             parts: poses,
         });
     }

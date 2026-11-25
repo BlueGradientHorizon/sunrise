@@ -26,7 +26,7 @@ pub(super) fn engine_fluid_state(state: FluidState) -> Option<EngineFluidState> 
     consistent.then_some(engine)
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// Resolve a registered fluid identifier.
     pub(super) fn fluid_key(&self, id: &str) -> Option<FluidKey> {
         mod_api::__private::fluid_key(id)
@@ -238,7 +238,7 @@ pub(super) fn description_id(kind: &str, id: &str) -> Option<String> {
     Some(format!("{kind}.{namespace}.{}", path.replace('/', ".")))
 }
 
-impl crate::crafting::CraftingRemainder for Game<'_> {
+impl<__Side: crate::game::Side> crate::crafting::CraftingRemainder for Game<'_, __Side> {
     fn crafting_remainder(&self, stack: &ItemStack) -> Option<ItemStack> {
         Game::crafting_remainder(self, stack)
     }

@@ -1,7 +1,7 @@
 //! Apply a hoglin broadcast after its vanilla target selection and mod approval.
 use super::{Game, Vec3, Who};
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn hoglin_attack_target(
         &mut self,
         mob: u32,

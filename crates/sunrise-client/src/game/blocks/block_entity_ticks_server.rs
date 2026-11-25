@@ -38,12 +38,12 @@ pub(in crate::game::server_side) use sunrise_world::registry::BlockStateId;
 impl Drop for Enclosing<'_, '_> {
     fn drop(&mut self) {
         // A pass that ended early left its own; a pass in progress is known by them.
-        self.game.server.item_columns = None;
-        self.game.server.pass_mobs = None;
+        self.game.side.item_columns = None;
+        self.game.side.pass_mobs = None;
         if let Some(scratch) = self.scratch.take() {
             (
-                self.game.server.item_columns,
-                self.game.server.pass_mobs,
+                self.game.side.item_columns,
+                self.game.side.pass_mobs,
                 self.game.spawner_tick_positions,
                 self.game.trial_spawner_tick_positions,
             ) = scratch;
@@ -51,12 +51,12 @@ impl Drop for Enclosing<'_, '_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `LevelChunk.isTicking` (block coordinates): a block-ticking chunk from
     /// every player's tickets (`update_chunk_tickets`), its entities loaded
     /// (`ServerLevel.areEntitiesLoaded`).
     pub(in crate::game) fn block_ticking_area(&self) -> impl Fn(i32, i32) -> bool + use<> {
-        let levels = self.tickets.0.levels();
+        let levels = self.side.tickets.0.levels();
         let pending = self.world.entities_pending.clone();
         move |x, z| block_ticking_at(&levels, &pending, x, z)
     }

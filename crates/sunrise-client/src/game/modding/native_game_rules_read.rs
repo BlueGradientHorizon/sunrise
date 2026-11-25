@@ -2,7 +2,7 @@ use super::Game;
 use mod_api::GameRuleReadError;
 use sunrise_client_core::gamerules::Value as GameRuleValue;
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(super) fn game_rule(&self, id: &str) -> Result<GameRuleValue, GameRuleReadError> {
         self.ui.rules.get(id).ok_or(GameRuleReadError::UnknownRule)
     }

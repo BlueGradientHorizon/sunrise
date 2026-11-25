@@ -49,7 +49,7 @@ pub(in crate::game::client_side) use sunrise_core::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::level::{PlayerContext, classes::Class};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// `WindChargeRenderer`: the spinning charge and its wind.
     pub(in crate::game::client_side) fn wind_charge_geometry(
         &self,
@@ -59,7 +59,7 @@ impl Game<'_> {
         partial: f32,
         out: &mut Vec<sunrise_client_render::render_geometry::Vertex>,
     ) {
-        let Some(model) = self.client.entity_models.wind_charge.as_ref() else {
+        let Some(model) = self.side.entity_models.wind_charge.as_ref() else {
             return;
         };
         let Some(r) = self

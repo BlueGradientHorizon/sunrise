@@ -17,7 +17,7 @@ use sunrise_client::{
 };
 use sunrise_gameplay::mob_looting::LootingLevel;
 
-impl LootingLevel for Game<'_> {
+impl LootingLevel for Game<'_, crate::game::server_side::ServerState> {
     fn grief_hooked(&self) -> bool {
         Game::grief_hooked(self)
     }
@@ -43,7 +43,7 @@ impl LootingLevel for Game<'_> {
     }
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `Mob.aiStep`'s looting block, once per mob per tick.
     pub(in crate::game) fn tick_mob_looting(&mut self) {
         sunrise_gameplay::mob_looting::tick_mob_looting(self);

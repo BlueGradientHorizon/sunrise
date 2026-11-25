@@ -1,5 +1,5 @@
 use super::*;
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn native_player_inventory_changed(
         &mut self,
         player: u128,

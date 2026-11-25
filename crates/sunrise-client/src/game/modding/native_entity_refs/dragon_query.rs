@@ -1,7 +1,7 @@
 //! The separately stored dragon participates in Level.getEntities; parts follow the walk.
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn visit_dragon_query_parts(
         &self,
         bounds: Aabb,

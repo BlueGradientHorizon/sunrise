@@ -27,7 +27,7 @@ thread_local! {
     static SCRATCH: std::cell::RefCell<Scratch> = std::cell::RefCell::new(Scratch::default());
 }
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Server arm of [`Game::side_carry_pass`]: carries and shoves server-simulated
     /// entities (`MoveWho::Entity(_)`, excluding players and guests).
     pub(in crate::game) fn server_carry_pass(&mut self, start: &Prepared) {

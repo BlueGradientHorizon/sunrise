@@ -138,7 +138,7 @@ fn motion_blocking_leaves(
     }
     world.bottom_y()
 }
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Polytone GPU particles, before the frame's quads are built: any pending clear, the
     /// renderer's verdict on each shader and on the quads drawn here, then the heightmap for the readers that draw (a custom shader's `Sampler1`,
     /// and the surface rain drawn as quads dies under), every half second.
@@ -152,8 +152,8 @@ impl Game<'_> {
             min_y: world.bottom_y(),
             top: &top,
         };
-        let renderer = self.renderer.0.as_deref_mut().map(|r| r as _);
-        self.particles
+        let renderer = self.side.renderer.0.as_deref_mut().map(|r| r as _);
+        self.side.particles
             .0
             .polytone_gpu_decide(renderer, camera, &source);
     }
@@ -166,8 +166,8 @@ impl Game<'_> {
         alpha: f64,
     ) {
         let world = &self.world;
-        let renderer = self.renderer.0.as_deref_mut().map(|r| r as _);
-        self.particles
+        let renderer = self.side.renderer.0.as_deref_mut().map(|r| r as _);
+        self.side.particles
             .0
             .polytone_gpu_hand_over(renderer, camera, alpha as f32, &|b| {
                 world.light(b[0], b[1], b[2])
@@ -212,11 +212,11 @@ impl Game<'_> {
     /// `Camera.getNearPlane` at the FOV option, as `getFluidInCamera` asks for it.
     pub(in crate::game::client_side) fn near_plane(&self) -> NearPlane {
         let [width, height] = self
-            .renderer
+            .side.renderer
             .0
             .as_ref()
             .map_or([1, 1], |r| [r.config.width, r.config.height]);
-        self.client.view.near_plane(
+        self.side.view.near_plane(
             self.settings.fov as i32 as f32,
             width as f32,
             height.max(1) as f32,
@@ -232,16 +232,16 @@ impl Game<'_> {
     ) -> FogData {
         let cam = self.camera_subject();
         let is_local = cam.as_ref().is_none_or(|c| c.is_local_player);
-        let forward = if self.client.view.forwards == [0.0; 3] {
+        let forward = if self.side.view.forwards == [0.0; 3] {
             self.forward().map(|c| c as f32)
         } else {
-            self.client.view.forwards
+            self.side.view.forwards
         };
         let at = [camera.x, camera.y, camera.z];
         let fog_type = self.camera_fog_type(at);
         let (rain, thunder) = self.view_weather(self.clock.fraction() as f32);
         let title_fog = sunrise_client::fog::FogTables::default();
-        let tables = if self.title.0.is_some() {
+        let tables = if self.side.title.0.is_some() {
             &title_fog
         } else {
             self.res.fog()
@@ -279,7 +279,7 @@ impl Game<'_> {
             water_fog_color,
             biome,
             render_distance_chunks: self.terrain_distance(),
-            distant_terrain: self.lod.0.is_some() && self.overworld_skybox(),
+            distant_terrain: self.side.lod.0.is_some() && self.overworld_skybox(),
             cloud_range_chunks: self.settings.cloud_range,
             camera_y: camera.y,
             min_y: self.level_min_y(),
@@ -289,8 +289,8 @@ impl Game<'_> {
             thunder,
             blindness,
             darkness,
-            darken_world: self.client.boss_overlay.darken_amount(partial),
-            boss_world_fog: self.client.boss_overlay.should_create_world_fog(),
+            darken_world: self.side.boss_overlay.darken_amount(partial),
+            boss_world_fog: self.side.boss_overlay.should_create_world_fog(),
             spectator: cam
                 .as_ref()
                 .map_or_else(|| self.own_player_is_spectator(), |c| c.is_spectator),
@@ -300,11 +300,11 @@ impl Game<'_> {
             environment: self.pack.polytone_colors.env,
             fluid_fog: self.pack.polytone_colors.fluid_fog,
         };
-        let mut fog = sunrise_client::fog::setup_fog(tables, &self.client.fog, &input);
+        let mut fog = sunrise_client::fog::setup_fog(tables, &self.side.fog, &input);
         if !self.settings.sunrise.fog {
             sunrise_client::fog::clear_distance_fog(&mut fog, &input);
         }
-        if self.title.0.is_none() {
+        if self.side.title.0.is_none() {
             fog.color =
                 self.native_fog_color_now(self.clock.fraction() as f32, at, fog_type, fog.color);
             fog = self.native_fog_now(self.clock.fraction() as f32, at, fog_type, fog);
@@ -422,7 +422,7 @@ impl Game<'_> {
             .then(|| (self.eye_brightness(eye), self.yaw, self.pitch));
         // Hud.extractCameraOverlays; the spyglass scope (and its easing) is
         // drawn on the HUD by draw_spyglass.
-        let fx = &self.client.screen_fx;
+        let fx = &self.side.screen_fx;
         let border_pos =
             self.camera_entity_position()
                 .unwrap_or([p.position.x, p.position.y, p.position.z]);
@@ -431,7 +431,7 @@ impl Game<'_> {
                 fx.vignette_brightness,
                 self.border.warning_strength(border_pos[0], border_pos[2]),
             )),
-            first_person: self.client.camera_type.is_first_person(),
+            first_person: self.side.camera_type.is_first_person(),
             scoping: self.scoping(),
             game_time_delta: 0.0,
             // `EquipmentSlot.values()` order across all 8 player equipment slots (including body and saddle).
@@ -458,13 +458,13 @@ impl Game<'_> {
             nausea: self.nausea_blend(partial),
             screen_effect_scale: self.screen_effect_scale(),
         };
-        let mut scope = self.client.scope_scale;
+        let mut scope = self.side.scope_scale;
         let gui_overlays = if self.ui.hide_gui {
             Vec::new()
         } else {
             hud_overlays::camera_overlays(size[0] as i32, size[1] as i32, &overlays, &mut scope)
         };
-        self.client.screen_fx.build(&ScreenInputs {
+        self.side.screen_fx.build(&ScreenInputs {
             sprites: &self.gui.atlas.sprites,
             flags: &self.gui.atlas.flags,
             aspect: size[0] as f32 / size[1].max(1) as f32,
@@ -541,7 +541,7 @@ impl Game<'_> {
                 .fov_degrees(partial, eye)
                 .max((self.settings.fov as i32) as f32);
             let (near_yaw, near_pitch) =
-                self.client.posed_rotation.unwrap_or((self.yaw, self.pitch));
+                self.side.posed_rotation.unwrap_or((self.yaw, self.pitch));
             let (near_min, near_max) = sunrise_client::camera::near_plane_bounds(
                 cull_fov,
                 size[0] as f32,
@@ -606,7 +606,7 @@ impl Game<'_> {
             }
         }
         let first_person =
-            self.client.camera_type.is_first_person() && !self.own_player_is_spectator();
+            self.side.camera_type.is_first_person() && !self.own_player_is_spectator();
         let water = first_person && {
             // LevelExtractor uses the player's tick-sampled eye state, not camera fog geometry.
             // Keep the existing mod override explicit, applied to that answer at the eye.
@@ -703,10 +703,10 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn tick_frame_visuals(&mut self, running: bool) {
         self.hold_fullbright();
         if running || !self.clock.still() {
-            self.client.fog.tick_flicker();
+            self.side.fog.tick_flicker();
         }
         if running {
-            self.client.texture_ticks += 1;
+            self.side.texture_ticks += 1;
         }
     }
     /// What `AtmosphericFogEnvironment.updateRainFogState` reads at the eye: the rain, the sky
@@ -731,7 +731,7 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn settle_rain_fog(&mut self) {
         if let Some(e) = self.camera_eye_position() {
             let (rain, sky_light, rains) = self.rain_fog_inputs(e);
-            settle_rain_fog(&mut self.client.fog, rain, sky_light, rains);
+            settle_rain_fog(&mut self.side.fog, rain, sky_light, rains);
         }
     }
     pub(in crate::game::client_side) fn remote_tracking_body(
@@ -752,7 +752,7 @@ impl Game<'_> {
     pub(in crate::game::client_side) fn tick_vignette(&mut self) {
         if let Some(e) = self.camera_eye_position() {
             let brightness = self.eye_brightness(e);
-            self.client.screen_fx.tick_vignette(brightness);
+            self.side.screen_fx.tick_vignette(brightness);
         }
     }
 
@@ -772,22 +772,22 @@ impl Game<'_> {
         let mut laps = sunrise_client::spans::laps();
         let eye = self.eye_position();
         // Vanilla particle culling, weather splashes, and rain fog read `mainCamera().position()` directly.
-        let cam_pos = self.client.view.position;
+        let cam_pos = self.side.view.position;
         if eye.is_some() {
             let inside_portal = self.client_portal_effect();
-            self.client.screen_fx.tick_portal(inside_portal);
+            self.side.screen_fx.tick_portal(inside_portal);
             // LocalPlayer.aiStep: processPortalCooldown after the transition effect.
             if self.remote.is_some() && self.portals.player.cooldown > 0 {
                 self.portals.player.cooldown -= 1;
             }
             let nausea = self.potions.effects.get("nausea").map(nausea_has_effect);
-            self.client.screen_fx.tick_spinning(nausea);
+            self.side.screen_fx.tick_spinning(nausea);
             let (rain, sky_light, rains) = self.rain_fog_inputs(cam_pos);
-            update_rain_fog(&mut self.client.fog, rain, sky_light, rains, 1.0);
+            update_rain_fog(&mut self.side.fog, rain, sky_light, rains, 1.0);
         }
         laps.lap("tp_fx");
-        self.particles.0.particle_level = self.settings.particles;
-        self.particles.0.camera = cam_pos;
+        self.side.particles.0.particle_level = self.settings.particles;
+        self.side.particles.0.camera = cam_pos;
         let (rain, thunder) = self.weather_levels(1.0);
         let ambient_attribute = attribute(AMBIENT_PARTICLES).expect("registered ambient particles");
         let marker = marker_particle_target(self.mode, self.stack_in(self.selected));
@@ -887,7 +887,7 @@ impl Game<'_> {
                     .len()
             };
             let ctx = AnimateContext {
-                enchant_power: &self.client.ambience.enchant_power,
+                enchant_power: &self.side.ambience.enchant_power,
                 world,
                 facts,
                 collision: self.collision,
@@ -910,14 +910,14 @@ impl Game<'_> {
             if let Some(sampling) = sampling.as_mut() {
                 if !sampling.started() {
                     laps.lap("tp_ctx");
-                    self.particles
+                    self.side.particles
                         .0
                         .set_polytone(self.pack.polytone_particles.clone());
                     if let Some(registry) = &self.pack.polytone_particles {
                         registry.set_biomes(biomes);
                     }
                 }
-                if let Some(step) = sampling.run(self.res.animate(), &mut self.particles.0, &ctx) {
+                if let Some(step) = sampling.run(self.res.animate(), &mut self.side.particles.0, &ctx) {
                     match step {
                         AnimateStep::BlockPart(state, pos) => self.mod_animate_tick(state, pos),
                         AnimateStep::Ambient(options, at) => self.emit_model_ambient(&options, at),
@@ -993,17 +993,17 @@ impl Game<'_> {
                             f64::from(below) + block_top.max(fluid_top),
                             f64::from(z) + bz,
                         ];
-                        self.particles
+                        self.side.particles
                             .0
                             .add(&ParticleOptions::simple(ty), p, [0.0; 3]);
                     }
                     // The last rain column of the tick makes the sound, more often the
                     // longer it has been quiet; indoors it is the quieter one.
                     if let Some(at) = rain_position {
-                        let waited = self.client.rain_sound_time;
-                        self.client.rain_sound_time += 1;
+                        let waited = self.side.rain_sound_time;
+                        self.side.rain_sound_time += 1;
                         if random.next_int_bound(3).unwrap_or(0) < waited {
-                            self.client.rain_sound_time = 0;
+                            self.side.rain_sound_time = 0;
                             let roof = motion_blocking_height(
                                 world,
                                 properties,
@@ -1020,7 +1020,7 @@ impl Game<'_> {
                             let p = at.map(|c| f64::from(c) + 0.5);
                             // playLocalSound: guests make their own rain, so a host
                             // must not capture it for them.
-                            self.audio.0.play_unshared(name, Some(p), volume, pitch);
+                            self.side.audio.0.play_unshared(name, Some(p), volume, pitch);
                         }
                     }
                 }
@@ -1039,7 +1039,7 @@ impl Game<'_> {
             _ => unreachable!("directly drawable ambient options are handled by sampling"),
         };
         if !self
-            .particles
+            .side.particles
             .0
             .admit_particle_at(at, override_limiter, false)
         {
@@ -1054,13 +1054,13 @@ impl Game<'_> {
                 .filter(|stack| self.items().get(&stack.item).is_some())
                 .map(|stack| self.item_particle(&stack)),
             PersistentOptions::ElderGuardian => {
-                self.particles.0.elder_guardian();
+                self.side.particles.0.elder_guardian();
                 return;
             }
             _ => unreachable!(),
         };
         if let Some(options) = options {
-            self.particles
+            self.side.particles
                 .0
                 .add_admitted_with_world(Some(&self.world), &options, at, [0.0; 3]);
         }
@@ -1077,7 +1077,7 @@ impl Game<'_> {
         let scope_eye = self
             .player
             .as_ref()
-            .filter(|_| self.client.camera_type.is_first_person() && self.scoping())
+            .filter(|_| self.side.camera_type.is_first_person() && self.scoping())
             .map(|p| {
                 [
                     p.position.x,
@@ -1085,7 +1085,7 @@ impl Game<'_> {
                     p.position.z,
                 ]
             });
-        self.particles.0.set_scope_eye(scope_eye);
+        self.side.particles.0.set_scope_eye(scope_eye);
         let level = ParticleLevel {
             world,
             facts,
@@ -1101,12 +1101,12 @@ impl Game<'_> {
         // weather around them; nothing without such a pack.
         if let Some(p) = &self.player {
             let feet = [p.position.x, p.position.y, p.position.z];
-            self.particles
+            self.side.particles
                 .0
                 .polytone_entity(&level, "minecraft:player", feet);
         }
         let bodies =
-            self.particles
+            self.side.particles
                 .0
                 .sample_tracking_bodies(|target| match target {
                     TrackingTarget::LocalPlayer => self.player.as_ref().map(player_tracking_body),
@@ -1131,18 +1131,18 @@ impl Game<'_> {
                             .map(|i| mob_tracking_body(&self.mobs[i]))
                     }
                 });
-        self.particles.0.tick_tracking(&level, bodies);
+        self.side.particles.0.tick_tracking(&level, bodies);
         laps.lap("tp_engine");
         self.tick_pickups();
         laps.lap("tp_pickups");
-        let camera = self.particles.0.camera;
-        for (name, at, volume, pitch, delayed) in std::mem::take(&mut self.particles.0.sounds) {
+        let camera = self.side.particles.0.camera;
+        for (name, at, volume, pitch, delayed) in std::mem::take(&mut self.side.particles.0.sounds) {
             if delayed {
-                self.audio
+                self.side.audio
                     .0
                     .play_distance_delayed(name, at, volume, pitch, camera);
             } else {
-                self.audio.0.play(name, Some(at), volume, pitch);
+                self.side.audio.0.play(name, Some(at), volume, pitch);
             }
         }
     }
@@ -1164,7 +1164,7 @@ impl Game<'_> {
         if self.clock.still() {
             self.visual_ticks()
         } else {
-            self.client.texture_ticks
+            self.side.texture_ticks
         }
     }
 
@@ -1174,11 +1174,11 @@ impl Game<'_> {
         if self.clock.still() {
             self.visual_ticks() as i64 * 50
         } else {
-            self.client.started.elapsed().as_millis() as i64
+            self.side.started.elapsed().as_millis() as i64
         }
     }
 }
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// What the packs' Polytone animation modes read this tick (wiki "Variant Textures"): the
     /// time of day, the weather, and for expressions the packs' Polytone frame, or the time and
     /// weather alone when no Polytone pack makes one.
@@ -1198,33 +1198,33 @@ impl Game<'_> {
                 ..Default::default()
             });
         // `screen_time` counts while the same screen stays open.
-        let screen = (self.client.screen != super::Screen::Playing).then(|| {
+        let screen = (self.side.screen != super::Screen::Playing).then(|| {
             use std::hash::{Hash, Hasher};
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            std::mem::discriminant(&self.client.screen).hash(&mut hasher);
+            std::mem::discriminant(&self.side.screen).hash(&mut hasher);
             hasher.finish()
         });
-        if let Some(renderer) = &mut self.renderer.0 {
+        if let Some(renderer) = &mut self.side.renderer.0 {
             renderer.set_animation_inputs(day_time, [rain, thunder], Some(&frame), screen);
         }
     }
 }
 
 /// The packs' expression uniforms on core shaders (`shader_modifiers`, wiki "Shaders").
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Whether an installed pack core shader reads expression uniforms this frame. Fullbright
     /// excludes the lightmap only, and a frame where no world runs the text
     /// ([`Self::world_runs`]). The frame's expression context is made only when needed.
     pub(in crate::game::client_side) fn reads_pack_expressions(&mut self) -> bool {
         let world = self.world_runs();
-        (self.renderer.0.as_mut()).is_some_and(|r| r.reads_pack_expressions(world))
+        (self.side.renderer.0.as_mut()).is_some_and(|r| r.reads_pack_expressions(world))
     }
 
     /// Whether an installed pack core shader reads Polytone's `PolyGlobals` this frame (the
     /// text's only where a world runs).
     pub(in crate::game::client_side) fn reads_poly_globals(&mut self) -> bool {
         let world = self.world_runs();
-        (self.renderer.0.as_mut()).is_some_and(|r| r.reads_poly_globals(world))
+        (self.side.renderer.0.as_mut()).is_some_and(|r| r.reads_poly_globals(world))
     }
 
     /// The frame's `PolyGlobals` for the pack core shaders that read them; none leaves them 0.
@@ -1233,7 +1233,7 @@ impl Game<'_> {
         globals: Option<&sunrise_client::polytone_post::PolyGlobals>,
     ) {
         let world = self.world_runs();
-        if let Some(renderer) = self.renderer.0.as_mut() {
+        if let Some(renderer) = self.side.renderer.0.as_mut() {
             renderer.set_poly_globals(globals.map(|g| g.bytes()).as_ref(), world);
         }
     }
@@ -1246,7 +1246,7 @@ impl Game<'_> {
         frame: Option<&sunrise_client::environment::Frame>,
     ) {
         let world = self.world_runs();
-        if let (Some(frame), Some(renderer)) = (frame, self.renderer.0.as_mut()) {
+        if let (Some(frame), Some(renderer)) = (frame, self.side.renderer.0.as_mut()) {
             renderer.evaluate_pack_expressions(frame, world);
         }
     }

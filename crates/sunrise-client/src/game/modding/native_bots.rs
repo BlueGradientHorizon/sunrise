@@ -37,7 +37,7 @@ fn sprints(input: &PlayerInput) -> bool {
 }
 
 // Native mods use these; nothing in Sunrise does.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// One tick of the server player `uuid`'s own movement from `input`, as their client would
     /// play it (`LocalPlayer.aiStep` and `Player.travel`): walking and strafing (`forward` and
     /// `strafe`, -1..1), jumping, sneaking (slower, and held at edges), sprinting (with a
@@ -117,8 +117,8 @@ impl Game<'_> {
     /// A copy of server player `uuid`'s body in the level in place, and the connection to lend
     /// equipment from if the guest's state has not been swapped into Game.
     fn native_bot_body(&self, uuid: u128) -> Option<(PlayerMotion, Option<u32>)> {
-        if self.server.lan_acting_uuid == Some(uuid) {
-            self.server.lan_acting?;
+        if self.side.lan_acting_uuid == Some(uuid) {
+            self.side.lan_acting?;
             let p = self.player.as_ref()?;
             let mut body = (p.health.health() > 0.0 && !p.spectator && self.riding.is_none())
                 .then(|| p.clone())?;
@@ -128,7 +128,7 @@ impl Game<'_> {
             self.set_bot_item_use(&mut body, using);
             return Some((body, None));
         }
-        if self.server.lan_acting.is_some() {
+        if self.side.lan_acting.is_some() {
             return None;
         }
         let host = self.lan.as_ref()?;

@@ -169,7 +169,7 @@ pub(in crate::game::server_side) fn load<'a>(
         snapshot: Arc::new(snapshot),
     })
 }
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Generation workers pin one world-owned snapshot per finalization, not
     /// a process-global last-loaded world. In-flight work retains its snapshot.
     pub(in crate::game::server_side) fn share_mob_maps(&self) {
@@ -181,7 +181,7 @@ impl Game<'_> {
             .end
             .locator()
             .iter()
-            .chain(self.levels.0.parked_terrains())
+            .chain(self.side.levels.0.parked_terrains())
         {
             terrain.set_mob_maps(snapshot);
         }

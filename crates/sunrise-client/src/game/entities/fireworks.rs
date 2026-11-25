@@ -415,7 +415,7 @@ pub(in crate::game) fn rocket_draws(
         + random.next_int_bound(7).unwrap_or(0);
     (velocity, lifetime)
 }
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// A rocket built from `own`, the rocket's own random (`Entity.random`): the
     /// UUID, the motion and the lifetime draw from it in that order, and a rocket
     /// that is then shot (`Projectile.shoot`) goes on drawing from the same one.

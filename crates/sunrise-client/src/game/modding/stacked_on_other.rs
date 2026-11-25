@@ -121,7 +121,7 @@ pub(in crate::game) fn local_pickup_id() -> MenuId {
     *ID.get_or_init(MenuId::fresh)
 }
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The pickup click whose frozen stacks are `frozen`, decided by the mods and then run by
     /// `perform`, which is given their answer. `current` reads the same stacks again, for the
     /// check that nothing changed them. `probe_carried` runs the shared vanilla carried override
@@ -135,9 +135,9 @@ impl Game<'_> {
         &mut self,
         route: MenuId,
         frozen: StackedClick,
-        current: impl Fn(&Game<'_>) -> Option<StackedClick> + 'p,
-        probe_carried: impl FnOnce(&mut Game<'_>, Option<ItemStack>, Option<ItemStack>) -> bool,
-        perform: impl FnOnce(&mut Game<'_>, Option<&StackedOutcome>) + 'p,
+        current: impl Fn(&Game<'_, __Side>) -> Option<StackedClick> + 'p,
+        probe_carried: impl FnOnce(&mut Game<'_, __Side>, Option<ItemStack>, Option<ItemStack>) -> bool,
+        perform: impl FnOnce(&mut Game<'_, __Side>, Option<&StackedOutcome>) + 'p,
     ) -> Pickup {
         let server = self.is_logical_server();
         if !stacked_listened_for_side(server) {
@@ -240,10 +240,10 @@ pub(in crate::game) fn stacked_listens_for(frozen: &StackedClick) -> bool {
 /// Fire the global hook (server side only) and item-part overrides in vanilla
 /// `AbstractContainerMenu.tryItemClickBehaviourOverride` order, validating each phase's answer.
 /// The accepted answer is kept for the click; any bad answer refuses it.
-fn fire(
-    game: &mut Game<'_>,
+fn fire<__Side: crate::game::Side>(
+    game: &mut Game<'_, __Side>,
     shared: &Shared<'_>,
-    probe_carried: impl FnOnce(&mut Game<'_>, Option<ItemStack>, Option<ItemStack>) -> bool,
+    probe_carried: impl FnOnce(&mut Game<'_, __Side>, Option<ItemStack>, Option<ItemStack>) -> bool,
 ) -> Reply {
     let frozen = &shared.frozen;
     let make_event =
@@ -267,7 +267,7 @@ fn fire(
             )
             .with_direction(direction))
         };
-    let finish = |_game: &mut Game<'_>, outcome: StackedOutcome| -> Reply {
+    let finish = |_game: &mut Game<'_, __Side>, outcome: StackedOutcome| -> Reply {
         *shared.answer.borrow_mut() = Some(outcome);
         Reply::Allow
     };
@@ -477,8 +477,8 @@ fn fire(
 /// The global listener's typed answer, validated once: a stack may be set only by a cancelled
 /// click that is also handled, `ClickedStackResult::Take` is refused, and a set stack must be a
 /// valid one (a known item, a count within its maximum).
-fn answer_global(
-    game: &Game<'_>,
+fn answer_global<__Side: crate::game::Side>(
+    game: &Game<'_, __Side>,
     canceled: bool,
     result: &StackedOnOtherResult,
 ) -> std::result::Result<StackedOutcome, InvalidReason> {
@@ -545,8 +545,8 @@ struct PartAnswer {
 ///
 /// Contradictory combinations (`canceled != result.handled`), `ClickedStackResult::Take` exceeding
 /// the clicked stack (or on an empty slot), or invalid stacks refuse the click.
-fn answer_part(
-    game: &Game<'_>,
+fn answer_part<__Side: crate::game::Side>(
+    game: &Game<'_, __Side>,
     canceled: bool,
     result: &StackedOnOtherResult,
     current_clicked: Option<&ItemStack>,

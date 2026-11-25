@@ -11,7 +11,7 @@ pub(in crate::game::server_side) use sunrise_core::position::BlockPos;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_world::chunk::BlockState;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `CampfireBlock.useItemOn` with `held` in the hand that acts, the block
     /// at `pos` clicked: true when it doused a lit campfire (SUCCESS).
     pub(in crate::game) fn use_campfire_douse(

@@ -1,7 +1,7 @@
 //! Client-side entity eye-height lookup (`Entity.getEyeHeight`).
 use crate::game::{Game, commands_common::Target};
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn target_eye_height(&self, t: Target) -> f64 {
         match t {
             Target::Player => self
@@ -25,7 +25,7 @@ impl Game<'_> {
                 _ => self.type_eye_height("minecraft:armor_stand"),
             },
             Target::Other(id) => self
-                .client
+                .side
                 .interactions
                 .get(&(id as i32))
                 .map_or(0.0, |i| f64::from(i.eye_height())),

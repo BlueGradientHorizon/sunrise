@@ -3,7 +3,7 @@ pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::remote::r#use::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn finish_remote_use_block(
         &mut self,
         hand: Hand,
@@ -16,7 +16,7 @@ impl Game<'_> {
             && let Some(after) = self.with_hand(hand, |g| g.held().map(|s| s.count))
             && (Some(after) != before || self.creative)
         {
-            self.client.heights.item_used(hand);
+            self.side.heights.item_used(hand);
         }
     }
     /// Whether the block hit takes a main-hand right click with `held`
@@ -125,7 +125,7 @@ impl Game<'_> {
     /// A container click: the server answers with the authoritative slots.
     pub(in crate::game::client_side) fn remote_click(&mut self, right: bool) -> bool {
         let Some(size) = self
-            .renderer
+            .side.renderer
             .0
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
@@ -133,7 +133,7 @@ impl Game<'_> {
             return false;
         };
         let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
-        let Some(internal) = self.slot_at(&batch, self.client.cursor.0, self.client.cursor.1)
+        let Some(internal) = self.slot_at(&batch, self.side.cursor.0, self.side.cursor.1)
         else {
             return false;
         };
@@ -142,7 +142,7 @@ impl Game<'_> {
         } else {
             Input::Pickup
         };
-        if self.client.screen == Screen::Creative {
+        if self.side.screen == Screen::Creative {
             // CreativeModeInventoryScreen.slotClicked: the Survival Inventory tab clicks the
             // player's own InventoryMenu, and its CreativeInventoryListener sends each slot that
             // changed (SetCreativeModeSlot). No ContainerClick: a server holding the carried
@@ -280,7 +280,7 @@ impl Game<'_> {
             |p, v| spawned.push((p, v)),
         );
         for (p, v) in spawned {
-            self.particles.0.add(&options, p, v);
+            self.side.particles.0.add(&options, p, v);
         }
     }
     /// `Item.use` runs on the client too (MultiPlayerGameMode.useItem): an
@@ -448,7 +448,7 @@ impl Game<'_> {
         }
         // A successful Item.use always drops the hand (LocalPlayer.itemUsed).
         if self.remote_use_item(hand) {
-            self.client.heights.item_used(hand);
+            self.side.heights.item_used(hand);
             return;
         }
         if hand == Hand::Off {
@@ -476,7 +476,7 @@ impl Game<'_> {
             self.native_right_click_empty(Hand::Off);
         }
         if self.remote_use_item(Hand::Off) {
-            self.client.heights.item_used(Hand::Off);
+            self.side.heights.item_used(Hand::Off);
         }
     }
     /// `InstrumentItem.use` on this client: unless the horn is on cooldown,

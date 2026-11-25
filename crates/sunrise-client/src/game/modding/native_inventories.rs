@@ -147,7 +147,7 @@ enum Side {
 
 /// Another player's inventories, for server mods.
 #[allow(dead_code)]
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The player `uuid`'s inventory `kind`: the live one when they are on
     /// the server, else their file's. Err while they are logging in, dead,
     /// swapped in or displaced by an inner turn, or when they have never
@@ -192,10 +192,10 @@ impl Game<'_> {
                 Ok(Side::Live(i))
             };
         }
-        if self.server.world_root.as_os_str().is_empty() {
+        if self.side.world_root.as_os_str().is_empty() {
             return Err("no world".into());
         }
-        read_level(&self.server.world_root, uuid)
+        read_level(&self.side.world_root, uuid)
             .map(|l| Side::File(Box::new(l)))
             .ok_or_else(|| "no saved player".into())
     }
@@ -251,7 +251,7 @@ impl Game<'_> {
             return Err("no room".into());
         }
         // The file first: when it can't be written, nothing has moved.
-        let world = self.server.world_root.clone();
+        let world = self.side.world_root.clone();
         let write =
             |side: Side, kind, slots: Vec<Option<ItemStack>>, uuid| -> Result<Side, String> {
                 if let Side::File(mut level) = side {

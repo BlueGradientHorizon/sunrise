@@ -79,7 +79,7 @@ pub(in crate::game) fn run_a_spectated_dying_living_entity_squeezes_the_fov_26_3
                 "none" => (20.0, 0),
                 n => (0.0, n.parse().unwrap()),
             };
-            game.client.view = Default::default();
+            game.side.view = Default::default();
             for _ in 0..8 {
                 game.tick_fov();
             }

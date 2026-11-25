@@ -7,7 +7,7 @@ pub(in crate::game::client_side) use std::{collections::HashMap, sync::Arc};
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::items::EntityTypeTags;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     /// Apply synced block, item, fluid, and entity-type tags plus generated class tags on clients.
     pub(in crate::game) fn install_server_items(&mut self) {
         let Some(remote) = self.remote.as_ref() else {

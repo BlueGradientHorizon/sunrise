@@ -1,6 +1,6 @@
 use super::*;
 
-impl Game<'_> {
+impl Game<'_, crate::game::client_side::ClientState> {
     #[cfg(test)]
     pub(in crate::game) fn texture_atlases_stitched(&mut self) {
         for atlas in [mod_api::TextureAtlas::Blocks, mod_api::TextureAtlas::Gui] {

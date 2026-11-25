@@ -9,7 +9,7 @@ pub(in crate::game) type OrbCandidate = ([f64; 3], [f64; 3], Option<u128>, u32);
 /// `ExperienceOrb.followNearbyPlayer`'s scan distance.
 const SCAN_DISTANCE: f64 = 8.0;
 
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// The point orb `i` homes on this tick (`ExperienceOrb.followNearbyPlayer`):
     /// the nearest of `followed` within 8 blocks, unless the mods choose
     /// another player or none.

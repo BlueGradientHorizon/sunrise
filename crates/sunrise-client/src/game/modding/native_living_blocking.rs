@@ -3,7 +3,7 @@
 use super::{Game, shield::block_delay_passed};
 use mod_api::{EquipmentSlot, LivingRef, client::first_person::Hand};
 
-impl Game<'_> {
+impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `LivingEntity.isBlocking` (`getItemBlockingWith` is not null): the entity uses an item
     /// that blocks attacks, from either hand, and has used it for the component's block delay.
     /// False while it uses nothing or another item. None for armor stands, the dragon and a

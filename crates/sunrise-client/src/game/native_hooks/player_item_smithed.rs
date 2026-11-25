@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `PlayerEvent.ItemSmithedEvent`: a server player took `result` from a
     /// smithing table (`SmithingMenu.onTake`, or `onQuickCraft` for a
     /// shift-click): `player` is their UUID and `player_entity_id` their

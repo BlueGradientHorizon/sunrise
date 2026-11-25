@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// `CanContinueSleepingEvent`: a sleeping living entity's check that it may go on
     /// sleeping, run each tick for a server player the dead and health checks would not
     /// already wake, and for a sleeping villager or wandering trader. `entity` is its UUID,

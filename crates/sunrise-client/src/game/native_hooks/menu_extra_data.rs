@@ -2,7 +2,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl Game<'_> {
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Block `block` at `pos` opens its mod menu type `menu` for server
     /// player `player`: set `data` to hand the menu's screen bytes of your
     /// own (a machine's tier, mode or recipes), up to
