@@ -30,11 +30,6 @@ fetch() {
 path() { echo "$1" >> "$GITHUB_PATH"; export PATH="$1:$PATH"; }
 env_set() { echo "$1=$2" >> "$GITHUB_ENV"; }
 
-# The runner's environment may carry a shared CARGO_TARGET_DIR; a leg's programs, stage tool and mod tool are found under
-# the checkout's own target/ (BIN, --stage-tool), so every later step builds there.
-echo "cross build environment: RUSTC_WRAPPER=${RUSTC_WRAPPER:-} CARGO_TARGET_DIR before=${CARGO_TARGET_DIR:-}"
-env_set CARGO_TARGET_DIR "$PWD/target"
-
 # The pinned Rust (tools/ci/rust-version) and the target's standard library.
 if ! command -v rustup > /dev/null; then
   curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none

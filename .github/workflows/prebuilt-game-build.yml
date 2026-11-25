@@ -203,10 +203,12 @@ jobs:
           fi
       # The leg's assets, named for its target and side; the layout's number is in each identity (package_format).
       # The surface export runs the sunrise-stage that `build` compiled from this commit (target/prebuilt/tools).
+      # A cross leg did not find that tool where `build` left it (run 45672482328): it runs the tool from source, as pack does
+      # when given none (80 to 87 s).
       - name: Pack the SDK's assets
         run: >-
           python tools/prebuilt_game.py pack prebuilt dist
-          --stage-tool target/prebuilt/tools/release/sunrise-stage${{ runner.os == 'Windows' && '.exe' || '' }}
+          ${{ env.CROSS == 'on' && '' || format('--stage-tool target/prebuilt/tools/release/sunrise-stage{0}', runner.os == 'Windows' && '.exe' || '') }}
       # Build a native mod library on macOS against the SDK just built, using the release's
       # own `cargo sunrise-mod native-build` tool.
       - name: A native mod builds through the shipped route
