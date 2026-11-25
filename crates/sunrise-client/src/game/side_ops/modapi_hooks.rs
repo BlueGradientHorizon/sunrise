@@ -1,12 +1,9 @@
 use std::sync::Arc;
 
 use crate::game::Game;
-use mod_api::{
-    CreativeTabChange, CreativeTabEdit, CreativeTabEditError, CreativeTabList, PlayerRef,
-    SwimmingCheck,
-};
+use mod_api::{PlayerRef, SwimmingCheck};
 use sunrise_client::{chunk::Chunk, items::ItemStack};
-use sunrise_items::creative_catalog::Holders;
+use sunrise_items::creative_catalog::{Catalog, Holders};
 
 impl Game<'_> {
     pub(in crate::game) fn side_fire_pending_block_entity_loads(&mut self) {
@@ -25,27 +22,17 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn side_creative_tab_entries(
-        &self,
-        edit: CreativeTabEdit,
-        list: CreativeTabList,
-    ) -> Result<Vec<ItemStack>, CreativeTabEditError> {
+    pub(in crate::game) fn side_creative_catalog(&self) -> &Arc<Catalog> {
         if self.is_logical_server() {
-            self.server_creative_tab_entries(edit, list)
+            self.server_creative_catalog()
         } else {
-            self.client_creative_tab_entries(edit, list)
+            self.client_creative_catalog()
         }
     }
 
-    pub(in crate::game) fn side_creative_tab_change(
-        &self,
-        edit: CreativeTabEdit,
-        change: CreativeTabChange,
-    ) -> Result<(), CreativeTabEditError> {
-        if self.is_logical_server() {
-            self.server_creative_tab_change(edit, change)
-        } else {
-            self.client_creative_tab_change(edit, change)
+    pub(in crate::game) fn side_reset_creative_screen(&mut self) {
+        if !self.is_logical_server() {
+            self.client_reset_creative_screen();
         }
     }
 

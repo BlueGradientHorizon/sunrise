@@ -52,22 +52,8 @@ impl Game<'_> {
         self.registry_sync().map(|sync| sync.creative_holders())
     }
 
-    pub(in crate::game) fn server_creative_tab_entries(
-        &self,
-        edit: CreativeTabEdit,
-        list: CreativeTabList,
-    ) -> Result<Vec<ItemStack>, CreativeTabEditError> {
-        // Active CreativeCache still lives in ClientOnly until world exposes it to both sides.
-        self.client_creative_tab_entries(edit, list)
-    }
-
-    pub(in crate::game) fn server_creative_tab_change(
-        &self,
-        edit: CreativeTabEdit,
-        change: CreativeTabChange,
-    ) -> Result<(), CreativeTabEditError> {
-        // Active CreativeCache still lives in ClientOnly until world exposes it to both sides.
-        self.client_creative_tab_change(edit, change)
+    pub(in crate::game) fn server_creative_catalog(&self) -> &Arc<Catalog> {
+        &self.creative_catalog.0
     }
 }
 

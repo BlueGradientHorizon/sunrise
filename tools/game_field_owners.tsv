@@ -404,7 +404,7 @@ trial_spawner_tick_positions	Vec<sunrise_client::block_entities::Pos>	game	share
 loop_states	published_loops::LoopStates	game	shared (survey + review)	402	-	-
 creative_screen	Creative	game	drop-order (client): Creative retains Arc<Items> sharing Arc<GlobalLootModifiers> (mod Arc<dyn ModifierApply>); must precede reload_resources (577)	403	-	client_only
 creative_search_named	Option<u64>	client	client (survey; review=common from unpruned BFS, group=screens)	404	side	-
-creative_contents	native_hooks::CreativeCache	game	drop-order (client): CreativeCache retains Arc<Items> sharing Arc<GlobalLootModifiers> (mod Arc<dyn ModifierApply>); must precede reload_resources (577)	405	-	client_only
+creative_contents	native_hooks::CreativeCache	game	drop-order (shared): CreativeCache retains Arc<Items> sharing Arc<GlobalLootModifiers>; shared by both sides for build_creative_mode_tab_contents	405	-	-
 creative_ignore_text	bool	client	client (survey + review)	406	side	-
 control	Option<sunrise_client::control::Server>	game	shared (survey + review)	407	-	-
 agent_control_on	bool	client	client (survey + review)	408	side	-
@@ -615,3 +615,4 @@ effect_rng	sunrise_core::random::LegacyRandom	server	server (server effect pitch
 predicted_equipment_modifiers	Vec<(String, String)>	client	client predicted equipment attributes (distinct from server applied_modifiers)	613	side	-
 darkness_blend	(f32, f32)	client	client-only darkness effect fade blend (split from SculkState::darkness)	614	side	-
 item_features	sunrise_items::creative_catalog::ItemFeatureRequirements	game	shared (item feature requirements shared across server and client)	615	-	-
+creative_catalog	Arc<sunrise_items::creative_catalog::Catalog>	game	drop-order (server): server creative catalog handle (client reads creative_screen.catalog())	616	-	server_only

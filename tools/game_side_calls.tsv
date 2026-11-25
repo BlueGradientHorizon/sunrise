@@ -902,17 +902,9 @@ client	native_hooks_client::book_screen::lifecycle_tests_shared	impl mod_api::Me
 client	native_hooks_client::book_screen::open	impl Game<'_>	menu_opener_block	-	method	game	called
 client	native_hooks_client::book_screen::placement	impl Game<'_>	native_book_placement_catalog_matches	-	method	game	called
 client	native_hooks_client::book_screen::placement	impl Game<'_>	native_book_placement_window_matches	-	method	game	called
-client	native_hooks_client::build_creative_mode_tab_contents	impl Game<'_>	built_creative_tabs	-	method	generated	called
+client	native_hooks_client::build_creative_mode_tab_contents	impl Game<'_>	client_creative_catalog	-	method	game	called
 client	native_hooks_client::build_creative_mode_tab_contents	impl Game<'_>	client_creative_holders	-	method	game	called
-client	native_hooks_client::build_creative_mode_tab_contents	impl Game<'_>	client_creative_tab_change	-	method	game	called
-client	native_hooks_client::build_creative_mode_tab_contents	impl Game<'_>	client_creative_tab_entries	-	method	game	called
-client	native_hooks_client::build_creative_mode_tab_contents	impl Game<'_>	creative_search_items	-	method	generated	called
-client	native_hooks_client::build_creative_mode_tab_contents	impl Game<'_>	creative_stack_key	-	method	generated	called
-client	native_hooks_client::build_creative_mode_tab_contents	impl Game<'_>	creative_tab_insert	-	method	game	called
-client	native_hooks_client::build_creative_mode_tab_contents	impl Game<'_>	creative_tab_remove	-	method	game	called
-client	native_hooks_client::build_creative_mode_tab_contents	impl Game<'_>	creative_tabs	-	method	generated	called
-client	native_hooks_client::build_creative_mode_tab_contents	impl Game<'_>	edit_creative	-	method	game	called
-client	native_hooks_client::build_creative_mode_tab_contents	impl Game<'_>	reset_creative_contents	-	method	server,game	called
+client	native_hooks_client::build_creative_mode_tab_contents	impl Game<'_>	client_reset_creative_screen	-	method	game	called
 client	native_hooks_client::camera_read	impl Game<'_>	activate_projection_frame	-	method	game	called
 client	native_hooks_client::camera_read	impl Game<'_>	camera	-	method	generated	called
 client	native_hooks_client::camera_read	impl Game<'_>	camera_entity	-	method	generated	called
@@ -4737,9 +4729,8 @@ server	native_hooks_server::block_entity_tick::tick_tests	-	with_ticker_mods	#[c
 server	native_hooks_server::block_entity_tick::tick_tests	impl BlockEntityPart for Effects	-	#[cfg(test)]	trait_impl	-	trait-impl
 server	native_hooks_server::block_entity_tick::tick_tests	impl BlockPart for Effects	-	#[cfg(test)]	trait_impl	-	trait-impl
 server	native_hooks_server::block_entity_tick::tick_tests	impl Hooks for Effects	-	#[cfg(test)]	trait_impl	-	trait-impl
+server	native_hooks_server::build_creative_mode_tab_contents	impl Game<'_>	server_creative_catalog	-	method	game	called
 server	native_hooks_server::build_creative_mode_tab_contents	impl Game<'_>	server_creative_holders	-	method	game	called
-server	native_hooks_server::build_creative_mode_tab_contents	impl Game<'_>	server_creative_tab_change	-	method	game	called
-server	native_hooks_server::build_creative_mode_tab_contents	impl Game<'_>	server_creative_tab_entries	-	method	game	called
 server	native_hooks_server::build_creative_mode_tab_contents::tests	-	install_dedicated_holders	#[cfg(test)]	fn	test	called
 server	native_hooks_server::can_start_swimming	impl Game<'_>	server_ask_swim_eligibility	-	method	game	called
 server	native_hooks_server::client_information_updated	impl Game<'_>	announce_login	-	method	test	rehomed

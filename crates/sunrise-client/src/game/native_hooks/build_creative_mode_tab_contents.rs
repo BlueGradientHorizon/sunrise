@@ -96,7 +96,7 @@ impl Game<'_> {
         edit: CreativeTabEdit,
         list: CreativeTabList,
     ) -> Result<Vec<ItemStack>, CreativeTabEditError> {
-        self.side_creative_tab_entries(edit, list)
+        self.edit_creative(edit, |contents, _| Ok(list_items(contents, list).clone()))
     }
 
     pub(in crate::game) fn creative_tab_change(
@@ -104,7 +104,267 @@ impl Game<'_> {
         edit: CreativeTabEdit,
         change: CreativeTabChange,
     ) -> Result<(), CreativeTabEditError> {
-        self.side_creative_tab_change(edit, change)
+        match change {
+            CreativeTabChange::Insert {
+                placement,
+                stack,
+                visibility,
+            } => self.creative_tab_insert(edit, placement, stack, visibility),
+            CreativeTabChange::Remove { stack, visibility } => {
+                self.creative_tab_remove(edit, &stack, visibility)
+            }
+        }
+    }
+
+    pub(in crate::game) fn creative_tab_insert(
+        &self,
+        edit: CreativeTabEdit,
+        placement: CreativeTabPlacement,
+        stack: mod_api::ItemStack,
+        visibility: CreativeTabVisibility,
+    ) -> Result<(), CreativeTabEditError> {
+        self.edit_creative(edit, |contents, items| {
+            if stack.count() != 1 {
+                return Err(CreativeTabEditError::Count);
+            }
+            let mut stack = stack.try_into_engine(items)?;
+            normalize_components(&mut stack, items);
+            let (anchor, after) = match &placement {
+                CreativeTabPlacement::Before(anchor) => {
+                    (Some(comparison_key(stack_value(anchor)?, items)?), false)
+                }
+                CreativeTabPlacement::After(anchor) => {
+                    (Some(comparison_key(stack_value(anchor)?, items)?), true)
+                }
+                _ => (None, false),
+            };
+            for list in target_lists(visibility) {
+                let entries = list_items(contents, *list);
+                if entries
+                    .iter()
+                    .any(|entry| entry.same_item_same_components(&stack))
+                {
+                    return Err(CreativeTabEditError::Duplicate(*list));
+                }
+                let index = match &anchor {
+                    Some(anchor) => {
+                        entries
+                            .iter()
+                            .position(|entry| entry.same_item_same_components(anchor))
+                            .ok_or(CreativeTabEditError::MissingAnchor(*list))?
+                            + usize::from(after)
+                    }
+                    None if matches!(placement, CreativeTabPlacement::First) => 0,
+                    None => entries.len(),
+                };
+                entries.insert(index, stack.clone());
+            }
+            Ok(())
+        })
+    }
+
+    pub(in crate::game) fn creative_tab_remove(
+        &self,
+        edit: CreativeTabEdit,
+        stack: &mod_api::ItemStack,
+        visibility: CreativeTabVisibility,
+    ) -> Result<(), CreativeTabEditError> {
+        self.edit_creative(edit, |contents, items| {
+            let stack = comparison_key(stack_value(stack)?, items)?;
+            for list in target_lists(visibility) {
+                list_items(contents, *list)
+                    .retain(|entry| !entry.same_item_same_components(&stack));
+            }
+            Ok(())
+        })
+    }
+
+    pub(in crate::game) fn build_creative(
+        &mut self,
+        permissions: CreativeTabPermissions,
+    ) -> Result<Contents, CreativeTabReadError> {
+        // A connection may exist in configuration without a live world provider.
+        if self.native_lifecycle.epoch().is_none() {
+            return Err(CreativeTabReadError::Unavailable);
+        }
+        let key = BuildKey {
+            features: self.enabled_feature_ids().clone(),
+            permissions,
+        };
+        if let Some(active) = &self.creative_contents.active {
+            if active.key.matches(&key) {
+                return Ok(active.partial.clone());
+            }
+            return Err(CreativeTabReadError::Reentrant);
+        }
+        if let Some(published) = &self.creative_contents.published
+            && published.key.matches(&key)
+        {
+            return Ok(published.lists.clone());
+        }
+        let holders = self
+            .side_creative_holders()
+            .ok_or(CreativeTabReadError::Unavailable)?;
+        let items = self.shared_items();
+        let catalog = self.side_creative_catalog().clone();
+        let prior = self
+            .creative_contents
+            .published
+            .as_ref()
+            .map(|p| p.lists.clone());
+        let listen = mod_api::__private::listened(mod_api::HookId::BuildCreativeModeTabContents);
+        self.creative_contents.active = Some(ActiveBuild {
+            key: BuildKey {
+                features: key.features.clone(),
+                permissions,
+            },
+            partial: Arc::from([]),
+            items: items.clone(),
+            edit: RefCell::new(None),
+        });
+        let lists = catalog.build(
+            Parameters {
+                features: &key.features,
+                operator: permissions == CreativeTabPermissions::Operator,
+                holders: &holders,
+                items: &items,
+            },
+            prior.as_deref(),
+            |tab, partial, current| {
+                if listen {
+                    static NEXT_EDIT: AtomicU64 = AtomicU64::new(0);
+                    let token = mod_api::__private::creative_tab_edit(
+                        NEXT_EDIT.fetch_add(1, Ordering::Relaxed),
+                    );
+                    let active = self
+                        .creative_contents
+                        .active
+                        .as_mut()
+                        .expect("active creative build");
+                    active.partial = Arc::from(partial);
+                    *active.edit.get_mut() = Some(EditSession {
+                        token,
+                        contents: std::mem::take(current),
+                    });
+                    self.native_build_creative_mode_tab_contents(
+                        &tab.id,
+                        key.features.to_vec(),
+                        permissions,
+                        token,
+                    );
+                    *current = self
+                        .creative_contents
+                        .active
+                        .as_mut()
+                        .expect("active creative build")
+                        .edit
+                        .get_mut()
+                        .take()
+                        .expect("active tab edit")
+                        .contents;
+                }
+            },
+        );
+        self.creative_contents.active = None;
+        self.creative_contents.published = Some(Published {
+            key,
+            lists: lists.clone(),
+            api: OnceCell::new(),
+            holders: Arc::new(holders),
+            items,
+        });
+        Ok(lists)
+    }
+
+    /// The last completed build's catalog, for a reader that cannot build: unavailable outside
+    /// a live world's phase, and `None` before the side has built once.
+    pub(in crate::game) fn built_creative_tabs(
+        &self,
+    ) -> Result<Option<Arc<CreativeModeTabs>>, CreativeTabReadError> {
+        if self.native_lifecycle.epoch().is_none() {
+            return Err(CreativeTabReadError::Unavailable);
+        }
+        Ok(self.creative_contents.published.as_ref().map(|published| {
+            published
+                .api
+                .get_or_init(|| {
+                    snapshot(
+                        self.side_creative_catalog(),
+                        published.key.permissions,
+                        &published.lists,
+                    )
+                })
+                .clone()
+        }))
+    }
+
+    /// The search tab's canonical display list (not the client-only UI additions).
+    pub(in crate::game) fn creative_search_items(&mut self) -> Vec<ItemStack> {
+        if self.native_lifecycle.epoch().is_none() {
+            return Vec::new();
+        }
+        let Ok(lists) = self.build_creative(self.creative_permissions()) else {
+            return Vec::new();
+        };
+        self.side_creative_catalog().search_display(&lists).to_vec()
+    }
+
+    pub(in crate::game) fn creative_stack_key(&self, stack: &ItemStack) -> Option<ItemStack> {
+        self.native_lifecycle.epoch()?;
+        // Use the very same prototypes as the generator during a reentrant read.
+        let items = self
+            .creative_contents
+            .active
+            .as_ref()
+            .map_or_else(|| self.items(), |active| &active.items);
+        comparison_key(stack.clone(), items).ok()
+    }
+
+    pub(in crate::game) fn creative_tabs(
+        &mut self,
+        permissions: CreativeTabPermissions,
+    ) -> Result<Arc<CreativeModeTabs>, CreativeTabReadError> {
+        if self.native_lifecycle.epoch().is_none() {
+            return Err(CreativeTabReadError::Unavailable);
+        }
+        let lists = self.build_creative(permissions)?;
+        let catalog = self.side_creative_catalog();
+        if self.creative_contents.active.is_some() {
+            return Ok(snapshot(catalog, permissions, &lists));
+        }
+        let published = self
+            .creative_contents
+            .published
+            .as_ref()
+            .expect("complete creative build");
+        Ok(published
+            .api
+            .get_or_init(|| snapshot(catalog, permissions, &lists))
+            .clone())
+    }
+
+    pub(in crate::game) fn edit_creative<T>(
+        &self,
+        edit: CreativeTabEdit,
+        apply: impl FnOnce(&mut TabContents, &Items) -> Result<T, CreativeTabEditError>,
+    ) -> Result<T, CreativeTabEditError> {
+        let Some(active) = &self.creative_contents.active else {
+            return Err(CreativeTabEditError::Stale);
+        };
+        let mut session = active
+            .edit
+            .try_borrow_mut()
+            .map_err(|_| CreativeTabEditError::Stale)?;
+        let session = session
+            .as_mut()
+            .filter(|s| s.token == edit)
+            .ok_or(CreativeTabEditError::Stale)?;
+        apply(&mut session.contents, &active.items)
+    }
+
+    pub(in crate::game) fn reset_creative_contents(&mut self) {
+        self.creative_contents = CreativeCache::default();
+        self.side_reset_creative_screen();
     }
 }
 

@@ -222,7 +222,7 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
             game.native_lifecycle.begin_close();
             game.native_lifecycle_world_closed();
             assert!(game.native_lifecycle.epoch().is_none());
-            assert!(game.creative_contents.0.published.is_some());
+            assert!(game.creative_contents.published.is_some());
             let host: &dyn mod_api::Host = game;
             assert_eq!(
                 host.built_creative_tabs(),
