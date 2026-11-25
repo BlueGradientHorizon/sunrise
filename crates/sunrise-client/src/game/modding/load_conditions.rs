@@ -2,9 +2,9 @@
 use super::Game;
 use mod_api::__private::game::{
     CallbackOwner, DatapackCandidateBuilder, RegistrationContextNew, datapack_entry_id,
-    datapack_registry_directory, decode_datapack_entry, decode_datapack_entry_with_decoder,
-    valid_namespaced,
+    datapack_registry_directory, decode_datapack_entry, valid_namespaced,
 };
+use mod_api::__private::{NoVanillaValueDecoder, VanillaValueDecoder};
 use mod_api::{
     DatapackCandidate, DatapackDecodeError, DatapackLoadReason, DatapackRegistryDeclaration,
 };
@@ -107,8 +107,15 @@ impl Game<'_> {
         let files = sunrise_client::datapack::registry_files(&packs, &keys)
             .map_err(|error| format_datapack_error(&error))?;
         if !mod_api::__private::declarations_use_vanilla_values(declarations) {
-            return admit_datapack_registries(root, overlay, view, declarations, &files)
-                .map(|candidate| Some((candidate, None)));
+            return admit_datapack_registries(
+                root,
+                overlay,
+                view,
+                declarations,
+                &files,
+                &mut NoVanillaValueDecoder,
+            )
+            .map(|candidate| Some((candidate, None)));
         }
         let biome_tags = sunrise_client::items::load_tags(root, "worldgen/biome", inputs.tag_files)
             .map_err(|error| format!("datapack vanilla value biome tags: {error}"))?;
@@ -127,14 +134,8 @@ impl Game<'_> {
             catalog,
         )
         .map_err(|error| format!("datapack vanilla value decoder: {error}"))?;
-        let candidate = admit_datapack_registries_with_decoder(
-            root,
-            overlay,
-            view,
-            declarations,
-            &files,
-            Some(&mut decoder),
-        )?;
+        let candidate =
+            admit_datapack_registries(root, overlay, view, declarations, &files, &mut decoder)?;
         Ok(Some((candidate, Some(decoder.finish()))))
     }
 }
@@ -181,17 +182,7 @@ fn admit_datapack_registries(
     view: &mut RegistryView,
     declarations: &[DatapackRegistryDeclaration],
     files: &RegistryFiles,
-) -> Result<DatapackCandidate, String> {
-    admit_datapack_registries_with_decoder(root, overlay, view, declarations, files, None)
-}
-
-fn admit_datapack_registries_with_decoder(
-    root: &Path,
-    overlay: &PackOverlay<'_>,
-    view: &mut RegistryView,
-    declarations: &[DatapackRegistryDeclaration],
-    files: &RegistryFiles,
-    mut decoder: Option<&mut dyn mod_api::__private::VanillaValueDecoder>,
+    decoder: &mut dyn VanillaValueDecoder,
 ) -> Result<DatapackCandidate, String> {
     use DatapackLoadReason::{Decode, InvalidEntryId, NotUtf8};
     let base = overlay.conditions;
@@ -279,13 +270,9 @@ fn admit_datapack_registries_with_decoder(
                         return true;
                     }
                     Ok(ConditionProgress::Complete(false)) => return false,
-                    Ok(ConditionProgress::Complete(true)) => match decoder.as_deref_mut() {
-                        Some(decoder) => {
-                            decode_datapack_entry_with_decoder(declaration, text, decoder)
-                        }
-                        None => decode_datapack_entry(declaration, text),
+                    Ok(ConditionProgress::Complete(true)) => {
+                        decode_datapack_entry(declaration, text, &mut *decoder).map_err(Decode)
                     }
-                    .map_err(Decode),
                     Err(error) => Err(malformed(error)),
                 };
                 match decoded {

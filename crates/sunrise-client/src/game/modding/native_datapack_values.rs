@@ -103,7 +103,7 @@ impl DatapackVanillaValues {
     }
 }
 
-/// Decodes vanilla codec JSON during `DatapackCandidate::build_with_decoder` or client snapshot
+/// Decodes vanilla codec JSON during `DatapackCandidate::build` or client snapshot
 /// re-binding, accumulating live objects into one [`DatapackVanillaValues`] table.
 pub(in crate::game) struct VanillaValueTableBuilder<'a> {
     generation: u64,
@@ -1980,7 +1980,7 @@ mod tests {
                             Ok(HolderSetValue::from_raw(99, 0))
                         }
                     }
-                    let bad_candidate = mod_api::__private::build_datapack_candidate_with_decoder(
+                    let bad_candidate = mod_api::DatapackCandidate::build(
                         declarations,
                         &bad_files,
                         &mut AcceptAllVanilla,
@@ -2124,13 +2124,12 @@ mod tests {
                             .into_bytes(),
                         )],
                     )];
-                    let named_candidate =
-                        mod_api::__private::build_datapack_candidate_with_decoder(
-                            declarations,
-                            &named_files,
-                            &mut AcceptAllVanilla,
-                        )
-                        .unwrap();
+                    let named_candidate = mod_api::DatapackCandidate::build(
+                        declarations,
+                        &named_files,
+                        &mut AcceptAllVanilla,
+                    )
+                    .unwrap();
                     let named_set = mod_api::DatapackRegistrySet::from_candidate(named_candidate);
                     let named_bytes = named_set
                         .snapshot_for(declarations, &offered)

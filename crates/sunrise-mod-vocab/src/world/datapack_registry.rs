@@ -169,6 +169,40 @@ impl crate::NoBackend for DatapackValueError {
     }
 }
 
+/// The engine-bound plumbing every vanilla value handle shares: the unbound handle, its
+/// construction from a load generation and slot, and the two reads.
+macro_rules! vanilla_value_handle {
+    ($handle:ident) => {
+        impl $handle {
+            pub(crate) const UNBOUND: Self = Self {
+                generation: 0,
+                index: 0,
+            };
+
+            /// Construct a handle for the engine's active decoded table.
+            // hidden: only the engine constructs bound handles for its decoded vanilla value table.
+            #[doc(hidden)]
+            pub const fn from_raw(generation: u64, index: u32) -> Self {
+                Self { generation, index }
+            }
+
+            /// The load generation this handle belongs to (`0` when unbound).
+            // hidden: only the engine checks a handle's load generation against its active table.
+            #[doc(hidden)]
+            pub const fn generation(self) -> u64 {
+                self.generation
+            }
+
+            /// The slot index within the load's decoded table.
+            // hidden: only the engine indexes its decoded vanilla value table by slot.
+            #[doc(hidden)]
+            pub const fn index(self) -> u32 {
+                self.index
+            }
+        }
+    };
+}
+
 /// An opaque handle to a decoded vanilla `IntProvider` (`IntProviders.codec(min, max)`) from one
 /// datapack load.
 ///
@@ -182,33 +216,9 @@ pub struct IntProviderValue {
     index: u32,
 }
 
+vanilla_value_handle!(IntProviderValue);
+
 impl IntProviderValue {
-    pub(crate) const UNBOUND: Self = Self {
-        generation: 0,
-        index: 0,
-    };
-
-    /// Construct a handle for the engine's active decoded table.
-    // hidden: only the engine constructs bound handles for its decoded vanilla value table.
-    #[doc(hidden)]
-    pub const fn from_raw(generation: u64, index: u32) -> Self {
-        Self { generation, index }
-    }
-
-    /// The load generation this handle belongs to (`0` when unbound).
-    // hidden: only the engine checks a handle's load generation against its active table.
-    #[doc(hidden)]
-    pub const fn generation(self) -> u64 {
-        self.generation
-    }
-
-    /// The slot index within the load's decoded table.
-    // hidden: only the engine indexes its decoded vanilla value table by slot.
-    #[doc(hidden)]
-    pub const fn index(self) -> u32 {
-        self.index
-    }
-
     /// Sample one integer from this provider using `random`, in vanilla's draw order
     /// (`IntProvider.sample(RandomSource)`). Works on both sides where the registry syncs.
     pub fn sample(
@@ -235,33 +245,9 @@ pub struct BlockStateProviderValue {
     index: u32,
 }
 
+vanilla_value_handle!(BlockStateProviderValue);
+
 impl BlockStateProviderValue {
-    pub(crate) const UNBOUND: Self = Self {
-        generation: 0,
-        index: 0,
-    };
-
-    /// Construct a handle for the engine's active decoded table.
-    // hidden: only the engine constructs bound handles for its decoded vanilla value table.
-    #[doc(hidden)]
-    pub const fn from_raw(generation: u64, index: u32) -> Self {
-        Self { generation, index }
-    }
-
-    /// The load generation this handle belongs to (`0` when unbound).
-    // hidden: only the engine checks a handle's load generation against its active table.
-    #[doc(hidden)]
-    pub const fn generation(self) -> u64 {
-        self.generation
-    }
-
-    /// The slot index within the load's decoded table.
-    // hidden: only the engine indexes its decoded vanilla value table by slot.
-    #[doc(hidden)]
-    pub const fn index(self) -> u32 {
-        self.index
-    }
-
     /// Evaluate this provider at `pos` in `level` using `random`
     /// (`BlockStateProvider.getState(LevelAccessor, RandomSource, BlockPos)`). Works on both
     /// sides where the registry syncs.
@@ -291,33 +277,9 @@ pub struct BlockPredicateValue {
     index: u32,
 }
 
+vanilla_value_handle!(BlockPredicateValue);
+
 impl BlockPredicateValue {
-    pub(crate) const UNBOUND: Self = Self {
-        generation: 0,
-        index: 0,
-    };
-
-    /// Construct a handle for the engine's active decoded table.
-    // hidden: only the engine constructs bound handles for its decoded vanilla value table.
-    #[doc(hidden)]
-    pub const fn from_raw(generation: u64, index: u32) -> Self {
-        Self { generation, index }
-    }
-
-    /// The load generation this handle belongs to (`0` when unbound).
-    // hidden: only the engine checks a handle's load generation against its active table.
-    #[doc(hidden)]
-    pub const fn generation(self) -> u64 {
-        self.generation
-    }
-
-    /// The slot index within the load's decoded table.
-    // hidden: only the engine indexes its decoded vanilla value table by slot.
-    #[doc(hidden)]
-    pub const fn index(self) -> u32 {
-        self.index
-    }
-
     /// Test this predicate at `pos` in `level` (`BlockPredicate.test(WorldGenLevel, BlockPos)`).
     /// Works on both sides where the registry syncs.
     pub fn test(
@@ -345,33 +307,9 @@ pub struct HolderSetValue {
     index: u32,
 }
 
+vanilla_value_handle!(HolderSetValue);
+
 impl HolderSetValue {
-    pub(crate) const UNBOUND: Self = Self {
-        generation: 0,
-        index: 0,
-    };
-
-    /// Construct a handle for the engine's active decoded table.
-    // hidden: only the engine constructs bound handles for its decoded vanilla value table.
-    #[doc(hidden)]
-    pub const fn from_raw(generation: u64, index: u32) -> Self {
-        Self { generation, index }
-    }
-
-    /// The load generation this handle belongs to (`0` when unbound).
-    // hidden: only the engine checks a handle's load generation against its active table.
-    #[doc(hidden)]
-    pub const fn generation(self) -> u64 {
-        self.generation
-    }
-
-    /// The slot index within the load's decoded table.
-    // hidden: only the engine indexes its decoded vanilla value table by slot.
-    #[doc(hidden)]
-    pub const fn index(self) -> u32 {
-        self.index
-    }
-
     /// Whether `block` is a member of this block holder set (`HolderSet.contains`). Works on both
     /// sides where the registry syncs.
     pub fn contains(
@@ -386,7 +324,7 @@ impl HolderSetValue {
 }
 
 /// Engine-supplied decoder for vanilla datapack value kinds, exported through `__private`
-/// for `build_datapack_candidate_with_decoder` and `rebind_datapack_vanilla_values`.
+/// for `DatapackCandidate::build` and `rebind_datapack_vanilla_values`.
 pub trait VanillaValueDecoder {
     /// Decode `IntProviders.codec(min, max)`.
     fn decode_int_provider(
@@ -406,7 +344,8 @@ pub trait VanillaValueDecoder {
     fn decode_holder_set(&mut self, registry: &str, json: &str) -> Result<HolderSetValue, String>;
 }
 
-pub(super) struct NoVanillaValueDecoder;
+/// A decoder for schemas with no vanilla value kind: every decode is refused.
+pub struct NoVanillaValueDecoder;
 impl VanillaValueDecoder for NoVanillaValueDecoder {
     fn decode_int_provider(&mut self, _: &str, _: i32, _: i32) -> Result<IntProviderValue, String> {
         Err("vanilla value kinds require an engine decoder".into())
@@ -1630,16 +1569,10 @@ impl<'de> serde::Deserialize<'de> for Json {
 }
 
 /// Decode a resource whose load conditions have already passed, following
-/// ConditionalDecoder: unwrap `neoforge:value` or hide the outer conditions key.
+/// ConditionalDecoder: unwrap `neoforge:value` or hide the outer conditions key. `decoder` is
+/// the engine's decoder for vanilla value kinds ([`NoVanillaValueDecoder`] when the schema has
+/// none).
 pub fn decode_datapack_entry(
-    declaration: &DatapackRegistryDeclaration,
-    text: &str,
-) -> Result<DatapackEntry, DatapackDecodeError> {
-    decode_datapack_entry_with_decoder(declaration, text, &mut NoVanillaValueDecoder)
-}
-
-/// [`decode_datapack_entry`] with the engine's decoder for vanilla value kinds.
-pub fn decode_datapack_entry_with_decoder(
     declaration: &DatapackRegistryDeclaration,
     text: &str,
     decoder: &mut dyn VanillaValueDecoder,
@@ -2071,9 +2004,13 @@ pub(crate) mod tests {
         };
         let wrapped = json!({"neoforge:conditions":[{"type":"neoforge:always"}]});
         assert_eq!(
-            decode_datapack_entry(&declaration, &wrapped.to_string())
-                .unwrap()
-                .get("neoforge:conditions"),
+            decode_datapack_entry(
+                &declaration,
+                &wrapped.to_string(),
+                &mut NoVanillaValueDecoder
+            )
+            .unwrap()
+            .get("neoforge:conditions"),
             Some(&DatapackValue::Bool(false))
         );
 
@@ -2494,6 +2431,7 @@ pub(crate) mod tests {
         let entry = decode_datapack_entry(
             &decl,
             r#"{"neoforge:conditions": [], "tiers": {"z": {"data_per_kill": 1}, "a": {"data_per_kill": 2}}}"#,
+            &mut NoVanillaValueDecoder,
         ).unwrap();
         let keys: Vec<_> = entry
             .get("tiers")
@@ -2518,9 +2456,12 @@ pub(crate) mod tests {
             DatapackFieldKind::Bool,
             DatapackValue::Bool(true),
         ));
-        let entry =
-            decode_datapack_entry(&overlapping, r#"{"neoforge:conditions": [], "tiers": {}}"#)
-                .unwrap();
+        let entry = decode_datapack_entry(
+            &overlapping,
+            r#"{"neoforge:conditions": [], "tiers": {}}"#,
+            &mut NoVanillaValueDecoder,
+        )
+        .unwrap();
         assert_eq!(
             entry.get("neoforge:conditions"),
             Some(&DatapackValue::Bool(true))
@@ -3121,7 +3062,7 @@ pub(crate) mod tests {
         assert_eq!(check_schema(&schema.fields), Ok(()));
         let mut decoder = StubDecoder::new(7);
         // UBM cactus.json shape (uniform IntProvider, weighted BlockStateProvider, defaulted BlockPredicate).
-        let cactus = decode_datapack_entry_with_decoder(
+        let cactus = decode_datapack_entry(
             &schema,
             r#"{
                     "behavior": {
@@ -3168,7 +3109,7 @@ pub(crate) mod tests {
         assert_ne!(can_grow_into.index(), predicate.index());
 
         // UBM dirt.json shape (block HolderSet list).
-        let dirt = decode_datapack_entry_with_decoder(
+        let dirt = decode_datapack_entry(
             &schema,
             r#"{
                     "behavior": {
@@ -3190,7 +3131,7 @@ pub(crate) mod tests {
 
         // Bad value for each kind reports its full nested path.
         assert_eq!(
-            decode_datapack_entry_with_decoder(
+            decode_datapack_entry(
                 &schema,
                 r#"{"behavior":{"type":"universalbonemeal:growing_plant","blocks_to_grow":999,"vegetation":{"id":"minecraft:cactus"}}}"#,
                 &mut StubDecoder::new(1),
@@ -3202,7 +3143,7 @@ pub(crate) mod tests {
             }
         );
         assert_eq!(
-            decode_datapack_entry_with_decoder(
+            decode_datapack_entry(
                 &schema,
                 r#"{"behavior":{"type":"universalbonemeal:growing_plant","blocks_to_grow":1,"vegetation":{"id":"bad"}}}"#,
                 &mut StubDecoder::rejecting("bad"),
@@ -3214,7 +3155,7 @@ pub(crate) mod tests {
             }
         );
         assert_eq!(
-            decode_datapack_entry_with_decoder(
+            decode_datapack_entry(
                 &schema,
                 r#"{"behavior":{"type":"universalbonemeal:neighbor_conversion","spread_sources":"minecraft:dirt"},"predicate":{"type":"bad"}}"#,
                 &mut StubDecoder::rejecting("bad"),
@@ -3226,7 +3167,7 @@ pub(crate) mod tests {
             }
         );
         assert_eq!(
-            decode_datapack_entry_with_decoder(
+            decode_datapack_entry(
                 &schema,
                 r##"{"behavior":{"type":"universalbonemeal:neighbor_conversion","spread_sources":"#bad:tag"}}"##,
                 &mut StubDecoder::rejecting("#bad:tag"),
@@ -3253,8 +3194,7 @@ pub(crate) mod tests {
             )],
         )];
         let candidate =
-            DatapackCandidate::build_with_decoder(declarations, &files, &mut StubDecoder::new(11))
-                .unwrap();
+            DatapackCandidate::build(declarations, &files, &mut StubDecoder::new(11)).unwrap();
         let server = DatapackRegistrySet::from_candidate(candidate);
         assert_eq!(
             server
@@ -3315,8 +3255,9 @@ pub(crate) mod tests {
         );
         // Invalid vanilla value on client re-bind fails atomically as InvalidEntry.
         assert_eq!(
-            decoded_snapshot
-                .candidate_with_decoder(declarations, &mut StubDecoder::rejecting("mycelium"))
+            wire_set
+                .rebind_vanilla_values(declarations, &mut StubDecoder::rejecting("mycelium"))
+                .map(|_| ())
                 .unwrap_err(),
             DatapackSnapshotError::InvalidEntry {
                 registry: "universalbonemeal:bone_meal_behavior".into(),

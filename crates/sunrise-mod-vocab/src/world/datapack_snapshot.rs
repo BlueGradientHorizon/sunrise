@@ -3,7 +3,7 @@
 //! registries a peer gets and carrying the bytes are the game's.
 use super::datapack_registry::{
     DatapackEntry, DatapackField, DatapackRegistryDeclaration, DatapackRegistrySync, DatapackValue,
-    VanillaValueDecoder, bind_vanilla_values, unbind_vanilla_values, valid_namespaced,
+    unbind_vanilla_values, valid_namespaced,
 };
 use super::datapack_registry_set::{
     DatapackCandidate, DatapackLoadError, DatapackRegistrySet, resolve_references,
@@ -238,25 +238,6 @@ impl DatapackSnapshot {
         &self,
         declarations: &[DatapackRegistryDeclaration],
     ) -> Result<DatapackCandidate, DatapackSnapshotError> {
-        self.candidate_inner(declarations, None)
-    }
-
-    /// [`Self::candidate`] with the engine's decoder for vanilla value kinds: re-decodes every
-    /// vanilla value from its JSON into `decoder`'s table and refuses the snapshot if any fails.
-    #[cfg(test)]
-    pub(super) fn candidate_with_decoder(
-        &self,
-        declarations: &[DatapackRegistryDeclaration],
-        decoder: &mut dyn VanillaValueDecoder,
-    ) -> Result<DatapackCandidate, DatapackSnapshotError> {
-        self.candidate_inner(declarations, Some(decoder))
-    }
-
-    fn candidate_inner(
-        &self,
-        declarations: &[DatapackRegistryDeclaration],
-        mut decoder: Option<&mut dyn VanillaValueDecoder>,
-    ) -> Result<DatapackCandidate, DatapackSnapshotError> {
         let mut registries: BTreeMap<String, BTreeMap<String, DatapackEntry>> = declarations
             .iter()
             .map(|declaration| (declaration.key.clone(), BTreeMap::new()))
@@ -298,12 +279,8 @@ impl DatapackSnapshot {
                     .map(|field| field.name.clone())
                     .zip(entry.values.iter().cloned())
                     .collect();
-                for (field, (_, value)) in declaration.fields.iter().zip(values.iter_mut()) {
+                for (_, value) in &mut values {
                     unbind_vanilla_values(value);
-                    if let Some(decoder) = decoder.as_deref_mut() {
-                        bind_vanilla_values(&field.kind, value, &field.name, decoder)
-                            .map_err(|_| invalid())?;
-                    }
                 }
                 if entries
                     .insert(entry.id.clone(), DatapackEntry { values })
@@ -339,7 +316,7 @@ impl DatapackSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::world::datapack_registry::DatapackFieldKind;
+    use crate::world::datapack_registry::{DatapackFieldKind, NoVanillaValueDecoder};
 
     fn spell(sync: DatapackRegistrySync) -> DatapackRegistryDeclaration {
         DatapackRegistryDeclaration {
@@ -373,8 +350,12 @@ mod tests {
                 )],
             ),
         ];
-        let mut candidate =
-            DatapackCandidate::build(std::slice::from_ref(declaration), &files).unwrap();
+        let mut candidate = DatapackCandidate::build(
+            std::slice::from_ref(declaration),
+            &files,
+            &mut NoVanillaValueDecoder,
+        )
+        .unwrap();
         candidate
             .bind_tags(
                 "example:spell",
@@ -463,6 +444,7 @@ mod tests {
                     "data/addon/example/spell/fire.json".to_owned(),
                     vec![("pack".to_owned(), br#"{"power": 9}"#.to_vec())],
                 )],
+                &mut NoVanillaValueDecoder,
             )
             .unwrap(),
         );
@@ -869,7 +851,8 @@ mod tests {
                             .to_vec(),
                     )],
                 )],
-            )
+&mut NoVanillaValueDecoder,
+)
             .unwrap(),
         );
         let snapshot = server.snapshot(std::slice::from_ref(&declaration), |_| true);
