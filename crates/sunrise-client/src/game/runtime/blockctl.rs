@@ -90,6 +90,9 @@ impl Game<'_> {
             self.send_signed_chat_input(&format!("/{}", words.join(" ")));
             return Ok(Some(json!({ "ok": true, "sent": true })));
         }
+        if !self.is_logical_server() && matches!(words.first(), Some(&("setblock" | "fill"))) {
+            return Err("cannot modify blocks without a world connection".into());
+        }
         let int = |i: usize| -> Result<i32> {
             Ok(words
                 .get(i)

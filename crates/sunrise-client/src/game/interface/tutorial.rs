@@ -94,6 +94,7 @@ impl super::Game<'_> {
     pub(in crate::game::client_side) fn tick_tutorial(&mut self) {
         use sunrise_client::actions::Action;
         if self.title.0.is_some()
+            || self.remote.is_none()
             || self.player.is_none()
             || self.options.dedicated.is_some()
             || self.serving.is_some()

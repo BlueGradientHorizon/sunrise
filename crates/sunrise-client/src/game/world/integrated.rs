@@ -460,10 +460,9 @@ impl Game<'_> {
         server.queue_pregen_option(enabled);
     }
 
-    /// `Minecraft.hasSingleplayerServer`: a world of this window's own, run
-    /// in the frame or on its server thread.
+    /// `Minecraft.hasSingleplayerServer`: a world of this window's own, run on its integrated server.
     pub(in crate::game) fn has_singleplayer_server(&self) -> bool {
-        self.remote.is_none() || self.integrated.is_some()
+        self.integrated.is_some()
     }
     /// `Minecraft.isMultiplayerServer`: on another's server, or a world of one's own open to the
     /// network.
@@ -472,11 +471,13 @@ impl Game<'_> {
     }
     /// `IntegratedServer.isPublished`: the world is open to the network.
     pub(in crate::game) fn is_published(&self) -> bool {
-        self.lan.is_some()
-            || self
-                .integrated
+        if self.is_logical_server() {
+            self.lan.is_some()
+        } else {
+            self.integrated
                 .as_ref()
                 .is_some_and(|s| s.published().is_some())
+        }
     }
 
     /// `PrepareSpawnTask`'s `LOAD_PLAYER_CHUNKS`, reported to the window's

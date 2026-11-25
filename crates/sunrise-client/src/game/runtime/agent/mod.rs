@@ -1862,35 +1862,7 @@ impl Game<'_> {
                     self.send_signed_chat_input(&command);
                     return ok(json!({ "ok": true }));
                 }
-                let ((), outcome) = self
-                    .recording_command_outcome(|g| g.as_console(|g| g.handle_chat_input(&command)));
-                ok(command_reply(self.ui.chat.recent_lines(5), outcome))
-            }
-            "respawn" if self.remote.is_none() => {
-                if self.client.screen != Screen::Dead {
-                    return Err("respawn needs the death screen".into());
-                }
-                let key = if self.level.hardcore {
-                    "deathScreen.spectate"
-                } else {
-                    "deathScreen.respawn"
-                };
-                let label = sunrise_client::text::Text::translate(key, &[]).plain();
-                let w = widgets::find(&widgets::last(), &label)?;
-                if !w.enabled {
-                    // DeathScreen enables its buttons after 20 ticks.
-                    return Err(
-                        "the Respawn button is not active yet; try again in a second (wait 20)"
-                            .into(),
-                    );
-                }
-                self.synth_click(
-                    event_loop,
-                    w.x + w.w / 2.0,
-                    w.y + w.h / 2.0,
-                    MouseButton::Left,
-                )?;
-                ok(json!({ "ok": true, "screen": self.screen_label() }))
+                Err("not connected to a world or server".into())
             }
             "pause" => {
                 self.require_playing_screen()?;

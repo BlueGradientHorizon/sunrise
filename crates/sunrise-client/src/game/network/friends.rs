@@ -256,20 +256,17 @@ impl Game<'_> {
 
     /// What Play with Friends shows.
     pub(in crate::game::client_side) fn friends_view(&self) -> FriendsView {
-        let guests = match &self.lan {
-            Some(h) => h.hub.guests.iter().map(|g| g.name.clone()).collect(),
-            // On the server thread: the other players the server lists.
-            None if self.integrated.is_some() => {
-                let me = self.options.player_name();
-                let mut names = self.remote_online_names().unwrap_or_default();
-                names.retain(|n| *n != me);
-                names
-            }
-            None => Vec::new(),
+        let guests = if self.integrated.is_some() {
+            let me = self.options.player_name();
+            let mut names = self.remote_online_names().unwrap_or_default();
+            names.retain(|n| *n != me);
+            names
+        } else {
+            Vec::new()
         };
         let Some(s) = &self.friends else {
             return FriendsView {
-                shown: self.remote.is_none() || self.integrated.is_some(),
+                shown: self.integrated.is_some(),
                 ..FriendsView::default()
             };
         };

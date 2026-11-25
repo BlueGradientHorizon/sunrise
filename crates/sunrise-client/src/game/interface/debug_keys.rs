@@ -639,13 +639,8 @@ impl Game<'_> {
                 };
                 (target, status)
             };
-            if self.remote.is_none() || self.integrated.is_some() {
-                let tick_ms = self
-                    .integrated
-                    .as_ref()
-                    .map_or(self.client.debug_charts.smoothed_tick_ms, |server| {
-                        server.smoothed_tick_ms()
-                    });
+            if let Some(server) = &self.integrated {
+                let tick_ms = server.smoothed_tick_ms();
                 d.line(format!(
                     "Integrated server @ {}/{target} ms{status}, {tx} tx, {rx} rx",
                     format_fixed(f64::from(tick_ms), 1),
