@@ -16,6 +16,7 @@ pub(crate) const GLUE: Glue = Glue {
     // 26.3's ProjMat already has wgpu's reversed 0 to 1 depth.
     finish: "",
     vertex_id: "int(gl_VertexIndex)",
+    fragment_finish: None,
     interface: sunrise_shaders::DEVICELESS_INTERFACE_LIMITS,
 };
 
@@ -105,12 +106,15 @@ pub(crate) const CLASSIC_PIPELINE: &str = "minecraft:pipeline/clouds";
 /// Why a translated program can't make its pipeline here, as vanilla's builder refuses a
 /// descriptor missing from the pipeline's layout: it reads one of vanilla's samplers (`Sampler0`
 /// to `Sampler2`), which no clouds pass binds. Checked when the packs load, so the load fails as
-/// vanilla's compile failure fails its reload. (A colour output the device doesn't take, which
-/// vanilla doesn't check, draws natively instead: `clouds_for_frame`.)
-pub(crate) fn check(program: &Translated) -> Result<(), String> {
+/// vanilla's compile failure fails its reload; the error names the declaration it is about. (A
+/// colour output the device doesn't take, which vanilla doesn't check, draws natively instead:
+/// `clouds_for_frame`.)
+pub(crate) fn check(program: &Translated) -> Result<(), sunrise_glsl::Error> {
     for (name, binding) in crate::core_shader::SAMPLERS {
         if !(program.stages_reading(binding) | program.stages_reading(binding + 1)).is_empty() {
-            return Err(format!("{name} is not a sampler of this pipeline"));
+            return Err(program
+                .declared_at(binding)
+                .error(format!("{name} is not a sampler of this pipeline")));
         }
     }
     Ok(())

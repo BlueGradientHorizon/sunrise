@@ -381,7 +381,14 @@ fn placement_previews_shape_updates_before_the_tripwire_callback() {
         game.world.carrier_fences.lock_cell(far);
         assert_eq!(game.level_place_block(level, origin, east, true), Ok(false));
         assert_eq!(
-            player.place_block(game, level, origin, east.try_into_api().unwrap(), true),
+            player.place_block(
+                game,
+                level,
+                origin,
+                east.try_into_api().unwrap(),
+                mod_api::BlockFace::Up,
+                true
+            ),
             Err(PlayerWorldRefusal::Fenced)
         );
         let read =
@@ -449,7 +456,14 @@ fn a_transaction_refuses_only_a_completing_wither_placement() {
                     Err(LevelWriteError::InTransaction)
                 );
                 assert_eq!(
-                    player.place_block(host, level, at, skull.try_into_api().unwrap(), false),
+                    player.place_block(
+                        host,
+                        level,
+                        at,
+                        skull.try_into_api().unwrap(),
+                        mod_api::BlockFace::Up,
+                        false
+                    ),
                     Err(PlayerWorldRefusal::InTransaction)
                 );
                 Err(())

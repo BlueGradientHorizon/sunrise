@@ -335,3 +335,35 @@ fn a_clouds_vanilla_block_past_its_slot_draws_natively() {
     assert!(clouds(&fsh("    vec4 More;\n")).unwrap().is_some());
     assert!(clouds(&fsh("    vec4 More[8];\n")).unwrap().is_none());
 }
+
+/// What only the clouds' pipeline refuses, after the translation, names the declaration it is
+/// about: a vanilla sampler read in an included file (no clouds pass binds one) at that file's
+/// line.
+#[test]
+fn a_refusal_after_the_translation_names_the_declaration() {
+    let tinted = "// tint\nuniform sampler2D Sampler1;\nvec4 tint() { return texture(Sampler1, vec2(0.5)); }\n";
+    let fsh = fragment(
+        "#moj_import <minecraft:tint.glsl>\nlayout(location = 0) out vec4 fragColor;",
+        "    fragColor = vertexColor * tint();",
+    );
+    let defaults = source(&[(VSH, CLOUDS_VSH), (FSH, CLOUDS_FSH)]);
+    let tint = "assets/minecraft/shaders/include/tint.glsl";
+    let root = source(&[(VSH, CLOUDS_VSH), (FSH, &fsh), (tint, tinted)]);
+    let refused = load_clouds(&root, &defaults).unwrap_err();
+    let at = |file: &str, line, message: &str| {
+        sunrise_glsl::Location {
+            file: file.into(),
+            line,
+        }
+        .error(message)
+        .to_string()
+    };
+    assert_eq!(
+        refused.why,
+        at(
+            "minecraft:shaders/include/tint.glsl",
+            2,
+            "Sampler1 is not a sampler of this pipeline"
+        )
+    );
+}

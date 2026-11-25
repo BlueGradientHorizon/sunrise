@@ -606,6 +606,9 @@ mod fishing;
 mod fluid_interaction_tests;
 #[path = "game/modding/fluid_interactions.rs"]
 mod fluid_interactions;
+#[cfg(test)]
+#[path = "game/interface/fluid_passage_tests.rs"]
+mod fluid_passage_tests;
 #[path = "game/interface/focused_text_field.rs"]
 mod focused_text_field;
 #[path = "game/interface/fov.rs"]
@@ -5828,18 +5831,37 @@ impl Game<'_> {
         flags: i32,
         create_entity: bool,
     ) -> bool {
+        self.set_block_live_with_entity(
+            pos,
+            state,
+            flags,
+            create_entity,
+            transactions::BlockEntityCreation::Live,
+        )
+    }
+
+    fn set_block_live_with_entity(
+        &mut self,
+        pos: [i32; 3],
+        state: BlockStateId,
+        flags: i32,
+        create_entity: bool,
+        creation: transactions::BlockEntityCreation,
+    ) -> bool {
+        use transactions::BlockEntityCreation::{Deferred, Live, Staged};
+        let live_factory = matches!(creation, Live);
         let [x, y, z] = pos;
         let at = BlockPos::new(x, y, z);
         let previous = self.world.block(x, y, z);
         let b = self.res.behaviours();
-        if self.remote.is_some()
-            || flags & level_flags::UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS != 0
-            || b.block(previous) == b.block(state)
-            || b.keeps_block_entity(previous, state)
-            || !(self.res.facts().get(previous).block_entity
+        let server_removal = self.remote.is_none()
+            && flags & level_flags::UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS == 0
+            && b.block(previous) != b.block(state)
+            && !b.keeps_block_entity(previous, state)
+            && (self.res.facts().get(previous).block_entity
                 || self.world.block_entities.stateful_entity(previous.0)
-                || self.world.block_entities.get(&(x, y, z)).is_some())
-        {
+                || self.world.block_entities.get(&(x, y, z)).is_some());
+        if !server_removal && live_factory {
             return self.with_level(|b, level, ticks| {
                 let changed = b.set_block(level, ticks, at, state, flags);
                 if create_entity {
@@ -5854,9 +5876,13 @@ impl Game<'_> {
                 let write = b.begin_block_write(level, ticks, at, state, flags)?;
                 let spawn_start = level.spill.spawns.len();
                 let orb_start = level.spill.orbs.len();
-                let removal = write
-                    .effectful_removal()
-                    .map(|old| level.pre_remove_entity(at, old, true));
+                let removal = if server_removal {
+                    write
+                        .effectful_removal()
+                        .map(|old| level.pre_remove_entity(at, old, true))
+                } else {
+                    None
+                };
                 let spawns = level.spill.spawns.split_off(spawn_start);
                 let orbs = level.spill.orbs.split_off(orb_start);
                 Some((write, removal, spawns, orbs))
@@ -5868,8 +5894,17 @@ impl Game<'_> {
         self.with_level(|b, level, ticks| {
             let removal_updates =
                 removal.map(|removal| level.finish_remove_entity(at, previous, removal));
-            let changed = b.finish_block_write(level, ticks, write, removal_updates);
-            if create_entity {
+            let changed =
+                b.finish_block_write(level, ticks, write, removal_updates, |level, at, state| {
+                    match creation {
+                        Live => level.ensure_block_entity(at, state),
+                        Deferred => {}
+                        Staged { entity, .. } => {
+                            entity.install(level.world, (at.x, at.y, at.z), true)
+                        }
+                    }
+                });
+            if create_entity && live_factory {
                 level.finish_native_block(pos, previous, state, changed);
             }
             changed
@@ -13308,6 +13343,17 @@ impl Game<'_> {
                     let elapsed = now.duration_since(self.previous);
                     self.frame_ticks = elapsed.as_secs_f32() * 20.0;
                     self.previous = now;
+                    // `elapsed` is the interval that just ended: the wall time of the iteration
+                    // before this one, booked now with the work it left, its own.
+                    let booked = self.profile.unbooked.take();
+                    if let Some(frame) = &booked {
+                        self.record_perf_frame(
+                            elapsed.as_secs_f32() * 1000.0,
+                            frame.cpu_ms,
+                            frame.gpu_ms,
+                            &frame.spans,
+                        );
+                    }
                     self.upload_pace.frame(elapsed);
                     self.studio_fly(elapsed);
                     // Arrow-key camera controls belong to gameplay; chat and
@@ -13373,13 +13419,18 @@ impl Game<'_> {
                         sunrise_client::spans::FrameRecording::block_entity_work,
                     );
                     drop(flight_spans);
-                    let mut perf_times = None;
+                    let mut own_work = None;
                     if let Some(r) = self.renderer.as_mut() {
                         let cpu = now.elapsed().saturating_sub(r.last_wait);
                         sunrise_threads::work::tick_end(cpu.as_nanos() as u64);
+                        let ms = |d: Duration| d.as_secs_f32() * 1000.0;
+                        let gpu = if rendered {
+                            r.gpu_times.last().copied()
+                        } else {
+                            None
+                        };
+                        own_work = Some((ms(cpu), gpu));
                         if rendered {
-                            let ms = |d: Duration| d.as_secs_f32() * 1000.0;
-                            perf_times = Some((ms(cpu), r.gpu_times.last().copied()));
                             let g = &self.settings.sunrise;
                             // The scale while Dynamic Resolution moves it on its own.
                             let dynamic_scale = g
@@ -13480,16 +13531,16 @@ impl Game<'_> {
                         log::warn!("Sunrise: couldn't save the world icon: {error}");
                     }
                     self.record_streaming_work(rendered, block_entity_work, &frame_spans);
+                    if let Some((cpu_ms, gpu_ms)) = own_work {
+                        // The next iteration books this one with the interval it ends in.
+                        self.profile.unbooked = Some(profile_capture::UnbookedFrame {
+                            cpu_ms,
+                            gpu_ms,
+                            spans: frame_spans,
+                        });
+                    }
                     if rendered {
                         self.frame_stats.record(elapsed.as_secs_f32() * 1000.0);
-                        if let Some((cpu, gpu)) = perf_times {
-                            self.record_perf_frame(
-                                elapsed.as_secs_f32() * 1000.0,
-                                cpu,
-                                gpu,
-                                &frame_spans,
-                            );
-                        }
                         if sunrise_threads::alloc_count::ON {
                             self.record_frame_allocs();
                         }
@@ -13508,8 +13559,11 @@ impl Game<'_> {
                             && self.screen == Screen::Playing
                             && self.player.is_some()
                         {
-                            self.perf
-                                .frame(elapsed.as_secs_f32() * 1000.0, &frame_spans);
+                            // The interval is the last iteration's, and so are its spans.
+                            self.perf.frame(
+                                elapsed.as_secs_f32() * 1000.0,
+                                booked.as_ref().map_or(&[], |frame| frame.spans.as_slice()),
+                            );
                             if startup::filling() {
                                 let mut fill: Vec<(&'static str, usize)> =
                                     self.streaming.stages().to_vec();

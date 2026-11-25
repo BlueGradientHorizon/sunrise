@@ -769,6 +769,22 @@ pub fn game_inputs(
     }
 }
 
+/// [`game_inputs`] as tools load a pack without a device or an atlas (the shader fuzzer, the
+/// SPIR-V dump): terrain drawn as `draws` says from an atlas of 1024 x 1024 pixels in 16-pixel
+/// sprites, 64 a row (its size only reaches the GLSL as constants), the pack's `separateAo`
+/// setting the terrain colour's alpha as the game sets it, lava on sprite layers 3 and 4, and
+/// the largest stage interface limits real devices have instead of a device's.
+pub fn deviceless_game_inputs(
+    separate_ao: bool,
+    draws: TerrainDraws,
+) -> sunrise_shaders::GameInputs {
+    let terrain = PackAtlas::terrain_inputs_sized([1024, 1024], 64, 16, separate_ao, draws);
+    sunrise_shaders::GameInputs {
+        interface_limits: sunrise_shaders::DEVICELESS_INTERFACE_LIMITS,
+        ..game_inputs(Some(terrain), draws == TerrainDraws::Flat, &[3, 4])
+    }
+}
+
 /// How the game's terrain draws give a pack's terrain program its vertices.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TerrainDraws {

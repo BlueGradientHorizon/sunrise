@@ -46,8 +46,8 @@ pub use discover::{Found, candidates, discover};
 pub use lang::Lang;
 pub use macros::{MC_VERSION, Macros, RENDER_STAGES, render_stage};
 pub use options::{
-    PackOption, apply as apply_options, chosen_file, chosen_text, options, parse_chosen,
-    properties_macros, read_properties, switches_on, value_options, with_options,
+    PackOption, apply as apply_options, choose as choose_option, chosen_file, chosen_text, options,
+    parse_chosen, properties_macros, read_properties, switches_on, value_options, with_options,
 };
 pub use pack::{Pack, PackError};
 pub use post::{
