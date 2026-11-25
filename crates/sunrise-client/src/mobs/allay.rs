@@ -11,6 +11,7 @@ use super::{
 use crate::health::DamageLevel;
 use crate::items::ItemStack;
 use crate::sculk::{self, Context, Info};
+use std::ops::ControlFlow;
 use sunrise_core::geometry::trig::Mth;
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_protocol::entity_data::PositionSource;
@@ -341,12 +342,15 @@ fn deposit(m: &mut Mob, cx: &Cx) -> Option<[f64; 3]> {
 struct Fetch;
 impl Goal for Fetch {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         MOVE
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, _cx: &mut Cx) -> bool {
         m.extra.point.is_some() && pickup_cooldown(m).is_none()
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         if let Some(p) = m.extra.point
             && (m.ai.nav.is_done() || m.age.is_multiple_of(10))
@@ -360,12 +364,15 @@ impl Goal for Fetch {
 struct Deliver;
 impl Goal for Deliver {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         MOVE
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         inventory(m).is_some() && m.extra.point.is_none() && deposit(m, cx).is_some()
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         if let Some(p) = deposit(m, cx)
             && (m.ai.nav.is_done() || m.age.is_multiple_of(10))
@@ -380,9 +387,11 @@ impl Goal for Deliver {
 struct StayClose;
 impl Goal for StayClose {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         MOVE
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         m.extra.point.is_none()
             && deposit(m, cx).is_some_and(|p| {
@@ -394,6 +403,7 @@ impl Goal for StayClose {
     }
     /// `MoveToTargetSink.reachedTarget`: the walk target it set is reached
     /// within a Manhattan block distance of 4 (`closeEnough`).
+    #[inline]
     fn can_continue(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         m.extra.point.is_none()
             && deposit(m, cx).is_some_and(|p| {
@@ -404,6 +414,7 @@ impl Goal for StayClose {
                     > 4
             })
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         if let Some(p) = deposit(m, cx)
             && (m.ai.nav.is_done() || m.age.is_multiple_of(10))
@@ -506,7 +517,7 @@ pub(super) fn travel(
     input: Vec3,
     events: &mut Vec<MobEvent>,
     pause: bool,
-) -> Result<(), super::living::TravelTrample> {
+) -> ControlFlow<super::living::TravelPause> {
     let speed = m.ai.speed;
     m.travel_flying_speeds(w, level, input, events, 0.02, 0.02, speed, pause)
 }

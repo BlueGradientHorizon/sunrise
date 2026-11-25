@@ -95,7 +95,7 @@ ModCheck.merge	skip:other		brand and jar-signature check for crash reports; Sunr
 Mth.absMax	skip:java		pure math helper; Rust abs and max at each use
 Mth.nextFloat	inline	crates/sunrise-world/src/loot.rs::Context::float	the float range formula; one copy inlined here, others may inline it too
 Mth.smallestEncompassingPowerOfTwo	skip:java		Rust next_power_of_two at each use; differs only for 0 (vanilla 0, Rust 1)
-Mth.smallestSquareSide	port	crates/sunrise-client-render/src/gfx/pack_atlas.rs::PackAtlas::new	gap: minor: the shader-pack block atlas grid; vanilla's caller is the GUI item atlas, with no Sunrise counterpart found
+Mth.smallestSquareSide	port	crates/sunrise-render-shaderpack/src/pack_atlas.rs::PackAtlas::new	gap: minor: the shader-pack block atlas grid; vanilla's caller is the GUI item atlas, with no Sunrise counterpart found
 Mth.isPowerOfTwo	skip:java		Rust is_power_of_two at each use
 Mth.rayIntersectsAABB	skip:other		minor: no caller in 26.3 (dead helper)
 Mth.fastInvCubeRoot	skip:other		minor: no caller in 26.3 (dead helper)

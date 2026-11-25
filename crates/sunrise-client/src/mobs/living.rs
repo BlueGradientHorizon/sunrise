@@ -6,14 +6,17 @@ use super::{Mob, MobEvent, MobWorld};
 use crate::health::DamageLevel;
 use crate::items::BlockTagFlags;
 use crate::{blocks::Fluid, collisions::SceneCollisions};
+use std::ops::ControlFlow;
 use sunrise_core::{
-    geometry::{Aabb, Vec3, trig},
+    geometry::{Aabb, Axis, Vec3, trig},
     position::BlockPos,
     random::RandomSource,
 };
-use sunrise_world::native_load_context::{LoopContext, LoopSide};
+use sunrise_world::native_load_context::LoopContext;
 use sunrise_world::{
-    block_landing::{FarmlandTrample, LandingEntityKind},
+    block_landing::{
+        BlockFall, FallDamageCall, FallDamageTail, FarmlandTrample, LandingEntityKind,
+    },
     entity_fluid::{CurrentAccumulator, CurrentTarget},
     entity_move::MoverType,
     fluid::{FluidKind, FluidState},
@@ -25,31 +28,6 @@ use sunrise_world::{
 #[path = "climbing.rs"]
 mod climbing;
 mod travel;
-
-/// `DeathProtection.TOTEM_EFFECTS`: clear, then regeneration II, absorption II
-/// and fire resistance.
-pub(super) fn totem_death_effects() -> Vec<crate::items::ConsumeEffect> {
-    use crate::items::{ConsumeEffect, ConsumeEffectSpec};
-    let spec = |id: &str, duration, amplifier| ConsumeEffectSpec {
-        id: id.to_owned(),
-        duration,
-        amplifier,
-        ambient: false,
-        show_particles: true,
-        show_icon: true,
-    };
-    vec![
-        ConsumeEffect::ClearAllEffects,
-        ConsumeEffect::ApplyEffects {
-            effects: vec![
-                spec("minecraft:regeneration", 900, 1),
-                spec("minecraft:absorption", 100, 1),
-                spec("minecraft:fire_resistance", 800, 0),
-            ],
-            probability: 1.0,
-        },
-    ]
-}
 
 /// How many block particles a landing throws up
 /// (`(int)(min(0.2F + power / 15, 2.5) * 150)`), none when the fall is within
@@ -151,7 +129,7 @@ impl CurrentTarget for Pushed<'_> {
     }
 }
 /// Dimensions as `EntityDimensions` holds them: the floats `Mob::dims` widened, back.
-pub fn dims_array((w, h, e): (f64, f64, f64)) -> [f32; 3] {
+pub(crate) fn dims_array((w, h, e): (f64, f64, f64)) -> [f32; 3] {
     [w as f32, h as f32, e as f32]
 }
 pub fn wrap(a: f32) -> f32 {
@@ -164,6 +142,40 @@ pub fn wrap(a: f32) -> f32 {
     }
     a
 }
+/// `LivingEntity.tick` and `tickHeadTurn` for a player, with
+/// `Player.getMaxHeadRotationRelativeToBody`'s smaller turn when blocking.
+pub fn player_body_yaw(
+    mut body: f32,
+    yaw: f32,
+    dx: f64,
+    dz: f64,
+    swinging: bool,
+    blocking: bool,
+) -> f32 {
+    use sunrise_core::geometry::trig;
+
+    let mut target = body;
+    if (dx * dx + dz * dz) as f32 > 0.002_500_000_2_f32 {
+        let walk = trig::atan2(dz, dx) as f32 * trig::RAD_TO_DEG - 90.0;
+        let facing = (wrap(yaw) - walk).abs();
+        target = if 95.0 < facing && facing < 265.0 {
+            walk - 180.0
+        } else {
+            walk
+        };
+    }
+    if swinging {
+        target = yaw;
+    }
+    body += wrap(target - body) * 0.3;
+    let diff = wrap(yaw - body);
+    let max_head_turn = if blocking { 15.0 } else { 50.0 };
+    if diff.abs() > max_head_turn {
+        body += diff - diff.signum() * max_head_turn;
+    }
+    body
+}
+
 /// `BlockState.getCollisionShape(level, pos)` with the empty collision context.
 fn block_shape_in(
     world: &crate::world::World,
@@ -259,85 +271,6 @@ impl MobWorld<'_> {
     pub fn block_collision_boxes(&self, x: i32, y: i32, z: i32) -> Vec<Aabb> {
         collision_boxes_in(self.world, self.collision, x, y, z)
     }
-    /// Whether the block's collision shape (empty context) has a box meeting `area`.
-    fn block_collides_with(&self, x: i32, y: i32, z: i32, area: Aabb) -> bool {
-        let offset = Vec3::new(f64::from(x), f64::from(y), f64::from(z));
-        self.block_shape(x, y, z).is_some_and(|shape| {
-            shape
-                .boxes()
-                .iter()
-                .any(|b| b.move_by(offset).intersects(area))
-        })
-    }
-    fn block_shape(&self, x: i32, y: i32, z: i32) -> Option<sunrise_core::geometry::VoxelShape> {
-        block_shape_in(self.world, self.collision, x, y, z)
-    }
-    /// `Level.findSupportingBlock`: of the blocks whose collision shape
-    /// meets `area`, the one whose centre is nearest `from` (ties: the
-    /// greatest by `Vec3i.compareTo`, y then z then x).
-    ///
-    /// Like `BlockCollisions`' cursor, a block whose shape stays inside its
-    /// own cell (not `hasLargeCollisionShape`, not a moving piston) is only
-    /// shaped when that cell meets `area`: elsewhere it cannot. The pick is
-    /// a total order, so the column-by-column visit finds the same block.
-    pub fn supporting_block(&self, area: Aabb, from: Vec3) -> Option<[i32; 3]> {
-        use sunrise_core::geometry::Axis;
-        let range = |axis| {
-            (area.min(axis) - 1.0e-7).floor() as i32 - 1
-                ..=(area.max(axis) + 1.0e-7).floor() as i32 + 1
-        };
-        // Aabb.intersects of the unit cell at `c` along one axis.
-        let meets = |axis, c: i32| {
-            let c = f64::from(c);
-            c < area.max(axis) && c + 1.0 > area.min(axis)
-        };
-        // Where no section of the cursor holds a block reaching out of its
-        // cell, only the cells meeting `area` can hold the support.
-        let (rx, ry, rz) = (range(Axis::X), range(Axis::Y), range(Axis::Z));
-        let outer = self.world.may_hold(
-            [*rx.start(), *ry.start(), *rz.start()],
-            [*rx.end(), *ry.end(), *rz.end()],
-            |s| self.collision.reaches_out(s),
-        );
-        let mut best: Option<(f64, [i32; 3])> = None;
-        for x in rx {
-            for z in rz.clone() {
-                let column = meets(Axis::X, x) && meets(Axis::Z, z);
-                if !outer && !column {
-                    continue;
-                }
-                let Some(chunk) = self.world.chunks.get(&(x >> 4, z >> 4)) else {
-                    continue;
-                };
-                for y in ry.clone() {
-                    if !outer && !meets(Axis::Y, y) {
-                        continue;
-                    }
-                    let state = chunk.block(x & 15, y, z & 15);
-                    let Ok(block) = self.collision.collision_block(state) else {
-                        continue;
-                    };
-                    if !(block.large_collision_shape
-                        || block.moving_piston
-                        || (column && meets(Axis::Y, y)))
-                    {
-                        continue;
-                    }
-                    if !self.block_collides_with(x, y, z, area) {
-                        continue;
-                    }
-                    let d = (f64::from(x) + 0.5 - from.x).powi(2)
-                        + (f64::from(y) + 0.5 - from.y).powi(2)
-                        + (f64::from(z) + 0.5 - from.z).powi(2);
-                    let greater = |b: [i32; 3]| (y, z, x) > (b[1], b[2], b[0]);
-                    if best.is_none_or(|(bd, b)| d < bd || d == bd && greater(b)) {
-                        best = Some((d, [x, y, z]));
-                    }
-                }
-            }
-        }
-        best.map(|(_, p)| p)
-    }
     pub fn no_collision(&self, b: Aabb) -> bool {
         let mut scene = SceneCollisions {
             world: self.world,
@@ -369,8 +302,9 @@ impl MobWorld<'_> {
 }
 type TravelFinish = fn(&mut Mob, &MobWorld, &mut DamageLevel<'_>, &mut Vec<MobEvent>);
 
-/// Only travel's own scalar inputs survive the move. Keeping them inline in
-/// the tick's pause slot avoids allocating a continuation on a trample.
+/// Only travel's own scalar inputs survive the move. The paused tick keeps
+/// them inline without allocating a continuation.
+#[derive(Debug)]
 enum TravelTail {
     Fixed(TravelFinish),
     Air {
@@ -392,7 +326,6 @@ enum TravelTail {
 }
 
 impl TravelTail {
-    // A normal move has a statically known tail; only a resumed trample needs dispatch.
     #[inline(always)]
     fn finish(
         self,
@@ -400,7 +333,8 @@ impl TravelTail {
         w: &MobWorld,
         level: &mut DamageLevel<'_>,
         events: &mut Vec<MobEvent>,
-    ) {
+        handoff: bool,
+    ) -> ControlFlow<TravelPause> {
         match self {
             Self::Fixed(finish) => finish(mob, w, level, events),
             Self::Air {
@@ -421,14 +355,14 @@ impl TravelTail {
                 mob.finish_fluid_travel(w, falling, old_y, gravity, water_slow);
             }
             Self::Flying { drag } => {
-                mob.velocity = Vec3::new(
+                mob.set_velocity(Vec3::new(
                     mob.velocity.x * drag,
                     mob.velocity.y * drag,
                     mob.velocity.z * drag,
-                );
+                ));
             }
             Self::FallFlying { before } => {
-                if mob.horizontal_collision {
+                if mob.ground.horizontal_collision {
                     let damage = ((before
                         - (mob.velocity.x * mob.velocity.x + mob.velocity.z * mob.velocity.z)
                             .sqrt())
@@ -455,30 +389,50 @@ impl TravelTail {
                             damage,
                             super::Damage::of(super::DamageKind::FlyIntoWall),
                         );
+                        if handoff && mob.hurt_needs_owner() {
+                            return ControlFlow::Break(TravelPause(TravelStop::AfterHit));
+                        }
                     }
                 }
             }
         }
+        ControlFlow::Continue(())
     }
 }
 
-/// An authoritative move stopped inside `Entity.move`, and the remaining travel.
-pub struct TravelTrample {
-    movement: MoveTrample,
-    tail: TravelTail,
+/// Travel stopped in `Entity.move` or after `handleFallFlyingCollisions`' hurt.
+#[derive(Debug)]
+pub struct TravelPause(TravelStop);
+
+#[derive(Debug)]
+enum TravelStop {
+    Move {
+        movement: MovePause,
+        tail: TravelTail,
+    },
+    AfterHit,
 }
 
-impl std::fmt::Debug for TravelTrample {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        fmt.debug_tuple("TravelTrample")
-            .field(&self.decision())
-            .finish()
-    }
+/// What the owning level must do before the mob's move can continue.
+pub enum MovementAction {
+    Trample(FarmlandTrample),
+    SettleHit,
+    Passengers(PassengerFall),
 }
 
-impl TravelTrample {
-    pub fn decision(&self) -> FarmlandTrample {
-        self.movement.trample
+/// The operands already selected for `Entity.propagateFallToPassengers`.
+#[derive(Clone, Copy, Debug)]
+pub struct PassengerFall {
+    pub distance: f64,
+    pub modifier: f32,
+}
+
+impl TravelPause {
+    pub(super) fn action(&self) -> MovementAction {
+        match &self.0 {
+            TravelStop::Move { movement, .. } => movement.fall.action(),
+            TravelStop::AfterHit => MovementAction::SettleHit,
+        }
     }
 
     pub(super) fn resume(
@@ -487,17 +441,101 @@ impl TravelTrample {
         w: &MobWorld,
         level: &mut DamageLevel<'_>,
         events: &mut Vec<MobEvent>,
-    ) {
-        mob.finish_trample_fall(w, level, events, self.movement.trample);
-        mob.finish_move(w, level, self.movement.wanted, self.movement.moved, events);
-        self.tail.finish(mob, w, level, events);
+    ) -> ControlFlow<Self> {
+        let TravelStop::Move { movement, tail } = self.0 else {
+            return ControlFlow::Continue(());
+        };
+        if let Some(fall) = mob.resume_fall(w, level, events, movement.fall) {
+            return ControlFlow::Break(Self(TravelStop::Move {
+                movement: MovePause { fall, ..movement },
+                tail,
+            }));
+        }
+        if !mob.removed {
+            mob.finish_move(
+                w,
+                level,
+                movement.wanted,
+                movement.moved,
+                movement.effect,
+                events,
+            );
+            tail.finish(mob, w, level, events, true)?;
+        }
+        ControlFlow::Continue(())
     }
 }
 
-struct MoveTrample {
-    trample: FarmlandTrample,
+#[derive(Debug)]
+struct MovePause {
+    fall: FallPause,
     wanted: Vec3,
     moved: Vec3,
+    effect: (BlockPos, BlockStateId),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LandingOwner {
+    Synchronous,
+    Borrowed,
+}
+
+#[derive(Debug)]
+enum FallPause {
+    Trample(FarmlandTrample),
+    Hurt { block: FallenOn, stop: FallHurtStop },
+}
+
+impl FallPause {
+    fn action(&self) -> MovementAction {
+        match self {
+            Self::Trample(trample) => MovementAction::Trample(*trample),
+            Self::Hurt { stop, .. } => stop
+                .passengers()
+                .map_or(MovementAction::SettleHit, MovementAction::Passengers),
+        }
+    }
+}
+
+/// A mount's `doCheckFallDamage` is waiting for the authoritative Game.
+pub struct ClientMovedFall(FallPause);
+
+impl ClientMovedFall {
+    pub fn action(&self) -> MovementAction {
+        self.0.action()
+    }
+}
+
+#[derive(Debug)]
+struct FallenOn {
+    pos: [i32; 3],
+    tail: FallDamageTail,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum FallHurtStop {
+    BeforeOwnHurt(PassengerFall, super::DamageKind),
+    AfterHurt(Option<PassengerFall>),
+    AfterHorsePassengers(PassengerFall),
+}
+
+impl FallHurtStop {
+    fn passengers(self) -> Option<PassengerFall> {
+        match self {
+            Self::BeforeOwnHurt(fall, _) | Self::AfterHorsePassengers(fall) => Some(fall),
+            Self::AfterHurt(_) => None,
+        }
+    }
+}
+
+/// A passenger's own fall needs either its owning hurt or a further passenger action.
+pub struct PassengerFallPause(FallHurtStop);
+
+impl PassengerFallPause {
+    /// `None` means the passenger's own hit must settle before resuming.
+    pub fn passengers(&self) -> Option<PassengerFall> {
+        self.0.passengers()
+    }
 }
 
 impl Mob {
@@ -581,7 +619,11 @@ impl Mob {
     /// `dims` as vanilla computes them, without an `entity_size` answer: the `newSize`
     /// `EntityEvent.Size` starts from.
     pub fn vanilla_dims(&self) -> [f32; 3] {
-        dims_array(self.dims_in_pose(self.pose()))
+        self.vanilla_dims_in(self.pose())
+    }
+    /// [`Self::vanilla_dims`] in `pose` (`Entity.getDimensions(pose)`).
+    pub fn vanilla_dims_in(&self, pose: mod_api::Pose) -> [f32; 3] {
+        dims_array(self.dims_in_pose(pose))
     }
     /// The pose this mob is in (`Entity.getPose`): the stance its species
     /// keeps in its own fields — a villager's bed, a camel's sit flag, an
@@ -746,7 +788,7 @@ impl Mob {
     /// `Entity.saveWithoutId`'s `CustomName`: the whole component as
     /// `ComponentSerialization.CODEC` writes it (a name tag's `custom_name`
     /// keeps its colour), else the plain text. `None` without a name.
-    pub fn custom_name_tag(&self) -> Option<sunrise_core::nbt::Tag> {
+    pub(crate) fn custom_name_tag(&self) -> Option<sunrise_core::nbt::Tag> {
         let name = self.custom_name.as_ref()?;
         Some(match &self.custom_name_text {
             Some(text) => crate::scoreboard::component_tag(&text.component()),
@@ -755,7 +797,7 @@ impl Mob {
     }
     /// Whether the save's `CustomName` is not this mob's name, style included:
     /// a rename to the same text with another colour still changes it.
-    pub fn custom_name_changed(&self, saved: Option<&sunrise_core::nbt::Tag>) -> bool {
+    pub(crate) fn custom_name_changed(&self, saved: Option<&sunrise_core::nbt::Tag>) -> bool {
         match (&self.custom_name_text, saved) {
             (Some(current), Some(saved)) => crate::entity_nbt::name_text(saved) != *current,
             (Some(_), None) => true,
@@ -778,7 +820,7 @@ impl Mob {
         }
         if self.eye_height() < 0.4 { 0.0 } else { 0.4 }
     }
-    pub fn is_in_liquid(&self) -> bool {
+    pub(crate) fn is_in_liquid(&self) -> bool {
         self.fluids.in_water || self.fluids.in_lava
     }
     /// `FloatGoal.canUse` and the brains' `Swim`: water deeper than the jump threshold, or lava.
@@ -815,41 +857,16 @@ impl Mob {
     fn affected_by_fluids(&self) -> bool {
         true
     }
+    /// `Entity.setDeltaMovement`: keep only finite values.
+    pub(crate) fn set_velocity(&mut self, velocity: Vec3) {
+        if velocity.is_finite() {
+            self.velocity = velocity;
+        }
+    }
     /// Entity.moveRelative: input rotated by yaw and scaled to `speed`.
     pub fn move_relative(&mut self, speed: f32, input: Vec3) {
-        let len_sq = input.x * input.x + input.y * input.y + input.z * input.z;
-        if len_sq < 1.0e-7 {
-            // `getInputVector` is `Vec3.ZERO`, still added to the motion: a -0.0 becomes 0.0.
-            self.velocity = Vec3::new(
-                self.velocity.x + 0.0,
-                self.velocity.y + 0.0,
-                self.velocity.z + 0.0,
-            );
-            return;
-        }
-        let v = if len_sq > 1.0 {
-            // Vec3.normalize
-            let l = len_sq.sqrt();
-            if l < f64::from(1.0e-5_f32) {
-                Vec3::ZERO
-            } else {
-                Vec3::new(input.x / l, input.y / l, input.z / l)
-            }
-        } else {
-            input
-        };
-        let v = Vec3::new(
-            v.x * f64::from(speed),
-            v.y * f64::from(speed),
-            v.z * f64::from(speed),
-        );
-        let angle = f64::from(self.yaw * trig::DEG_TO_RAD);
-        let (s, c) = (f64::from(trig::sin(angle)), f64::from(trig::cos(angle)));
-        self.velocity = Vec3::new(
-            self.velocity.x + (v.x * c - v.z * s),
-            self.velocity.y + v.y,
-            self.velocity.z + (v.z * c + v.x * s),
-        );
+        let delta = sunrise_world::living_air::input_vector(input, speed, self.yaw);
+        self.set_velocity(self.velocity.add_vector(delta));
     }
     /// Entity.move with block collisions and step-up; updates collision flags
     /// and fall distance (Entity.checkFallDamage).
@@ -899,17 +916,17 @@ impl Mob {
         events: &mut Vec<MobEvent>,
         gate: &mut MoveGate,
     ) {
-        self.move_until_trample(w, level, events, gate, false);
+        self.move_until_pause(w, level, events, gate, false);
     }
 
-    fn move_until_trample(
+    fn move_until_pause(
         &mut self,
         w: &MobWorld,
         level: &mut DamageLevel<'_>,
         events: &mut Vec<MobEvent>,
         gate: &mut MoveGate,
         pause: bool,
-    ) -> Option<MoveTrample> {
+    ) -> Option<MovePause> {
         crate::move_gate::arm(
             gate,
             w.loop_context,
@@ -926,7 +943,7 @@ impl Mob {
         // and no collision flag is set.
         if self.no_physics {
             self.position = self.position.add_vector(wanted);
-            self.horizontal_collision = false;
+            self.ground.horizontal_collision = false;
             self.vertical_collision_below = false;
             return None;
         }
@@ -935,14 +952,16 @@ impl Mob {
         if self.stuck_multiplier.length_squared() > 1.0e-7 {
             wanted = wanted.multiply(self.stuck_multiplier);
             self.stuck_multiplier = Vec3::ZERO;
-            self.velocity = Vec3::ZERO;
+            self.set_velocity(Vec3::ZERO);
         }
         let step = self.kind.step_height as f32;
         let from = self.position;
         let scene = SceneCollisions {
             world: w.world,
             binding: w.collision,
-            subject: Some(self.collision_subject()),
+            subject: Some(
+                self.collision_subject(w.items.map(|items| items.entity_type_tags.as_ref())),
+            ),
         };
         // Entity.collide: the world border's walls stop the mob too, and so
         // do the entities it may not pass through.
@@ -954,7 +973,7 @@ impl Mob {
             self.bounds(),
             wanted,
             step,
-            self.on_ground,
+            self.ground.on_ground,
             border,
             &entities,
         )
@@ -983,23 +1002,30 @@ impl Mob {
         let differs = |a: f64, b: f64| (b - a).abs() >= f64::from(1.0e-5_f32);
         let x_hit = differs(wanted.x, moved.x);
         let z_hit = differs(wanted.z, moved.z);
-        self.horizontal_collision = x_hit || z_hit;
+        self.ground.horizontal_collision = x_hit || z_hit;
         // A server's mobs are authoritative (`isLocalInstanceAuthoritative`):
         // the vertical flags update even without vertical movement.
         let vertical = wanted.y != moved.y;
         self.vertical_collision_below = vertical && wanted.y < 0.0;
-        self.on_ground = self.vertical_collision_below;
+        self.ground.on_ground = self.vertical_collision_below;
         // Entity.setOnGroundWithMovement's checkSupportingBlock, before
         // checkFallDamage reads the landing block (getOnPosLegacy).
-        self.supporting = self.supporting_block(w, moved);
-        if let Some(trample) = self.species_check_fall_damage(w, level, moved, events, pause) {
-            return Some(MoveTrample {
-                trample,
+        self.update_ground_support(w, moved);
+        let owner = if pause {
+            LandingOwner::Borrowed
+        } else {
+            LandingOwner::Synchronous
+        };
+        let effect = self.restitution_contact(w);
+        if let Some(fall) = self.species_check_fall_damage(w, level, moved, effect, events, owner) {
+            return Some(MovePause {
+                fall,
                 wanted,
                 moved,
+                effect,
             });
         }
-        self.finish_move(w, level, wanted, moved, events);
+        self.finish_move(w, level, wanted, moved, effect, events);
         None
     }
 
@@ -1009,15 +1035,25 @@ impl Mob {
         level: &mut DamageLevel<'_>,
         wanted: Vec3,
         moved: Vec3,
+        effect: (BlockPos, BlockStateId),
         events: &mut Vec<MobEvent>,
     ) {
-        self.restitute_movement(w, level, wanted, moved);
+        self.restitute_captured(w, level, wanted, moved, effect);
         self.movement_emission(w, moved, events);
         // Entity.move's last step: soul sand, honey and the like slow the
         // horizontal speed of whatever the mob stands in or on.
         let factor = self.block_speed_factor(w);
-        self.velocity = sunrise_world::entity_move::scale_by_block_speed(self.velocity, factor);
+        self.set_velocity(sunrise_world::entity_move::scale_by_block_speed(
+            self.velocity,
+            factor,
+        ));
     }
+    /// Record the normal move's ground for a forced collision.
+    pub fn update_pushed_support(&mut self, w: &MobWorld, wanted: Vec3, moved: Vec3) {
+        self.ground.on_ground = wanted.y < 0.0 && wanted.y != moved.y;
+        self.update_ground_support(w, moved);
+    }
+
     /// `Entity.restituteMovementAfterCollisions`, shared by travel and piston pushes.
     pub fn restitute_movement(
         &mut self,
@@ -1025,6 +1061,20 @@ impl Mob {
         level: &mut DamageLevel<'_>,
         wanted: Vec3,
         moved: Vec3,
+    ) {
+        self.restitute_captured(w, level, wanted, moved, self.restitution_contact(w));
+    }
+    fn restitution_contact(&self, w: &MobWorld) -> (BlockPos, BlockStateId) {
+        let [x, y, z] = self.block_on_legacy(w);
+        (BlockPos::new(x, y, z), w.world.block(x, y, z))
+    }
+    fn restitute_captured(
+        &mut self,
+        w: &MobWorld,
+        level: &mut DamageLevel<'_>,
+        wanted: Vec3,
+        moved: Vec3,
+        (effect_position, block): (BlockPos, BlockStateId),
     ) {
         let differs = |a: f64, b: f64| (b - a).abs() >= f64::from(1.0e-5_f32);
         let x_hit = differs(wanted.x, moved.x);
@@ -1035,12 +1085,9 @@ impl Mob {
         // block, a bed), whichever is larger. A mob never sneaks, so nothing
         // suppresses its bounce there.
         if wanted.y.abs() > 0.0 && vertical || x_hit || z_hit {
-            // Entity.getOnPos(0.2F): the block whose bounce this move sees, the supporting
-            // block's column where one holds the mob (a fence or wall's own position).
-            let [x, y, z] = self.block_on_legacy(w);
-            let on = (x, y, z);
             let input = RestitutionInput {
-                block: w.world.block(on.0, on.1, on.2),
+                block,
+                effect_position,
                 collided_x: x_hit,
                 collided_z: z_hit,
                 vertical_collision: vertical,
@@ -1056,7 +1103,6 @@ impl Mob {
                     mob: self,
                     world: w,
                     level,
-                    on: BlockPos::new(on.0, on.1, on.2),
                 },
                 input,
             );
@@ -1069,7 +1115,7 @@ impl Mob {
             w.movement,
             w.loop_context,
             self.position,
-            self.supporting.map(|[x, y, z]| BlockPos::new(x, y, z)),
+            self.ground.supporting_block,
         )
     }
     /// `Entity.applyEffectsFromBlocks` as `LivingEntity.aiStep` runs it, after
@@ -1103,13 +1149,14 @@ impl Mob {
         w: &MobWorld,
         level: &mut DamageLevel<'_>,
         moved: Vec3,
+        effect: (BlockPos, BlockStateId),
         events: &mut Vec<MobEvent>,
-        pause: bool,
-    ) -> Option<FarmlandTrample> {
+        owner: LandingOwner,
+    ) -> Option<FallPause> {
         if self.kind.flags.lava_walker && self.fluids.in_lava {
             self.fall_distance = 0.0;
         } else if !matches!(self.kind.species, super::Species::Bat | super::Species::Bee) {
-            return self.check_fall_damage(w, level, moved, events, pause);
+            return self.check_fall_damage(w, level, moved, effect, events, owner);
         }
         None
     }
@@ -1124,21 +1171,29 @@ impl Mob {
         delta: Vec3,
         on_ground: bool,
         events: &mut Vec<MobEvent>,
-    ) -> Option<FarmlandTrample> {
-        self.on_ground = on_ground;
-        self.supporting = self.supporting_block(w, delta);
-        self.species_check_fall_damage(w, level, delta, events, true)
+    ) -> Option<ClientMovedFall> {
+        self.ground.on_ground = on_ground;
+        self.update_ground_support(w, delta);
+        self.species_check_fall_damage(
+            w,
+            level,
+            delta,
+            self.restitution_contact(w),
+            events,
+            LandingOwner::Borrowed,
+        )
+        .map(ClientMovedFall)
     }
-    /// LivingEntity.checkFallDamage: the fluid state refreshed out of water
-    /// (touching water resets the fall), then Entity.checkFallDamage.
+    /// Refresh fluids before applying the captured landing block.
     fn check_fall_damage(
         &mut self,
         w: &MobWorld,
         level: &mut DamageLevel<'_>,
         moved: Vec3,
+        effect: (BlockPos, BlockStateId),
         events: &mut Vec<MobEvent>,
-        pause: bool,
-    ) -> Option<FarmlandTrample> {
+        owner: LandingOwner,
+    ) -> Option<FallPause> {
         if !self.fluids.in_water {
             self.update_fluids(w, events);
         }
@@ -1152,11 +1207,11 @@ impl Mob {
         if !self.fluids.in_water && moved.y < 0.0 {
             self.fall_distance -= f64::from(moved.y as f32);
         }
-        if self.on_ground {
+        if self.ground.on_ground {
             if self.fall_distance > 0.0 {
-                self.landing_dust(w, events);
-                if let Some(trample) = self.fall_on_block(w, level, events, pause) {
-                    return Some(trample);
+                self.landing_dust(w, effect, events);
+                if let Some(fall) = self.fall_on_block(w, level, effect, events, owner) {
+                    return Some(fall);
                 }
             }
             self.fall_distance = 0.0;
@@ -1165,9 +1220,13 @@ impl Mob {
     }
     /// The block particles `LivingEntity.checkFallDamage` sends up from the
     /// block a mob lands on, by the power of the fall.
-    fn landing_dust(&self, w: &MobWorld, events: &mut Vec<MobEvent>) {
-        let pos = self.block_on_legacy(w);
-        let state = w.world.block(pos[0], pos[1], pos[2]);
+    fn landing_dust(
+        &self,
+        w: &MobWorld,
+        (position, state): (BlockPos, BlockStateId),
+        events: &mut Vec<MobEvent>,
+    ) {
+        let pos = [position.x, position.y, position.z];
         let Some(count) = landing_dust_count(self.fall_distance, self.safe_fall_distance()) else {
             return;
         };
@@ -1213,8 +1272,12 @@ impl Mob {
             .filter(|(id, _)| self.extra.mount == Some(*id));
         self.fluids = self.fluid_interaction(w, boat.map(|(_, b)| b));
         self.fluids.boat = boat;
-        // EntityFluidInteraction.applyCurrentTo: the flow pushes the mob.
-        if (self.fluids.in_water || self.fluids.in_lava) && self.pushed_by_fluid() {
+        // EntityFluidInteraction.applyCurrentTo: the flow pushes the mob, but
+        // `Shulker.setDeltaMovement` drops the push.
+        if (self.fluids.in_water || self.fluids.in_lava)
+            && self.pushed_by_fluid()
+            && self.species() != super::Species::Shulker
+        {
             self.velocity = w.pushed_by_currents(self.bounds(), self.velocity);
         }
         if self.fluids.in_water {
@@ -1243,7 +1306,7 @@ impl Mob {
         let full = (moved.length() * f64::from(0.6_f32)) as f32;
         let horizontal =
             ((moved.x * moved.x + moved.z * moved.z).sqrt() * f64::from(0.6_f32)) as f32;
-        let supporting = self.supporting;
+        let supporting = self.ground.supporting_block;
         let on = self.supported_on_pos(w, supporting, 1.0e-5);
         let state = w.world.block(on[0], on[1], on[2]);
         let climbable = w.facts.get(state).name.as_ref() == "minecraft:powder_snow"
@@ -1255,7 +1318,7 @@ impl Mob {
             let legacy = self.supported_on_pos(w, supporting, 0.2);
             let legacy_state = w.world.block(legacy[0], legacy[1], legacy[2]);
             let produced = !w.facts.is_air(legacy_state)
-                && (self.on_ground || climbable)
+                && (self.ground.on_ground || climbable)
                 && !self.fluids_swimming();
             if produced {
                 // `getMovementEmission().emitsSounds()`: the footfall is played
@@ -1312,7 +1375,7 @@ impl Mob {
             }
         } else if w.facts.is_air(state)
             && self.species() == super::Species::Bee
-            && !self.on_ground
+            && !self.ground.on_ground
             && self.age.is_multiple_of(2)
         {
             // Entity.processFlappingMovement: a flying bee beats its wings on
@@ -1359,56 +1422,45 @@ impl Mob {
     fn fluids_swimming(&self) -> bool {
         false
     }
-    /// `Entity.checkSupportingBlock` after a move: on the ground, the block
-    /// under the feet (`mainSupportingBlockPos`), looked for again where
-    /// the mob came from if none is under it now.
-    fn supporting_block(&self, w: &MobWorld, moved: Vec3) -> Option<[i32; 3]> {
-        if !self.on_ground {
-            return None;
-        }
-        let b = self.bounds();
-        use sunrise_core::geometry::Axis;
-        let area = Aabb::new(
-            Vec3::new(b.min(Axis::X), b.min(Axis::Y) - 1.0e-6, b.min(Axis::Z)),
-            Vec3::new(b.max(Axis::X), b.min(Axis::Y), b.max(Axis::Z)),
+    /// `Entity.checkSupportingBlock` uses the post-move bounds and live collision context.
+    fn update_ground_support(&mut self, w: &MobWorld, moved: Vec3) {
+        let mut ground = self.ground;
+        let (context, subject) =
+            self.support_collision(w.items.map(|items| items.entity_type_tags.as_ref()));
+        let mut scene = SceneCollisions {
+            world: w.world,
+            binding: w.collision,
+            subject: Some(subject),
+        };
+        let _ = scene.update_ground_support(
+            &mut ground,
+            self.position,
+            self.bounds(),
+            Some(moved),
+            context,
         );
-        w.supporting_block(area, self.position).or_else(|| {
-            let back = Vec3::new(-moved.x, 0.0, -moved.z);
-            let shifted = Aabb::new(
-                Vec3::new(
-                    area.min(Axis::X) + back.x,
-                    area.min(Axis::Y),
-                    area.min(Axis::Z) + back.z,
-                ),
-                Vec3::new(
-                    area.max(Axis::X) + back.x,
-                    area.max(Axis::Y),
-                    area.max(Axis::Z) + back.z,
-                ),
-            );
-            w.supporting_block(shifted, self.position)
-        })
+        self.ground = ground;
     }
     /// `Entity.getBlockStateOnLegacy`'s position: 0.2 below the feet, or the
     /// supporting block.
     pub(super) fn block_on_legacy(&self, w: &MobWorld) -> [i32; 3] {
-        self.supported_on_pos(w, self.supporting, 0.2)
+        self.supported_on_pos(w, self.ground.supporting_block, 0.2)
     }
     /// `Entity.getOnPos(offset)` with a supporting block: its column (its
     /// own position for fences, walls and gates up to half a block down).
     fn supported_on_pos(
         &self,
         w: &MobWorld,
-        supporting: Option<[i32; 3]>,
+        supporting: Option<BlockPos>,
         offset: f32,
     ) -> [i32; 3] {
         let Some(p) = supporting else {
             return self.on_pos(offset);
         };
         if offset <= 1.0e-5 {
-            return p;
+            return [p.x, p.y, p.z];
         }
-        let name = &w.facts.get(w.world.block(p[0], p[1], p[2])).name;
+        let name = &w.facts.get(w.world.block(p.x, p.y, p.z)).name;
         let tall = [
             "minecraft:fences",
             "minecraft:walls",
@@ -1417,12 +1469,12 @@ impl Mob {
         .iter()
         .any(|t| w.has_tag(t, name));
         if offset <= 0.5 && tall {
-            p
+            [p.x, p.y, p.z]
         } else {
             [
-                p[0],
+                p.x,
                 (self.position.y - f64::from(offset)).floor() as i32,
-                p[2],
+                p.z,
             ]
         }
     }
@@ -1441,11 +1493,11 @@ impl Mob {
         &mut self,
         w: &MobWorld,
         level: &mut DamageLevel<'_>,
+        (position, state): (BlockPos, BlockStateId),
         events: &mut Vec<MobEvent>,
-        pause: bool,
-    ) -> Option<FarmlandTrample> {
-        let pos = self.block_on_legacy(w);
-        let state = w.world.block(pos[0], pos[1], pos[2]);
+        owner: LandingOwner,
+    ) -> Option<FallPause> {
+        let pos = [position.x, position.y, position.z];
         let species = self.species();
         let entity = if super::doors::is_zombie(species) {
             LandingEntityKind::Zombie
@@ -1457,7 +1509,7 @@ impl Mob {
             LandingEntityKind::Living
         };
         let distance = self.fall_distance;
-        let result = w.landing.fall_on_until_trample(
+        let result = w.landing.begin_fall_on(
             &mut super::landing::MobLanding {
                 mob: self,
                 w,
@@ -1466,47 +1518,129 @@ impl Mob {
                 pos,
             },
             state,
-            BlockPos::new(pos[0], pos[1], pos[2]),
+            position,
             entity,
             distance,
-            pause,
+            owner != LandingOwner::Synchronous,
         );
-        // A block outside the landing registry falls back to the plain fall.
+        let call = match result {
+            Ok(BlockFall::Done) => return None,
+            Ok(BlockFall::Trample(trample)) => return Some(FallPause::Trample(trample)),
+            Ok(BlockFall::Damage(call)) => Some(call),
+            // A block outside the landing registry falls back to a plain fall.
+            Err(_) => None,
+        };
+        self.start_block_fall(
+            w,
+            level,
+            events,
+            pos,
+            call,
+            distance,
+            owner == LandingOwner::Borrowed,
+        )
+    }
+
+    fn start_block_fall(
+        &mut self,
+        w: &MobWorld,
+        level: &mut DamageLevel<'_>,
+        events: &mut Vec<MobEvent>,
+        pos: [i32; 3],
+        call: Option<FallDamageCall>,
+        distance: f64,
+        handoff: bool,
+    ) -> Option<FallPause> {
+        let mut landing = super::landing::MobLanding {
+            mob: self,
+            w,
+            level,
+            events,
+            pos,
+        };
+        let (distance, modifier, source) = landing.resolve_fall(call, distance);
+        let tail = call.map(FallDamageCall::tail).unwrap_or_default();
+        let result = self.begin_fall_hurt(
+            w.loop_context,
+            level,
+            distance,
+            modifier,
+            events,
+            Some((w, pos)),
+            source,
+            handoff,
+        );
+        self.finish_block_fall(w, level, events, FallenOn { pos, tail }, result)
+    }
+
+    fn finish_block_fall(
+        &mut self,
+        w: &MobWorld,
+        level: &mut DamageLevel<'_>,
+        events: &mut Vec<MobEvent>,
+        block: FallenOn,
+        result: Result<bool, FallHurtStop>,
+    ) -> Option<FallPause> {
         match result {
-            Ok(outcome) => outcome,
-            Err(_) => {
-                self.cause_fall_damage_at(
-                    w.loop_context,
-                    level,
-                    distance,
-                    1.0,
-                    events,
-                    Some((w, pos)),
-                    super::DamageKind::Fall,
+            Err(stop) => Some(FallPause::Hurt { block, stop }),
+            Ok(damaged) => {
+                let _ = block.tail.after_hurt(
+                    &mut super::landing::MobLanding {
+                        mob: self,
+                        w,
+                        level,
+                        events,
+                        pos: block.pos,
+                    },
+                    damaged,
                 );
                 None
             }
         }
     }
 
-    /// Finish the superclass's fall damage and clear the fall distance, after
-    /// the owning level handled the trample (or refused it).
-    pub fn finish_trample_fall(
+    fn resume_fall(
         &mut self,
         w: &MobWorld,
         level: &mut DamageLevel<'_>,
         events: &mut Vec<MobEvent>,
-        trample: FarmlandTrample,
-    ) {
-        let p = trample.position;
-        let _ = trample.finish_fall(&mut super::landing::MobLanding {
-            mob: self,
-            w,
-            level,
-            events,
-            pos: [p.x, p.y, p.z],
-        });
-        self.fall_distance = 0.0;
+        fall: FallPause,
+    ) -> Option<FallPause> {
+        let next = match fall {
+            FallPause::Trample(trample) => {
+                let p = trample.position;
+                self.start_block_fall(
+                    w,
+                    level,
+                    events,
+                    [p.x, p.y, p.z],
+                    Some(trample.damage_call()),
+                    trample.distance,
+                    true,
+                )
+            }
+            FallPause::Hurt { block, stop } => {
+                let contact = Some((w, block.pos));
+                let result = self.resume_fall_hurt(level, events, contact, stop, true);
+                self.finish_block_fall(w, level, events, block, result)
+            }
+        };
+        if next.is_none() {
+            self.fall_distance = 0.0;
+        }
+        next
+    }
+
+    /// Continue the mount's fall after the level handled its pending action.
+    pub fn resume_client_moved_fall(
+        &mut self,
+        w: &MobWorld,
+        level: &mut DamageLevel<'_>,
+        events: &mut Vec<MobEvent>,
+        fall: ClientMovedFall,
+    ) -> Option<ClientMovedFall> {
+        self.resume_fall(w, level, events, fall.0)
+            .map(ClientMovedFall)
     }
     fn mod_block_fall(
         &self,
@@ -1552,6 +1686,40 @@ impl Mob {
             super::DamageKind::Fall,
         );
     }
+    /// The owner-driven `causeFallDamage` of a passenger, including nested passengers.
+    pub fn passenger_fall_until_pause(
+        &mut self,
+        context: &LoopContext,
+        level: &mut DamageLevel<'_>,
+        events: &mut Vec<MobEvent>,
+        fall: PassengerFall,
+    ) -> Option<PassengerFallPause> {
+        self.begin_fall_hurt(
+            context,
+            level,
+            fall.distance,
+            fall.modifier,
+            events,
+            None,
+            super::DamageKind::Fall,
+            true,
+        )
+        .err()
+        .map(PassengerFallPause)
+    }
+
+    /// Continue a passenger's fall after the owning level carried out the pending action.
+    pub fn resume_passenger_fall(
+        &mut self,
+        level: &mut DamageLevel<'_>,
+        events: &mut Vec<MobEvent>,
+        pause: PassengerFallPause,
+    ) -> Option<PassengerFallPause> {
+        self.resume_fall_hurt(level, events, None, pause.0, true)
+            .err()
+            .map(PassengerFallPause)
+    }
+
     /// `getAttributeValue(SAFE_FALL_DISTANCE)`, which `calculateFallPower`
     /// takes off a fall: Jump Boost's stored modifier among the attribute's
     /// ([`Mob::set_effect_modifiers`]).
@@ -1569,6 +1737,25 @@ impl Mob {
         contact: Option<(&MobWorld, [i32; 3])>,
         source: super::DamageKind,
     ) -> bool {
+        match self.begin_fall_hurt(
+            context, level, distance, modifier, events, contact, source, false,
+        ) {
+            Ok(hurt) => hurt,
+            Err(_) => unreachable!("a synchronous fall never yields to an owner"),
+        }
+    }
+
+    fn begin_fall_hurt(
+        &mut self,
+        context: &LoopContext,
+        level: &mut DamageLevel<'_>,
+        distance: f64,
+        modifier: f32,
+        events: &mut Vec<MobEvent>,
+        contact: Option<(&MobWorld, [i32; 3])>,
+        source: super::DamageKind,
+        handoff: bool,
+    ) -> Result<bool, FallHurtStop> {
         // Breeze.causeFallDamage: a landing from higher than three blocks.
         if self.species() == super::Species::Breeze && distance > 3.0 {
             let at = [self.position.x, self.position.y, self.position.z];
@@ -1611,16 +1798,35 @@ impl Mob {
             );
             if cancel {
                 self.mod_block_fall(level, contact, landed, 0.0);
-                return false;
+                return Ok(false);
             }
         }
         // Entity.causeFallDamage: nothing happens to a fall immune entity, nor
         // to those on it.
         if self.kind.flags.fall_immune {
             self.mod_block_fall(level, contact, landed, 0.0);
-            return false;
+            return Ok(false);
         }
         let (distance, modifier) = self.mod_block_fall(level, contact, distance, modifier);
+        let fall = PassengerFall { distance, modifier };
+        // LivingEntity.causeFallDamage lets the riders fall first.
+        if !horse && self.fall_to_passengers(fall, events, handoff) {
+            return Err(FallHurtStop::BeforeOwnHurt(fall, source));
+        }
+        self.hurt_from_fall(level, fall, events, contact, source, horse, handoff)
+    }
+
+    fn hurt_from_fall(
+        &mut self,
+        level: &mut DamageLevel<'_>,
+        fall: PassengerFall,
+        events: &mut Vec<MobEvent>,
+        contact: Option<(&MobWorld, [i32; 3])>,
+        source: super::DamageKind,
+        horse: bool,
+        handoff: bool,
+    ) -> Result<bool, FallHurtStop> {
+        let PassengerFall { distance, modifier } = fall;
         let power = distance + 1.0e-6 - self.safe_fall_distance();
         let mut damage = (power * f64::from(modifier) * self.kind.fall_damage_multiplier).floor();
         // Frog.calculateFallDamage: five points less than the base damage;
@@ -1631,16 +1837,12 @@ impl Mob {
             _ => {}
         }
 
-        // LivingEntity.causeFallDamage lets the riders fall first.
-        if !horse {
-            self.fall_to_passengers(distance, modifier, events);
-        }
         if damage > 0.0 {
             // Llama.causeFallDamage: shorter damaging falls play the block
             // sound but do not hurt the llama or its riders.
             if super::llama::is_llama(self.species()) && distance < 6.0 {
                 self.block_fall_sound(contact, events);
-                return true;
+                return Ok(true);
             }
             let at = [self.position.x, self.position.y, self.position.z];
             // Monster.getFallSounds: the hostile pair.
@@ -1657,13 +1859,52 @@ impl Mob {
                 self.block_fall_sound(contact, events);
             }
             self.damage(level, damage as f32, super::Damage::of(source));
-            if horse {
-                self.fall_to_passengers(distance, modifier, events);
-                self.block_fall_sound(contact, events);
+            if handoff && self.hurt_needs_owner() {
+                return Err(FallHurtStop::AfterHurt(horse.then_some(fall)));
             }
-            return true;
+            if horse {
+                return self.finish_horse_fall(fall, events, contact, handoff);
+            }
+            return Ok(true);
         }
-        false
+        Ok(false)
+    }
+
+    fn resume_fall_hurt(
+        &mut self,
+        level: &mut DamageLevel<'_>,
+        events: &mut Vec<MobEvent>,
+        contact: Option<(&MobWorld, [i32; 3])>,
+        stop: FallHurtStop,
+        handoff: bool,
+    ) -> Result<bool, FallHurtStop> {
+        match stop {
+            FallHurtStop::BeforeOwnHurt(fall, source) => {
+                self.hurt_from_fall(level, fall, events, contact, source, false, handoff)
+            }
+            FallHurtStop::AfterHurt(Some(fall)) => {
+                self.finish_horse_fall(fall, events, contact, handoff)
+            }
+            FallHurtStop::AfterHurt(None) => Ok(true),
+            FallHurtStop::AfterHorsePassengers(_) => {
+                self.block_fall_sound(contact, events);
+                Ok(true)
+            }
+        }
+    }
+
+    fn finish_horse_fall(
+        &self,
+        fall: PassengerFall,
+        events: &mut Vec<MobEvent>,
+        contact: Option<(&MobWorld, [i32; 3])>,
+        handoff: bool,
+    ) -> Result<bool, FallHurtStop> {
+        if self.fall_to_passengers(fall, events, handoff) {
+            return Err(FallHurtStop::AfterHorsePassengers(fall));
+        }
+        self.block_fall_sound(contact, events);
+        Ok(true)
     }
     /// `LivingEntity.playBlockFallSound`: the block 0.2 below the feet plays
     /// its fall sound at half its volume and three quarters of its pitch,
@@ -1679,7 +1920,7 @@ impl Mob {
                 let sounds = w.block_sound_type(self, pos, state, mod_api::BlockSoundCause::Fall);
                 let at = [self.position.x, self.position.y, self.position.z];
                 events.push(MobEvent::SoundId(
-                    sounds.fall.to_string(),
+                    sounds.fall.as_str().to_owned(),
                     at,
                     sounds.volume * 0.5,
                     sounds.pitch * 0.75,
@@ -1687,21 +1928,30 @@ impl Mob {
             }
         }
     }
-    /// `Entity.propagateFallToPassengers`: the game gives the fall to each
-    /// passenger (`causeFallDamage`), a mob or a player, for this mob is
-    /// borrowed here.
-    fn fall_to_passengers(&self, distance: f64, modifier: f32, events: &mut Vec<MobEvent>) {
-        if self.rider.is_some() || self.extra.rider.is_some() {
-            events.push(MobEvent::FallToPassengers {
-                mob: self.id,
-                distance,
-                modifier,
-            });
+    /// `Entity.propagateFallToPassengers`: return the loan at this exact call
+    /// if a passenger needs the Game. Synchronous adapters still emit their event.
+    fn fall_to_passengers(
+        &self,
+        fall: PassengerFall,
+        events: &mut Vec<MobEvent>,
+        handoff: bool,
+    ) -> bool {
+        if self.rider.is_none() && self.extra.rider.is_none() {
+            return false;
         }
+        if handoff {
+            return true;
+        }
+        events.push(MobEvent::FallToPassengers {
+            mob: self.id,
+            distance: fall.distance,
+            modifier: fall.modifier,
+        });
+        false
     }
     /// LivingEntity.getFrictionInfluencedSpeed.
     fn friction_speed(&self, w: &MobWorld, friction: f32) -> f32 {
-        if self.on_ground {
+        if self.ground.on_ground {
             let speed = self.speed(w);
             if friction > 0.6 {
                 speed * (0.216_000_02 / (friction * friction * friction))
@@ -1755,7 +2005,7 @@ impl Mob {
         input: Vec3,
         events: &mut Vec<MobEvent>,
     ) {
-        let _ = self.travel_until_trample(w, level, input, events, false);
+        let _ = self.travel_until_pause(w, level, input, events, false);
     }
 
     /// `LivingEntity.travelFallFlying`: use the mob's existing authoritative move
@@ -1766,14 +2016,14 @@ impl Mob {
         level: &mut DamageLevel<'_>,
         events: &mut Vec<MobEvent>,
         pause: bool,
-    ) -> Result<(), TravelTrample> {
+    ) -> ControlFlow<TravelPause> {
         let before = (self.velocity.x * self.velocity.x + self.velocity.z * self.velocity.z).sqrt();
-        self.velocity = crate::motion::fall_flying_movement(
+        self.set_velocity(crate::motion::fall_flying_movement(
             self.velocity,
             self.head_pitch,
             self.yaw,
             self.effective_gravity(),
-        );
+        ));
         self.travel_move_with(w, level, events, pause, TravelTail::FallFlying { before })
     }
     /// LivingEntity.travelFlying: no gravity, `0.91F` drag in the air,
@@ -1787,7 +2037,7 @@ impl Mob {
         input: Vec3,
         events: &mut Vec<MobEvent>,
         pause: bool,
-    ) -> Result<(), TravelTrample> {
+    ) -> ControlFlow<TravelPause> {
         let (fluid_speed, air_speed) = if self.species() == super::Species::HappyGhast {
             let speed = super::happy_ghast::travel_speed(self);
             (speed, speed)
@@ -1808,7 +2058,7 @@ impl Mob {
     /// `LivingEntity.travelFlying(input, waterSpeed, lavaSpeed, airSpeed)`:
     /// the speeds vary per mob (an allay flies at the speed its move control
     /// set, `Allay.travel`).
-    pub fn travel_flying_speeds(
+    pub(crate) fn travel_flying_speeds(
         &mut self,
         w: &MobWorld,
         level: &mut DamageLevel<'_>,
@@ -1818,7 +2068,7 @@ impl Mob {
         lava_speed: f32,
         air_speed: f32,
         pause: bool,
-    ) -> Result<(), TravelTrample> {
+    ) -> ControlFlow<TravelPause> {
         let (speed, drag) = if self.fluids.in_water {
             (water_speed, f64::from(0.8_f32))
         } else if self.fluids.in_lava {
@@ -1830,8 +2080,8 @@ impl Mob {
         self.travel_move_with(w, level, events, pause, TravelTail::Flying { drag })
     }
 
-    /// Continue immediately unless `fallOn` needs the owning level. Only an
-    /// actual trample retains a tail; ordinary movement does not allocate.
+    /// Continue immediately unless movement needs the owning game. Only a
+    /// suspended move retains a tail; ordinary movement does not allocate.
     pub(super) fn travel_move(
         &mut self,
         w: &MobWorld,
@@ -1839,7 +2089,7 @@ impl Mob {
         events: &mut Vec<MobEvent>,
         pause: bool,
         tail: TravelFinish,
-    ) -> Result<(), TravelTrample> {
+    ) -> ControlFlow<TravelPause> {
         self.travel_move_with(w, level, events, pause, TravelTail::Fixed(tail))
     }
 
@@ -1850,20 +2100,25 @@ impl Mob {
         events: &mut Vec<MobEvent>,
         pause: bool,
         tail: TravelTail,
-    ) -> Result<(), TravelTrample> {
-        if let Some(movement) =
-            self.move_until_trample(w, level, events, &mut MoveGate::new(), pause)
+    ) -> ControlFlow<TravelPause> {
+        if let Some(movement) = self.move_until_pause(w, level, events, &mut MoveGate::new(), pause)
         {
-            return Err(TravelTrample { movement, tail });
+            return ControlFlow::Break(TravelPause(TravelStop::Move { movement, tail }));
         }
-        tail.finish(self, w, level, events);
-        Ok(())
+        tail.finish(self, w, level, events, pause)
+    }
+    /// `Entity.getBlockPosBelowThatAffectsMyMovement` for air travel and restitution.
+    fn movement_support_position(&self, w: &MobWorld) -> BlockPos {
+        crate::motion::block_support_at(
+            w.world,
+            Some(w.movement),
+            self.position,
+            self.ground.supporting_block,
+            sunrise_world::movement_support::MOVEMENT_SUPPORT_OFFSET,
+        )
     }
     fn block_friction(&self, w: &MobWorld) -> f32 {
-        // Entity.getBlockPosBelowThatAffectsMyMovement: 0.500001 below.
-        let x = self.position.x.floor() as i32;
-        let z = self.position.z.floor() as i32;
-        let y = (self.position.y - 0.500_001).floor() as i32;
+        let BlockPos { x, y, z } = self.movement_support_position(w);
         self.friction_at(w, [x, y, z])
     }
     /// The friction of the block at `[x, y, z]` under the mob, as the block's parts answer
@@ -1917,8 +2172,8 @@ impl Mob {
         events: &mut Vec<MobEvent>,
         pause: bool,
         stop_gliding: bool,
-    ) -> Result<(), TravelTrample> {
-        let friction = if self.on_ground {
+    ) -> ControlFlow<TravelPause> {
+        let friction = if self.ground.on_ground {
             // FRICTION_MODIFIER scales the block's slipperiness.
             let modifier = super::sulfur_cube::physics(self)
                 .map_or(1.0, |a| a.friction_modifier.clamp(0.0, 2048.0));
@@ -1932,7 +2187,7 @@ impl Mob {
         // handleOnClimbable, the move, then the climb up a wall.
         if self.on_climbable(w) {
             self.fall_distance = 0.0;
-            self.velocity = Self::climbable_velocity(self.velocity);
+            self.set_velocity(Self::climbable_velocity(self.velocity));
         }
         self.travel_move_with(
             w,
@@ -1948,7 +2203,7 @@ impl Mob {
 
     fn finish_air_travel(&mut self, w: &MobWorld, friction: f32) {
         let mut movement = self.velocity;
-        if (self.horizontal_collision || self.ai.jumping) && self.on_climbable(w) {
+        if (self.ground.horizontal_collision || self.ai.jumping) && self.on_climbable(w) {
             movement.y = 0.2;
         }
         let mut y = movement.y;
@@ -1969,7 +2224,7 @@ impl Mob {
             || self.extra.frog.discard_friction
             || self.extra.goat.discard_friction
         {
-            self.velocity = Vec3::new(movement.x, y, movement.z);
+            self.set_velocity(Vec3::new(movement.x, y, movement.z));
             return;
         }
         let air_drag_modifier = self.air_drag_modifier();
@@ -1980,11 +2235,11 @@ impl Mob {
         } else {
             Self::modified_friction(0.98, air_drag_modifier)
         };
-        self.velocity = Vec3::new(
+        self.set_velocity(Vec3::new(
             movement.x * f64::from(f),
             y * f64::from(vertical),
             movement.z * f64::from(f),
-        );
+        ));
     }
     fn travel_in_fluid(
         &mut self,
@@ -1994,7 +2249,7 @@ impl Mob {
         events: &mut Vec<MobEvent>,
         pause: bool,
         water: bool,
-    ) -> Result<(), TravelTrample> {
+    ) -> ControlFlow<TravelPause> {
         let falling = self.velocity.y <= 0.0;
         let old_y = self.position.y;
         let gravity = self.effective_gravity();
@@ -2006,7 +2261,7 @@ impl Mob {
             };
             let mut speed = 0.02f32;
             let mut efficiency = self.kind.water_efficiency as f32;
-            if !self.on_ground {
+            if !self.ground.on_ground {
                 efficiency *= 0.5;
             }
             if efficiency > 0.0 {
@@ -2045,7 +2300,7 @@ impl Mob {
             let mut m = self.velocity;
             // LivingEntity.travelInWater: `horizontalCollision && onClimbable()`,
             // a ladder or scaffolding under water as well as a climbing spider.
-            if self.horizontal_collision && self.on_climbable(w) {
+            if self.ground.horizontal_collision && self.on_climbable(w) {
                 m.y = 0.2;
             }
             m = Vec3::new(
@@ -2053,25 +2308,32 @@ impl Mob {
                 m.y * f64::from(0.8_f32),
                 m.z * f64::from(slow),
             );
-            self.velocity = fluid_falling(gravity, falling, self.extra.sprinting, m);
+            self.set_velocity(fluid_falling(gravity, falling, self.extra.sprinting, m));
         } else {
             if self.fluids.lava <= self.fluid_jump_threshold() {
-                self.velocity = Vec3::new(
+                self.set_velocity(Vec3::new(
                     self.velocity.x * 0.5,
                     self.velocity.y * f64::from(0.8_f32),
                     self.velocity.z * 0.5,
-                );
-                self.velocity =
-                    fluid_falling(gravity, falling, self.extra.sprinting, self.velocity);
+                ));
+                self.set_velocity(fluid_falling(
+                    gravity,
+                    falling,
+                    self.extra.sprinting,
+                    self.velocity,
+                ));
             } else {
-                self.velocity = Vec3::new(
+                self.set_velocity(Vec3::new(
                     self.velocity.x * 0.5,
                     self.velocity.y * 0.5,
                     self.velocity.z * 0.5,
-                );
+                ));
             }
             if gravity != 0.0 {
-                self.velocity.y -= gravity / 4.0;
+                self.set_velocity(
+                    self.velocity
+                        .with_component(Axis::Y, self.velocity.y - gravity / 4.0),
+                );
             }
         }
         // jumpOutOfFluid: Entity.isFree wants the box dry and clear of the
@@ -2083,7 +2345,7 @@ impl Mob {
             m.z,
         ));
         let wide = ahead.inflate(Vec3::new(1.0e-7, 1.0e-7, 1.0e-7));
-        if self.horizontal_collision
+        if self.ground.horizontal_collision
             && w.no_collision(ahead)
             && !w.contains_any_liquid(ahead)
             && !w.others_near(wide).any(|s| {
@@ -2093,7 +2355,7 @@ impl Mob {
                     && s.bounds.intersects(wide)
             })
         {
-            self.velocity.y = f64::from(0.3_f32);
+            self.set_velocity(self.velocity.with_component(Axis::Y, f64::from(0.3_f32)));
         }
         // `LivingEntity.travelInFluid` ends with
         // `floatInLiquidWhileRidden(FluidTags.ENTITY_FLOATABLE)`: a mount with
@@ -2101,15 +2363,20 @@ impl Mob {
         // in the water than its jump threshold rises 0.04 a tick, which is
         // what keeps a ridden horse and its rider afloat.
         if (self.rider.is_some() || self.extra.rider.is_some())
-            && w.data
-                .entity_has("minecraft:can_float_while_ridden", &self.kind.id)
+            && w.entity_tag_bit(
+                &self.kind,
+                crate::items::EntityTypeTags::CAN_FLOAT_WHILE_RIDDEN,
+            )
             && self.fluids.water > self.fluid_jump_threshold()
         {
-            self.velocity.y += f64::from(0.04_f32);
+            self.set_velocity(
+                self.velocity
+                    .with_component(Axis::Y, self.velocity.y + f64::from(0.04_f32)),
+            );
         }
     }
     /// The jump part of LivingEntity.aiStep.
-    pub fn handle_jumping(&mut self, w: &MobWorld) {
+    pub(crate) fn handle_jumping(&mut self, w: &MobWorld) {
         if self.ai.jumping && self.affected_by_fluids() {
             let (fluid_height, in_water_with_height) = if self.fluids.in_lava {
                 (self.fluids.lava, false)
@@ -2120,9 +2387,9 @@ impl Mob {
                 )
             };
             let threshold = self.fluid_jump_threshold();
-            if !in_water_with_height || self.on_ground && fluid_height <= threshold {
-                if !self.fluids.in_lava || self.on_ground && self.fluids.lava <= threshold {
-                    if (self.on_ground || in_water_with_height && fluid_height <= threshold)
+            if !in_water_with_height || self.ground.on_ground && fluid_height <= threshold {
+                if !self.fluids.in_lava || self.ground.on_ground && self.fluids.lava <= threshold {
+                    if (self.ground.on_ground || in_water_with_height && fluid_height <= threshold)
                         && self.ai.no_jump_delay == 0
                     {
                         self.jump_from_ground(w);
@@ -2195,7 +2462,7 @@ impl Mob {
         }
     }
     /// The `living_jump` hook for this mob, with its motion after the jump.
-    pub fn living_jumped(&self, context: &LoopContext) {
+    pub(crate) fn living_jumped(&self, context: &LoopContext) {
         let v = self.velocity;
         crate::motion::native_living_jump(context, self.id, &self.kind.id, [v.x, v.y, v.z]);
     }
@@ -2204,7 +2471,7 @@ impl Mob {
         self.jump_power_with(w, 1.0)
     }
     /// `LivingEntity.getJumpPower(float multiplier)`
-    pub fn jump_power_with(&self, w: &MobWorld, multiplier: f32) -> f32 {
+    pub(crate) fn jump_power_with(&self, w: &MobWorld, multiplier: f32) -> f32 {
         let mut power = self.attrs.jump_strength as f32 * multiplier * self.block_jump_factor(w)
             + self.jump_boost_power();
         crate::motion::native_living_jump_power(w.loop_context, self.id, &self.kind.id, &mut power);
@@ -2221,7 +2488,7 @@ impl Mob {
     /// `Entity.getBlockJumpFactor`: the block the mob stands in, or the one
     /// below that affects movement when the current block has a neutral jump factor of 1.0.
     pub fn block_jump_factor(&self, w: &MobWorld) -> f32 {
-        let supporting = self.supporting.map(|[x, y, z]| BlockPos::new(x, y, z));
+        let supporting = self.ground.supporting_block;
         crate::motion::block_jump_factor_at(
             w.world,
             w.movement,
@@ -2231,7 +2498,7 @@ impl Mob {
         )
     }
     /// LivingEntity.updateWalkAnimation (client calculateEntityAnimation).
-    pub fn update_walk_animation(&mut self) {
+    pub(crate) fn update_walk_animation(&mut self) {
         let dy = if self.kind.flags.omnidirectional {
             self.position.y - self.previous.y
         } else {
@@ -2410,7 +2677,12 @@ impl sunrise_world::water_splash::WaterSplashWorld for Splash<'_> {
 /// entity from (`Entity.getLightProbePosition` is that position and
 /// `EntityRenderer.getPackedLightCoords` takes `BlockPos.containing` of it):
 /// `Mth.lerp(partialTick, xo, x)` on each axis, plus `getEyeHeight()` on y.
-pub fn eye_probe_cell(previous: Vec3, position: Vec3, eye_height: f64, partial: f64) -> [i32; 3] {
+pub(crate) fn eye_probe_cell(
+    previous: Vec3,
+    position: Vec3,
+    eye_height: f64,
+    partial: f64,
+) -> [i32; 3] {
     let at = previous.lerp(position, partial);
     [
         at.x.floor() as i32,
@@ -2448,8 +2720,6 @@ struct MobRestitution<'a, 'w, 'l> {
     mob: &'a mut Mob,
     world: &'a MobWorld<'w>,
     level: &'a mut DamageLevel<'l>,
-    /// `Entity.getOnPosLegacy`: the block whose bounce this move sees.
-    on: BlockPos,
 }
 impl<'a, 'w, 'l> MobRestitution<'a, 'w, 'l> {
     /// The block's movement data: its coefficients and its bounce tag.
@@ -2487,17 +2757,32 @@ impl RestitutionWorld for MobRestitution<'_, '_, '_> {
     /// `Entity.getBlockBounciness`: the restitution of the block under the
     /// entity, so a mob landing on a slime block or a bed bounces too, after
     /// the block's parts, on the side that ticks the mob.
-    fn block_bounce_restitution(&mut self, state: BlockStateId) -> Result<f32, ()> {
+    fn block_bounce_restitution(
+        &mut self,
+        state: BlockStateId,
+        position: BlockPos,
+    ) -> Result<f32, ()> {
         let own = self.movement(state)?.coefficients.bounce_restitution;
-        let client_side = self.world.loop_context.side() == LoopSide::Client;
         let contact = crate::block_contact::Contact {
             entity: self.mob.id as i32,
             kind: &self.mob.kind.id,
             state,
-            position: self.on,
+            position,
         };
         Ok(crate::block_contact::bounce_restitution(
-            &mut self.level.reborrow().on_client(client_side),
+            crate::motion::FrictionLevel {
+                world: self.world.world,
+                registry: self.world.collision.registry(),
+                context: self.world.loop_context,
+                side: self.world.side,
+                coefficient: &|id| {
+                    self.world
+                        .movement
+                        .get(id)
+                        .ok()
+                        .map(|p| p.coefficients.friction)
+                },
+            },
             contact,
             own,
         ))
@@ -2506,28 +2791,8 @@ impl RestitutionWorld for MobRestitution<'_, '_, '_> {
     fn air_drag(&mut self) -> Result<f32, ()> {
         Ok(self.mob.air_drag())
     }
-    /// `Entity.getBlockPosBelowThatAffectsMyMovement`: `Entity.getOnPos(0.500001F)`,
-    /// which keeps the supporting fence gate's or wall's column. The offset is
-    /// over 0.5, so the fence case never applies.
     fn movement_support_position(&mut self) -> Result<BlockPos, ()> {
-        let position = self.mob.position;
-        let offset = f64::from(sunrise_world::movement_support::MOVEMENT_SUPPORT_OFFSET);
-        let Some(support) = self.mob.supporting else {
-            return Ok(BlockPos::new(
-                position.x.floor() as i32,
-                (position.y - offset).floor() as i32,
-                position.z.floor() as i32,
-            ));
-        };
-        let state = self.world.world.block(support[0], support[1], support[2]);
-        let keeps_column = self
-            .movement(state)
-            .is_ok_and(|b| b.wall || b.coefficients.fence_gate);
-        Ok(if keeps_column {
-            BlockPos::new(support[0], support[1], support[2])
-        } else {
-            BlockPos::new(support[0], (position.y - offset).floor() as i32, support[2])
-        })
+        Ok(self.mob.movement_support_position(self.world))
     }
     /// `BlockLandingRegistry.bounce_on`'s only case is the shelf mushroom's
     /// bounce sound, which no path plays yet (`landing.rs` binds it for the
@@ -2560,7 +2825,7 @@ impl RestitutionWorld for MobRestitution<'_, '_, '_> {
         self.mob.sync_position = true;
     }
     fn set_velocity(&mut self, velocity: Vec3) -> Result<(), ()> {
-        self.mob.velocity = velocity;
+        self.mob.set_velocity(velocity);
         Ok(())
     }
 }
@@ -2813,8 +3078,10 @@ mod tests {
         let motion = crate::motion::MotionResources::load(&root, &assets).unwrap();
         let data = super::super::MobData::load(
             &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
-            &facts,
-        );
+            facts.states.len(),
+            false,
+        )
+        .unwrap();
         let types = super::super::MobTypes::load(&root).unwrap();
         let biomes = crate::biome::Biomes::load(
             &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
@@ -2877,6 +3144,7 @@ mod tests {
                 nearest_player: None,
                 others: &[],
                 dragon: None,
+                armor_stands: &[],
                 leash_boats: &[],
                 who_lookup: None,
                 others_grid: None,
@@ -2896,6 +3164,7 @@ mod tests {
                 landing: &motion.landing,
                 biomes: &biomes,
                 universal_anger: false,
+                pvp: false,
                 mob_griefing: true,
                 mob_drops: true,
                 max_entity_cramming: 24,
@@ -2912,6 +3181,7 @@ mod tests {
                 asks_baby_spawn: false,
                 border: None,
                 section_writer: None,
+                trading_players: None,
             };
             let kind = std::sync::Arc::new(types.types["minecraft:pig"].clone());
             let mut m = Mob::new(1, kind, Vec3::new(0.5, 1.0, 0.5), 0.0);
@@ -2954,8 +3224,10 @@ mod tests {
         let motion = crate::motion::MotionResources::load(&root, &assets).unwrap();
         let data = super::super::MobData::load(
             &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
-            &facts,
-        );
+            facts.states.len(),
+            false,
+        )
+        .unwrap();
         let types = super::super::MobTypes::load(&root).unwrap();
         let biomes = crate::biome::Biomes::load(
             &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
@@ -3010,6 +3282,7 @@ mod tests {
                 nearest_player: None,
                 others: &[],
                 dragon: None,
+                armor_stands: &[],
                 leash_boats: &[],
                 who_lookup: None,
                 others_grid: None,
@@ -3029,6 +3302,7 @@ mod tests {
                 landing: &motion.landing,
                 biomes: &biomes,
                 universal_anger: false,
+                pvp: false,
                 mob_griefing: true,
                 mob_drops: true,
                 max_entity_cramming: 24,
@@ -3045,11 +3319,12 @@ mod tests {
                 asks_baby_spawn: false,
                 border: None,
                 section_writer: None,
+                trading_players: None,
             };
             let kind = std::sync::Arc::new(types.types["minecraft:pig"].clone());
             let mut m = Mob::new(1, kind, Vec3::new(0.5, 1.0, 0.5), 0.0);
             m.position = Vec3::new(1.1, 1.0, 0.5);
-            m.supporting = Some([0, 0, 0]);
+            m.ground.supporting_block = Some(sunrise_core::position::BlockPos::new(0, 0, 0));
             m.velocity = Vec3::new(0.0, -1.0, 0.0);
             assert_eq!(m.on_pos(0.2), [1, 0, 0]);
             assert_eq!(m.block_on_legacy(&w), [0, 0, 0]);
@@ -3086,8 +3361,10 @@ mod tests {
         let motion = crate::motion::MotionResources::load(&root, &assets).unwrap();
         let data = super::super::MobData::load(
             &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
-            &facts,
-        );
+            facts.states.len(),
+            false,
+        )
+        .unwrap();
         let types = super::super::MobTypes::load(&root).unwrap();
         let biomes = crate::biome::Biomes::load(
             &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
@@ -3144,6 +3421,7 @@ mod tests {
             nearest_player: None,
             others: &[],
             dragon: None,
+            armor_stands: &[],
             leash_boats: &[],
             who_lookup: None,
             others_grid: None,
@@ -3163,6 +3441,7 @@ mod tests {
             landing: &motion.landing,
             biomes: &biomes,
             universal_anger: false,
+            pvp: false,
             mob_griefing: true,
             mob_drops: true,
             max_entity_cramming: 24,
@@ -3179,6 +3458,7 @@ mod tests {
             asks_baby_spawn: false,
             border: None,
             section_writer: None,
+            trading_players: None,
         };
         let kind = std::sync::Arc::new(types.types["minecraft:horse"].clone());
         let mut sank = 0.0;
@@ -3225,8 +3505,10 @@ mod tests {
         let motion = crate::motion::MotionResources::load(&root, &assets).unwrap();
         let data = super::super::MobData::load(
             &sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
-            &facts,
-        );
+            facts.states.len(),
+            false,
+        )
+        .unwrap();
         let types = super::super::MobTypes::load(&root).unwrap();
         let biomes = crate::biome::Biomes::load(
             &sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
@@ -3288,6 +3570,7 @@ mod tests {
                 others: &others,
                 who_lookup: None,
                 dragon: None,
+                armor_stands: &[],
                 leash_boats: &[],
                 others_grid: None,
                 others_index: None,
@@ -3306,6 +3589,7 @@ mod tests {
                 landing: &motion.landing,
                 biomes: &biomes,
                 universal_anger: false,
+                pvp: false,
                 mob_griefing: true,
                 mob_drops: true,
                 max_entity_cramming: 24,
@@ -3318,6 +3602,7 @@ mod tests {
                 mod_effects: None,
                 border: None,
                 section_writer: None,
+                trading_players: None,
             };
             let top = below.bounds().max_position().y;
             let mut zombie = mob(1, "minecraft:zombie", Vec3::new(8.5, top + 3.0, 8.5));
@@ -3458,7 +3743,7 @@ mod tests {
             crate::mobs::world::with_built_test_world(&[], build, |w, types| {
                 let kind = std::sync::Arc::new(types.types["minecraft:zombie"].clone());
                 let mut m = Mob::new(1, kind, Vec3::new(0.5, 1.0, 1.5), 0.0);
-                m.on_ground = true;
+                m.ground.on_ground = true;
                 m.velocity = Vec3::new(0.2, 0.0, 0.0);
                 m.do_move(w, level, &mut Vec::new(), &mut MoveGate::new());
                 let expected = f64::from(factor as f32) * 0.2;
@@ -3469,6 +3754,97 @@ mod tests {
                 );
             });
         }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn an_overflowing_block_speed_product_preserves_the_mobs_finite_velocity() {
+        use mod_api::{EntityMoveEvent, Flow, Hooks, LivingTravelEvent};
+        use sunrise_core::nbt::{Limits, Tag, read_named};
+        use sunrise_world::movement_properties::{MovementProperties, MovementTags};
+
+        // Loading the fixture sizes the process-wide chunk palette.
+        const CHILD: &str = "SUNRISE_MOB_TRAVEL_OVERFLOW_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            crate::fresh_process::run_in_fresh_process(
+                "mobs::living::tests::an_overflowing_block_speed_product_preserves_the_mobs_finite_velocity",
+                CHILD,
+                "1",
+            );
+            return;
+        }
+
+        struct Fast;
+        #[mod_api::__subscriptions]
+        impl Hooks for Fast {
+            fn living_travel(
+                &self,
+                _: &dyn mod_api::LoopContext,
+                event: &mut LivingTravelEvent<'_>,
+            ) -> Flow {
+                *event.velocity = [f64::MAX, 0.0, 0.0];
+                Flow::Continue
+            }
+
+            fn entity_move(
+                &self,
+                _: &dyn mod_api::LoopContext,
+                event: &mut EntityMoveEvent<'_>,
+            ) -> Flow {
+                // Shorten the displacement without changing the stored velocity.
+                *event.delta = [0.5, 0.0, 0.0];
+                Flow::Continue
+            }
+        }
+
+        let root = std::env::var_os("SUNRISE_TEST_RESOURCES")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../.local/sunrise-client")
+                    .join(sunrise_core::VANILLA_VERSION)
+            });
+        let bytes = std::fs::read(root.join("movement-properties.nbt")).unwrap();
+        let (mut movement_table, _) = read_named(&bytes, Limits::tables()).unwrap();
+        // Give air a factor of 2.0 in this world only, like a block's part could.
+        *movement_table
+            .tag
+            .get_mut("blocks")
+            .unwrap()
+            .get_mut("minecraft:air")
+            .unwrap()
+            .get_mut("speedFactor")
+            .unwrap() = Tag::Float(2.0_f32.to_bits());
+
+        let mods = vec![mod_api::ModEntry::new("fast", Box::new(Fast))].into();
+        mod_platform::testing::with_mods(mods, || {
+            assert!(crate::mobs::world::with_built_test_world(
+                &[],
+                |world, _| {
+                    world.chunks.insert(
+                        (0, 0),
+                        std::sync::Arc::new(crate::chunk::Chunk::empty(0, 0)),
+                    );
+                },
+                |w, types| {
+                    let movement = MovementProperties::from_nbt(&movement_table.tag, w.registry)
+                        .unwrap()
+                        .bind(&MovementTags::default())
+                        .unwrap();
+                    let w = MobWorld {
+                        movement: &movement,
+                        ..w.clone()
+                    };
+                    let kind = std::sync::Arc::new(types.types["minecraft:zombie"].clone());
+                    let mut mob = Mob::new(1, kind, Vec3::new(0.5, 80.0, 0.5), 0.0);
+                    let mut test_level = crate::health::TestLevel::new(0);
+                    mob.travel(&w, &mut test_level.level(), Vec3::ZERO, &mut Vec::new());
+                    assert_eq!(mob.position, Vec3::new(1.0, 80.0, 0.5));
+                    // Entity.move refuses the overflowing product as a whole; only the air drag applies.
+                    assert_eq!(mob.velocity.x, f64::MAX * f64::from(0.91_f32));
+                },
+            ));
+        });
     }
 
     /// `Entity.collectColliders`: the world border's wall stops a mob's move
@@ -3505,7 +3881,7 @@ mod tests {
                 m.velocity = Vec3::new(1.5, 0.0, 0.0);
                 m.do_move(&w, level, &mut Vec::new(), &mut MoveGate::new());
                 east_edge[i] = m.bounds().max_position().x;
-                assert_eq!(m.horizontal_collision, bordered);
+                assert_eq!(m.ground.horizontal_collision, bordered);
             }
             assert!(
                 east_edge[0] > 13.0,
@@ -3556,11 +3932,18 @@ mod tests {
                 if boosted {
                     m.add_effect("minecraft:jump_boost", -1, 1);
                 }
-                m.on_ground = true;
+                m.ground.on_ground = true;
                 m.fall_distance = 4.5;
                 let mut test_level = crate::health::TestLevel::new(0);
                 let mut events = Vec::new();
-                m.check_fall_damage(w, &mut test_level.level(), Vec3::ZERO, &mut events, false);
+                m.check_fall_damage(
+                    w,
+                    &mut test_level.level(),
+                    Vec3::ZERO,
+                    m.restitution_contact(w),
+                    &mut events,
+                    LandingOwner::Synchronous,
+                );
                 let dust: Vec<i32> = events
                     .iter()
                     .filter_map(|e| match e {
@@ -3768,7 +4151,7 @@ mod tests {
             crate::mobs::world::with_built_test_world(&[], build, |w, types| {
                 let kind = std::sync::Arc::new(types.types["minecraft:cow"].clone());
                 let mut m = Mob::new(1, kind, Vec3::new(1.5, 10.0, 1.5), 0.0);
-                m.on_ground = false;
+                m.ground.on_ground = false;
                 let mut drops = Vec::new();
                 for _ in 0..12 {
                     let before = m.position.y;
@@ -3871,8 +4254,9 @@ mod tests {
                     mob.fall_on_block(
                         w,
                         &mut crate::health::TestLevel::new(0).level(),
+                        mob.restitution_contact(w),
                         &mut events,
-                        false,
+                        LandingOwner::Synchronous,
                     );
                     assert!(
                         matches!(events.as_slice(), [MobEvent::Sound("entity.hostile.small_fall", _, 1.0, 1.0), MobEvent::SoundId(id, _, 0.5, 0.75), ..] if id == block_sound),
@@ -3915,8 +4299,8 @@ mod tests {
             let walk = |id: &str| {
                 let kind = std::sync::Arc::new(types.types[id].clone());
                 let mut m = Mob::new(1, kind, Vec3::new(0.5, 1.0, 0.5), 0.0);
-                m.on_ground = true;
-                m.supporting = Some([0, 0, 0]);
+                m.ground.on_ground = true;
+                m.ground.supporting_block = Some(sunrise_core::position::BlockPos::new(0, 0, 0));
                 let mut events = Vec::new();
                 m.movement_emission(w, Vec3::new(2.0, 0.0, 0.0), &mut events);
                 events
@@ -4134,6 +4518,159 @@ mod tests {
         m.extra.set_saddled(true);
         assert_eq!(m.flying_speed(context), 0.3_f32 * 0.1);
     }
+    /// `Drowned.isPushedByFluid` is `!isSwimming()`; water animals, turtles and nautiluses answer false, land mobs true.
+    #[test]
+    #[ignore = "daily"]
+    fn a_swimming_drowned_is_not_pushed_by_the_current() {
+        let ran = crate::mobs::world::with_test_world(&[], |_, types| {
+            let mob = |id: &str| {
+                let kind = std::sync::Arc::new(types.types[id].clone());
+                Mob::new(1, kind, Vec3::ZERO, 0.0)
+            };
+            // `extra.flag` is the drowned's `isSwimming`, as `drowned_update_swimming` sets it.
+            let mut drowned = mob("minecraft:drowned");
+            drowned.extra.flag = true;
+            assert!(!drowned.pushed_by_fluid(), "a swimming drowned");
+            drowned.extra.flag = false;
+            assert!(drowned.pushed_by_fluid(), "a drowned walking the bottom");
+            for id in [
+                "minecraft:cod",
+                "minecraft:squid",
+                "minecraft:turtle",
+                "minecraft:nautilus",
+            ] {
+                assert!(!mob(id).pushed_by_fluid(), "{id}");
+            }
+            assert!(mob("minecraft:zombie").pushed_by_fluid());
+        });
+        assert!(ran, "the vanilla test resources must be available");
+    }
+    /// `Entity.getFluidInteractionBox` through `AbstractBoat.modifyPassengerFluidInteractionBox`, on a drowned over a lake.
+    #[test]
+    #[ignore = "daily"]
+    fn a_mob_in_a_boat_on_water_is_not_in_the_water() {
+        let build = |world: &mut crate::world::World,
+                     registry: &sunrise_world::registry::BlockRegistry| {
+            world.chunks.insert(
+                (0, 0),
+                std::sync::Arc::new(crate::chunk::Chunk::empty(0, 0)),
+            );
+            let water = registry.default_state("minecraft:water").unwrap();
+            for x in 0..=4 {
+                for z in 0..=4 {
+                    for y in 1..=3 {
+                        world.set(x, y, z, water).unwrap();
+                    }
+                }
+            }
+        };
+        let boat = |under_water, max_y| crate::motion::RiddenBoat { under_water, max_y };
+        let ran = crate::mobs::world::with_built_test_world(&[], build, |w, types| {
+            let kind = std::sync::Arc::new(types.types["minecraft:drowned"].clone());
+            let wet = |mount: Option<u32>, ridden: Option<crate::motion::RiddenBoat>| {
+                let mut m = Mob::new(1, kind.clone(), Vec3::new(2.5, 3.5, 2.5), 0.0);
+                m.extra.mount = mount;
+                m.fluids.boat = ridden.map(|b| (7, b));
+                m.update_fluids(w, &mut Vec::new());
+                (m.fluids.in_water, m.fluids.water)
+            };
+            assert!(wet(None, None).0, "no boat");
+            assert_eq!(
+                wet(Some(7), Some(boat(false, 3.95))),
+                (false, 0.0),
+                "a boat afloat raises the box's bottom above the surface"
+            );
+            assert_eq!(
+                wet(Some(7), Some(boat(false, 6.0))),
+                (false, 0.0),
+                "a boat reaching its head leaves no box"
+            );
+            assert!(wet(Some(7), Some(boat(true, 3.95))).0, "a boat under water");
+            assert!(wet(None, Some(boat(false, 3.95))).0, "a boat it left");
+        });
+        assert!(ran, "the vanilla test resources must be available");
+    }
+    /// `Strider.checkFallDamage` resets the fall in lava before `LivingEntity`'s runs; a pig in that lava, or a strider on stone, takes it.
+    #[test]
+    #[ignore = "daily"]
+    fn a_strider_landing_in_lava_takes_no_fall_damage() {
+        use std::sync::Arc;
+        let landed = |id: &str, lava: bool| -> (f32, f64, Vec<i32>) {
+            let mut out = None;
+            let ran = crate::mobs::world::with_built_test_world(
+                &[],
+                move |world, registry| {
+                    let stone = registry.default_state("minecraft:stone").unwrap();
+                    let lava_state = registry.default_state("minecraft:lava").unwrap();
+                    for cx in -1..1 {
+                        for cz in -1..1 {
+                            world
+                                .chunks
+                                .insert((cx, cz), Arc::new(crate::chunk::Chunk::empty(cx, cz)));
+                        }
+                    }
+                    for x in -4..4 {
+                        for z in -4..4 {
+                            world.set(x, 1, z, stone).unwrap();
+                            if lava {
+                                for y in 2..=4 {
+                                    world.set(x, y, z, lava_state).unwrap();
+                                }
+                            }
+                        }
+                    }
+                },
+                |w, types| {
+                    let kind = Arc::new(types.types[id].clone());
+                    let mut m = Mob::new(1, kind, Vec3::new(0.5, 2.0, 0.5), 0.0);
+                    let mut events = Vec::new();
+                    // `Entity.baseTick` set the fluid state before the move, and ended the first tick.
+                    m.update_fluids(w, &mut events);
+                    m.first_tick = false;
+                    m.ground.on_ground = true;
+                    m.update_ground_support(w, Vec3::ZERO);
+                    let effect = m.restitution_contact(w);
+                    m.fall_distance = 6.0;
+                    let start = m.health;
+                    let mut test_level = crate::health::TestLevel::new(0);
+                    m.species_check_fall_damage(
+                        w,
+                        &mut test_level.level(),
+                        Vec3::ZERO,
+                        effect,
+                        &mut events,
+                        LandingOwner::Synchronous,
+                    );
+                    let dust = events
+                        .iter()
+                        .filter_map(|e| match e {
+                            MobEvent::LandingDust { count, .. } => Some(*count),
+                            _ => None,
+                        })
+                        .collect();
+                    out = Some((start - m.health, m.fall_distance, dust));
+                },
+            );
+            assert!(ran, "the vanilla test resources must be available");
+            out.unwrap()
+        };
+        assert_eq!(
+            landed("minecraft:strider", true),
+            (0.0, 0.0, vec![]),
+            "a strider in lava"
+        );
+        // `calculateFallDamage`: floor(6 + 1e-6 - 3) = 3; the dust is (int) (150 * (0.2F + 3 / 15.0)) = 60.
+        assert_eq!(
+            landed("minecraft:pig", true),
+            (3.0, 0.0, vec![60]),
+            "a pig in the same lava"
+        );
+        assert_eq!(
+            landed("minecraft:strider", false),
+            (3.0, 0.0, vec![60]),
+            "a strider on stone"
+        );
+    }
 }
 
 #[path = "living/fluid_heights.rs"]
@@ -4167,7 +4704,13 @@ mod farmland_event_tests {
                 mob.fall_distance = 5.0;
                 let mut events = Vec::new();
                 let mut damage = crate::health::TestLevel::new(0);
-                mob.fall_on_block(w, &mut damage.level(), &mut events, false);
+                mob.fall_on_block(
+                    w,
+                    &mut damage.level(),
+                    mob.restitution_contact(w),
+                    &mut events,
+                    LandingOwner::Synchronous,
+                );
                 // The write, then the event the rule posts for it.
                 assert!(
                     matches!(
@@ -4194,6 +4737,28 @@ mod farmland_event_tests {
         // cannot be built: the test has nothing to check.
         assert!(ran, "vanilla data is missing");
     }
+
+    #[test]
+    fn set_velocity_and_move_relative_follow_vanilla_finiteness_and_normalization() {
+        let mut mob = Mob::new(1, crate::mobs::sensor_scan_tests::kind(), Vec3::ZERO, 0.0);
+        mob.set_velocity(Vec3::new(80.0, -70.0, 0.0));
+        assert_eq!(mob.velocity, Vec3::new(80.0, -70.0, 0.0));
+
+        for bad in [
+            Vec3::new(f64::NAN, 0.0, 0.0),
+            Vec3::new(0.0, f64::INFINITY, 0.0),
+            Vec3::new(0.0, 0.0, f64::NEG_INFINITY),
+        ] {
+            mob.set_velocity(bad);
+            assert_eq!(mob.velocity, Vec3::new(80.0, -70.0, 0.0));
+            mob.move_relative(0.1, bad);
+            assert_eq!(mob.velocity, Vec3::new(80.0, -70.0, 0.0));
+        }
+
+        mob.set_velocity(Vec3::ZERO);
+        mob.move_relative(0.1, Vec3::new(2.0, 0.0, 0.0));
+        assert_eq!(mob.velocity, Vec3::new(f64::from(0.1_f32), 0.0, 0.0));
+    }
 }
 
 #[cfg(test)]
@@ -4202,7 +4767,6 @@ mod climbable_tests;
 fn fall_reset_hit(w: &MobWorld, from: Vec3, moved: Vec3) -> bool {
     let reset = w.block_tags.get("minecraft:fall_damage_resetting");
     crate::entities::fall_reset_hit(
-        w.loop_context,
         w.world,
         w.fluid_tables,
         |p| {

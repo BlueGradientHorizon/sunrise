@@ -26,8 +26,9 @@ use {
 type Pos = (i32, i32, i32);
 
 pub(super) use sunrise_gameplay::structure_blocks::{
-    TemplateEntry, create_seed, encode_template, load_settings, template_file, template_size,
+    TemplateEntry, encode_template, load_settings, template_file,
 };
+pub use sunrise_gameplay::structure_blocks::{create_seed, template_size};
 
 impl Game<'_> {
     /// `BlockEntityWithBoundingBoxRenderer`: for a player who may use game
@@ -220,8 +221,9 @@ impl Game<'_> {
             })
             .collect();
         let mut out = Vec::new();
-        for (_, tags) in
-            self.snapshot_entity_chunks(&chunks, super::persist::EntitySnapshot::Structure)
+        for (_, tags) in self
+            .snapshot_entity_chunks(&chunks, super::persist::EntitySnapshot::Structure)
+            .0
         {
             for tag in tags {
                 let Some(Tag::List(pos)) = tag.get("Pos") else {

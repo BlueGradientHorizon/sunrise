@@ -6,17 +6,26 @@
 //! fault, structural fault or a UUID a live entity already owns — with zero
 //! published rows.
 use super::*;
-use crate::game::native_entity_refs::tests::with_game;
+use crate::game::native_entity_refs::tests::{
+    collect_entity_visit, fixture_resident_column, with_game,
+};
 use std::collections::HashMap;
 
-/// Declares the fixture's two types: `mymod:robot`, which saves, and
-/// `mymod:ghost`, which never does.
+/// Declares a saved type, a `noSave` type, and a type an experiment enables.
 struct Declare;
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for Declare {
     fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-        for (path, save) in [("robot", true), ("ghost", false)] {
+        for (path, save, features) in [
+            ("robot", true, &[][..]),
+            ("ghost", false, &[][..]),
+            (
+                "experimental",
+                true,
+                &[mod_api::FeatureFlag::RedstoneExperiments][..],
+            ),
+        ] {
             r.declare_general_entity(
                 path,
                 mod_api::GeneralEntityCategory::Misc,
@@ -34,14 +43,14 @@ impl mod_api::Hooks for Declare {
                 8,
                 3,
                 1,
-                &[],
+                features,
             )
             .unwrap();
         }
     }
 }
 
-/// A fixture game whose frozen registry holds the two declared types. The
+/// A fixture game whose frozen registry holds the declared types. The
 /// registration phase is scoped around the whole fixture: the game harness
 /// re-runs the installed mods' `register`, and a general type is only
 /// declared while that phase is current. The runtime initializes first: a
@@ -53,10 +62,19 @@ fn with_types(test: impl FnOnce(&mut Game<'_>)) {
 
 fn with_types_and(observer: Option<mod_api::ModEntry>, test: impl FnOnce(&mut Game<'_>)) {
     mod_platform::__private::initialize().expect("test registration requires the mod API runtime");
-    let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+    let _phase = mod_platform::__private::RegistrationGuard::open();
     let mut mods = vec![mod_api::ModEntry::new("mymod", Box::new(Declare))];
     mods.extend(observer);
-    mod_platform::testing::with_mods(mods.into(), || with_game(test));
+    mod_platform::testing::with_mods(mods.into(), || {
+        with_game(|game| resident_origin(game, test))
+    });
+}
+
+/// Run `test` with chunk (0, 0) loaded: a handle resolves only for an entity in an
+/// accessible section (`LevelEntityGetter`), and these fixtures' entities stand in it.
+fn resident_origin(game: &mut Game<'_>, test: impl FnOnce(&mut Game<'_>)) {
+    fixture_resident_column(&mut game.world, (0, 0));
+    test(game);
 }
 
 /// One record's save tag, the format `to_tag` writes.
@@ -79,6 +97,187 @@ fn record_tag(type_key: &str, uuid: [i32; 4], payload: &[u8], riders: Vec<Tag>) 
         map.insert(format::PASSENGERS.into(), Tag::List(riders));
     }
     tag
+}
+
+#[test]
+#[ignore = "daily"]
+fn bare_level_feature_enables_host_query_and_general_spawn() {
+    use mod_api::{EntitySpawn, FeatureFlag, SpawnBody};
+    use sunrise_client::{
+        chunk::Chunk,
+        save::{Level, write_dat},
+    };
+
+    with_types(|game| {
+        game.world
+            .chunks
+            .insert((0, 0), std::sync::Arc::new(Chunk::empty(0, 0)));
+        let level = game.level(game.dim.id()).unwrap();
+        let at = [0.5, 64.0, 0.5];
+        let spawn = EntitySpawn::new(SpawnBody::General);
+        assert!(
+            !level
+                .enabled_features(game)
+                .unwrap()
+                .contains_flag(FeatureFlag::RedstoneExperiments)
+        );
+        assert!(
+            level
+                .spawn_entity(game, "mymod:experimental", at, &spawn)
+                .is_none()
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        write_dat(
+            &dir.path().join("level.dat"),
+            Tag::compound([(
+                "Data",
+                Tag::compound([
+                    ("DataVersion", Tag::Int(sunrise_core::version::DATA_VERSION)),
+                    (
+                        "enabled_features",
+                        Tag::List(vec![Tag::String("redstone_experiments".into())]),
+                    ),
+                ]),
+            )]),
+        )
+        .unwrap();
+        game.level.enabled_features = Level::read(dir.path()).unwrap().enabled_features;
+
+        let flags = level.enabled_features(game).unwrap();
+        assert!(flags.contains_flag(FeatureFlag::RedstoneExperiments));
+        assert!(
+            !flags.contains_flag(FeatureFlag::Vanilla),
+            "a present list is not the default set"
+        );
+        assert_eq!(
+            flags.iter().collect::<Vec<_>>(),
+            ["minecraft:redstone_experiments"]
+        );
+        let entity = level
+            .spawn_entity(game, "mymod:experimental", at, &spawn)
+            .unwrap();
+        assert_eq!(entity.position(game), Some(at));
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn bare_pack_feature_enables_host_query_and_general_spawn_on_first_open() {
+    use mod_api::{EntitySpawn, FeatureFlag, SpawnBody};
+    use sunrise_client::{chunk::Chunk, title::WorldOptions};
+
+    let pack_root = tempfile::tempdir().unwrap();
+    let pack = pack_root.path().join("redstone_bare");
+    std::fs::create_dir_all(&pack).unwrap();
+    let format = sunrise_core::version::DATA_PACK_FORMAT;
+    std::fs::write(
+        pack.join("pack.mcmeta"),
+        serde_json::json!({
+            "pack": {
+                "description": "Bare redstone feature pack",
+                "pack_format": format.0,
+                "min_format": [format.0, format.1],
+                "max_format": [format.0, format.1],
+            },
+            "features": {
+                "enabled": ["redstone_experiments"],
+            },
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let save_root = tempfile::tempdir().unwrap();
+
+    with_types(|game| {
+        let create = WorldOptions {
+            pack_dir: Some(pack_root.path().to_path_buf()),
+            data_packs: vec!["vanilla".into(), "file/redstone_bare".into()],
+            ..WorldOptions::default()
+        };
+        let mut request = crate::game::world_loading::WorldRequest::new(
+            "bare_pack_feature",
+            Some("bare_pack_feature"),
+            Some(1),
+            true,
+            Some(&create),
+            game.level.rule_registry.clone(),
+        )
+        .unwrap();
+        request.save_root = save_root.path().to_owned();
+        game.load_world(request).unwrap();
+        game.world
+            .chunks
+            .insert((0, 0), std::sync::Arc::new(Chunk::empty(0, 0)));
+
+        let level = game.level(game.dim.id()).unwrap();
+        let flags = level.enabled_features(game).unwrap();
+        assert!(flags.contains_flag(FeatureFlag::RedstoneExperiments));
+        assert!(flags.contains_flag(FeatureFlag::Vanilla));
+        assert_eq!(
+            flags.iter().collect::<Vec<_>>(),
+            ["minecraft:redstone_experiments", "minecraft:vanilla"]
+        );
+
+        let at = [0.5, 64.0, 0.5];
+        let entity = level
+            .spawn_entity(
+                game,
+                "mymod:experimental",
+                at,
+                &EntitySpawn::new(SpawnBody::General),
+            )
+            .unwrap();
+        assert_eq!(entity.position(game), Some(at));
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn feature_disabled_saved_branches_do_not_enter_summon_uuid_admission() {
+    use crate::game::commands::Target;
+    use sunrise_client::snbt::to_snbt;
+
+    with_types(|game| {
+        let collision = [1, 2, 3, 4];
+        game.spawn_loaded_entity(
+            (0, 0),
+            record_tag("mymod:robot", collision, b"", vec![]),
+            None,
+        );
+        assert!(game.uuid_admission_refused(Some(collision)));
+        let child = record_tag("mymod:robot", collision, b"", vec![]);
+        let disabled = |uuid| record_tag("mymod:experimental", uuid, b"", vec![child.clone()]);
+
+        // A disabled root excludes its entire branch on a disk load too.
+        game.spawn_loaded_entity((0, 0), disabled([8, 0, 0, 1]), None);
+        assert_eq!(game.resident_entities.general.rows.len(), 1);
+
+        for (index, kind) in ["mymod:robot", "minecraft:minecart"]
+            .into_iter()
+            .enumerate()
+        {
+            let root = record_tag(
+                kind,
+                [9, 0, 0, index as i32],
+                b"",
+                vec![disabled(collision), disabled([8, 0, 0, 2])],
+            );
+            let mount = game
+                .summon_with_nbt(kind, [0.5, 64.0, 0.5], &to_snbt(&root))
+                .unwrap();
+            let id = match mount {
+                Some(Target::General(id) | Target::Cart(id)) => id,
+                other => panic!("expected the eligible mount, got {other:?}"),
+            };
+            assert!(game.vehicle_passenger_ids(id).is_empty());
+        }
+        assert_eq!(
+            game.resident_entities.general.rows.len(),
+            2,
+            "only the live control and general mount remain"
+        );
+    });
 }
 
 #[test]
@@ -111,7 +310,6 @@ fn a_piston_ignored_general_row_moves_for_a_shulker_lid() {
             .clone();
         game.mobs
             .push(Mob::new(shulker, kind, Vec3::new(8.0, 64.0, 8.0), 0.0));
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         assert_eq!(
             game.entity(id).unwrap().piston_push_reaction(game),
             Ok(Some(mod_api::PushReaction::IgnoreEntity))
@@ -161,7 +359,9 @@ fn saved_chunk(game: &mut Game<'_>, key: ChunkKey) -> Vec<Tag> {
         HashMap::new();
     let mut keys = HashSet::new();
     keys.insert(key);
-    game.save_every_entity(&keys, &mut out, false);
+    let mut failed = HashMap::new();
+    game.save_every_entity(&keys, &mut out, &mut failed, false);
+    assert!(failed.is_empty());
     out.remove(&key)
         .unwrap_or_default()
         .into_iter()
@@ -216,6 +416,7 @@ fn general_tree_loads_joins_and_saves_one_record() {
 #[ignore = "daily"]
 fn minecart_keeps_its_general_passenger_after_the_rider_tick() {
     with_types(|game| {
+        fixture_resident_column(&mut game.world, (0, 0));
         let cart_uuid = [1, 2, 3, 4];
         let rider_uuid = [2, 3, 4, 5];
         let cart = Tag::Compound(
@@ -247,7 +448,10 @@ fn minecart_keeps_its_general_passenger_after_the_rider_tick() {
         let cart = game.entity(cart_id).unwrap();
         let rider = game.entity(rider_id).unwrap();
         assert_eq!(game.entity_start_riding(rider, cart, false), Ok(()));
-        assert_eq!(game.entity_passengers(cart), Some(vec![rider]));
+        assert_eq!(
+            collect_entity_visit(|visit| game.entity_visit_passengers(cart, visit)),
+            Ok(vec![rider])
+        );
 
         // Keep the chunk loaded but outside simulation range so the pass refreshes
         // the adjacency without rider movement invalidating it again.
@@ -262,7 +466,10 @@ fn minecart_keeps_its_general_passenger_after_the_rider_tick() {
         }));
         game.begin_ordered_ticks();
         game.tick_general().unwrap();
-        assert_eq!(game.entity_passengers(cart), Some(vec![rider]));
+        assert_eq!(
+            collect_entity_visit(|visit| game.entity_visit_passengers(cart, visit)),
+            Ok(vec![rider])
+        );
         assert_eq!(game.entity_is_vehicle(cart), Some(true));
         assert_eq!(game.boarding_order(cart_id, u32::MAX, false), 1);
         let saved = saved_chunk(game, (0, 0));
@@ -333,7 +540,6 @@ fn mixed_passengers_sit_and_unload_with_their_actual_root() {
             )
             .unwrap();
         let [root_ref, pig_ref, leaf_ref] = [root, pig, leaf].map(|id| game.entity(id).unwrap());
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         assert_eq!(game.entity_start_riding(pig_ref, root_ref, false), Ok(()));
         assert_eq!(game.entity_start_riding(leaf_ref, pig_ref, false), Ok(()));
         assert_eq!(
@@ -355,6 +561,9 @@ fn mixed_passengers_sit_and_unload_with_their_actual_root() {
         // The leaf's and the intermediate mob's chunks do not own the tree.
         game.mob_object_mut(pig).unwrap().position.x = 18.5;
         game.resident_entities.general.rows[1].position.x = 33.5;
+        // Loaded, so the moved riders stay resolvable while their own chunks are asked.
+        fixture_resident_column(&mut game.world, (1, 0));
+        fixture_resident_column(&mut game.world, (2, 0));
         let own = game.entity_chunks(&HashSet::from([(1, 0), (2, 0)]), true);
         assert!(own.iter().all(|(_, tags)| tags.is_empty()));
         assert!(game.entity(pig).is_some() && game.entity(leaf).is_some());
@@ -740,7 +949,6 @@ fn a_same_level_teleport_places_the_general_tree_and_unseats_a_separately_moved_
             game.entity(rows[0].id).unwrap(),
             game.entity(rows[1].id).unwrap(),
         );
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
 
         let to = [10.5, 64.0, 0.5];
         assert!(root.teleport_to(game, to, Some([90.0, 30.0])));
@@ -789,7 +997,6 @@ fn a_general_riders_motion_follows_the_commands_delta_flags() {
             ],
             3,
         );
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         let velocity = Vec3::new(0.25, -0.5, 0.75);
         fn rider<'a>(game: &'a mut Game<'_>, id: u32) -> &'a mut GeneralRow {
             game.resident_entities.general.row_mut(id).unwrap()
@@ -830,7 +1037,6 @@ fn a_nested_general_tree_takes_each_riders_transition_from_its_vehicle() {
             ],
             4,
         );
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         game.teleport_to_in_level(
             Target::General(ids[0]),
             [25.442, 20.88, 4.214],
@@ -884,7 +1090,6 @@ fn a_guest_riding_a_teleported_general_vehicle_is_carried_with_its_turn() {
             g.position = [0.5, 64.5, 0.25];
             g.yaw = 30.0;
         });
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         game.teleport_to_in_level(
             Target::General(ids[0]),
             [10.0, 70.0, -4.0],
@@ -902,10 +1107,10 @@ fn a_guest_riding_a_teleported_general_vehicle_is_carried_with_its_turn() {
 /// `with_types` for a fixture that also hosts guests 12 and 13.
 fn with_types_and_guests(test: impl FnOnce(&mut Game<'_>)) {
     mod_platform::__private::initialize().expect("test registration requires the mod API runtime");
-    let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+    let _phase = mod_platform::__private::RegistrationGuard::open();
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("mymod", Box::new(Declare))].into();
     mod_platform::testing::with_mods(mods, || {
-        crate::game::native_guest_turn_tests::with_guests(test)
+        crate::game::native_guest_turn_tests::with_guests(|game| resident_origin(game, test))
     });
 }
 
@@ -952,7 +1157,6 @@ fn a_seated_guest_hears_the_general_vehicles_real_pose_and_its_own_teleport_once
         let (root, rx) = seat_guest_on_general_root(game);
         let _ = guest_teleport_packets(&rx);
         let before = game.lan.as_ref().unwrap().hub.guest(13).unwrap().position;
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         game.teleport_to_in_level(
             Target::General(root),
             [10.0, 70.0, -4.0],
@@ -984,7 +1188,6 @@ fn a_seated_guest_that_runs_the_teleport_is_published_once() {
     with_types_and_guests(|game| {
         let (root, rx) = seat_guest_on_general_root(game);
         let _ = guest_teleport_packets(&rx);
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         game.as_guest(13, |game| {
             game.teleport_to_in_level(
                 Target::General(root),
@@ -1011,7 +1214,6 @@ fn a_deep_general_chain_teleports_without_a_stack_frame_per_rider() {
             .map(|n| ([0.0, 64.0 + n as f64 * 0.5, 0.0], [0.0, 0.0]))
             .collect();
         let ids = general_chain(game, &poses, 5);
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         game.teleport_to_in_level(
             Target::General(ids[0]),
             [8.0, 64.0, 8.0],
@@ -1038,7 +1240,6 @@ fn killing_or_removing_a_general_row_keeps_its_passengers_in_the_level() {
                 game.entity(rows[start].id).unwrap(),
                 game.entity(rows[start + 1].id).unwrap(),
             );
-            let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
 
             if by_command {
                 game.kill_target(Target::General(root.id()));
@@ -1088,7 +1289,6 @@ fn removing_a_vehicle_dismounts_general_and_mob_passengers_immediately_in_order(
         let at = Vec3::new(0.5, 64.0, 0.5);
         game.options.dedicated = Some(Vec::new());
         game.build_registries();
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         let mut outcomes = Vec::new();
         for (case, vehicle) in [
             "cart damage",
@@ -1249,7 +1449,6 @@ fn a_general_entity_turns_in_place_without_dismounting() {
             game.entity(rows[0].id).unwrap(),
             game.entity(rows[1].id).unwrap(),
         );
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
 
         assert!(rider.set_rotation(game, 90.0, 30.0));
         assert_eq!(rider.rotation(game), Some([90.0, 30.0]));
@@ -1274,10 +1473,15 @@ fn a_general_row_has_its_declared_kind_and_is_selectable_by_type() {
             game.entity(rows[1].id).unwrap(),
         );
         game.build_registries();
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
 
-        assert_eq!(robot.kind(game).unwrap().id(game), "mymod:robot");
-        assert_eq!(ghost.kind(game).unwrap().id(game), "mymod:ghost");
+        assert_eq!(
+            robot.kind(game).unwrap().id(game).as_deref(),
+            Some("mymod:robot")
+        );
+        assert_eq!(
+            ghost.kind(game).unwrap().id(game).as_deref(),
+            Some("mymod:ghost")
+        );
         assert!(game.as_console(|game| game.run_command("kill @e[type=mymod:robot]")));
         assert_eq!(robot.position(game), None);
         assert_eq!(ghost.position(game), Some([0.5, 64.0, 0.5]));
@@ -1299,7 +1503,6 @@ fn a_volume_selector_finds_a_general_rows_box_without_its_origin() {
         game.build_registries();
         // The 0.8-wide row is centered at x=0.5. The selector starts at x=0.75,
         // so the edge of the box enters its volume but the position does not.
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         assert!(game.as_console(|game| {
             game.run_command("kill @e[type=mymod:robot,x=0.75,y=64,z=0,dx=0,dy=0,dz=0]")
         }));
@@ -1326,8 +1529,6 @@ fn general_tree_travels_to_another_dimension_with_its_riders() {
         let rows = &game.resident_entities.general.rows;
         let (old_root, old_rider, old_join) = (rows[0].id, rows[1].id, rows[0].join);
         {
-            use mod_api::__private::{ModPhase, PhaseOwner};
-            let _world = PhaseOwner::scope(ModPhase::World);
             assert_eq!(
                 game.entity(old_root).unwrap().set_persistent(game, false),
                 Ok(true)
@@ -1569,11 +1770,13 @@ fn a_general_rider_keeps_minecart_drag_and_pickup_occupied() {
             .unwrap();
         let cart = game.entity(cart_id).unwrap();
         assert_eq!(game.entity_start_riding(rider, cart, false), Ok(()));
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         // Exercise the maintained index, not the scan while it is stale after mounting.
         game.tick_general().unwrap();
         assert_eq!(cart.is_vehicle(game), Some(true));
-        assert_eq!(cart.passengers(game), Some(vec![rider]));
+        assert_eq!(
+            collect_entity_visit(|visit| cart.visit_passengers(game, visit)),
+            Ok(vec![rider])
+        );
         let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
         // The pig touches the moving cart, but the coincident starting positions
         // mean it applies no initial push to the cart.
@@ -1596,6 +1799,8 @@ fn a_general_rider_fills_a_chest_boat_and_keeps_it_from_being_pushed() {
 
     with_types(|game| {
         let at = Vec3::new(8.5, 64.0, 8.5);
+        fixture_resident_column(&mut game.world, (0, 0));
+        fixture_resident_column(&mut game.world, (1, 0));
         let (full, empty, pig) = (5000, 5001, 5002);
         game.boats
             .push(Boat::new(full, "oak".into(), at, 0.0).with_chest());
@@ -1617,10 +1822,12 @@ fn a_general_rider_fills_a_chest_boat_and_keeps_it_from_being_pushed() {
             .unwrap();
         let boat = game.entity(full).unwrap();
         game.entity_start_riding(rider, boat, false).unwrap();
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         game.tick_general().unwrap();
         assert_eq!(boat.is_vehicle(game), Some(true));
-        assert_eq!(boat.passengers(game), Some(vec![rider]));
+        assert_eq!(
+            collect_entity_visit(|visit| boat.visit_passengers(game, visit)),
+            Ok(vec![rider])
+        );
 
         let pig_type = game.res.mob_types().get("minecraft:pig").unwrap().clone();
         game.mobs.push(Mob::new(

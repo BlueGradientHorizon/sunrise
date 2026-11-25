@@ -5,7 +5,7 @@ use super::{
     menu::{self, Menu, NativeMenuEvent, Rules, Slots, View},
 };
 use crate::{
-    containers::{BlockEntity, ModContainerInsertRule},
+    containers::{BlockEntity, ModContainerInsertRule, ModMenuType},
     items::ItemStack,
     world::World,
 };
@@ -72,7 +72,7 @@ pub struct PreparedClick {
     source: Option<Slots>,
     shulker: bool,
     drag: Option<(u8, Vec<usize>)>,
-    hidden: Vec<usize>,
+
     items: Option<Vec<Option<ItemStack>>>,
     container_limits: Vec<Option<u32>>,
     pub(crate) container_insert_rules: Vec<ModContainerInsertRule>,
@@ -85,7 +85,39 @@ impl PreparedClick {
     }
 }
 
+/// Items detached from a closing hub menu that the game returns to the player or drops.
+pub struct ClosedHubMenu {
+    pub carried: Option<ItemStack>,
+    pub processing_inputs: Vec<ItemStack>,
+}
+
 impl Hub {
+    /// `RemoteSampleLogger.useSample`: a tick-time sample to every player who asked for
+    /// `dedicated_server_tick_time` (registry id 0) and passes
+    /// `ServerDebugSubscribers.hasRequiredPermissions` (`PlayerList.isOp`, any level).
+    pub fn tick_time_subscribers(&self) -> Vec<u32> {
+        self.guests
+            .iter()
+            .filter(|g| {
+                g.participates_online()
+                    && g.joined()
+                    && !g.disconnect_pending
+                    && g.debug_subscriptions.contains(&0)
+                    && self.ops.contains_key(&g.uuid)
+                    && g.sender.is_live()
+            })
+            .map(|g| g.conn)
+            .collect()
+    }
+
+    /// One packet to each snapshotted connection, encoded once.
+    pub fn send_to_each(&self, conns: &[u32], packet: &C) {
+        let body = packet.encode();
+        for g in conns.iter().filter_map(|c| self.guest(*c)) {
+            g.sender.send(body.clone());
+        }
+    }
+
     pub fn send_to(&self, conn: u32, packet: &C) {
         if let Some(g) = self.guest(conn) {
             if let C::RemoveEntities(p) = packet {
@@ -376,45 +408,75 @@ impl Hub {
         items: Vec<Option<ItemStack>>,
         extra: Option<Vec<u8>>,
     ) -> Option<i32> {
-        let kind = self
-            .sync
-            .builtin
-            .get("minecraft:menu")
-            .and_then(|m| m.id(menu_kind))?;
+        self.open_menu_window_at(
+            conn,
+            menu_kind,
+            title,
+            pos,
+            slots,
+            items,
+            extra,
+            crate::containers::mod_menu_type(menu_kind),
+        )
+    }
+
+    /// Install a window and allocate its next vanilla protocol id (`1..=100`).
+    /// Stock displays have no mod menu type, even if a part listens to their clicks.
+    #[allow(clippy::too_many_arguments)]
+    pub fn open_menu_window_at(
+        &mut self,
+        conn: u32,
+        menu_kind: &str,
+        title: Tag,
+        pos: Option<(i32, i32, i32)>,
+        slots: Slots,
+        items: Vec<Option<ItemStack>>,
+        extra: Option<Vec<u8>>,
+        mod_type: Option<&'static ModMenuType>,
+    ) -> Option<i32> {
+        let kind = self.registry_id("minecraft:menu", menu_kind)?;
         let i = self.guests.iter().position(|g| g.conn == conn)?;
+        let encoded_extra = match extra {
+            Some(data) => {
+                let next_window = self.guests[i].next_window % 100 + 1;
+                let message = sunrise_protocol::menu_extra::Message {
+                    window: next_window,
+                    pos: pos.map(|p| [p.0, p.1, p.2]),
+                    data,
+                };
+                match sunrise_protocol::menu_extra::encode(&message) {
+                    Ok(bytes) => Some(bytes),
+                    Err(e) => {
+                        log::error!("Sunrise: {menu_kind}'s extra data refused: {e}");
+                        return None;
+                    }
+                }
+            }
+            None => None,
+        };
         self.close_container_at(i);
         let window = self.guests.update(i, |g| {
             let window = g.next_menu_window();
             if slots == Slots::Native {
                 g.native_menu = items.clone();
             }
-            if let Some(data) = extra {
-                let message = sunrise_protocol::menu_extra::Message {
-                    window,
-                    pos: pos.map(|p| [p.0, p.1, p.2]),
+            if let Some(data) = encoded_extra {
+                g.send(&C::CustomPayload(CustomPayload {
+                    channel: sunrise_protocol::menu_extra::CHANNEL.into(),
                     data,
-                };
-                // A client that answered no revision query (an older Sunrise build)
-                // reads the legacy layout, which has no way to say "no block".
-                let sent = if g.sender.menu_extra_rev >= 1 {
-                    sunrise_protocol::menu_extra::encode(&message)
-                } else {
-                    sunrise_protocol::menu_extra::encode_legacy(&message)
-                };
-                match sent {
-                    Ok(data) => g.send(&C::CustomPayload(CustomPayload {
-                        channel: sunrise_protocol::menu_extra::CHANNEL.into(),
-                        data,
-                    })),
-                    Err(e) => log::warn!("Sunrise: {menu_kind}'s extra data not sent: {e}"),
-                }
+                }));
             }
             g.send(&C::OpenScreen(play::OpenScreen {
                 container: window,
                 menu: kind,
                 title,
             }));
-            let mod_type = crate::containers::mod_menu_type(menu_kind);
+            let mod_type = mod_type.or_else(|| crate::containers::mod_menu_type(menu_kind));
+            let slot_changed_seen = mod_type.map(|t| {
+                let mut seen = items.clone();
+                seen.resize(t.slots, None);
+                seen
+            });
             g.menu = Some(Menu {
                 window,
                 kind,
@@ -426,28 +488,22 @@ impl Hub {
                 sent: Vec::new(),
                 drag: None,
                 sent_data: Vec::new(),
+                reported_unsent_data_len: None,
                 blockless_data: Vec::new(),
-                hidden: Vec::new(),
+
                 mod_type,
                 craft: None,
                 links: Vec::new(),
                 asks_still_valid: super::menu::asks_still_valid(mod_type, menu_kind),
                 opening_item: None,
+                opener_block: None,
+                removed: false,
+                slot_changed_seen,
             });
             window
         });
         self.send_menu_content(i, items);
         Some(window)
-    }
-
-    /// The open menu of `conn` has no `hidden` container slots: a mod's screen
-    /// does not show them, so a click or a shift-click never reaches them.
-    pub fn hide_menu_slots(&mut self, conn: u32, hidden: Vec<usize>) {
-        let _ = self.update_guest(conn, |g| {
-            if let Some(m) = g.menu.as_mut() {
-                m.hidden = hidden;
-            }
-        });
     }
 
     /// Opens a native mod's menu of `rows` rows (1 to 6, a chest's
@@ -462,46 +518,17 @@ impl Hub {
         mut items: Vec<Option<ItemStack>>,
     ) -> Option<i32> {
         let rows = rows.clamp(1, 6);
-        let kind = self
-            .sync
-            .builtin
-            .get("minecraft:menu")
-            .and_then(|m| m.id(&format!("minecraft:generic_9x{rows}")))?;
-        let i = self.guests.iter().position(|g| g.conn == conn)?;
-        self.close_container_at(i);
-        let size = usize::from(rows) * 9;
-        items.resize(size, None);
-        let window = self.guests.update(i, |g| {
-            g.native_menu = items.clone();
-            let window = g.next_menu_window();
-            g.send(&C::OpenScreen(play::OpenScreen {
-                container: window,
-                menu: kind,
-                title,
-            }));
-            g.menu = Some(Menu {
-                window,
-                kind,
-                registry_id: format!("minecraft:generic_9x{rows}").into_boxed_str(),
-                pos: None,
-                slots: Slots::Native,
-                size,
-                state: 0,
-                sent: Vec::new(),
-                drag: None,
-                sent_data: Vec::new(),
-                blockless_data: Vec::new(),
-                hidden: Vec::new(),
-                mod_type: None,
-                craft: None,
-                links: Vec::new(),
-                asks_still_valid: false,
-                opening_item: None,
-            });
-            window
-        });
-        self.send_menu_content(i, items);
-        Some(window)
+        items.resize(usize::from(rows) * 9, None);
+        self.open_menu_window_at(
+            conn,
+            &format!("minecraft:generic_9x{rows}"),
+            title,
+            None,
+            Slots::Native,
+            items,
+            None,
+            None,
+        )
     }
 
     /// Replaces what the guest's open native menu `window` shows with `items` (padded to its
@@ -582,7 +609,8 @@ impl Hub {
         }))
     }
 
-    fn send_menu_content(&mut self, i: usize, mut items: Vec<Option<ItemStack>>) {
+    /// Send the resolved guest's container slots, inventory and cursor without reopening.
+    pub fn send_menu_content(&mut self, i: usize, mut items: Vec<Option<ItemStack>>) {
         let Some(menu) = &self.guests[i].menu else {
             return;
         };
@@ -655,31 +683,98 @@ impl Hub {
         &mut self,
         i: usize,
         window: i32,
-    ) -> Option<(Option<ItemStack>, Option<NativeMenuEvent>)> {
+    ) -> Option<(ClosedHubMenu, Option<NativeMenuEvent>)> {
         self.guests.update(i, |g| {
-            let menu = g.menu.take_if(|m| m.window == window)?;
+            let mut menu = g.menu.take_if(|m| m.window == window)?;
             let carried = g.close_menu_cursor(menu.window);
-            let closed = menu.native_closed(g.uuid, g.menu_generation, &mut g.native_menu);
-            Some((carried, closed))
+            let processing_inputs = menu.take_processing_inputs(&mut g.native_menu);
+            let closed = menu.native_removed(g.uuid, g.menu_generation, &mut g.native_menu, false);
+            Some((
+                ClosedHubMenu {
+                    carried,
+                    processing_inputs,
+                },
+                closed,
+            ))
         })
+    }
+
+    /// `AbstractContainerMenu.removed` for a guest's active container window without yet
+    /// resetting `containerMenu` to the player's inventory menu, so `PlayerContainerEvent.Close`
+    /// still sees a live `MenuRef` before [`Self::finish_close_container`] clears it.
+    pub fn remove_container_menu(
+        &mut self,
+        conn: u32,
+        window: i32,
+    ) -> Option<(ClosedHubMenu, Option<NativeMenuEvent>)> {
+        let i = self.guests.connection_index(conn)?;
+        self.guests.update(i, |g| {
+            let matches = g
+                .menu
+                .as_ref()
+                .is_some_and(|m| m.window == window && !m.removed);
+            if !matches {
+                return None;
+            }
+            let carried = g.close_menu_cursor(window);
+            let uuid = g.uuid;
+            let generation = g.menu_generation;
+            let (processing_inputs, closed) = if let Some(menu) = g.menu.as_mut() {
+                let processing_inputs = menu.take_processing_inputs(&mut g.native_menu);
+                let closed = menu.native_removed(uuid, generation, &mut g.native_menu, true);
+                (processing_inputs, closed)
+            } else {
+                (Vec::new(), None)
+            };
+            Some((
+                ClosedHubMenu {
+                    carried,
+                    processing_inputs,
+                },
+                closed,
+            ))
+        })
+    }
+
+    /// Completes `ServerPlayer.doCloseContainer` (`this.containerMenu = this.inventoryMenu`)
+    /// after `PlayerContainerEvent.Close`, clearing `g.menu` only if `generation` is still
+    /// installed (leaving any replacement opened by a close listener intact).
+    pub fn finish_close_container(&mut self, conn: u32, generation: u64) {
+        let Some(i) = self.guests.connection_index(conn) else {
+            return;
+        };
+        self.guests.update(i, |g| {
+            if g.menu_generation == generation && g.menu.is_some() {
+                g.menu = None;
+                g.native_menu.clear();
+            }
+        });
     }
 
     fn close_container_at(&mut self, i: usize) {
         let Some(window) = self.guests[i].menu.as_ref().map(|menu| menu.window) else {
             return;
         };
-        let Some((carried, closed)) = self.take_hub_menu(i, window) else {
+        let Some((closed_menu, closed)) = self.take_hub_menu(i, window) else {
             return;
         };
         let guest = &self.guests[i];
         guest.send(&C::ContainerClose(play::ContainerClose {
             container: window,
         }));
-        if let Some(item) = carried {
+        if let Some(item) = closed_menu.carried {
             self.native_menu_events
                 .push(NativeMenuEvent::ReturnCarried {
                     conn: guest.conn,
                     item,
+                });
+        }
+        if !closed_menu.processing_inputs.is_empty() {
+            self.native_menu_events
+                .push(NativeMenuEvent::ReturnProcessingInputs {
+                    conn: guest.conn,
+                    items: closed_menu.processing_inputs,
+                    drop_instead: guest.dead,
                 });
         }
         self.native_menu_events.extend(closed);
@@ -708,27 +803,76 @@ impl Hub {
             })
     }
 
-    /// The client closed its window. Return the closing cursor to the game for removal.
-    pub fn container_closed(&mut self, conn: u32, window: i32) -> Option<ItemStack> {
-        let i = self.guests.connection_index(conn)?;
-        let (carried, closed) = self.take_hub_menu(i, window)?;
-        self.native_menu_events.extend(closed);
-        carried
+    /// Take processing-menu input returns queued by a hub-side window close, split into
+    /// `(to_return, to_drop)` according to whether the player was dead or disconnecting.
+    pub fn take_closed_processing_inputs(&mut self, conn: u32) -> (Vec<ItemStack>, Vec<ItemStack>) {
+        let mut to_return = Vec::new();
+        let mut to_drop = Vec::new();
+        for event in self.native_menu_events.extract_if(.., move |event| {
+            matches!(
+                event,
+                NativeMenuEvent::ReturnProcessingInputs { conn: owner, .. } if *owner == conn
+            )
+        }) {
+            if let NativeMenuEvent::ReturnProcessingInputs {
+                items,
+                drop_instead,
+                ..
+            } = event
+            {
+                if drop_instead {
+                    to_drop.extend(items);
+                } else {
+                    to_return.extend(items);
+                }
+            }
+        }
+        (to_return, to_drop)
     }
 
-    /// `HashedStack.matches`: a slot or cursor prediction includes the component patch.
-    fn hashed_matches(&self, item: &Option<Stack>, predicted: &Option<Hashed>) -> bool {
-        match (item, predicted) {
-            (None, None) => true,
-            (Some(item), Some(predicted)) => predicted.matches(
-                item,
-                &SyncedNames {
-                    builtin: &self.sync.builtin,
-                    dynamic: &self.sync.dynamic,
-                },
-            ),
-            _ => false,
-        }
+    /// The client closed its window. Return the closing cursor and any processing inputs to the
+    /// game for removal.
+    pub fn container_closed(&mut self, conn: u32, window: i32) -> Option<ClosedHubMenu> {
+        let i = self.guests.connection_index(conn)?;
+        let (closed_menu, closed) = self.take_hub_menu(i, window)?;
+        self.native_menu_events.extend(closed);
+        Some(closed_menu)
+    }
+
+    /// Project one live stack for a click claim. Reuse its admissions for the hash and
+    /// the projected bytes for a correction if the client guessed wrong.
+    fn stack_against_claim(
+        &mut self,
+        source: &Option<ItemStack>,
+        predicted: &Option<Hashed>,
+    ) -> (Option<Stack>, bool) {
+        let Some(predicted) = predicted else {
+            return (self.stack(source), source.is_none());
+        };
+        let projected = std::cell::RefCell::new(Vec::new());
+        let wire = self.stack_projecting(source, &|effect| {
+            projected.borrow_mut().push(effect.clone())
+        });
+        let projected = projected.into_inner();
+        let agreed = wire.as_ref().is_some_and(|wire| {
+            let names = SyncedNames {
+                builtin: &self.sync.builtin,
+                dynamic: &self.sync.dynamic,
+            };
+            if let Some(data) = source.as_ref().and_then(ItemStack::data) {
+                predicted.matches_with_admitted(wire, &names, &|name, bytes| {
+                    let matches =
+                        |effect: &sunrise_world::component_value::consume_effects::Admitted| {
+                            &effect.name == name && effect.wire.as_ref() == bytes
+                        };
+                    data.find_admitted_consume_effect(&matches)
+                        .or_else(|| projected.iter().find(|effect| matches(effect)).cloned())
+                })
+            } else {
+                predicted.matches(wire, &names)
+            }
+        });
+        (wire, agreed)
     }
 
     /// `AbstractContainerMenu.synchronizeCarriedToRemote`: send only the cursor change.
@@ -748,8 +892,10 @@ impl Hub {
             _ => {}
         }
         let carried = guest.carried.clone();
-        let item = self.stack(&carried);
-        let agreed = prediction.is_some_and(|p| self.hashed_matches(&item, &p.carried));
+        let (item, agreed) = match prediction {
+            Some(p) => self.stack_against_claim(&carried, &p.carried),
+            None => (self.stack(&carried), false),
+        };
         self.guests.update(i, |g| {
             if !agreed {
                 g.send(&C::SetCursorItem(play::SetCursorItem { item }));
@@ -858,18 +1004,13 @@ impl Hub {
         let shulker = in_menu
             && shulker_box.is_some()
             && self.guests[i].menu.as_ref().map(|m| m.kind) == shulker_box;
-        let (drag, hidden, items, container_limits, container_insert_rules) = {
+        let (drag, items, container_limits, container_insert_rules) = {
             let guest = &self.guests[i];
             let drag = if in_menu {
                 guest.menu.as_ref().and_then(|m| m.drag.clone())
             } else {
                 guest.drag.clone()
             };
-            let hidden = guest
-                .menu
-                .as_ref()
-                .filter(|_| in_menu)
-                .map_or_else(Vec::new, |m| m.hidden.clone());
             let items = source.and_then(|s| s.read(world, guest));
             if in_menu && items.is_none() {
                 return None;
@@ -894,13 +1035,7 @@ impl Hub {
                     }
                 }
             }
-            (
-                drag,
-                hidden,
-                items,
-                container_limits,
-                container_insert_rules,
-            )
+            (drag, items, container_limits, container_insert_rules)
         };
         Some(PreparedClick {
             i,
@@ -908,7 +1043,7 @@ impl Hub {
             source,
             shulker,
             drag,
-            hidden,
+
             items,
             container_limits,
             container_insert_rules,
@@ -931,9 +1066,8 @@ impl Hub {
                 container: prepared.items.as_deref_mut(),
                 shulker: prepared.shulker,
                 container_limits: std::mem::take(&mut prepared.container_limits),
-                hidden: &prepared.hidden,
+
                 loop_context,
-                slot_snapshot: Default::default(),
             };
             menu::click(
                 &mut view,
@@ -961,16 +1095,40 @@ impl Hub {
         ))
     }
 
-    /// The pickup click `p` as `item_stacked_on_other` is asked about it, on the container the
-    /// first step read: the stacks it finds. `None` for a click that never asks.
+    /// The resolved pickup click `p` as `item_stacked_on_other` is asked about it, on the
+    /// container the first step read: the stacks it finds.
+    ///
+    /// Resolves both a direct left/right `PICKUP` when no drag is active (`prepared.drag.is_none()`)
+    /// and a one-slot left/right `QUICK_CRAFT` drag release (`stage == 2`, `slots.len() == 1`,
+    /// `kind <= 1`, carried stack present), matching vanilla 26.3 `AbstractContainerMenu.doClick`.
+    /// Returns `None` for direct pickups arriving during an active drag (which only reset the drag),
+    /// multi-slot drags, middle-button drags (`kind == 2`), and other inputs.
     pub fn stacked_click(
         &mut self,
         prepared: &mut PreparedClick,
         p: &play::ContainerClick,
     ) -> Option<crate::menu::StackedClick> {
-        if p.input != menu::input::PICKUP {
-            return None;
-        }
+        let (slot, button) = match p.input {
+            menu::input::PICKUP => {
+                if prepared.drag.is_some() {
+                    return None;
+                }
+                (i32::from(p.slot), i32::from(p.button))
+            }
+            menu::input::QUICK_CRAFT => {
+                let stage = i32::from(p.button) & 3;
+                if stage != 2 {
+                    return None;
+                }
+                let (kind, slots) = prepared.drag.as_ref()?;
+                if slots.len() != 1 || *kind > 1 {
+                    return None;
+                }
+                self.guests[prepared.i].carried.as_ref()?;
+                (slots[0] as i32, i32::from(*kind))
+            }
+            _ => return None,
+        };
         let loop_context = &self.loop_context;
         self.guests.update(prepared.i, |guest| {
             View {
@@ -978,23 +1136,25 @@ impl Hub {
                 container: prepared.items.as_deref_mut(),
                 shulker: prepared.shulker,
                 container_limits: Vec::new(),
-                hidden: &prepared.hidden,
+
                 loop_context,
-                slot_snapshot: Default::default(),
             }
-            .stacked_click(i32::from(p.slot), i32::from(p.button))
+            .stacked_click(slot, button)
         })
     }
 
-    /// Run the click `p` on the prepared state to see what it would ask of `rules`, then put
-    /// everything it touched back: the guest's slots and cursor, the container's slots and the
-    /// drag. Only what `rules` kept of the asks remains.
-    pub fn plan_click(
+    /// Probe the shared vanilla carried override (`vanilla_carried_override`) on the prepared hub
+    /// menu state with `(carried, clicked)` staged into the cursor and menu `slot`, restoring all
+    /// state before returning whether the carried item's vanilla override handled the click.
+    pub fn probe_carried_vanilla_override(
         &mut self,
         prepared: &mut PreparedClick,
-        p: &play::ContainerClick,
+        slot: usize,
+        primary: bool,
+        carried: Option<ItemStack>,
+        clicked: Option<ItemStack>,
         rules: &dyn Rules,
-    ) {
+    ) -> bool {
         let loop_context = &self.loop_context;
         self.guests.update(prepared.i, |guest| {
             let kept = (
@@ -1005,27 +1165,22 @@ impl Hub {
                 guest.craft_grid.clone(),
                 guest.craft_result.clone(),
             );
-            let (items, drag) = (prepared.items.clone(), prepared.drag.clone());
-            let _ = menu::click(
-                &mut View {
-                    guest,
-                    container: prepared.items.as_deref_mut(),
-                    shulker: prepared.shulker,
-                    container_limits: prepared.container_limits.clone(),
-                    hidden: &prepared.hidden,
-                    loop_context,
-                    slot_snapshot: Default::default(),
-                },
-                &mut prepared.drag,
-                i32::from(p.slot),
-                i32::from(p.button),
-                p.input,
-                rules,
+            let items = prepared.items.clone();
+            let mut view = View {
+                guest,
+                container: prepared.items.as_deref_mut(),
+                shulker: prepared.shulker,
+                container_limits: prepared.container_limits.clone(),
+                loop_context,
+            };
+            let took = menu::probe_carried_vanilla_override(
+                &mut view, slot, primary, carried, clicked, rules,
             );
             (guest.inventory, guest.armor, guest.offhand) = (kept.0, kept.1, kept.2);
             (guest.carried, guest.craft_grid, guest.craft_result) = (kept.3, kept.4, kept.5);
-            (prepared.items, prepared.drag) = (items, drag);
-        });
+            prepared.items = items;
+            took
+        })
     }
 
     /// The last step: the container's slots back into the world, the unfinished drag back on the
@@ -1070,7 +1225,14 @@ impl Hub {
     /// `AbstractContainerMenu.setSelectedBundleItemIndex` on the guest's open
     /// menu: a container's own slots, or the inventory's. A bundle's selection
     /// lives on the server's stack until the click that takes from it.
-    pub fn select_bundle_item(&mut self, conn: u32, slot: usize, index: i32, world: &mut World) {
+    pub fn select_bundle_item(
+        &mut self,
+        conn: u32,
+        slot: usize,
+        index: i32,
+        world: &mut World,
+        catalog: &crate::items::Items,
+    ) {
         let _ = self.update_guest(conn, |g| {
             let open = g.menu.as_ref().map(|m| (m.size, m.slot_count(), m.slots));
             let mut items = match open {
@@ -1096,7 +1258,7 @@ impl Hub {
                 },
             };
             if let Some(stack) = stack {
-                crate::bundle::toggle_selected(stack, index);
+                crate::bundle::toggle_selected(catalog, stack, index);
             }
             if let (Some((_, _, source)), Some(items)) = (open, items) {
                 source.write(world, g, items);
@@ -1132,8 +1294,8 @@ impl Hub {
         for (slot, item) in items.iter().enumerate() {
             let net = match claimed.get(&slot) {
                 Some(predicted) => {
-                    let net = self.stack(item);
-                    if self.hashed_matches(&net, predicted) {
+                    let (net, agreed) = self.stack_against_claim(item, predicted);
+                    if agreed {
                         continue;
                     }
                     net
@@ -1248,53 +1410,57 @@ impl Hub {
             };
             // AbstractFurnaceBlockEntity.dataAccess, BrewingStandBlockEntity.dataAccess,
             // CrafterBlockEntity.containerData.
-            let data = match world.block_entities.get(&pos) {
-                Some(BlockEntity::Furnace(f)) => vec![
-                    f.lit_remaining,
-                    f.lit_total,
-                    f.cooking_timer,
-                    f.cooking_total,
-                ],
+            let (furnace, brewing, crafter);
+            let (data, declared): (&[i32], Option<usize>) = match world.block_entities.get(&pos) {
+                Some(BlockEntity::Furnace(f)) => {
+                    furnace = [f.lit_remaining, f.lit_total, f.cooking_timer, f.cooking_total];
+                    (&furnace, None)
+                }
                 Some(BlockEntity::Brewing(b)) => {
-                    vec![b.brew_time, b.fuel, b.total_brew_time, b.total_fuel]
+                    brewing = [b.brew_time, b.fuel, b.total_brew_time, b.total_fuel];
+                    (&brewing, None)
                 }
                 // CrafterBlockEntity.containerData: the disabled slots, then triggered.
-                Some(BlockEntity::Crafter(c)) => c
-                    .disabled
-                    .iter()
-                    .chain([&c.is_triggered()])
-                    .map(|&d| i32::from(d))
-                    .collect(),
-                // A mod's menu: the data slots its tick set. A mod menu type's
-                // `ContainerData` has as many as it declares, all sent on open
-                // (`sendInitialData`), 0 where the tick set none.
-                Some(BlockEntity::Mod(e)) if m.mod_type.is_some() || !e.data.is_empty() => {
-                    let mut data = e.data.clone();
-                    if let Some(t) = m.mod_type {
-                        data.resize(t.data_slots, 0);
+                Some(BlockEntity::Crafter(c)) => {
+                    let mut slots = [0; 10];
+                    for (slot, disabled) in slots.iter_mut().zip(c.disabled) {
+                        *slot = i32::from(disabled);
                     }
-                    data
+                    slots[9] = i32::from(c.is_triggered());
+                    crafter = slots;
+                    (&crafter, None)
+                }
+                // ContainerData supplies zeros for slots the mod has not written.
+                Some(BlockEntity::Mod(e)) if m.mod_type.is_some() || !e.data.is_empty() => {
+                    (&e.data, m.mod_type.map(|t| t.data_slots))
                 }
                 _ => return,
-            }
-            .into_iter()
-            .map(|v| v as i16)
-            .collect::<Vec<i16>>();
-            m.sent_data.resize(data.len(), None);
+            };
+            let count = declared.unwrap_or(data.len());
+            let sync_len = count.min(i16::MAX as usize + 1);
             let window = m.window;
-            let changed: Vec<(usize, i16)> = data
-                .iter()
-                .enumerate()
-                .filter(|&(k, v)| m.sent_data[k] != Some(*v))
-                .map(|(k, &v)| (k, v))
-                .collect();
-            for &(k, value) in &changed {
-                m.sent_data[k] = Some(value);
+            let unsent = (count > sync_len).then_some(count);
+            if unsent.is_some() && unsent != m.reported_unsent_data_len {
+                log::warn!(
+                    "Sunrise: menu {} window {window} cannot sync data slots at indices {sync_len}..{count} (ContainerSetData id max is {})",
+                    m.registry_id,
+                    i16::MAX,
+                );
             }
-            for (k, value) in changed {
+            m.reported_unsent_data_len = unsent;
+            m.sent_data.resize(sync_len, None);
+            let mut changed = Vec::new();
+            for (index, sent) in m.sent_data.iter_mut().enumerate() {
+                let value = data.get(index).copied().unwrap_or_default() as i16;
+                if *sent != Some(value) {
+                    *sent = Some(value);
+                    changed.push((index as i16, value));
+                }
+            }
+            for (id, value) in changed {
                 g.send(&C::ContainerSetData(play::ContainerSetData {
                     container: window,
-                    id: k as i16,
+                    id,
                     value,
                 }));
             }
@@ -1302,18 +1468,24 @@ impl Hub {
     }
 
     /// Slot changes of open containers (AbstractContainerMenu.broadcastChanges).
-    pub fn sync_containers(&mut self, world: &World) {
+    pub fn sync_containers(&mut self, world: &World) -> Vec<super::hub::HostEvent> {
+        let mut events = Vec::new();
         for i in 0..self.guests.len() {
             let Some(menu) = self.guests[i]
                 .menu
                 .as_ref()
-                .filter(|_| self.here(&self.guests[i]))
+                .filter(|menu| !menu.removed && self.here(&self.guests[i]))
             else {
                 continue;
             };
             let (total, window, slots) = (menu.slot_count(), menu.window, menu.slots);
             if !slots.valid(world) {
-                self.close_container_at(i);
+                let guest = &self.guests[i];
+                events.push(super::hub::HostEvent::CloseInvalidContainer {
+                    conn: guest.conn,
+                    window,
+                    generation: guest.menu_generation,
+                });
                 continue;
             }
             for slot in 0..total {
@@ -1347,6 +1519,7 @@ impl Hub {
             // Then the data slots, as broadcastChanges does.
             self.sync_container_data(i, world);
         }
+        events
     }
 }
 

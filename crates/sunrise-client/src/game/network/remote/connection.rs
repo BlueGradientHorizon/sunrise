@@ -124,7 +124,14 @@ impl Game<'_> {
         };
         *slot = None;
         let realm = self.realm_session && self.server_address() == Some(server.address.as_str());
-        self.connect_server_with_options(&server.address, &server.name, None, server.lan, realm)
+        self.connect_server_with_options(
+            &server.address,
+            &server.name,
+            None,
+            server.lan,
+            realm,
+            None,
+        )
     }
 }
 
@@ -139,17 +146,7 @@ fn retry_slot(title: &mut Option<sunrise_client::title::Title>) -> Option<&mut O
 impl Game<'_> {
     /// Leave the title for a server (ConnectScreen): an empty world fed by the connection.
     pub(in crate::game) fn connect_server(&mut self, address: &str, name: &str) -> Result<()> {
-        self.connect_server_with_cookies(address, name, None)
-    }
-    /// `connect_server` carrying a transfer's stored server cookies
-    /// (`TransferState`); None on an ordinary join.
-    pub(super) fn connect_server_with_cookies(
-        &mut self,
-        address: &str,
-        name: &str,
-        cookies: Option<sunrise_client::net::Cookies>,
-    ) -> Result<()> {
-        self.connect_server_with_options(address, name, cookies, false, false)
+        self.connect_server_with_options(address, name, None, false, false, None)
     }
     /// `ConnectScreen.startConnecting`: keep LAN discovery's server kind through loading.
     pub(in crate::game) fn connect_server_with_options(
@@ -159,11 +156,13 @@ impl Game<'_> {
         cookies: Option<sunrise_client::net::Cookies>,
         lan: bool,
         realm: bool,
+        list_name: Option<&str>,
     ) -> Result<()> {
         crate::game::world_loading::world_data_used();
         if self.defer_world_entry(crate::game::PendingWorldEntry::Server {
             address: address.to_owned(),
             name: name.to_owned(),
+            list_name: list_name.map(str::to_owned),
             cookies: cookies.clone(),
             lan,
             realm,
@@ -172,7 +171,7 @@ impl Game<'_> {
         }
         self.join_world_rest()?;
         self.client_logging_out();
-        if let Err(error) = self.join_server(address, name, None, cookies, lan, realm) {
+        if let Err(error) = self.join_server(address, name, None, cookies, lan, realm, list_name) {
             log::warn!("Sunrise: could not join server: {error}");
             let skip = self.settings.file.bool("skipMultiplayerWarning");
             match &mut self.title {
@@ -197,57 +196,10 @@ impl Game<'_> {
     /// patch a Sunrise server sends its clients, with the registries' ids, so
     /// the server's echo doesn't hand back a bare item.
     pub(super) fn to_network(&self, s: &Option<ItemStack>) -> Option<Stack> {
-        let r = self.remote.as_ref()?;
-        let source = s.as_ref()?;
-        // A stack as the server sent it, only its count changed: its own
-        // components go back, as a vanilla client keeps them.
-        if let Some(patch) = source.wire_patch() {
-            let mut out = Stack::new(self.item_id(&source.item), source.count as i32);
-            let safe = r.registries.custom_components
-                || sunrise_protocol::item::custom::entries().next().is_none()
-                || sunrise_protocol::item::WirePatch::decode(&patch)
-                    .and_then(|(added, removed)| {
-                        let decoded = Stack {
-                            added,
-                            removed,
-                            ..Stack::new(out.item, out.count)
-                        };
-                        sunrise_protocol::item::custom::permitted(&decoded, false)
-                    })
-                    .unwrap_or(false);
-            if safe {
-                out.wire = sunrise_protocol::item::WirePatch(Some(patch));
-                return Some(out);
-            }
-            log::warn!("Cannot send cached custom components to this peer");
-        }
-        let mut wire = sunrise_client::lan::guest::stack_to_network(
-            |name| self.item_id(name),
-            // Built-in first, as a hub's `SyncData::id` does: potions are one.
-            |registry, name| {
-                r.builtin
-                    .get(registry)
-                    .and_then(|ids| ids.id(name))
-                    .or_else(|| r.registries.id(registry, name))
-                    .or_else(|| {
-                        (r.registries.custom_components
-                            && registry == "minecraft:data_component_type")
-                            .then(|| sunrise_protocol::item::custom::id(name))
-                            .flatten()
-                    })
-            },
-            s,
-        )?;
-        sunrise_client::lan::guest::canonicalize_stack_patch(
-            &mut wire,
-            source,
-            self.items(),
-            &r.builtin,
-        );
-        Some(wire)
+        self.to_network_projecting(s, &|_| ())
     }
     // handle_command_suggestions: remote/commands.rs
-    pub(in crate::game) fn set_registries(&mut self, registries: Arc<Dynamic>) {
+    pub(in crate::game) fn set_registries(&mut self, registries: Arc<Dynamic>) -> Result<()> {
         let entries: Vec<(&str, serde_json::Value)> = registries
             .registries
             .get("minecraft:enchantment")
@@ -260,17 +212,12 @@ impl Game<'_> {
                 ))
             })
             .collect();
-        let enchantments = match self
+        let enchantments = self
             .stations()
             .enchantments
             .with_entries(entries.iter().map(|(n, v)| (*n, v)))
-        {
-            Ok(table) => table.map(Arc::new),
-            Err(error) => {
-                log::warn!("Sunrise: refused enchantment registry: {error}");
-                return;
-            }
-        };
+            .map_err(|error| format!("refused enchantment registry: {error}"))?
+            .map(Arc::new);
         // The server's biomes the game lacks (a world data pack's) join the
         // game's table, from the data it sent: colours, meshing and the
         // chunk format all go through that table. The window's own server
@@ -279,7 +226,10 @@ impl Game<'_> {
             let table = registries
                 .registries
                 .get(BIOME_REGISTRY)
-                .and_then(|list| client_biomes(self.res.biomes(), list))
+                .map(|list| client_biomes(self.res.biomes(), list))
+                .transpose()
+                .map_err(|error| format!("refused biome registry: {error}"))?
+                .flatten()
                 .map(Arc::new);
             if table.is_some() || self.world_biomes.is_some() {
                 self.world_biomes_base = table.clone();
@@ -297,7 +247,6 @@ impl Game<'_> {
                     .collect()
             })
             .unwrap_or_default();
-        self.server_items = self.server_items(&registries);
         if let Some(r) = self.remote.as_mut() {
             r.enchantments = enchantments;
             let bits = ceil_log2(biomes.len());
@@ -306,9 +255,11 @@ impl Game<'_> {
                 Arc::new(ChunkFormat::new(&r.dimension, biomes, bits).in_column(column));
             r.registries = registries;
             r.resolve_clocks();
+            self.install_server_items();
             self.reset_creative_contents();
             self.refresh_creative_search_tags();
         }
+        Ok(())
     }
     /// Another player of this level, whose copy passes every click (`Player.interactOn`).
     pub(in crate::game) fn is_level_player(&self, id: i32) -> bool {
@@ -326,25 +277,29 @@ impl Game<'_> {
     /// A click on `ConnectScreen`: Cancel aborts the connection
     /// (`connect.aborted`) and goes back. Escape does nothing there
     /// (`shouldCloseOnEsc` is false).
-    pub(in crate::game) fn connect_screen_click(&mut self) -> Result<()> {
+    pub(in crate::game) fn connect_screen_click(&mut self) -> Result<bool> {
         // ServerReconfigScreen's Disconnect, once it is active.
         if let Some(since) = self.remote.as_ref().and_then(|r| r.reconfiguring) {
             let (_, (x, y)) = self.reconfigure_layout(self.gui_size());
             if self.ticks.saturating_sub(since) >= 600
                 && sunrise_client::ui::hovered(self.cursor, x, y, 150.0, 20.0)
             {
-                self.audio.play_button_click();
+                self.play_audio_button_click();
                 self.leave_server(None)?;
+                return Ok(true);
             }
-            return Ok(());
+            return Ok(false);
         }
         let Some((x, y)) = self.connect_cancel(self.gui_size()) else {
-            return Ok(());
+            return Ok(false);
         };
         if sunrise_client::ui::hovered(self.cursor, x, y, 200.0, 20.0) {
-            self.audio.play_button_click();
-            self.leave_server(None)?;
+            self.play_audio_button_click();
+            // ConnectScreen Cancel aborts the pending connection and returns to
+            // its parent screen without calling Minecraft.disconnect.
+            self.finish_leave_server(None)?;
+            return Ok(true);
         }
-        Ok(())
+        Ok(false)
     }
 }

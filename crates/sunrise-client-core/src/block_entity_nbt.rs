@@ -21,6 +21,27 @@ pub fn saved_item_slot(entry: &Tag) -> Option<usize> {
         .map(|slot| usize::from(slot as u8))
 }
 
+/// The slot addressed by a mod block entity's saved `Items` row, if it names one.
+/// Compact rows keep [`saved_item_slot`]'s unsigned-byte interpretation (`0..=255`);
+/// NBT `Int` slots accept nonnegative `i32` indices so extended slots never alias.
+pub fn saved_mod_item_slot(entry: &Tag) -> Option<usize> {
+    match entry.get("Slot") {
+        Some(Tag::Int(slot)) => usize::try_from(*slot).ok(),
+        _ => saved_item_slot(entry),
+    }
+}
+
+/// Encode a mod block entity's `Items` slot index: compact unsigned byte for
+/// `0..=255` (matching vanilla's `ItemStackWithSlot`), and nonnegative NBT `Int`
+/// for larger `i32`-representable indices.
+pub fn mod_item_slot_tag(slot: usize) -> Option<Tag> {
+    if let Ok(byte) = u8::try_from(slot) {
+        Some(Tag::Byte(byte as i8))
+    } else {
+        i32::try_from(slot).ok().map(Tag::Int)
+    }
+}
+
 fn string(s: &str) -> Tag {
     Tag::String(s.into())
 }
@@ -853,19 +874,25 @@ fn is_record(item: &Compound) -> bool {
 /// form (including the detail Sunrise does not model, such as styled text), what it
 /// changed takes the current value, and keys Sunrise never models stay. The outer
 /// table follows the live writer; unchanged values keep their original tables.
-pub fn overlay(original: &Tag, loaded: &Tag, current: &Tag) -> Tag {
+/// A slotless mod's `Items` field is payload, not inventory: the current value
+/// (or its absence) is authoritative, including the order of any list it holds.
+pub fn overlay(original: &Tag, loaded: &Tag, current: &Tag, items_are_payload: bool) -> Tag {
     match (original, loaded, current) {
         (Tag::Compound(o), Tag::Compound(l), Tag::Compound(c)) => {
+            let payload_key = items_are_payload.then(|| "Items".into());
             let mut out = c.clone();
             out.for_each_mut(|key, value| {
-                if let (Some(ov), Some(lv)) = (o.get(key), l.get(key)) {
+                if payload_key.as_ref() != Some(key)
+                    && let (Some(ov), Some(lv)) = (o.get(key), l.get(key))
+                {
                     *value = overlay_value(ov, lv, value);
                 }
             });
             // Keys the game never models (or models only when present) survive;
             // keys it removed are gone.
             for (key, ov) in o {
-                if !c.contains_key(key) && !l.contains_key(key) {
+                if payload_key.as_ref() != Some(key) && !c.contains_key(key) && !l.contains_key(key)
+                {
                     out.insert(key.clone(), ov.clone());
                 }
             }
@@ -881,18 +908,27 @@ fn overlay_value(original: &Tag, loaded: &Tag, current: &Tag) -> Tag {
     }
     match (original, loaded, current) {
         (Tag::Compound(_), Tag::Compound(_), Tag::Compound(_)) => {
-            overlay(original, loaded, current)
+            overlay(original, loaded, current, false)
         }
         (Tag::List(o), Tag::List(l), Tag::List(c)) if keyed_by_slot(c) && keyed_by_slot(l) => {
-            let slot = |t: &Tag| int(t.get("Slot"));
+            // A row's identity is its whole `Slot` tag, type and value: an `Int` row and a
+            // `Byte` row that coerce to one number are different rows, and a row takes the
+            // first earlier row of its own identity that no other row took.
+            fn take<'a>(list: &'a [Tag], used: &mut [bool], slot: Option<&Tag>) -> Option<&'a Tag> {
+                let at = (0..list.len()).find(|&i| !used[i] && list[i].get("Slot") == slot)?;
+                used[at] = true;
+                Some(&list[at])
+            }
+            let (mut taken_original, mut taken_loaded) =
+                (vec![false; o.len()], vec![false; l.len()]);
             Tag::List(
                 c.iter()
                     .map(|cv| {
-                        let s = slot(cv);
-                        fn find(list: &[Tag], slot: Option<i32>) -> Option<&Tag> {
-                            list.iter().find(|t| int(t.get("Slot")) == slot)
-                        }
-                        match (find(o, s), find(l, s)) {
+                        let slot = cv.get("Slot");
+                        match (
+                            take(o, &mut taken_original, slot),
+                            take(l, &mut taken_loaded, slot),
+                        ) {
                             (Some(ov), Some(lv)) => overlay_value(ov, lv, cv),
                             _ => cv.clone(),
                         }
@@ -917,6 +953,35 @@ mod tests {
     }
     fn canon(s: &str) -> Tag {
         canonical(&snbt(s)).expect("known type")
+    }
+
+    /// An opaque `Slot:-128` Int row before the modeled `Slot:-128b` row is a different row: the
+    /// overlay keeps the modeled stack's own original form and leaves the opaque row as it was.
+    #[test]
+    fn rows_that_coerce_to_one_slot_stay_distinct_rows() {
+        let original = snbt(
+            r#"{Items:[{Slot:-128,id:"minecraft:bedrock",count:1},{Slot:-128b,id:"minecraft:stone",count:1,note:"kept"}]}"#,
+        );
+        let loaded = snbt(
+            r#"{Items:[{Slot:-128,id:"minecraft:bedrock",count:1},{Slot:-128b,id:"minecraft:stone",count:1}]}"#,
+        );
+        let current = snbt(
+            r#"{Items:[{Slot:-128,id:"minecraft:bedrock",count:1},{Slot:-128b,id:"minecraft:stone",count:1},{Slot:1b,id:"minecraft:dirt",count:1}]}"#,
+        );
+        let saved = overlay(&original, &loaded, &current, false);
+        let Some(Tag::List(rows)) = saved.get("Items") else {
+            panic!("Items list");
+        };
+        assert_eq!(rows.len(), 3);
+        assert_eq!(
+            rows[0],
+            snbt(r#"{Slot:-128,id:"minecraft:bedrock",count:1}"#)
+        );
+        assert_eq!(
+            rows[1],
+            snbt(r#"{Slot:-128b,id:"minecraft:stone",count:1,note:"kept"}"#),
+            "the modeled row keeps its own original, not the opaque row's"
+        );
     }
 
     #[test]
@@ -1113,7 +1178,7 @@ mod tests {
             "{id:\"minecraft:sign\",front_text:{messages:[\"a\",\"\",\"\",\"\"]},\
              back_text:{messages:[\"y\",\"\",\"\",\"\"]}}",
         );
-        let merged = overlay(&original, &loaded, &current);
+        let merged = overlay(&original, &loaded, &current, false);
         assert_eq!(merged.get("front_text"), original.get("front_text"));
         assert_eq!(merged.get("back_text"), current.get("back_text"));
         assert_eq!(merged.get("extra"), original.get("extra"));
@@ -1135,7 +1200,7 @@ mod tests {
         )]);
         let loaded = Tag::compound([("Items", Tag::List(vec![item(0, 1, ""), item(1, 1, "")]))]);
         let current = Tag::compound([("Items", Tag::List(vec![item(0, 1, ""), item(1, 5, "")]))]);
-        let merged = overlay(&original, &loaded, &current);
+        let merged = overlay(&original, &loaded, &current, false);
         let Some(Tag::List(items)) = merged.get("Items") else {
             panic!("items")
         };
@@ -1144,6 +1209,31 @@ mod tests {
             "slot 0 keeps its lore"
         );
         assert_eq!(items[1].get("count"), Some(&Tag::Int(5)));
+    }
+
+    #[test]
+    fn mod_item_slot_round_trips_compact_and_extended_indices() {
+        for (slot, expected) in [
+            (0usize, Tag::Byte(0)),
+            (127, Tag::Byte(127)),
+            (128, Tag::Byte(-128)),
+            (255, Tag::Byte(-1)),
+            (256, Tag::Int(256)),
+            (i32::MAX as usize, Tag::Int(i32::MAX)),
+        ] {
+            let encoded = mod_item_slot_tag(slot).expect("representable slot");
+            assert_eq!(encoded, expected, "slot {slot}");
+            let row = Tag::compound([("Slot", encoded)]);
+            assert_eq!(saved_mod_item_slot(&row), Some(slot), "slot {slot}");
+        }
+        assert_eq!(mod_item_slot_tag((i32::MAX as usize) + 1), None);
+        assert_eq!(saved_mod_item_slot(&snbt("{Slot:-1}")), None);
+        assert_eq!(saved_mod_item_slot(&snbt("{Slot:-128}")), None);
+        assert_eq!(saved_mod_item_slot(&snbt("{Slot:256L}")), None);
+        assert_eq!(saved_mod_item_slot(&snbt("{raw:1}")), None);
+        // Compact unsigned-byte rows keep existing behavior and vanilla stays byte-bounded.
+        assert_eq!(saved_mod_item_slot(&snbt("{Slot:-1b}")), Some(255));
+        assert_eq!(saved_item_slot(&snbt("{Slot:256}")), None);
     }
 }
 

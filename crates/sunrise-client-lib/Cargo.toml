@@ -9,14 +9,10 @@ license.workspace = true
 rust-version.workspace = true
 description = "Reusable client systems, control tool and parity probes"
 
-[build-dependencies]
-sunrise-game-discovery = { path = "../sunrise-game-discovery" }
-
 [lib]
 path = "../sunrise-client/src/client_lib.rs"
 
 [dependencies]
-sunrise-guest-stack = { path = "../sunrise-guest-stack" }
 sunrise-mod-api-macros = { path = "../sunrise-mod-api-macros" }
 sunrise-hooks = { path = "../sunrise-hooks" }
 sunrise-mod-runtime = { path = "../sunrise-mod-runtime" }
@@ -54,7 +50,7 @@ sunrise-shader-api = { path = "../sunrise-shader-api" }
 sunrise-narrator = { path = "../sunrise-narrator" }
 # Sunrise mods: native code and content packages (docs/modding/src/how-to/content-mods.md).
 # Their runtime is the `mods` feature.
-sunrise-mod-package = { path = "../sunrise-mod-package", default-features = false, features = ["index"] }
+sunrise-mod-package = { path = "../sunrise-mod-package", default-features = false, features = ["index-read"] }
 wgpu = { version = "30.0.1", default-features = false, features = ["std", "parking_lot", "vulkan", "metal", "wgsl", "naga-ir"] }
 winit = "0.30.13"
 pollster = "0.4"
@@ -80,7 +76,7 @@ xxhash-rust = { version = "0.8.19", features = ["xxh3"] }
 # Opt-in data collection: the game keeps, the launcher sends (docs/telemetry.md).
 sunrise-telemetry = { path = "../sunrise-telemetry", default-features = false }
 sunrise-bench = { path = "../sunrise-bench" }
-zip = { version = "9.1.3", default-features = false, features = ["deflate"] }
+zip = { version = "9.1.3", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 # Controllers (evdev + libudev on Linux, IOKit on macOS, Windows.Gaming.Input); the `controllers` feature.
 gilrs = { version = "0.11", optional = true }
 # The DualSense's rumble, adaptive triggers and lights over HID (gilrs only reads it).
@@ -89,6 +85,8 @@ sunrise-dualsense = { path = "../sunrise-dualsense", optional = true }
 ureq = { version = "2", default-features = false, features = ["tls"] }
 # `LevelStorageAccess.estimateDiskSpace`: usable disk space, without unsafe code on Windows.
 fs4 = { version = "1.1.0", default-features = false, features = ["sync"] }
+# Contain recursive native item renderers before a stack overflow can abort the process.
+stacker = "0.1.25"
 
 [target.'cfg(unix)'.dependencies]
 # The server thread's CPU time per tick (`SUNRISE_SPIKES`, spans.rs).
@@ -116,8 +114,12 @@ test-menu-validity = []
 test-payload-probe = []
 # Isolated server-publication slots for resource-backed game fixtures only.
 test-publication-scope = []
+# Thread-local tooltip component factories for isolated game unit tests only.
+test-tooltip-factories = []
 # Non-consuming residency journal observation for game fixtures only.
 test-residency-observer = []
+# Local server-pack feedback observation for game fixtures only.
+test-pack-feedback = []
 # A level side with no weather, tags or block entities, for tests and probes that never read them.
 test-dry-side = []
 default = ["audio", "controllers"]
@@ -148,6 +150,7 @@ mod_api = { package = "sunrise-mod-vocab", path = "../sunrise-mod-vocab", featur
 sunrise-theme = { path = "../sunrise-theme" }
 sunrise-client-render = { path = "../sunrise-client-render", features = ["test-support"] }
 sunrise-items = { path = "../sunrise-items", features = ["test-support"] }
+sunrise-world = { path = "../sunrise-world", features = ["test-support"] }
 # Reads back the captures the server_perf tests write.
 sunrise-perf = { path = "../sunrise-perf" }
 # Every WGSL shader translated as wgpu's DirectX 12 backend does (gfx.rs tests).
@@ -232,6 +235,10 @@ path = "../sunrise-client/tests/custom_component_unregistered.rs"
 [[test]]
 name = "custom_component_wire"
 path = "../sunrise-client/tests/custom_component_wire.rs"
+
+[[test]]
+name = "custom_bundle_wire"
+path = "../sunrise-client/tests/custom_bundle_wire.rs"
 
 [[test]]
 name = "datapack_join"

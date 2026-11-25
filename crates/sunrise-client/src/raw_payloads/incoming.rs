@@ -4,8 +4,8 @@ use super::{
     connection::{Epoch, IngressLease, MainTask},
 };
 use mod_api::{
-    __private::game::PayloadReceiver, PayloadBytes, PayloadContextError, PayloadId,
-    PayloadSendError, PayloadWork,
+    __private::game::{CallbackFailure, PayloadReceiver},
+    PayloadBytes, PayloadContextError, PayloadId, PayloadSendError, PayloadWork,
 };
 use std::sync::Arc;
 use std::time::Instant;
@@ -34,8 +34,10 @@ pub struct Incoming {
 const _: () = assert!(std::mem::size_of::<Incoming>() <= 256);
 pub enum Classified {
     Application(Incoming),
-    /// A raw channel's message, once for each declaring mod in load order.
+    /// A raw channel's message, once per non-poisoned receiver in load order.
     Raw(Vec<Incoming>),
+    /// A negotiated packet whose receiving callback has already panicked.
+    Skipped,
     Other(CustomPayload),
 }
 #[derive(Debug)]
@@ -73,6 +75,9 @@ impl Incoming {
             Classified::Raw(mut incoming) if incoming.len() == 1 => Ok(incoming.remove(0)),
             Classified::Raw(_) => Err(PayloadSendError::EncodeFailed(
                 "a raw channel has several receivers".into(),
+            )),
+            Classified::Skipped => Err(PayloadSendError::EncodeFailed(
+                "the receiving callback was skipped".into(),
             )),
             Classified::Other(packet) => {
                 Err(PayloadSendError::UnknownPayload(PayloadId(packet.channel)))
@@ -113,12 +118,16 @@ impl Incoming {
             return Ok(Classified::Other(packet));
         }
         let receiver = match epoch.peer.receiver(phase, &packet.channel) {
-            Ok(receiver) => receiver.clone(),
+            Ok(receiver) => receiver,
             Err(PayloadSendError::UnknownPayload(_)) => {
                 return Self::raw(transport, &epoch, phase, packet);
             }
             Err(error) => return Err(fail(error, packet)),
         };
+        // Negotiation still applies to a poisoned channel, but no callback credit is needed.
+        if receiver.poisoned() {
+            return Ok(Classified::Skipped);
+        }
         // A client over the serverbound byte budget loses the send, counted, never the session.
         if epoch.peer.local.has_droppable()
             && epoch.peer.side == super::Side::Server
@@ -142,6 +151,7 @@ impl Incoming {
             id: PayloadId(packet.channel.clone()),
             error,
         })?;
+        let receiver = receiver.clone();
         let main = epoch.main_task();
         Ok(Classified::Application(Self {
             epoch,
@@ -170,6 +180,9 @@ impl Incoming {
         }
         let mut deliveries = Vec::with_capacity(receivers.len());
         for receiver in receivers {
+            if receiver.poisoned() {
+                continue;
+            }
             let owned = packet.channel.capacity().saturating_add(packet.data.len());
             let lease = transport.reserve_ingress(owned).map_err(|error| Failure {
                 id: PayloadId(packet.channel.clone()),
@@ -189,21 +202,39 @@ impl Incoming {
         }
         Ok(Classified::Raw(deliveries))
     }
-    /// Reserve before cloning the channel or retaining the guest's work resource.
-    pub fn work(
+    /// Take the body without releasing its receiving turn or ingress credit.
+    pub fn take_body(&mut self) -> Body {
+        std::mem::replace(&mut self.body, Body::Payload(PayloadBytes(Vec::new())))
+    }
+    /// Dispose of any call-owned work under its owning mod's panic policy.
+    pub(super) fn dispose_body(&mut self) -> Result<(), CallbackFailure> {
+        match self.take_body() {
+            Body::Work(work) => self.receiver.dispose_work(work),
+            Body::Payload(_) => Ok(()),
+        }
+    }
+    /// Reserve before cloning the channel or retaining the mod's work resource.
+    pub(super) fn work(
         &self,
         transport: &Transport,
         work: Arc<dyn PayloadWork>,
-    ) -> Result<Self, PayloadContextError> {
+    ) -> Result<Self, (PayloadContextError, Option<CallbackFailure>)> {
         if !self.epoch.active() {
-            return Err(PayloadContextError::Disconnected);
+            return Err((
+                PayloadContextError::Disconnected,
+                self.receiver.dispose_work(work).err(),
+            ));
         }
-        let lease = transport
-            .reserve_ingress(self.id.0.len())
-            .map_err(|error| match error {
-                PayloadSendError::Backpressure => PayloadContextError::Backpressure,
-                _ => PayloadContextError::Disconnected,
-            })?;
+        let lease = match transport.reserve_ingress(self.id.0.len()) {
+            Ok(lease) => lease,
+            Err(error) => {
+                let error = match error {
+                    PayloadSendError::Backpressure => PayloadContextError::Backpressure,
+                    _ => PayloadContextError::Disconnected,
+                };
+                return Err((error, self.receiver.dispose_work(work).err()));
+            }
+        };
         Ok(Self {
             epoch: self.epoch.clone(),
             id: self.id.clone(),
@@ -215,5 +246,10 @@ impl Incoming {
             raw: self.raw,
             turn: None,
         })
+    }
+}
+impl Drop for Incoming {
+    fn drop(&mut self) {
+        let _ = self.dispose_body();
     }
 }

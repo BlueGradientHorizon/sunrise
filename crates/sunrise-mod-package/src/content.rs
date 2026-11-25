@@ -14,8 +14,10 @@ use mod_vocab::{__private::DeclarationKind, DeclarationError};
 use serde::Deserialize;
 use std::{
     collections::{BTreeMap, BTreeSet},
-    io::Read,
+    fmt,
+    io::{self, Read},
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
 };
 pub use sunrise_core::arm_pose::ArmPose;
 
@@ -198,9 +200,32 @@ pub struct BlockProperties {
     /// Leaf and ice graphics culling still follows the template class.
     #[serde(default, deserialize_with = "deserialize_skip_same_block_faces")]
     pub skip_same_block_faces: Option<bool>,
+    /// Which mobs may spawn on the block (`BlockBehaviour.Properties.isValidSpawn`); unset keeps
+    /// the template block's rule. Set on every state of the block, from the block alone: a
+    /// `dynamic_light` block's cell light and an outline declared over the template's do not
+    /// reach it (see [`SpawnRule::Default`]).
+    pub spawn_rule: Option<SpawnRule>,
     /// Opt into `VegetationBlock` survival independently of the template.
     #[serde(default)]
     pub vegetation: bool,
+}
+
+/// A block's mob spawn rule (`BlockBehaviour.Properties.isValidSpawn`), the answer of
+/// `BlockState.isValidSpawn` for every entity type; a polar bear follows the rule like any other mob.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SpawnRule {
+    /// Vanilla's default: the top face is sturdy and the block's light emission is below 14. The
+    /// top face is the template's, and the emission is the declared `light` (or `state_light`),
+    /// else the template's: a `dynamic_light` block is judged by that static light, since the
+    /// spawn tables hold one answer per state.
+    Default,
+    /// Every mob spawns on the block (`Blocks::always`).
+    Always,
+    /// No mob spawns on the block (`Blocks::never`).
+    Never,
+    /// Only ocelots and parrots spawn on the block (`Blocks::ocelotOrParrot`).
+    OcelotOrParrot,
 }
 
 /// Vanilla's per-column offset mode (`BlockBehaviour.OffsetType`).
@@ -726,33 +751,65 @@ struct CreativeTabFile {
     items: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, PartialEq, sunrise_mod_api_macros::Wire)]
-#[wire(crate = ::mod_vocab::wire)]
+#[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct FluidFile {
     sprite: Option<String>,
     tint: Option<u32>,
     world: Option<WorldFluid>,
+    bucket_item: Option<String>,
+    temperature: Option<i32>,
+    density: Option<i32>,
+    viscosity: Option<i32>,
+    light_level: Option<u8>,
+}
+
+/// A fluid's `FluidType` numbers, which mods read for one another's fluids: NeoForge's
+/// `FluidType.getTemperature`, `getDensity`, `getViscosity` and `getLightLevel`. Each defaults
+/// to `FluidType.Properties`' own, which are water's.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FluidMeasures {
+    /// How hot it is, room temperature in kelvin by default: 300.
+    pub temperature: i32,
+    /// How dense it is, water's kg/m³ by default: 1000. Below 0 is lighter than air.
+    pub density: i32,
+    /// How thick it is, 0 or more, water's by default: 1000.
+    pub viscosity: i32,
+    /// The light it gives, 0 to 15, water's by default: 0.
+    pub light_level: u8,
+}
+impl Default for FluidMeasures {
+    fn default() -> Self {
+        Self {
+            temperature: 300,
+            density: 1000,
+            viscosity: 1000,
+            light_level: 0,
+        }
+    }
 }
 
 /// What makes a fluid exist in the world: a block holding it, as `minecraft:water`'s does, and
 /// how it flows. Each value defaults to water's, in `data/<id>/sunrise/fluid/` as in code
 /// (`Registrar::declare_world_fluid`).
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
-#[wire(crate = ::mod_vocab::wire)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct WorldFluid {
-    /// Game ticks between two flow steps (`Fluid.getTickDelay`), 1 or more.
+    /// Game ticks between two flow steps (`Fluid.getTickDelay`).
     pub tick_delay: i32,
-    /// What it loses per block it flows (`FlowingFluid.getDropOff`), 1 to 7.
+    /// What it loses per block it flows (`FlowingFluid.getDropOff`), 0 or more.
     pub drop_off: i32,
-    /// How far it looks for a way down (`FlowingFluid.getSlopeFindDistance`), 1 to 4.
+    /// How far it looks for a way down (`FlowingFluid.getSlopeFindDistance`).
     pub slope_find_distance: i32,
     /// Whether two sources make a third (`FlowingFluid.canConvertToSource`). Off by default:
     /// water's comes from a game rule, which a mod's fluid does not read.
     pub source_conversion: bool,
-    /// Whether it has a filled bucket, the item `<id>_bucket`.
+    /// Whether the game registers its filled bucket, a water bucket under the id the look's
+    /// `bucket_item` names, `<id>_bucket` when it names none.
     pub bucket: bool,
+    /// The registry name of its flowing form, in the fluid's namespace;
+    /// `<namespace>:flowing_<path>` when unset.
+    pub flowing: Option<String>,
 }
 impl Default for WorldFluid {
     fn default() -> Self {
@@ -762,30 +819,26 @@ impl Default for WorldFluid {
             slope_find_distance: 4,
             source_conversion: false,
             bucket: true,
+            flowing: None,
         }
     }
 }
 impl WorldFluid {
-    /// Refuses values the simulation cannot run: no step, no spread, or an unbounded search.
+    /// Refuses a negative `drop_off`: the level a spread computes (`FlowingFluid.getNewLiquid`,
+    /// the highest neighbour less the drop-off) must stay within `FlowingFluid.LEVEL`'s 1 to 8.
+    /// Every other value is NeoForge's `BaseFlowingFluid.Properties` domain, any `int`.
     pub fn check(&self) -> Result<(), String> {
-        if self.tick_delay < 1 {
-            return Err("tick_delay is 1 or more".into());
-        }
-        if !(1..=7).contains(&self.drop_off) {
-            return Err("drop_off is 1 to 7".into());
-        }
-        if !(1..=4).contains(&self.slope_find_distance) {
-            return Err("slope_find_distance is 1 to 4".into());
+        if self.drop_off < 0 {
+            return Err("drop_off is 0 or more".into());
         }
         Ok(())
     }
 }
 
 /// How a fluid the mod names looks on the client (`data/<id>/sunrise/fluid/`), as
-/// NeoForge's `IClientFluidTypeExtensions`: `getStillTexture` and `getTintColor`.
-/// The fluid needs no block, so it can be a fluid only a tank holds.
-#[derive(Clone, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
-#[wire(crate = ::mod_vocab::wire)]
+/// NeoForge's `IClientFluidTypeExtensions`: `getStillTexture` and `getTintColor`, and its
+/// [`FluidMeasures`]. The fluid needs no block, so it can be a fluid only a tank holds.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FluidLook {
     /// `<mod id>:<path>`.
     pub id: String,
@@ -795,24 +848,69 @@ pub struct FluidLook {
     pub tint: Option<u32>,
     /// How it exists in the world; none for a fluid only a tank holds.
     pub world: Option<WorldFluid>,
+    /// The item that holds a bucket of it (`Fluid.getBucket`): another item for a tank-only
+    /// fluid or a world fluid without a generated bucket, the generated bucket's id otherwise.
+    pub bucket_item: Option<String>,
+    /// Its temperature, density, viscosity and light level.
+    pub measures: FluidMeasures,
 }
 impl FluidLook {
-    /// The registry name of its flowing form: `<namespace>:flowing_<path>`.
+    /// The registry name of its flowing form: the world fluid's `flowing`, else
+    /// `<namespace>:flowing_<path>`.
     pub fn flowing_id(&self) -> String {
+        if let Some(flowing) = self.world.as_ref().and_then(|world| world.flowing.clone()) {
+            return flowing;
+        }
         match self.id.split_once(':') {
             Some((namespace, path)) => format!("{namespace}:flowing_{path}"),
             None => format!("flowing_{}", self.id),
         }
     }
-    /// The filled bucket a world fluid has.
+    /// The item a bucket of it is (`Fluid.getBucket`): `bucket_item`, else `<id>_bucket` for a
+    /// world fluid with a generated bucket. None for a fluid no bucket holds.
     pub fn bucket_id(&self) -> Option<String> {
-        self.world
-            .filter(|world| world.bucket)
-            .map(|_| format!("{}_bucket", self.id))
+        self.bucket_item.clone().or_else(|| {
+            self.world
+                .as_ref()
+                .filter(|world| world.bucket)
+                .map(|_| format!("{}_bucket", self.id))
+        })
+    }
+    /// Refuses names and numbers the game cannot register: an id that is not
+    /// `namespace:path`, a flowing form or generated bucket outside the fluid's namespace, and a
+    /// light level above 15.
+    pub fn check(&self) -> Result<(), String> {
+        let namespace = self.id.split_once(':').map(|(namespace, _)| namespace);
+        let own = |id: &str| namespaced_id(id) && id.split_once(':').map(|(n, _)| n) == namespace;
+        if let Some(world) = &self.world {
+            world.check().map_err(|e| format!("world: {e}"))?;
+            if world
+                .flowing
+                .as_deref()
+                .is_some_and(|flowing| !own(flowing) || flowing == self.id)
+            {
+                return Err(
+                    "world: flowing is an id in the fluid's namespace, not the fluid's own".into(),
+                );
+            }
+        }
+        if let Some(item) = &self.bucket_item {
+            let generated = self.world.as_ref().is_some_and(|world| world.bucket);
+            if !namespaced_id(item) || (generated && !own(item)) {
+                return Err(
+                    "bucket_item is an item id, in the fluid's namespace when the game registers it"
+                        .into(),
+                );
+            }
+        }
+        if self.measures.light_level > 15 {
+            return Err("light_level is 0 to 15".into());
+        }
+        Ok(())
     }
     /// The block a world fluid is in the world: water's behaviour and states under its own id.
     pub fn world_block(&self) -> Option<Block> {
-        self.world.map(|_| Block {
+        self.world.as_ref().map(|_| Block {
             id: self.id.clone(),
             template: "minecraft:water".into(),
             ..Block::default()
@@ -820,7 +918,8 @@ impl FluidLook {
     }
     /// The item its bucket is: a water bucket's under its own id, leaving the empty bucket.
     pub fn world_bucket(&self) -> Option<Item> {
-        self.bucket_id().map(|id| Item {
+        let generated = self.world.as_ref().is_some_and(|world| world.bucket);
+        self.bucket_id().filter(|_| generated).map(|id| Item {
             id,
             template: "minecraft:water_bucket".into(),
             crafting_remainder: Some("minecraft:bucket".into()),
@@ -889,10 +988,10 @@ pub struct Item {
     pub rarity: Option<Rarity>,
     /// A 26.3 data component patch over the template's: `!minecraft:<type>` removes one.
     pub components: BTreeMap<String, serde_json::Value>,
-    /// What it leaves in the crafting grid (`Item.Properties.craftRemainder`):
-    /// a vanilla item or one of the mod's own.
+    /// The registered item it leaves in the crafting grid (`Item.Properties.craftRemainder`).
+    /// Omit this field for no remainder; `minecraft:air` is not a stack.
     pub crafting_remainder: Option<String>,
-    /// The block placed by this item, if any.
+    /// The registered block placed by this item, if any.
     pub block: Option<String>,
     /// The arm pose a humanoid takes holding it, in place of vanilla's (`ArmPose`).
     pub arm_pose: Option<ArmPose>,
@@ -991,7 +1090,7 @@ pub use lenient::without_comments;
 #[cfg(feature = "references")]
 mod references;
 #[cfg(feature = "references")]
-pub use references::{Findings, check_references};
+pub use references::{Findings, JarLayer, check_references};
 
 /// A block entity type declared in code, with the blocks it supports.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1016,9 +1115,9 @@ pub struct MenuType {
     /// Append the 36 player inventory slots (default: true).
     #[serde(default = "yes")]
     pub player_inventory: bool,
-    /// 0 to [`MAX_MENU_SLOTS`].
+    /// Number of integer data slots synced by the menu (`ContainerData`), 0 by default.
     #[serde(default)]
-    pub data_slots: u16,
+    pub data_slots: usize,
     /// Per-slot maxima for transient slots when the menu is opened with no backing block.
     /// When present, supplies one maximum (1–99) for each container slot. Cannot be combined
     /// with take-only `results` or a `crafting` layout.
@@ -1084,24 +1183,46 @@ impl MenuCrafting {
     }
 }
 
-/// the most container or data slots a mod menu type has, as many as a mod
-/// container (`native_block_entity_container`) may.
-pub const MAX_MENU_SLOTS: u16 = 256;
+/// The most total item slots a mod menu type may carry (container backing slots plus
+/// the 36 appended player inventory slots when `player_inventory` is true): `32,768`,
+/// matching vanilla's signed 16-bit slot index range `0..=32,767` (`i16::MAX`).
+pub const MAX_MENU_SLOTS: u16 = (i16::MAX as u16) + 1;
 
-#[derive(Debug, Clone)]
+/// The most data slots carried over vanilla's signed 16-bit `ClientboundContainerSetDataPacket`
+/// (`0..=32,767`, count `32,768`).
+pub const MAX_SIGNED_DATA_SLOTS: u16 = (i16::MAX as u16) + 1;
+
+/// The most data slots carried over the unsigned 16-bit `sunrise:menu_data` payload
+/// (`0..=65,535`, count `65,536`).
+pub const MAX_BLOCKLESS_DATA_SLOTS: usize = u16::MAX as usize + 1;
+
+#[derive(Clone)]
 enum Source {
     Dir(PathBuf),
-    Zip(PathBuf),
+    Zip {
+        path: PathBuf,
+        archive: Arc<Mutex<zip::ZipArchive<std::fs::File>>>,
+    },
     /// No files: content a native mod declares in code.
     Code,
 }
 
+impl fmt::Debug for Source {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Dir(path) => f.debug_tuple("Dir").field(path).finish(),
+            Self::Zip { path, .. } => f.debug_tuple("Zip").field(path).finish(),
+            Self::Code => f.write_str("Code"),
+        }
+    }
+}
+
 /// A mod's content: its files and declarations.
-#[derive(Debug)]
 pub struct Content {
     source: Source,
+    from_admission: bool,
     /// Every content file (`assets/...`, `data/...`), sorted.
-    pub files: Vec<String>,
+    pub files: Arc<[String]>,
     pub blocks: Vec<Block>,
     pub items: Vec<Item>,
     pub effects: Vec<MobEffect>,
@@ -1119,38 +1240,254 @@ pub struct Content {
     pub namespaces: Vec<String>,
 }
 
-/// Reads a mod's content files ([`Content::reader`]).
-pub enum FileReader<'a> {
-    Dir(&'a Path),
-    Zip(Box<zip::ZipArchive<std::fs::File>>),
+impl fmt::Debug for Content {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // The release-line corpus records the declarations, not loader bookkeeping.
+        f.debug_struct("Content")
+            .field("source", &self.source)
+            .field("files", &self.files)
+            .field("blocks", &self.blocks)
+            .field("items", &self.items)
+            .field("effects", &self.effects)
+            .field("creative_tabs", &self.creative_tabs)
+            .field("fluids", &self.fluids)
+            .field("fluid_interactions", &self.fluid_interactions)
+            .field("entity_types", &self.entity_types)
+            .field("block_entity_types", &self.block_entity_types)
+            .field("menu_types", &self.menu_types)
+            .field("namespaces", &self.namespaces)
+            .finish()
+    }
 }
+
+macro_rules! declaration_kinds {
+    ($($kind:ident => $folder:literal: $file:ty),+ $(,)?) => {
+        enum FileKind { $($kind),+ }
+
+        impl FileKind {
+            fn from_folder(folder: &str) -> Option<Self> {
+                DECLARATION_KINDS.iter().zip([$(Self::$kind),+])
+                    .find_map(|(&name, kind)| (name == folder).then_some(kind))
+            }
+        }
+
+        /// Declaration folders admitted by the content reader.
+        #[doc(hidden)]
+        pub const DECLARATION_KINDS: &[&str] = &[$($folder),+];
+
+        /// Exposes the declaration file types to the integration test's Serde schema probe.
+        #[doc(hidden)]
+        pub fn probe_declaration<'de, D: serde::Deserializer<'de>>(
+            kind: &str,
+            deserializer: D,
+        ) -> Result<(), D::Error> {
+            match FileKind::from_folder(kind) {
+                $(Some(FileKind::$kind) => <$file>::deserialize(deserializer).map(drop),)+
+                None => Err(serde::de::Error::custom(format_args!(
+                    "unknown declaration kind {kind:?}"
+                ))),
+            }
+        }
+    };
+}
+
+declaration_kinds! {
+    Block => "block": BlockFile,
+    Item => "item": ItemFile,
+    MobEffect => "mob_effect": MobEffect,
+    CreativeTab => "creative_tab": CreativeTabFile,
+    Fluid => "fluid": FluidFile,
+    FluidInteraction => "fluid_interaction": FluidInteraction,
+    EntityType => "entity_type": EntityType,
+    Menu => "menu": MenuType,
+}
+
+/// Where a package's content files are read from: its folder or its `.smod`.
+#[derive(Debug, Clone)]
+pub struct ContentSource {
+    source: Source,
+    files: Arc<[String]>,
+}
+
+impl ContentSource {
+    /// The package at `path` (a `.smod` or a mod folder), and every content file it holds
+    /// (`assets/...`, `data/...`), sorted: content loading's own walk and checks, each path
+    /// [`check_path`], at most [`MAX_FILE`] bytes per file, [`MAX_FILES`] files and [`MAX_TOTAL`]
+    /// bytes in all.
+    pub fn open(path: &Path) -> Result<Self, String> {
+        let (source, sized) = if path.is_dir() {
+            (Source::Dir(path.to_owned()), folder_files(path)?)
+        } else {
+            let mut zip = open_zip(path)?;
+            let mut out = Vec::new();
+            for i in 0..zip.len() {
+                let entry = zip.by_index_raw(i).map_err(|e| e.to_string())?;
+                let name = entry.name().map_err(|e| e.to_string())?.into_owned();
+                if (name.starts_with("assets/") || name.starts_with("data/")) && !entry.is_dir() {
+                    out.push((name, entry.size()));
+                }
+            }
+            (
+                Source::Zip {
+                    path: path.to_owned(),
+                    archive: Arc::new(Mutex::new(zip)),
+                },
+                out,
+            )
+        };
+        let mut files = Vec::with_capacity(sized.len());
+        let mut total = 0u64;
+        for (name, size) in sized {
+            check_path(&name)?;
+            if size > MAX_FILE {
+                return Err(format!("{name} is over {} MiB", MAX_FILE >> 20));
+            }
+            total += size;
+            files.push(name);
+        }
+        if files.len() > MAX_FILES {
+            return Err(format!("more than {MAX_FILES} content files"));
+        }
+        if total > MAX_TOTAL {
+            return Err(format!("content is over {} MiB", MAX_TOTAL >> 20));
+        }
+        files.sort();
+        files.dedup();
+        Ok(Self {
+            source,
+            files: files.into(),
+        })
+    }
+
+    /// The sorted content names captured when this source opened.
+    pub fn names(&self) -> Arc<[String]> {
+        self.files.clone()
+    }
+
+    /// Check the manifest's namespace fence before any registrant can see these files.
+    pub fn admit(self, manifest: &Manifest) -> Result<AdmittedContentSource, String> {
+        for name in self.files.iter() {
+            check_namespace(name, manifest)?;
+        }
+        Ok(AdmittedContentSource(self))
+    }
+
+    /// Whether the file list came from an opened archive rather than a loose folder.
+    pub fn is_archive(&self) -> bool {
+        matches!(self.source, Source::Zip { .. })
+    }
+
+    /// A reader of its files, which checks each path and size again as it reads.
+    pub fn reader(&self) -> FileReader<'_> {
+        self.source.reader()
+    }
+}
+
+/// A package's opened file index, already checked against its manifest's namespace fence.
+#[derive(Debug)]
+pub struct AdmittedContentSource(ContentSource);
+
+impl AdmittedContentSource {
+    pub fn source(&self) -> &ContentSource {
+        &self.0
+    }
+}
+
+/// A content file could not be read, with the loader's diagnostic.
+#[derive(Debug)]
+pub enum ReadError {
+    /// The folder or archive has no file at this name.
+    NotFound(String),
+    /// The path, size or read failed for some other reason.
+    Other(String),
+}
+
+impl ReadError {
+    fn from_io(name: &str, error: io::Error) -> Self {
+        let detail = format!("{name}: {error}");
+        if error.kind() == io::ErrorKind::NotFound {
+            Self::NotFound(detail)
+        } else {
+            Self::Other(detail)
+        }
+    }
+}
+
+impl std::fmt::Display for ReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotFound(reason) | Self::Other(reason) => f.write_str(reason),
+        }
+    }
+}
+
+impl std::error::Error for ReadError {}
+
+impl From<ReadError> for String {
+    fn from(error: ReadError) -> Self {
+        error.to_string()
+    }
+}
+
+/// Reads a mod's content files ([`Content::reader`]).
+pub struct FileReader<'a>(FileLocation<'a>);
+
+enum FileLocation<'a> {
+    Dir(&'a Path),
+    Zip(&'a Mutex<zip::ZipArchive<std::fs::File>>),
+}
+
 impl FileReader<'_> {
     /// One content file's bytes.
-    pub fn read(&mut self, name: &str) -> Result<Vec<u8>, String> {
-        check_path(name)?;
-        let reader: Box<dyn Read + '_> = match self {
-            Self::Dir(root) => {
-                Box::new(std::fs::File::open(root.join(name)).map_err(|e| format!("{name}: {e}"))?)
+    pub fn read(&self, name: &str) -> Result<Vec<u8>, ReadError> {
+        self.read_head(name, MAX_FILE + 1)
+    }
+
+    /// Read no more than `max` bytes, and keep the package's own full-file bound.
+    pub fn read_head(&self, name: &str, max: u64) -> Result<Vec<u8>, ReadError> {
+        check_path(name).map_err(ReadError::Other)?;
+        let read = |reader: &mut dyn Read| {
+            let mut out = Vec::new();
+            reader
+                .take(max.min(MAX_FILE + 1))
+                .read_to_end(&mut out)
+                .map_err(|error| ReadError::from_io(name, error))?;
+            if out.len() as u64 > MAX_FILE {
+                return Err(ReadError::Other(format!(
+                    "{name} is over {} MiB",
+                    MAX_FILE >> 20
+                )));
             }
-            Self::Zip(zip) => Box::new(zip.by_name(name).map_err(|e| format!("{name}: {e}"))?),
+            Ok(out)
         };
-        let mut out = Vec::new();
-        reader
-            .take(MAX_FILE + 1)
-            .read_to_end(&mut out)
-            .map_err(|e| format!("{name}: {e}"))?;
-        if out.len() as u64 > MAX_FILE {
-            return Err(format!("{name} is over {} MiB", MAX_FILE >> 20));
+        match self.0 {
+            FileLocation::Dir(root) => read(
+                &mut std::fs::File::open(root.join(name))
+                    .map_err(|error| ReadError::from_io(name, error))?,
+            ),
+            FileLocation::Zip(zip) => {
+                let mut archive = zip
+                    .lock()
+                    .map_err(|e| ReadError::Other(format!("{name}: {e}")))?;
+                let mut entry = archive.by_name(name).map_err(|e| {
+                    let detail = format!("{name}: {e}");
+                    if matches!(e, zip::result::ZipError::FileNotFound) {
+                        ReadError::NotFound(detail)
+                    } else {
+                        ReadError::Other(detail)
+                    }
+                })?;
+                read(&mut entry)
+            }
         }
-        Ok(out)
     }
     /// A content file's path on disk, checked as [`read`](Self::read) checks it (the name,
     /// the size), for a caller that copies it without reading it; `None` in an archive.
     pub fn path(&self, name: &str) -> Result<Option<std::path::PathBuf>, String> {
         check_path(name)?;
-        let root = match self {
-            Self::Dir(root) => root,
-            Self::Zip(_) => return Ok(None),
+        let root = match self.0 {
+            FileLocation::Dir(root) => root,
+            FileLocation::Zip(_) => return Ok(None),
         };
         let path = root.join(name);
         let len = std::fs::metadata(&path)
@@ -1176,52 +1513,28 @@ pub fn clash(a: (&str, &[String]), b: (&str, &[String])) -> Option<String> {
 
 impl Content {
     /// The content of the mod at `path` (a `.smod` or a mod folder).
+    /// Item references are validated as identifiers here and resolved against the game's registries at load.
     pub fn read(path: &Path, manifest: &Manifest) -> Result<Content, String> {
-        Self::read_declaring(path, manifest, &[])
+        Self::read_inner(&ContentSource::open(path)?, manifest, false)
     }
-    /// [`Content::read`] for a mod whose native code also declares items (`native_items`):
-    /// a file's `crafting_remainder` may name one of those `declared` ids, which are not in the
-    /// files.
-    pub fn read_declaring(
-        path: &Path,
+
+    /// Read the declarations using the source already checked against this manifest at admission.
+    pub fn read_opened(
+        source: &AdmittedContentSource,
         manifest: &Manifest,
-        declared: &[String],
     ) -> Result<Content, String> {
-        let (source, sized) = if path.is_dir() {
-            (Source::Dir(path.to_owned()), folder_files(path)?)
-        } else {
-            let mut zip = open_zip(path)?;
-            let mut out = Vec::new();
-            for i in 0..zip.len() {
-                let entry = zip.by_index_raw(i).map_err(|e| e.to_string())?;
-                let name = entry.name().map_err(|e| e.to_string())?.into_owned();
-                if (name.starts_with("assets/") || name.starts_with("data/")) && !entry.is_dir() {
-                    out.push((name.to_owned(), entry.size()));
-                }
-            }
-            (Source::Zip(path.to_owned()), out)
-        };
-        let mut files = Vec::with_capacity(sized.len());
-        let mut total = 0u64;
-        for (name, size) in sized {
-            check_path(&name)?;
-            if size > MAX_FILE {
-                return Err(format!("{name} is over {} MiB", MAX_FILE >> 20));
-            }
-            total += size;
-            files.push(name);
-        }
-        if files.len() > MAX_FILES {
-            return Err(format!("more than {MAX_FILES} content files"));
-        }
-        if total > MAX_TOTAL {
-            return Err(format!("content is over {} MiB", MAX_TOTAL >> 20));
-        }
-        files.sort();
-        files.dedup();
+        Self::read_inner(source.source(), manifest, true)
+    }
+
+    fn read_inner(
+        source: &ContentSource,
+        manifest: &Manifest,
+        from_admission: bool,
+    ) -> Result<Content, String> {
         let mut content = Content {
-            source,
-            files,
+            source: source.source.clone(),
+            from_admission,
+            files: source.names(),
             blocks: Vec::new(),
             items: Vec::new(),
             effects: Vec::new(),
@@ -1233,7 +1546,7 @@ impl Content {
             menu_types: Vec::new(),
             namespaces: manifest.owned_namespaces().map(str::to_owned).collect(),
         };
-        content.check(manifest, declared)?;
+        content.check(manifest)?;
         Ok(content)
     }
 
@@ -1242,7 +1555,8 @@ impl Content {
     pub fn declared(namespace: &str) -> Content {
         Content {
             source: Source::Code,
-            files: Vec::new(),
+            from_admission: false,
+            files: Arc::default(),
             blocks: Vec::new(),
             items: Vec::new(),
             effects: Vec::new(),
@@ -1259,9 +1573,8 @@ impl Content {
     /// Adds blocks and items a native mod declares in code (`native_blocks`,
     /// `native_items`), checked as declaration files are: ids in any of this
     /// mod's owned namespaces (its id and manifest `namespaces`) and declared once
-    /// with what it already has, a vanilla template, a crafting remainder
-    /// that is vanilla or this mod's. All or nothing: on an error nothing is
-    /// added.
+    /// with what it already has, a vanilla template, and well-formed item and block references.
+    /// The references resolve at game load. All or nothing: on an error nothing is added.
     pub fn declare(
         &mut self,
         blocks: &[Block],
@@ -1314,12 +1627,7 @@ impl Content {
         blocks: impl IntoIterator<Item = (&'a Block, Result<(), String>)>,
         items: impl IntoIterator<Item = (&'a Item, Result<(), String>)>,
     ) -> Result<(), Vec<(DeclarationKind, DeclarationError)>> {
-        let mut ids: BTreeSet<&str> = self
-            .blocks
-            .iter()
-            .map(|b| b.id.as_str())
-            .chain(self.items.iter().map(|i| i.id.as_str()))
-            .collect();
+        let mut block_ids: BTreeSet<&str> = self.blocks.iter().map(|b| b.id.as_str()).collect();
         let mut item_ids: BTreeSet<&str> = self
             .blocks
             .iter()
@@ -1341,12 +1649,13 @@ impl Content {
         for (block, fields) in blocks {
             let id = block.id.as_str();
             let result = fields.and_then(|()| {
-                if !ids.insert(id) {
+                if block_ids.contains(id) {
                     return Err("declared twice".into());
                 }
-                if block.item {
-                    item_ids.insert(id);
+                if block.item && !item_ids.insert(id) {
+                    return Err("block's item is already declared".into());
                 }
+                block_ids.insert(id);
                 Ok(())
             });
             match result {
@@ -1356,32 +1665,15 @@ impl Content {
         }
         sign_wall_refusals(&all_blocks)
             .for_each(|(id, reason)| refuse(DeclarationKind::Block, id, reason));
-        let mut valid_items = Vec::new();
         for (item, fields) in items {
             let id = item.id.as_str();
-            let result = fields.and_then(|()| {
+            if let Err(reason) = fields.and_then(|()| {
                 if !item_ids.insert(id) {
                     return Err("declared twice, or is also a block's item".into());
                 }
                 Ok(())
-            });
-            match result {
-                Ok(()) => valid_items.push(item),
-                Err(reason) => refuse(DeclarationKind::Item, id, reason),
-            }
-        }
-        for item in valid_items {
-            if let Some(rest) = &item.crafting_remainder
-                && (rest == "minecraft:air"
-                    || !vanilla_id(rest) && !item_ids.contains(rest.as_str()))
-            {
-                refuse(
-                    DeclarationKind::Item,
-                    &item.id,
-                    format!(
-                        "crafting_remainder {rest:?} is not a vanilla item (minecraft:...) or one of this mod's"
-                    ),
-                );
+            }) {
+                refuse(DeclarationKind::Item, id, reason);
             }
         }
         if !errors.is_empty() {
@@ -1394,7 +1686,7 @@ impl Content {
     pub fn source(&self) -> &Path {
         match &self.source {
             Source::Dir(path) => path,
-            Source::Zip(path) => path,
+            Source::Zip { path, .. } => path,
             Source::Code => Path::new(""),
         }
     }
@@ -1428,19 +1720,26 @@ impl Content {
         ))
     }
 
-    /// One content file's bytes.
-    pub fn file(&self, name: &str) -> Result<Vec<u8>, String> {
-        self.reader()?.read(name)
+    /// The fixed listing and reader captured at startup, if this content came from admission.
+    pub fn admitted_source(&self) -> Option<ContentSource> {
+        self.from_admission.then(|| ContentSource {
+            source: self.source.clone(),
+            files: self.files.clone(),
+        })
     }
 
-    /// A reader of its content files. A packaged mod's archive is opened
-    /// once for all of them (opening it reads its whole index).
-    pub fn reader(&self) -> Result<FileReader<'_>, String> {
-        reader_of(&self.source)
+    /// One content file's bytes.
+    pub fn file(&self, name: &str) -> Result<Vec<u8>, String> {
+        Ok(self.reader().read(name)?)
+    }
+
+    /// A reader of its content files, using the same archive from which the files were listed.
+    pub fn reader(&self) -> FileReader<'_> {
+        self.source.reader()
     }
 
     /// Where content may go, and the declarations.
-    fn check(&mut self, manifest: &Manifest, declared: &[String]) -> Result<(), String> {
+    fn check(&mut self, manifest: &Manifest) -> Result<(), String> {
         let id = manifest.id.as_str();
         let mut blocks = Vec::new();
         let mut items = Vec::new();
@@ -1450,7 +1749,7 @@ impl Content {
         let mut interactions = Vec::new();
         let mut types = Vec::new();
         let mut menus = Vec::new();
-        for name in &self.files {
+        for name in self.files.iter() {
             let mut parts = name.splitn(3, '/');
             let (top, namespace, rest) = (
                 parts.next().unwrap_or(""),
@@ -1458,7 +1757,9 @@ impl Content {
                 parts.next().unwrap_or(""),
             );
             let owned = manifest.owned_namespaces().any(|owned| owned == namespace);
-            check_namespace(name, manifest)?;
+            if !self.from_admission {
+                check_namespace(name, manifest)?;
+            }
             let Some(decl) = (owned && top == "data")
                 .then(|| rest.strip_prefix("sunrise/"))
                 .flatten()
@@ -1471,39 +1772,26 @@ impl Content {
             if manifest.side == crate::manifest::Side::Server {
                 continue;
             }
-            let parse = |kind: &str| -> Option<String> {
-                let path = decl
-                    .strip_prefix(kind)?
-                    .strip_prefix('/')?
-                    .strip_suffix(".json")?;
-                Some(format!("{namespace}:{path}"))
-            };
-            if let Some(block) = parse("block") {
-                blocks.push((block, name.clone()));
-            } else if let Some(item) = parse("item") {
-                items.push((item, name.clone()));
-            } else if let Some(effect) = parse("mob_effect") {
-                effects.push((effect, name.clone()));
-            } else if let Some(tab) = parse("creative_tab") {
-                tabs.push((tab, name.clone()));
-            } else if let Some(fluid) = parse("fluid") {
-                fluids.push((fluid, name.clone()));
-            } else if let Some(interaction) = parse("fluid_interaction") {
-                interactions.push((interaction, name.clone()));
-            } else if let Some(kind) = parse("entity_type") {
-                types.push((kind, name.clone()));
-            } else if let Some(menu) = parse("menu") {
-                menus.push((menu, name.clone()));
-            } else {
+            let Some((kind, path)) = decl.split_once('/').and_then(|(folder, path)| {
+                Some((FileKind::from_folder(folder)?, path.strip_suffix(".json")?))
+            }) else {
                 return Err(format!(
                     "{name}: data/{id}/sunrise/ holds block/, item/, mob_effect/, creative_tab/, fluid/, fluid_interaction/, entity_type/ and menu/*.json only"
                 ));
-            }
+            };
+            let rows = match kind {
+                FileKind::Block => &mut blocks,
+                FileKind::Item => &mut items,
+                FileKind::MobEffect => &mut effects,
+                FileKind::CreativeTab => &mut tabs,
+                FileKind::Fluid => &mut fluids,
+                FileKind::FluidInteraction => &mut interactions,
+                FileKind::EntityType => &mut types,
+                FileKind::Menu => &mut menus,
+            };
+            rows.push((format!("{namespace}:{path}"), name.clone()));
         }
-        // One reader for every declaration: opening a packaged mod reads its
-        // whole index, so a reader per file made loading a big mod quadratic.
-        let source = self.source.clone();
-        let mut reader = reader_of(&source)?;
+        let reader = self.source.reader();
         let mut ids = BTreeSet::new();
         for (block, name) in blocks {
             let file: BlockFile =
@@ -1560,7 +1848,6 @@ impl Content {
         {
             return Err(format!("{id}: {reason}"));
         }
-        let mut remainders = Vec::new();
         for (item, name) in items {
             let file: ItemFile =
                 serde_json::from_slice(&reader.read(&name)?).map_err(|e| format!("{name}: {e}"))?;
@@ -1578,9 +1865,6 @@ impl Content {
             if !ids.insert(item.id.clone()) {
                 return Err(format!("{name}: {} is also a block's item", item.id));
             }
-            if let Some(rest) = &item.crafting_remainder {
-                remainders.push((name, rest.clone()));
-            }
             self.items.push(item);
         }
         for (effect, name) in effects {
@@ -1590,19 +1874,6 @@ impl Content {
                 return Err(format!("{name}: color is RGB, 0 to 16777215 (0xFFFFFF)"));
             }
             self.effects.push(MobEffect { id: effect, ..file });
-        }
-        // After every item, so a remainder may be declared in a later file.
-        for (name, rest) in remainders {
-            if rest == "minecraft:air" {
-                return Err(format!(
-                    "{name}: crafting_remainder {rest:?} is no remainder (leave it out)"
-                ));
-            }
-            if !vanilla_id(&rest) && !ids.contains(&rest) && !declared.contains(&rest) {
-                return Err(format!(
-                    "{name}: crafting_remainder {rest:?} is not a vanilla item (minecraft:...) or one of this mod's"
-                ));
-            }
         }
         for (tab, name) in tabs {
             let file: CreativeTabFile =
@@ -1631,15 +1902,25 @@ impl Content {
                     "{name}: sprite is an atlas sprite id (namespace:path)"
                 ));
             }
-            if let Some(world) = &file.world {
-                world.check().map_err(|e| format!("{name}: world: {e}"))?;
+            // `FluidType.Properties.viscosity` throws for a negative one; the others take any.
+            if file.viscosity.is_some_and(|viscosity| viscosity < 0) {
+                return Err(format!("{name}: viscosity is never negative"));
             }
+            let defaults = FluidMeasures::default();
             let look = FluidLook {
                 id: fluid,
                 sprite: file.sprite,
                 tint: file.tint,
                 world: file.world,
+                bucket_item: file.bucket_item,
+                measures: FluidMeasures {
+                    temperature: file.temperature.unwrap_or(defaults.temperature),
+                    density: file.density.unwrap_or(defaults.density),
+                    viscosity: file.viscosity.unwrap_or(defaults.viscosity),
+                    light_level: file.light_level.unwrap_or(defaults.light_level),
+                },
             };
+            look.check().map_err(|e| format!("{name}: {e}"))?;
             if self.fluids.iter().any(|known| {
                 known.id == look.id
                     || (known.world.is_some() && known.flowing_id() == look.id)
@@ -1740,99 +2021,191 @@ impl Content {
             let source = format!("{name} ({menu})");
             let file: MenuType =
                 serde_json::from_slice(&bytes).map_err(|e| format!("{source}: {e}"))?;
-            if file.slots > MAX_MENU_SLOTS || file.data_slots > MAX_MENU_SLOTS {
-                return Err(format!(
-                    "{source}: slots ({}) and data_slots ({}) are each 0 to {MAX_MENU_SLOTS}",
-                    file.slots, file.data_slots
-                ));
-            }
-            if let Some(limits) = &file.owned_slots
-                && (limits.len() != usize::from(file.slots)
-                    || limits.iter().any(|limit| !(1..=99).contains(limit)))
-            {
-                return Err(format!(
-                    "{name} ({menu}): owned_slots must give one maximum in 1..=99 per container slot"
-                ));
-            }
-            if file.owned_slots.is_some() && (!file.results.is_empty() || file.crafting.is_some()) {
-                return Err(format!(
-                    "{source}: owned_slots cannot be combined with results or crafting"
-                ));
-            }
-            let mut seen = BTreeSet::new();
-            for &r in &file.results {
-                if r >= file.slots {
-                    return Err(format!(
-                        "{source}: result slot {r} is outside the {} container slots",
-                        file.slots
-                    ));
-                }
-                if !seen.insert(r) {
-                    return Err(format!("{source}: result {r} is listed twice"));
-                }
-            }
-            for &input in &file.inputs {
-                if input >= file.slots {
-                    return Err(format!(
-                        "{source}: input {input} is outside the {} container slots",
-                        file.slots
-                    ));
-                }
-                if !seen.insert(input) {
-                    return Err(format!(
-                        "{source}: input {input} is listed twice or is a result"
-                    ));
-                }
-            }
-            if let Some(c) = file.crafting {
-                let end = u32::from(c.grid) + u32::from(c.size) * u32::from(c.size);
-                if !matches!(c.size, 2 | 3) {
-                    return Err(format!("{source}: crafting size is 2 or 3"));
-                }
-                if end > u32::from(file.slots) || c.result >= file.slots {
-                    return Err(format!(
-                        "{source}: crafting grid {}..{end} and result slot {} must be within the {} container slots",
-                        c.grid, c.result, file.slots
-                    ));
-                }
-                if (u32::from(c.grid)..end).contains(&u32::from(c.result)) {
-                    return Err(format!("{source}: the crafting result is in its grid"));
-                }
-                let is_crafting_slot =
-                    |&s: &u16| s == c.result || (u32::from(c.grid)..end).contains(&u32::from(s));
-                if file.results.iter().any(is_crafting_slot) {
-                    return Err(format!(
-                        "{source}: results lists a crafting slot (the result is take-only already)"
-                    ));
-                }
-                if file.inputs.iter().any(is_crafting_slot) {
-                    return Err(format!("{source}: inputs lists a crafting slot"));
-                }
-            }
-            if let Some(l) = file.links {
-                let linked = l.range();
-                if l.count == 0 || linked.end > u32::from(file.slots) {
-                    return Err(format!(
-                        "{source}: linked slots {linked:?} must be nonempty and within the {} container slots",
-                        file.slots
-                    ));
-                }
-                if file.results.iter().any(|&r| linked.contains(&u32::from(r))) {
-                    return Err(format!("{source}: results lists a linked slot"));
-                }
-                if let Some(c) = file.crafting {
-                    let end = u32::from(c.grid) + u32::from(c.size) * u32::from(c.size);
-                    if linked.contains(&u32::from(c.result))
-                        || (u32::from(c.grid)..end).any(|s| linked.contains(&s))
-                    {
-                        return Err(format!("{source}: links overlap the crafting slots"));
-                    }
-                }
-            }
+            validate_menu_type(&file).map_err(|reason| format!("{source}: {reason}"))?;
             self.menu_types.push(MenuType { id: menu, ..file });
         }
         Ok(())
     }
+}
+
+/// Structured refusal kind for validating a mod's `menu/<name>.json` declaration.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum MenuTypeRefusal {
+    TotalSlotsExceeded {
+        total_slots: usize,
+    },
+    OwnedSlotsInvalidLimits,
+    OwnedSlotsWithCrafting,
+    ResultOutOfRange {
+        slot: u16,
+        slots: u16,
+    },
+    DuplicateResult(u16),
+    InputOutOfRange {
+        slot: u16,
+        slots: u16,
+    },
+    DuplicateOrResultInput(u16),
+    CraftingInvalidSize,
+    CraftingOutOfRange {
+        grid: u16,
+        end: u32,
+        result: u16,
+        slots: u16,
+    },
+    CraftingResultInGrid,
+    ResultsListCraftingSlot,
+    InputsListCraftingSlot,
+    LinksOutOfRange {
+        range: std::ops::Range<u32>,
+        slots: u16,
+    },
+    ResultsListLinkedSlot,
+    LinksOverlapCrafting,
+}
+
+impl std::fmt::Display for MenuTypeRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TotalSlotsExceeded { total_slots } => {
+                write!(
+                    f,
+                    "total menu slots ({total_slots}) exceed {MAX_MENU_SLOTS}"
+                )
+            }
+            Self::OwnedSlotsInvalidLimits => {
+                write!(
+                    f,
+                    "owned_slots must give one maximum in 1..=99 per container slot"
+                )
+            }
+            Self::OwnedSlotsWithCrafting => {
+                write!(f, "owned_slots cannot be combined with crafting")
+            }
+            Self::ResultOutOfRange { slot, slots } => {
+                write!(
+                    f,
+                    "result slot {slot} is outside the {slots} container slots"
+                )
+            }
+            Self::DuplicateResult(slot) => write!(f, "result {slot} is listed twice"),
+            Self::InputOutOfRange { slot, slots } => {
+                write!(f, "input {slot} is outside the {slots} container slots")
+            }
+            Self::DuplicateOrResultInput(slot) => {
+                write!(f, "input {slot} is listed twice or is a result")
+            }
+            Self::CraftingInvalidSize => write!(f, "crafting size is 2 or 3"),
+            Self::CraftingOutOfRange {
+                grid,
+                end,
+                result,
+                slots,
+            } => write!(
+                f,
+                "crafting grid {grid}..{end} and result slot {result} must be within the {slots} container slots"
+            ),
+            Self::CraftingResultInGrid => write!(f, "the crafting result is in its grid"),
+            Self::ResultsListCraftingSlot => {
+                write!(
+                    f,
+                    "results lists a crafting slot (the result is take-only already)"
+                )
+            }
+            Self::InputsListCraftingSlot => write!(f, "inputs lists a crafting slot"),
+            Self::LinksOutOfRange { range, slots } => write!(
+                f,
+                "linked slots {range:?} must be nonempty and within the {slots} container slots"
+            ),
+            Self::ResultsListLinkedSlot => write!(f, "results lists a linked slot"),
+            Self::LinksOverlapCrafting => write!(f, "links overlap the crafting slots"),
+        }
+    }
+}
+
+pub(crate) fn validate_menu_type(file: &MenuType) -> Result<(), MenuTypeRefusal> {
+    let total_slots = usize::from(file.slots) + if file.player_inventory { 36 } else { 0 };
+    if total_slots > usize::from(MAX_MENU_SLOTS) {
+        return Err(MenuTypeRefusal::TotalSlotsExceeded { total_slots });
+    }
+    if let Some(limits) = &file.owned_slots
+        && (limits.len() != usize::from(file.slots)
+            || limits.iter().any(|limit| !(1..=99).contains(limit)))
+    {
+        return Err(MenuTypeRefusal::OwnedSlotsInvalidLimits);
+    }
+    if file.owned_slots.is_some() && file.crafting.is_some() {
+        return Err(MenuTypeRefusal::OwnedSlotsWithCrafting);
+    }
+    let mut seen = BTreeSet::new();
+    for &r in &file.results {
+        if r >= file.slots {
+            return Err(MenuTypeRefusal::ResultOutOfRange {
+                slot: r,
+                slots: file.slots,
+            });
+        }
+        if !seen.insert(r) {
+            return Err(MenuTypeRefusal::DuplicateResult(r));
+        }
+    }
+    for &input in &file.inputs {
+        if input >= file.slots {
+            return Err(MenuTypeRefusal::InputOutOfRange {
+                slot: input,
+                slots: file.slots,
+            });
+        }
+        if !seen.insert(input) {
+            return Err(MenuTypeRefusal::DuplicateOrResultInput(input));
+        }
+    }
+    if let Some(c) = file.crafting {
+        let end = u32::from(c.grid) + u32::from(c.size) * u32::from(c.size);
+        if !matches!(c.size, 2 | 3) {
+            return Err(MenuTypeRefusal::CraftingInvalidSize);
+        }
+        if end > u32::from(file.slots) || c.result >= file.slots {
+            return Err(MenuTypeRefusal::CraftingOutOfRange {
+                grid: c.grid,
+                end,
+                result: c.result,
+                slots: file.slots,
+            });
+        }
+        if (u32::from(c.grid)..end).contains(&u32::from(c.result)) {
+            return Err(MenuTypeRefusal::CraftingResultInGrid);
+        }
+        let is_crafting_slot =
+            |&s: &u16| s == c.result || (u32::from(c.grid)..end).contains(&u32::from(s));
+        if file.results.iter().any(is_crafting_slot) {
+            return Err(MenuTypeRefusal::ResultsListCraftingSlot);
+        }
+        if file.inputs.iter().any(is_crafting_slot) {
+            return Err(MenuTypeRefusal::InputsListCraftingSlot);
+        }
+    }
+    if let Some(l) = file.links {
+        let linked = l.range();
+        if l.count == 0 || linked.end > u32::from(file.slots) {
+            return Err(MenuTypeRefusal::LinksOutOfRange {
+                range: linked,
+                slots: file.slots,
+            });
+        }
+        if file.results.iter().any(|&r| linked.contains(&u32::from(r))) {
+            return Err(MenuTypeRefusal::ResultsListLinkedSlot);
+        }
+        if let Some(c) = file.crafting {
+            let end = u32::from(c.grid) + u32::from(c.size) * u32::from(c.size);
+            if linked.contains(&u32::from(c.result))
+                || (u32::from(c.grid)..end).any(|s| linked.contains(&s))
+            {
+                return Err(MenuTypeRefusal::LinksOverlapCrafting);
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Namespaced component types, removals as `{}`, and none of `fields`,
@@ -1900,12 +2273,17 @@ fn check_item(item: &Item) -> Result<(), String> {
     if item.max_stack_size.is_some_and(|n| !(1..=99).contains(&n)) {
         return Err("max_stack_size is 1 to 99".into());
     }
-    if let Some(block) = &item.block
-        && (!namespaced_id(block)
-            || block.split_once(':').map(|(ns, _)| ns) != item.id.split_once(':').map(|(ns, _)| ns)
-                && !vanilla_id(block))
-    {
-        return Err("block is a vanilla block or a block in this item's namespace".into());
+    if let Some(rest) = &item.crafting_remainder {
+        if !namespaced_id(rest) {
+            return Err(format!(
+                "crafting_remainder {rest:?} must be a namespaced item id"
+            ));
+        }
+        if rest == "minecraft:air" {
+            return Err(format!(
+                "crafting_remainder {rest:?} is no remainder (leave it out)"
+            ));
+        }
     }
     check_components(&item.components, &["max_stack_size", "rarity"])
 }
@@ -2213,12 +2591,14 @@ fn sign_wall_refusals<'a>(blocks: &'a [&'a Block]) -> impl Iterator<Item = (&'a 
     })
 }
 
-fn reader_of(source: &Source) -> Result<FileReader<'_>, String> {
-    Ok(match source {
-        Source::Dir(root) => FileReader::Dir(root),
-        Source::Zip(path) => FileReader::Zip(Box::new(open_zip(path)?)),
-        Source::Code => FileReader::Dir(Path::new("")),
-    })
+impl Source {
+    fn reader(&self) -> FileReader<'_> {
+        FileReader(match self {
+            Self::Dir(root) => FileLocation::Dir(root),
+            Self::Zip { archive, .. } => FileLocation::Zip(archive),
+            Self::Code => FileLocation::Dir(Path::new("")),
+        })
+    }
 }
 
 fn open_zip(path: &Path) -> Result<zip::ZipArchive<std::fs::File>, String> {
@@ -2231,7 +2611,7 @@ fn open_zip(path: &Path) -> Result<zip::ZipArchive<std::fs::File>, String> {
 pub(crate) fn folder_files(root: &Path) -> Result<Vec<(String, u64)>, String> {
     let mut out = Vec::new();
     for top in ["assets", "data"] {
-        walk(root, &root.join(top), &mut out)?;
+        walk(root, &root.join(top), &mut out, Some(MAX_FILES))?;
     }
     Ok(out)
 }
@@ -2239,16 +2619,18 @@ pub(crate) fn folder_files(root: &Path) -> Result<Vec<(String, u64)>, String> {
 /// The files under a package folder's `runtime/`, as `(name below it, bytes)`. Symbolic links and
 /// other non-files are refused, not followed.
 pub(crate) fn runtime_folder_files(root: &Path) -> Result<Vec<(String, u64)>, String> {
+    let runtime_root = root.join(crate::manifest::RUNTIME_DIR);
     let mut out = Vec::new();
-    walk(root, &root.join(crate::manifest::RUNTIME_DIR), &mut out)?;
-    let prefix = format!("{}/", crate::manifest::RUNTIME_DIR);
-    for (name, _) in &mut out {
-        *name = name.strip_prefix(&prefix).unwrap_or(name).to_owned();
-    }
+    walk(&runtime_root, &runtime_root, &mut out, None)?;
     Ok(out)
 }
 
-fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, u64)>) -> Result<(), String> {
+fn walk(
+    root: &Path,
+    dir: &Path,
+    out: &mut Vec<(String, u64)>,
+    max_files: Option<usize>,
+) -> Result<(), String> {
     match std::fs::symlink_metadata(dir) {
         Ok(m) if !m.is_dir() => {
             return Err(format!(
@@ -2265,7 +2647,7 @@ fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, u64)>) -> Result<(), Str
         let path = entry.map_err(|e| e.to_string())?.path();
         let meta = std::fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
         if meta.is_dir() {
-            walk(root, &path, out)?;
+            walk(root, &path, out, max_files)?;
         } else if meta.is_file() {
             let rel = path.strip_prefix(root).map_err(|e| e.to_string())?;
             let parts: Option<Vec<&str>> = rel.iter().map(|p| p.to_str()).collect();
@@ -2277,8 +2659,10 @@ fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, u64)>) -> Result<(), Str
                 path.display()
             ));
         }
-        if out.len() > MAX_FILES {
-            return Err(format!("more than {MAX_FILES} content files"));
+        if let Some(max) = max_files
+            && out.len() > max
+        {
+            return Err(format!("more than {max} content files"));
         }
     }
     Ok(())
@@ -2299,11 +2683,11 @@ mod tests {
             .unwrap()
             .set_len(MAX_FILE + 1)
             .unwrap();
-        let mut reader = FileReader::Dir(&dir);
+        let reader = FileReader(FileLocation::Dir(&dir));
         let error = reader.path(name).unwrap_err();
         assert!(error.contains("is over"), "{error}");
         let error = reader.read(name).unwrap_err();
-        assert!(error.contains("is over"), "{error}");
+        assert!(error.to_string().contains("is over"), "{error}");
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -2389,6 +2773,75 @@ capabilities = ["registries"]
     }
 
     #[test]
+    fn a_folder_and_its_smod_list_and_read_the_same_content_files() {
+        let files: &[(&str, &[u8])] = &[
+            ("data/ruby/lumen/b.luau", b"return 2"),
+            ("assets/ruby/lang/en_us.json", b"{}"),
+            ("data/ruby/lumen/a.luau", b"return 1"),
+        ];
+        let dir = scratch("content-source");
+        let folder = dir.join("ruby");
+        for (name, bytes) in files {
+            let path = folder.join(name);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, bytes).unwrap();
+        }
+        std::fs::write(folder.join(crate::manifest::MANIFEST), MANIFEST_TEXT).unwrap();
+        let archive = dir.join("ruby.smod");
+        std::fs::write(
+            &archive,
+            Package::write_files(MANIFEST_TEXT, files).unwrap(),
+        )
+        .unwrap();
+        for path in [&folder, &archive] {
+            let source = ContentSource::open(path).unwrap();
+            assert_eq!(
+                source.names().as_ref(),
+                [
+                    "assets/ruby/lang/en_us.json",
+                    "data/ruby/lumen/a.luau",
+                    "data/ruby/lumen/b.luau"
+                ],
+                "{}",
+                path.display()
+            );
+            let reader = source.reader();
+            assert_eq!(reader.read("data/ruby/lumen/b.luau").unwrap(), b"return 2");
+            assert!(reader.read("data/ruby/lumen/../lumen/a.luau").is_err());
+            assert!(matches!(
+                reader.read("data/ruby/lumen/c.luau"),
+                Err(ReadError::NotFound(_))
+            ));
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn an_open_package_keeps_reading_the_archive_it_listed() {
+        let dir = scratch("content-archive-identity");
+        let path = dir.join("ruby.smod");
+        let replacement = dir.join("replacement.smod");
+        let name = "data/ruby/lumen/main.luau";
+        std::fs::write(
+            &path,
+            Package::write_files(MANIFEST_TEXT, &[(name, b"old")]).unwrap(),
+        )
+        .unwrap();
+        let source = ContentSource::open(&path).unwrap();
+        assert_eq!(source.names().as_ref(), [name]);
+        std::fs::write(
+            &replacement,
+            Package::write_files(MANIFEST_TEXT, &[(name, b"new")]).unwrap(),
+        )
+        .unwrap();
+        std::fs::rename(replacement, &path).unwrap();
+        assert_eq!(source.reader().read(name).unwrap(), b"old");
+        let current = ContentSource::open(&path).unwrap();
+        assert_eq!(current.reader().read(name).unwrap(), b"new");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn a_declared_friction_is_any_finite_number() {
         let load = |value: &str| {
             let file =
@@ -2403,8 +2856,12 @@ capabilities = ["registries"]
             let content = load(value).unwrap();
             assert_eq!(content.blocks[0].properties.friction, Some(expected));
         }
-        // JSON has no NaN or infinity: a literal is a parse error, and a number past f32's range
-        // becomes infinity and is refused by the check.
+        // Just above the midpoint of two neighbouring f32 values: rounded once, from the decimal text.
+        let content = load("1.0000000596046448").unwrap();
+        let friction = content.blocks[0].properties.friction.unwrap();
+        assert_eq!(friction.to_bits(), 0x3f80_0001);
+        // JSON has no NaN or infinity: a literal is a parse error, and so is a number past f32's
+        // range. The finite check remains for declarations built in code.
         assert!(load("NaN").is_err());
         assert!(load("1e39").is_err());
     }
@@ -2460,7 +2917,10 @@ capabilities = ["registries"]
 
     #[test]
     fn place_block_checks_files_and_native_declarations() {
-        for (i, target) in ["ruby:frame", "minecraft:stone"].iter().enumerate() {
+        for (i, target) in ["ruby:frame", "minecraft:stone", "other:frame"]
+            .into_iter()
+            .enumerate()
+        {
             let text = format!(r#"{{"template":"minecraft:stick","block":"{target}"}}"#);
             let content = smod(
                 &format!("place-block-{i}"),
@@ -2468,37 +2928,90 @@ capabilities = ["registries"]
                 &[("data/ruby/sunrise/item/empty_frame.json", text.as_bytes())],
             )
             .unwrap();
-            assert_eq!(content.items[0].block.as_deref(), Some(*target));
+            assert_eq!(content.items[0].block.as_deref(), Some(target));
+            let mut declared = Content::declared("ruby");
+            declared.declare(&[], &content.items).unwrap();
+            assert_eq!(declared.items[0].block.as_deref(), Some(target));
         }
-        for (i, target) in ["stone", "other:frame", "ruby:Bad", "ruby:"]
-            .iter()
-            .enumerate()
-        {
+        for (i, target) in ["stone", "ruby:Bad", "ruby:"].into_iter().enumerate() {
             let text = format!(r#"{{"template":"minecraft:stick","block":"{target}"}}"#);
+            let error = smod(
+                &format!("bad-place-block-{i}"),
+                MANIFEST_TEXT,
+                &[("data/ruby/sunrise/item/empty_frame.json", text.as_bytes())],
+            )
+            .err()
+            .unwrap();
             assert!(
-                smod(
-                    &format!("bad-place-block-{i}"),
-                    MANIFEST_TEXT,
-                    &[("data/ruby/sunrise/item/empty_frame.json", text.as_bytes())]
-                )
-                .is_err()
+                error.contains("block must be a namespaced block id"),
+                "{error}"
             );
             let mut content = Content::declared("ruby");
+            let errors = content
+                .declare(
+                    &[],
+                    &[Item {
+                        id: "ruby:empty_frame".into(),
+                        template: "minecraft:stick".into(),
+                        block: Some(target.into()),
+                        ..Default::default()
+                    }],
+                )
+                .unwrap_err();
+            assert_eq!(errors.len(), 1);
             assert!(
-                content
-                    .declare(
-                        &[],
-                        &[Item {
-                            id: "ruby:empty_frame".into(),
-                            template: "minecraft:stick".into(),
-                            block: Some((*target).into()),
-                            ..Default::default()
-                        }]
-                    )
-                    .is_err()
+                errors[0]
+                    .1
+                    .to_string()
+                    .contains("block must be a namespaced block id")
             );
             assert!(content.items.is_empty());
         }
+
+        // Referencing another namespace does not let this package write its files there.
+        let foreign_path = "data/other/sunrise/item/empty_frame.json";
+        let error = smod(
+            "foreign-place-block-file",
+            MANIFEST_TEXT,
+            &[(
+                foreign_path,
+                br#"{"template":"minecraft:stick","block":"other:frame"}"#,
+            )],
+        )
+        .err()
+        .unwrap();
+        assert!(
+            error.contains(foreign_path) && error.contains("own namespaces"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn block_without_an_item_can_share_an_existing_item_key() {
+        let mut content = Content::declared("ruby");
+        content.items.push(Item {
+            id: "ruby:lamp".into(),
+            template: "minecraft:stick".into(),
+            ..Item::default()
+        });
+        let block = Block {
+            id: "ruby:lamp".into(),
+            template: "minecraft:stone".into(),
+            item: true,
+            ..Block::default()
+        };
+        assert!(content.declare(std::slice::from_ref(&block), &[]).is_err());
+        content
+            .declare(
+                &[Block {
+                    item: false,
+                    ..block
+                }],
+                &[],
+            )
+            .unwrap();
+        assert_eq!(content.items[0].id, "ruby:lamp");
+        assert_eq!(content.blocks[0].id, "ruby:lamp");
     }
 
     #[test]
@@ -2593,7 +3106,7 @@ capabilities = ["registries"]
         };
         assert!(refused(&[], &[stack]).contains("max_stack_size"));
         let rest = Item {
-            crafting_remainder: Some("emerald:dust".into()),
+            crafting_remainder: Some("emerald:bad dust".into()),
             ..item("ruby:dust")
         };
         assert!(refused(&[block("ruby:pipe")], &[rest]).contains("crafting_remainder"));
@@ -2742,27 +3255,46 @@ capabilities = ["registries"]
     }
 
     #[test]
-    fn a_file_item_may_leave_a_code_declared_item_as_its_remainder() {
-        // `native_items` declares ruby:wrench in code; a file item names it as its remainder.
-        let files: &[(&str, &[u8])] = &[(
-            "data/ruby/sunrise/item/tool.json",
-            br#"{"template": "minecraft:iron_pickaxe", "crafting_remainder": "ruby:wrench"}"#,
-        )];
-        let read = |declared: &[String]| {
-            let dir = scratch("declared-remainder");
-            let path = dir.join("m.smod");
-            std::fs::write(&path, Package::write_files(MANIFEST_TEXT, files).unwrap()).unwrap();
+    fn served_package_crafting_remainder_defers_registry_lookup_to_load() {
+        let served =
+            format!("{MANIFEST_TEXT}namespaces = [\"ruby_extra\"]\nserved_by = \"horizon_java\"\n");
+        let dir = scratch("served-remainder");
+        let path = dir.join("m.smod");
+        for (remainder, accepted) in [
+            ("ruby:host_bowl", true),
+            ("ruby_extra:host_bowl", true),
+            ("other:bowl", true),
+            ("ruby:Bad", false),
+            ("minecraft:air", false),
+        ] {
+            let body = format!(
+                r#"{{"template":"minecraft:mushroom_stew","crafting_remainder":"{remainder}"}}"#
+            );
+            std::fs::write(
+                &path,
+                Package::write_files(
+                    &served,
+                    &[("data/ruby/sunrise/item/stew.json", body.as_bytes())],
+                )
+                .unwrap(),
+            )
+            .unwrap();
             let package = Package::read(&path).unwrap();
-            let content = Content::read_declaring(&path, &package.manifest, declared);
-            std::fs::remove_dir_all(&dir).unwrap();
-            content
-        };
-        assert!(read(&[]).is_err(), "a remainder nobody declares is refused");
-        let content = read(&["ruby:wrench".to_owned()]).expect("the code-declared item is known");
-        assert_eq!(
-            content.items[0].crafting_remainder.as_deref(),
-            Some("ruby:wrench")
-        );
+            match Content::read(&path, &package.manifest) {
+                Ok(content) => {
+                    assert!(accepted, "{remainder}");
+                    assert_eq!(
+                        content.items[0].crafting_remainder.as_deref(),
+                        Some(remainder)
+                    );
+                }
+                Err(error) => {
+                    assert!(!accepted, "{error}");
+                    assert!(error.contains(remainder), "{error}");
+                }
+            }
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -2864,16 +3396,35 @@ capabilities = ["registries"]
     }
 
     #[test]
-    fn menu_owned_slots_reject_take_only_and_crafting_results() {
+    fn menu_owned_slots_allow_results_and_reject_crafting() {
         let path = "data/ruby/sunrise/menu/filter.json";
-        for (case, result) in [
-            ("take-only", r#""results":[4]"#),
-            ("crafting", r#""crafting":{"grid":0,"size":2,"result":4}"#),
-        ] {
-            let menu = format!(r#"{{"slots":5,"owned_slots":[1,1,1,1,1],{result}}}"#);
-            let error = smod(case, MANIFEST_TEXT, &[(path, menu.as_bytes())]).unwrap_err();
-            assert!(error.contains("ruby:filter"), "{case}: {error}");
-        }
+        let processing = br#"{"slots":3,"owned_slots":[64,64,64],"inputs":[0,1],"results":[2]}"#;
+        let content = smod("owned-results", MANIFEST_TEXT, &[(path, processing)]).unwrap();
+        assert_eq!(
+            content.menu_types[0].owned_slots.as_deref(),
+            Some(&[64, 64, 64][..])
+        );
+        assert_eq!(content.menu_types[0].inputs, [0, 1]);
+        assert_eq!(content.menu_types[0].results, [2]);
+
+        let crafting =
+            br#"{"slots":5,"owned_slots":[1,1,1,1,1],"crafting":{"grid":0,"size":2,"result":4}}"#;
+        let parsed_crafting: MenuType = serde_json::from_slice(crafting).unwrap();
+        assert_eq!(
+            validate_menu_type(&parsed_crafting),
+            Err(MenuTypeRefusal::OwnedSlotsWithCrafting)
+        );
+        let error = smod("owned-crafting", MANIFEST_TEXT, &[(path, crafting)]).unwrap_err();
+        assert!(error.contains("ruby:filter"), "{error}");
+
+        let overlap = br#"{"slots":3,"owned_slots":[64,64,64],"inputs":[0,2],"results":[2]}"#;
+        let parsed_overlap: MenuType = serde_json::from_slice(overlap).unwrap();
+        assert_eq!(
+            validate_menu_type(&parsed_overlap),
+            Err(MenuTypeRefusal::DuplicateOrResultInput(2))
+        );
+        let error = smod("owned-overlap", MANIFEST_TEXT, &[(path, overlap)]).unwrap_err();
+        assert!(error.contains("ruby:filter"), "{error}");
     }
 
     #[test]
@@ -2941,12 +3492,37 @@ capabilities = ["registries"]
                 None,
             ]
         );
+        let wide = smod(
+            "menu-wide-data",
+            MANIFEST_TEXT,
+            &[
+                (
+                    "data/ruby/sunrise/menu/wide.json",
+                    br#"{"slots": 300, "data_slots": 300}"#,
+                ),
+                (
+                    "data/ruby/sunrise/menu/huge.json",
+                    br#"{"slots": 1, "data_slots": 70000}"#,
+                ),
+            ],
+        )
+        .unwrap();
+        // Menu declarations do not create saved containers; the item slot count can exceed 256.
+        let wide_counts: Vec<_> = wide
+            .menu_types
+            .iter()
+            .map(|m| (m.id.as_str(), m.slots, m.data_slots))
+            .collect();
+        assert_eq!(
+            wide_counts,
+            [("ruby:huge", 1, 70_000), ("ruby:wide", 300, 300)]
+        );
         for (case, file, details) in [
-            ("menu-large", r#"{"slots": 257}"#, &["257"][..]),
+            ("menu-large-with-inv", r#"{"slots": 32733}"#, &["32769"][..]),
             (
-                "menu-data",
-                r#"{"slots": 1, "data_slots": 257}"#,
-                &["257"][..],
+                "menu-large-no-inv",
+                r#"{"slots": 32769, "player_inventory": false}"#,
+                &["32769"][..],
             ),
             (
                 "menu-result",
@@ -3447,7 +4023,7 @@ capabilities = ["registries"]
         .unwrap();
         assert_eq!(content.server_only_refusal(&manifest), None);
         assert_eq!(
-            content.files,
+            content.files.as_ref(),
             ["assets/ruby/lang/en_us.json", "data/ruby/recipe/gem.json"]
         );
     }
@@ -3461,7 +4037,10 @@ capabilities = ["registries"]
         std::fs::write(block.join("ruby_block.json"), BLOCK).unwrap();
         let package = Package::read(&dir).unwrap();
         let content = Content::read(&dir, &package.manifest).unwrap();
-        assert_eq!(content.files, ["data/ruby/sunrise/block/ruby_block.json"]);
+        assert_eq!(
+            content.files.as_ref(),
+            ["data/ruby/sunrise/block/ruby_block.json"]
+        );
         assert_eq!(content.file(&content.files[0]).unwrap(), BLOCK);
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -3938,6 +4517,22 @@ capabilities = ["registries"]
     }
 
     #[test]
+    fn a_world_fluid_takes_neoforges_property_domain_but_no_negative_drop_off() {
+        let fluid = |tick_delay, drop_off, slope_find_distance| WorldFluid {
+            tick_delay,
+            drop_off,
+            slope_find_distance,
+            ..WorldFluid::default()
+        };
+        assert_eq!(fluid(0, 0, 0).check(), Ok(()));
+        assert_eq!(fluid(-3, 8, 12).check(), Ok(()));
+        assert_eq!(
+            fluid(5, -1, 4).check(),
+            Err("drop_off is 0 or more".to_owned())
+        );
+    }
+
+    #[test]
     fn a_world_fluid_brings_its_block_and_bucket() {
         let files: &[(&str, &[u8])] = &[
             (
@@ -3952,8 +4547,8 @@ capabilities = ["registries"]
         let content = smod("world-fluid", MANIFEST_TEXT, files).unwrap();
         let oil = content.fluids.iter().find(|f| f.id == "ruby:oil").unwrap();
         assert_eq!(oil.flowing_id(), "ruby:flowing_oil");
-        assert_eq!(oil.world.unwrap().tick_delay, 20);
-        assert!(!oil.world.unwrap().source_conversion);
+        assert_eq!(oil.world.as_ref().unwrap().tick_delay, 20);
+        assert!(!oil.world.as_ref().unwrap().source_conversion);
         let block = content.blocks.iter().find(|b| b.id == "ruby:oil").unwrap();
         assert_eq!(block.template, "minecraft:water");
         assert!(!block.item, "the fluid's block has no block item");
@@ -3965,18 +4560,83 @@ capabilities = ["registries"]
         assert_eq!(bucket.template, "minecraft:water_bucket");
         assert!(content.blocks.iter().any(|b| b.id == "ruby:mist"));
         assert!(!content.items.iter().any(|i| i.id == "ruby:mist_bucket"));
+        assert_eq!(
+            content
+                .fluids
+                .iter()
+                .find(|f| f.id == "ruby:mist")
+                .unwrap()
+                .bucket_id(),
+            None
+        );
+    }
+
+    /// A port keeps its mod's ids (Sophisticated Core's `xp_still`, `xp_flowing` and
+    /// `xp_bucket`): a world fluid names its flowing form and generated bucket, a tank-only
+    /// fluid an item of its own as its bucket, and either states its light level.
+    #[test]
+    fn fluids_name_their_bucket_flowing_form_and_light() {
+        let files: &[(&str, &[u8])] = &[
+            (
+                "data/ruby/sunrise/fluid/xp_still.json",
+                br#"{"bucket_item":"ruby:xp_bucket","light_level":10,"world":{"flowing":"ruby:xp_flowing"}}"#,
+            ),
+            (
+                "data/ruby/sunrise/fluid/essence.json",
+                br#"{"bucket_item":"ruby:essence_jar","light_level":15}"#,
+            ),
+        ];
+        let content = smod("named-fluid", MANIFEST_TEXT, files).unwrap();
+        let xp = content
+            .fluids
+            .iter()
+            .find(|f| f.id == "ruby:xp_still")
+            .unwrap();
+        assert_eq!(xp.flowing_id(), "ruby:xp_flowing");
+        assert_eq!(xp.bucket_id().as_deref(), Some("ruby:xp_bucket"));
+        assert_eq!(xp.measures.light_level, 10);
+        assert!(content.items.iter().any(|i| i.id == "ruby:xp_bucket"));
+        assert!(!content.items.iter().any(|i| i.id == "ruby:xp_still_bucket"));
+        let essence = content
+            .fluids
+            .iter()
+            .find(|f| f.id == "ruby:essence")
+            .unwrap();
+        assert_eq!(essence.bucket_id().as_deref(), Some("ruby:essence_jar"));
+        assert_eq!(essence.measures.light_level, 15);
+        assert!(
+            !content.items.iter().any(|i| i.id == "ruby:essence_jar"),
+            "a tank-only fluid's bucket is an item the mod declares"
+        );
+        for (body, refusal) in [
+            (&br#"{"light_level":16}"#[..], "light_level"),
+            (br#"{"bucket_item":"jar"}"#, "bucket_item"),
+            (br#"{"bucket_item":"other:jar","world":{}}"#, "bucket_item"),
+            (br#"{"world":{"flowing":"other:oil_flowing"}}"#, "flowing"),
+            (br#"{"world":{"flowing":"ruby:oil"}}"#, "flowing"),
+        ] {
+            let bad: &[(&str, &[u8])] = &[("data/ruby/sunrise/fluid/oil.json", body)];
+            let e = smod("bad-named-fluid", MANIFEST_TEXT, bad).unwrap_err();
+            assert!(e.contains(refusal), "{e}");
+        }
+        let tank_named_elsewhere: &[(&str, &[u8])] = &[(
+            "data/ruby/sunrise/fluid/oil.json",
+            br#"{"bucket_item":"other:jar"}"#,
+        )];
+        assert!(smod("tank-bucket", MANIFEST_TEXT, tank_named_elsewhere).is_ok());
     }
 
     #[test]
-    fn a_world_fluid_refuses_what_cannot_flow_and_a_second_block() {
-        for world in [
-            br#"{"world":{"tick_delay":0}}"#.as_slice(),
-            br#"{"world":{"drop_off":8}}"#,
-            br#"{"world":{"slope_find_distance":5}}"#,
-        ] {
-            let files: &[(&str, &[u8])] = &[("data/ruby/sunrise/fluid/oil.json", world)];
-            assert!(smod("bad-world-fluid", MANIFEST_TEXT, files).is_err());
-        }
+    fn a_world_fluid_refuses_a_negative_drop_off_and_a_second_block() {
+        let files: &[(&str, &[u8])] = &[(
+            "data/ruby/sunrise/fluid/oil.json",
+            br#"{"world":{"drop_off":-1}}"#,
+        )];
+        assert!(
+            smod("bad-world-fluid", MANIFEST_TEXT, files)
+                .unwrap_err()
+                .contains("drop_off is 0 or more")
+        );
         let files: &[(&str, &[u8])] = &[
             ("data/ruby/sunrise/fluid/oil.json", br#"{"world":{}}"#),
             (
@@ -4009,12 +4669,16 @@ capabilities = ["registries"]
                     sprite: None,
                     tint: None,
                     world: None,
+                    bucket_item: None,
+                    measures: FluidMeasures::default(),
                 },
                 FluidLook {
                     id: "ruby:steam".into(),
                     sprite: Some("ruby:gui/fluids/steam".into()),
                     tint: Some(4291343520),
                     world: None,
+                    bucket_item: None,
+                    measures: FluidMeasures::default(),
                 },
             ]
         );
@@ -4028,6 +4692,54 @@ capabilities = ["registries"]
             let e = smod("fluid", MANIFEST_TEXT, bad).unwrap_err();
             assert!(e.contains("sprite"), "{e}");
         }
+    }
+
+    /// `FluidType.Properties`: a file states its own numbers, a missing key keeps water's, and
+    /// only a negative viscosity is refused.
+    #[test]
+    fn fluids_declare_their_temperature_density_and_viscosity() {
+        let files: &[(&str, &[u8])] = &[
+            (
+                "data/ruby/sunrise/fluid/molten.json",
+                br#"{"temperature":1500,"density":-200,"viscosity":0}"#,
+            ),
+            (
+                "data/ruby/sunrise/fluid/cold.json",
+                br#"{"temperature":-5}"#,
+            ),
+        ];
+        let content = smod("fluid-measures", MANIFEST_TEXT, files).unwrap();
+        let measures: Vec<_> = content
+            .fluids
+            .iter()
+            .map(|look| (look.id.as_str(), look.measures))
+            .collect();
+        assert_eq!(
+            measures,
+            [
+                (
+                    "ruby:cold",
+                    FluidMeasures {
+                        temperature: -5,
+                        density: 1000,
+                        viscosity: 1000,
+                        light_level: 0,
+                    }
+                ),
+                (
+                    "ruby:molten",
+                    FluidMeasures {
+                        temperature: 1500,
+                        density: -200,
+                        viscosity: 0,
+                        light_level: 0,
+                    }
+                ),
+            ]
+        );
+        let bad: &[(&str, &[u8])] = &[("data/ruby/sunrise/fluid/tar.json", br#"{"viscosity":-1}"#)];
+        let e = smod("fluid-viscosity", MANIFEST_TEXT, bad).unwrap_err();
+        assert!(e.contains("tar.json") && e.contains("viscosity"), "{e}");
     }
 
     #[test]
@@ -4202,20 +4914,14 @@ capabilities = ["registries"]
             let e = refused(case, &[("data/ruby/sunrise/item/a.json", item.as_bytes())]);
             assert!(e.contains(why), "{case}: {e}");
         }
-        let glass = br#"{"template": "minecraft:glass", "item": false}"#;
         for (case, rest) in [
             ("bare-remainder", "bowl"),
-            ("missing-remainder", "ruby:bowl"),
-            ("other-mod-remainder", "jade:bowl"),
-            ("itemless-remainder", "ruby:glass"),
+            ("malformed-remainder", "jade:bad bowl"),
             ("air-remainder", "minecraft:air"),
         ] {
             let item =
                 format!(r#"{{"template": "minecraft:stick", "crafting_remainder": "{rest}"}}"#);
-            let files: &[(&str, &[u8])] = &[
-                ("data/ruby/sunrise/item/a.json", item.as_bytes()),
-                ("data/ruby/sunrise/block/glass.json", glass),
-            ];
+            let files: &[(&str, &[u8])] = &[("data/ruby/sunrise/item/a.json", item.as_bytes())];
             let e = refused(case, files);
             assert!(e.contains("crafting_remainder"), "{case}: {e}");
         }
@@ -4404,7 +5110,3 @@ mod context_shape_tests {
         assert!(check_block(&block).is_err());
     }
 }
-
-#[cfg(test)]
-#[path = "fluid_wire_tests.rs"]
-mod fluid_wire_tests;

@@ -21,7 +21,7 @@ fn every_level_ticks_before_the_connection_phase() {
     let dims = [Dim::Overworld, Dim::Nether];
     let mut dig = [0; 2];
     let mut heard = Vec::new();
-    for phase in server_tick_phases(&dims) {
+    for phase in server_tick_phases(&dims, &dims) {
         match phase {
             ServerTickPhase::Level(i, dim) => {
                 assert_eq!(dim, dims[i]);
@@ -30,6 +30,7 @@ fn every_level_ticks_before_the_connection_phase() {
                     heard.push(("dig", dim, dig[i]));
                 }
             }
+            ServerTickPhase::IdleLevel(dim) => panic!("unexpected idle level {dim:?}"),
             ServerTickPhase::Connections => {
                 for (dim, progress) in dims.into_iter().zip(dig) {
                     heard.push(("pre", dim, progress));
@@ -86,31 +87,33 @@ impl Observe {
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for Observe {
-    fn register(&self, registrar: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-        registrar.entity_tick_each("minecraft:player");
-    }
-    fn entity_tick_listened(&self, _: HostSide<'_>, event: &mut mod_api::EntityTickListenedEvent) {
-        event.listened = true;
-    }
-    fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPreEvent<'_>) {
-        let HostSide::Server(host) = host else { return };
-        for &id in event.entities {
-            let immunity = host
-                .entity(id)
-                .and_then(|entity| entity.invulnerable_time(host));
-            self.events
-                .lock()
-                .unwrap()
-                .push(Event::EntityPre(id, immunity));
-            if id == self.cancel {
-                event.canceled.push(id);
-            }
+    fn entity_tick_pre(
+        &self,
+        host: HostSide<'_>,
+        event: &mut mod_api::EntityTickPreEvent<'_>,
+    ) -> mod_api::Flow {
+        let HostSide::Server(host) = host else {
+            return mod_api::Flow::Continue;
+        };
+        let id = event.entity;
+        let immunity = host
+            .entity(id)
+            .and_then(|entity| entity.invulnerable_time(host));
+        self.events
+            .lock()
+            .unwrap()
+            .push(Event::EntityPre(id, immunity));
+        if id == self.cancel {
+            mod_api::Flow::Cancel
+        } else {
+            mod_api::Flow::Continue
         }
     }
     fn entity_tick_post(&self, _: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {
-        for &id in event.entities {
-            self.events.lock().unwrap().push(Event::EntityPost(id));
-        }
+        self.events
+            .lock()
+            .unwrap()
+            .push(Event::EntityPost(event.entity));
     }
     fn block_break_progress_update(
         &self,
@@ -171,6 +174,7 @@ fn advancement_criteria_straddle_the_player_body_even_with_entity_cancel() {
     use sunrise_client::lan::{ServerAdvancements, data::SyncData};
     use sunrise_world::loot::PackOverlay;
 
+    let _publication = sunrise_client::datapack_net::isolate_server_publication();
     let heard = Arc::default();
     mod_platform::testing::with_mods(
         vec![mod_api::ModEntry::new(
@@ -185,8 +189,10 @@ fn advancement_criteria_straddle_the_player_body_even_with_entity_cancel() {
         || {
             with_game(|game| {
                 game.world_root = game.options.game_dir.clone().unwrap();
+                // Load the world's tables before installing the test trees. Otherwise
+                // the first tick's scheduled functions replace the game's tree.
+                game.open_world_datapacks(&[], None).unwrap();
                 open_to_lan(game);
-                game.build_registries();
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -219,12 +225,8 @@ fn advancement_criteria_straddle_the_player_body_even_with_entity_cancel() {
                 )
                 .unwrap();
                 let mut sync = SyncData::empty();
-                sync.advancements = ServerAdvancements::load(
-                    pack.path(),
-                    &PackOverlay::NONE,
-                    Default::default(),
-                    Default::default(),
-                );
+                sync.advancements =
+                    ServerAdvancements::load(pack.path(), &PackOverlay::NONE, Default::default());
                 game.with_advancement_hub(|hub, owners| {
                     hub.reload_resources(Arc::new(sync), owners)
                 });
@@ -252,7 +254,12 @@ fn advancement_criteria_straddle_the_player_body_even_with_entity_cancel() {
                 assert!(host.hub.native_advancement_grants.is_empty());
                 use Event::*;
                 let events = heard.lock().unwrap();
-                let position = |event: &Event| events.iter().position(|e| e == event).unwrap();
+                let position = |event: &Event| {
+                    events
+                        .iter()
+                        .position(|e| e == event)
+                        .unwrap_or_else(|| panic!("missing {event:?}; saw {events:?}"))
+                };
                 let post_entity = position(&EntityPost(20));
                 for criterion in ["tick", "levitation", "staged"] {
                     assert!(position(&Criterion(123, criterion.into())) < post_entity);
@@ -299,6 +306,8 @@ fn player_tick_hooks_observe_advanced_dig_progress_and_skipped_body_still_ticks_
                     .unwrap();
                 let start = 20_000;
                 game.lan.as_mut().unwrap().hub.ticks = start;
+                // MinecraftServer.createLevels opens the Overworld first, so it ticks first.
+                game.native_level_opened(Dim::Overworld);
                 for (dim, conns) in [(Dim::Overworld, [1, 3]), (Dim::Nether, [2, 4])] {
                     game.enter_level(dim).unwrap();
                     game.world
@@ -371,15 +380,15 @@ fn player_tick_hooks_observe_advanced_dig_progress_and_skipped_body_still_ticks_
                     *heard.lock().unwrap(),
                     [
                         EntityPre(20, Some(8)),
-                        EntityPre(22, Some(8)),
                         Dig(123, 0),
                         EntityPost(20),
+                        EntityPre(22, Some(8)),
                         EntityPost(22),
                         LevelPost("minecraft:overworld"),
                         EntityPre(21, Some(8)),
-                        EntityPre(23, Some(8)),
                         Dig(124, 0),
                         EntityPost(21),
+                        EntityPre(23, Some(8)),
                         LevelPost("minecraft:the_nether"),
                         PlayerPre(123, "minecraft:overworld", Some(7), Some(4)),
                         PlayerPost(123),

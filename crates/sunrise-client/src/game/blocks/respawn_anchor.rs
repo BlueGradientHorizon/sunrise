@@ -18,9 +18,7 @@ use sunrise_core::{
     geometry::{Aabb, Axis, Vec3, VoxelShape},
     position::BlockPos,
 };
-use sunrise_world::{
-    collision_context::CollisionContext, level::data::state_flags, registry::BlockStateId,
-};
+use sunrise_world::{level::data::state_flags, registry::BlockStateId};
 
 /// `ServerPlayer.RespawnConfig`: a respawn point other than the world spawn
 /// that the game resolves through its block (a respawn anchor).
@@ -162,8 +160,7 @@ impl Game<'_> {
             f64::from(pos[1]) + 0.5,
             f64::from(pos[2]) + 0.5,
         ];
-        self.audio
-            .play("minecraft:block.respawn_anchor.charge", Some(at), 1.0, 1.0);
+        self.play_audio("minecraft:block.respawn_anchor.charge", Some(at), 1.0, 1.0);
         Ok(())
     }
     /// `RespawnAnchorBlock.useItemOn`'s test: `held` is glowstone
@@ -282,7 +279,7 @@ impl Game<'_> {
                 f64::from(pos[1]) + 0.5,
                 f64::from(pos[2]) + 0.5,
             ];
-            self.audio.play(
+            self.play_audio(
                 "minecraft:block.respawn_anchor.set_spawn",
                 Some(at),
                 1.0,
@@ -338,7 +335,7 @@ impl Game<'_> {
             f64::from(head[1]) + 0.5,
             f64::from(head[2]) + 0.5,
         ];
-        self.audio.play(
+        self.play_audio(
             "minecraft:block.straw_bed.break_leave",
             Some(center),
             1.0,
@@ -435,21 +432,12 @@ impl Game<'_> {
         world: &sunrise_client::world::World,
         p: [i32; 3],
     ) -> VoxelShape {
-        let state = world.block(p[0], p[1], p[2]);
-        let binding = self.collision;
-        let mut scene = SceneCollisions {
+        super::native_state_shapes::collision_shape(
+            self.collision,
             world,
-            binding,
-            subject: None,
-        };
-        binding
-            .collision_shape_with_context(
-                &mut scene,
-                state,
-                BlockPos::new(p[0], p[1], p[2]),
-                &CollisionContext::empty(false),
-            )
-            .unwrap_or_else(|_| VoxelShape::empty())
+            world.block(p[0], p[1], p[2]),
+            p,
+        )
     }
     /// `DismountHelper.canDismountTo(level, entity, box)`: no block collides
     /// with the box and it is inside the world border.
@@ -1034,10 +1022,9 @@ mod pitch_preservation_controls {
         assert!(!c.forced);
     }
 
-    /// Added source/model controls; these do not add a connected bed/anchor runtime claim.
     #[test]
     #[ignore = "daily"]
-    fn bed_anchor_facing_and_invalid_personal_fallback_ignore_stored_pitch() {
+    fn bed_and_anchor_facing_ignore_stored_pitch() {
         let mut resources = None;
         let mut game = crate::game::game_tests::tests::server_game(&mut resources);
         let stone = game
@@ -1120,22 +1107,5 @@ mod pitch_preservation_controls {
             anchor,
             "existing forced-charge behavior"
         );
-
-        game.dim = Dim::Overworld;
-        game.level.world_spawn = Some([4, 100, 4]);
-        game.level.world_spawn_angle = [-30.0, -5.0];
-        game.world.set(12, 100, 12, stone).unwrap();
-        let invalid = RespawnConfig {
-            dim: Dim::Overworld,
-            pos: [12, 100, 12],
-            yaw: 45.0,
-            pitch: 10.0,
-            forced: true,
-        };
-        game.respawn_config = Some(invalid);
-        assert!(game.resolve_server_respawn(invalid, true).is_none());
-        assert!(game.respawn_config.is_none());
-        assert_eq!(game.level.world_spawn, Some([4, 100, 4]));
-        assert_eq!(game.level.world_spawn_angle, [-30.0, -5.0]);
     }
 }

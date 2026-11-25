@@ -180,11 +180,8 @@ impl Game<'_> {
         // if its new root/seat is reached later in this pass.
         self.resident_entities.general.riders.ticked[index] = true;
         let kind = pass.catalog.key(slot);
-        let ticks = !pass.round.listening() || self.native_tick_pre_one(&mut pass.round, id, kind);
+        let ticks = !pass.round.pre() || self.native_tick_pre_one(&mut pass.round, id, kind);
         if !general_row_live(self, index, mount) {
-            if ticks {
-                pass.round.not_ticked(id);
-            }
             return None;
         }
         if ticks || mount.is_some() {
@@ -196,7 +193,7 @@ impl Game<'_> {
             {
                 self.dispatch_general_tick(kind, epoch, id);
             }
-            if pass.round.listening() {
+            if pass.round.post() {
                 self.native_tick_post_one(&pass.round, id, kind);
             }
         }
@@ -252,22 +249,15 @@ impl Game<'_> {
     /// One row's subscribed behavior, contained: the dispatch runs in a
     /// transaction. A panic aborts the row's writes without unbalancing the pass.
     fn dispatch_general_tick(&mut self, kind: &str, epoch: mod_api::WorldEpoch, id: u32) {
-        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            mod_api::run_transaction(self, |game, _| {
-                game.native_general_entity_tick(kind, EntityRef::new(epoch, id));
-                Ok::<_, std::convert::Infallible>(())
-            })
-        }));
-        if let Err(payload) = outcome {
-            let panic = payload
-                .downcast_ref::<&str>()
-                .map(|text| (*text).to_owned())
-                .or_else(|| payload.downcast_ref::<String>().cloned())
-                .unwrap_or_else(|| "box".to_owned());
-            log::error!(
-                "general entity {kind} #{id}: its tick's writes were rolled back after a native mod panicked: {panic}"
-            );
-        }
+        let failures = mod_api::runtime::isolated_failures();
+        let _ = self.storage_transaction(|game, _| {
+            game.tick_general_row_scoped(kind, EntityRef::new(epoch, id));
+            if mod_api::runtime::isolated_failures() == failures {
+                Ok(())
+            } else {
+                Err(())
+            }
+        });
     }
 }
 

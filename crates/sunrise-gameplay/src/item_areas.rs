@@ -189,6 +189,7 @@ mod tests {
     fn item_at(x: f64, y: f64, z: f64) -> ItemEntity {
         let p = Vec3::new(x, y, z);
         ItemEntity {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             fall_distance: 0.0,
             random: sunrise_core::random::LegacyRandom::new(0),
@@ -203,8 +204,13 @@ mod tests {
             position: p,
             previous: p,
             velocity: Vec3::ZERO,
-            on_ground: true,
+            ground: sunrise_world::ground_support::GroundState {
+                on_ground: true,
+                ..Default::default()
+            },
             age: 0,
+            stack_revision: 0,
+            lifespan: ItemEntity::LIFETIME,
             pickup_delay: 0,
             bob_offset: 0.0,
             ticks: 0,
@@ -213,7 +219,6 @@ mod tests {
             was_touching_water: false,
             no_gravity: false,
             vertical_collision: false,
-            horizontal_collision: false,
         }
     }
 

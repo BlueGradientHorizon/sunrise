@@ -3,18 +3,20 @@ run, the stable tags and their order, and the commits the nightly and stable bui
 import io
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools/ci/vendor/pyyaml-6.0.3.zip"))
 import yaml
 
 from tools import release_file
 from tools import release_train as train
 from tools.ci import nightly
 
-ROOT = Path(__file__).resolve().parents[1]
 MAIN, NIGHTLY, RELEASE = "refs/heads/main", "refs/heads/nightly/26.3", "refs/heads/release/26.3"
 REPO, DISPATCH = "sunrise-org/sunrise", "workflow_dispatch"
 WORKFLOWS = ROOT / ".github/workflows"
@@ -103,10 +105,10 @@ class StableTagTests(unittest.TestCase):
 
 
 class AuthorizeTests(unittest.TestCase):
-    KINDS = ("daily", "nightly", "snapshot", "stable", "sdk")
+    KINDS = ("daily", "nightly", "dev", "stable", "sdk")
 
     def test_only_exact_refs_of_this_repository_dispatched_for_real_publish(self):
-        for ref, kinds in ((MAIN, {"daily", "nightly", "snapshot", "sdk"}), (NIGHTLY, {"nightly"}),
+        for ref, kinds in ((MAIN, {"daily", "nightly", "dev", "sdk"}), (NIGHTLY, {"nightly"}),
                            (RELEASE, {"daily", "stable", "sdk"})):
             for kind in self.KINDS:
                 self.assertEqual(train.authorized(kind, "false", ref, REPO, DISPATCH), kind in kinds, (ref, kind))
@@ -135,7 +137,7 @@ class AuthorizeTests(unittest.TestCase):
         gates = [(workflow("daily.yml")["jobs"]["resolve"], "auth", "daily", RELEASE),
                  (workflow("nightly-build.yml")["jobs"]["pick"], "mode", "stable", RELEASE),
                  (workflow("nightly-build.yml")["jobs"]["pick"], "mode", "nightly", NIGHTLY),
-                 (workflow("release.yml")["jobs"]["decide"], "mode", "snapshot", MAIN),
+                 (workflow("release.yml")["jobs"]["decide"], "mode", "dev", MAIN),
                  (workflow("sdk-publish.yml")["jobs"]["authorize"], "authorize", "sdk", MAIN)]
         for job, step_id, kind, ref in gates:
             step = next(step for step in job["steps"] if step.get("id") == step_id)
@@ -178,8 +180,7 @@ class AuthorizeTests(unittest.TestCase):
             self.assertEqual(outputs["dry_run"], "${{ steps.mode.outputs.publish == 'true' && 'false' || 'true' }}", name)
         build = workflow("nightly-build.yml")["jobs"]
         self.assertEqual(build["pick"]["outputs"]["publish"], "${{ steps.mode.outputs.publish }}")
-        for job in ("sign", "musl-attach"):
-            self.assertEqual(build[job]["environment"], "${{ needs.pick.outputs.publish == 'true' && 'release' || '' }}")
+        self.assertEqual(build["sign"]["environment"], "${{ needs.pick.outputs.publish == 'true' && 'release' || '' }}")
         daily = workflow("daily.yml")["jobs"]
         self.assertEqual(daily["resolve"]["steps"][-1]["env"]["DRY_RUN"], "${{ steps.auth.outputs.dry_run }}")
         for job in ("nightly-branch", "nightly"):
@@ -384,7 +385,7 @@ class NightlyBranchTests(unittest.TestCase):
 
     def test_the_train_is_not_held_by_a_stable_build(self):
         runs = [{"databaseId": 1, "status": "in_progress", "displayTitle": "stable build release/26.3"},
-                {"databaseId": 2, "status": "queued", "displayTitle": "snapshot build abc"}]
+                {"databaseId": 2, "status": "queued", "displayTitle": "dev build abc"}]
         with mock.patch.object(train, "gh_json", return_value=runs):
             self.assertIsNone(train.nightly_building())
         runs.append({"databaseId": 3, "status": "queued", "displayTitle": "nightly build"})

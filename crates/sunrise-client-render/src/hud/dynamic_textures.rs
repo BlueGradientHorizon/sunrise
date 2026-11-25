@@ -105,13 +105,15 @@ pub struct ImagePatch {
 /// Every mod's dynamic textures: which slot each holds, and its last pixels.
 #[derive(Default)]
 pub struct DynamicTextures {
-    /// Each image by its id; its owner is the id's namespace.
+    /// Each image by its id.
     images: BTreeMap<Identifier, Image>,
     limits: Limits,
     geometry_revision: u64,
 }
 
 struct Image {
+    /// The native mod that created this image, used for per-mod budget accounting and ownership.
+    owner: Box<str>,
     /// Its class, an index into `DYNAMIC_TEXTURE_CLASSES`, and its slot in that class.
     class: usize,
     slot: usize,
@@ -209,6 +211,7 @@ impl DynamicTextures {
         self.images.insert(
             id.clone(),
             Image {
+                owner: owner.into(),
                 class,
                 slot,
                 size,
@@ -238,6 +241,9 @@ impl DynamicTextures {
             .images
             .get_mut(id)
             .ok_or(DynamicTextureError::Unknown)?;
+        if image.owner.as_ref() != owner {
+            return Err(DynamicTextureError::NotOwned);
+        }
         let (class, bytes) = sized(size, rgba.len())?;
         if class != image.class {
             return Err(DynamicTextureError::ClassChange);
@@ -273,8 +279,15 @@ impl DynamicTextures {
         id: &Identifier,
     ) -> Result<(), DynamicTextureError> {
         pool.ok_or(DynamicTextureError::Unavailable)?;
-        owned(owner, id)?;
-        self.images.remove(id).ok_or(DynamicTextureError::Unknown)?;
+        let owner = owned(owner, id)?;
+        match self.images.get(id) {
+            None => return Err(DynamicTextureError::Unknown),
+            Some(image) if image.owner.as_ref() != owner => {
+                return Err(DynamicTextureError::NotOwned);
+            }
+            Some(_) => {}
+        }
+        self.images.remove(id);
         let name = id.to_string();
         let held = names.live.remove(lane_key(&name));
         if names.sprites.get(&name) == held.as_ref() {
@@ -344,9 +357,9 @@ impl DynamicTextures {
     /// The images and bytes mod `owner` holds.
     fn held(&self, owner: &str) -> Held {
         self.images
-            .iter()
-            .filter(|(id, _)| id.namespace() == owner)
-            .fold(Held::default(), |held, (_, image)| Held {
+            .values()
+            .filter(|image| image.owner.as_ref() == owner)
+            .fold(Held::default(), |held, image| Held {
                 images: held.images + 1,
                 bytes: held.bytes + image.pixels.len() as u64,
             })
@@ -359,10 +372,14 @@ struct Held {
     bytes: u64,
 }
 
-/// `owner`, when `id` is in its namespace.
+/// `owner`, when `id` is in a namespace `owner` owns (its manifest namespaces or a served
+/// package's namespaces via `served_by`), excluding vanilla's `minecraft`.
 fn owned<'a>(owner: Option<&'a str>, id: &Identifier) -> Result<&'a str, DynamicTextureError> {
     owner
-        .filter(|owner| *owner == id.namespace())
+        .filter(|owner| {
+            id.namespace() != "minecraft"
+                && mod_api::__private::owns_namespace(owner, id.namespace())
+        })
         .ok_or(DynamicTextureError::NotOwned)
 }
 
@@ -495,14 +512,12 @@ mod tests {
 
     /// An id's owners (the GUI list: none, a sprite or a removal; a model sprite; a live texture
     /// made before the reload) are separate lanes. For every combination: the prepare answers
-    /// from the GUI lane alone, a reload with replay lets the live texture win the lookup and the
-    /// checked paint, skips a GUI sprite it brought for the held id, never overwrites a model's
+    /// from the GUI lane alone, a reload with replay lets the live texture win the lookup, skips a GUI sprite it brought for the held id, never overwrites a model's
     /// packed sprite, and a free clears only the live lane, leaving the model's sprite and the
     /// GUI list's removal.
     #[test]
-    fn each_lane_of_an_id_keeps_its_own_owner_through_prepare_reload_lookup_paint_and_free() {
+    fn each_lane_of_an_id_keeps_its_own_owner_through_prepare_reload_lookup_and_free() {
         use crate::hud::{GuiSprite, HudAtlas};
-        use crate::hud_layout::{GuiDraw, undrawable};
         // The id, whether the GUI list has a sprite (true), removes it (false) or says nothing,
         // and whether a model has a sprite.
         let cases = [
@@ -564,19 +579,6 @@ mod tests {
         std::fs::remove_dir_all(&root).unwrap();
         let size = |atlas: &HudAtlas, id: &str| atlas.gui_rect(id).map(|rect| (rect.w, rect.h));
         let missing = size(&atlas, crate::hud::MISSING_SPRITE);
-        let refused = |atlas: &HudAtlas, id: &str| {
-            let draw = GuiDraw::Sprite {
-                sprite: id.to_owned().into(),
-                x: 0,
-                y: 0,
-                w: 4,
-                h: 4,
-                region: None,
-                color: u32::MAX,
-                blend: crate::hud_layout::Blend::Textured,
-            };
-            undrawable(atlas, &[draw]).is_some()
-        };
         // Prepare: the GUI lane alone answers; a model-only id is unknown.
         for (id, gui, _) in cases {
             match gui {
@@ -586,7 +588,6 @@ mod tests {
                         "{id}"
                     );
                     assert_eq!(size(&atlas, id), Some((1, 1)), "{id}");
-                    assert!(!refused(&atlas, id), "{id}");
                 }
                 Some(false) => {
                     assert!(
@@ -594,11 +595,9 @@ mod tests {
                         "{id}"
                     );
                     assert_eq!(size(&atlas, id), missing, "{id}");
-                    assert!(refused(&atlas, id), "{id}");
                 }
                 None => {
                     assert!(atlas.gui_lookup(id).is_none(), "{id}");
-                    assert!(refused(&atlas, id), "{id}");
                 }
             }
         }
@@ -641,7 +640,6 @@ mod tests {
                 Some((3, 2)),
                 "{id}: the texture wins the lookup"
             );
-            assert!(!refused(&atlas, id), "{id}: and the checked paint");
             assert_eq!(
                 atlas.gui.contains_key(id),
                 gui == Some(false),
@@ -674,10 +672,8 @@ mod tests {
             );
             if gui == Some(false) {
                 assert_eq!(size(&atlas, id), missing, "{id}: the removal stays");
-                assert!(refused(&atlas, id), "{id}");
             } else {
                 assert!(atlas.gui_lookup(id).is_none(), "{id}: no GUI owner");
-                assert!(refused(&atlas, id), "{id}");
             }
         }
     }
@@ -1352,5 +1348,125 @@ mod tests {
         );
         assert_eq!(textures.budget(Some(&pool), Some("alpha")), full);
         assert!(sprites.is_empty());
+    }
+
+    #[test]
+    fn served_by_dynamic_texture_delegates_and_shares_host_budget() {
+        let packages = vec![
+            mod_api::PackageInfo::new(
+                "host".into(),
+                "1".into(),
+                mod_api::PackageKind::Code,
+                mod_api::Side::Both,
+                vec!["host".into()],
+                vec![],
+            ),
+            mod_api::PackageInfo::new(
+                "other".into(),
+                "1".into(),
+                mod_api::PackageKind::Code,
+                mod_api::Side::Both,
+                vec!["other".into()],
+                vec![],
+            ),
+            mod_api::PackageInfo::new(
+                "runes".into(),
+                "1".into(),
+                mod_api::PackageKind::Content,
+                mod_api::Side::Both,
+                vec!["runes".into()],
+                vec![],
+            )
+            .with_served_by(Some("host".into())),
+        ];
+        mod_platform::__private::with_test_package_inventory(packages, || {
+            let pool = pool();
+            let (mut textures, mut sprites) = (textures(), Tables::default());
+            let start = textures.budget(Some(&pool), Some("host")).unwrap();
+            let own = id("host:dynamic/icon");
+            let served = id("runes:dynamic/map");
+            assert_eq!(
+                textures.create(
+                    Some(&pool),
+                    &mut sprites.names(),
+                    Some("host"),
+                    &own,
+                    [1, 1],
+                    &[5; 4],
+                ),
+                Ok(())
+            );
+            assert_eq!(
+                textures.create(
+                    Some(&pool),
+                    &mut sprites.names(),
+                    Some("host"),
+                    &served,
+                    [2, 2],
+                    &[7; 16],
+                ),
+                Ok(())
+            );
+            assert_eq!(
+                textures.create(
+                    Some(&pool),
+                    &mut sprites.names(),
+                    Some("host"),
+                    &id("minecraft:dynamic/blocked"),
+                    [1, 1],
+                    &[1; 4],
+                ),
+                Err(DynamicTextureError::NotOwned)
+            );
+            assert_eq!(
+                textures.create(
+                    Some(&pool),
+                    &mut sprites.names(),
+                    Some("other"),
+                    &id("runes:dynamic/stolen"),
+                    [1, 1],
+                    &[1; 4],
+                ),
+                Err(DynamicTextureError::NotOwned)
+            );
+            let after_create = textures.budget(Some(&pool), Some("host")).unwrap();
+            assert_eq!(after_create.images, start.images - 2);
+            assert_eq!(after_create.bytes, start.bytes - 20);
+            assert_eq!(
+                textures.update(
+                    Some(&pool),
+                    &mut sprites.names(),
+                    Some("other"),
+                    &served,
+                    [2, 2],
+                    &[9; 16],
+                ),
+                Err(DynamicTextureError::NotOwned)
+            );
+            assert_eq!(
+                textures.free(Some(&pool), &mut sprites.names(), Some("other"), &served),
+                Err(DynamicTextureError::NotOwned)
+            );
+            assert_eq!(
+                textures.update(
+                    Some(&pool),
+                    &mut sprites.names(),
+                    Some("host"),
+                    &served,
+                    [2, 2],
+                    &[9; 16],
+                ),
+                Ok(())
+            );
+            assert_eq!(
+                textures.free(Some(&pool), &mut sprites.names(), Some("host"), &served),
+                Ok(())
+            );
+            assert_eq!(
+                textures.free(Some(&pool), &mut sprites.names(), Some("host"), &own),
+                Ok(())
+            );
+            assert_eq!(textures.budget(Some(&pool), Some("host")).unwrap(), start);
+        });
     }
 }

@@ -76,7 +76,7 @@ impl Game<'_> {
             // BLOCK_INTERACT: no THIS_ENTITY, ORIGIN = Vec3.atCenterOf(pos).
             without_this: Some(pos.map(|c| f64::from(c) + 0.5)),
         };
-        self.provider_int(provider, &context, 0).unwrap_or(0)
+        self.provider_int(provider, &context).unwrap_or(0)
     }
 
     /// ComposterWrapper's private transactional random, using the unchanged vanilla layers
@@ -329,7 +329,7 @@ impl Game<'_> {
         };
         // `handleFill` is `playLocalSound`: the client that receives event 1500
         // plays it. Capturing it here would also send a sound packet.
-        self.audio.play_unshared(sound, Some(center), 1.0, 1.0);
+        self.play_audio_unshared(sound, Some(center), 1.0, 1.0);
         // getShape(..).max(Y, 0.5, 0.5): the compost surface (SHAPES[8] = SHAPES[7]).
         let level = self.composter_level([pos.x, pos.y, pos.z]).unwrap_or(0);
         let height = f64::from((1 + level.min(7) * 2).clamp(2, 16)) / 16.0 + 0.03125;

@@ -4,7 +4,7 @@
 //! it picks up (the end of `AbstractBoat.tick`), where they sit
 //! (`positionRider`, `clampRotation`) and how they get out.
 //! Saving them under the boat's `Passengers` lives in `persist.rs`.
-use super::{Game, boats::Boat, collision_source::Mover, lan_mobs::guest_bounds};
+use super::{Game, boats::Boat, collision_source::Mover, commands::Target, lan_mobs::guest_bounds};
 use std::cell::{Cell, Ref, RefCell};
 use sunrise_client::{
     camera::wrap_degrees,
@@ -298,15 +298,15 @@ impl Game<'_> {
         root
     }
     /// The players outside boat `id` that push and block it (living, not
-    /// spectators), with the window player's team.
-    pub(super) fn players_outside(&self, id: u32) -> Vec<(Aabb, bool)> {
+    /// spectators), with the target and entity ID used by the riding graph.
+    pub(super) fn players_outside(&self, id: u32) -> Vec<(Aabb, Target, u32)> {
         let mut out = Vec::new();
         if let Some(p) = self.player.as_ref()
             && self.riding != Some(id)
             && !self.spectator()
             && !p.health.dead_or_dying()
         {
-            out.push((p.bounds(), true));
+            out.push((p.bounds(), Target::Player, self.own_entity_id() as u32));
         }
         if let Some(host) = self.lan.as_ref() {
             for g in host.hub.guests.iter().filter(|g| {
@@ -317,7 +317,7 @@ impl Game<'_> {
                     && !g.spectator()
                     && g.vehicle != Some(id)
             }) {
-                out.push((guest_bounds(g), false));
+                out.push((guest_bounds(g), Target::Guest(g.conn), g.entity_id as u32));
             }
         }
         out
@@ -372,7 +372,7 @@ impl Game<'_> {
         let touching = !near.is_empty()
             || outside
                 .iter()
-                .any(|(pb, _)| pb.intersects(area) || pb.intersects(bb));
+                .any(|(pb, _, _)| pb.intersects(area) || pb.intersects(bb));
         // (mob, touched by the boat's sweep, its own pushEntities reaches the boat)
         let teams = if touching {
             self.mob_teams()
@@ -399,7 +399,8 @@ impl Game<'_> {
         let player_team = teams.of(Who::Player);
         let players: Vec<(Aabb, bool, bool, bool)> = outside
             .into_iter()
-            .map(|(pb, own)| {
+            .map(|(pb, target, _)| {
+                let own = target == Target::Player;
                 let team = if own { player_team } else { None };
                 (
                     pb,
@@ -422,10 +423,10 @@ impl Game<'_> {
                     && count < max
                     && m.extra.mount.is_none()
                     && m.width() < super::boats::WIDTH as f32
-                    && !self
-                        .res
-                        .mob_data()
-                        .entity_has("minecraft:cannot_be_pushed_onto_boats", &m.kind.id);
+                    && !self.items().entity_type_tags.has_bit(
+                        m.kind.flags.entity_tag_slot,
+                        sunrise_client::items::EntityTypeTags::CANNOT_BE_PUSHED_ONTO_BOATS,
+                    );
                 if boards {
                     // startRiding fails quietly (no push) while the mob's
                     // boarding cooldown runs (Entity.canRide) or the boat
@@ -583,10 +584,10 @@ impl Game<'_> {
                         (true, true) => 90.0,
                         (true, false) => 270.0,
                     };
-                    let turns = !self
-                        .res
-                        .mob_data()
-                        .entity_has("minecraft:can_turn_in_boats", &m.kind.id);
+                    let turns = !self.items().entity_type_tags.has_bit(
+                        m.kind.flags.entity_tag_slot,
+                        sunrise_client::items::EntityTypeTags::CAN_TURN_IN_BOATS,
+                    );
                     (
                         j,
                         offset,
@@ -604,7 +605,7 @@ impl Game<'_> {
                 m.previous = previous;
                 m.velocity = Vec3::ZERO;
                 m.fall_distance = 0.0;
-                m.on_ground = false;
+                m.ground.on_ground = false;
                 m.extra.passenger = true;
                 m.ai.nav.stop();
                 let Some((body, previous_body)) = facing else {
@@ -797,6 +798,10 @@ mod tests {
         impl mod_api::Hooks for Resize {}
 
         with_game(|game| {
+            super::super::native_entity_refs::tests::fixture_resident_column(
+                &mut game.world,
+                (0, 0),
+            );
             let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
             let mut cow = Mob::new(77, kind, Vec3::ZERO, 0.0);
             sunrise_client::mobs::finalize::set_baby(&mut cow, true);
@@ -969,6 +974,10 @@ mod off_level_tests {
     #[ignore = "daily"]
     fn retained_boat_passenger_occupies_a_seat_without_being_positioned() {
         crate::game::native_entity_refs::tests::with_game(|game| {
+            crate::game::native_entity_refs::tests::fixture_resident_column(
+                &mut game.world,
+                (0, 0),
+            );
             let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             let boat = Boat::new(71, "oak".into(), Vec3::new(1.0, 80.0, 0.5), 0.0);
             let mut ghost = sunrise_client::mobs::Mob::new(72, pig.clone(), Vec3::ZERO, 0.0);
@@ -1013,13 +1022,16 @@ mod boat_callback_review_tests {
                 .unwrap()
                 .push((event.entity, event.mounting));
             if !event.mounting && event.entity == 72 {
-                assert_eq!(
-                    host.entity(72).unwrap().vehicle(host).map(|v| v.id()),
-                    Some(71),
-                    "callback observes original riding relationship"
+                let rider = host.entity(72).unwrap();
+                assert_eq!(event.vehicle, 71);
+                assert_eq!(rider.is_passenger(host), Some(true));
+                assert_eq!(rider.vehicle(host), None);
+                assert!(
+                    host.entity(71).is_none(),
+                    "boat is already logically removed"
                 );
                 if self.discard {
-                    assert!(host.entity(72).unwrap().discard(host));
+                    assert!(rider.discard(host));
                 } else {
                     let later = host.entity(73).unwrap();
                     let replacement = host.entity(74).unwrap();
@@ -1043,6 +1055,10 @@ mod boat_callback_review_tests {
         .into();
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
+                super::super::native_entity_refs::tests::fixture_resident_column(
+                    &mut game.world,
+                    (0, 0),
+                );
                 game.options.dedicated = Some(Vec::new());
                 game.boats.push(super::super::boats::Boat::new(
                     71,
@@ -1085,6 +1101,10 @@ mod boat_callback_review_tests {
         .into();
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
+                super::super::native_entity_refs::tests::fixture_resident_column(
+                    &mut game.world,
+                    (0, 0),
+                );
                 game.options.dedicated = Some(Vec::new());
                 game.boats.push(super::super::boats::Boat::new(
                     71,

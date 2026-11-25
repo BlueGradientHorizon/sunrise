@@ -397,8 +397,8 @@ fn eager_save_edits_reach_disk_during_ticks_and_again_after_cooldown() {
         dirty.save_eagerly(
             now + Duration::from_millis(tick * 50),
             || save.active_chunk_writes() < 128,
-            |_| true,
-            |_| {
+            |_| Some(true),
+            |_, _| {
                 save.save_later(&[Arc::new(chunk.clone())], registry, &biomes)
                     .unwrap();
                 true
@@ -496,7 +496,9 @@ fn generated_structure_chest_stays_pending_after_save_and_reload() {
     .unwrap();
     let mut worker = generator.worker();
     let mut region: [Proto; 9] = std::array::from_fn(|i| {
-        generator.proto(&mut worker, 43 + i as i32 % 3 - 1, 21 + i as i32 / 3 - 1)
+        generator
+            .proto(&mut worker, 43 + i as i32 % 3 - 1, 21 + i as i32 / 3 - 1)
+            .unwrap()
     });
     generator.decorate(&mut worker, &mut region);
     let chunk = generator.finish(region.into_iter().nth(4).unwrap());

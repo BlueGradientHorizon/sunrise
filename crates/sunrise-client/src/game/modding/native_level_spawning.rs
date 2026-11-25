@@ -151,10 +151,7 @@ impl Game<'_> {
             None => shot.update_rotation(),
         }
         shot.item = Some(carried);
-        let id = self.spawn_owned_projectile(owner.map(|(_, target)| target), shot, stack)?;
-        // The join as any fresh spawn's: told now, so a mod's veto refuses
-        // the call, or at the root commit inside a transaction.
-        self.native_joins_flush(false, id).then_some(id)
+        self.spawn_owned_projectile(owner.map(|(_, target)| target), shot, stack)
     }
     /// A new row of the general type `kind` at `pos`: a fresh UUID, the type's
     /// declared payload version and no payload bytes, through the insertion
@@ -171,6 +168,12 @@ impl Game<'_> {
     ) -> Option<u32> {
         let catalog = general_type_catalog();
         let slot = catalog.slot(kind)?;
+        // `EntityType.canSpawn`: refuse types whose required Minecraft feature flags are not
+        // enabled in this world.
+        let features = mod_api::FeatureFlags::new(self.level.enabled_features.as_arc().clone());
+        if !catalog.is_enabled(slot, &features) {
+            return None;
+        }
         let record = GeneralEntityRecord {
             position: pos,
             velocity,
@@ -300,7 +303,9 @@ mod tests {
                     .level_spawn_entity(level, "minecraft:cow", [8.5, 64.0, 8.25], &living())
                     .unwrap();
                 assert_eq!(
-                    game.entity_kind(cow).map(|kind| kind.id(game)).as_deref(),
+                    game.entity_kind(cow)
+                        .and_then(|kind| kind.id(game))
+                        .as_deref(),
                     Some("minecraft:cow")
                 );
                 assert_eq!(game.entity_position(cow), Some([8.5, 64.0, 8.25]));
@@ -407,7 +412,9 @@ mod tests {
                 .level_spawn_entity(level, "cow", [9.5, 64.0, 8.5], &living())
                 .unwrap();
             assert_eq!(
-                game.entity_kind(bare).map(|kind| kind.id(game)).as_deref(),
+                game.entity_kind(bare)
+                    .and_then(|kind| kind.id(game))
+                    .as_deref(),
                 Some("minecraft:cow")
             );
             // The ender dragon takes its own creation, facing the given yaw;
@@ -482,17 +489,17 @@ mod tests {
             );
             // An owner the shot has no collision identity for refuses.
             game.options.dedicated = Some(Vec::new());
-            let dimension = game.dim.id();
             let stand = game
-                .summon(
-                    dimension,
+                .level_summon(
+                    level,
                     "minecraft:armor_stand",
                     [9.5, 64.0, 8.5],
                     Default::default(),
                 )
+                .unwrap()
                 .unwrap();
-            spawn.owner = game.entity(stand);
-            assert!(spawn.owner.is_some());
+            assert_eq!(game.entity(stand.id()), Some(stand));
+            spawn.owner = Some(stand);
             let projectiles = game.creatures.projectiles.len();
             assert_eq!(
                 game.level_spawn_entity(level, "minecraft:snowball", [8.5, 65.5, 8.5], &spawn),

@@ -1,11 +1,11 @@
 //! Read-only `BlockState.canSurvive` through a level handle.
-use super::api_values::TryIntoApi;
-use super::native_level_signals::ReadLevel;
-use super::{
+use super::super::api_values::TryIntoApi;
+use super::super::{
     Game,
     mod_api_host::{FireOddsBase, FireOddsLevel, SidedLevel},
     native_hooks::LevelView,
 };
+use super::ReadLevel;
 use mod_api::{BlockState, LevelHost, LevelReadError, LevelRef};
 use sunrise_client::world::World;
 use sunrise_core::{position::BlockPos, random::LegacyRandom};
@@ -22,7 +22,7 @@ struct SurvivalReadLevel<'a, 'g> {
     random: LegacyRandom,
 }
 
-super::native_tags::impl_tags!(
+super::super::native_tags::impl_tags!(
     SurvivalReadLevel<'_, '_>,
     level,
     level.read.game.native_tag_items()
@@ -49,8 +49,13 @@ impl LevelHost for SurvivalReadLevel<'_, '_> {
     fn container_size(&self, at: mod_api::BlockSide) -> Option<usize> {
         LevelHost::container_size(&self.read, at)
     }
-    fn container_stack(&self, at: mod_api::BlockSide, slot: usize) -> Option<mod_api::ItemStack> {
-        LevelHost::container_stack(&self.read, at, slot)
+    fn lend_container_stack(
+        &self,
+        at: mod_api::BlockSide,
+        slot: usize,
+        read: &mut dyn for<'a> FnMut(mod_api::ItemStackView<'a>),
+    ) {
+        LevelHost::lend_container_stack(&self.read, at, slot, read)
     }
     fn block_entity_part_snapshot(
         &self,
@@ -71,7 +76,7 @@ impl LevelHost for SurvivalReadLevel<'_, '_> {
         &self,
         pos: [i32; 3],
         state: BlockState,
-        entity: Option<(u32, &str)>,
+        entity: Option<mod_api::EntityRef>,
     ) -> Option<f32> {
         LevelHost::friction(&self.read, pos, state, entity)
     }
@@ -93,26 +98,17 @@ impl LevelHost for SurvivalReadLevel<'_, '_> {
     fn height(&self) -> i32 {
         self.read.world().shape.height
     }
-    fn block_in_tag(&self, block: mod_api::BlockKey, tag: &str) -> Option<bool> {
-        LevelHost::block_in_tag(&self.read, block, tag)
-    }
     fn tags(&self) -> &dyn mod_api::Tags {
         self
     }
     fn fluid_state(&self, pos: [i32; 3]) -> Option<mod_api::FluidState> {
         LevelHost::fluid_state(&self.read, pos)
     }
-    fn state_fluid_state(&self, state: BlockState) -> Option<mod_api::FluidState> {
-        LevelHost::state_fluid_state(&self.read, state)
-    }
-    fn fluid_in_tag(&self, fluid: &str, tag: &str) -> Option<bool> {
-        LevelHost::fluid_in_tag(&self.read, fluid, tag)
-    }
     fn state_with_property(&self, state: BlockState, key: &str, value: &str) -> Option<BlockState> {
         LevelHost::state_with_property(&self.read, state, key, value)
     }
     fn brightness(&self, layer: mod_api::LightLayer, pos: [i32; 3]) -> i32 {
-        super::native_level_refs::world_brightness(self.read.world(), layer, pos)
+        super::super::native_level_refs::world_brightness(self.read.world(), layer, pos)
     }
     fn raw_brightness(&self, pos: [i32; 3], sky_darken: i32) -> i32 {
         self.brightness(mod_api::LightLayer::Block, pos).max(
@@ -153,7 +149,7 @@ impl LevelHost for SurvivalReadLevel<'_, '_> {
             signals.has_neighbor_signal(BlockPos::new(pos[0], pos[1], pos[2]))
         })
     }
-    fn collision_shape(&self, pos: [i32; 3]) -> Option<Vec<[f64; 6]>> {
+    fn collision_shape(&self, pos: [i32; 3]) -> Option<mod_api::VoxelShape> {
         LevelHost::collision_shape(&self.read, pos)
     }
 }
@@ -165,14 +161,23 @@ impl FireOddsBase for SurvivalReadLevel<'_, '_> {
     fn fire_behaviours(&self) -> &sunrise_world::level::Behaviours {
         self.read.game.res.behaviours()
     }
-    fn fire_registry(&self) -> &sunrise_world::registry::BlockRegistry {
-        self.read.game.pack.assets.registry
-    }
     fn fire_collision(&self) -> &sunrise_world::block_collision::BlockCollisionRegistry<'_> {
         self.read.game.collision
     }
     fn fire_api_level(&self) -> Option<LevelRef> {
         Some(self.read.level)
+    }
+    fn fire_capability_site(
+        &self,
+        at: mod_api::BlockSide,
+        entity_removed: bool,
+    ) -> Option<mod_api::BlockCapabilitySite> {
+        let mobs = self.read.mobs()?;
+        let [x, y, z] = at.pos;
+        self.read
+            .game
+            .level_containers(self.read.world(), mobs)
+            .capability_site(at, self.read.world().block(x, y, z), entity_removed)
     }
 }
 
@@ -192,7 +197,7 @@ impl SurvivalReadLevel<'_, '_> {
     }
 }
 
-impl super::mod_api_host::SidedLevel for SurvivalReadLevel<'_, '_> {
+impl super::super::mod_api_host::SidedLevel for SurvivalReadLevel<'_, '_> {
     fn client_side(&self) -> bool {
         !self.read.game.is_logical_server()
     }
@@ -423,8 +428,9 @@ impl Game<'_> {
             return Err(LevelReadError::Unavailable);
         }
         let pos = BlockPos::new(x, y, z);
-        let _query = super::native_hooks::enter_survival_query(world as *const _, pos, state)
-            .ok_or(LevelReadError::Unavailable)?;
+        let _query =
+            super::super::native_hooks::enter_survival_query(world as *const _, pos, state)
+                .ok_or(LevelReadError::Unavailable)?;
         let read = ReadLevel::new(self, level, world);
         let mut query = SurvivalReadLevel {
             read,
