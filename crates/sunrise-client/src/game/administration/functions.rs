@@ -552,6 +552,8 @@ impl Game<'_> {
         // (`command-registries.json` lists only the game's own), and so do
         // its worldgen tag ids for the `#tag` completions. The packs are the
         // ones the world's worldgen is built from.
+        // Only ids are read here, so a failed `neoforge:conditions` entry is left
+        // out without `check_errors`: refusing the load is the world load's job.
         if let Some(tables) = &self.world_tables {
             let enabled: Vec<_> = stack.enabled_packs().collect();
             let (overrides, _) = sunrise_client::datapack::worldgen_overrides(
