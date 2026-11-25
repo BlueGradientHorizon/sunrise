@@ -2297,6 +2297,8 @@ mod stations;
 mod stats;
 #[path = "game/interface/stats_screen.rs"]
 mod stats_screen;
+#[path = "game/entities/stock_layer_mask.rs"]
+mod stock_layer_mask;
 #[cfg(test)]
 #[path = "game/items/stop_using_tests.rs"]
 mod stop_using_tests;
@@ -3442,6 +3444,8 @@ struct Game<'a> {
     /// `DebugEntryChunkGeneration`'s `lastPos` and `result`: F3's `Density` line is sampled
     /// again only when the feet block (or the dimension) changes.
     debug_density: RefCell<debug_keys::DensityCache>,
+    /// What each mod added to F3's frame rate line (`set_debug_fps_text`), by mod id.
+    debug_fps_texts: RefCell<Vec<(&'static str, String)>>,
     pending_pack_reload: bool,
     /// HDR, Smooth Gradients, picked path and outcome at the last frame attempt, including a failed
     /// replacement (`follow_frame`).
@@ -3609,6 +3613,10 @@ struct Game<'a> {
     /// A grab or release the calling mod asked for through `&self` (`set_pointer_grab`),
     /// applied by `apply_pointer_grab_request` at the next input event or frame.
     pointer_grab_request: std::cell::Cell<Option<bool>>,
+    /// Files dropped on the window in this event-loop pass, in the order winit gave them
+    /// (one event each), kept only while a mod listens to `screen_files_dropped`; the pass's
+    /// `idle` fires them as one list, as vanilla's `MouseHandler.onDrop` hands `Screen.onFilesDrop`.
+    dropped_files: Vec<std::path::PathBuf>,
     /// Controller connection notices.
     controller_notice: sunrise_client::controller_notice::NoticeSlot,
     focused: bool,
@@ -3721,7 +3729,7 @@ struct Game<'a> {
     kept_block_entities: std::cell::RefCell<native_block_entity_draw::KeptGeometry>,
     /// Mod screens' living scenes, per mod and clock id (game/modding/native_scene_live.rs).
     live_scenes: std::cell::RefCell<native_scene_live::LiveScenes>,
-    /// Client mods' dynamic textures in the GUI atlas's pool (game/modding/native_dynamic_textures.rs).
+    /// Client mods' dynamic textures, one GPU texture each (game/modding/native_dynamic_textures.rs).
     dynamic_textures: sunrise_client::hud::dynamic_textures::DynamicTextures,
     /// Glyphs from `native_draw_text` (`&self`): uploaded to the font atlas with the frame.
     text_patches: std::cell::RefCell<Vec<sunrise_client::font::Patch>>,
@@ -3734,6 +3742,11 @@ struct Game<'a> {
     /// `Renderer::render` so `ClientHost` queries still see framebuffer size and
     /// prepared-model limits.
     render_snapshot: std::cell::Cell<Option<RenderSnapshot>>,
+    /// The shader pack's state and bound mod pipeline slots as the latest frame's render
+    /// callbacks read them, set before `Renderer::render` takes `self.renderer` away
+    /// (`ClientOptionsClientHost::shader_pack_state`, `RenderAssets::pipeline_pack_bound`).
+    pack_frame_state: std::cell::Cell<Option<mod_api::ShaderPackState>>,
+    pack_frame_slots: std::cell::RefCell<Vec<usize>>,
     /// `DebugRenderer.renderers`: active mod renderers and their owners, resolved at refresh.
     debug_renderers: Vec<sunrise_client::debug_entries::ActiveDebugRenderer>,
     /// `DebugRenderer.lastDebugEntriesVersion`: none before the first view of a world.
@@ -4157,6 +4170,8 @@ struct Game<'a> {
     /// and mannequins) resolve through the services in the background.
     skin_profiles: RefCell<sunrise_client::skins::Resolver>,
     skin_slots: sunrise_client::skins::SkinSlots,
+    /// What `apply_player_skin_override` resolved for the selected dynamic texture.
+    player_skin_slot: Option<native_hooks::resolve_player_skin::PlayerSkinSlot>,
     /// Runtime trim slots and the last completed preparation for this atlas.
     trim_slots: sunrise_client::trims::TrimSlots,
     cart_models: minecarts::CartModels,
@@ -4658,6 +4673,10 @@ struct Game<'a> {
 /// and its server thread name the same dimensions.
 static EXTRA_DIMS: std::sync::RwLock<Vec<mod_api::DimensionKey>> =
     std::sync::RwLock::new(Vec::new());
+/// Custom level keys parsed when the world registers its dimensions, not on each block query.
+static EXTRA_LEVELS: std::sync::RwLock<
+    Vec<(mod_api::DimensionKey, sunrise_core::dimension::Dimension)>,
+> = std::sync::RwLock::new(Vec::new());
 
 /// An active player break waiting on `break_block` listeners. When a nested
 /// player break completes removal at the same `(dim, pos)`, `removed_by_nested`
@@ -4695,10 +4714,17 @@ impl Dim {
             Self::Overworld => LevelDimension::Overworld,
             Self::Nether => LevelDimension::Nether,
             Self::End => LevelDimension::End,
-            Self::Extra(_) => LevelDimension::of_level(
-                sunrise_core::LevelKey::parse(self.id())
-                    .unwrap_or(sunrise_core::LevelKey::OVERWORLD),
-            ),
+            Self::Extra(key) => EXTRA_LEVELS
+                .read()
+                .unwrap()
+                .iter()
+                .find_map(|(candidate, level)| (*candidate == key).then_some(*level))
+                .unwrap_or_else(|| {
+                    LevelDimension::of_level(
+                        sunrise_core::LevelKey::parse(self.id())
+                            .unwrap_or(sunrise_core::LevelKey::OVERWORLD),
+                    )
+                }),
         }
     }
     fn id(self) -> &'static str {
@@ -4759,17 +4785,42 @@ impl Dim {
     }
     /// The dimensions past vanilla's three of the world being opened.
     fn set_extra<'a>(ids: impl Iterator<Item = &'a str>) {
-        *EXTRA_DIMS.write().unwrap() = ids.map(mod_api::__private::dimension_key).collect();
+        let extra: Vec<_> = ids
+            .map(|id| {
+                (
+                    mod_api::__private::dimension_key(id),
+                    LevelDimension::of_level(
+                        sunrise_core::LevelKey::parse(id)
+                            .unwrap_or(sunrise_core::LevelKey::OVERWORLD),
+                    ),
+                )
+            })
+            .collect();
+        *EXTRA_DIMS.write().unwrap() = extra.iter().map(|(key, _)| *key).collect();
+        *EXTRA_LEVELS.write().unwrap() = extra;
     }
     /// Adds the dimension `id` a remote server sent, which no local world told of, so that
     /// [`Self::from_id`] finds it.
     fn add_extra(id: &str) {
         if !Self::exists(id) {
-            EXTRA_DIMS
-                .write()
-                .unwrap()
-                .push(mod_api::__private::dimension_key(id));
+            let key = mod_api::__private::dimension_key(id);
+            let level = LevelDimension::of_level(
+                sunrise_core::LevelKey::parse(id).unwrap_or(sunrise_core::LevelKey::OVERWORLD),
+            );
+            EXTRA_DIMS.write().unwrap().push(key);
+            EXTRA_LEVELS.write().unwrap().push((key, level));
         }
+    }
+    /// Drops a remote or runtime dimension that is no longer part of the open world.
+    pub(in crate::game) fn remove_extra(id: &str) {
+        EXTRA_DIMS
+            .write()
+            .unwrap()
+            .retain(|key| mod_api::__private::dimension_id(*key) != Some(id));
+        EXTRA_LEVELS
+            .write()
+            .unwrap()
+            .retain(|(key, _)| mod_api::__private::dimension_id(*key) != Some(id));
     }
     /// The dimension as mods' level handles name it.
     fn key(self) -> mod_api::DimensionKey {
@@ -5072,7 +5123,8 @@ impl Game<'_> {
     ) {
         let lid = |p: [i32; 3]| self.chest_lid(p, partial);
         let anim = |p: [i32; 3]| self.block_anim(p, partial);
-        let substitute = |text: &sunrise_client::text::Text| self.substitute_inline_images(text);
+        let substitute =
+            |text: &sunrise_client::text::Text| self.substitute_inline_images(text, false);
         let inline_sprite = |atlas: &str, sprite: &str| self.gui.atlas.inline_sprite(atlas, sprite);
         use block_entity_render::SignOutline;
         let sign_outline =
@@ -10709,8 +10761,6 @@ impl Game<'_> {
                 &self.gui,
                 self.res.try_block_entity_render(),
             );
-            let (pool, mut names) = self.gui.atlas.dynamic_names();
-            self.dynamic_textures.rebind(pool, &mut names);
             sunrise_client::ui_theme::reset_atlas();
             self.native_texture_atlas_stitched(mod_api::TextureAtlas::Gui);
         }
@@ -12137,7 +12187,7 @@ impl Game<'_> {
         // map_patches any earlier leaves them a frame behind.
         hud.patches.append(&mut self.map_patches);
         hud.patches.append(self.text_patches.get_mut());
-        self.dynamic_texture_patches(&mut hud.image_patches);
+        self.dynamic_texture_commands(&mut hud.dynamic_commands);
         let entity_spans = std::mem::take(self.entity_spans.get_mut());
         let entity_motion = std::mem::take(self.entity_motion.get_mut());
         let entity_motion_posed = std::mem::take(self.entity_motion_posed.get_mut());
@@ -12342,6 +12392,12 @@ impl Game<'_> {
                     max_buffer_size: renderer.max_buffer_size(),
                     staged_prepared_draws: prepared_draws.len() as u64,
                 }));
+                self.pack_frame_state
+                    .set(renderer.shader_pack_state(&frame));
+                let mut slots = self.pack_frame_slots.borrow_mut();
+                slots.clear();
+                slots.extend_from_slice(renderer.pack_bound_mod_slots());
+                drop(slots);
                 let world_camera = self
                     .native_camera_frame
                     .as_ref()
@@ -12364,7 +12420,11 @@ impl Game<'_> {
                 self.render_snapshot.set(None);
                 rendered
             }
-            None => Err("renderer".into()),
+            None => {
+                self.pack_frame_state.set(None);
+                self.pack_frame_slots.borrow_mut().clear();
+                Err("renderer".into())
+            }
         };
         drop(frame);
         self.renderer = renderer_slot;
@@ -12600,6 +12660,9 @@ impl Game<'_> {
         // Pack drops on the resource-pack and Create New World screens.
         if let WindowEvent::DroppedFile(path) = event {
             self.drop_pack_file(path);
+            if mod_api::__private::listened(mod_api::HookId::ScreenFilesDropped) {
+                self.dropped_files.push(path.clone());
+            }
         }
         // Fullscreen is a window shortcut, before screens consume keyboard input.
         // Not Alt or Super on their own: leaving the window isn't playing with the keyboard.
@@ -14341,6 +14404,7 @@ impl<'a> Game<'a> {
             rest_loader: None,
             pending_entry: None,
             debug_density: RefCell::default(),
+            debug_fps_texts: RefCell::default(),
             pending_pack_reload: false,
             frame_attempted: render_settings::FrameAttempt::default(),
             pack_folder: None,
@@ -14437,6 +14501,7 @@ impl<'a> Game<'a> {
             regrab_on_refocus: false,
             screen_grab: false,
             pointer_grab_request: std::cell::Cell::new(None),
+            dropped_files: Vec::new(),
             controller_notice: Default::default(),
             focused: true,
             window_hovered: false,
@@ -14499,6 +14564,8 @@ impl<'a> Game<'a> {
             model_copy_order: Default::default(),
             world_geometry: Some(Default::default()),
             render_snapshot: std::cell::Cell::new(None),
+            pack_frame_state: std::cell::Cell::new(None),
+            pack_frame_slots: Default::default(),
             debug_renderers: Vec::new(),
             debug_renderers_version: None,
             hud_layer_next: None,
@@ -14739,6 +14806,7 @@ impl<'a> Game<'a> {
             }),
             skin_profiles: RefCell::new(sunrise_client::skins::Resolver::new()),
             skin_slots: sunrise_client::skins::SkinSlots::new(sunrise_client::hud::SKIN_SLOTS),
+            player_skin_slot: None,
             trim_slots: Default::default(),
             cart_models: prepared.cart_models,
             riding: None,

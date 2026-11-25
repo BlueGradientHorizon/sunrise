@@ -54,8 +54,8 @@ pub trait DrawContext {
     }
     /// Part `src` (`[x, y, w, h]` in the sprite's own pixels) of sprite
     /// `name` (a GUI atlas sprite by its id, `container/slot` or a mod's `mymod:panel`, another
-    /// texture the atlas holds such as vanilla's `gui/...` files, or
-    /// a client mod's dynamic texture, `ClientRenderClientHost::create_dynamic_texture`),
+    /// texture the atlas holds such as vanilla's `gui/...` files; a client mod's dynamic texture
+    /// is not one: draw it with `GuiCanvas::texture`),
     /// drawn stretched into `dst` (`[x, y, w, h]` in GUI pixels), every texel multiplied by
     /// `tint` (`0xAARRGGBB`, a fluid's colour) when there is one. False when there is
     /// no such sprite.
@@ -342,9 +342,46 @@ pub trait BlockEntityDrawContext {
     /// from its front), textured with the `uv` rectangle (u0, v0, u1, v1 in
     /// texels of 16 per side) of `sprite` (`mymod:entity/screen`,
     /// `mymod:block/casing`, `block/stone`) times the 0xRRGGBB `tint`
-    /// (0xFFFFFF for none). False for an unknown sprite.
+    /// (0xFFFFFF for none). False for an unknown sprite. Its UVs are texels of 16; those of
+    /// [`Self::textured_quad`] are unit.
     fn quad(&mut self, sprite: &str, corners: [[f32; 3]; 4], uv: [f32; 4], tint: u32) -> bool {
         unimplemented!("BlockEntityDrawContext::draw_quad")
+    }
+    /// Draws a quad of `corners` in blocks under `draw`'s pose, in `quad`'s corner order, showing
+    /// the client mod's dynamic texture (`create_dynamic_texture`) that `render_type` was made
+    /// for (`RenderAssets::entity_solid`, `entity_cutout` or `entity_translucent`, as vanilla's
+    /// `RenderTypes.entitySolid(texture)`, `entityCutout` and `entityTranslucent` are), times the
+    /// 0xRRGGBB `tint` (0xFFFFFF for none). `uv` is each corner's texture coordinate, one per
+    /// corner in the order of `corners`, in unit coordinates: 0 to 1 is the texture once, and
+    /// the texture repeats beyond it. A monitor shows its whole texture with
+    /// `[[0.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, 0.0]]`. `quad`'s UVs are texels of 16.
+    ///
+    /// The texture is looked up each frame the quad draws, not when it is submitted:
+    /// `update_dynamic_texture` shows on the next frame with no new geometry, and kept geometry
+    /// (`keep`) stays valid. A texture released after the quad was submitted draws the missing
+    /// texture, as vanilla's `TextureManager.getTexture` answers after `release`. Light follows
+    /// `quad`: `set_light`, `level_light`, and `unlit(true)` for full bright and no directional
+    /// shading. `cutout` and `translucent` discard texels under alpha 0.1
+    /// (`ALPHA_CUTOUT`); `translucent` blends, writes depth and, outside a shader pack, sorts far
+    /// to near. `solid` keeps the entity shader's alpha discard too, where vanilla's
+    /// `ENTITY_SOLID` has none: give it an opaque texture. Under a shader pack the quad draws through the pack's entity program (the
+    /// block entity program in a block entity's draw), with its texture bound as the entity
+    /// texture.
+    ///
+    /// It takes only a dynamic texture id: a render type made for any other id, such as a
+    /// texture in the resource packs, draws nothing and returns false.
+    ///
+    /// Returns false, appending nothing, when `render_type` is not one of the three
+    /// texture-taking built-ins or is stale, when no dynamic texture named by it is live, when a
+    /// corner or UV is not finite, or in a first-person hand draw. It never panics.
+    fn textured_quad(
+        &mut self,
+        render_type: RenderTypeRef,
+        corners: [[f32; 3]; 4],
+        uv: [[f32; 2]; 4],
+        tint: u32,
+    ) -> bool {
+        unimplemented!("BlockEntityDrawContext::draw_textured_quad")
     }
     /// Draws a box from `from` to `to` (texels of 16 per block, as a block
     /// model's element) under `draw`'s pose, with the faces given, by
@@ -559,18 +596,50 @@ pub trait WorldDrawContext {
     fn quads(&mut self, quads: &[WorldQuad]) -> Result<(), DrawError> {
         unimplemented!("WorldDrawContext::world_draw_quads")
     }
-    /// Submit world quads drawn by the mod pipeline `pipeline`: its shader gets each
-    /// quad's texture coordinate and colour, and its blend and depth modes apply. Checks
-    /// `RenderPipelineRef` validity and staleness ([`PipelineDrawError::Pipeline`]), skips
-    /// any quad with non-finite coordinates or UVs individually without rejecting valid quads
-    /// in the same slice, and lets quad storage grow dynamically into the GPU buffers. Within
-    /// a stage, pipeline quads draw after its plain quads and lines, in the order submitted.
+    /// Submit world quads drawn by the mod pipeline `pipeline`: shorthand over
+    /// [`Self::draw_vertices`] for pipelines using the default `PositionTexColor` vertex format
+    /// and [`PrimitiveTopology::Quads`]. Checks `RenderPipelineRef` validity and staleness
+    /// ([`PipelineDrawError::Pipeline`]), refuses non-`Quads` pipelines
+    /// ([`PipelineDrawError::TopologyMismatch`]) and custom vertex-format pipelines
+    /// ([`PipelineDrawError::VertexFormatMismatch`]), skips any quad with non-finite coordinates
+    /// or UVs individually without rejecting valid quads in the same slice, and lets quad storage
+    /// grow dynamically into the GPU buffers. Within a stage, pipeline draws run after plain
+    /// quads and lines, in the order submitted.
     fn pipeline_quads(
         &mut self,
         pipeline: RenderPipelineRef,
         quads: &[PipelineQuad],
     ) -> Result<(), PipelineDrawError> {
         unimplemented!("WorldDrawContext::pipeline_quads")
+    }
+    /// Draw a retained GPU [`MeshRef`] with `pipeline`, recording a POD draw command with zero
+    /// per-frame CPU vertex copying. Validates pipeline liveness, mesh ownership/liveness,
+    /// per-binding strides against the pipeline's [`VertexFormat`] bindings, and vertex/index/
+    /// instance bounds before queueing (never panics, never triggers a GPU validation error).
+    fn draw_mesh(
+        &mut self,
+        pipeline: RenderPipelineRef,
+        mesh: MeshRef,
+        draw: MeshDraw,
+        bindings: &DrawBindings<'_>,
+    ) -> Result<(), PipelineDrawError> {
+        let _ = (pipeline, mesh, draw, bindings);
+        Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid))
+    }
+    /// Draw transient per-frame vertex (and optional index) byte slices with `pipeline`,
+    /// uploaded into growing per-view GPU byte pages (bounded only by `max_buffer_size`).
+    /// Validates pipeline liveness, binding count and stride alignment, and vertex/index/instance
+    /// bounds before queueing.
+    fn draw_vertices(
+        &mut self,
+        pipeline: RenderPipelineRef,
+        vertices: &[&[u8]],
+        indices: Option<(IndexFormat, &[u8])>,
+        draw: MeshDraw,
+        bindings: &DrawBindings<'_>,
+    ) -> Result<(), PipelineDrawError> {
+        let _ = (pipeline, vertices, indices, draw, bindings);
+        Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid))
     }
     /// A label at world position `at`, drawn as vanilla draws a name tag
     /// (`SubmitNodeCollection.submitNameTag`): 0.5 blocks above `at`, facing the camera,
@@ -626,6 +695,22 @@ pub trait WorldDrawContext {
         let _ = (model, instances);
         unimplemented!("WorldDrawContext::draw_model_instances")
     }
+    /// Run `draw` with `modifier` pushed onto the active pipeline modifier stack (NeoForge's
+    /// `RenderSystem.renderWithPipelineModifier`). Applies to `lines`, `quads`, `pipeline_quads`,
+    /// and `draw_model_instances` drawn inside `draw` (not `name_tag` labels). Only the
+    /// modifier's `depth` applies to the built-in `lines`, `quads` and `draw_model_instances`;
+    /// the whole `PipelineModifier` applies to a registered pipeline drawn with `pipeline_quads`.
+    ///
+    /// Scopes nest: the most recently pushed modifier applies first, then older ones, so for a
+    /// field set by two modifiers the outermost wins (`PipelineModifierStack.apply`). The
+    /// modifier is popped automatically when `draw` returns or unwinds.
+    fn with_pipeline_modifier(
+        &mut self,
+        modifier: PipelineModifierRef,
+        draw: &mut dyn FnMut(&mut dyn WorldDrawContext),
+    ) {
+        let _ = (modifier, draw);
+    }
     /// Supply this frame's value for a mod-declared shader-pack uniform ([`PackUniformDecl`]).
     /// Returns `true` when `name` matches a registered mod uniform with the matching
     /// [`PackUniformType`], and `false` otherwise (never panics). When the declaration specifies
@@ -662,6 +747,52 @@ pub trait PrepareRenderBuffersContext {
         stage: RenderLevelStage,
         quads: &[WorldQuad],
     ) -> Result<PreparedWorldDraw, DrawError>;
+
+    /// Prepare a batch of mod-pipeline quads for `stage` (standard pass stages or
+    /// [`RenderLevelStage::OitTranslucent`]). Refuses pipelines whose effective
+    /// [`PrimitiveTopology`] is not [`PrimitiveTopology::Quads`]
+    /// ([`PipelineDrawError::TopologyMismatch`]). At `OitTranslucent`, a pipeline without
+    /// [`RenderPipeline::order_independent`] or with [`PipelineBlend::Opaque`] is refused with
+    /// [`PipelineDrawError::Pipeline`] (`RenderPipelineError::Invalid`), logged once per mod and
+    /// pipeline. Individual quads with non-finite coordinates or UVs are skipped.
+    fn pipeline_quads(
+        &mut self,
+        stage: RenderLevelStage,
+        pipeline: RenderPipelineRef,
+        quads: &[PipelineQuad],
+    ) -> Result<PreparedWorldDraw, PipelineDrawError> {
+        let _ = (stage, pipeline, quads);
+        Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid))
+    }
+
+    /// Prepare a retained GPU [`MeshRef`] draw for `stage` (standard pass stages or
+    /// [`RenderLevelStage::OitTranslucent`]).
+    fn draw_mesh(
+        &mut self,
+        stage: RenderLevelStage,
+        pipeline: RenderPipelineRef,
+        mesh: MeshRef,
+        draw: MeshDraw,
+        bindings: &DrawBindings<'_>,
+    ) -> Result<PreparedWorldDraw, PipelineDrawError> {
+        let _ = (stage, pipeline, mesh, draw, bindings);
+        Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid))
+    }
+
+    /// Prepare a transient per-frame vertex/index draw for `stage` (standard pass stages or
+    /// [`RenderLevelStage::OitTranslucent`]).
+    fn draw_vertices(
+        &mut self,
+        stage: RenderLevelStage,
+        pipeline: RenderPipelineRef,
+        vertices: &[&[u8]],
+        indices: Option<(IndexFormat, &[u8])>,
+        draw: MeshDraw,
+        bindings: &DrawBindings<'_>,
+    ) -> Result<PreparedWorldDraw, PipelineDrawError> {
+        let _ = (stage, pipeline, vertices, indices, draw, bindings);
+        Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid))
+    }
 }
 
 /// Draw batches prepared for the active standard render stage, in call order.

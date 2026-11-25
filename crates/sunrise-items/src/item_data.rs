@@ -1545,6 +1545,13 @@ impl ItemStack {
     pub fn same_item_same_components(&self, other: &Self) -> bool {
         self.item == other.item && self.damage == other.damage && self.data() == other.data()
     }
+    /// A hash equal for stacks that are [`Self::same_item_same_components`], whatever their counts.
+    pub fn merge_kind(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        (&*self.item, self.damage, self.data()).hash(&mut hasher);
+        hasher.finish()
+    }
     /// Compare live component identity as `PatchedDataComponentMap.fromPatch` does:
     /// ignore sets equal to the prototype and removals of absent defaults. This
     /// reads decoded components, including transient ones the save codec drops.

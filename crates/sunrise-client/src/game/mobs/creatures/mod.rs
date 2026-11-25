@@ -3486,9 +3486,10 @@ impl Game<'_> {
                     if let Some(m) = self.mobs.iter().find(|m| m.id == mob) {
                         let at = m.center();
                         let sound = cat_sound(m, Some(self.world_variants()), "hiss")
-                            .unwrap_or("entity.cat.hiss")
-                            .to_owned();
-                        self.play_audio(&full_id(&sound), Some(at), 1.0, 1.0);
+                            .map(|s| full_id(s).into_owned());
+                        if let Some(sound) = sound {
+                            self.play_audio(&sound, Some(at), 1.0, 1.0);
+                        }
                     }
                 }
                 MobEvent::StabMemory {

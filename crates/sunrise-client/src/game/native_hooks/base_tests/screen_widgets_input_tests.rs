@@ -35,6 +35,7 @@ enum Seen {
     GameWheel([f64; 2], [i32; 2], [bool; 3], [f32; 2], u32),
     Moved([f32; 2], [f32; 2]),
     Motion(String, [f64; 2]),
+    Dropped(Vec<std::path::PathBuf>),
 }
 
 #[derive(Default)]
@@ -225,6 +226,18 @@ impl Hooks for Observe {
             let owner = event.screen.mod_screen.unwrap_or("").to_owned();
             state.seen.push(Seen::Motion(owner, event.delta));
         }
+    }
+
+    fn screen_files_dropped(
+        &self,
+        _: &dyn ClientHost,
+        event: &mut mod_api::ScreenFilesDroppedEvent<'_>,
+    ) {
+        self.0
+            .lock()
+            .unwrap()
+            .seen
+            .push(Seen::Dropped(event.paths.to_vec()));
     }
 
     fn screen_mouse_scrolled_pre(
@@ -817,6 +830,52 @@ fn hover_moves_fire_before_drag_and_a_screen_grab_ends_with_the_screen() {
         assert_eq!(game.screen, Screen::Playing);
         assert!(!game.screen_grab && !game.pointer_grabbed());
         assert!(!game.set_pointer_grab(true), "no screen is open");
+    });
+}
+
+/// A drop of two files, the second not UTF-8, reaches a mod screen's listener once, whole
+/// and in order, and the screen stays open (vanilla's `Screen.onFilesDrop`).
+#[cfg(unix)]
+#[test]
+#[ignore = "daily"]
+fn dropped_files_reach_a_mod_screen_whole_and_in_order() {
+    use std::{ffi::OsStr, os::unix::ffi::OsStrExt, path::PathBuf};
+    if run_fresh_cases(
+        "game::native_hooks::base::screen_widgets_tests::input_routing::dropped_files_reach_a_mod_screen_whole_and_in_order",
+        "SUNRISE_SCREEN_FILES_DROPPED_CHILD",
+        &["drop"],
+    ) {
+        return;
+    }
+    with_input_game_as("input_route", |game, id, state| {
+        let first = PathBuf::from("/tmp/a.png");
+        let second = PathBuf::from(OsStr::from_bytes(b"/tmp/a\xff.png"));
+        // No screen open: the drop fires nothing.
+        send(game, id, WindowEvent::DroppedFile(first.clone()));
+        game.fire_dropped_files();
+        assert!(take(state).is_empty());
+
+        assert!(game.mod_screen_open("input_route"));
+        send(game, id, WindowEvent::DroppedFile(first.clone()));
+        send(game, id, WindowEvent::DroppedFile(second.clone()));
+        assert!(
+            take(state).is_empty(),
+            "the list is fired when the pass ends"
+        );
+        game.fire_dropped_files();
+        let seen = take(state);
+        assert_eq!(seen, [Seen::Dropped(vec![first, second])]);
+        let Seen::Dropped(paths) = &seen[0] else {
+            unreachable!()
+        };
+        assert_eq!(paths[1].as_os_str().as_bytes(), b"/tmp/a\xff.png");
+        assert!(
+            game.mod_screen_open("input_route"),
+            "observe only: the screen stays"
+        );
+        assert_eq!(game.mod_screen(), Some("input_route"));
+        game.fire_dropped_files();
+        assert!(take(state).is_empty(), "a drop fires once");
     });
 }
 

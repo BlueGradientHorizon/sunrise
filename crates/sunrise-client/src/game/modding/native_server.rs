@@ -737,7 +737,7 @@ impl Game<'_> {
         action: PlayerAction,
     ) -> Result<ActionOutcome, ActionRefused> {
         let (gi, conn) = self.fake_action_actor(player, action)?;
-        self.perform_fake_action(gi, conn, action)
+        self.beside_listener_journal(|game| game.perform_fake_action(gi, conn, action))
     }
 
     /// A machine's one use on the persistent actor, with its private state put back even
@@ -749,6 +749,16 @@ impl Game<'_> {
         setup: PlayerActionSetup,
     ) -> Result<ScopedActionResult, ActionRefused> {
         let (gi, conn) = self.fake_action_actor(player, action)?;
+        self.beside_listener_journal(|game| game.perform_scoped(gi, conn, action, setup))
+    }
+
+    fn perform_scoped(
+        &mut self,
+        gi: usize,
+        conn: u32,
+        action: PlayerAction,
+        setup: PlayerActionSetup,
+    ) -> Result<ScopedActionResult, ActionRefused> {
         if !setup.eye.iter().all(|v| v.is_finite())
             || !setup.yaw.is_finite()
             || !setup.pitch.is_finite()
@@ -852,7 +862,7 @@ impl Game<'_> {
             }
         };
         if !self.lan_guest_swaps.is_empty()
-            || !self.transactions.is_empty()
+            || !(self.transactions.is_empty() || self.in_level_tick_boundary_alone())
             || self.fake_action.acting()
         {
             return Err(ActionRefused::Busy);
@@ -869,6 +879,33 @@ impl Game<'_> {
             return Err(ActionRefused::InvalidTarget);
         }
         Ok((gi, conn))
+    }
+
+    /// Whether the only open transaction is the one a server level tick's dispatch opens around
+    /// each listener (#5750): a machine's fake player acts from its level tick.
+    fn in_level_tick_boundary_alone(&self) -> bool {
+        LevelTickListeners::marked() && self.transactions.len() == 1
+    }
+
+    /// Runs a fake player's action outside the level tick listener's own transaction, as it ran
+    /// before that listener boundary existed: the action is no part of the listener's journal,
+    /// so the listener's failure doesn't undo the action itself, and the action's hooks open and
+    /// commit their own transactions. A rollback of the listener's own earlier writes still
+    /// puts back what they changed, over the action's result at the same place. With no
+    /// transaction open this is just `act`.
+    fn beside_listener_journal<T>(&mut self, act: impl FnOnce(&mut Self) -> T) -> T {
+        if self.transactions.is_empty() {
+            return act(self);
+        }
+        let frames = std::mem::take(&mut *self.transactions);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _outside = LevelTickListeners::mark(false);
+            act(self)
+        }));
+        // Anything the action left open nests in the listener's transaction.
+        let inner = std::mem::replace(&mut *self.transactions, frames);
+        self.transactions.extend(inner);
+        result.unwrap_or_else(|panic| std::panic::resume_unwind(panic))
     }
 
     fn perform_fake_action(
@@ -3022,6 +3059,33 @@ impl ScopedPlayerState {
         std::mem::swap(&mut self.health, &mut guest.health);
         std::mem::swap(&mut self.food, &mut guest.food);
         std::mem::swap(&mut self.saturation, &mut guest.saturation);
+    }
+}
+
+thread_local! {
+    static LEVEL_TICK_LISTENERS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Marks a server level tick's listeners while they run, with nothing open around the one
+/// transaction their dispatch opens for each (#5750): a fake player's action may run inside
+/// that one (`player_perform_action`), not inside one the listener opened itself. Dropping it
+/// puts back the mark it replaced, also when the listeners unwind.
+pub(in crate::game) struct LevelTickListeners(bool);
+
+impl LevelTickListeners {
+    /// Sets the mark to `on` until the returned guard drops.
+    pub(in crate::game) fn mark(on: bool) -> Self {
+        Self(LEVEL_TICK_LISTENERS.with(|mark| mark.replace(on)))
+    }
+    /// Whether a level tick's listeners are running, marked.
+    fn marked() -> bool {
+        LEVEL_TICK_LISTENERS.with(std::cell::Cell::get)
+    }
+}
+
+impl Drop for LevelTickListeners {
+    fn drop(&mut self) {
+        LEVEL_TICK_LISTENERS.with(|mark| mark.set(self.0));
     }
 }
 
@@ -6957,6 +7021,110 @@ pub(super) mod fake_action_tests {
                 .unwrap();
             assert_eq!(rod.outcome, ActionOutcome::Consumed, "the rod casts");
             assert!(game.hook.is_none(), "no hook is left for nobody to reel in");
+        });
+    }
+
+    /// A machine acts through its fake player from its level tick (#5750): the transaction the
+    /// level tick's dispatch opens around the listener doesn't make the action `Busy`, while
+    /// one the listener opens itself still does. Pre uses the scoped action Create's deployer
+    /// uses; post the plain one.
+    #[test]
+    #[ignore = "daily"]
+    fn a_level_tick_listener_acts_through_its_fake_player() {
+        use super::super::native_entity_refs::tests::with_game;
+        use mod_api::{
+            Hooks, HostSide, HostTransaction, LevelTickPostEvent, LevelTickPreEvent, ModEntry,
+            PlayerActionSetup,
+        };
+        use std::sync::{Arc, Mutex};
+
+        type Answer = Result<ActionOutcome, ActionRefused>;
+        #[derive(Default)]
+        struct Seen {
+            player: Option<PlayerRef>,
+            /// The scoped action from `level_tick_pre`, with the log it holds.
+            setup: Option<PlayerActionSetup>,
+            /// Whether the dispatch's transaction was open, then each answer: the action
+            /// straight from the listener, then the one inside the listener's own transaction.
+            answers: Vec<(&'static str, bool, Answer, Answer)>,
+        }
+        struct Deployer(Arc<Mutex<Seen>>);
+
+        #[mod_api::__subscriptions]
+        impl Hooks for Deployer {
+            fn level_tick_pre(&self, host: HostSide, _: &mut LevelTickPreEvent) {
+                let HostSide::Server(host) = host else { return };
+                let mut seen = self.0.lock().unwrap();
+                let (Some(player), Some(setup)) = (seen.player, seen.setup.clone()) else {
+                    return;
+                };
+                let boundary = !host.transaction_matches(None);
+                let direct = player
+                    .perform_action_scoped(host, on_top([0, 63, 1]), setup.clone())
+                    .map(|result| result.outcome);
+                let nested = HostTransaction::transaction(host, |host, _| {
+                    Ok::<_, ()>(
+                        player
+                            .perform_action_scoped(host, on_top([0, 63, -1]), setup)
+                            .map(|result| result.outcome),
+                    )
+                })
+                .unwrap();
+                seen.answers.push(("pre", boundary, direct, nested));
+            }
+            fn level_tick_post(&self, host: HostSide, _: &mut LevelTickPostEvent) {
+                let HostSide::Server(host) = host else { return };
+                let mut seen = self.0.lock().unwrap();
+                let Some(player) = seen.player else { return };
+                let boundary = !host.transaction_matches(None);
+                let direct = player.perform_action(host, on_top([1, 63, 0]));
+                let nested = HostTransaction::transaction(host, |host, _| {
+                    Ok::<_, ()>(player.perform_action(host, on_top([-1, 63, 0])))
+                })
+                .unwrap();
+                seen.answers.push(("post", boundary, direct, nested));
+            }
+        }
+
+        let seen = Arc::new(Mutex::new(Seen::default()));
+        let mods = vec![ModEntry::new("deployer", Box::new(Deployer(seen.clone())))].into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                let (player, ..) = fake(game, Some("minecraft:oak_log"), 0);
+                seen.lock().unwrap().player = Some(player);
+                seen.lock().unwrap().setup = Some(PlayerActionSetup::new(
+                    Some(crate::game::api_values::test_snapshot(&ItemStack::new(
+                        "minecraft:oak_log",
+                        1,
+                    ))),
+                    [0.5, 64.0 + f64::from(1.62_f32), 0.5],
+                    0.0,
+                    60.0,
+                    false,
+                ));
+                let level = game.level(game.dim.id()).unwrap();
+                game.native_level_tick_pre(level);
+                game.native_level_tick_post(level);
+                let used = |stage| {
+                    (
+                        stage,
+                        true,
+                        Ok(ActionOutcome::Consumed),
+                        Err(ActionRefused::Busy),
+                    )
+                };
+                assert_eq!(seen.lock().unwrap().answers, [used("pre"), used("post")]);
+                let log = game.level_block_property(level, [0, 64, 1], "axis");
+                assert_eq!(
+                    log,
+                    Some("y"),
+                    "the pre listener's scoped use placed its log"
+                );
+                let log = game.level_block_property(level, [1, 64, 0], "axis");
+                assert_eq!(log, Some("y"), "the post listener's use placed the log");
+                assert_eq!(held(game, 2), None);
+                assert!(!game.has_open_transaction());
+            });
         });
     }
 

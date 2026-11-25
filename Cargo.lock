@@ -5211,6 +5211,7 @@ version = "0.1.0"
 dependencies = [
  "naga",
  "sunrise-glsl",
+ "sunrise-mod-vocab",
  "wgpu-types",
 ]
 

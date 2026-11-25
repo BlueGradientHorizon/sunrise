@@ -49,13 +49,8 @@ pub fn inherited_step_sound(
                 quiet("entity.chicken.step")
             }
         }
-        S::Wolf => {
-            if let Some(sound) = super::wolf_sound(m, w.side.variant_tables(), "step") {
-                Some((Cow::Owned(sound.to_owned()), 0.15, 1.0))
-            } else {
-                quiet("entity.wolf.step")
-            }
-        }
+        S::Wolf => super::wolf_sound(m, w.side.variant_tables(), "step")
+            .map(|sound| (Cow::Owned(sound.to_owned()), 0.15, 1.0)),
         S::Mooshroom => quiet("entity.cow.step"),
         S::Llama | S::TraderLlama => quiet("entity.llama.step"),
         S::Frog => quiet("entity.frog.step"),

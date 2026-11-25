@@ -230,6 +230,44 @@ impl RenderAssets {
         self.mod_pipelines.resolve(id)
     }
 
+    /// The handle of the built-in or registered custom render type `id` in this published store.
+    pub fn render_type(
+        &self,
+        id: &mod_api::Identifier,
+    ) -> std::result::Result<mod_api::RenderTypeRef, mod_api::RenderTypeError> {
+        self.mod_pipelines.resolve_render_type(id)
+    }
+
+    /// The handle of the built-in entity render type `kind` drawing the dynamic texture
+    /// `texture` in this published store (`Pipelines::textured_render_type`).
+    pub fn textured_render_type(
+        &self,
+        kind: crate::mod_pipelines::BuiltinRenderType,
+        texture: &mod_api::Identifier,
+    ) -> std::result::Result<mod_api::RenderTypeRef, mod_api::RenderTypeError> {
+        self.mod_pipelines.textured_render_type(kind, texture)
+    }
+
+    /// The built-in entity render type and dynamic texture a handle from
+    /// [`Self::textured_render_type`] names.
+    pub fn textured_render_type_of(
+        &self,
+        handle: mod_api::RenderTypeRef,
+    ) -> std::result::Result<
+        (crate::mod_pipelines::BuiltinRenderType, mod_api::Identifier),
+        mod_api::RenderTypeError,
+    > {
+        self.mod_pipelines.textured_render_type_of(handle)
+    }
+
+    /// The handle of the registered pipeline modifier `id` (static across resource reloads).
+    pub fn pipeline_modifier(
+        &self,
+        id: &mod_api::Identifier,
+    ) -> std::result::Result<mod_api::PipelineModifierRef, mod_api::RenderPipelineError> {
+        crate::mod_pipelines::resolve_modifier(id)
+    }
+
     /// Validate a handle for an API that only accepts registered standalone models.
     pub fn validate_standalone_model(
         &self,

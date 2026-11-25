@@ -1791,7 +1791,8 @@ pub struct OptionsUi {
     pub selected_key: Option<&'static str>,
     /// The registered key waiting: (mod, mapping) in `mods.installed`.
     selected_mod_key: Option<(usize, usize)>,
-    selected_page_key: Option<(usize, usize)>,
+    /// The registered page's key row waiting for a key.
+    selected_page_key: Option<pages::PageKey>,
     /// The open registered page's rows its layout was made from (`refresh_added_rows`).
     added_seen: Vec<sunrise_hooks::pages::Row>,
     pending_mod_key: Option<winit::keyboard::KeyCode>,
@@ -3177,6 +3178,7 @@ impl OptionsUi {
                 return (Vec::new(), true);
             }
             // Waiting on a key: a mouse button binds, as on Key Binds.
+            self.end_stale_page_key();
             if self.selected_key.is_some() {
                 let button = if right {
                     winit::event::MouseButton::Right
@@ -4146,6 +4148,7 @@ impl OptionsUi {
             }
             return (true, vec![Event::Changed]);
         }
+        self.end_stale_page_key();
         if self.selected_key.is_some() {
             // KeyBindsScreen.keyPressed: Escape unbinds.
             if self.selected_key == Some(MOD_KEY)

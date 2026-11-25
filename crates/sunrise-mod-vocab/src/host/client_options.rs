@@ -64,4 +64,13 @@ pub trait ClientOptionsClientHost {
     /// `IrisApi.isShaderPackInUse()`). `false` on a server, when no renderer
     /// exists, or while no shader pack is running.
     fn shader_pack_active(&self) -> bool;
+    /// Side: client.
+    /// The active shader pack's cloud and shadow-pass state for the current frame, or `None`
+    /// when no pack is active (the same rule as [`Self::shader_pack_active`]: `None` on the
+    /// title screen and while unloading). Taken at the start of each frame's render; read it in
+    /// the render callbacks to cull shadow-casting geometry against
+    /// [`ShaderPackState::shadow`] and to skip clouds when [`ShaderPackState::hides_clouds`].
+    /// Compare [`ShaderPackState::generation`] each frame to notice a pack loaded, switched or
+    /// turned off.
+    fn shader_pack_state(&self) -> Option<ShaderPackState>;
 }

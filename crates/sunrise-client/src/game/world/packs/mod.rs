@@ -646,6 +646,10 @@ impl Game<'_> {
             game.standalone_geometry = standalone_geometry;
             game.instance_groups.borrow_mut().clear();
             game.prepared_items.borrow_mut().clear();
+            if let Some(renderer) = &game.renderer {
+                renderer.clear_mod_meshes();
+                renderer.clear_mod_uniforms();
+            }
             // The new atlas's skin and map slots are blank: players and maps
             // upload into it again instead of naming sprites it does not have.
             game.skin_slots.forget();
@@ -814,7 +818,6 @@ pub(super) fn stage_pack_with_emissive(
         || -> sunrise_client::Result<_> {
             // The world's models and sprites and the GUI atlas read the same root and nothing of
             // each other: about a second each, side by side.
-            let pool = super::resource_tables::dynamic_texture_pool();
             // The sound events and the language are read here too, not in
             // the frame that applies the reload (about 20 ms of it).
             let (render, atlas, panorama, (sounds, language)) = std::thread::scope(|s| {
@@ -822,14 +825,8 @@ pub(super) fn stage_pack_with_emissive(
                     let game = sunrise_assets::resource_source::ResourceSource::directory(
                         vanilla_root.to_path_buf(),
                     );
-                    HudAtlas::build_over_with_dynamic_textures_and_limit(
-                        &source,
-                        &source,
-                        &game,
-                        pool,
-                        max_atlas_size,
-                    )
-                    .map_err(|e| e.to_string())
+                    HudAtlas::build_over_and_limit(&source, &source, &game, max_atlas_size)
+                        .map_err(|e| e.to_string())
                 });
                 let panorama = super::resource_load::named_scope(s, "pack-assets", || {
                     sunrise_client::gfx::panorama::Faces::load(&source, &source)

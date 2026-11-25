@@ -75,7 +75,7 @@ fn a_part_hears_each_stop_of_its_items_use_once() {
                     game.tick_using();
                 }
                 assert!(game.using.is_none());
-                assert_eq!(heard(), [(true, None, true, 0)]);
+                assert_eq!(heard(), [(true, Some(game.own_entity_id()), true, 0)]);
             });
             // A release: the ticks of the use that were left.
             eating(|game| {
@@ -83,7 +83,7 @@ fn a_part_hears_each_stop_of_its_items_use_once() {
                 game.set_mapping_held("key.use", false);
                 game.tick_using();
                 assert!(game.using.is_none());
-                assert_eq!(heard(), [(true, None, true, left)]);
+                assert_eq!(heard(), [(true, Some(game.own_entity_id()), true, left)]);
                 assert_eq!(game.held().map(|s| s.count), Some(1), "not eaten");
             });
             // Another item in the hand: the apple's use stops, and the apple's part hears it.
@@ -92,7 +92,7 @@ fn a_part_hears_each_stop_of_its_items_use_once() {
                 *game.held_mut() = Some(ItemStack::new("minecraft:bow", 1));
                 game.tick_using();
                 assert!(game.using.is_none());
-                assert_eq!(heard(), [(true, None, true, left)]);
+                assert_eq!(heard(), [(true, Some(game.own_entity_id()), true, left)]);
                 // Nothing left to stop: no second stop.
                 game.tick_using();
                 assert!(heard().is_empty());

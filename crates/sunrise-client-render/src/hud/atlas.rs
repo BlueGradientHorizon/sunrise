@@ -38,6 +38,9 @@ pub struct HudAtlas {
     pub width: u32,
     pub height: u32,
     pub sprites: HashMap<String, Rect>,
+    /// The texel origin of each `sunrise/skin{n}` slot, by `n`: where a skin is written. Empty
+    /// on an atlas without the slots.
+    pub skin_origins: Vec<[u32; 2]>,
     /// The GUI atlas's own sprites by GUI id, each with an entry of its own: its rect, or none for
     /// a sprite its list removed or failed ([`HudAtlas::gui_lookup`]).
     pub gui: HashMap<String, GuiSprite>,
@@ -51,9 +54,6 @@ pub struct HudAtlas {
     pub(crate) registered_pages: Vec<RegisteredAtlasPage>,
     /// The dimension this generation was stitched against; absent on font-only or boot atlases.
     pub stitch_limit: Option<u32>,
-    /// The live (dynamic) textures by GUI id, a lane of their own: the GUI lookup reads it first,
-    /// and no reload of another lane writes it ([`dynamic_textures::Names`]).
-    pub live: HashMap<String, Rect>,
     /// Resolved player-profile names and UUIDs for inline head components.
     pub object_skins: HashMap<String, String>,
     pub object_skins_revision: u64,
@@ -109,9 +109,6 @@ pub struct HudAtlas {
     pub material_maps: std::sync::Arc<[Option<crate::paged_maps::PagedMap>; 2]>,
     /// The white texel flat fills sample (also `hud_kit::shapes`).
     pub(crate) white: Rect,
-    /// Where the slots of client mods' dynamic textures lie, when the atlas packed them
-    /// ([`HudAtlas::build_over_with_dynamic_textures`]); their names are not among `sprites`.
-    pub dynamic_texture_pool: Option<dynamic_textures::Pool>,
 }
 /// The CPU image and animations of one registered atlas, kept across renderer rebuilds.
 pub(crate) struct RegisteredAtlasPage {
@@ -329,14 +326,10 @@ impl HudAtlas {
         }
         self.packed = Some(slot);
     }
-    /// The sprite of the GUI id `id` (`minecraft:` dropped) that is there, with its scaling: a live
-    /// texture's; else the GUI list's own (a removed or failed entry ends the search); else, where
+    /// The sprite of the GUI id `id` (`minecraft:` dropped) that is there, with its scaling: the GUI list's own (a removed or failed entry ends the search); else, where
     /// the list says nothing of the id, a registered atlas's sprite of the name, and last a packed
     /// sprite no model or GUI entry owns.
     pub(super) fn gui_present(&self, id: &str) -> Option<(&Rect, Option<crate::ui::Scaling>)> {
-        if let Some(rect) = self.live.get(id) {
-            return Some((rect, None));
-        }
         match self.gui.get(id) {
             Some(GuiSprite::Present { rect, scaling }) => Some((rect, *scaling)),
             Some(GuiSprite::Missing) => None,
@@ -348,8 +341,8 @@ impl HudAtlas {
         }
     }
     /// A GUI atlas sprite by its id (`minecraft:container/slot`, `container/slot`, a mod's
-    /// `mymod:panel`; the two spellings of a vanilla id are one key): [`GuiSprite::Present`] for a
-    /// live texture, the GUI list's sprite, or for an unlisted id a registered atlas's sprite or a
+    /// `mymod:panel`; the two spellings of a vanilla id are one key): [`GuiSprite::Present`] for the
+    /// GUI list's sprite, or for an unlisted id a registered atlas's sprite or a
     /// packed sprite no model or GUI entry owns, in that order; [`GuiSprite::Missing`] for an id the list removed or failed; none for an id the GUI
     /// atlas does not own. The sprite carries the scaling of the entry itself.
     pub fn gui_lookup(&self, id: &str) -> Option<GuiSprite> {
@@ -377,7 +370,7 @@ impl HudAtlas {
     }
     pub(crate) fn gui_atlas_page(&self, name: &str) -> Option<usize> {
         let name = name.strip_prefix("minecraft:").unwrap_or(name);
-        if self.live.contains_key(name) || self.gui.contains_key(name) {
+        if self.gui.contains_key(name) {
             return None;
         }
         self.registered_owners.get(name).copied()
@@ -393,12 +386,6 @@ impl HudAtlas {
             .copied()
     }
     pub fn blit_atlas_page(&self, name: &str) -> Option<usize> {
-        if self
-            .live
-            .contains_key(name.strip_prefix("minecraft:").unwrap_or(name))
-        {
-            return None;
-        }
         self.texture_atlas_page(name)
     }
 
@@ -422,26 +409,10 @@ impl HudAtlas {
                 .get(name.strip_prefix("minecraft:").unwrap_or(name))
         })
     }
-    /// The rect of a `Blit` texture by its name: a live texture's first, else
-    /// [`HudAtlas::texture_rect`]. One lookup for the refusal and the draw.
+    /// The rect of a `Blit` texture by its name ([`HudAtlas::texture_rect`]). One lookup for the
+    /// refusal and the draw.
     pub fn blit_rect(&self, texture: &str) -> Option<&Rect> {
-        self.live
-            .get(texture.strip_prefix("minecraft:").unwrap_or(texture))
-            .or_else(|| self.texture_rect(texture))
-    }
-    /// The pool and the tables a client mod's dynamic texture is named in.
-    pub fn dynamic_names(
-        &mut self,
-    ) -> (Option<&dynamic_textures::Pool>, dynamic_textures::Names<'_>) {
-        (
-            self.dynamic_texture_pool.as_ref(),
-            dynamic_textures::Names {
-                sprites: &mut self.sprites,
-                live: &mut self.live,
-                gui: &mut self.gui,
-                registered: &self.registered,
-            },
-        )
+        self.texture_rect(texture)
     }
     /// [`HudAtlas::gui_rect`], or the missing sprite where the atlas has no such GUI sprite (an
     /// effect without its icon).
@@ -499,46 +470,25 @@ impl HudAtlas {
     }
     /// [`Self::build`] bounded by the GPU's `max_texture_dimension_2d` limit.
     pub fn build_with_limit(root: &ResourceSource, max_atlas_size: u32) -> Result<Self> {
-        Self::build_over_with_dynamic_textures_and_limit(root, root, root, false, max_atlas_size)
+        Self::build_over_and_limit(root, root, root, max_atlas_size)
     }
     /// The atlas of a resource root that layers packs over `defaults` (the
     /// game's own resources), whose textures give the sprites' GUI sizes.
     pub fn build_over(root: &ResourceSource, defaults: &ResourceSource) -> Result<Self> {
-        Self::build_over_with_dynamic_textures(root, defaults, defaults, false)
+        Self::build_over_and_limit(root, defaults, defaults, MAX_ATLAS_SIZE)
     }
-    /// The atlas above, with the pool of slots for client mods' dynamic textures
-    /// (`dynamic_textures::DYNAMIC_TEXTURE_SLOTS` of each class, 10.5 MiB of texels) only when
-    /// `pool` says a client mod is loaded: a game without mods packs no slot
-    /// and its atlas does not grow. `game` is the game's own resources, without the packs: a
+    /// [`Self::build_over`] bounded by the renderer device's actual
+    /// `max_texture_dimension_2d` limit (`TextureAtlas.maxSupportedTextureSize` in vanilla 26.3).
+    /// `game` is the game's own resources, without the packs: a
     /// pack's core shader (text, block outline, sky, stars, lightmap) is one that differs from
     /// the game's, so a `root` given as its own `game` loads none.
-    pub fn build_over_with_dynamic_textures(
+    pub fn build_over_and_limit(
         root: &ResourceSource,
         defaults: &ResourceSource,
         game: &ResourceSource,
-        pool: bool,
-    ) -> Result<Self> {
-        Self::build_over_with_dynamic_textures_and_limit(root, defaults, game, pool, MAX_ATLAS_SIZE)
-    }
-    /// [`Self::build_over_with_dynamic_textures`] bounded by the renderer device's actual
-    /// `max_texture_dimension_2d` limit (`TextureAtlas.maxSupportedTextureSize` in vanilla 26.3).
-    pub fn build_over_with_dynamic_textures_and_limit(
-        root: &ResourceSource,
-        defaults: &ResourceSource,
-        game: &ResourceSource,
-        pool: bool,
         max_atlas_size: u32,
     ) -> Result<Self> {
-        let mut atlas = Self::pack(
-            root,
-            defaults,
-            WALKED_TEXTURE_FOLDERS,
-            true,
-            pool,
-            max_atlas_size,
-        )?;
-        atlas.dynamic_texture_pool =
-            dynamic_textures::Pool::take(&mut atlas.sprites, atlas.width, atlas.height);
+        let mut atlas = Self::pack(root, defaults, WALKED_TEXTURE_FOLDERS, true, max_atlas_size)?;
         pack_text::load_shaders(&mut atlas, root, game)?;
         atlas.sprite_modifiers = std::sync::Arc::new(sprite_modifiers::SpriteModifiers::read(
             root,
@@ -547,30 +497,20 @@ impl HudAtlas {
         Ok(atlas)
     }
     /// The packs' core shaders at `root` over the game's own resources `game`, as
-    /// [`Self::build_over_with_dynamic_textures`] loads them, for tests of the pipelines.
+    /// [`Self::build_over_and_limit`] loads them, for tests of the pipelines.
     #[cfg(test)]
     pub(crate) fn load_pack_shaders(&mut self, root: &ResourceSource, game: &ResourceSource) {
         pack_text::load_shaders(self, root, game).expect("the packs' required shaders");
     }
     /// Empty slots written at run time: map textures (game/blocks/maps/mod.rs),
-    /// client mods' dynamic textures (only with `pool`), downloaded skins, world
+    /// downloaded skins, world
     /// and pack icons and the on-screen keyboard's text. Their pixels are already zero in
     /// the destination atlas, so keep the source buffers empty and avoid duplicating the
     /// atlas-sized allocation during packing.
-    pub(super) fn slots(images: &mut Vec<PackedImage>, trim: (u32, u32), pool: bool) {
+    pub(super) fn slots(images: &mut Vec<PackedImage>, trim: (u32, u32)) {
         for i in 0..MAP_SLOTS {
             let name = map_slot_sprite(i).unwrap_or_default();
             images.push((name.into(), 128, 128, Vec::new()));
-        }
-        // The pool of client mods' dynamic textures, only when a client mod is loaded.
-        if pool {
-            let classes = mod_api::DYNAMIC_TEXTURE_CLASSES;
-            for (class, slots) in dynamic_textures::DYNAMIC_TEXTURE_SLOTS.iter().enumerate() {
-                for slot in 0..*slots {
-                    let (name, side) = (dynamic_textures::slot_sprite(class, slot), classes[class]);
-                    images.push((name, side, side, Vec::new()));
-                }
-            }
         }
         // Downloaded skins (game/interface/scoreboard/mod.rs).
         for i in 0..SKIN_SLOTS {
@@ -607,6 +547,7 @@ impl HudAtlas {
         };
         Ok(Self {
             pictures: Default::default(),
+            skin_origins: Vec::new(),
             revision: Self::next_revision(),
             pixels: Vec::new(),
             packed: None,
@@ -621,7 +562,6 @@ impl HudAtlas {
             registered_owners: HashMap::new(),
             registered_pages: Vec::new(),
             stitch_limit: None,
-            live: HashMap::new(),
             object_skins: HashMap::new(),
             object_skins_revision: Self::next_revision(),
             translucent: HashSet::new(),
@@ -646,7 +586,6 @@ impl HudAtlas {
             emissive: Arc::default(),
             blinks: Default::default(),
             white,
-            dynamic_texture_pool: None,
         })
     }
     /// The boot screen's atlas, before any pack loads: the theme's run-time
@@ -695,6 +634,7 @@ impl HudAtlas {
         let white = sprites["sunrise/white"];
         Self {
             pictures: Default::default(),
+            skin_origins: Vec::new(),
             revision: Self::next_revision(),
             font: crate::font::Font::load(
                 &crate::resource_source::ResourceSource::default(),
@@ -719,7 +659,6 @@ impl HudAtlas {
             registered_owners: HashMap::new(),
             registered_pages: Vec::new(),
             stitch_limit: None,
-            live: HashMap::new(),
             object_skins: HashMap::new(),
             object_skins_revision: Self::next_revision(),
             sprite_animations: Vec::new(),
@@ -741,7 +680,6 @@ impl HudAtlas {
             random_textures: Default::default(),
             emissive: Default::default(),
             blinks: Default::default(),
-            dynamic_texture_pool: None,
         }
     }
 }

@@ -288,24 +288,44 @@ impl GoalCx<'_, '_> {
         &self,
         entity: EntityRef,
         distance: f64,
+        include_fluids: bool,
     ) -> Option<mod_api::ClipHit> {
-        if !(distance.is_finite() && distance >= 0.0) {
+        if !distance.is_finite() {
             return None;
         }
         let mob = self.entity_mob(entity)?;
         let from = [mob.position.x, mob.eye_y(), mob.position.z];
-        let look = self.r_entity_view_vector(entity)?;
+        // LivingEntity.getViewYRot(1.0F) is head yaw, not body yaw.
+        let v = sunrise_world::view_direction::view_vector(mob.head_pitch, mob.head_yaw);
+        let look = [v.x, v.y, v.z];
         let to = std::array::from_fn(|i| from[i] + look[i] * distance);
         let level = self.r_entity_level(entity)?;
+        let fluids = if include_fluids {
+            mod_api::ClipFluid::Any
+        } else {
+            mod_api::ClipFluid::None
+        };
         mod_api::__private::backend_read(self.host, |backend| {
-            backend.level_clip(
-                level,
-                from,
-                to,
-                mod_api::ClipBlock::Outline,
-                mod_api::ClipFluid::None,
-            )
+            backend.level_clip(level, from, to, mod_api::ClipBlock::Outline, fluids)
         })
         .flatten()
     }
+}
+
+#[cfg(test)]
+pub(in crate::game) fn test_goal_pick(
+    game: &crate::game::Game<'_>,
+    mob: &mut Mob,
+    entity: EntityRef,
+    distance: f64,
+    include_fluids: bool,
+) -> Option<mod_api::ClipHit> {
+    let mut world = game.mob_world_base(&[]);
+    world.goal_host = Some(game);
+    let context = GoalCx {
+        m: mob,
+        w: &world,
+        host: game,
+    };
+    entity.pick(&context, distance, include_fluids)
 }

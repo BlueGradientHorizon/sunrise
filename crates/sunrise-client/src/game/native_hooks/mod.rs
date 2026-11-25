@@ -45,8 +45,8 @@ use mod_api::{
     InteractionAttempt, InteractionKey, ItemEntityRef, LifecycleContext, LivingRef, LoadConditions,
     NoteBlockChange, ParticleProviders, PathComputationType, Placement, PlayerRef,
     PoiTypeExtensions, RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget, ScreenWidgets,
-    ScreenshotImage, ServerReloadListeners, ServerTickPhase, SpecialModelRenderers, ToolUse,
-    VillagerProfessions,
+    ScreenshotImage, ServerReloadListeners, ServerTickPhase, ShaderPackState,
+    SpecialModelRenderers, ToolUse, VillagerProfessions,
 };
 use mod_api::{
     ActiveEffect, AttachmentStore, BlockClick, BlockUpdateFlags, BonemealSource, ChunkRef,
@@ -509,6 +509,7 @@ mod register_mob_parts;
 mod register_model_loaders;
 mod register_particle_groups;
 mod register_particle_providers;
+mod register_pipeline_modifiers;
 mod register_preset_editors;
 mod register_range_select_item_model_property;
 mod register_render_pipelines;
@@ -543,7 +544,7 @@ mod render_tooltip_gather_components;
 mod render_tooltip_pre;
 pub(in crate::game) mod render_tooltip_texture;
 mod render_view_transform;
-mod resolve_player_skin;
+pub(in crate::game) mod resolve_player_skin;
 mod respawn_position;
 mod right_click_empty;
 mod right_click_item;
@@ -585,6 +586,7 @@ mod stateful_block_entity;
 mod submit_custom_geometry;
 mod substitute_inline_images;
 mod supports_enchantment;
+mod survival_query_guard;
 mod sweep_attack;
 mod tags_updated;
 mod teleport_command;
@@ -609,4 +611,5 @@ pub(in crate::game) use bounce_restitution::install_block_contact_hooks;
 pub(in crate::game) use living_change_target::NativeHookHost;
 use mod_api::ModBlockEntity;
 pub(super) use sound_and_shader_helpers::sound_id;
+pub(in crate::game) use survival_query_guard::enter_query as enter_survival_query;
 include!("shared.rs");

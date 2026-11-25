@@ -374,6 +374,58 @@ pub trait RenderAssets {
     }
     /// Side: client.
     /// Published asset/data read: available in Setup, Reloading and World.
+    /// Resolve the handle of a built-in ([`BUILTIN_RENDER_TYPE_IDS`]) or registered custom
+    /// [`RenderSetup`] render type by ID once in `client_setup` and again in
+    /// `client_resources_reloaded`, not each frame. Returns [`RenderTypeError::Unknown`] for an
+    /// unregistered ID, or [`RenderTypeError::Invalid`] when a custom render type's underlying
+    /// optional pipeline failed to build in the current resource load.
+    fn render_type(&self, id: &Identifier) -> Result<RenderTypeRef, RenderTypeError> {
+        let _ = id;
+        unimplemented!("RenderAssets::render_type")
+    }
+    /// Side: client.
+    /// Published asset/data read: available in Setup, Reloading and World.
+    /// The render type `RenderTypes.entitySolid(texture)`: the built-in `minecraft:entity_solid`
+    /// drawing the dynamic texture `texture`, for `BlockEntityDrawContext::textured_quad`.
+    /// Memoized per texture as vanilla's is, so the same `texture` gives the same handle in one
+    /// resource load; resolve it once in `client_setup` and again in
+    /// `client_resources_reloaded`, not each frame. The texture need not exist yet: a draw asks
+    /// whether it does. Only `textured_quad` takes this handle; any other draw refuses it as
+    /// [`RenderTypeError::Unknown`].
+    fn entity_solid(&self, texture: &Identifier) -> Result<RenderTypeRef, RenderTypeError> {
+        let _ = texture;
+        unimplemented!("RenderAssets::entity_solid")
+    }
+    /// Side: client.
+    /// Published asset/data read: available in Setup, Reloading and World.
+    /// As [`Self::entity_solid`] for `RenderTypes.entityCutout(texture)`: texels under alpha 0.1
+    /// are discarded.
+    fn entity_cutout(&self, texture: &Identifier) -> Result<RenderTypeRef, RenderTypeError> {
+        let _ = texture;
+        unimplemented!("RenderAssets::entity_cutout")
+    }
+    /// Side: client.
+    /// Published asset/data read: available in Setup, Reloading and World.
+    /// As [`Self::entity_solid`] for `RenderTypes.entityTranslucent(texture)`: alpha blended,
+    /// depth written, quads sorted far to near.
+    fn entity_translucent(&self, texture: &Identifier) -> Result<RenderTypeRef, RenderTypeError> {
+        let _ = texture;
+        unimplemented!("RenderAssets::entity_translucent")
+    }
+    /// Side: client.
+    /// Published asset/data read: available in Setup, Reloading and World.
+    /// Resolve the handle of a registered pipeline modifier by ID once in `client_setup`
+    /// (also valid in `client_resources_reloaded`). `Unknown` for an ID no mod registered.
+    /// Modifiers are static across resource reloads.
+    fn pipeline_modifier(
+        &self,
+        id: &Identifier,
+    ) -> Result<PipelineModifierRef, RenderPipelineError> {
+        let _ = id;
+        unimplemented!("RenderAssets::pipeline_modifier")
+    }
+    /// Side: client.
+    /// Published asset/data read: available in Setup, Reloading and World.
     /// The keyframe animation `id`, from `assets/<namespace>/neoforge/animations/entity/<path>.json`
     /// in the mod's or a pack's resources (NeoForge's `Model.getAnimation`), as the latest resource
     /// load read it; `None` when no file gives it or the file failed to load. Get and
@@ -466,6 +518,18 @@ pub trait RenderAssets {
     fn shader_pack_block_id(&self, state: BlockState) -> Option<i32> {
         let _ = state;
         unimplemented!("RenderAssets::shader_pack_block_id")
+    }
+    /// Side: client.
+    /// Whether a shader pack is active and compiled a pack program for `pipeline`'s
+    /// [`PackBinding`], so the pack draws it (Iris's `DHCompatInternal.shouldOverride` and
+    /// `shouldOverrideShadow`; `incompatiblePack` is the opposite). `false` when no pack is
+    /// active (the title screen included), when `pipeline` is stale or invalid, and when the
+    /// pack has no matching program or the pipeline has no `PackBinding`: the engine then draws
+    /// the pipeline through the mod's own shaders. Read in the render callbacks, as the state
+    /// was at the start of the frame; [`ShaderPackState::generation`] says when to ask again.
+    fn pipeline_pack_bound(&self, pipeline: RenderPipelineRef) -> bool {
+        let _ = pipeline;
+        unimplemented!("RenderAssets::pipeline_pack_bound")
     }
 }
 

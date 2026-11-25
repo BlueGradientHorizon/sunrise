@@ -7,6 +7,7 @@ use sunrise_client::{
     lan::guest::Guest,
     server::{user_cache::UserCache, user_lists::NameAndId},
 };
+use sunrise_client_render::mod_pipelines::BuiltinRenderType;
 
 impl ClientSession for Game<'_> {
     fn client_server(&self) -> Option<ClientServer<'_>> {
@@ -192,11 +193,50 @@ impl RenderAssets for Game<'_> {
     fn render_pipeline(&self, id: &Identifier) -> Result<RenderPipelineRef, RenderPipelineError> {
         CallbackOwner::call_host(|| self.pack.render.render_pipeline(id))
     }
+    fn render_type(&self, id: &Identifier) -> Result<RenderTypeRef, RenderTypeError> {
+        CallbackOwner::call_host(|| self.pack.render.render_type(id))
+    }
+    fn entity_solid(&self, texture: &Identifier) -> Result<RenderTypeRef, RenderTypeError> {
+        CallbackOwner::call_host(|| {
+            self.pack
+                .render
+                .textured_render_type(BuiltinRenderType::EntitySolid, texture)
+        })
+    }
+    fn entity_cutout(&self, texture: &Identifier) -> Result<RenderTypeRef, RenderTypeError> {
+        CallbackOwner::call_host(|| {
+            self.pack
+                .render
+                .textured_render_type(BuiltinRenderType::EntityCutout, texture)
+        })
+    }
+    fn entity_translucent(&self, texture: &Identifier) -> Result<RenderTypeRef, RenderTypeError> {
+        CallbackOwner::call_host(|| {
+            self.pack
+                .render
+                .textured_render_type(BuiltinRenderType::EntityTranslucent, texture)
+        })
+    }
+    fn pipeline_modifier(
+        &self,
+        id: &Identifier,
+    ) -> Result<PipelineModifierRef, RenderPipelineError> {
+        CallbackOwner::call_host(|| self.pack.render.pipeline_modifier(id))
+    }
     fn animation(&self, id: &Identifier) -> Option<AnimationHolder> {
         CallbackOwner::call_host(|| self.pack.render.animation(id))
     }
     fn shader_pack_block_id(&self, state: BlockState) -> Option<i32> {
         let state = state.try_into_engine(&()).ok()?;
         CallbackOwner::call_host(|| self.active_block_state_id(state.0 as usize))
+    }
+    fn pipeline_pack_bound(&self, pipeline: RenderPipelineRef) -> bool {
+        CallbackOwner::call_host(|| {
+            self.pack
+                .render
+                .mod_pipelines
+                .slot(pipeline)
+                .is_ok_and(|slot| self.pack_slot_bound(slot as usize))
+        })
     }
 }

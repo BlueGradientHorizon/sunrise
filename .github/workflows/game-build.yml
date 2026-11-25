@@ -143,11 +143,11 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev
           dpkg-query -W libasound2-dev libudev-dev
-      - name: Build the official game, sunrise-ctl, sunrise-perf, sunrise-prepare, sunrise-server and sunrise-port-pack
+      - name: Build the official game, sunrise-ctl, sunrise-prepare, sunrise-server and sunrise-port-pack
         run: |
           cargo build --release --locked --timings ${{ matrix.target && format('--target {0}', matrix.target) || '' }} \
             -p sunrise-official --bin sunrise-official -p sunrise-client-lib --bin sunrise-ctl \
-            -p sunrise-perf --bin sunrise-perf -p sunrise-prepare --bin sunrise-prepare \
+            -p sunrise-prepare --bin sunrise-prepare \
             -p sunrise-server --bin sunrise-server -p sunrise-port-pack --bin sunrise-port-pack
       - name: The official game is the game players get, under its name
         # sunrise-official: sunrise-client's game with Sunrise's own parts plugged in (docs/layers.md, "How a
@@ -155,7 +155,7 @@ jobs:
         run: cp -f "$BIN/sunrise-official${{ matrix.exe }}" "$BIN/sunrise-client${{ matrix.exe }}"
       - name: Every program the release folder takes was built
         run: |
-          for binary in sunrise-client sunrise-ctl sunrise-perf sunrise-prepare sunrise-server sunrise-port-pack; do
+          for binary in sunrise-client sunrise-ctl sunrise-prepare sunrise-server sunrise-port-pack; do
             test -f "$BIN/$binary${{ matrix.exe }}" || { echo "::error::$BIN/$binary${{ matrix.exe }} is missing"; exit 1; }
           done
       - name: Verify Windows executable architecture
@@ -164,12 +164,12 @@ jobs:
         run: |
           python .workflow-tools/tools/check_pe_arch.py "${{ matrix.pe_arch }}" \
             "$BIN/sunrise-client${{ matrix.exe }}" "$BIN/sunrise-ctl${{ matrix.exe }}" \
-            "$BIN/sunrise-perf${{ matrix.exe }}" "$BIN/sunrise-prepare${{ matrix.exe }}" \
+            "$BIN/sunrise-prepare${{ matrix.exe }}" \
             "$BIN/sunrise-server${{ matrix.exe }}" "$BIN/sunrise-port-pack${{ matrix.exe }}"
       - name: Verify macOS executable architecture
         if: runner.os == 'macOS'
         run: |
-          for binary in sunrise-client sunrise-ctl sunrise-perf sunrise-prepare sunrise-server sunrise-port-pack; do
+          for binary in sunrise-client sunrise-ctl sunrise-prepare sunrise-server sunrise-port-pack; do
             actual=$(lipo -archs "$BIN/$binary")
             [[ "$actual" == arm64 ]] || { echo "::error::$binary is $actual, expected arm64"; exit 1; }
           done
@@ -186,7 +186,7 @@ jobs:
         env:
           MACOS_SIGN_IDENTITY: ${{ vars.MACOS_SIGN_IDENTITY }}
         run: |
-          for binary in sunrise-client sunrise-ctl sunrise-perf sunrise-prepare sunrise-server sunrise-port-pack; do
+          for binary in sunrise-client sunrise-ctl sunrise-prepare sunrise-server sunrise-port-pack; do
             entitlements=()
             if [[ "$binary" == sunrise-client ]]; then
               entitlements=(--entitlements packaging/macos/game-entitlements.plist)
@@ -208,7 +208,7 @@ jobs:
         # Windows: no non-system DLL (a "DLL not found" dialog on some players' machines). Linux: the standard
         # loader and libraries every desktop distribution has. macOS: only the system's own libraries.
         run: |
-          for binary in sunrise-client sunrise-ctl sunrise-perf sunrise-prepare sunrise-server sunrise-port-pack; do
+          for binary in sunrise-client sunrise-ctl sunrise-prepare sunrise-server sunrise-port-pack; do
             file="$BIN/$binary${{ matrix.exe }}"
             if [[ "$RUNNER_OS" == macOS ]]; then
               others=$(otool -L "$file" | tail -n +2 | awk '{print $1}' | grep -v -E '^(/usr/lib/|/System/Library/)' || true)
@@ -225,19 +225,18 @@ jobs:
           set -euo pipefail
           rustup component add llvm-tools
           ${{ runner.os == 'Windows' && 'python' || 'python3' }} tools/check_cpu_baseline.py \
-            $(for binary in sunrise-client sunrise-ctl sunrise-perf sunrise-prepare sunrise-server sunrise-port-pack; do echo "$BIN/$binary${{ matrix.exe }}"; done)
+            $(for binary in sunrise-client sunrise-ctl sunrise-prepare sunrise-server sunrise-port-pack; do echo "$BIN/$binary${{ matrix.exe }}"; done)
       - name: Linux glibc baseline (Ubuntu 22.04)
         if: runner.os == 'Linux'
         run: |
           python3 .workflow-tools/tools/check_glibc.py \
-            "$BIN/sunrise-client" "$BIN/sunrise-ctl" "$BIN/sunrise-perf" "$BIN/sunrise-prepare" "$BIN/sunrise-server" "$BIN/sunrise-port-pack"
+            "$BIN/sunrise-client" "$BIN/sunrise-ctl" "$BIN/sunrise-prepare" "$BIN/sunrise-server" "$BIN/sunrise-port-pack"
       - name: Every program starts
         run: |
           set -euo pipefail
           bin=$BIN
           "$bin/sunrise-client${{ matrix.exe }}" --help | grep -q -- '--resources'
           "$bin/sunrise-ctl${{ matrix.exe }}" --help > /dev/null
-          "$bin/sunrise-perf${{ matrix.exe }}" --help | grep -q -- 'sunrise-perf summary'
           "$bin/sunrise-prepare${{ matrix.exe }}" --help | grep -q -- '--minecraft-dir'
           # The version is the release's.
           for binary in sunrise-prepare sunrise-server sunrise-port-pack; do
@@ -278,7 +277,7 @@ jobs:
         # A zip of programs can't be stapled: Gatekeeper asks Apple the first time each one runs.
         if: runner.os == 'macOS' && vars.MACOS_SIGN_IDENTITY != '' && inputs.developer_id
         run: |
-          for binary in sunrise-client sunrise-ctl sunrise-perf sunrise-prepare sunrise-server sunrise-port-pack; do
+          for binary in sunrise-client sunrise-ctl sunrise-prepare sunrise-server sunrise-port-pack; do
             codesign --verify --strict "dist/${{ matrix.dir }}/$binary"
           done
           packaging/macos/notarize.sh "dist/${{ matrix.asset }}"
