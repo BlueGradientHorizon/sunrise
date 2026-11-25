@@ -514,6 +514,7 @@ impl ApplicationHandler for Game<'_> {
         self.previous = Instant::now();
     }
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+        self.apply_pointer_grab_request();
         let key = if self.window.as_ref().is_some_and(|w| w.id() == id)
             && !self.scripted_run()
             && !self.unclaimed_window
@@ -551,6 +552,7 @@ impl ApplicationHandler for Game<'_> {
         }
     }
     fn device_event(&mut self, event_loop: &ActiveEventLoop, _: DeviceId, event: DeviceEvent) {
+        self.apply_pointer_grab_request();
         // Offscreen runs do not use native pointer motion.
         if self.pending_save.is_none()
             && !self.scripted_run()
@@ -558,25 +560,20 @@ impl ApplicationHandler for Game<'_> {
             && self.captured
             && self.focused
             && !self.options.offscreen
-            && self.screen == Screen::Playing
+            && (self.screen == Screen::Playing || self.mod_screen_grabs_pointer())
             && let DeviceEvent::MouseMotion { delta: (x, y) } = event
         {
-            if self.pad_radial_captures() {
+            if !self.mod_screen_grabs_pointer() && self.pad_radial_captures() {
                 return;
             }
             if x != 0.0 || y != 0.0 {
                 self.pad_yield_input(event_loop);
             }
-            // MouseHandler.onMove with the pointer grabbed; applied once per frame.
-            self.note_input(
-                input_trace::InputOrigin::User,
-                input_trace::TraceKind::Motion { x, y },
-            );
-            self.mouse.on_move(0.0, 0.0, x, y, true, true);
-            self.last_input = Instant::now();
+            self.grabbed_pointer_motion([x, y]);
         }
     }
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        self.apply_pointer_grab_request();
         // Every event-loop pass, drawn or not: a window that stops redrawing (a lost
         // device, an occluded window) must still end after a server crash.
         self.exit_after_server_crash();

@@ -58,7 +58,7 @@ sunrise-java-properties = { path = "../sunrise-java-properties", optional = true
 sunrise-shaders = { path = "../sunrise-shaders", optional = true }
 sunrise-friends = { path = "../sunrise-friends", optional = true }
 sunrise-narrator = { path = "../sunrise-narrator", optional = true }
-sunrise-mod-package = { path = "../sunrise-mod-package", default-features = false, features = ["index-read", "runtime-process"], optional = true }
+sunrise-mod-package = { path = "../sunrise-mod-package", default-features = false, features = ["index-read", "runtime-process", "folder"], optional = true }
 wgpu = { version = "30.0.1", default-features = false, features = ["std", "parking_lot", "vulkan", "metal", "wgsl", "naga-ir"], optional = true }
 winit = { version = "0.30.13", optional = true }
 pollster = { version = "0.4", optional = true }
