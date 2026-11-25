@@ -80,6 +80,9 @@ pub struct DamageHooks {
     pub knockback: Option<fn(DamageLevel<'_>, Hurting<'_>, &mut Knock) -> bool>,
     /// `LivingUseTotemEvent` for one eligible stack. True refuses this hand only.
     pub totem: Option<fn(DamageLevel<'_>, Hurting<'_>, mod_api::Hand, &ItemStack) -> bool>,
+    /// `native_living_death_protection`: a protector a mod keeps outside the hands, asked once
+    /// neither hand protected. The game takes the stack from nowhere.
+    pub protector: Option<fn(DamageLevel<'_>, Hurting<'_>) -> Option<ItemStack>>,
     /// `native_living_shield_block`: `LivingEntity.applyItemBlocking` of a hit with damage,
     /// for what it hurts, the damage and whether vanilla blocks. It may change the
     /// [`ShieldBlock`].
@@ -97,6 +100,7 @@ impl DamageHooks {
         owner_post_listened: None,
         knockback: None,
         totem: None,
+        protector: None,
         shield: None,
         accepted: None,
     };
@@ -1124,7 +1128,9 @@ pub struct DamageCompletion {
 /// The hand and original stack accepted by `checkTotemDeathProtection`.
 #[derive(Clone, Debug)]
 pub struct PlayerProtection {
-    pub hand: mod_api::Hand,
+    /// The hand it is used up from; None for a mod's protector from outside the hands
+    /// (`living_death_protection`), which the game takes from nowhere.
+    pub hand: Option<mod_api::Hand>,
     pub stack: ItemStack,
 }
 
@@ -1361,6 +1367,15 @@ impl<'a> DamageLevel<'a> {
         self.hooks
             .totem
             .is_some_and(|hook| hook(self.without_views(), hurting, hand, stack))
+    }
+    /// [`DamageHooks::protector`]'s answer once neither hand protected `hurting`: a stack with
+    /// `death_protection`, else nothing.
+    pub(crate) fn mod_protector(&mut self, hurting: Hurting<'_>) -> Option<ItemStack> {
+        let stack = self
+            .hooks
+            .protector
+            .and_then(|hook| hook(self.without_views(), hurting))?;
+        self.death_protection(&stack).is_some().then_some(stack)
     }
     /// Whether this level belongs to a logical server `Game` whose hooks
     /// apply mob death-protection and effect additions through the owning loop.
@@ -3032,13 +3047,17 @@ impl HurtWorld for Environment<'_> {
                     .totem_canceled(Hurting::Player(self.entity, source), hand, stack)
             {
                 self.protection = Some(PlayerProtection {
-                    hand,
+                    hand: Some(hand),
                     stack: stack.clone(),
                 });
                 return Ok(true);
             }
         }
-        Ok(false)
+        let protector = self
+            .level
+            .mod_protector(Hurting::Player(self.entity, source));
+        self.protection = protector.map(|stack| PlayerProtection { hand: None, stack });
+        Ok(self.protection.is_some())
     }
     #[inline]
     fn death_sound(&mut self, _: &mut State) -> io::Result<()> {

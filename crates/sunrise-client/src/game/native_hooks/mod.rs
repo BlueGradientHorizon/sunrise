@@ -374,6 +374,7 @@ mod living_damage_pre;
 mod living_death;
 mod living_death_message;
 mod living_death_post;
+mod living_death_protection;
 mod living_destroy_block;
 mod living_drops;
 mod living_experience_drop;

@@ -5467,23 +5467,29 @@ impl Mob {
         if source.kind.bypasses_invulnerability() {
             return None;
         }
-        let (slot, protector, effects) =
-            crate::health::PROTECTION_HANDS
-                .into_iter()
-                .find_map(|(hand, slot)| {
-                    let stack = self.extra.slot_stack(slot)?;
-                    let effects = level.death_protection(stack)?;
-                    if level.totem_canceled(crate::health::Hurting::Mob(self, source), hand, stack)
-                    {
-                        return None;
-                    }
-                    Some((slot, stack.clone(), effects.to_vec()))
-                })?;
-        let cell = &mut self.extra.equipment[slot];
-        *cell = cell.take().and_then(|mut remaining| {
-            remaining.count -= 1;
-            (remaining.count > 0).then_some(remaining)
-        });
+        let in_hand = crate::health::PROTECTION_HANDS
+            .into_iter()
+            .find_map(|(hand, slot)| {
+                let stack = self.extra.slot_stack(slot)?;
+                let effects = level.death_protection(stack)?;
+                if level.totem_canceled(crate::health::Hurting::Mob(self, source), hand, stack) {
+                    return None;
+                }
+                Some((Some(slot), stack.clone(), effects.to_vec()))
+            });
+        // Then a mod's protector from outside the hands, which nothing here uses up.
+        let (slot, protector, effects) = in_hand.or_else(|| {
+            let stack = level.mod_protector(crate::health::Hurting::Mob(self, source))?;
+            let effects = level.death_protection(&stack)?.to_vec();
+            Some((None, stack, effects))
+        })?;
+        if let Some(slot) = slot {
+            let cell = &mut self.extra.equipment[slot];
+            *cell = cell.take().and_then(|mut remaining| {
+                remaining.count -= 1;
+                (remaining.count > 0).then_some(remaining)
+            });
+        }
         self.health = 1.0;
         if level.defers_death_protection_effects() {
             return Some((protector, effects));
