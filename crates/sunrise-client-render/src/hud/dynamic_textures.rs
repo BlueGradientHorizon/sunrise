@@ -177,17 +177,18 @@ impl DynamicTextures {
     ) -> Result<(), DynamicTextureError> {
         let (_, max) = self.bound.ok_or(DynamicTextureError::Unavailable)?;
         let image = self.owned_image(owner, id)?;
+        let (handle, extent) = (image.handle, image.size);
         checked(size, rgba.len(), max)?;
         let inside = |axis: usize| {
             origin[axis]
                 .checked_add(size[axis])
-                .is_some_and(|end| end <= image.size[axis])
+                .is_some_and(|end| end <= extent[axis])
         };
         if !(inside(0) && inside(1)) {
             return Err(DynamicTextureError::OutOfBounds);
         }
         self.queue.push(Command::Write {
-            handle: image.handle,
+            handle,
             origin,
             size,
             rgba: rgba.to_vec(),
@@ -341,6 +342,11 @@ impl Store {
         for command in commands {
             match command {
                 Command::Create { handle, size, rgba } => {
+                    // The sides were checked against the device's limit when the call was made; a
+                    // failure the device still reports is logged and leaves no texture, so a later
+                    // draw shows the missing texture.
+                    let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
+                    let out_of_memory = device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
                     let texture = device.create_texture(&wgpu::TextureDescriptor {
                         label: Some("Dynamic texture"),
                         size: wgpu::Extent3d {
@@ -357,6 +363,13 @@ impl Store {
                             | wgpu::TextureUsages::COPY_SRC,
                         view_formats: &[],
                     });
+                    let failed = pollster::block_on(out_of_memory.pop())
+                        .or(pollster::block_on(validation.pop()));
+                    if let Some(error) = failed {
+                        log::warn!("dynamic texture {handle} was not created: {error}");
+                        textures.remove(handle);
+                        continue;
+                    }
                     uploads.texture(encoder, texture.as_image_copy(), size[0], size[1], rgba);
                     let view = texture.create_view(&Default::default());
                     textures.insert(

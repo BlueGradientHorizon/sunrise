@@ -156,7 +156,7 @@ fn every_blit_blend_draws_with_its_blend() {
 }
 
 #[test]
-fn paints_gui_packed_live_and_registered_atlas_sprites_from_separate_lookups() {
+fn paints_gui_packed_and_registered_atlas_sprites_from_separate_lookups() {
     let root = std::env::temp_dir().join(format!("sunrise-layout-atlases-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     let sheet = root.join("assets/demo/textures/item");
@@ -192,7 +192,7 @@ fn paints_gui_packed_live_and_registered_atlas_sprites_from_separate_lookups() {
             {"type":"minecraft:filter","pattern":{"namespace":"demo","path":"item/modeled"}}]}"#,
     )
     .unwrap();
-    let mut atlas = HudAtlas::build(&crate::resource_source::ResourceSource::directory(
+    let atlas = HudAtlas::build(&crate::resource_source::ResourceSource::directory(
         root.clone(),
     ))
     .unwrap();

@@ -404,7 +404,10 @@ impl HudRenderer {
             {
                 continue;
             }
-            self.pictures.entry(picture.id).or_insert_with(|| {
+            if self.pictures.contains_key(&picture.id) {
+                continue;
+            }
+            let entry = {
                 let texture = device.create_texture(&wgpu::TextureDescriptor {
                     label: Some("GUI picture"),
                     size: wgpu::Extent3d {
@@ -430,7 +433,8 @@ impl HudRenderer {
                 let sampler = device.create_sampler(&sampler(picture.flags));
                 let group = self.picture_group(device, &view, &sampler);
                 (picture.clone(), group)
-            });
+            };
+            self.pictures.insert(picture.id, entry);
         }
     }
 }

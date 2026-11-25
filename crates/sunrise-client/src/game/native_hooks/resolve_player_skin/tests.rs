@@ -119,11 +119,13 @@ fn live_skin_selection_reaches_the_hand_body_and_preview_and_restores_vanilla() 
                 assert!(!vanilla_hand.is_empty(), "the vanilla arm draws");
                 choice.lock().unwrap().selection =
                     Some(PlayerSkinOverride::new(wide.clone(), PlayerModel::Wide));
-                assert_eq!(draw(game, &skin_slot_name(game, &wide)).0, vanilla_hand);
+                let wide_name = skin_slot_name(game, &wide);
+                assert_eq!(draw(game, &wide_name).0, vanilla_hand);
 
                 choice.lock().unwrap().selection =
                     Some(PlayerSkinOverride::new(slim.clone(), PlayerModel::Slim));
-                let slim_hand = draw(game, &skin_slot_name(game, &slim)).0;
+                let slim_name = skin_slot_name(game, &slim);
+                let slim_hand = draw(game, &slim_name).0;
                 assert!(!slim_hand.is_empty(), "the new texture draws on the arm");
                 assert_ne!(
                     slim_hand, vanilla_hand,
@@ -132,7 +134,7 @@ fn live_skin_selection_reaches_the_hand_body_and_preview_and_restores_vanilla() 
 
                 game.apply_camera_type(CameraType::ThirdPersonBack);
                 game.screen = Screen::Inventory;
-                let (_, body, preview) = draw(game, &skin_slot_name(game, &slim));
+                let (_, body, preview) = draw(game, &slim_name);
                 assert!(body, "the world avatar uses the selection");
                 assert!(preview, "the inventory avatar uses that same selection");
 
