@@ -326,28 +326,28 @@ mod tests {
         mod_platform::testing::with_mods(mods.into(), || {
             let mut manager = ToastManager::default();
             notice(&mut manager, "shown");
-            manager.update(1.0);
+            manager.update(ToastClock::Real, 1.0);
             assert_eq!(manager.visible.len(), 1);
 
             assert!(!manager.hold(None, true));
             assert!(manager.hold(Some("first"), true));
             assert!(manager.hold(Some("second"), true));
             notice(&mut manager, "waits");
-            manager.update(1.0);
+            manager.update(ToastClock::Real, 1.0);
             assert_eq!((manager.visible.len(), manager.queued.len()), (1, 1));
 
             assert!(manager.hold(Some("first"), false));
-            manager.update(1.0);
+            manager.update(ToastClock::Real, 1.0);
             assert_eq!((manager.visible.len(), manager.queued.len()), (1, 1));
 
             assert!(manager.hold(Some("second"), false));
-            manager.update(1.0);
+            manager.update(ToastClock::Real, 1.0);
             assert_eq!((manager.visible.len(), manager.queued.len()), (2, 0));
 
             // An unknown (or disabled) mod's hold holds nothing.
             assert!(manager.hold(Some("gone"), true));
             notice(&mut manager, "unheld");
-            manager.update(1.0);
+            manager.update(ToastClock::Real, 1.0);
             assert_eq!((manager.visible.len(), manager.queued.len()), (3, 0));
         });
     }

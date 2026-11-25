@@ -75,6 +75,7 @@ pub(super) fn with_crate(test: impl FnOnce(&mut Game<'_>, mod_api::BlockEntityRe
         let types = sunrise_client::block_entity_types::BlockEntityTypes::new(
             [(BLOCK.to_owned(), ENTITY.to_owned())].into(),
             vec![ENTITY.to_owned()],
+            [ENTITY.to_owned()],
         );
         sunrise_client::block_entity_types::install(types).unwrap();
         let settings = Settings::default();
@@ -127,7 +128,7 @@ pub(super) fn with_crate(test: impl FnOnce(&mut Game<'_>, mod_api::BlockEntityRe
         game.ensure_datapacks();
         game.set_allow_commands(true);
         game.native_lifecycle
-            .begin_open(mod_api::Authority::IntegratedServer);
+            .begin_open(Some(mod_api::Authority::IntegratedServer));
         game.options.dedicated = Some(Vec::new());
         let level = game.level("minecraft:overworld").unwrap();
         let handle = game.block_entity(level, POS).unwrap();
@@ -167,7 +168,7 @@ fn quiet_case() {
             !game.world.block_log.as_ref().unwrap().contains(&KEY),
             "nothing is sent yet"
         );
-        game.block_entity_sync(POS);
+        game.block_entity_sync(handle).unwrap();
         assert!(game.world.block_log.as_ref().unwrap().contains(&KEY));
 
         game.world.block_log.as_mut().unwrap().clear();
