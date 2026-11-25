@@ -310,10 +310,13 @@ These read the local player as the client sees it. They take no mod-controlled n
   changes as skins download; `None` outside a world.
 - `ClientHost::client_session().client_titles()` is the title, subtitle and action bar on screen
   now: `ClientTitles { title, subtitle, action_bar }`. Each is `None` once its timer has run out,
-  and the subtitle shows only with a title. It is `None` outside a world.
-- `ClientHost::client_session().client_boss_bars()` is the boss bars the window shows, in the
-  order the server added them: `Vec<ClientBossBarEntry>` with each bar's `name` and `progress`
-  (0 to 1, as drawn). It is `None` outside a world.
+  and the subtitle shows only with a title. It is `Ok(None)` outside a world; a text conversion
+  error is returned for the failing read, never plain words.
+- `ClientHost::client_session().client_boss_bars()` is every boss bar the client holds, in
+  server order: `Vec<ClientBossBarEntry>` with each bar's `name` and `progress`
+  (0 to 1, as drawn). The HUD draws only those that fit within `guiHeight / 3`.
+  It is `Ok(None)` outside a world; a text conversion error is returned
+  for the failing read, never plain words.
 - `ClientHost::local_item_use()` reports ordinary item use: `ItemUse { hand, ticks_used, ticks_remaining }`
   (`isUsingItem`, `getUsedItemHand`, `getTicksUsingItem`, `getUseItemRemainingTicks`).
   `ticks_used + ticks_remaining` is the use duration. It is `None` when no item is in use or no world

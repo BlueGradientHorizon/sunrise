@@ -5,11 +5,19 @@ use core::ops::ControlFlow;
 
 /// Why a client-session read could not run.
 // no wire: this refusal is returned by in-process client-session reads.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ClientSessionReadError {
     /// The current phase or backend does not allow this read.
     Unavailable,
+    /// A text in the read could not be carried to the API (`TextFormError`).
+    Text(TextFormError),
+}
+
+impl From<TextFormError> for ClientSessionReadError {
+    fn from(error: TextFormError) -> Self {
+        Self::Text(error)
+    }
 }
 
 impl crate::NoBackend for ClientSessionReadError {

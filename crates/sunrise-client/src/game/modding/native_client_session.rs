@@ -5,7 +5,7 @@ use core::ops::ControlFlow;
 #[cfg(test)]
 use mod_api::prelude::*;
 use mod_api::{
-    BlockBreakingState, BlockPos, ClientFrameStats, ClientServer,
+    BlockBreakingState, BlockPos, ClientFrameStats, ClientServer, ClientSessionReadError,
     ClientTabList, ClientTabListEntry, GameMode, PlayerRef, Text, TextFormError,
 };
 use std::sync::Arc;
@@ -138,43 +138,48 @@ impl Game<'_> {
 
     /// The title, subtitle and action bar on screen now: a title or action bar whose time has
     /// run out reads as None, and a subtitle shows only with its title. None outside a
-    /// logged-in client world.
-    pub(super) fn native_client_titles(&self) -> Option<mod_api::ClientTitles> {
-        use super::api_values::TryIntoApi;
-        self.native_session()?;
+    /// logged-in client world. A text the API cannot carry is returned as an error, never
+    /// as plain words.
+    pub(super) fn native_client_titles(
+        &self,
+    ) -> Result<Option<mod_api::ClientTitles>, ClientSessionReadError> {
+        if self.native_session().is_none() {
+            return Ok(None);
+        }
         let t = &self.titles;
-        // A text too deep for the API reads as its plain words rather than dropping the read.
-        let text = |text: &sunrise_client::text::Text| {
-            text.try_into_api()
-                .unwrap_or_else(|_| mod_api::Text::literal(text.plain()))
-        };
         let title = t.title.clone().filter(|_| t.time > 0);
         let subtitle = title.as_ref().and(t.subtitle.clone());
         let action_bar = t.overlay.clone().filter(|_| t.overlay_time > 0);
-        Some(mod_api::ClientTitles::new(
-            title.as_ref().map(&text),
-            subtitle.as_ref().map(&text),
-            action_bar.as_ref().map(text),
-        ))
+        let text = |text: &sunrise_client::text::Text| text.try_into_api();
+        Ok(Some(mod_api::ClientTitles::new(
+            title.as_ref().map(text).transpose()?,
+            subtitle.as_ref().map(text).transpose()?,
+            action_bar.as_ref().map(text).transpose()?,
+        )))
     }
 
-    /// The boss bars the window shows, in the order the server added them. None outside a
-    /// logged-in client world.
-    pub(super) fn native_client_boss_bars(&self) -> Option<Vec<mod_api::ClientBossBarEntry>> {
-        use super::api_values::TryIntoApi;
-        self.native_session()?;
-        // A text too deep for the API reads as its plain words rather than dropping the bar.
-        let text = |text: &sunrise_client::text::Text| {
-            text.try_into_api()
-                .unwrap_or_else(|_| mod_api::Text::literal(text.plain()))
-        };
-        Some(
-            self.boss_overlay
-                .bars(sunrise_client::boss_overlay::now_millis())
-                .into_iter()
-                .map(|bar| mod_api::ClientBossBarEntry::new(text(&bar.name), bar.progress))
-                .collect(),
-        )
+    /// Every boss bar the client holds, in server order. The HUD draws only those that fit
+    /// within `guiHeight / 3`. None outside a
+    /// logged-in client world. A text the API cannot carry is returned as an error, never
+    /// as plain words.
+    pub(super) fn native_client_boss_bars(
+        &self,
+    ) -> Result<Option<Vec<mod_api::ClientBossBarEntry>>, ClientSessionReadError> {
+        if self.native_session().is_none() {
+            return Ok(None);
+        }
+        let bars = self
+            .boss_overlay
+            .bars(sunrise_client::boss_overlay::now_millis())
+            .into_iter()
+            .map(|bar| {
+                Ok(mod_api::ClientBossBarEntry::new(
+                    bar.name.try_into_api()?,
+                    bar.progress,
+                ))
+            })
+            .collect::<Result<Vec<_>, ClientSessionReadError>>()?;
+        Ok(Some(bars))
     }
 
     pub(super) fn native_local_status(&self, player: PlayerRef) -> Option<()> {
@@ -330,6 +335,18 @@ pub(super) mod tests {
     use sunrise_client::scoreboard::tag_to_json;
     use sunrise_core::nbt::Tag;
 
+    /// Plain text of a display value: the literal words plus the children's, in order.
+    fn plain(text: &Text) -> String {
+        let own = match &text.content {
+            mod_api::text::TextContent::Literal(words) => words.as_str(),
+            _ => "",
+        };
+        text.children
+            .iter()
+            .map(plain)
+            .fold(own.to_owned(), |all, c| all + &c)
+    }
+
     /// The Tab overlay's borrowed rows, order, cap and rich names.
     #[test]
     fn the_tab_list_reads_as_the_overlay_draws_it() {
@@ -352,16 +369,6 @@ pub(super) mod tests {
         let mut wrapping = TabPlayer::new(5, "Wrap");
         wrapping.list_order = i32::MIN;
         let players = [watcher, named, teamed, first, wrapping];
-        fn plain(text: &Text) -> String {
-            let own = match &text.content {
-                mod_api::text::TextContent::Literal(words) => words.as_str(),
-                _ => "",
-            };
-            text.children
-                .iter()
-                .map(plain)
-                .fold(own.to_owned(), |all, c| all + &c)
-        }
         let mut names = Vec::new();
         assert_eq!(
             visit_tab_entries(&players, &board, &mut |row| {
@@ -921,27 +928,19 @@ pub(super) mod tests {
             Tag::String(text.into())
         }
 
-        fn plain(text: &mod_api::Text) -> String {
-            let own = match &text.content {
-                mod_api::text::TextContent::Literal(words) => words.as_str(),
-                _ => "",
-            };
-            text.children
-                .iter()
-                .map(plain)
-                .fold(own.to_owned(), |all, c| all + &c)
-        }
-
         with_client_game(|game| {
-            assert_eq!(game.client_session().client_titles(), None);
-            assert_eq!(game.client_session().client_boss_bars(), None);
+            assert!(matches!(game.client_session().client_titles(), Ok(None)));
+            assert!(matches!(game.client_session().client_boss_bars(), Ok(None)));
             let _server = logged_client(game);
             // Nothing shown yet: an empty snapshot, not None.
-            let titles = game.client_session().client_titles().unwrap();
+            let titles = game.client_session().client_titles().unwrap().unwrap();
             assert!(titles.title.is_none());
             assert!(titles.subtitle.is_none());
             assert!(titles.action_bar.is_none());
-            assert_eq!(game.client_session().client_boss_bars(), Some(Vec::new()));
+            assert_eq!(
+                game.client_session().client_boss_bars(),
+                Ok(Some(Vec::new()))
+            );
 
             // Titles and an action bar.
             game.handle_packet(C::SetSubtitleText(play::Text { text: s("sub") }))
@@ -951,6 +950,7 @@ pub(super) mod tests {
                 game.client_session()
                     .client_titles()
                     .unwrap()
+                    .unwrap()
                     .subtitle
                     .is_none()
             );
@@ -958,35 +958,51 @@ pub(super) mod tests {
                 .unwrap();
             game.handle_packet(C::SetActionBarText(play::Text { text: s("bar") }))
                 .unwrap();
-            let titles = game.client_session().client_titles().unwrap();
+            let titles = game.client_session().client_titles().unwrap().unwrap();
             assert_eq!(titles.title.as_ref().map(plain).as_deref(), Some("big"));
             assert_eq!(titles.subtitle.as_ref().map(plain).as_deref(), Some("sub"));
             assert_eq!(
                 titles.action_bar.as_ref().map(plain).as_deref(),
                 Some("bar")
             );
-            game.titles.clear();
-            game.titles.overlay_time = 0;
-            let titles = game.client_session().client_titles().unwrap();
-            assert!(titles.title.is_none() && titles.action_bar.is_none());
+            // The timers run out through the game's own tick: the action bar's 60 ticks
+            // end first, the title's 10 + 70 + 20 after them.
+            for _ in 0..60 {
+                game.titles.tick();
+            }
+            let titles = game.client_session().client_titles().unwrap().unwrap();
+            assert!(titles.action_bar.is_none());
+            assert!(titles.title.is_some());
+            for _ in 0..40 {
+                game.titles.tick();
+            }
+            let titles = game.client_session().client_titles().unwrap().unwrap();
+            assert!(titles.title.is_none());
+            assert!(titles.subtitle.is_none());
+            assert!(titles.action_bar.is_none());
 
-            // A boss bar.
-            game.handle_packet(C::BossEvent(play::BossEvent {
-                id: 1,
-                action: play::BossAction::Add {
-                    name: s("Dragon"),
-                    progress: 0.5,
-                    color: 5,
-                    overlay: 0,
-                    darken: false,
-                    music: false,
-                    fog: false,
-                },
-            }))
-            .unwrap();
-            let bars = game.client_session().client_boss_bars().unwrap();
-            assert_eq!(bars.len(), 1);
+            // Boss bars, in the order the server added them, with their progress.
+            for (id, name, progress) in [(1u128, "Dragon", 0.5f32), (2u128, "Wither", 0.25f32)] {
+                game.handle_packet(C::BossEvent(play::BossEvent {
+                    id,
+                    action: play::BossAction::Add {
+                        name: s(name),
+                        progress,
+                        color: 5,
+                        overlay: 0,
+                        darken: false,
+                        music: false,
+                        fog: false,
+                    },
+                }))
+                .unwrap();
+            }
+            let bars = game.client_session().client_boss_bars().unwrap().unwrap();
+            assert_eq!(bars.len(), 2);
             assert_eq!(plain(&bars[0].name), "Dragon");
+            assert_eq!(bars[0].progress, 0.5);
+            assert_eq!(plain(&bars[1].name), "Wither");
+            assert_eq!(bars[1].progress, 0.25);
         });
     }
 
