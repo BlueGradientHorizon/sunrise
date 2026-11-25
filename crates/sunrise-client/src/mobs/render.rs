@@ -53,6 +53,17 @@ pub trait RenderDataSource {
     fn variants(&self) -> Option<&super::variants::VariantTables> {
         None
     }
+    /// `PiglinAi.isLovedItem`: whether `item` is in `#minecraft:piglin_loved` of the tags the
+    /// game plays with (on a client, the server's). False for a source without item tags.
+    fn piglin_loves(&self, _item: &str) -> bool {
+        false
+    }
+}
+
+impl std::fmt::Debug for dyn RenderDataSource + '_ {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("RenderDataSource")
+    }
 }
 
 impl RenderDataSource for MobData {
@@ -1809,7 +1820,7 @@ pub fn cape(
     let Some(model) = m.kind.layer("player#cape") else {
         return;
     };
-    let s = anim::state(m, alpha).observed(m, data.humanoid_setup());
+    let s = anim::state(m, alpha).drawn_from(m, data);
     let mut poses = Poses::new(model);
     anim::setup(m, &s, &mut poses, &data.mob_data().animations);
     let a = f64::from(alpha);
@@ -1854,7 +1865,7 @@ pub fn ears(
     let Some(model) = m.kind.layer("player#ears") else {
         return;
     };
-    let s = anim::state(m, alpha).observed(m, data.humanoid_setup());
+    let s = anim::state(m, alpha).drawn_from(m, data);
     let mut poses = Poses::new(model);
     anim::setup(m, &s, &mut poses, &data.mob_data().animations);
     // LivingEntityRenderer.getOverlayCoords(state, 0.0F).
@@ -1930,7 +1941,7 @@ pub fn stuck_in_body(
         return;
     }
     let base = base_transform(m, alpha, camera);
-    let s = anim::state(m, alpha).observed(m, data.humanoid_setup());
+    let s = anim::state(m, alpha).drawn_from(m, data);
     let (model_key, _) = body(m);
     let model = m
         .kind
@@ -2174,7 +2185,7 @@ fn posed_body(
     alpha: f32,
     data: &dyn RenderDataSource,
 ) -> (std::sync::Arc<Part>, Poses, Vec<(String, String, [f32; 3])>) {
-    let s = anim::state(m, alpha).observed(m, data.humanoid_setup());
+    let s = anim::state(m, alpha).drawn_from(m, data);
     let (model_key, _) = body(m);
     let cem = data
         .mob_data()
@@ -2285,7 +2296,7 @@ fn render_selected(
     let equipment = data.equipment_layers(m);
     let extra = if layers_shown(m) { extra } else { &[] };
     let overlay = u32::from(red_overlay(m));
-    let s = anim::state(m, alpha).observed(m, data.humanoid_setup());
+    let s = anim::state(m, alpha).drawn_from(m, data);
     let cem = &body.cem;
     let body_model = body.model();
     // OptiFine random textures and ETF blinking: the sprite a texture draws with instead, when
@@ -2923,7 +2934,7 @@ fn fox_item_transform(
     data: &dyn RenderDataSource,
 ) -> glam::Mat4 {
     use glam::{Mat4, Vec3};
-    let s = anim::state(m, alpha).observed(m, data.humanoid_setup());
+    let s = anim::state(m, alpha).drawn_from(m, data);
     let (model, mut poses, anchors) = posed_body(m, alpha, data);
     let head = *poses.get("head");
     let fox = super::fox::pose(m, alpha);
@@ -2993,9 +3004,7 @@ pub fn held_item_transform(
     // pulled in as the dolphin pitches (up or down) toward 60 degrees.
     if m.species() == Species::Dolphin {
         return (!left).then(|| {
-            let pitch = anim::state(m, alpha)
-                .observed(m, data.humanoid_setup())
-                .x_rot;
+            let pitch = anim::state(m, alpha).drawn_from(m, data).x_rot;
             let percent = pitch.abs() / 60.0;
             let offset = if pitch < 0.0 {
                 glam::Vec3::new(0.0, 1.0 - percent * 0.5, -1.0 + percent * 0.5)
@@ -3009,7 +3018,7 @@ pub fn held_item_transform(
         return None;
     }
     let base = base_transform(m, alpha, camera);
-    let s = anim::state(m, alpha).observed(m, data.humanoid_setup());
+    let s = anim::state(m, alpha).drawn_from(m, data);
     let (model, poses, anchors) = posed_body(m, alpha, data);
     // WitchItemLayer.applyTranslation: a potion is held at the nose, any other
     // item as CrossedArmsItemLayer holds it; only the main hand's item is drawn.
