@@ -253,6 +253,26 @@ A pipeline without `.textured(…)` binds neither `Sampler0` nor `SpriteRect`: r
 (or including `<sunrise:pipeline_sprite.glsl>`) refuses the shader with a note naming
 `RenderPipeline::textured`.
 
+## Storage buffers
+
+A pipeline reads large, sparsely updated data (compact geometry records, per-instance tables) from
+a std430 storage buffer. Create it once with `host.create_storage_buffer(&StorageBufferDescriptor::new(size))`
+(a multiple of 4 bytes, up to the device's `max_buffer_size`), update ranges with
+`buffer.write_range(host, offset, bytes)` (queued and applied in call order before the next frame),
+and free it with `buffer.release(host)`. It survives a resource reload and a world close, and is
+freed when the mod unloads.
+
+Declare it in the layout with `BindEntry::new("Tints", BindingKind::StorageBuffer { read_only: true, min_size: 16 })`
+(`min_size` is the smallest range the block accepts, 16 for a `vec4[]` block; it must be non-zero and
+at most `max_storage_buffer_binding_size`, as a uniform's is) and write the block in GLSL with the same access (`layout(std430) readonly buffer Tints { vec4 tint[]; };`;
+a layout that says read-write needs a block without `readonly`). Bind a range of the buffer per draw
+with `DrawBindings::new().storage_buffer("Tints", buffer.slice(offset, length))`. A range is at most
+the device's `max_storage_buffer_binding_size` bytes and at least `min_size`
+(`BufferError::BelowMinSize` otherwise), with its offset a multiple of
+`min_storage_buffer_offset_alignment`; the buffer itself may be larger. A writable block in the
+vertex stage needs `VERTEX_WRITABLE_STORAGE`; a device without it refuses such a pipeline. Every
+refusal is a `BufferError` or `PipelineDrawError`, never a panic.
+
 ## Participating in translated shader packs
 
 When an Iris/OptiFine shader pack is active and owns terrain rendering, a mod pipeline without a
@@ -297,3 +317,219 @@ active pack is loaded, switched or turned off, and no pack-reload signal exists 
 `shader_pack_active()` stays `true` when one pack replaces another, and nothing else tells a mod. Ask
 again when you need the id instead of caching it across frames. Item and entity ids
 (`item.properties`, `entity.properties`) are not part of it.
+
+### Your own vertex stage, and the main depth
+
+`PackBinding::program_mode(PackProgramMode::ModVertexPackFragment)` keeps your own vertex shader,
+with its `VertexFormat` and its set-1 bindings, and links it to the fragment stage of the pack's
+program for one of the pipeline's stems, so your geometry is shaded into the pack's `colortex*`
+buffers by the pack's own code. The stages link by GLSL varying name, as Iris links them: the
+pack's translator picks each varying's location, so name your vertex outputs after the pack's
+varyings (a struct member or `out` variable named `uv` feeds the pack's `varying vec2 uv`) and the
+engine renumbers them to the pack's locations; the order you declare them in does not matter. It
+works only when the pack ships such a program and every varying its fragment stage reads is
+written by your vertex shader under the same name, type and interpolation. It is also refused when
+the pack's program has a geometry stage, which needs the pack's own vertex stage. When any of this
+fails, or the device cannot hold your bind groups after the pack's (the adapter's own
+`max_bind_groups`), the pipeline is unbound: `pipeline_pack_bound` reports `false` and your own
+shaders draw. Your bind groups go after the pack's, which are left as the pack declared them; a
+vertex shader that uses push constants is left unbound.
+
+`PackBinding::depth_target(PackDepthTarget::Main)` makes the pipeline draw into the pack's main
+depth (`depthtex0`) with depth writes on (when the pipeline is depth-tested). The depth comes
+from your vertex stage's position output: a pipeline whose geometry is in another projection (far
+terrain) emits the depth the world's projection gives, so no copy of an auxiliary depth plane into
+the pack's depth is needed; the same works when the projections match. Under a pack the fragment
+stage is the pack's, so `gl_FragDepth` is not yours to write. `PackDepthTarget::new(id)` is the
+auxiliary plane as before.
+
+A stencil test inside a pack pass is not part of this: the pack's main depth has no stencil plane.
+
+### Shadow pass, clouds and pack changes
+
+`host.shader_pack_state()` returns `None` when no pack is active (the same rule as
+`shader_pack_active()`) and otherwise a `ShaderPackState`, taken at the start of each frame's render
+and read unchanged by that frame's render callbacks:
+
+- `hides_clouds`: the pack sets `clouds=off` or draws its own, so a custom sky or cloud renderer
+  should not draw clouds over it (Iris's `DHCompatInternal.avoidRenderingClouds`).
+- `shadow`: `None` when the pack has no shadow pass, otherwise the map's `resolution`, the shadow
+  `distance` (half the covered side, in blocks) and the column-major `model_view` and
+  `projection`. They are in the same camera-relative space as `WorldRenderView` and are the current
+  frame's values. Use them to cull shadow-casting geometry you submit to `PackPassSlot::Shadow`
+  against the shadow volume (Iris's `ShadowRenderer` `MODELVIEW` and `PROJECTION`).
+- `generation`: changes every time a pack is loaded, switched or turned off, and at no other time.
+  Compare it each frame and re-read whatever you derived from the pack when it differs. It covers a
+  pack switch that fires no resource reload.
+
+`host.render_assets().pipeline_pack_bound(pipeline)` says whether the active pack compiled a program
+for the pipeline's `PackBinding`. It is `false` with no pack, for a stale or invalid handle, and when
+the pipeline has a `PackBinding` but the pack has no matching program. In that last case the engine
+draws the pipeline through the mod's own shaders, exactly as `PackOverrideState::UnboundPack` reports
+it, so the mod's fallback shader must be able to draw it. Like the state above, it reads the frame's
+snapshot during render callbacks.
+
+## Fixed-function state (`PipelineState`)
+
+Every `RenderPipeline` carries a `PipelineState` with vanilla's core rasterization, depth, blend,
+and colour-write settings. `RenderPipeline::new` sets `blend` and `depth` and defaults the rest to
+`depth_write: false`, `cull: false` (two-sided), `color_write: ColorWrite::ALL`, and
+`polygon: PolygonMode::Fill`. Override any field with builder methods:
+
+```rust,ignore
+event.register(
+    RenderPipeline::new(id, shader, PipelineBlend::Opaque, WorldDepth::Tested)
+        .depth_write(true)
+        .cull(true)
+        .color_write(ColorWrite::COLOR)
+        .polygon(PolygonMode::Fill),
+);
+```
+
+- `PipelineBlend::Opaque` writes solid colour directly without alpha blending (letting a mod draw
+  solid geometry with `depth_write(true)`).
+- `PolygonMode::Line` requires the device's wireframe feature (`POLYGON_MODE_LINE`); if the GPU
+  lacks it, the pipeline (or modifier variant) is refused.
+- Depth is a `DepthState` (`compare`, `write`, `depth_bias_constant`, `depth_bias_slope_scale`) in
+  `PipelineState::depth_stencil`. `.depth(WorldDepth)` is the coarse form (`Tested` is
+  `DepthCompare::GreaterEqual` over Sunrise's reversed depth, `ThroughWalls` is `Always`);
+  `.depth_compare`, `.depth_bias(constant, slope_scale)` and `.depth_stencil(Option<DepthState>)`
+  set it exactly. `.depth_stencil(None)` declares a depthless pipeline.
+- `PipelineBlend::Custom(BlendFunction)` takes separate colour and alpha equations (factors and
+  `BlendOp`), with vanilla's presets as `BlendFunction` constants. `ConstantColor`,
+  `ConstantAlpha` and their one-minus forms are refused when the pipeline is registered, because
+  Sunrise sets no blend constant and a shader pack's blend table has no such factor.
+- `.color_target(index, Some(ColorTargetState))` configures one of up to 8 colour targets, and
+  `None` leaves it unused. Every blended target must use the same blend function.
+- `.topology(PrimitiveTopology)` picks how vertices form primitives. `pipeline_quads` only draws
+  `PrimitiveTopology::Quads` and refuses any other pipeline with
+  `PipelineDrawError::TopologyMismatch`.
+
+## Your own vertex layout, retained meshes and `draw_mesh` / `draw_vertices`
+
+A pipeline reads its own vertex layout when it declares `VertexFormat` bindings. Each
+`VertexFormat::builder(VertexStepMode::Vertex)` (or `Instance`) takes named attributes, and
+`.build()` returns the format, or a `VertexFormatError` for an invalid or duplicate name, an offset that
+breaks its alignment, or a step rate the GPU cannot do. Attribute names are the shader's `in`
+names. `RenderPipeline::vertex_binding(binding, format)` attaches one format per binding index,
+up to `MAX_VERTEX_BINDINGS` bindings and `MAX_VERTEX_ELEMENTS` attributes in total. A stride is
+a multiple of `VERTEX_ALIGNMENT` (4 bytes).
+
+```rust,ignore
+let per_vertex = VertexFormat::builder(VertexStepMode::Vertex)
+    .attribute("LocalPos", VertexAttributeFormat::Float32x2)
+    .build()?;
+let per_instance = VertexFormat::builder(VertexStepMode::Instance)
+    .attribute("InstOffset", VertexAttributeFormat::Float32x2)
+    .attribute("InstColor", VertexAttributeFormat::Unorm8x4)
+    .build()?;
+event.register(
+    RenderPipeline::new(id, shader, PipelineBlend::Opaque, WorldDepth::ThroughWalls)
+        .vertex_binding(0, per_vertex)
+        .vertex_binding(1, per_instance),
+);
+```
+
+Two ways feed those bindings during a world stage (`WorldDrawContext`), both validated before
+anything is queued: a refused call returns a `PipelineDrawError` and queues nothing.
+
+- **Retained mesh.** `host.create_mesh(&MeshDescriptor::new(&buffers))` uploads one buffer per
+  binding (`MeshBufferInit::from_bytes(stride, bytes)`), plus an optional index buffer
+  (`.with_indices(MeshIndexInit::from_bytes(IndexFormat::Uint16, bytes))`), and returns a
+  `MeshRef` owned by the calling mod. Update it with `MeshRef::write_vertices` and
+  `write_indices` (4-byte aligned, in bounds) or `MeshRef::replace`. Draw it each frame with
+  `draw.draw_mesh(pipeline, mesh, MeshDraw::vertices(0..n), &DrawBindings::EMPTY)`; nothing is
+  copied per frame. Free the GPU buffers with `MeshRef::release(host)`; the handle is stale
+  (`MeshError::Stale`) afterwards. A mesh is also retired when its mod is disabled, the world
+  closes, or resources reload.
+- **Transient bytes.** `draw.draw_vertices(pipeline, &[vertex_bytes, instance_bytes],
+  Some((IndexFormat::Uint16, index_bytes)), draw, &DrawBindings::EMPTY)` uploads this frame's
+  slices and draws them. There is one slice per binding, in binding order.
+
+`MeshDraw::vertices(range)` draws a range of vertices, `MeshDraw::indexed(range, base_vertex)`
+draws a range of an index buffer, and `.with_instances(range)` sets the instance range. The
+ranges are checked against what the buffers hold: a vertex-step buffer must contain every record
+an indexed draw reaches (after `base_vertex`), an instance-step buffer must contain the instance
+range, and `Quads`, `Lines` and `TriangleFan` draws, which the engine feeds from generated
+indices, must fit the device's largest buffer.
+
+## Pipeline modifiers (`register_pipeline_modifiers`)
+
+Register reusable data-only state overrides in `Hooks::register_pipeline_modifiers` (NeoForge's
+`RegisterPipelineModifiersEvent`):
+
+```rust,ignore
+fn register_pipeline_modifiers(
+    &self,
+    _context: &RegistrationContext,
+    event: &mut RegisterPipelineModifiersEvent<'_>,
+) {
+    event.register(
+        PipelineModifier::new(Identifier::parse("example:xray").unwrap())
+            .depth(WorldDepth::ThroughWalls)
+            .depth_write(false),
+    );
+}
+```
+
+Resolve the modifier once in `client_setup` (or `client_resources_reloaded`) with
+`host.render_assets().pipeline_modifier(&id)` and wrap world draws in
+`WorldDrawContext::with_pipeline_modifier(modifier, &mut |draw| { ... })`. Scopes nest: the most
+recently pushed modifier applies first, then older ones, so the outermost modifier wins on any
+field both set (`PipelineModifierStack.apply`). Modifiers apply to `lines`, `quads`, `pipeline_quads`, and `draw_model_instances` (not
+`name_tag` labels), but not all of a modifier applies everywhere. The built-in `lines`, `quads`
+and `draw_model_instances` have no pipeline of their own to vary, so only `depth` applies to them
+(it picks the through-walls or tested copy). The full `PipelineModifier` (`blend`, `cull`,
+`color_write`, `depth_write`, `polygon`, `depth`) applies to pipelines a mod registers and draws
+with `pipeline_quads`. A field a modifier leaves unset keeps the pipeline's own value, which
+defaults to what a mod pipeline already had before `PipelineState` existed. Modified GPU pipeline
+variants are compiled lazily and cached per `(pipeline, modifier sequence)` until the next reload;
+a variant the GPU refuses is logged once with both IDs and skipped while the rest of the frame
+draws.
+
+## Order-independent transparency (`OitTranslucent`)
+
+To draw a translucent or additive pipeline in vanilla 26.3's improved-transparency passes, opt in
+with `.order_independent()` and include `<minecraft:oit.glsl>` in the fragment shader:
+
+```rust,ignore
+event.register(
+    RenderPipeline::new(id, shader, PipelineBlend::Translucent, WorldDepth::Tested)
+        .vertex_shader(Identifier::parse("minecraft:core/position_tex_color").unwrap())
+        .order_independent(),
+);
+```
+
+```glsl
+#version 330
+#include <minecraft:dynamictransforms.glsl>
+#include <minecraft:oit.glsl>
+
+in vec2 texCoord0;
+in vec4 vertexColor;
+#ifndef OIT_ALPHA_ONLY
+out vec4 fragColor;
+#endif
+
+void main() {
+    vec4 color = vertexColor * ColorModulator;
+#ifdef OIT_ALPHA_ONLY
+    executeAlphaOnlyPhase(gl_FragCoord.z, color.a);
+#else
+#ifdef OIT_ACCUMULATE
+    color = sampleColorForAccumulation(color);
+#endif
+    fragColor = color;
+#endif
+}
+```
+
+At resource load the engine translates three OIT variants (`OIT_ALPHA_ONLY` + `OIT_DEPTH_BOUNDS`,
+`OIT_ALPHA_ONLY` + `OIT_TRANSMITTANCE`, and `OIT_ACCUMULATE`; plus `OIT_ADDITIVE` for
+`PipelineBlend::Additive`) and binds `DepthBoundsSampler`, `Coeff0`, and `Coeff1`. Prepare quads
+for `RenderLevelStage::OitTranslucent(stage)` via `PrepareRenderBuffersContext::pipeline_quads`
+and draw the returned `PreparedWorldDraw` in `render_level_stage`. Submitting an `Opaque` pipeline
+or one without `.order_independent()` to `OitTranslucent` returns
+`PipelineDrawError::Pipeline(RenderPipelineError::Invalid)` and logs once per mod and pipeline.
+`cargo sunrise-mod check` validates all three OIT variants using prepared resources or Sunrise's
+interface-only `oit.glsl` stub.

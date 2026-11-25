@@ -1,16 +1,29 @@
 //! Client render pipeline registration.
 
 pub trait Hooks {
-    /// Register render pipelines once at client startup (NeoForge's
+    /// Register render pipelines and custom render types once at client startup (NeoForge's
     /// `RegisterRenderPipelinesEvent`; 1.21.1 mods used `RegisterShadersEvent`): call
-    /// `event.register(pipeline)` with each [`RenderPipeline`]. The game builds them with its own
-    /// at startup and again on every resource reload. Any valid [`Identifier`] is accepted, and
-    /// duplicate mod IDs fail startup, regardless of required or optional policy. Collisions
-    /// with vanilla are checked in the corresponding required or optional table. An unavailable
-    /// vanilla pipeline table fails startup registration. A required pipeline whose
-    /// shader is missing or doesn't build fails the load: the game does not start, and a reload
-    /// fails and keeps the previous resources. An [optional](RenderPipeline::optional()) one is
-    /// logged and resolves to [`RenderPipelineError::Invalid`].
+    /// `event.register(pipeline)` with each [`RenderPipeline`] and
+    /// `event.register_render_type(setup)` with each [`RenderSetup`]. Each pipeline carries a
+    /// [`PipelineState`] (blend including [`PipelineBlend::Opaque`] and
+    /// [`PipelineBlend::Custom`], optional [`DepthState`] with [`DepthCompare`] and depth bias,
+    /// culling, colour write mask, polygon mode, and [`PrimitiveTopology`]), optional multi-target
+    /// [`ColorTargetState`] slots up to [`MAX_COLOR_TARGETS`] (8), optional `.order_independent()`
+    /// opt-in for [`RenderLevelStage::OitTranslucent`], optional separate vertex shader and
+    /// defines. Each [`RenderSetup`] wraps a registered mod or vanilla pipeline ID with texture
+    /// bindings, lightmap/overlay toggles, crumbling/sorting/solid-phase flags,
+    /// [`LayeringTransform`], [`TextureTransform`], and [`OutlineProperty`]. The game builds them
+    /// with its own at startup and again on every resource reload.
+    /// Any valid [`Identifier`] is accepted, and duplicate mod IDs fail startup, regardless of
+    /// required or optional policy. Collisions with vanilla are checked in the corresponding
+    /// required or optional table (and custom render types are checked against
+    /// [`BUILTIN_RENDER_TYPE_IDS`]). An unavailable vanilla pipeline table fails startup
+    /// registration. Non-finite depth bias slope scales, colour target indices `>= 8`, and
+    /// differing blend functions across active colour targets fail startup registration. A
+    /// required pipeline whose shader (or OIT variant when `.order_independent()`) is missing or
+    /// doesn't build fails the load: the game does not start, and a reload fails and keeps the
+    /// previous resources. An [optional](RenderPipeline::optional()) one is logged and resolves
+    /// to [`RenderPipelineError::Invalid`].
     #[notes = r#"## Render pipelines
 
 `Hooks::register_render_pipelines` is the client registration-phase counterpart of NeoForge's
@@ -106,5 +119,8 @@ order."#]
         neoforge = "RegisterRenderPipelinesEvent",
         version = 5
     )]
-    fn register_render_pipelines(pipelines: &mut Vec<mod_api::RenderPipeline>);
+    fn register_render_pipelines(
+        pipelines: &mut Vec<mod_api::RenderPipeline>,
+        render_types: &mut Vec<mod_api::RenderSetup>,
+    );
 }

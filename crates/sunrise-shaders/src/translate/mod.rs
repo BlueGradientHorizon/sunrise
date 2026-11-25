@@ -135,6 +135,10 @@ pub struct Program {
     pub vertex: naga::Module,
     pub fragment: naga::Module,
     pub interface: Interface,
+    /// The location each varying got between the stages, by its GLSL name (a matrix, array or
+    /// struct varying by the name of each part). A varying the fragment stage never reads has
+    /// none.
+    pub varyings: std::collections::BTreeMap<String, u32>,
     /// Non-fatal translation diagnostics, located in the authored source.
     pub notes: Vec<Error>,
 }
@@ -841,6 +845,10 @@ fn translate(
     mark_atomic(&fragment, &mut images);
     Ok(Program {
         notes,
+        varyings: locations
+            .iter()
+            .map(|(name, (location, _))| (name.clone(), *location))
+            .collect(),
         interface: Interface {
             uniform_size,
             initial_values,

@@ -264,7 +264,8 @@ class DynaRoutingTests(unittest.TestCase):
         for item in ("vars.DYNA_CI_SELF_HOSTED", "vars.DYNA_CI_POOL_UNTIL", "github.event_name",
                      "github.event.pull_request.head.repo.full_name == github.repository", "dyna_ci_route.sh"):
             self.assertIn(item, route)
-        for name, label in (("verify", "dyna-large"), ("verify-static", "dyna-medium")):
+        # verify is on dyna-xlarge only until sunrise#5839 brings sunrise-client's lib-test compile back under 12 GiB.
+        for name, label in (("verify", "dyna-xlarge"), ("verify-static", "dyna-medium")):
             block = blocks[name]
             self.assertIn("needs: changes", block)
             self.assertIn(f"needs.changes.outputs.self_hosted == 'true' && '{label}'", block)
@@ -308,7 +309,7 @@ class DynaRoutingTests(unittest.TestCase):
             shared = runtime.split(f"{field}:", 1)[1].split("\n", 1)[0]
             if field == "runs-on":
                 shared = shared.replace("'ubuntu-latest') || ", "'ubuntu-latest') || " + fork, 1)
-                shared = shared.replace("needs.changes.outputs.self_hosted == 'true' && 'dyna-large'",
+                shared = shared.replace("needs.changes.outputs.self_hosted == 'true' && 'dyna-xlarge'",
                                         "needs.changes.outputs.self_hosted == 'true' && 'dyna-medium'", 1)
             else:
                 shared = shared.replace("${{ ", "${{ " + fork, 1)

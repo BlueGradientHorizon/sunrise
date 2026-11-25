@@ -33,6 +33,8 @@ pub(crate) use super::external::ShadowView;
 pub trait PackPostExt: Sized {
     /// The shadow pass this frame wants, when the pack draws one.
     fn shadow_view(&self, frame: &Frame) -> Option<ShadowView>;
+    /// The shadow pass's size, distance and matrices as `frame` reads them, for mods.
+    fn mod_shadow_state(&self, frame: &Frame) -> Option<(u32, f32, [f32; 16], [f32; 16])>;
     /// The entities and block entities the pack draws this frame, into its own buffers.
     fn prepare_entities(
         &mut self,
@@ -137,6 +139,10 @@ impl PackPostExt for PackPost {
             .with_every_face(true)
             .with_view_casters(true),
         )
+    }
+
+    fn mod_shadow_state(&self, frame: &Frame) -> Option<(u32, f32, [f32; 16], [f32; 16])> {
+        self.shadow_state(&frame_view(frame))
     }
 
     /// Splits `entities` (`Frame::entities`) between the pack and Sunrise by its runs

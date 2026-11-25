@@ -192,11 +192,29 @@ impl RenderAssets for Game<'_> {
     fn render_pipeline(&self, id: &Identifier) -> Result<RenderPipelineRef, RenderPipelineError> {
         CallbackOwner::call_host(|| self.pack.render.render_pipeline(id))
     }
+    fn render_type(&self, id: &Identifier) -> Result<RenderTypeRef, RenderTypeError> {
+        CallbackOwner::call_host(|| self.pack.render.render_type(id))
+    }
+    fn pipeline_modifier(
+        &self,
+        id: &Identifier,
+    ) -> Result<PipelineModifierRef, RenderPipelineError> {
+        CallbackOwner::call_host(|| self.pack.render.pipeline_modifier(id))
+    }
     fn animation(&self, id: &Identifier) -> Option<AnimationHolder> {
         CallbackOwner::call_host(|| self.pack.render.animation(id))
     }
     fn shader_pack_block_id(&self, state: BlockState) -> Option<i32> {
         let state = state.try_into_engine(&()).ok()?;
         CallbackOwner::call_host(|| self.active_block_state_id(state.0 as usize))
+    }
+    fn pipeline_pack_bound(&self, pipeline: RenderPipelineRef) -> bool {
+        CallbackOwner::call_host(|| {
+            self.pack
+                .render
+                .mod_pipelines
+                .slot(pipeline)
+                .is_ok_and(|slot| self.pack_slot_bound(slot as usize))
+        })
     }
 }

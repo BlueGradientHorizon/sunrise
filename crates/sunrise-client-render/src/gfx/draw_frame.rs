@@ -1580,6 +1580,8 @@ impl Renderer {
                 .as_deref()
                 .map_or(frame.world_primitives, |hooks| hooks.prepared_primitives());
             let mod_blocks = (!batch.pipelines.runs.is_empty()).then(vanilla_blocks);
+            // Mods' queued storage buffer writes land in call order before anything draws.
+            self.flush_mod_storage();
             let prepared = self
                 .world_primitives
                 .as_mut()
@@ -1593,6 +1595,11 @@ impl Renderer {
                     &self.entity_atlas,
                     mod_blocks.as_ref(),
                 );
+            let released = self.take_released_mod_storage();
+            self.world_primitives
+                .as_mut()
+                .expect("world primitives")
+                .forget_storage(&released);
             let bound = self
                 .pack_post
                 .as_ref()
@@ -3583,7 +3590,8 @@ impl Renderer {
                     // "Features, World Border, Weather": what follows the opaque
                     // world in the classic pass, one stage at a time.
                     let core_text = self.core_text.as_ref();
-                    let wp = self.world_primitives.take().expect("world primitives");
+                    let mut wp = self.world_primitives.take().expect("world primitives");
+                    wp.prepare_oit_mod_pipelines(&self.device, oit.cloud_samples());
                     let mut features = |pass: &mut wgpu::RenderPass<'_>, stage: oit::Stage| {
                         let f = oit.features();
                         let s = stage as usize;
