@@ -85,7 +85,7 @@ pub(super) fn build_renderer(
         display,
     ))?;
     let (prepared_vertices, prepared_ranges) =
-        native_block_entity_draw::StandaloneGeometry::new(pack, gui).prepared_upload();
+        native_block_entity_draw::StandaloneGeometry::new(pack, gui, None).prepared_upload();
     renderer.install_prepared_models(
         pack.render.generation,
         &prepared_vertices,
