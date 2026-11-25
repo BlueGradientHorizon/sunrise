@@ -1681,7 +1681,7 @@ pub(crate) fn check_file<R: Read>(
     // Any `MZ` is refused here, not only a PE: a content file has no use for it.
     if binary_kind(head).is_some()
         || head.starts_with(b"MZ")
-        || (head.starts_with(b"#!") && head[2] != b'[')
+        || (head.starts_with(b"#!") && head.get(2) != Some(&b'['))
     {
         return Err(ContentFileError::Executable(name.into()));
     }
@@ -2913,6 +2913,8 @@ issues = \"http://example.org/issues\"
                 "Mach-O universal binary or Java class file",
             ),
             (b"!<arch>\n", "ar archive"),
+            // A file that is only a shebang's first two bytes.
+            (b"#!", "script"),
         ] {
             assert!(
                 matches!(
