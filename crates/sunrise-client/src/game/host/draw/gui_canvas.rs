@@ -596,6 +596,21 @@ mod tests {
     #[ignore = "daily"]
     fn a_tinted_item_multiplies_the_vertices_the_item_draws() {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
+            // The glint options a frame captures (full strength), as a frame drawing items has.
+            game.glint_frame = sunrise_client::item_render::GlintFrame {
+                millis: 0,
+                speed: 1.0,
+                alpha: 1.0,
+                sprite: game
+                    .gui
+                    .atlas
+                    .sprites
+                    .contains_key("misc/enchanted_glint_item"),
+            };
+            assert!(
+                game.glint_frame.sprite,
+                "the glint's sprite is in the atlas"
+            );
             // A plain item, and one that always has the glint.
             for (item, foil) in [
                 ("minecraft:diamond_sword", false),
