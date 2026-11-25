@@ -871,7 +871,7 @@ impl Game<'_> {
                     &self.level.enabled_features,
                     &self.pack.additional_data,
                     &base_conditions,
-                )
+                )?
                 .0
             }
         };

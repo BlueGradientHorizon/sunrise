@@ -129,15 +129,16 @@ impl Game<'_> {
                         &base_conditions,
                     )
                 })
-                .unwrap_or_default();
+                .unwrap_or_else(|| Ok(Default::default()));
             let data_source = self.pack.data_changes.clone();
             let job = std::thread::Builder::new()
                 .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
                 .name("world-creation".into())
                 .spawn(move || {
+                    // A condition that fails to decode refuses the read like any pack error.
                     sunrise_client::vanillagen::shared_data_from(
                         &dir,
-                        &overrides,
+                        &overrides?,
                         registry,
                         &data_source,
                     )

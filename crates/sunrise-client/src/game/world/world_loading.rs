@@ -594,14 +594,16 @@ pub(super) fn preload_launch_world(
             let enabled_features = level
                 .as_ref()
                 .map_or(&[][..], |l| l.enabled_features.as_ref());
-            let (overrides, _) = worldgen_overrides_of(
+            let Ok((overrides, _)) = worldgen_overrides_of(
                 &world_root,
                 &resources,
                 &biomes,
                 enabled_features,
                 &additional,
                 &base_conditions,
-            );
+            ) else {
+                return;
+            };
             if let Ok(data) = sunrise_client::vanillagen::shared_data_from(
                 &resources.join("worldgen"),
                 &overrides,
@@ -828,7 +830,7 @@ pub(super) fn creation_worldgen_overrides(
     biomes: &sunrise_client::biome::Biomes,
     additional: &[Arc<sunrise_client::datapack::DataPack>],
     base_conditions: &sunrise_world::conditions::LoadConditions,
-) -> sunrise_world::worldgen::overrides::WorldgenOverrides {
+) -> std::result::Result<sunrise_world::worldgen::overrides::WorldgenOverrides, String> {
     let empty = std::path::PathBuf::new();
     let packs =
         super::pack_finders::data_repository(pack_dir.unwrap_or(&empty), resources, additional);
@@ -840,10 +842,12 @@ pub(super) fn creation_worldgen_overrides(
         super::load_conditions::worldgen_load_conditions(base_conditions, resources, &enabled);
     let (overrides, _) =
         sunrise_client::datapack::worldgen_overrides(&enabled, |b| biomes.contains(b), &conditions);
-    overrides
+    conditions.check_errors()?;
+    Ok(overrides)
 }
 /// The worldgen entries of the world's enabled data packs, and what the
-/// generator leaves out of them.
+/// generator leaves out of them. A file whose `neoforge:conditions` fail to decode refuses
+/// the load (`RegistryDataLoader` fails on a decode error).
 pub(super) fn worldgen_overrides_of(
     world_root: &std::path::Path,
     resources: &std::path::Path,
@@ -851,10 +855,13 @@ pub(super) fn worldgen_overrides_of(
     enabled_features: &[String],
     additional: &[Arc<sunrise_client::datapack::DataPack>],
     base_conditions: &sunrise_world::conditions::LoadConditions,
-) -> (
-    sunrise_world::worldgen::overrides::WorldgenOverrides,
-    Vec<String>,
-) {
+) -> std::result::Result<
+    (
+        sunrise_world::worldgen::overrides::WorldgenOverrides,
+        Vec<String>,
+    ),
+    String,
+> {
     let packs = super::pack_finders::data_repository(world_root, resources, additional);
     let enabled = sunrise_client::datapack::enabled_ids(world_root, &packs, enabled_features);
     let enabled: Vec<_> = enabled
@@ -863,7 +870,10 @@ pub(super) fn worldgen_overrides_of(
         .collect();
     let conditions =
         super::load_conditions::worldgen_load_conditions(base_conditions, resources, &enabled);
-    sunrise_client::datapack::worldgen_overrides(&enabled, |b| biomes.contains(b), &conditions)
+    let loaded =
+        sunrise_client::datapack::worldgen_overrides(&enabled, |b| biomes.contains(b), &conditions);
+    conditions.check_errors()?;
+    Ok(loaded)
 }
 
 /// The shapes of the world's levels: their dimension types, the world's
@@ -1794,7 +1804,8 @@ mod tests {
                 &game.level.enabled_features,
                 &game.pack.additional_data,
                 &base_conditions,
-            );
+            )
+            .unwrap();
             let built = make_streaming(
                 &game.res,
                 &game.pack,
@@ -2564,7 +2575,7 @@ mod tests {
         };
         let base_conditions = sunrise_world::conditions::LoadConditions::vanilla();
         let (overrides, _) =
-            worldgen_overrides_of(world, &root, &biomes, &[], &[], &base_conditions);
+            worldgen_overrides_of(world, &root, &biomes, &[], &[], &base_conditions).unwrap();
         let open = |dim| {
             mod_terrain(
                 &overrides,
@@ -2696,7 +2707,8 @@ mod tests {
         let pocket = Dim::Extra(mod_api::__private::dimension_key("test:pocket"));
         let base_conditions = sunrise_world::conditions::LoadConditions::vanilla();
         let (overrides, _) =
-            worldgen_overrides_of(&world, &resources_root, &biomes, &[], &[], &base_conditions);
+            worldgen_overrides_of(&world, &resources_root, &biomes, &[], &[], &base_conditions)
+                .unwrap();
         let Some(Ok(ModLevel::Terrain(terrain))) = mod_terrain(
             &overrides,
             resources,
@@ -2871,7 +2883,8 @@ mod unused_feature_startup_tests {
                 &level.enabled_features,
                 &loaded.pack.additional_data,
                 &sunrise_world::conditions::LoadConditions::vanilla(),
-            );
+            )
+            .unwrap();
             assert_eq!(
                 overrides
                     .entries("features")
@@ -2976,7 +2989,8 @@ mod unused_feature_preservation_tests {
             &level.enabled_features,
             &loaded.pack.additional_data,
             &sunrise_world::conditions::LoadConditions::vanilla(),
-        );
+        )
+        .unwrap();
         assert_eq!(
             overrides.entries("features").collect::<Vec<_>>(),
             vec![
