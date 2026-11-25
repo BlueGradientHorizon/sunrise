@@ -1,5 +1,5 @@
 manifest:
-refused: icon.png: unsupported executable file (PE); a package carries source, never prebuilt binaries
+refused: icon.png: unsupported executable file in a content mod
 
 icon:
 unavailable

@@ -1,5 +1,5 @@
 manifest:
-refused: Cargo.toml: unsupported executable file (PE); a package carries source, never prebuilt binaries
+refused: Cargo.toml: unsupported executable file in a content mod
 
 icon:
 unavailable

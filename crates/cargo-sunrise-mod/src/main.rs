@@ -1237,11 +1237,7 @@ mod tests {
             }
         }
         std::fs::write(&smod, output.finish().unwrap().into_inner()).unwrap();
-        let expected = ContentFileError::Binary {
-            name: asset.into(),
-            kind: "PE",
-        }
-        .to_string();
+        let expected = ContentFileError::Executable(asset.into()).to_string();
         assert_eq!(check::inspect(&smod, kind).err().unwrap(), expected);
         std::fs::remove_file(&smod).unwrap();
         std::fs::write(path.join(asset), b"MZ-not-an-asset").unwrap();

@@ -58,8 +58,9 @@ pub const STORAGE_DIR: &str = ".sunrise-mod-data";
 pub const MAX_MANIFEST: u64 = 32 << 20;
 
 /// The most source files a package carries (every [`source_file`] of a native package): as many as
-/// its content files, so a port laid out one file per class fits. The packer checks it; the game
-/// never reads a source file.
+/// its content files, so a port laid out one file per class fits. The packers and the readers that
+/// inflate source (`index::native::Bundle::read`, the registry's requirement scan) check it from
+/// the archive's directory before inflating any; the game never reads a source file.
 pub const MAX_SOURCE_FILES: usize = crate::content::MAX_FILES;
 /// The most bytes those source files take, unpacked.
 pub const MAX_SOURCE_BYTES: u64 = 64 << 20;
@@ -1103,9 +1104,10 @@ pub use mod_source::package::{MANIFEST, NOT_PACKAGED, binary_kind, source_file};
 pub(crate) fn plain_path(name: &str) -> bool {
     !name.starts_with('/')
         && !name.contains(['\\', ':'])
-        && !name
-            .split('/')
-            .any(|part| part.is_empty() || part == "." || part == "..")
+        && !name.split('/').any(|part| {
+            // A Windows extraction drops a trailing dot or space, so `a.` would land as `a`.
+            part.is_empty() || part == "." || part == ".." || part.ends_with(['.', ' '])
+        })
 }
 
 /// A mod as found on disk.
@@ -1290,6 +1292,30 @@ impl Package {
         Ok(package)
     }
 
+    /// Refuse an archive whose source entries are too many or too large: they are counted, and
+    /// their declared sizes summed from the archive's directory, before any is inflated, as the
+    /// packers bound them. The game never reads source entries, so only the readers that inflate
+    /// them (`index::native::Bundle::read`, the registry's requirement scan) call this.
+    pub(crate) fn check_source_bounds<R: Read + std::io::Seek>(
+        zip: &mut zip::ZipArchive<R>,
+    ) -> Result<(), String> {
+        let (mut count, mut bytes) = (0usize, 0u64);
+        for i in 0..zip.len() {
+            let entry = zip.by_index_raw(i).map_err(|e| e.to_string())?;
+            if entry.is_dir() || !entry.name().is_ok_and(|name| source_file(&name)) {
+                continue;
+            }
+            count += 1;
+            bytes = bytes
+                .checked_add(entry.size())
+                .ok_or("native package too large")?;
+            if count > MAX_SOURCE_FILES || bytes > MAX_SOURCE_BYTES {
+                return Err("native package exceeds its entry or size limit".into());
+            }
+        }
+        Ok(())
+    }
+
     /// Refuse a `runtime/` folder that is not the one `[runtime]` lists: an extra, a missing or an
     /// oversized file, each named. `found` is each file below `runtime/` and its size.
     fn check_runtime_layout(&self, found: &[(String, u64)]) -> Result<(), String> {
@@ -1371,10 +1397,7 @@ impl Package {
             let (mut source_bytes, mut source_count) = (0u64, 0usize);
             for name in mod_source::package::source_files(root).map_err(|e| e.to_string())? {
                 let path = root.join(&name);
-                check_source(&name, folder_mode(root, &name)?, || {
-                    std::fs::File::open(&path)
-                })
-                .map_err(|e| e.to_string())?;
+                check_source_type(&name, folder_mode(root, &name)?).map_err(|e| e.to_string())?;
                 let size = std::fs::metadata(&path).map_err(|e| e.to_string())?.len();
                 source_bytes = source_bytes
                     .checked_add(size)
@@ -1383,7 +1406,15 @@ impl Package {
                 if source_bytes > MAX_SOURCE_BYTES || source_count > MAX_SOURCE_FILES {
                     return Err("native package exceeds its entry or size limit".into());
                 }
-                files.insert(name, std::fs::read(path).map_err(|e| e.to_string())?);
+                // Read once: the bytes checked are the bytes packed.
+                let mut bytes = Vec::new();
+                std::fs::File::open(&path)
+                    .map_err(|e| format!("{name}: {e}"))?
+                    .take(size)
+                    .read_to_end(&mut bytes)
+                    .map_err(|e| format!("{name}: {e}"))?;
+                refuse_binary(&name, &bytes).map_err(|e| e.to_string())?;
+                files.insert(name, bytes);
             }
         }
         files.insert(
@@ -1459,9 +1490,15 @@ impl Package {
             zip.write_all(bytes).map_err(|e| e.to_string())
         };
         put(MANIFEST, manifest_text.as_bytes())?;
+        let mut lowercase = std::collections::HashMap::from([(MANIFEST.to_lowercase(), MANIFEST)]);
         let code = manifest.native.is_some();
         let (mut source_bytes, mut source_count) = (0u64, 0usize);
         for (name, bytes) in files {
+            if let Some(other) = lowercase.insert(name.to_lowercase(), name) {
+                return Err(format!(
+                    "{other} and {name} differ only by case, which a Windows or macOS extraction cannot keep apart"
+                ));
+            }
             let source = code && source_file(name) && plain_path(name);
             if let Some(below) = name.strip_prefix("runtime/") {
                 let table = manifest
@@ -1481,7 +1518,7 @@ impl Package {
             }
             if source {
                 // A source file has no name or mode rule: only its bytes may not be a binary.
-                check_source(name, 0, || Ok(*bytes)).map_err(|e| e.to_string())?;
+                refuse_binary(name, bytes).map_err(|e| e.to_string())?;
                 source_bytes += bytes.len() as u64;
                 source_count += 1;
                 if source_bytes > MAX_SOURCE_BYTES || source_count > MAX_SOURCE_FILES {
@@ -1540,7 +1577,8 @@ fn minisign_secret_key(bytes: &[u8]) -> bool {
 pub enum ContentFileError {
     UnsupportedType(String),
     Executable(String),
-    /// A prebuilt binary of this kind ([`binary_kind`]), whatever its name.
+    /// A native package's source file whose bytes are prebuilt object code of this kind
+    /// ([`binary_kind`]), whatever its name. A content file with such a header is `Executable`.
     Binary {
         name: String,
         kind: &'static str,
@@ -1600,9 +1638,10 @@ fn file_head<R: Read>(
     Ok((head, read))
 }
 
-/// The refusal of a file whose bytes are a prebuilt binary ([`binary_kind`]), whatever its name.
-fn refuse_binary(name: &str, head: &[u8]) -> Result<(), ContentFileError> {
-    match binary_kind(head) {
+/// The refusal of a source file whose bytes are prebuilt object code ([`binary_kind`]), whatever
+/// its name. `bytes` is the file, of which the first 1024 are read.
+fn refuse_binary(name: &str, bytes: &[u8]) -> Result<(), ContentFileError> {
+    match binary_kind(&bytes[..bytes.len().min(1024)]) {
         Some(kind) => Err(ContentFileError::Binary {
             name: name.into(),
             kind,
@@ -1637,26 +1676,26 @@ pub(crate) fn check_file<R: Read>(
         return Err(ContentFileError::Executable(name.into()));
     }
     let (head, read) = file_head(name, open)?;
-    refuse_binary(name, &head[..read])?;
-    if head.starts_with(b"\0asm") || (head.starts_with(b"#!") && head[2] != b'[') {
+    let head = &head[..read];
+    // Any `MZ` is refused here, not only a PE: a content file has no use for it.
+    if binary_kind(head).is_some()
+        || head.starts_with(b"MZ")
+        || (head.starts_with(b"#!") && head[2] != b'[')
+    {
         return Err(ContentFileError::Executable(name.into()));
     }
     Ok(())
 }
 
-/// The boundary of a native package's source file: a plain file whose bytes are not a prebuilt
-/// binary. Its name and mode play no part, so a C source tree may carry a `configure` script, a
-/// `.bat` or a file with the executable bit.
-pub(crate) fn check_source<R: Read>(
-    name: &str,
-    mode: u32,
-    open: impl FnOnce() -> std::io::Result<R>,
-) -> Result<(), ContentFileError> {
-    if !matches!(mode & 0o170000, 0 | 0o100000) {
-        return Err(ContentFileError::UnsupportedType(name.into()));
+/// The type check of a native package's source file, before it is opened: a plain file. Its name
+/// and mode play no part, so a C source tree may carry a `configure` script, a `.bat` or a file
+/// with the executable bit; its bytes are checked by [`refuse_binary`].
+fn check_source_type(name: &str, mode: u32) -> Result<(), ContentFileError> {
+    if matches!(mode & 0o170000, 0 | 0o100000) {
+        Ok(())
+    } else {
+        Err(ContentFileError::UnsupportedType(name.into()))
     }
-    let (head, read) = file_head(name, open)?;
-    refuse_binary(name, &head[..read])
 }
 
 /// The file mode of `name` in a mod folder: the mode itself for a file (0 off Unix), a link's for
@@ -2463,6 +2502,27 @@ capabilities = ["registries"]
     }
 
     #[test]
+    fn the_packer_refuses_names_that_differ_only_by_case_and_parts_a_windows_extraction_renames() {
+        let manifest = format!(
+            "{EXAMPLE}[native]\ngame = '26.3'\nsunrise = '{}'\nmixins = '{}'\n",
+            "a".repeat(40),
+            "b".repeat(40)
+        );
+        let error = Package::write_files(
+            &manifest,
+            &[("build.rs", b"".as_slice()), ("Build.rs", b"".as_slice())],
+        )
+        .unwrap_err();
+        assert!(
+            error.contains("Build.rs") && error.contains("build.rs"),
+            "{error}"
+        );
+        assert!(plain_path("src/a.c"));
+        assert!(!plain_path("src/a."));
+        assert!(!plain_path("src/a /b.c"));
+    }
+
+    #[test]
     fn package_kind_requires_matching_source_and_native_declaration() {
         let root =
             std::env::temp_dir().join(format!("sunrise-package-kind-{}", std::process::id()));
@@ -2850,7 +2910,7 @@ issues = \"http://example.org/issues\"
             assert!(
                 matches!(
                     check_file(name, 0o100644, || Ok(std::io::Cursor::new(header))),
-                    Err(ContentFileError::Binary { kind, .. }) if kind == expected
+                    Err(ContentFileError::Executable(_))
                 ),
                 "{expected}"
             );

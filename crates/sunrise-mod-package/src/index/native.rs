@@ -1,5 +1,6 @@
 //! Source-only native packages. Reading a package never executes its code.
 use super::Facts;
+use mod_surface::uses::USES_FILE;
 use std::{collections::BTreeMap, io::Read, path::Path};
 
 /// Where the prebuilt game (#589) is released: one `prebuilt-<commit>` prerelease per daily build
@@ -28,26 +29,45 @@ impl Bundle {
         // An install is the first open: the runtime files' hashes are checked here, before the
         // download is accepted.
         package.read_runtime(path)?;
+        // The game skips what it does not read; the tools that stage the files refuse what is no
+        // part of a package, and bound the source before inflating any of it.
+        crate::Package::check_source_bounds(&mut zip)?;
         let mut files = BTreeMap::new();
+        let mut lowercase = BTreeMap::<String, String>::new();
         for i in 0..zip.len() {
             let mut entry = zip.by_index(i).map_err(|e| e.to_string())?;
             if entry.is_dir() {
                 continue;
             }
             let name = entry.name().map_err(|e| e.to_string())?.into_owned();
+            if let Some(other) = lowercase.insert(name.to_lowercase(), name.clone()) {
+                return Err(format!(
+                    "{other} and {name} differ only by case, which a Windows or macOS extraction cannot keep apart"
+                ));
+            }
+            let source = crate::manifest::source_file(&name);
+            let own = name == crate::manifest::MANIFEST
+                || name == USES_FILE
+                || name == "icon.png"
+                || ["assets/", "data/", "runtime/"]
+                    .iter()
+                    .any(|folder| name.starts_with(folder));
+            if !source && !own {
+                return Err(format!("unexpected package path: {name}"));
+            }
             let size = entry.size();
             let mut bytes = Vec::new();
             (&mut entry)
-                .take(size.saturating_add(1))
+                .take(size)
                 .read_to_end(&mut bytes)
                 .map_err(|e| format!("{name}: {e}"))?;
             if bytes.len() as u64 != size {
                 return Err(format!("{name}: invalid expanded size"));
             }
             // The game never opens a source file; the tools that do (the registry's checks, the
-            // launcher's build) refuse a prebuilt binary here.
-            if crate::manifest::source_file(&name)
-                && let Some(kind) = crate::manifest::binary_kind(&bytes)
+            // launcher's build) refuse prebuilt object code here.
+            if source
+                && let Some(kind) = crate::manifest::binary_kind(&bytes[..bytes.len().min(1024)])
             {
                 return Err(crate::manifest::ContentFileError::Binary { name, kind }.to_string());
             }
@@ -213,6 +233,71 @@ mod tests {
             assert!(error.starts_with("vendor/lib.c: "), "{error}");
             assert!(error.contains("prebuilt binaries"), "{error}");
         }
+    }
+
+    #[test]
+    fn the_tools_refuse_entries_outside_the_file_set_that_the_game_skips() {
+        for (i, (name, bytes)) in [
+            ("target/x.so", &b"\x7fELF\x02\x01"[..]),
+            (".cargo/config.toml", b"[build]\nrustflags = []\n"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let extras = [(name, bytes)];
+            let error = read(&format!("outside-{i}"), &manifest(), &extras)
+                .err()
+                .unwrap();
+            assert!(error.contains(name), "{error}");
+            // The game's reader skips such an entry without error.
+            let path = std::env::temp_dir().join(format!(
+                "native-bundle-game-{i}-{}.smod",
+                std::process::id()
+            ));
+            let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+            let options = zip::write::SimpleFileOptions::default();
+            for (name, bytes) in [
+                (crate::manifest::MANIFEST, manifest().into_bytes()),
+                (
+                    "Cargo.toml",
+                    b"[package]\nname='other'\nversion='9'\n".to_vec(),
+                ),
+                ("src/lib.rs", b"fn hook() {}".to_vec()),
+                (name, bytes.to_vec()),
+            ] {
+                zip.start_file(name, options).unwrap();
+                zip.write_all(&bytes).unwrap();
+            }
+            zip.finish().unwrap();
+            let mut zip = zip::ZipArchive::new(std::fs::File::open(&path).unwrap()).unwrap();
+            assert!(crate::Package::read_zip(&mut zip).is_ok(), "{name}");
+            std::fs::remove_file(path).unwrap();
+        }
+    }
+
+    #[test]
+    fn names_that_differ_only_by_case_are_refused_by_both_names() {
+        let error = read(
+            "case",
+            &manifest(),
+            &[("src/Evil.rs", b"a"), ("src/evil.rs", b"b")],
+        )
+        .err()
+        .unwrap();
+        assert!(
+            error.contains("src/Evil.rs") && error.contains("src/evil.rs"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn source_entries_are_counted_before_any_is_inflated() {
+        let names: Vec<String> = (0..=crate::manifest::MAX_SOURCE_FILES)
+            .map(|i| format!("vendor/f{i}.c"))
+            .collect();
+        let extras: Vec<(&str, &[u8])> = names.iter().map(|n| (n.as_str(), &b""[..])).collect();
+        let error = read("many", &manifest(), &extras).err().unwrap();
+        assert_eq!(error, "native package exceeds its entry or size limit");
     }
 
     #[test]
