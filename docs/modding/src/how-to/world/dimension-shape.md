@@ -190,6 +190,10 @@ Before any of that, `sleep_skip_night` is asked once each tick that enough playe
 `players_sleeping_percentage` rule and how many players sleep and count. Canceling it keeps the night for that tick:
 the clock does not move, nobody is woken and the rain goes on, and `sleep_finished_time` is not asked.
 
+How many is enough is `sleepers_needed`'s: it arrives with vanilla's count (the rule's share of the players that
+count, rounded up, at least 1) and a listener may set its own for the level and tick, such as a daytime share for
+sleeping bags. The night-skip check and the "n/m players sleeping" line both use the answer; below 1 counts as 1.
+
 ## Which level a hook is in
 
 The block-behaviour hooks (`neighbor_changed`, `random_tick`, `crop_grow`, `block_changed` and the rest) name their

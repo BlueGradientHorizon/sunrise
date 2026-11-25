@@ -567,6 +567,7 @@ mod should_check_weak_power;
 mod should_display_fluid_overlay;
 mod should_hide_adjacent_fluid_face;
 mod should_redstone_wire_connect_to;
+mod sleepers_needed;
 mod sound_and_shader_helpers;
 mod sound_type;
 mod spawn_cluster_size;
