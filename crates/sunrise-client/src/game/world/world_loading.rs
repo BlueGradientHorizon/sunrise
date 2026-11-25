@@ -720,8 +720,7 @@ impl WorldBiomeRegistry {
         for warning in warnings {
             log::warn!("Sunrise: data pack worldgen: {warning}");
         }
-        // The winning registry files' conditions run before the generation codecs see them.
-        inputs.admit_conditions(|file, kind, id| overlay.conditions.allows_id(file, kind, id));
+        // `worldgen_overrides` has already run the winning registry files' conditions.
         sunrise_client::vanillagen::add_passive_structure_templates(
             &mut inputs,
             stack.content.source(),

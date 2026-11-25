@@ -1398,7 +1398,10 @@ pub fn worldgen_overrides_over(
             }
         }
     }
-    warnings.extend(out.filter_conditions(conditions));
+    // After every pack, so a failing higher file never uncovers a lower one. A condition that
+    // fails to decode is recorded in `conditions`: the owning registry load refuses on
+    // `check_errors`, as `ConditionalOps` fails the registry's decode.
+    out.admit_conditions(|file, kind, id| conditions.allows_id(file, kind, id));
     warnings.extend(out.finish(biomes));
     for (kind, files) in not_read {
         warnings.push(format!("{kind}: {files} files the generator does not read"));
