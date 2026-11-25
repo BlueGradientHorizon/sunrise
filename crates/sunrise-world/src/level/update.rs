@@ -239,7 +239,13 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         self.level.random()
     }
     pub fn emit(&mut self, event: LevelEvent) {
-        self.level.emit(event);
+        if let Some(placement) = &mut self.ticks.placement {
+            placement.push(super::ticks::PlacementOperation::Effect(
+                super::ticks::PlacementEffect::LevelEvent(event),
+            ));
+        } else {
+            self.level.emit(event);
+        }
     }
     /// `TntBlock.prime` without a source: `new PrimedTnt` draws its push angle
     /// from the level random, then the primed sound and `prime_fuse` event.
@@ -295,7 +301,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         }
     }
     pub fn game_event(&mut self, pos: BlockPos, event: &'static str) {
-        self.level.emit(LevelEvent::GameEvent {
+        self.emit(LevelEvent::GameEvent {
             pos,
             event,
             state: None,
@@ -362,10 +368,26 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         update_flags: i32,
         limit: i32,
     ) -> bool {
+        if self.ticks.placement.is_some()
+            && (!self.is_in_valid_bounds(pos) || !self.level.is_loaded(pos))
+        {
+            return false;
+        }
+        if let Some(placement) = &mut self.ticks.placement {
+            if self.level.block_state(pos) == state || self.level.set_raw(pos, state).is_none() {
+                return false;
+            }
+            placement.push(super::ticks::PlacementOperation::Write(
+                pos,
+                state,
+                update_flags,
+            ));
+            return true;
+        }
         let Some(write) = self.begin_block_write(pos, state, update_flags) else {
             return false;
         };
-        self.finish_block_write(write, None, limit)
+        self.finish_block_write(write, None, limit, LevelAccess::ensure_block_entity)
     }
 
     pub(super) fn finish_block_write(
@@ -373,22 +395,10 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         write: BlockWrite,
         removal_updates: Option<u8>,
         limit: i32,
+        ensure_entity: impl FnOnce(&mut L, BlockPos, BlockStateId),
     ) -> bool {
-        let BlockWrite {
-            pos,
-            state,
-            old,
-            flags: update_flags,
-            remove_entity,
-        } = write;
-        if !self.finish_chunk_write(
-            pos,
-            old,
-            state,
-            update_flags,
-            remove_entity,
-            removal_updates,
-        ) {
+        let (pos, state, old, update_flags) = (write.pos, write.state, write.old, write.flags);
+        if !self.finish_chunk_write(write, removal_updates, ensure_entity) {
             return false;
         }
         let new = self.state(pos);
@@ -482,13 +492,17 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
 
     fn finish_chunk_write(
         &mut self,
-        pos: BlockPos,
-        old: BlockStateId,
-        state: BlockStateId,
-        update_flags: i32,
-        remove_entity: bool,
+        write: BlockWrite,
         removal_updates: Option<u8>,
+        ensure_entity: impl FnOnce(&mut L, BlockPos, BlockStateId),
     ) -> bool {
+        let BlockWrite {
+            pos,
+            old,
+            state,
+            flags: update_flags,
+            remove_entity,
+        } = write;
         let new_block = self.block_of(state);
         let block_changed = self.block_of(old) != new_block;
         if block_changed && self.block_of(old) == self.b.named.moving_piston {
@@ -534,7 +548,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         }
         let landed = self.state(pos);
         if self.block_of(landed) == new_block {
-            self.level.ensure_block_entity(pos, landed);
+            ensure_entity(self.level, pos, landed);
         }
         true
     }
@@ -675,6 +689,12 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         block: BlockId,
         orientation: Option<Orientation>,
     ) {
+        if let Some(placement) = &mut self.ticks.placement {
+            placement.push(super::ticks::PlacementOperation::Effect(
+                super::ticks::PlacementEffect::Neighbors(pos, block, orientation),
+            ));
+            return;
+        }
         self.add_and_run(Update::Multi {
             source: pos,
             block,
