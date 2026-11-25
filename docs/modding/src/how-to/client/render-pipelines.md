@@ -645,10 +645,8 @@ into each slot it drops, which draws nothing. A `max_count` of zero is a legal n
   bindings.
 - **First instance.** A command's `first_instance` is honoured only where
   `RenderCapabilities::indirect_first_instance` is true; keep it zero otherwise.
-- **Base vertex.** An indexed command's `base_vertex` offsets the vertex fetch and `gl_VertexID` on
-  every backend; the engine's daily GPU test draws a command with a non-zero `base_vertex` on each
-  one (DirectX 12's multi-draws are the known risk), so a backend that drops it fails there rather
-  than drawing wrong geometry in your mod.
+- **Base vertex.** An indexed command's `base_vertex` offsets the vertex fetch and `gl_VertexID`;
+  the engine's daily GPU test draws a command with a non-zero `base_vertex` on the CI adapter.
 
 The command buffer must have been created with `indirect: true`, its offset be a multiple of 4, and
 `indirect_offset + max_count * stride` lie inside it. A stale or foreign buffer is

@@ -31,9 +31,10 @@ pub const INDIRECT_INDEXED_DRAW_SIZE: u64 = 20;
 /// engine knows, which an indirect command does not give it.
 ///
 /// A command's `first_instance` is read as written only where
-/// [`crate::RenderCapabilities::indirect_first_instance`] is set; elsewhere keep it zero. On
-/// An indexed command's `base_vertex` offsets the vertex fetch and `gl_VertexID` on every backend;
-/// the engine's daily GPU test draws a command with a non-zero `base_vertex` on each one.
+/// [`crate::RenderCapabilities::indirect_first_instance`] is set; elsewhere keep it zero.
+///
+/// An indexed command's `base_vertex` offsets the vertex fetch and `gl_VertexID`; the engine's
+/// daily GPU test draws a command with a non-zero `base_vertex` on the CI adapter.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 // no wire: local client indirect draw descriptor.
