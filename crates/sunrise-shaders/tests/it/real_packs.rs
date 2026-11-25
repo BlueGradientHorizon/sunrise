@@ -229,7 +229,7 @@ fn real_packs_read() {
             };
                 let mut macros = macros.clone();
                 if std::env::var_os("SUBGROUPS").is_some() {
-                    macros.define("MC_GL_KHR_shader_subgroup_arithmetic", "");
+                    macros.define_subgroups();
                 }
                 for note in &feature_notes {
                     println!("    {note}");

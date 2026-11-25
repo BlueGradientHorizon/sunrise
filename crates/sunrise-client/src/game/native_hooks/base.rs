@@ -1125,6 +1125,25 @@ impl Game<'_> {
     ) {
         self.fire_screen_mouse_button_released_pre(screen, button, modifiers, canceled);
     }
+    /// The pointer moved over the open screen (`Screen.mouseMoved`): before the drag hook
+    /// of the same move. Cancel keeps the new cursor position and skips the rest of the move.
+    pub(in crate::game) fn native_screen_mouse_moved_pre(
+        &self,
+        screen: &ScreenView<'_>,
+        delta: [f32; 2],
+        modifiers: u32,
+        canceled: &mut bool,
+    ) {
+        self.fire_screen_mouse_moved_pre(screen, delta, modifiers, canceled);
+    }
+    /// Raw device motion while the open mod screen holds the pointer grab.
+    pub(in crate::game) fn native_screen_pointer_motion(
+        &self,
+        screen: &ScreenView<'_>,
+        delta: [f64; 2],
+    ) {
+        self.fire_screen_pointer_motion(screen, delta);
+    }
     /// Before a real held-button movement reaches screen drag handlers.
     /// `screen.mouse` is the current GUI position; `delta` is its GUI-space movement.
     /// Cancel keeps the new cursor position but skips all screen drag handlers.
@@ -4179,6 +4198,17 @@ impl Game<'_> {
             game_time: self.world.game_time,
             day_time: self.world.day_time,
         })
+    }
+    /// `ClientLevel.tickRateManager()`: the rate, freeze and steps the server last sent, while a
+    /// client level exists (from `Login`, as the ticking packets apply only then).
+    pub(in crate::game) fn tick_rate(&self) -> Option<mod_api::ClientTickRate> {
+        self.native_client_level()
+            .is_some()
+            .then(|| mod_api::ClientTickRate {
+                tick_rate: self.clock.rate(),
+                frozen: self.clock.frozen(),
+                frozen_ticks_to_run: self.clock.step_state().remaining,
+            })
     }
     /// `native_text` scaled by `scale` about `at`, its top-left corner (a GUI pose's scale).
     pub(in crate::game) fn native_text_scaled(

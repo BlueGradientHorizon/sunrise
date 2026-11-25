@@ -220,12 +220,6 @@ fn screenshot_path<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::
             "{path:?}: expected a relative screenshot file under page/ without . or .. components"
         )));
     }
-    // Win32 may strip trailing dots or spaces when opening a path component.
-    if path.split('/').any(|part| part.ends_with(['.', ' '])) {
-        return Err(D::Error::custom(format!(
-            "{path:?}: screenshot path components cannot end in a dot or space"
-        )));
-    }
     // Release check must also refuse paths that cannot be stored in the required bundle format.
     tar::Header::new_ustar()
         .set_path(&path)
