@@ -534,6 +534,11 @@ jobs:
       WGPU_BACKEND: vulkan
       SUNRISE_GPU_TESTS_REQUIRE_ADAPTER: '1'
       RUNNER_KIND: ${{ needs.changes.outputs.self_hosted == 'true' && 'dyna' || !inputs.github-fallback && needs.changes.outputs.forced_github != 'true' && vars.SELF_HOSTED_CI == 'all' && needs.changes.outputs.trusted == 'true' && 'other' || startsWith(needs.changes.outputs.hosted_label, 'boat') && 'boat' || 'github' }}
+      # No line tables in the gate's test build, as the parity runner builds (parity.yml): the sunrise-client lib test
+      # (already `debug = 0` in Cargo.toml) links every dependency's tables, and its compile at -j1, alone in the 16 GiB
+      # runner, was killed by signal 9 twice on rollup 218 (memory.peak 16 GiB, oom_kill 2). A failing test still names
+      # its file and line; only a backtrace loses them.
+      CARGO_PROFILE_TEST_DEBUG: 'false'
     steps:
       - name: Require successful check selection
         if: needs.changes.result != 'success'
@@ -671,6 +676,15 @@ jobs:
             echo "::error::The --keep-going build passed, but it builds a different graph and does not clear the failed test build: check the errors above, including any 'signal 9' (a compile killed, usually for memory), before rerunning."
           fi
           exit 1
+      # The runner's memory once the test build ends, compiled or killed: its peak against the cap, and what the
+      # cgroup holds (anon: processes; file: page cache; shmem: the tmpfs checkout and /tmp).
+      - name: Memory after the test build
+        if: ${{ !cancelled() && needs.changes.outputs.rust_required != 'false' && needs.changes.outputs.self_hosted == 'true' }}
+        continue-on-error: true
+        run: |
+          echo "memory.max $(cat /sys/fs/cgroup/memory.max) memory.peak $(cat /sys/fs/cgroup/memory.peak)" | tee -a "$GITHUB_STEP_SUMMARY"
+          grep '^oom_kill ' /sys/fs/cgroup/memory.events | tee -a "$GITHUB_STEP_SUMMARY"
+          grep -E '^(anon|file|shmem|file_dirty|file_writeback) ' /sys/fs/cgroup/memory.stat | tee -a "$GITHUB_STEP_SUMMARY"
       # What bounds the build: the slowest compile units, from the report --timings writes.
       - name: Slowest compile units
         if: ${{ !cancelled() && needs.changes.outputs.rust_required != 'false' }}
