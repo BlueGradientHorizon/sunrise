@@ -1019,7 +1019,7 @@ fn tick_client(game: &mut Game<'_>, wire: &mut sunrise_protocol::connection::Con
 }
 
 /// A collider that turns in place via `collider_sync::Message::Rotation` arriving before each
-/// client tick carries the local player standing 1 block off its axis around it (#5584).
+/// client tick carries the local player standing 1.2 blocks off its axis around it (#5584).
 #[test]
 #[ignore = "daily"]
 fn a_client_collider_turning_before_the_tick_carries_the_local_player() {
@@ -1035,6 +1035,10 @@ fn a_client_collider_turning_before_the_tick_carries_the_local_player() {
         || {
             const PLAYER: u32 = 42;
             const SOURCE: i32 = 80;
+            // Off the axis far enough that the player's box (half width 0.3) never meets the
+            // pig's (0.45) on the turn: inside 0.75 on both axes `Entity.push` would shove
+            // the player outward and the radius would no longer be the carry's alone.
+            const RADIUS: f64 = 1.2;
             let yaw = |degrees: f32| {
                 let half = degrees.to_radians() / 2.0;
                 [0.0, half.sin(), 0.0, half.cos()]
@@ -1070,7 +1074,7 @@ fn a_client_collider_turning_before_the_tick_carries_the_local_player() {
                     .unwrap();
 
                     let mut player =
-                        PlayerMotion::new(game.motion, Vec3::new(9.0, 70.0, 8.0)).unwrap();
+                        PlayerMotion::new(game.motion, Vec3::new(8.0 + RADIUS, 70.0, 8.0)).unwrap();
                     player.entity_id = PLAYER as i32;
                     player.client_side = true;
                     game.player = Some(player);
@@ -1096,7 +1100,8 @@ fn a_client_collider_turning_before_the_tick_carries_the_local_player() {
                     }
 
                     let total = f64::from(deg_per_tick * STEPS as f32).to_radians();
-                    let want = Vec3::new(8.0 + total.cos(), 70.0, 8.0 - total.sin());
+                    let want =
+                        Vec3::new(8.0 + RADIUS * total.cos(), 70.0, 8.0 - RADIUS * total.sin());
                     let at = game.player.as_ref().unwrap().position;
                     assert!(
                         near(at, want, 0.06),
