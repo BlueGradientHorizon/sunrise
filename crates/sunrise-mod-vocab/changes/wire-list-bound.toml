@@ -1,3 +1,0 @@
-ids = ["const:payload::PAYLOAD_MAX_LIST_ENTRIES"]
-why = "sunrise#5804: Wire's fixed 4096-entry list cap in typed payloads was stricter than vanilla, whose collection codecs have no count limit of their own (`ByteBufCodecs.collection` defaults to `Integer.MAX_VALUE`); only the packet bounds a list. A typed payload's list count is now refused when its entries, at `Wire::MIN` bytes each and at least one, could not fit in the rest of the body, the same rule ordinary Wire uses. `PAYLOAD_MAX_LIST_ENTRIES` is removed."
-migrate = "Remove uses of `PAYLOAD_MAX_LIST_ENTRIES`. A mod that relied on the 4096-entry cap to refuse larger lists checks the length itself in its handler."
