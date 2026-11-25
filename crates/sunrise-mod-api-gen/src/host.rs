@@ -596,7 +596,7 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
     }
 
     let mut code = String::from(
-        "use crate::game::{ClientGame, ServerGame};\nuse crate::game::api_values::{call_stack_write, call_state_write, call_write, TryIntoApi, TryIntoEngine};\nuse mod_api::*;\n",
+        "#[cfg(feature = \"client\")]\nuse crate::game::ClientGame;\nuse crate::game::ServerGame;\nuse crate::game::api_values::{call_stack_write, call_state_write, call_write, TryIntoApi, TryIntoEngine};\nuse mod_api::*;\n",
     );
     for area in load(root)? {
         for (tier, entries) in &area.tiers {
@@ -617,6 +617,9 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
             for target_kind in targets {
                 let target = target_kind.type_name();
                 let via_game = table.is_some() && !matches!(target_kind, ForwarderTarget::Table(_));
+                if matches!(target_kind, ForwarderTarget::Client) {
+                    code.push_str("#[cfg(feature = \"client\")]\n");
+                }
                 code.push_str(&format!(
                     "#[deny(unconditional_recursion)]\nimpl mod_api::prelude::{} for {target}<'_> {{\n",
                     area.trait_name(*tier)

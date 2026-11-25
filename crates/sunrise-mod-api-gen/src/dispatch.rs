@@ -781,7 +781,9 @@ pub(super) fn emit<'a>(
             let impl_header = if is_game_receiver {
                 match hook.side {
                     Side::Server => "impl crate::game::ServerGame<'_>".to_owned(),
-                    Side::Client => "impl crate::game::ClientGame<'_>".to_owned(),
+                    Side::Client => {
+                        "#[cfg(feature = \"client\")] impl crate::game::ClientGame<'_>".to_owned()
+                    }
                     Side::Both => "impl<S: crate::game::Side> crate::game::Game<'_, S>".to_owned(),
                 }
             } else if receiver.ident == "ReadLevel" {
