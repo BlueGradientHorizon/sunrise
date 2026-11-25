@@ -77,6 +77,13 @@ fn integer_texel_buffers_become_storage_buffers_the_pipeline_gives() {
     assert!(translate_core_with(VSH, FSH, &[], &|_| None, &GLUE, &without).is_err());
 }
 
+/// The rewrite of `text` alone.
+fn texel_fetches(text: &str) -> String {
+    let mut lines = located::Lines::from_text(text);
+    super::texel_fetches(&mut lines);
+    lines.text().to_owned()
+}
+
 /// Two buffers' fetches, interleaved, rewritten in the one pass.
 #[test]
 fn every_buffers_fetches_are_rewritten_in_one_pass() {

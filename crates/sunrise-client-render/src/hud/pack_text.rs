@@ -70,8 +70,15 @@ pub(crate) enum Refusal {
     StageHidden { path: String },
     /// An include the selected packs don't have (`ns:path`, as the shader asks for it).
     IncludeMissing { id: String },
-    /// The translator refused the GLSL.
-    Translation(String),
+    /// An include refused (`refusal`: missing, unreadable, over the budget, not text) at the
+    /// directive asking for it, in the file (`ns:path`) and on the line that has it.
+    Include {
+        file: String,
+        line: u32,
+        refusal: Box<Refusal>,
+    },
+    /// The translator refused the GLSL, at the files and lines the author wrote.
+    Translation(Vec<sunrise_glsl::Error>),
     /// The translator panicked on it.
     Panicked(String),
 }
@@ -88,7 +95,12 @@ impl std::fmt::Display for Refusal {
             Self::Unreadable { path, error } => write!(f, "{path}: {error}"),
             Self::StageHidden { path } => write!(f, "{path} is not in the selected packs"),
             Self::IncludeMissing { id } => write!(f, "{id} is not in the selected packs"),
-            Self::Translation(e) => f.write_str(e),
+            Self::Include {
+                file,
+                line,
+                refusal,
+            } => write!(f, "{file}:{line}: {refusal}"),
+            Self::Translation(errors) => f.write_str(&sunrise_glsl::describe(errors)),
             Self::Panicked(e) => write!(f, "the shader translator failed: {e}"),
         }
     }
@@ -116,7 +128,20 @@ fn translate_pair(
         Ok(stages) => stages,
         Err(e) => return Some(Err(e)),
     };
-    Some(translate_selected(root, &stages, defines, glue, provided))
+    Some(translate_selected(
+        root,
+        &stages,
+        (vertex_name, name),
+        defines,
+        glue,
+        provided,
+    ))
+}
+
+/// The id of the core shader stage `name` (`minecraft:shaders/core/<name>.<extension>`), which
+/// errors in it name.
+fn stage_id(name: &str, extension: &str) -> String {
+    format!("minecraft:shaders/core/{name}.{extension}")
 }
 
 /// Return both selected stage files if any required variant uses a pack override.
@@ -133,13 +158,17 @@ fn selected_stages(
         let changed = match (&selected, &game) {
             (None, _) => defaults.contains(&path),
             (Some(text), Some(game)) if text == game => variants.iter().any(|defines| {
+                // The text and the refusal: where each line came from changes nothing.
                 let resolved = |base| {
                     crate::core_shader::expand_core_imports(
                         text,
+                        &stage_id(name, extension),
                         "minecraft:shaders/core/",
                         defines,
                         &|id| include_of(base, id).1,
                     )
+                    .map(|expanded| expanded.text().to_owned())
+                    .map_err(|e| e.refusal)
                 };
                 resolved(root) != resolved(defaults)
             }),
@@ -165,6 +194,7 @@ fn selected_stages(
 fn translate_selected(
     root: &ResourceSource,
     (vertex, fragment): &(String, String),
+    (vertex_name, fragment_name): (&str, &str),
     defines: &[&str],
     glue: &Glue,
     provided: &dyn Fn(&str) -> bool,
@@ -175,17 +205,30 @@ fn translate_selected(
         *unavailable.borrow_mut() = refusal;
         text
     };
+    let (vertex_file, fragment_file) =
+        (stage_id(vertex_name, "vsh"), stage_id(fragment_name, "fsh"));
     let stages = sunrise_glsl::Stages {
         dir: "minecraft:shaders/core/",
         vertex,
         fragment,
+        vertex_file: &vertex_file,
+        fragment_file: &fragment_file,
     };
     let translated = contained(|| {
         crate::core_shader::translate_core_at(&stages, defines, &include, glue, provided)
     });
-    translated.map_err(|e| match e {
-        Refusal::Translation(_) => unavailable.into_inner().unwrap_or(e),
-        _ => e,
+    // An include that couldn't be given stops the translation at its directive, the error's
+    // file and line.
+    translated.map_err(|e| match (e, unavailable.into_inner()) {
+        (Refusal::Translation(errors), Some(refusal)) => match errors.first() {
+            Some(at) => Refusal::Include {
+                file: at.file.clone(),
+                line: at.line,
+                refusal: Box::new(refusal),
+            },
+            None => refusal,
+        },
+        (e, _) => e,
     })
 }
 
@@ -215,7 +258,7 @@ fn include_of(
 /// `translate`'s result, or its panic as a refusal: a pack's GLSL is untrusted, and a fault the
 /// translator or naga meets in it must not end the game.
 fn contained(
-    translate: impl FnOnce() -> Result<Translated, String>,
+    translate: impl FnOnce() -> Result<Translated, Vec<sunrise_glsl::Error>>,
 ) -> Result<Translated, Refusal> {
     crate::crash::contain(translate)
         .map_err(Refusal::Panicked)
@@ -395,11 +438,20 @@ fn load_clouds(
         why: e.to_string(),
     })?;
     let translate = |defines: &[&str], samplers: &[&str], targets: usize, pipeline| {
-        translate_selected(root, &stages, defines, &clouds::GLUE, &|name| {
-            matches!(name, clouds::INFO_BLOCK | clouds::FACES) || samplers.contains(&name)
-        })
+        translate_selected(
+            root,
+            &stages,
+            ("clouds", "clouds"),
+            defines,
+            &clouds::GLUE,
+            &|name| matches!(name, clouds::INFO_BLOCK | clouds::FACES) || samplers.contains(&name),
+        )
         .map_err(|e| e.to_string())
-        .and_then(|program| clouds::check(&program, targets).map(|()| program))
+        .and_then(|program| {
+            clouds::check(&program, targets)
+                .map(|()| program)
+                .map_err(|e| e.to_string())
+        })
         .map_err(|why| RequiredShaderRefused { pipeline, why })
     };
     let classic = translate(&CLASSIC_DEFINES, &[], 1, clouds::CLASSIC_PIPELINE)?;
@@ -663,6 +715,15 @@ pub(super) fn text_runs(
 mod tests {
     use super::*;
 
+    /// `refusal` of an include asked for on `line` of the pack's `lightmap.fsh`.
+    fn in_lightmap(line: u32, refusal: Refusal) -> Refusal {
+        Refusal::Include {
+            file: "minecraft:shaders/core/lightmap.fsh".into(),
+            line,
+            refusal: Box::new(refusal),
+        }
+    }
+
     #[test]
     fn the_gui_projection_maps_gui_pixels_to_the_screen() {
         let mut batch = HudBatch::scratch([1920, 1080]);
@@ -901,9 +962,12 @@ mod tests {
         files.insert(include.to_owned(), Resource::bytes(vec![0xff, 0xfe]));
         assert_eq!(
             translation(files),
-            Err(Refusal::NotText {
-                path: include.to_owned()
-            })
+            Err(in_lightmap(
+                2,
+                Refusal::NotText {
+                    path: include.to_owned()
+                }
+            ))
         );
     }
 
@@ -1020,10 +1084,34 @@ mod tests {
         );
         assert_eq!(
             translate(&hiding(tint)).expect_err("the include hidden"),
-            Refusal::IncludeMissing {
-                id: "minecraft:shaders/core/tint.glsl".into()
-            }
+            in_lightmap(
+                2,
+                Refusal::IncludeMissing {
+                    id: "minecraft:shaders/core/tint.glsl".into()
+                }
+            )
         );
+    }
+
+    /// An error in a file a pack's include includes names that file and its line, through the
+    /// loader's own reading of the packs.
+    #[test]
+    fn an_error_in_a_nested_include_names_its_file_and_line() {
+        let fsh = "assets/minecraft/shaders/core/lightmap.fsh";
+        let tint = "assets/minecraft/shaders/core/tint.glsl";
+        let deep = "assets/minecraft/shaders/core/inner/deep.glsl";
+        let tint_glsl = "#moj_import \"inner/deep.glsl\"\n\
+            vec4 tint(float f) { return vec4(f, 0.5 * f, 0.0, 1.0) * deep(); }\n";
+        let deep_glsl = "// deep\nfloat deep() {\n    return not_declared;\n}\n";
+        let refused =
+            lightmap_translation(&[(fsh, IMPORTING_FSH), (tint, tint_glsl), (deep, deep_glsl)])
+                .expect("the pack replaces a stage")
+                .expect_err("the include has an error");
+        let Refusal::Translation(errors) = refused else {
+            panic!("not the translator's: {refused:?}");
+        };
+        let located: Vec<(&str, u32)> = errors.iter().map(|e| (e.file.as_str(), e.line)).collect();
+        assert_eq!(located, [("minecraft:shaders/core/inner/deep.glsl", 3)]);
     }
 
     /// A stage that isn't UTF-8 text refuses the shader, named.
@@ -1084,9 +1172,12 @@ mod tests {
             .expect_err("an import only under shaders/include is not beside the shader");
         assert_eq!(
             why,
-            Refusal::IncludeMissing {
-                id: "minecraft:shaders/core/tint.glsl".into()
-            }
+            in_lightmap(
+                2,
+                Refusal::IncludeMissing {
+                    id: "minecraft:shaders/core/tint.glsl".into()
+                }
+            )
         );
     }
 
@@ -1111,7 +1202,7 @@ mod tests {
         };
         assert_eq!(
             refused(&[(fsh, IMPORTING_FSH), (tint, &over)]),
-            Refusal::OverBudget { path: tint.into() }
+            in_lightmap(2, Refusal::OverBudget { path: tint.into() })
         );
         // The same file at the budget gets past the read (and the translator then finds the
         // expanded shader too long, a refusal of its own).
