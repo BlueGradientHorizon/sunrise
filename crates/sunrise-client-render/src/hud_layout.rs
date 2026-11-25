@@ -566,6 +566,12 @@ impl StatusBarHeights {
     pub fn heights(&self) -> [i32; 2] {
         [self.left.height, self.right.height]
     }
+    /// Assigns both columns, as a NeoForge layer assigns `Hud.leftHeight` and `rightHeight`:
+    /// rows that draw afterwards start from these heights.
+    pub fn set(&mut self, [left, right]: [i32; 2]) {
+        self.left.height = left;
+        self.right.height = right;
+    }
 }
 
 struct StatusColumn {

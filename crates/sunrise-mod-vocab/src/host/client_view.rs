@@ -18,6 +18,16 @@ pub trait ClientViewClientHost {
     /// that is hidden, canceled or replaced adds nothing. None outside the HUD layer pass.
     fn gui_status_heights(&self) -> Option<[i32; 2]>;
     /// Side: client.
+    /// Sets the HUD status columns' heights, left and right in GUI pixels above the bottom
+    /// edge, as assigning NeoForge's `Hud.leftHeight` and `rightHeight` does: the vanilla rows
+    /// that draw after the current layer start from them, and add their own height on top. A
+    /// layer placed `Below` `minecraft:vehicle_health` that raises the right column moves the
+    /// mount's hearts and the air row up; a wrapper that sets them before `draw_previous` moves
+    /// the row it wraps. Rows already drawn stay where they are, and both columns go back to 39
+    /// at the start of each HUD pass. `gui_status_heights` reads the new heights at once. False,
+    /// setting nothing, outside the HUD layer pass.
+    fn set_gui_status_heights(&self, heights: [i32; 2]) -> bool;
+    /// Side: client.
     /// Read effective HUD visibility independently of first-person hands.
     fn hud_mode(&self) -> HudMode;
     /// Side: client.
