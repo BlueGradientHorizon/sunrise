@@ -12,13 +12,58 @@ impl Game<'_> {
             simulation_distance: s.simulation_distance,
             brightness: s.gamma as f32,
             max_fps: s.max_fps,
-            vsync: s.vsync,
+            vsync: self.effective_vsync(),
             fullscreen: s.fullscreen,
-            view_bobbing: s.view_bobbing,
+            view_bobbing: self.effective_view_bobbing(),
             smooth_lighting: s.smooth_lighting,
             particles: s.particles,
             entity_distance: s.entity_distance as f32,
             biome_blend: s.biome_blend,
+        }
+    }
+    /// VSync in effect: the session's (`set_session_vsync`), else the player's option.
+    pub(in crate::game) fn effective_vsync(&self) -> bool {
+        self.session_video.vsync.unwrap_or(self.settings.vsync)
+    }
+    /// The Clouds option in effect, as `options.txt` names it (`false`, `fast`, `true`).
+    pub(in crate::game) fn effective_clouds(&self) -> &str {
+        self.session_video
+            .clouds
+            .unwrap_or(self.settings.clouds.as_str())
+    }
+    /// `Options.enableVsync` for this session only, and the surface reconfigured at once.
+    pub(in crate::game) fn set_session_vsync(&mut self, vsync: Option<bool>) {
+        self.session_video.vsync = vsync;
+        let vsync = self.effective_vsync();
+        if let Some(renderer) = &mut self.renderer {
+            renderer.set_present_mode(vsync, self.settings.sunrise.present_mode);
+        }
+    }
+    /// `Options.cloudStatus` for this session only.
+    pub(in crate::game) fn set_session_clouds(&mut self, clouds: Option<mod_api::CloudStatus>) {
+        self.session_video.clouds = clouds.map(|clouds| match clouds {
+            mod_api::CloudStatus::Off => "false",
+            mod_api::CloudStatus::Fast => "fast",
+            mod_api::CloudStatus::Fancy => "true",
+        });
+    }
+    /// View bobbing in effect: the session's (`set_session_view_bobbing`), else the player's
+    /// option (`Options.bobView`).
+    pub(in crate::game) fn effective_view_bobbing(&self) -> bool {
+        self.session_video
+            .view_bobbing
+            .unwrap_or(self.settings.view_bobbing)
+    }
+    /// `Options.bobView` for this session only; the next frame's camera reads it.
+    pub(in crate::game) fn set_session_view_bobbing(&mut self, view_bobbing: Option<bool>) {
+        self.session_video.view_bobbing = view_bobbing;
+    }
+    /// The clouds in effect (`Options.getCloudsType`).
+    pub(in crate::game) fn cloud_status(&self) -> mod_api::CloudStatus {
+        match self.effective_clouds() {
+            "false" => mod_api::CloudStatus::Off,
+            "fast" => mod_api::CloudStatus::Fast,
+            _ => mod_api::CloudStatus::Fancy,
         }
     }
     /// A snapshot of the current GUI and accessibility preferences.
@@ -118,6 +163,71 @@ fn resolved_gui_scale(framebuffer: Option<[u32; 2]>, gui_scale: u32, unicode: bo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Session-only VSync, clouds and view bobbing take effect in the host's reads and never reach
+    /// the player's options or `options.txt`; `None` goes back to the option. No renderer runs
+    /// here (no GPU): the surface reconfiguration is the same `set_present_mode` call the options
+    /// screen makes when VSync changes.
+    #[test]
+    #[ignore = "daily"]
+    fn session_video_options_take_effect_without_being_saved() {
+        use mod_api::{CloudStatus, prelude::ClientOptionsClientHost};
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
+            game.settings.vsync = true;
+            game.settings.clouds = "true".into();
+            game.settings.view_bobbing = true;
+            assert!(ClientOptionsClientHost::graphics_options(game).vsync);
+            assert!(ClientOptionsClientHost::graphics_options(game).view_bobbing);
+            assert_eq!(
+                ClientOptionsClientHost::cloud_status(game),
+                CloudStatus::Fancy
+            );
+
+            ClientOptionsClientHost::set_session_vsync(game, Some(false));
+            ClientOptionsClientHost::set_session_clouds(game, Some(CloudStatus::Fast));
+            ClientOptionsClientHost::set_session_view_bobbing(game, Some(false));
+            assert!(!ClientOptionsClientHost::graphics_options(game).vsync);
+            assert!(!ClientOptionsClientHost::graphics_options(game).view_bobbing);
+            assert_eq!(
+                ClientOptionsClientHost::cloud_status(game),
+                CloudStatus::Fast
+            );
+            assert!(game.settings.vsync);
+            assert_eq!(game.settings.clouds, "true");
+            assert!(game.settings.view_bobbing);
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("options.txt");
+            game.settings.save(&path);
+            let saved = std::fs::read_to_string(&path).unwrap();
+            assert!(
+                saved.lines().any(|line| line == "enableVsync:true"),
+                "{saved}"
+            );
+            assert!(
+                saved.lines().any(|line| {
+                    line.strip_prefix("renderClouds:")
+                        .is_some_and(|value| value.trim_matches('"') == "true")
+                }),
+                "{saved}"
+            );
+            assert!(saved.lines().any(|line| line == "bobView:true"), "{saved}");
+
+            ClientOptionsClientHost::set_session_clouds(game, Some(CloudStatus::Off));
+            assert_eq!(
+                ClientOptionsClientHost::cloud_status(game),
+                CloudStatus::Off
+            );
+            ClientOptionsClientHost::set_session_vsync(game, None);
+            ClientOptionsClientHost::set_session_clouds(game, None);
+            ClientOptionsClientHost::set_session_view_bobbing(game, None);
+            assert!(ClientOptionsClientHost::graphics_options(game).vsync);
+            assert!(ClientOptionsClientHost::graphics_options(game).view_bobbing);
+            assert_eq!(
+                ClientOptionsClientHost::cloud_status(game),
+                CloudStatus::Fancy
+            );
+        });
+    }
 
     #[test]
     fn gui_snapshot_tracks_advanced_tooltip_toggle() {

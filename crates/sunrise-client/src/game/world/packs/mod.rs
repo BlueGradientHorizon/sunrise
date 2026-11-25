@@ -585,7 +585,7 @@ impl Game<'_> {
                     Some(textures),
                     self.settings.sunrise.api,
                     self.settings.sunrise.translucent_batching,
-                    self.settings.vsync,
+                    self.effective_vsync(),
                     &self.settings.sunrise,
                     super::shader_packs::picked_pack_shape(&self.settings),
                     self.renderer

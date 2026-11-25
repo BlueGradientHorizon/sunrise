@@ -3423,6 +3423,15 @@ struct TickScratch {
     later: Vec<BlockPos>,
 }
 
+/// Video options a mod set for this session only, over the player's saved ones.
+#[derive(Default)]
+struct SessionVideo {
+    vsync: Option<bool>,
+    /// As `options.txt` names it: `false`, `fast` or `true`.
+    clouds: Option<&'static str>,
+    view_bobbing: Option<bool>,
+}
+
 struct Game<'a> {
     /// Shared with an integrated server; `collision` and `motion` borrow from it.
     res: Arc<Resources>,
@@ -3973,6 +3982,9 @@ struct Game<'a> {
     clicks: sunrise_client::first_person::Clicks<Option<ItemStack>>,
     hand_strength: sunrise_client::attack_strength::AttackStrength,
     settings: Settings,
+    /// Video options a mod set for this session only (`set_session_vsync`,
+    /// `set_session_clouds`): never in `settings`, so never saved.
+    session_video: SessionVideo,
     look: look::LookCache,
     tutorial: tutorial::Tutorial,
     toast_manager: toast_manager::ToastManager,
@@ -10709,7 +10721,7 @@ impl Game<'_> {
             None,
             self.settings.sunrise.api,
             self.settings.sunrise.translucent_batching,
-            self.settings.vsync,
+            self.effective_vsync(),
             &self.settings.sunrise,
             shader_packs::picked_pack_shape(&self.settings),
             display,
@@ -12134,6 +12146,7 @@ impl Game<'_> {
         let skybox = self.dimension_type().skybox;
         let camera_fog = self.camera_fog_type(camera.to_array());
         let boss_world_fog = self.boss_overlay.should_create_world_fog();
+        let fast_clouds = self.effective_clouds() == "fast";
         let frame = Frame {
             weather: &weather,
             weather_time: sunrise_client::weather::Time::new(self.world.game_time, alpha as f32),
@@ -12210,7 +12223,7 @@ impl Game<'_> {
                     time: self.world.game_time,
                     partial_tick: alpha,
                     range: self.settings.cloud_range,
-                    fast: self.settings.clouds == "fast",
+                    fast: fast_clouds,
                     color: sky.cloud_color,
                     height: sky.cloud_height,
                 }),
@@ -14617,6 +14630,7 @@ impl<'a> Game<'a> {
             clicks: Default::default(),
             hand_strength: Default::default(),
             settings,
+            session_video: SessionVideo::default(),
             look: Default::default(),
             tutorial,
             toast_manager: Default::default(),
