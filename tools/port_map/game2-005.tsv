@@ -116,7 +116,7 @@ Player.decorateDisplayNameComponent	port	crates/sunrise-client/src/game/administ
 Player.getSlot	port	crates/sunrise-client/src/game/administration/commands/items.rs::Game::slots_named	gap: minor: numeric slots 499 (carried item) and 500-503 (crafting grid) are not addressed
 Player.extractParrotVariant	port	crates/sunrise-client/src/game/mobs/shoulders.rs::shoulder_variants	the saved Variant of the shoulder parrot, clamped by Parrot.Variant.byId
 Player.convertParrotVariant	skip:java		Optional and OptionalInt conversion of the synched parrot variant; Sunrise stores the id directly
-Player.getItemSwapScale	port	crates/sunrise-client/src/attack_strength.rs::AttackStrength::swap_scale
+Player.getItemSwapScale	port	crates/sunrise-sim/src/attack_strength.rs::AttackStrength::swap_scale
 Player.debugInfo	skip:debug
 Player.printPlayerPermissions	skip:debug
 PlayerEquipment.set	port	crates/sunrise-world/src/player_equipment.rs::set	main hand goes to the selected slot

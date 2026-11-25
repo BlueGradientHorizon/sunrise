@@ -13,16 +13,12 @@ static HOOKS: OnceLock<StackHooks> = OnceLock::new();
 pub fn install(hooks: StackHooks) -> bool {
     HOOKS.set(hooks).is_ok()
 }
-pub(crate) fn enchantments(
-    stack: &ItemStack,
-    target: Option<&Identifier>,
-    value: &mut ItemEnchantments,
-) {
+pub fn enchantments(stack: &ItemStack, target: Option<&Identifier>, value: &mut ItemEnchantments) {
     if let Some(hooks) = HOOKS.get() {
         (hooks.enchantments)(stack, target, value);
     }
 }
-pub(crate) fn attributes(stack: &ItemStack, value: &mut ItemAttributeModifiers) {
+pub fn attributes(stack: &ItemStack, value: &mut ItemAttributeModifiers) {
     if let Some(hooks) = HOOKS.get() {
         (hooks.attributes)(stack, value);
     }

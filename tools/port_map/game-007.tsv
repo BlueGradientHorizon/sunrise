@@ -1,4 +1,4 @@
-PortalProcessor.processPortalTeleportation	port	crates/sunrise-client/src/nether_portal.rs::process	decayTick when not inside, else counts up to the transition time; the time comes from the players_nether_portal_* rules for the player
+PortalProcessor.processPortalTeleportation	port	crates/sunrise-sim/src/nether_portal.rs::process	decayTick when not inside, else counts up to the transition time; the time comes from the players_nether_portal_* rules for the player
 PositionMoveRotation.of	skip:java		record factory for teleport packets; Sunrise builds the packet fields directly (lan/hub.rs teleport_relative)
 PostSpawnProcessor.andThen	skip:java		closure chaining
 Relative.rotation	skip:java		EnumSet builder; Sunrise uses the bit constants in sunrise-protocol packets/play.rs relative

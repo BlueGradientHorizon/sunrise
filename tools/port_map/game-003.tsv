@@ -5,8 +5,8 @@ ServerPlayerGameMode.incrementDestroyProgress	port	crates/sunrise-client/src/gam
 ServerPlayerGameMode.debugLogging	skip:debug		DEBUG_BLOCK_BREAK logging
 ServerPlayerGameMode.abortDestroyBlock	inline	crates/sunrise-client/src/game/network/lan_actions/packets_server.rs::Game::lan_guest_packet	the abort action clears the guest's crack for everyone; no separate check of a mismatched destroy position
 ServerPlayerGameMode.destroyAndAck	inline	crates/sunrise-client/src/game/network/lan_actions/mod.rs::Game::lan_guest_packet	the sequence ack every PlayerAction arm sends first (Hub::ack -> ClientboundBlockChangedAck in tick_level) takes a vanilla client's predicted block back, and the ABORT arm also sends the state
-SimulationChunkTracker.getLevel	port	crates/sunrise-client/src/ticket_levels.rs::Map::get	simulation level per chunk, 33 where no ticket reaches
-SimulationChunkTracker.setLevel	inline	crates/sunrise-client/src/ticket_levels.rs::compute	the whole level map is rebuilt from player and forced tickets instead of updated per node
+SimulationChunkTracker.getLevel	port	crates/sunrise-sim/src/ticket_levels.rs::Map::get	simulation level per chunk, 33 where no ticket reaches
+SimulationChunkTracker.setLevel	inline	crates/sunrise-sim/src/ticket_levels.rs::compute	the whole level map is rebuilt from player and forced tickets instead of updated per node
 ThreadedLevelLightEngine.checkBlock	inline	crates/sunrise-client-render/src/light.rs::relight	a block change relights resident chunks directly, no queued PRE_UPDATE task
 ThreadedLevelLightEngine.updateChunkStatus	skip:other		Sunrise lights a chunk in one flood fill and keeps no per-section light state to reset
 ThreadedLevelLightEngine.updateSectionStatus	skip:other		no per-section empty flags: light_chunk reads the sections directly

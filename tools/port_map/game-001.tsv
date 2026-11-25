@@ -21,7 +21,7 @@ ChunkHolder.demoteFullChunk	skip:other		only tells the status listener (loading 
 ChunkHolder.updateFutures	inline	crates/sunrise-client/src/game/game_server.rs::Game::start_ticking_chunks	promotion to ticking on level change; demotion needs no work as Levels is read each tick
 ChunkLevel.getStatusAroundFullChunk	inline	crates/sunrise-client-render/src/streaming.rs::Ranges::margins	fixed margins around the view instead of a status per distance
 ChunkLevel.byStatus	skip:other		per status ticket levels; Sunrise streams by distance (Ranges), not by level
-ChunkLevel.fullStatus	port	crates/sunrise-client/src/ticket_levels.rs::Levels::loaded_ticking	31 entity ticking, 32 block ticking, 33 full as predicates on Levels
+ChunkLevel.fullStatus	port	crates/sunrise-sim/src/ticket_levels.rs::Levels::loaded_ticking	31 entity ticking, 32 block ticking, 33 full as predicates on Levels
 ChunkLoadCounter.track	inline	crates/sunrise-client/src/game/world/integrated.rs::Game::publish_load_view	gap: minor: counts only the spawn's 7x7 chunks, not the initial forced or ticketed chunks
 ChunkLoadCounter.pendingChunks	inline	crates/sunrise-client/src/game/world/integrated.rs::Game::publish_load_view	counts lit chunks in the 7x7 around the spawn
 ChunkMap.<init>	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::new	worker pool and generator; light engine and POI storage are set up elsewhere
@@ -59,7 +59,7 @@ ChunkMap.printFuture	skip:debug
 ChunkMap.readChunk	port	crates/sunrise-client/src/save/dir.rs::SaveDir::read_record	reads the raw record (pending writes first); the upgrade is done when the world opens
 ChunkMap.upgradeChunkTag	inline	crates/sunrise-world/src/datafix/files.rs::upgrade_world_data	chunks are upgraded all at once when an older world opens, not as each is read
 ChunkMap.getChunkDataFixContextTag	inline	crates/sunrise-world/src/datafix/files.rs::upgrade_world_data	dimension id and generator type passed to update_chunk per dimension folder
-ChunkMap.forEachBlockTickingChunk	port	crates/sunrise-client/src/ticket_levels.rs::Levels::random_ticking	simulation entity ticking and a ticking chunk
+ChunkMap.forEachBlockTickingChunk	port	crates/sunrise-sim/src/ticket_levels.rs::Levels::random_ticking	simulation entity ticking and a ticking chunk
 ChunkMap.anyPlayerCloseEnoughForSpawningInternal	inline	crates/sunrise-client/src/game/mobs/natural_spawning.rs::Game::spawning_chunks	any non-spectator within 128 blocks of the chunk centre
 ChunkMap.playerIsCloseEnoughForSpawning	port	crates/sunrise-client/src/game/mobs/natural_spawning.rs::close_enough_for_spawning
 ChunkMap.playerIsCloseEnoughTo	inline	crates/sunrise-client/src/game/blocks/level_access.rs::GameLevel::can_spread_fire_around	the only caller (fire spread radius), spectators left out
@@ -94,9 +94,9 @@ ChunkTaskDispatcher.scheduleForExecution	inline	crates/sunrise-client-render/src
 ChunkTaskPriorityQueue.resortChunkTasks	port	crates/sunrise-client-render/src/streaming.rs::rank_again
 ChunkTaskPriorityQueue.release	port	crates/sunrise-client-render/src/streaming.rs::release_columns	the jobs queued for a released column are dropped from the heap, the jobs without a column (saves, meshes to free) stay
 ChunkTaskPriorityQueue.pop	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::new	BinaryHeap pop in the worker loop
-ChunkTracker.checkNeighborsAfterUpdate	inline	crates/sunrise-client/src/ticket_levels.rs::compute	closed form: ticket level plus Chebyshev distance, rebuilt when sources change
-ChunkTracker.getComputedLevel	inline	crates/sunrise-client/src/ticket_levels.rs::compute	lowest ticket level plus distance, per cell
-ChunkTracker.computeLevelFromNeighbor	inline	crates/sunrise-client/src/ticket_levels.rs::compute	one level per chunk of distance
+ChunkTracker.checkNeighborsAfterUpdate	inline	crates/sunrise-sim/src/ticket_levels.rs::compute	closed form: ticket level plus Chebyshev distance, rebuilt when sources change
+ChunkTracker.getComputedLevel	inline	crates/sunrise-sim/src/ticket_levels.rs::compute	lowest ticket level plus distance, per cell
+ChunkTracker.computeLevelFromNeighbor	inline	crates/sunrise-sim/src/ticket_levels.rs::compute	one level per chunk of distance
 ChunkTrackingView.difference	inline	crates/sunrise-client/src/lan/hub.rs::Hub::update_view	forget what left (scan of sent chunks), queue what entered (requeue)
 ChunkTrackingView.isWithinDistance	port	crates/sunrise-client/src/lan/hub.rs::tracked	buffer 2 form; the buffer 1 form is streaming.rs in_view_distance
 ChunkTrackingView.Positioned.squareIntersects	skip:java		optimisation that picks a box scan over a full enumeration
@@ -104,18 +104,18 @@ ChunkTrackingView.Positioned.contains	port	crates/sunrise-client/src/lan/hub.rs:
 ChunkTrackingView.Positioned.forEach	inline	crates/sunrise-client/src/lan/hub.rs::requeue	loops the view's square around the centre
 ColumnPos.asLong	skip:java		key packing
 DemoMode	missing		minor: no demo mode: no demo timer, intro hints or five day limit (the dedicated server's --demo argument is accepted and ignored)
-DistanceManager.runAllUpdates	port	crates/sunrise-client/src/ticket_levels.rs::ChunkTickets::update	levels rebuilt when sources change
+DistanceManager.runAllUpdates	port	crates/sunrise-sim/src/ticket_levels.rs::ChunkTickets::update	levels rebuilt when sources change
 DistanceManager.addPlayer	inline	crates/sunrise-client/src/game.rs::Game::update_chunk_tickets	players are tickets sources each tick
 DistanceManager.removePlayer	inline	crates/sunrise-client/src/game.rs::Game::update_chunk_tickets	a player gone from the level drops out of the sources
-DistanceManager.getChunkLevel	port	crates/sunrise-client/src/ticket_levels.rs::Levels::get	loading and simulation level as a pair
+DistanceManager.getChunkLevel	port	crates/sunrise-sim/src/ticket_levels.rs::Levels::get	loading and simulation level as a pair
 DistanceManager.updateSimulationDistance	inline	crates/sunrise-client/src/game.rs::Game::update_chunk_tickets	simulation_distance read from settings into Sources
 DistanceManager.hasPlayersNearby	inline	crates/sunrise-client/src/mobs/spawn_selection.rs::SpawnState::players_near	the 8 chunk gate; the 5 chunk shortcut is skipped
-DistanceManager.forEachEntityTickingChunk	inline	crates/sunrise-client/src/ticket_levels.rs::Levels::random_ticking	the simulation half of the random tick test
-DistanceManager.FixedPlayerDistanceChunkTracker.setLevel	inline	crates/sunrise-client/src/ticket_levels.rs::compute	cells are filled by compute
+DistanceManager.forEachEntityTickingChunk	inline	crates/sunrise-sim/src/ticket_levels.rs::Levels::random_ticking	the simulation half of the random tick test
+DistanceManager.FixedPlayerDistanceChunkTracker.setLevel	inline	crates/sunrise-sim/src/ticket_levels.rs::compute	cells are filled by compute
 DistanceManager.FixedPlayerDistanceChunkTracker.havePlayer	inline	crates/sunrise-client/src/game.rs::Game::update_chunk_tickets	players' chunks are the sources
-DistanceManager.PlayerTicketTracker.onLevelChange	inline	crates/sunrise-client/src/ticket_levels.rs::compute	loading level 31 plus distance beyond the view; no throttle of 4 loads at a time
-DistanceManager.PlayerTicketTracker.updateViewDistance	inline	crates/sunrise-client/src/ticket_levels.rs::reach	view distance sets how far the loading levels reach
-DistanceManager.PlayerTicketTracker.runAllUpdates	inline	crates/sunrise-client/src/ticket_levels.rs::ChunkTickets::update
+DistanceManager.PlayerTicketTracker.onLevelChange	inline	crates/sunrise-sim/src/ticket_levels.rs::compute	loading level 31 plus distance beyond the view; no throttle of 4 loads at a time
+DistanceManager.PlayerTicketTracker.updateViewDistance	inline	crates/sunrise-sim/src/ticket_levels.rs::reach	view distance sets how far the loading levels reach
+DistanceManager.PlayerTicketTracker.runAllUpdates	inline	crates/sunrise-sim/src/ticket_levels.rs::ChunkTickets::update
 GenerationChunkHolder.scheduleChunkGenerationTask	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::schedule_generation	the scan picks the columns that need a job
 GenerationChunkHolder.applyStep	inline	crates/sunrise-client-render/src/streaming.rs::Streaming::update	queues the Decorate and Finish jobs
 GenerationChunkHolder.updateHighestAllowedStatus	inline	crates/sunrise-client-render/src/streaming.rs::Ranges::requested	how far a column may be generated follows the ranges
@@ -135,9 +135,9 @@ GenerationChunkHolder.getLatestChunk	skip:java		future lookup; Sunrise reads pro
 GenerationChunkHolder.getPersistedStatus	skip:other		Sunrise tells proto and final apart by type (SavedProto or Chunk)
 GenerationChunkHolder.getAllFutures	skip:debug
 GenerationChunkHolder.getLatestStatus	port	crates/sunrise-client-render/src/streaming.rs::Streaming::latest_status	furthest step reached, for the loading map
-LoadingChunkTracker.getLevel	port	crates/sunrise-client/src/ticket_levels.rs::Levels::get	the loading half of the pair
-LoadingChunkTracker.setLevel	inline	crates/sunrise-client/src/ticket_levels.rs::ChunkTickets::update	levels are rebuilt when sources change
-PlayerSpawnFinder.scheduleNext	port	crates/sunrise-client/src/world_spawn.rs::PlayerSpawnFinder::next_candidate	coprime stride order, then the suggestion
+LoadingChunkTracker.getLevel	port	crates/sunrise-sim/src/ticket_levels.rs::Levels::get	the loading half of the pair
+LoadingChunkTracker.setLevel	inline	crates/sunrise-sim/src/ticket_levels.rs::ChunkTickets::update	levels are rebuilt when sources change
+PlayerSpawnFinder.scheduleNext	port	crates/sunrise-sim/src/world_spawn.rs::PlayerSpawnFinder::next_candidate	coprime stride order, then the suggestion
 PlayerSpawnFinder.scheduleCandidate	port	crates/sunrise-client/src/game/world/initial_spawn.rs::Game::search_spawn	gap: minor: a server tick passes over candidates in unloaded chunks instead of waiting for the candidate's chunk, so a new player can stand on another spot of the radius
 SectionTracker.checkNeighborsAfterUpdate	inline	crates/sunrise-gameplay/src/custom_spawner.rs::sections_to_village	its only subclass is the POI village distance: Chebyshev distance in sections, 7 when farther than 6
 SectionTracker.getComputedLevel	inline	crates/sunrise-gameplay/src/custom_spawner.rs::sections_to_village

@@ -1094,7 +1094,7 @@ fn object_or_empty(value: Option<Value>) -> Map<String, Value> {
 /// A component codec enforces `ExtraCodecs` profile/property bounds and drops fields
 /// outside the profile schema; engine text capture, on the other hand, round-trips
 /// in-memory profiles and metadata.
-pub(crate) fn decoded_profile_json(value: &Value) -> Option<Value> {
+pub fn decoded_profile_json(value: &Value) -> Option<Value> {
     Some(profile_json(
         &profile(value, false, true, false).ok()?,
         None,

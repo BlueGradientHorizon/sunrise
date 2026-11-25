@@ -138,7 +138,7 @@ WorldUpgrader.verifyChunkPos	port	crates/sunrise-world/src/datafix/world_upgrade
 WorldUpgrader.work	port	crates/sunrise-world/src/datafix/files.rs::upgrade_world	gap: minor: no Optimize World pass and no progress; upgrade_world runs the file fixes then the data upgrade
 WorldUpgrader.upgradeLevels	inline	crates/sunrise-world/src/datafix/files.rs::upgrade_world	per-dimension loop folded into upgrade_world
 LongJumpUtil.isClearTransition	port	crates/sunrise-client/src/mobs/breeze.rs::clear_transition	boxed steps of nine tenths the smaller side from one point to the next must all be clear, for the breeze's long jump
-Cushion.isAnchorBuried	inline	crates/sunrise-client/src/cushion.rs::can_place	the resting-slab test; can_place returns false when the slab is covered
+Cushion.isAnchorBuried	inline	crates/sunrise-sim/src/cushion.rs::can_place	the resting-slab test; can_place returns false when the slab is covered
 FishingHook.calculateOpenWater	port	crates/sunrise-client/src/game/items/fishing.rs::Game::calculate_open_water
 AbstractContainerMenu.getRedstoneSignalFromBlockEntity	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::container_signal	block entity containers for the comparator; 0 when there is none
 CreativeModeTabs.validate	skip:data		bootstrap check of creative tab positions

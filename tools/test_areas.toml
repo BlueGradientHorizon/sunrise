@@ -99,7 +99,7 @@ lan = [
 name = "mobs"
 about = "mob AI, brains, navigation, spawning, villagers and raids, bosses"
 paths = [
-  "crates/sunrise-client/src/mobs*", "crates/sunrise-client/src/raid.rs", "crates/sunrise-client/src/gossip.rs",
+  "crates/sunrise-client/src/mobs*", "crates/sunrise-client/src/raid.rs", "crates/sunrise-sim/src/gossip.rs",
   "crates/sunrise-client/src/merchant.rs", "crates/sunrise-client/src/game/mobs/*",
   "crates/sunrise-client/src/game/creatures/*", "crates/sunrise-world/src/poi*",
 ]
@@ -153,7 +153,7 @@ about = "chunk streaming, tickets, loading, random ticks"
 paths = [
   "crates/sunrise-client-render/src/streaming*", "crates/sunrise-client-render/src/chunk*",
   "crates/sunrise-client-render/src/world.rs", "crates/sunrise-client-render/src/world/*",
-  "crates/sunrise-level/src/mod_chunk_tickets.rs", "crates/sunrise-client/src/ticket_levels.rs",
+  "crates/sunrise-level/src/mod_chunk_tickets.rs", "crates/sunrise-sim/src/ticket_levels.rs",
   "crates/sunrise-client/src/tick_chunk_membership.rs", "crates/sunrise-client/src/game/world/world_loading.rs",
   "crates/sunrise-client/src/game/world/world_entry.rs", "crates/sunrise-world/src/chunk*",
 ]
@@ -285,8 +285,8 @@ lan = [
 name = "commands"
 about = "command parsing and execution, functions, scoreboards, selectors, data packs"
 paths = [
-  "crates/sunrise-command/*", "crates/sunrise-client/src/game/administration/*", "crates/sunrise-client/src/scoreboard_cmd.rs",
-  "crates/sunrise-client/src/data_cmd.rs", "crates/sunrise-client-core/src/scoreboard.rs",
+  "crates/sunrise-command/*", "crates/sunrise-client/src/game/administration/*", "crates/sunrise-sim/src/scoreboard_cmd.rs",
+  "crates/sunrise-sim/src/data_cmd.rs", "crates/sunrise-client-core/src/scoreboard.rs",
   "crates/sunrise-*/src/nbt_path.rs", "crates/sunrise-client/src/game/world/server_reload/*",
   "tools/command_exec_corpus.py", "tools/command_parse_corpus.py",
 ]
@@ -373,7 +373,7 @@ about = "the order entities and blocks tick in: the level's tick, the join-order
 # game.rs holds tick_world; `*_tick.rs`: ordered_tick.rs, and level_tick.rs once tick_world moves there.
 paths = [
   "crates/sunrise-client/src/game.rs", "crates/sunrise-client/src/game/world/*_tick.rs",
-  "crates/sunrise-client/src/join_seq.rs",
+  "crates/sunrise-sim/src/join_seq.rs",
 ]
 harnesses = ["tick_order", "chunk_entity_order", "entity_lookup_order"]
 

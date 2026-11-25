@@ -108,22 +108,22 @@ macro_rules! impl_joined {
 /// whole-value replacement must carry the attachment slot through `store_back`.
 ///
 /// ```compile_fail
-/// use sunrise_client_lib::join_seq::JoinList;
+/// use sunrise_sim::join_seq::JoinList;
 /// let mut list = JoinList::<u32, false>::default();
 /// list[0] = 1;
 /// ```
 /// ```compile_fail
-/// use sunrise_client_lib::join_seq::JoinList;
+/// use sunrise_sim::join_seq::JoinList;
 /// let mut list = JoinList::<u32, false>::default();
 /// let _ = list.get_mut(0);
 /// ```
 /// ```compile_fail
-/// use sunrise_client_lib::join_seq::JoinList;
+/// use sunrise_sim::join_seq::JoinList;
 /// let mut list = JoinList::<u32, false>::default();
 /// let _ = list.iter_mut();
 /// ```
 /// ```compile_fail
-/// use sunrise_client_lib::join_seq::JoinList;
+/// use sunrise_sim::join_seq::JoinList;
 /// let mut list = JoinList::<u32, false>::default();
 /// let _ = list.get_disjoint_mut([0, 1]);
 /// ```
@@ -133,31 +133,31 @@ macro_rules! impl_joined {
 /// at their owning game boundaries.
 ///
 /// ```compile_fail
-/// use sunrise_client_lib::join_seq::JoinList;
+/// use sunrise_sim::join_seq::JoinList;
 /// let mut list = JoinList::<u32>::default();
 /// let _: &mut Vec<u32> = &mut list;
 /// ```
 /// ```compile_fail
-/// use sunrise_client_lib::join_seq::JoinList;
+/// use sunrise_sim::join_seq::JoinList;
 /// let mut list = JoinList::<u32>::default();
 /// let _: &mut [u32] = &mut list;
 /// ```
 /// ```compile_fail
-/// use sunrise_client_lib::join_seq::JoinList;
+/// use sunrise_sim::join_seq::JoinList;
 /// let mut list = JoinList::<u32>::default();
 /// list.iter_mut().as_mut_slice().reverse();
 /// ```
 /// ```compile_fail
-/// use sunrise_client_lib::join_seq::JoinList;
+/// use sunrise_sim::join_seq::JoinList;
 /// let mut list = JoinList::<u32>::default();
 /// (&mut list).into_iter().as_mut_slice().reverse();
 /// ```
 /// ```compile_fail
-/// use sunrise_client_lib::join_seq::JoinList;
+/// use sunrise_sim::join_seq::JoinList;
 /// let _: JoinList<u32> = vec![1].into();
 /// ```
 /// ```compile_fail
-/// use sunrise_client_lib::join_seq::JoinList;
+/// use sunrise_sim::join_seq::JoinList;
 /// let list = JoinList::<u32>::default();
 /// let _: Vec<u32> = list.into();
 /// ```
@@ -189,17 +189,17 @@ impl<T, const DIRECT: bool> Drop for JoinList<T, DIRECT> {
 /// change its identity through [`Self::as_mut`]. No mutable `Option` escapes.
 ///
 /// ```compile_fail
-/// use sunrise_client_lib::join_seq::ResidentSlot;
+/// use sunrise_sim::join_seq::ResidentSlot;
 /// let mut owner = ResidentSlot::<u32>::default();
 /// owner = Some(1);
 /// ```
 /// ```compile_fail
-/// use sunrise_client_lib::join_seq::ResidentSlot;
+/// use sunrise_sim::join_seq::ResidentSlot;
 /// let mut owner = ResidentSlot::<u32>::default();
 /// let _: &mut Option<u32> = &mut owner;
 /// ```
 /// ```compile_fail
-/// use sunrise_client_lib::join_seq::ResidentSlot;
+/// use sunrise_sim::join_seq::ResidentSlot;
 /// let mut owner = ResidentSlot::<u32>::default();
 /// owner.take();
 /// ```
@@ -358,27 +358,27 @@ impl<T> Deref for ResidentSlot<T> {
 /// are scoped; identity and replacement remain audited by their callers.
 ///
 /// ```compile_fail
-/// use sunrise_client_lib::join_seq::ResidentList;
+/// use sunrise_sim::join_seq::ResidentList;
 /// let mut list = ResidentList::<u32>::default();
 /// let _: &mut Vec<u32> = &mut list;
 /// ```
 /// ```compile_fail
-/// use sunrise_client_lib::join_seq::ResidentList;
+/// use sunrise_sim::join_seq::ResidentList;
 /// let mut list = ResidentList::<u32>::default();
 /// list[0] = 1;
 /// ```
 /// ```compile_fail
-/// use sunrise_client_lib::join_seq::ResidentList;
+/// use sunrise_sim::join_seq::ResidentList;
 /// let mut list = ResidentList::<u32>::default();
 /// let _: &mut [u32] = &mut list;
 /// ```
 /// ```compile_fail
-/// use sunrise_client_lib::join_seq::ResidentList;
+/// use sunrise_sim::join_seq::ResidentList;
 /// let mut list = ResidentList::<u32>::default();
 /// list.iter_mut().for_each(|entity| *entity = 1);
 /// ```
 /// ```compile_fail
-/// use sunrise_client_lib::join_seq::ResidentList;
+/// use sunrise_sim::join_seq::ResidentList;
 /// let mut list = ResidentList::<u32>::default();
 /// let escaped = list.update(0, |entity| entity);
 /// ```
@@ -809,7 +809,7 @@ impl<T> JoinList<T> {
     /// Whole-entity replacement belongs to the owning residency boundary.
     ///
     /// ```compile_fail
-    /// use sunrise_client_lib::join_seq::JoinList;
+    /// use sunrise_sim::join_seq::JoinList;
     /// let mut list = JoinList::<u32>::default();
     /// let escaped = list.update(0, |entity| entity);
     /// ```

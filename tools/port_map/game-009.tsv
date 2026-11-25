@@ -113,13 +113,13 @@ ResetUniversalAngerTargetGoal.wasHurtByPlayer	missing		minor: the universal_ange
 ResetUniversalAngerTargetGoal.getNearbyMobsOfSameType	missing		minor: the universal_anger rule is never read by mobs (default off)
 TargetGoal.canAttack	inline	crates/sunrise-client/src/mobs/goals.rs::NearestTarget::can_use	gap: minor: no isWithinHome test and no must-reach path test
 TargetGoal.canReach	missing		minor: must_reach is stored by reach() but never read, so polar bears, llamas and endermen pick targets they cannot path to
-GossipContainer.getGossipEntries	port	crates/sunrise-client/src/gossip.rs::Gossips::entries
-GossipContainer.add	port	crates/sunrise-client/src/gossip.rs::Gossips::add
-GossipContainer.remove	port	crates/sunrise-client/src/gossip.rs::Gossips::remove	gap: minor: only the per-target, per-type removal; the by-amount and all-targets overloads have no caller
+GossipContainer.getGossipEntries	port	crates/sunrise-sim/src/gossip.rs::Gossips::entries
+GossipContainer.add	port	crates/sunrise-sim/src/gossip.rs::Gossips::add
+GossipContainer.remove	port	crates/sunrise-sim/src/gossip.rs::Gossips::remove	gap: minor: only the per-target, per-type removal; the by-amount and all-targets overloads have no caller
 GossipContainer.putAll	skip:java		map copy; Gossips is Clone
-GossipContainer.mergeValuesForAddition	inline	crates/sunrise-client/src/gossip.rs::Gossips::add	sum above the max keeps the larger of max and old
-GossipContainer.EntityGossips.weightedValue	port	crates/sunrise-client/src/gossip.rs::Gossips::reputation	all types summed; no type filter, as every caller passes all types
-GossipContainer.EntityGossips.makeSureValueIsntTooLowOrTooHigh	inline	crates/sunrise-client/src/gossip.rs::Gossips::add	clamps to the max and forgets values below 2
+GossipContainer.mergeValuesForAddition	inline	crates/sunrise-sim/src/gossip.rs::Gossips::add	sum above the max keeps the larger of max and old
+GossipContainer.EntityGossips.weightedValue	port	crates/sunrise-sim/src/gossip.rs::Gossips::reputation	all types summed; no type filter, as every caller passes all types
+GossipContainer.EntityGossips.makeSureValueIsntTooLowOrTooHigh	inline	crates/sunrise-sim/src/gossip.rs::Gossips::add	clamps to the max and forgets values below 2
 ExpirableValue.of	inline	crates/sunrise-client/src/mobs/villager_brain.rs::Slot::set_ttl	Slot holds the value and its time to live (set or set_ttl)
 ExpirableValue.toString	skip:debug
 ExpirableValue.codec	skip:java		memory serialisation; Sunrise packs memories in its own save format

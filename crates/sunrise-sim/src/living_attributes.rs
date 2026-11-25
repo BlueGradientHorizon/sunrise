@@ -28,7 +28,7 @@ use {
 /// An entity's attribute instances, as a player has them.
 pub type Live = LiveAttributes<Box<dyn Identities>>;
 
-pub(crate) fn attribute_error(error: impl fmt::Debug) -> io::Error {
+pub fn attribute_error(error: impl fmt::Debug) -> io::Error {
     io::Error::other(format!("movement attribute: {error:?}"))
 }
 
@@ -392,7 +392,7 @@ impl ModifierSnapshot {
 /// Rewind only the rows a write owned. Walking the whole before-order anchors
 /// restored rows to surviving neighbours, even if a later explicit write moved
 /// or removed a row. Among those later writes the current order wins.
-pub(crate) fn restore_modifier_order<Row: Clone>(
+pub fn restore_modifier_order<Row: Clone>(
     current: &mut Vec<Row>,
     before: Vec<Row>,
     owned: impl Fn(&Row) -> bool,
@@ -419,10 +419,10 @@ pub(crate) fn restore_modifier_order<Row: Clone>(
 
 /// The transient seed in its insertion order, independent of the built equipment map.
 #[derive(Default)]
-pub(crate) struct TransientModifiers(Vec<(Arc<str>, Modifier)>);
+pub struct TransientModifiers(Vec<(Arc<str>, Modifier)>);
 
 impl TransientModifiers {
-    pub(crate) fn forget(&mut self, attribute: &str, id: &str) {
+    pub fn forget(&mut self, attribute: &str, id: &str) {
         self.0
             .retain(|(name, m)| &**name != attribute || m.id() != id);
     }
@@ -563,11 +563,11 @@ impl LivingAttributes {
         }
     }
 
-    pub(crate) fn transient_modifiers(&self) -> TransientModifiers {
+    pub fn transient_modifiers(&self) -> TransientModifiers {
         TransientModifiers(self.transient.as_deref().cloned().unwrap_or_default())
     }
 
-    pub(crate) fn restore_transient_modifiers(
+    pub fn restore_transient_modifiers(
         &mut self,
         before: TransientModifiers,
         owned: impl Fn(&str, &str) -> bool,

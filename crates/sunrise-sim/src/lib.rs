@@ -56,4 +56,30 @@ pub use sunrise_level::worldborder;
 // --- end lowered level re-exports ---
 
 // --- lowered modules ---
+pub mod api_text;
+pub mod attack_strength;
+pub mod bed_geometry;
+pub mod block_pattern;
+pub mod block_transform;
+pub mod colliders;
+pub mod cushion;
+pub mod data_cmd;
+pub mod enchantment_levels;
+pub mod entity_rules;
+pub mod entity_solids;
+pub mod gossip;
+pub mod item_attributes;
+pub mod join_seq;
+pub mod living_attributes;
+pub mod map_decoration_types;
+pub mod menu_extra_net;
+pub mod native_stack_hooks;
+pub mod nether_portal;
+pub mod powder_snow;
+pub mod scoreboard_cmd;
+pub mod text_grammar;
+pub mod ticket_levels;
+pub mod travel_gate;
+pub mod viewed_levels_net;
+pub mod world_spawn;
 // --- end lowered modules ---

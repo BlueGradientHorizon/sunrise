@@ -19,7 +19,7 @@ sunrise-client	lib	game::mods::tests::native_content_follows_the_build_and_mispl
 sunrise-client	lib	game::mods::tests::a_shared_missing_jar_stops_native_load_and_refuses_each_content_mod_row	crates/sunrise-client/src/game/modding/mods/mod.rs:2814	child-process
 sunrise-client	lib	game::native_block_entity_transform_tests::structure_transform_placement_rotations_mirrors_unset_and_refusal	crates/sunrise-client/src/game/modding/native_block_entity_transform_tests.rs:259	child-process
 sunrise-client	lib	game::launch_api::tests::developer_offline_never_consumes_inherited_sessions	crates/sunrise-client/src/game/runtime/launch_api.rs:275	child-process
-sunrise-client-lib	lib	join_seq::visibility::tests::unbound_passes_block_until_restore_consumption_and_unwind	crates/sunrise-client/src/join_seq/visibility.rs:115	child-process
+sunrise-sim	lib	join_seq::visibility::tests::unbound_passes_block_until_restore_consumption_and_unwind	crates/sunrise-sim/src/join_seq/visibility.rs:115	child-process
 sunrise-client-lib	lib	lan::conn::tests::profession_mod_missing_refused_before_pairing	crates/sunrise-client/src/lan/profession_join_tests.rs:2	child-process
 sunrise-client-lib	lib	mobs::world::missing_data_report_tests::missing_mob_data_reports_one_counted_skip_per_test	crates/sunrise-client/src/mobs/world.rs:1042	child-process
 sunrise-client-lib	lib	save::tests::native_saved_ids_must_match_the_declared_block_membership	crates/sunrise-client/src/save.rs:7256	child-process

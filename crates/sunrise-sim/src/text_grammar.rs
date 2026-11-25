@@ -42,7 +42,7 @@ pub fn build(value: &Value, reg: &Registries, snbt: bool) -> Option<Value> {
 /// A dialog supplies the click codec (with its registry-aware holder lookup).
 /// Keep its click fields for that decoder, without first converting an inline
 /// holder from JSON to NBT and changing its scalar types.
-pub(crate) fn build_for_dialog(
+pub fn build_for_dialog(
     value: &Value,
     reg: &Registries,
     snbt: bool,

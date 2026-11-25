@@ -22,7 +22,7 @@ pub fn native_living_travel(
     velocity: &mut [f64; 3],
     canceled: &mut bool,
 ) {
-    let reader = sunrise_client_render::api_context::LoopReader(context);
+    let reader = sunrise_level::api_context::LoopReader(context);
     mod_api::dispatch_living_travel(
         &reader.context(),
         entity,
@@ -86,7 +86,7 @@ pub fn decide(
     let mut replaced_input = [input.x, input.y, input.z];
     let mut replaced_velocity = [velocity.x, velocity.y, velocity.z];
     let mut canceled = false;
-    let reader = sunrise_client_render::api_context::LoopReader(context);
+    let reader = sunrise_level::api_context::LoopReader(context);
     mod_api::dispatch_living_travel(
         &reader.context(),
         entity,

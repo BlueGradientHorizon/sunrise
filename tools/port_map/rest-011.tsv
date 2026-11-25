@@ -35,7 +35,7 @@ ComponentSerialization.StrictEither.decode	port	crates/sunrise-client-core/src/c
 ComponentSerialization.StrictEither.keys	skip:java		codec key listing
 ComponentUtils.resolve	port	crates/sunrise-client/src/game/administration/commands/text_commands.rs::Game::component_arg	gap: minor: hover text selectors stay unresolved (resolveStyle is missing)
 ComponentUtils.resolveStyle	missing		minor: a selector inside a show_text hover is not resolved for the source
-ComponentUtils.formatAndSortList	port	crates/sunrise-client/src/scoreboard_cmd.rs::format_names	gap: minor: the name formatter is fixed (green names); the list is sorted with gray commas
+ComponentUtils.formatAndSortList	port	crates/sunrise-sim/src/scoreboard_cmd.rs::format_names	gap: minor: the name formatter is fixed (green names); the list is sorted with gray commas
 ComponentUtils.fromMessage	port	crates/sunrise-client-core/src/text.rs::Text::from	a plain message becomes a literal
 ComponentUtils.isTranslationResolvable	port	crates/sunrise-client-core/src/lang.rs::has	gap: minor: the fallback case is handled in component.rs to_text_with, not here
 FilterMask.apply	missing		minor: the server's text-filter masks are ignored, so filtered words show in full (only a text filter service sends masks)

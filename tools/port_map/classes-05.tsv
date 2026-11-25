@@ -14,7 +14,7 @@ PersistentEntitySectionManager.addEntity	skip:java		section and visibility bookk
 PersistentEntitySectionManager.addEntityUuid	skip:java		uuid set kept in persist.uuids (game/world/persist.rs)
 PersistentEntitySectionManager.addLegacyChunkEntities	port	crates/sunrise-client/src/game/world/persist.rs::Game::spawn_loaded_entities	saved chunk entity tags are spawned here once the chunk's entities arrive
 PersistentEntitySectionManager.addWorldGenChunkEntities	port	crates/sunrise-client/src/game/world/persist.rs::Game::spawn_loaded_entities	worldgen entities arrive as saved tags and are spawned the same way
-PersistentEntitySectionManager.canPositionTick	port	crates/sunrise-client/src/ticket_levels.rs::Levels::entity_ticking_at	a position ticks entities when its chunk is entity ticking
+PersistentEntitySectionManager.canPositionTick	port	crates/sunrise-sim/src/ticket_levels.rs::Levels::entity_ticking_at	a position ticks entities when its chunk is entity ticking
 PersistentEntitySectionManager.dumpSections	skip:debug		section dump for debugging
 PersistentEntitySectionManager.ensureChunkQueuedForLoad	skip:other		async load queue; Sunrise's streaming hands the saved entity tags over with the chunk
 PersistentEntitySectionManager.gatherStats	skip:debug		statistics string
