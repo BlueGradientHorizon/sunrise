@@ -84,8 +84,8 @@ pub struct Glue<'a> {
     /// The expression the program's `gl_VertexID` and `gl_VertexIndex` read.
     pub vertex_id: &'a str,
     /// Statements after the fragment shader's `main` (renamed `hz_main`, as the vertex
-    /// shader's is), on its outputs, however `main` returned; none leaves the fragment shader
-    /// as the program wrote it. Only [`translate`] runs it: a caller of [`compile_stage`]
+    /// shader's is), on its outputs, once `main` returns; a `discard` ends the invocation
+    /// before them. None leaves the fragment shader as the program wrote it. Only [`translate`] runs it: a caller of [`compile_stage`]
     /// writes its own `main`.
     pub fragment_finish: Option<&'a str>,
     /// The stage interface limits the stages are translated with (a device's, or the lowest
