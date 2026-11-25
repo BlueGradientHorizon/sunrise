@@ -414,6 +414,8 @@ pub struct PlayerMotion {
     pub piston: sunrise_world::piston_movement::PistonMovement,
     pub yaw: f32,
     pub head_yaw: f32,
+    /// The server player's `LivingEntity.yBodyRot`, carried with its body on guest turns.
+    pub body_yaw: f32,
     pub jumping: bool,
     pub no_jump_delay: i32,
     pub jump_trigger_time: i32,
@@ -588,6 +590,13 @@ impl PlayerMotion {
                 .push(MotionEvent::FallDistanceReset(self.position));
         }
         self.fall_distance = 0.0;
+    }
+
+    /// `Entity.setDeltaMovement`: keep only finite values.
+    pub(crate) fn set_velocity(&mut self, velocity: Vec3) {
+        if velocity.is_finite() {
+            self.velocity = velocity;
+        }
     }
 
     /// `ServerGamePacketListenerImpl.handleMovePlayer`: the movement the client
@@ -1522,6 +1531,7 @@ impl MotionWorld<'_, '_, '_> {
         let (history, fall_distance, steps) = (p.history.clone(), p.fall_distance, p.steps);
         let events = p.events.len();
         p.drop_tiny_velocity();
+        let velocity = p.velocity;
         p.server_copy = true;
         let travelled = self.player_travel(Vec3::ZERO);
         let p = &mut *self.player;
@@ -1536,7 +1546,16 @@ impl MotionWorld<'_, '_, '_> {
             .unwrap_or_default();
         p.events.truncate(events);
         p.events.extend(kept);
-        travelled
+        // A travel the world cannot solve (a swept box past the collision scan's domain) publishes
+        // none of its partial work: the velocity it was handed stands as it was and the client is
+        // corrected to the server's own position and velocity.
+        travelled.or_else(|_| {
+            p.set_velocity(velocity);
+            Ok(ServerTravel::Replace {
+                position,
+                on_ground: ground.on_ground,
+            })
+        })
     }
     /// `LivingEntity.checkAutoSpinAttack`: the first living entity in the
     /// box swept this tick takes the hit and ends the spin, bouncing the
@@ -2146,12 +2165,14 @@ impl MotionWorld<'_, '_, '_> {
 }
 impl crate::auto_jump::AutoJumpWorld for MotionWorld<'_, '_, '_> {
     type Error = Box<dyn std::error::Error>;
+    #[inline]
     fn collision_shape(&mut self, p: BlockPos) -> Result<sunrise_core::geometry::VoxelShape> {
         let context = self.context();
         let state = self.block(p);
         let binding = self.collision_binding;
         Ok(binding.collision_shape_with_context(&mut self.collisions(), state, p, &context)?)
     }
+    #[inline]
     fn collision_boxes(&mut self, bounds: Aabb) -> Result<Vec<Aabb>> {
         // EntityGetter.getEntityCollisions queries with a small inflation, and
         // CollisionGetter.getCollisions returns these before block shapes.
@@ -2177,33 +2198,43 @@ impl crate::auto_jump::AutoJumpWorld for MotionWorld<'_, '_, '_> {
 // are supplied by their eventual runtime bindings.
 impl MovementStatisticsWorld for MotionWorld<'_, '_, '_> {
     type Error = Box<dyn std::error::Error>;
+    #[inline]
     fn passenger(&mut self) -> Result<bool> {
         Ok(false)
     }
+    #[inline]
     fn swimming(&mut self) -> Result<bool> {
         Ok(self.player.swimming)
     }
+    #[inline]
     fn eyes_in_water(&mut self) -> Result<bool> {
         Ok(self.player.is_eye_in_fluid(WATER))
     }
+    #[inline]
     fn in_water(&mut self) -> Result<bool> {
         Ok(self.player.fluids.was_touching_water)
     }
+    #[inline]
     fn on_climbable(&mut self) -> Result<bool> {
         self.climbable()
     }
+    #[inline]
     fn on_ground(&mut self) -> Result<bool> {
         Ok(self.player.ground.on_ground)
     }
+    #[inline]
     fn sprinting(&mut self) -> Result<bool> {
         Ok(self.player.sprinting)
     }
+    #[inline]
     fn crouching(&mut self) -> Result<bool> {
         Ok(self.player.pose == crate::pose::Pose::Crouching)
     }
+    #[inline]
     fn fall_flying(&mut self) -> Result<bool> {
         Ok(false)
     }
+    #[inline]
     fn award(&mut self, stat: MovementStat, amount: i32) -> Result<()> {
         self.player
             .events
@@ -2213,6 +2244,7 @@ impl MovementStatisticsWorld for MotionWorld<'_, '_, '_> {
             }));
         Ok(())
     }
+    #[inline]
     fn exhaust(&mut self, amount: f32) -> Result<()> {
         self.player.cause_food_exhaustion(amount);
         Ok(())
@@ -2220,15 +2252,18 @@ impl MovementStatisticsWorld for MotionWorld<'_, '_, '_> {
 }
 impl MovementBlockProvider for MotionWorld<'_, '_, '_> {
     type Error = io::Error;
+    #[inline]
     fn movement_block_state(&mut self, p: BlockPos) -> io::Result<BlockStateId> {
         Ok(self.block(p))
     }
 }
 impl EdgeBackoffWorld for MotionWorld<'_, '_, '_> {
     type Error = Box<dyn std::error::Error>;
+    #[inline]
     fn max_up_step(&mut self) -> Result<f32> {
         Ok(self.player.attribute("minecraft:step_height")? as f32)
     }
+    #[inline]
     fn staying_on_ground_surface(&mut self) -> Result<bool> {
         let mut staying = self.player.shift_key_down;
         native_player_stays_on_ground_surface(
@@ -2238,21 +2273,26 @@ impl EdgeBackoffWorld for MotionWorld<'_, '_, '_> {
         );
         Ok(staying)
     }
+    #[inline]
     fn on_ground(&mut self) -> Result<bool> {
         Ok(self.player.ground.on_ground)
     }
+    #[inline]
     fn no_collision(&mut self, bounds: Aabb) -> Result<bool> {
         self.no_player_collision(bounds)
     }
 }
 impl EntityMoveWorld for MotionWorld<'_, '_, '_> {
     type Error = Box<dyn std::error::Error>;
+    #[inline]
     fn no_physics(&self) -> bool {
         self.player.spectator
     }
+    #[inline]
     fn position(&self) -> Vec3 {
         self.player.position
     }
+    #[inline]
     fn set_position(&mut self, p: Vec3) -> Result<()> {
         let from = self.player.position;
         self.player.position = p;
@@ -2261,40 +2301,49 @@ impl EntityMoveWorld for MotionWorld<'_, '_, '_> {
         }
         Ok(())
     }
+    #[inline]
     fn record_movement(&mut self, mover: MoverType, movement: Vec3) -> Result<()> {
         self.player
             .events
             .push(MotionEvent::Recorded { mover, movement });
         Ok(())
     }
+    #[inline]
     fn collision_flags(&self) -> CollisionFlags {
         self.player.collision
     }
+    #[inline]
     fn set_collision_flags(&mut self, value: CollisionFlags) {
         self.player.collision = value;
     }
     /// `Entity.limitPistonMovement`: the per-tick 0.51-block budget shared by
     /// every move on an axis. A failed game-time read leaves the accumulator
     /// as it was, as native does.
+    #[inline]
     fn limit_piston_movement(&mut self, movement: Vec3) -> Result<Vec3> {
         let time = self.scene.game_time;
         self.player
             .piston
             .limit(movement, || Ok::<i64, Box<dyn std::error::Error>>(time))
     }
+    #[inline]
     fn stuck_multiplier(&self) -> Vec3 {
         self.player.stuck_multiplier
     }
+    #[inline]
     fn set_stuck_multiplier(&mut self, value: Vec3) {
         self.player.stuck_multiplier = value;
     }
+    #[inline]
     fn velocity(&mut self) -> Result<Vec3> {
         Ok(self.player.velocity)
     }
+    #[inline]
     fn set_velocity(&mut self, value: Vec3) -> Result<()> {
-        self.player.velocity = value;
+        self.player.set_velocity(value);
         Ok(())
     }
+    #[inline]
     fn back_off_edge(&mut self, movement: Vec3, mover: MoverType) -> Result<Vec3> {
         let input = EdgeBackoffInput {
             movement,
@@ -2308,6 +2357,7 @@ impl EntityMoveWorld for MotionWorld<'_, '_, '_> {
         edge_backoff::back_off_from_edge(self, input)
             .map_err(|e| io::Error::other(e.to_string()).into())
     }
+    #[inline]
     fn collide(&mut self, movement: Vec3) -> Result<Vec3> {
         let max_step = self.player.attribute("minecraft:step_height")? as f32;
         Ok(collision_exclusions::resolve_world_movement(
@@ -2324,9 +2374,11 @@ impl EntityMoveWorld for MotionWorld<'_, '_, '_> {
             },
         )?)
     }
+    #[inline]
     fn fall_distance(&self) -> f64 {
         self.player.fall_distance
     }
+    #[inline]
     fn fall_reset_clip(&mut self, from: Vec3, to: Vec3) -> Result<bool> {
         // ClipContext.Block.FALLDAMAGE_RESETTING: tagged reset blocks are a full
         // block, not their collider; ClipContext.Fluid.WATER: the water's shape.
@@ -2344,16 +2396,20 @@ impl EntityMoveWorld for MotionWorld<'_, '_, '_> {
         })?;
         hit.transpose().map(|h| h.is_some())
     }
+    #[inline]
     fn reset_fall_distance(&mut self) -> Result<()> {
         self.player.fall_distance = 0.0;
         Ok(())
     }
+    #[inline]
     fn movement_history(&mut self) -> &mut MovementHistory {
         &mut self.player.history
     }
+    #[inline]
     fn locally_authoritative(&mut self) -> Result<bool> {
         Ok(!self.player.server_copy)
     }
+    #[inline]
     fn set_on_ground_with_movement(
         &mut self,
         below: bool,
@@ -2366,6 +2422,7 @@ impl EntityMoveWorld for MotionWorld<'_, '_, '_> {
     }
     /// `LocalPlayer.isHorizontalCollisionMinor`: the move that hit a wall was
     /// within 8 degrees of the direction the input asked for.
+    #[inline]
     fn minor_horizontal_collision(&mut self, movement: Vec3) -> Result<bool> {
         Ok(horizontal_collision_minor(
             self.player.yaw,
@@ -2373,15 +2430,19 @@ impl EntityMoveWorld for MotionWorld<'_, '_, '_> {
             movement,
         ))
     }
+    #[inline]
     fn legacy_on_position(&mut self) -> Result<BlockPos> {
         self.support(movement_support::LEGACY_SUPPORT_OFFSET)
     }
+    #[inline]
     fn block_state(&mut self, p: BlockPos) -> Result<BlockStateId> {
         Ok(self.block(p))
     }
+    #[inline]
     fn on_ground(&mut self) -> Result<bool> {
         Ok(self.player.ground.on_ground)
     }
+    #[inline]
     fn check_fall_damage(
         &mut self,
         dy: f64,
@@ -2392,12 +2453,15 @@ impl EntityMoveWorld for MotionWorld<'_, '_, '_> {
         self.before_fall_check(dy, grounded, state, position);
         sunrise_world::living_landing::check_living_fall_damage(self, dy, grounded, state, position)
     }
+    #[inline]
     fn removed(&mut self) -> Result<bool> {
         Ok(false)
     }
+    #[inline]
     fn can_simulate(&mut self) -> Result<bool> {
         Ok(true)
     }
+    #[inline]
     fn restitute(
         &mut self,
         state: BlockStateId,
@@ -2419,12 +2483,15 @@ impl EntityMoveWorld for MotionWorld<'_, '_, '_> {
         };
         movement_restitution::restitute_movement(self, input)
     }
+    #[inline]
     fn client_side(&mut self) -> Result<bool> {
         Ok(false)
     }
+    #[inline]
     fn movement_emission(&mut self) -> Result<MovementEmission> {
         <Self as MovementEmissionWorld>::movement_emission(self)
     }
+    #[inline]
     fn passenger(&mut self) -> Result<bool> {
         Ok(false)
     }
@@ -2432,6 +2499,7 @@ impl EntityMoveWorld for MotionWorld<'_, '_, '_> {
     /// only once the walked distance passes `nextStep`. Emitting on every
     /// move played a step sound each tick, even standing still on the
     /// ground (gravity moves the player every tick), as an endless loop.
+    #[inline]
     fn apply_movement_emission(
         &mut self,
         kind: MovementEmission,
@@ -2441,6 +2509,7 @@ impl EntityMoveWorld for MotionWorld<'_, '_, '_> {
     ) -> Result<()> {
         emission::apply_movement_emission(self, kind, movement, position, state)
     }
+    #[inline]
     fn block_speed_factor(&mut self) -> Result<f32> {
         self.player_block_speed_factor()
     }
@@ -2528,24 +2597,31 @@ impl MotionWorld<'_, '_, '_> {
 impl MovementEmissionWorld for MotionWorld<'_, '_, '_> {
     type Error = Box<dyn std::error::Error>;
     type State = BlockStateId;
+    #[inline]
     fn distances(&self) -> MovementDistances {
         self.player.steps
     }
+    #[inline]
     fn set_movement_distance(&mut self, value: f32) {
         self.player.steps.movement = value;
     }
+    #[inline]
     fn set_flight_distance(&mut self, value: f32) {
         self.player.steps.flight = value;
     }
+    #[inline]
     fn set_next_step(&mut self, value: f32) {
         self.player.steps.next_step = value;
     }
+    #[inline]
     fn on_position(&mut self) -> Result<BlockPos> {
         self.support(movement_support::ON_SUPPORT_OFFSET)
     }
+    #[inline]
     fn block_state(&mut self, p: BlockPos) -> Result<BlockStateId> {
         Ok(self.block(p))
     }
+    #[inline]
     fn is_air(&mut self, s: BlockStateId) -> Result<bool> {
         let name = &self
             .assets
@@ -2558,6 +2634,7 @@ impl MovementEmissionWorld for MotionWorld<'_, '_, '_> {
             "minecraft:air" | "minecraft:cave_air" | "minecraft:void_air"
         ))
     }
+    #[inline]
     fn climbable_tag(&mut self, s: BlockStateId) -> Result<bool> {
         let name = &self
             .assets
@@ -2567,6 +2644,7 @@ impl MovementEmissionWorld for MotionWorld<'_, '_, '_> {
             .name;
         Ok(self.resources.climbable.contains(name))
     }
+    #[inline]
     fn is_powder_snow(&mut self, s: BlockStateId) -> Result<bool> {
         let name = &self
             .assets
@@ -2576,24 +2654,30 @@ impl MovementEmissionWorld for MotionWorld<'_, '_, '_> {
             .name;
         Ok(name == "minecraft:powder_snow")
     }
+    #[inline]
     fn on_ground(&mut self) -> Result<bool> {
         Ok(self.player.ground.on_ground)
     }
+    #[inline]
     fn crouching(&mut self) -> Result<bool> {
         Ok(self.player.pose == crate::pose::Pose::Crouching)
     }
+    #[inline]
     fn on_rails(&mut self) -> Result<bool> {
         Ok(false)
     }
+    #[inline]
     fn swimming(&mut self) -> Result<bool> {
         Ok(self.player.swimming)
     }
+    #[inline]
     fn in_water(&mut self) -> Result<bool> {
         Ok(self.player.fluids.was_touching_water)
     }
     /// `Player.playStepSound`: in water a swim sound, then the step muffled;
     /// on land the step of an inside-sound block above the floor, or of a
     /// combination block above it with the floor's step muffled.
+    #[inline]
     fn walking_step_sound(&mut self, position: BlockPos, state: BlockStateId) -> Result<()> {
         let muffled = self.player.fluids.was_touching_water;
         let mut stepped = false;
@@ -2664,14 +2748,17 @@ impl MovementEmissionWorld for MotionWorld<'_, '_, '_> {
         }
         Ok(())
     }
+    #[inline]
     fn step_event(&mut self, _: BlockStateId) -> Result<()> {
         Ok(())
     }
+    #[inline]
     fn next_step(&mut self) -> Result<f32> {
         Ok(self.player.steps.next_step())
     }
     /// `Entity.waterSwimSound` and `playSwimSound` (the level random stands
     /// in for the entity's, as for the splash).
+    #[inline]
     fn water_swim_sound(&mut self) -> Result<()> {
         let v = self.player.velocity;
         let volume = 1.0_f32.min(
@@ -2684,17 +2771,21 @@ impl MovementEmissionWorld for MotionWorld<'_, '_, '_> {
         self.player.events.push(MotionEvent::Swim { volume, pitch });
         Ok(())
     }
+    #[inline]
     fn entity_event(&mut self, _: MovementEvent) -> Result<()> {
         Ok(())
     }
+    #[inline]
     fn flapping(&mut self) -> Result<bool> {
         Ok(false)
     }
+    #[inline]
     fn on_flap(&mut self) -> Result<()> {
         Ok(())
     }
     /// `Player.getMovementEmission`: nothing while flying or sneaking on
     /// the ground.
+    #[inline]
     fn movement_emission(&mut self) -> Result<MovementEmission> {
         let discreet = self.player.ground.on_ground && self.player.shift_key_down;
         Ok(if self.player.flying || discreet {
@@ -2706,30 +2797,39 @@ impl MovementEmissionWorld for MotionWorld<'_, '_, '_> {
 }
 impl RestitutionWorld for MotionWorld<'_, '_, '_> {
     type Error = Box<dyn std::error::Error>;
+    #[inline]
     fn suppressing_bounce(&mut self) -> Result<bool> {
         Ok(self.player.shift_key_down)
     }
+    #[inline]
     fn entity_bounciness(&mut self) -> Result<f64> {
         self.player.attribute("minecraft:bounciness")
     }
+    #[inline]
     fn velocity(&mut self) -> Result<Vec3> {
         Ok(self.player.velocity)
     }
+    #[inline]
     fn effective_gravity(&mut self) -> Result<f64> {
         living_motion::effective_gravity(self)
     }
+    #[inline]
     fn block_suppresses_bounce(&mut self, state: BlockStateId) -> Result<bool> {
         Ok(self.resources.blocks.get(state)?.suppresses_bounce)
     }
+    #[inline]
     fn block_bounce_restitution(&mut self, state: BlockStateId, position: BlockPos) -> Result<f32> {
         self.part_bounce_restitution(state, position)
     }
+    #[inline]
     fn air_drag(&mut self) -> Result<f32> {
         living_motion::air_drag(self)
     }
+    #[inline]
     fn movement_support_position(&mut self) -> Result<BlockPos> {
         self.support(movement_support::MOVEMENT_SUPPORT_OFFSET)
     }
+    #[inline]
     fn bounce_on(
         &mut self,
         state: BlockStateId,
@@ -2769,26 +2869,32 @@ impl RestitutionWorld for MotionWorld<'_, '_, '_> {
             movement,
         ))
     }
+    #[inline]
     fn bounce_event(&mut self) -> Result<()> {
         Ok(())
     }
+    #[inline]
     fn mark_position_for_sync(&mut self) {
         self.player.sync_position = true;
     }
+    #[inline]
     fn set_velocity(&mut self, value: Vec3) -> Result<()> {
-        self.player.velocity = value;
+        self.player.set_velocity(value);
         Ok(())
     }
 }
 impl LivingMotionWorld for MotionWorld<'_, '_, '_> {
     type Error = Box<dyn std::error::Error>;
+    #[inline]
     fn velocity(&self) -> Vec3 {
         self.player.velocity
     }
+    #[inline]
     fn set_velocity(&mut self, v: Vec3) -> Result<()> {
-        self.player.velocity = v;
+        self.player.set_velocity(v);
         Ok(())
     }
+    #[inline]
     fn adjust_jump_power(&mut self, mut power: f32) -> f32 {
         native_living_jump_power(
             self.loop_context,
@@ -2798,9 +2904,11 @@ impl LivingMotionWorld for MotionWorld<'_, '_, '_> {
         );
         power
     }
+    #[inline]
     fn jump_strength(&mut self) -> Result<f64> {
         self.player.attribute("minecraft:jump_strength")
     }
+    #[inline]
     fn block_jump_factor(&mut self) -> Result<f32> {
         let location = self.location();
         let context = self.loop_context;
@@ -2813,42 +2921,54 @@ impl LivingMotionWorld for MotionWorld<'_, '_, '_> {
             location,
         )?)
     }
+    #[inline]
     fn has_jump_boost(&mut self) -> Result<bool> {
         Ok(self.player.status.jump_boost.is_some())
     }
+    #[inline]
     fn jump_boost_amplifier(&mut self) -> Result<i32> {
         self.player
             .status
             .jump_boost
             .ok_or_else(|| "absent jump boost".into())
     }
+    #[inline]
     fn sprinting(&mut self) -> Result<bool> {
         Ok(self.player.sprinting)
     }
+    #[inline]
     fn yaw(&mut self) -> Result<f32> {
         Ok(self.player.yaw)
     }
+    #[inline]
     fn mark_needs_sync(&mut self) {
         self.player.needs_sync = true;
     }
+    #[inline]
     fn no_gravity(&mut self) -> Result<bool> {
         Ok(false)
     }
+    #[inline]
     fn gravity_attribute(&mut self) -> Result<f64> {
         self.player.attribute("minecraft:gravity")
     }
+    #[inline]
     fn has_slow_falling(&mut self) -> Result<bool> {
         Ok(self.player.status.slow_falling)
     }
+    #[inline]
     fn controlling_passenger_is_player(&mut self) -> Result<bool> {
         Ok(false)
     }
+    #[inline]
     fn speed(&mut self) -> Result<f32> {
         Ok(self.player.attribute("minecraft:movement_speed")? as f32)
     }
+    #[inline]
     fn omnidirectional_air_mover(&mut self) -> Result<bool> {
         Ok(false)
     }
+    #[inline]
     fn air_drag_modifier(&mut self) -> Result<f64> {
         self.player.attribute("minecraft:air_drag_modifier")
     }
@@ -2992,7 +3112,7 @@ pub fn block_jump_factor_at(
     )
 }
 /// `Entity.getOnPos(float)` with the world's bound fence and wall tags.
-pub(crate) fn block_support_at(
+pub fn block_support_at(
     world: &World,
     properties: Option<&BoundMovementProperties>,
     position: Vec3,
@@ -6444,7 +6564,7 @@ mod tests {
         }
     }
 
-    /// The player's fluid heights, which `entity_fluid_heights` reads: lava sources at x 20 and
+    /// The player's fluid heights, which `EntityRef::visit_fluid_heights` reads: lava sources at x 20 and
     /// water sources at x 21, y 4..=5 (each surface at 5 + 8/9). Standing at y 4 the player is
     /// that surface less 4 deep in each fluid it touches, from its own bottom, as a mob is
     /// (`mobs::living::fluid_heights`): lava, water, both where they meet (a tie), or neither.

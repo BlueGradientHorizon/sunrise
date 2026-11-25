@@ -436,7 +436,9 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
             dst,
             color: argb,
         };
-        self.paint(|batch, _| quad.paint_blit(batch, uv, src, tex, blend))
+        self.paint(|batch, atlas| {
+            quad.paint_blit(batch, atlas.blit_atlas_page(texture), uv, src, tex, blend)
+        })
     }
 
     fn texture(
@@ -727,6 +729,7 @@ mod tests {
             &mut |gui| gui.blit("test:unknown", DST, REGION, WHITE, Blend::Vignette),
             GuiDrawError::UnknownTexture,
         );
+        let standalone = mod_api::Identifier::parse("test:textures/gui/standalone.png").unwrap();
         for (region, error) in [
             (
                 GuiBlitRegion {
@@ -745,6 +748,10 @@ mod tests {
         ] {
             refuses(
                 &mut |gui| gui.blit("test:live", DST, region, WHITE, Blend::Textured),
+                error.clone(),
+            );
+            refuses(
+                &mut |gui| gui.texture(&standalone, DST, region, WHITE),
                 error,
             );
         }

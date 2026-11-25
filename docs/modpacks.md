@@ -640,10 +640,13 @@ Two cases the oracle fills in:
     Formations') need a library mod that registers those `STRUCTURE_PROCESSOR` types via the
     mod API (`register_structure_processor_type`). Without such a mod, carried structures
     generate without those custom processors.
-    - Carry still upgrades `trial_spawner/` files' mobs to 26.3's `equipment` format, reads
+    - Carry still upgrades `trial_spawner/` files' mobs to 26.3's `equipment` format and reads
       chest and other loot tables across every namespace (accepting float-written int fields
-      like `"rolls": {"min": 3.0, ...}`), and rewrites `repurposed_structures:matter_phase_rule_test`
-      to `sunrise:matter_phase` (pending #5145).
+      like `"rolls": {"min": 3.0, ...}`). Third-party rule tests and position rule tests (such
+      as Repurposed Structures' `matter_phase_rule_test`, `y_value_pos_rule_test`, and
+      `piece_origin_axis_aligned_linear_pos_rule_test`) are left intact and reported as
+      unsupported until a mod registers their `RULE_TEST` / `POS_RULE_TEST` types via
+      `register_rule_test_type` / `register_pos_rule_test_type`.
     - Lithostitched's `add_template_pool_elements` and `add_processor_list_processors` modifiers
       become the game's additions when the mods their load conditions name are ported along. Its
       `limited` and `guaranteed` pool elements stay intact (#4923).
