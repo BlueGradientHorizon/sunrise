@@ -954,8 +954,9 @@ class DailyWorkflowTests(unittest.TestCase):
         self.assertNotIn("permissions", jobs["sdk"], "the build leg publishes nothing")
         # The SDK is two calls named `sdk`: the Linux legs, which fn-replace-check needs alone, and the others.
         self.assertEqual(jobs["sdk"]["with"]["legs"], "linux")
+        # Only this call runs the C-source test on Windows and macOS; a Dev SDK build never does.
         self.assertEqual(jobs["sdk-windows-macos"]["with"], {"commit": "${{ needs.resolve.outputs.commit }}",
-                                                             "legs": "windows-macos"})
+                                                             "legs": "windows-macos", "c_source_test": "true"})
         self.assertEqual(jobs["sdk-windows-macos"]["name"], "sdk")
         self.assertEqual(summary.PART_OF, {"sdk-windows-macos": "sdk"})
         self.assertEqual(jobs["fn-replace-check"]["needs"], ["resolve", "sdk"])

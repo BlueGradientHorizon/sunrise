@@ -155,6 +155,8 @@ path = "tests/it/main.rs"
 workspace = true
 
 [dev-dependencies]
+# `runtime_files`' test packs a mod folder.
+sunrise-mod-package = { path = "../sunrise-mod-package", default-features = false, features = ["folder"] }
 sunrise-hooks = { path = "../sunrise-hooks", features = ["test-support"] }
 sunrise-client-core = { path = "../sunrise-client-core", features = ["test-language-publication"] }
 sunrise-client-lib = { path = "../sunrise-client-lib", default-features = false, features = ["test-menu-validity", "test-payload-probe", "test-publication-scope", "test-residency-observer", "test-dry-side", "test-tooltip-factories", "test-pack-feedback"] }
