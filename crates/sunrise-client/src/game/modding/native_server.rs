@@ -7125,9 +7125,9 @@ pub(super) mod fake_action_tests {
         use mod_api::{BlockInteractionRangeEvent, Hooks, ModEntry};
 
         const FAR: [i32; 3] = [10, 63, 0];
-        struct Enderface;
+        struct RemoteReach;
         #[mod_api::__subscriptions]
-        impl Hooks for Enderface {
+        impl Hooks for RemoteReach {
             fn block_interaction_range(
                 &self,
                 _: &dyn mod_api::LoopContext,
@@ -7161,7 +7161,7 @@ pub(super) mod fake_action_tests {
                 Err(ActionRefused::OutOfReach)
             );
             assert!(!far(game, FAR));
-            let mods = vec![ModEntry::new("enderface", Box::new(Enderface))].into();
+            let mods = vec![ModEntry::new("remote_reach", Box::new(RemoteReach))].into();
             mod_platform::testing::with_mods(mods, || {
                 assert!(far(game, FAR));
                 assert!(

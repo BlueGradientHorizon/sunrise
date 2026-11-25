@@ -1268,6 +1268,7 @@ impl Game<'_> {
                 [key.0, key.1, key.2],
             )
         });
+        let in_reach = self.host_within_interaction_range([key.0, key.1, key.2], in_reach);
         if !has_book || !in_reach {
             self.close_book();
             return;

@@ -1122,7 +1122,8 @@ impl Game<'_> {
                         })
                         .sum();
                     let range = g.reach() + 1.0;
-                    if d2 >= range * range {
+                    let within = d2 < range * range;
+                    if !g.within_interaction_range_of(g.lan_acting_uuid, p.pos, 1.0, within) {
                         return None;
                     }
                     // The block's item, a part's in its place, then the block

@@ -374,12 +374,27 @@ impl Game<'_> {
     /// A menu's `stillValid` reach (`isWithinBlockInteractionRange(pos, 4)`) for the
     /// world's own player: `within` is the game's answer, then a mod's
     /// `block_interaction_range`.
-    fn host_within_interaction_range(&self, pos: [i32; 3], within: bool) -> bool {
-        let Some(player) = self
+    pub(in crate::game) fn host_within_interaction_range(
+        &self,
+        pos: [i32; 3],
+        within: bool,
+    ) -> bool {
+        let player = self
             .level
             .player_uuid
-            .map(sunrise_client::lan::playerdata::ints_uuid)
-        else {
+            .map(sunrise_client::lan::playerdata::ints_uuid);
+        self.within_interaction_range_of(player, pos, 4.0, within)
+    }
+    /// `Player.isWithinBlockInteractionRange(pos, buffer)` for the player `player`: `within` is
+    /// the game's answer, then a mod's `block_interaction_range`. No player keeps `within`.
+    pub(in crate::game) fn within_interaction_range_of(
+        &self,
+        player: Option<u128>,
+        pos: [i32; 3],
+        buffer: f64,
+        within: bool,
+    ) -> bool {
+        let Some(player) = player else {
             return within;
         };
         let mut within = within;
@@ -387,7 +402,7 @@ impl Game<'_> {
             &self.loop_context,
             player,
             sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]),
-            4.0,
+            buffer,
             &mut within,
         );
         within
