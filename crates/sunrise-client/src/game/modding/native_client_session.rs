@@ -50,6 +50,19 @@ impl Game<'_> {
         Some(u32::try_from(latency).unwrap_or(0))
     }
 
+    /// The locator bar's tracked waypoints; None outside a logged-in client world.
+    pub(super) fn native_client_waypoints(&self) -> Option<mod_api::ClientWaypoints> {
+        self.native_session()?;
+        Some(waypoints(&self.waypoints))
+    }
+
+    /// The listed players' skins as the Tab overlay draws them; None outside a logged-in
+    /// client world.
+    pub(super) fn native_client_player_skins(&self) -> Option<mod_api::ClientPlayerSkins> {
+        let remote = self.native_session()?;
+        Some(player_skins(&remote.listed_player_skins()))
+    }
+
     /// The local player's item use (`isUsingItem`, `getUsedItemHand`, `getTicksUsingItem`,
     /// `getUseItemRemainingTicks`); None when no item is in use or outside a logged-in client
     /// world.
@@ -219,6 +232,55 @@ impl ClientTabListEntry for TabEntryView<'_> {
     }
 }
 
+/// `ClientWaypointManager`'s table: the tracked waypoints in the order the server sent them,
+/// so the read cannot drift from what the bar holds.
+fn waypoints(waypoints: &sunrise_client::locator_bar::ClientWaypoints) -> mod_api::ClientWaypoints {
+    use sunrise_protocol::packets::play::{WaypointId, WaypointTarget};
+    let entries = waypoints
+        .entries()
+        .iter()
+        .map(|w| {
+            let id = match &w.id {
+                WaypointId::Uuid(uuid) => mod_api::ClientWaypointId::Uuid(*uuid),
+                WaypointId::Name(name) => mod_api::ClientWaypointId::Name(name.clone()),
+            };
+            let target = match w.target {
+                WaypointTarget::Empty => mod_api::ClientWaypointTarget::Empty,
+                WaypointTarget::Block([x, y, z]) => {
+                    mod_api::ClientWaypointTarget::Block(mod_api::BlockPos::new(x, y, z))
+                }
+                WaypointTarget::Chunk([x, z]) => mod_api::ClientWaypointTarget::Chunk([x, z]),
+                WaypointTarget::Azimuth(angle) => mod_api::ClientWaypointTarget::Azimuth(angle),
+            };
+            // `Ident::read` validates the style on the wire, so a server-sent style always
+            // parses; keep the entry on the default style rather than dropping it.
+            let style = mod_api::Identifier::parse(&w.style).unwrap_or_else(|_| {
+                mod_api::Identifier::parse("minecraft:default")
+                    .expect("the default waypoint style is a valid identifier")
+            });
+            mod_api::ClientWaypointEntry::new(
+                id,
+                target,
+                style,
+                // The packet stores the colour as ARGB; the API takes RGB, as
+                // `living_set_waypoint_color` does.
+                w.color.map(|c| (c as u32) & 0x00FF_FFFF),
+            )
+        })
+        .collect();
+    mod_api::ClientWaypoints::new(entries)
+}
+
+/// `Remote::listed_player_skins` as `ClientPlayerSkin`s, so the read cannot drift from what the
+/// tab list draws.
+fn player_skins(skins: &[(u128, String, bool)]) -> mod_api::ClientPlayerSkins {
+    let entries = skins
+        .iter()
+        .map(|(uuid, skin, slim)| mod_api::ClientPlayerSkin::new(*uuid, skin.clone(), *slim))
+        .collect();
+    mod_api::ClientPlayerSkins::new(entries)
+}
+
 #[cfg(test)]
 pub(super) mod tests {
     use super::super::native_entity_refs::tests::with_client_game;
@@ -384,6 +446,106 @@ pub(super) mod tests {
             let other = mod_api::__private::game::player_ref(EntityRef::new(epoch, 99), 5);
             assert_eq!(other.permission_level(game), None);
         });
+    }
+
+    /// The waypoint table as `client_waypoints` reads it: every tracked entry, in sent order.
+    #[test]
+    fn the_waypoints_read_as_the_bar_holds_them() {
+        use sunrise_client::locator_bar::ClientWaypoints;
+        use sunrise_protocol::packets::play::{
+            TrackedWaypoint, WaypointId, WaypointTarget, waypoint_operation,
+        };
+        let tracked = |id, style: &str, color, target| TrackedWaypoint {
+            operation: waypoint_operation::TRACK,
+            id,
+            style: style.into(),
+            color,
+            target,
+        };
+        let mut table = ClientWaypoints::default();
+        table.apply(&tracked(
+            WaypointId::Uuid(7),
+            "minecraft:default",
+            Some(0xFF10_2030u32 as i32),
+            WaypointTarget::Block([4, 5, 6]),
+        ));
+        table.apply(&tracked(
+            WaypointId::Name("home".into()),
+            "minecraft:default",
+            None,
+            WaypointTarget::Azimuth(0.5),
+        ));
+        table.apply(&tracked(
+            WaypointId::Uuid(9),
+            "minecraft:default",
+            Some(0xFF00_FF00u32 as i32),
+            WaypointTarget::Chunk([3, -2]),
+        ));
+        let list = waypoints(&table);
+        assert_eq!(
+            list.entries.len(),
+            3,
+            "every tracked waypoint, in sent order"
+        );
+        let first = &list.entries[0];
+        assert_eq!(first.id, mod_api::ClientWaypointId::Uuid(7));
+        assert_eq!(
+            first.target,
+            mod_api::ClientWaypointTarget::Block(mod_api::BlockPos::new(4, 5, 6))
+        );
+        assert_eq!(first.style.to_string(), "minecraft:default");
+        assert_eq!(
+            first.color,
+            Some(0x10_2030),
+            "ARGB on the wire reads as RGB"
+        );
+        assert_eq!(
+            list.entries[1].id,
+            mod_api::ClientWaypointId::Name("home".into())
+        );
+        assert_eq!(
+            list.entries[1].target,
+            mod_api::ClientWaypointTarget::Azimuth(0.5)
+        );
+        assert_eq!(list.entries[1].color, None, "no colour sent stays none");
+        assert_eq!(
+            list.entries[2].target,
+            mod_api::ClientWaypointTarget::Chunk([3, -2])
+        );
+        // Untracking drops the entry; the read follows the table.
+        table.apply(&TrackedWaypoint {
+            operation: waypoint_operation::UNTRACK,
+            id: WaypointId::Uuid(9),
+            style: "minecraft:default".into(),
+            color: None,
+            target: WaypointTarget::Empty,
+        });
+        let list = waypoints(&table);
+        assert_eq!(list.entries.len(), 2, "untracked waypoints leave the table");
+        assert_eq!(
+            list.entries[1].id,
+            mod_api::ClientWaypointId::Name("home".into())
+        );
+    }
+
+    /// The listed players' skins as `client_player_skins` reads them: the resolved path and the
+    /// slim flag, joined on UUID.
+    #[test]
+    fn the_player_skins_read_as_the_tab_list_draws_them() {
+        let skins = player_skins(&[
+            (1, "skins/abc123".to_owned(), true),
+            (2, "entity/player/wide/steve".to_owned(), false),
+            (3, "entity/player/slim/alex".to_owned(), true),
+        ]);
+        assert_eq!(skins.entries.len(), 3, "every listed player's skin");
+        assert_eq!(skins.entries[0].uuid, 1);
+        assert_eq!(skins.entries[0].skin, "skins/abc123");
+        assert!(skins.entries[0].slim, "a downloaded slim skin stays slim");
+        assert_eq!(skins.entries[1].uuid, 2);
+        assert_eq!(skins.entries[1].skin, "entity/player/wide/steve");
+        assert!(!skins.entries[1].slim, "a wide default is not slim");
+        assert_eq!(skins.entries[2].uuid, 3);
+        assert!(skins.entries[2].slim, "a slim default is slim");
     }
 
     pub(in crate::game) fn logged_client(
