@@ -122,6 +122,11 @@ pub enum CommandArgumentValue {
     },
     /// A `resource:<registry>` argument: an id present in that registry (static or data pack).
     Id(Identifier),
+    /// A `vec2` or `vec2_uncentered` argument resolved against the source: `~` offsets applied
+    /// to its `x` and `z` position, narrowed to `f32` as vanilla's `Vec2Argument.getVec2` does.
+    /// `vec2` centres whole numbers on their block (`5` is `5.5`); `vec2_uncentered` keeps them
+    /// as written. Local `^` coordinates are refused. Resolution does not load chunks.
+    Vec2([f32; 2]),
 }
 
 /// An argument's registered name and its validated value.

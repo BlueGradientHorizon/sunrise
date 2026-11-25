@@ -105,15 +105,18 @@ as vanilla's parser so `~`, `^` and the dimension list complete as in a vanilla 
 |---|---|---|
 | `vec3` | `minecraft:vec3`, whole `x` and `z` centred on the block | `Vec3([f64; 3])` |
 | `vec3_uncentered` | `minecraft:vec3`, coordinates as written | `Vec3([f64; 3])` |
+| `vec2` | `minecraft:vec2`, whole `x` and `z` centred on the block | `Vec2([f32; 2])` |
+| `vec2_uncentered` | `minecraft:vec2`, coordinates as written | `Vec2([f32; 2])` |
 | `column_pos` | `minecraft:column_pos` | `ColumnPos([i32; 2])`, floored |
 | `rotation` | `minecraft:rotation` | `Rotation([f32; 2])`, yaw then pitch |
 | `dimension` | `minecraft:dimension` | `Dimension(LevelRef)` |
 | `nbt` | `minecraft:nbt_compound_tag` | `Nbt(Compound)` |
 
-`~` and `^` resolve against the command source's position and rotation, as `block_pos` does. A
+`~` and `^` resolve against the command source's position and rotation, as `block_pos` does
+(`vec2` and `vec2_uncentered` take `~` relative coordinates and refuse `^`). A
 `dimension` the world has not loaded is refused with `argument.dimension.invalid` before the
-executor runs. A `vec3` and a `vec3_uncentered` cannot share a position in one command's
-usages, as they look the same to a client.
+executor runs. Neither `vec3`/`vec3_uncentered` nor `vec2`/`vec2_uncentered` can share a
+position in one command's usages, as they look the same to a client.
 A player's source is their position and rotation. The console has no source
 entity and uses the world spawn's block corner, in the level the spawn is in, with zero rotation, so `@s`
 cannot resolve there. Every executor receives the same kind of typed input.
