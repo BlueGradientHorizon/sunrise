@@ -429,6 +429,23 @@ pub trait RenderAssets {
     ) -> Result<AtlasSpritePixels, AtlasSpriteError> {
         unimplemented!("RenderAssets::atlas_sprite_pixels")
     }
+    /// Side: client.
+    /// Published asset/data read: available in Setup, Reloading and World.
+    /// The active `shaders/` pack's `block.properties` integer id (`mc_Entity`) for `state`, as
+    /// Sunrise's shader-pack loader maps it: the one the engine's own terrain carries for it.
+    /// `None` when no pack is active and rendering (the title screen and a pack still loading
+    /// included), when the active pack is not a `shaders/` pack, when the pack gives `state` no
+    /// id, and when `state` is not in the live block-state index.
+    ///
+    /// The answer changes when the active pack is loaded, switched or turned off, and no signal
+    /// of such a change exists yet: nothing tells a mod when a pack reloads, and
+    /// `shader_pack_active()` stays `true` across a switch from one pack to another. A mod that
+    /// needs the current id asks again when it needs it; keep no cache that nothing invalidates.
+    /// Item and entity ids are not part of this read.
+    fn shader_pack_block_id(&self, state: BlockState) -> Option<i32> {
+        let _ = state;
+        unimplemented!("RenderAssets::shader_pack_block_id")
+    }
 }
 
 /// Client-side persistent copies of resolved models.

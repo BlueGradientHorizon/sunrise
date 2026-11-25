@@ -241,6 +241,9 @@ impl crate::RenderAssets for EmptyClientReloadServices {
     ) -> Result<crate::AtlasSpritePixels, crate::AtlasSpriteError> {
         Err(crate::AtlasSpriteError::NotReady)
     }
+    fn shader_pack_block_id(&self, _: crate::BlockState) -> Option<i32> {
+        None
+    }
 }
 
 impl crate::InstanceGroups for EmptyClientReloadServices {
