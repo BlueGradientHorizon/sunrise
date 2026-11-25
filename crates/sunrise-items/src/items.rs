@@ -1607,11 +1607,8 @@ impl Items {
         instruments: HashMap<String, Instrument>,
     ) {
         enchantments.entity_tags = self.entity_type_tags.members().clone();
-        Arc::make_mut(&mut self.component_registry).enchantments = enchantments
-            .list
-            .iter()
-            .map(|entry| entry.id.to_string())
-            .collect();
+        Arc::make_mut(&mut self.component_registry)
+            .set_enchantment_ids(enchantments.list.iter().map(|entry| entry.id.to_string()));
         self.enchantments = Arc::new(enchantments);
         self.instruments = instruments;
     }
