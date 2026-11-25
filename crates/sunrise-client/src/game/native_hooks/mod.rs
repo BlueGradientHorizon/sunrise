@@ -196,6 +196,7 @@ mod chunk_ticket_level_updated;
 mod chunk_watch;
 mod client_attack_target;
 mod client_block_changed;
+mod client_break_progress;
 mod client_chat;
 mod client_chat_received;
 #[cfg(test)]

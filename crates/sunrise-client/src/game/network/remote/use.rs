@@ -163,6 +163,8 @@ impl Game<'_> {
                 (r.destroying, r.destroying_item) = (Some((hit.pos, face, 0.0)), held);
                 r.is_destroying = true;
             }
+            // startDestroyBlock tells its level the new dig before the first hit's effects.
+            self.native_local_break_progress(hit.pos, 0.0);
             // startDestroyBlock plays the first hit and crack itself; the
             // server's level events 2019 and 2020 do the rest.
             self.breaking_block_effects(hit.pos, hit.face, true);
@@ -206,6 +208,8 @@ impl Game<'_> {
                 r.destroy_delay = 5;
             }
             self.mining = None;
+            // continueDestroyBlock tells its level the reset progress: the crack goes.
+            self.native_local_break_progress(pos, 0.0);
         } else {
             if last_face != face {
                 self.send(S::PlayerAction(play::PlayerAction {
@@ -225,6 +229,7 @@ impl Game<'_> {
                 ticks,
                 crack: None,
             }));
+            self.native_local_break_progress(pos, done);
         }
         true
     }
