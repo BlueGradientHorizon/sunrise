@@ -981,29 +981,30 @@ impl<'g> Game<'g> {
                 .then_some(self.remote.as_ref())
                 .flatten();
             let mut mob_obstructs = false;
-            self.level_visit_entities_in(
-                level,
-                cell.min_position().components(),
-                cell.max_position().components(),
-                &mut |entity| {
-                    let Some(index) = self.mob_index.find_ref(&self.mobs, entity.id()) else {
-                        return std::ops::ControlFlow::Continue(());
-                    };
-                    let mob = &self.mobs[index];
-                    if !mob.removed
-                        && !(&*mob.kind.id == "minecraft:player"
-                            && remote.is_some_and(|r| {
-                                r.remote_player_info_game_mode(mob.id as i32) == Some(3)
-                            }))
-                        && obstructs(mob.bounds())
-                    {
-                        mob_obstructs = true;
-                        return std::ops::ControlFlow::Break(());
-                    }
-                    std::ops::ControlFlow::Continue(())
-                },
-            )
-            .map_err(|_| PlacementQueryError::Unavailable)?;
+            let _ = self
+                .level_visit_entities_in(
+                    level,
+                    cell.min_position().components(),
+                    cell.max_position().components(),
+                    &mut |entity| {
+                        let Some(index) = self.mob_index.find_ref(&self.mobs, entity.id()) else {
+                            return std::ops::ControlFlow::Continue(());
+                        };
+                        let mob = &self.mobs[index];
+                        if !mob.removed
+                            && !(&*mob.kind.id == "minecraft:player"
+                                && remote.is_some_and(|r| {
+                                    r.remote_player_info_game_mode(mob.id as i32) == Some(3)
+                                }))
+                            && obstructs(mob.bounds())
+                        {
+                            mob_obstructs = true;
+                            return std::ops::ControlFlow::Break(());
+                        }
+                        std::ops::ControlFlow::Continue(())
+                    },
+                )
+                .map_err(|_| PlacementQueryError::Unavailable)?;
             if mob_obstructs
                 || self
                     .dragon
