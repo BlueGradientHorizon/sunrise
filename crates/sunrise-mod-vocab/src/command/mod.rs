@@ -122,6 +122,10 @@ pub enum CommandArgumentValue {
     },
     /// A `resource:<registry>` argument: an id present in that registry (static or data pack).
     Id(Identifier),
+    /// A `game_profile` argument: UUID and account name for each result, in selector order.
+    /// A plain name can also select an offline player whose profile is still in the user cache.
+    /// Never asks the profile service. Side: server.
+    GameProfiles(Vec<(u128, String)>),
     /// A `vec2` or `vec2_uncentered` argument resolved against the source: `~` offsets applied
     /// to its `x` and `z` position, narrowed to `f32` as vanilla's `Vec2Argument.getVec2` does.
     /// `vec2` centres whole numbers on their block (`5` is `5.5`); `vec2_uncentered` keeps them

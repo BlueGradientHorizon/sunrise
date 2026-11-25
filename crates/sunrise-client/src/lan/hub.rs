@@ -121,6 +121,39 @@ pub fn effective_view_distance(advertised: i32) -> i32 {
     advertised.clamp(2, 32)
 }
 
+/// `IntegratedServer.getProfilePermissions` / `getCustomPermissionLevel` and
+/// `MinecraftServer.getProfilePermissions`.
+pub fn integrated_profile_permission(
+    owner: Option<(&str, u128)>,
+    allow_commands: bool,
+    guest_commands: bool,
+    ops: &std::collections::HashMap<u128, u8>,
+    uuid: u128,
+    name: &str,
+) -> u8 {
+    let is_owner = owner.is_some_and(|(owner_name, _)| owner_name.eq_ignore_ascii_case(name));
+    // IntegratedServer.getCustomPermissionLevel: for non-owners this takes
+    // precedence over any entry, even when guest command access is off.
+    if !is_owner && allow_commands {
+        return if guest_commands { 2 } else { 0 };
+    }
+    // No persisted op list on integrated servers. The hub also stores
+    // temporary LAN operator levels; its automatic 0 for the owner means
+    // commands are off, not that the owner's profile is listed as an op.
+    let op_level = ops
+        .get(&uuid)
+        .copied()
+        .filter(|&level| owner.is_none_or(|(_, owner_uuid)| uuid != owner_uuid) || level != 0);
+    // IntegratedServer.getProfilePermissions overrides an owner's level
+    // when PlayerList.isOp is true, either by entry or by Allow Commands.
+    if is_owner && (op_level.is_some() || allow_commands) {
+        return 4;
+    }
+    // MinecraftServer.getProfilePermissions: the op entry's level, or
+    // ALL. The implicit-op case is already handled by the owner override.
+    op_level.unwrap_or(0)
+}
+
 /// What the other players see of a player's body besides sneaking and
 /// sprinting: the pose and the rest of `Entity.DATA_SHARED_FLAGS_ID`.
 #[derive(Clone, Copy, Debug, Default)]
@@ -427,6 +460,8 @@ pub struct Hub {
     /// An integrated server's owner (`MinecraftServer.isSingleplayerOwner`),
     /// whose moves are never checked.
     pub singleplayer_owner: Option<u128>,
+    /// Whether the world allows commands (`WorldData.isAllowCommands`).
+    pub allow_commands: bool,
     /// The world is superflat (`ServerLevel.isFlat`, a world-wide flag, sent as
     /// `CommonPlayerSpawnInfo.isFlat` in every dimension).
     pub flat_world: bool,
@@ -801,6 +836,7 @@ impl Hub {
             move_solids: Vec::new(),
             move_boxes: Mutex::default(),
             singleplayer_owner: None,
+            allow_commands: false,
             flat_world: false,
             debug_world: false,
             riding: Default::default(),
@@ -1483,7 +1519,7 @@ impl Hub {
         guest.last_action_tick = self.ticks;
         guest.game_mode = self.config.default_game_mode;
         guest.abilities.update_for_mode(guest.game_mode);
-        guest.permission = self.default_permission(guest.uuid);
+        guest.permission = self.default_permission(guest.uuid, &guest.name);
         guest.joined_tick = self.ticks;
         guest.position = ctx.spawn;
         guest.previous_position = ctx.spawn;
@@ -1492,15 +1528,26 @@ impl Hub {
         conn
     }
 
-    /// The permission level a player gets: an integrated server gives every
-    /// guest the game masters' level when commands are allowed
-    /// (IntegratedServer.setGuestCommandAccess); a dedicated server its
-    /// operators' level (`ops`).
-    fn default_permission(&self, uuid: u128) -> u8 {
+    /// The permission level a player gets: on an integrated server, vanilla's
+    /// `IntegratedServer.getProfilePermissions` / `getCustomPermissionLevel`;
+    /// on a dedicated server, its operator list (`ops`).
+    pub fn default_permission(&self, uuid: u128, name: &str) -> u8 {
         if self.config.integrated {
-            // IntegratedServer.getProfilePermissions / getCustomPermissionLevel.
-            let guests = if self.config.guest_commands { 2 } else { 0 };
-            self.ops.get(&uuid).copied().unwrap_or(guests)
+            let owner = self
+                .lan
+                .shared
+                .config
+                .singleplayer_profile
+                .as_ref()
+                .map(|(owner, owner_uuid)| (owner.as_str(), *owner_uuid));
+            integrated_profile_permission(
+                owner,
+                self.allow_commands,
+                self.config.guest_commands,
+                &self.ops,
+                uuid,
+                name,
+            )
         } else {
             self.ops.get(&uuid).copied().unwrap_or(0)
         }
@@ -1987,7 +2034,7 @@ impl Hub {
     pub fn refresh_permissions(&mut self) {
         for i in 0..self.guests.len() {
             {
-                let value = self.default_permission(self.guests[i].uuid);
+                let value = self.default_permission(self.guests[i].uuid, &self.guests[i].name);
                 self.guests.update(i, |guest| guest.permission = value);
             }
         }
@@ -6164,6 +6211,39 @@ mod tests {
         hub.ops.insert(owner, 0);
         assert!(hub.is_op(owner), "dedicated level-0 op is op");
         assert!(!hub.is_op(guest), "dedicated non-op is not op");
+    }
+
+    #[test]
+    fn integrated_default_permission_matches_custom_level_before_ops() {
+        let (mut hub, _rx) = hub_with_a_guest();
+        let owner_uuid = 99u128;
+        let guest_uuid = hub.guests[0].uuid;
+        let guest_name = hub.guests[0].name.clone();
+        Arc::get_mut(&mut hub.lan.shared)
+            .unwrap()
+            .config
+            .singleplayer_profile = Some(("Owner".into(), owner_uuid));
+        hub.config.integrated = true;
+        hub.ops.insert(owner_uuid, 0);
+        hub.ops.insert(guest_uuid, 3);
+
+        hub.allow_commands = true;
+        hub.config.guest_commands = false;
+        hub.refresh_permissions();
+        assert_eq!(hub.guests[0].permission, 0);
+        assert_eq!(hub.default_permission(guest_uuid, &guest_name), 0);
+        assert_eq!(hub.default_permission(owner_uuid, "Owner"), 4);
+
+        hub.config.guest_commands = true;
+        hub.refresh_permissions();
+        assert_eq!(hub.guests[0].permission, 2);
+        assert_eq!(hub.default_permission(guest_uuid, &guest_name), 2);
+
+        hub.allow_commands = false;
+        hub.refresh_permissions();
+        assert_eq!(hub.guests[0].permission, 3);
+        assert_eq!(hub.default_permission(guest_uuid, &guest_name), 3);
+        assert_eq!(hub.default_permission(owner_uuid, "Owner"), 0);
     }
 
     #[test]

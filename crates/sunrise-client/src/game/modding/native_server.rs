@@ -16,6 +16,9 @@ mod command_failure_tests;
 #[path = "native_server/command_shape_tests.rs"]
 mod command_shape_tests;
 #[cfg(test)]
+#[path = "native_server/profile_tests.rs"]
+mod profile_tests;
+#[cfg(test)]
 #[path = "native_server/provider_tests.rs"]
 mod provider_tests;
 #[path = "native_server/registered_commands.rs"]
@@ -112,6 +115,11 @@ fn usage_nodes(
         }
         if optional_seen && !optional {
             return Err(format!("`{usage}`: `{word}` follows an optional argument"));
+        }
+        if client && kind == "game_profile" {
+            return Err(format!(
+                "`{usage}`: `game_profile` requires a server command"
+            ));
         }
         let resource = kind
             .strip_prefix("resource:")
@@ -2788,6 +2796,9 @@ impl Game<'_> {
         for argument in context.args {
             let ty = parsed_type(&self.ui.dispatcher.0, &context.nodes, argument.range);
             let value = match argument.value {
+                value if matches!(ty, Some(ArgType::GameProfile)) => {
+                    Value::GameProfiles(self.mod_game_profiles(&value)?)
+                }
                 Arg::Entity(selector) => {
                     // The parsed node, not its name, determines cardinality: usages may
                     // repeat an argument name or use different kinds on separate branches.
