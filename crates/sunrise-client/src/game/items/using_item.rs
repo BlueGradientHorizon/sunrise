@@ -336,8 +336,8 @@ impl Game<'_> {
         self.use_vibration(stack, "minecraft:item_interact_finish");
         self.stopped_using(stack, Some(self.own_entity_id()), hand, time_left);
     }
-    /// `IItemExtension.onStopUsing` of `stack`, its use by `entity` (`None` for
-    /// the player) in `hand` cleared `time_left` ticks before its end (0 for a
+    /// `IItemExtension.onStopUsing` of `stack`, its use by `entity` (a player's
+    /// id or a mob's) in `hand` cleared `time_left` ticks before its end (0 for a
     /// finished use): only the parts of its item hear it.
     pub(in crate::game) fn stopped_using(
         &mut self,
