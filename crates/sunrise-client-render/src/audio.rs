@@ -2121,6 +2121,15 @@ impl Audio {
             &mut self.backend,
         );
     }
+    /// Every playing sound paused, music and the interface's included (a client mod's pause).
+    pub fn pause_all(&mut self) {
+        self.engine.pause_all_except(&[], &mut self.backend);
+    }
+    /// A client mod's scale over `source`'s volume, applied to the sounds playing now.
+    pub fn set_source_scale(&mut self, source: usize, scale: f32) {
+        self.engine
+            .set_source_scale(source, scale, &mut self.backend);
+    }
     /// `SoundManager.resume`.
     pub fn resume(&mut self) {
         self.engine.resume(&mut self.backend);

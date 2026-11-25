@@ -3794,7 +3794,10 @@ struct Game<'a> {
     music_notes: sunrise_client::toasts::MusicNotes,
     ambience: sunrise_client::ambience::Ambience,
     /// The sound engine was told the game paused (pauseAllExcept).
-    sound_paused: bool,
+    /// The sounds' pause as last applied: (the game's pause, a mod's `set_sounds_paused`).
+    sound_paused: (bool, bool),
+    /// A client mod paused every sound (`set_sounds_paused`).
+    mod_sounds_paused: bool,
     /// Minecarts whose `MinecartSoundInstance` is playing.
     cart_sounds: HashSet<u32>,
     /// The minecart the riding sounds were started for (`LocalPlayer.startRiding`).
@@ -14501,7 +14504,8 @@ impl<'a> Game<'a> {
             music_toast_state: settings.file.int("musicToast").clamp(0, 2) as u8,
             music_notes: Default::default(),
             ambience: Default::default(),
-            sound_paused: false,
+            sound_paused: (false, false),
+            mod_sounds_paused: false,
             cart_sounds: HashSet::new(),
             riding_cart_sounds: None,
             riding_sound: None,
