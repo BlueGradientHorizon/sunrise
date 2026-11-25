@@ -292,6 +292,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn source_entries_are_counted_before_any_is_inflated() {
         let names: Vec<String> = (0..=crate::manifest::MAX_SOURCE_FILES)
             .map(|i| format!("vendor/f{i}.c"))
