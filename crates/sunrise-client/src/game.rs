@@ -10687,7 +10687,7 @@ impl Game<'_> {
             sunrise_client::ui_theme::reset_atlas();
             self.native_texture_atlas_stitched(mod_api::TextureAtlas::Gui);
         }
-        let (mut renderer, clouds) = build_renderer(
+        let (mut renderer, required) = build_renderer(
             window,
             self.options.offscreen,
             &self.pack,
@@ -10702,7 +10702,7 @@ impl Game<'_> {
             display,
             self.settings.texture_atlas_settings(),
         )?;
-        clouds?;
+        required?;
         (renderer.screenshot, renderer.screenshot_result) = (screenshot, screenshot_result);
         self.adopt_renderer(renderer);
         log::info!("Sunrise: graphics device recovered; rebuilding world meshes");

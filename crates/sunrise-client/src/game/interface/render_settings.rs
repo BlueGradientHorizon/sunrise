@@ -56,8 +56,8 @@ impl Game<'_> {
                 .unwrap_or_default(),
             self.settings.texture_atlas_settings(),
         )
-        .and_then(|(renderer, clouds)| {
-            clouds?;
+        .and_then(|(renderer, required)| {
+            required?;
             Ok(renderer)
         })
     }

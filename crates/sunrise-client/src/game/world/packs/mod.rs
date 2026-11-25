@@ -591,8 +591,8 @@ impl Game<'_> {
                         .unwrap_or_default(),
                     self.settings.texture_atlas_settings(),
                 )
-                .and_then(|(renderer, clouds)| {
-                    clouds?;
+                .and_then(|(renderer, required)| {
+                    required?;
                     Ok(renderer)
                 })
             })
@@ -1334,3 +1334,7 @@ mod tests {
 #[cfg(test)]
 #[path = "clouds_reload_tests.rs"]
 mod clouds_reload_tests;
+
+#[cfg(test)]
+#[path = "core_shaders_reload_tests.rs"]
+mod core_shaders_reload_tests;

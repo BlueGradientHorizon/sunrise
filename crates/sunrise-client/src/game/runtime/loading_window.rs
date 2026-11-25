@@ -23,7 +23,9 @@ pub(super) fn prepare_renderer_textures(
     )
 }
 
-/// Upload pack textures and create the renderer on the window's device.
+/// Upload pack textures and create the renderer on the window's device, with whether the device
+/// made every pipeline of the packs' core shaders it draws (the first refusal, named by its
+/// pipeline, fails the pack load as a required shader's does).
 pub(super) fn build_renderer(
     window: Arc<Window>,
     offscreen: bool,
@@ -94,7 +96,9 @@ pub(super) fn build_renderer(
     // waiting for `Game::apply_settings` after the handoff.
     renderer.set_present_mode(vsync, settings.present_mode);
     renderer.hud.sprite_animations = atlas.renderer_animations();
-    renderer.hud.set_text_shader(&renderer.device, {
+    // The packs' core shaders: the device refusing a pipeline vanilla requires fails the load,
+    // after the renderer is made (`ShaderManager.apply`'s required programs).
+    let gui_text = renderer.hud.set_text_shader(&renderer.device, {
         let text = &atlas.text_shaders;
         (text.gui.as_deref()).map(|p| (p, &text.expressions.gui[..]))
     });
@@ -103,19 +107,22 @@ pub(super) fn build_renderer(
         (filtering.0, filtering.1),
         filtering.2,
     )?;
-    renderer.set_lines_shader(
+    let world_text = renderer.set_world_text_shaders(&atlas.text_shaders);
+    let clouds = renderer.set_clouds_shader(atlas.clouds_shader.as_deref());
+    let lines = renderer.set_lines_shader(
         (atlas.lines_shader.as_deref()).map(|p| (p, &atlas.lines_expressions[..])),
     );
-    renderer.set_world_text_shaders(&atlas.text_shaders);
-    renderer.set_sky_shaders(
+    let sky = renderer.set_sky_shaders(
         (atlas.sky_shader.as_deref()).map(|p| (p, &atlas.sky_expressions[..])),
         (atlas.stars_shader.as_deref()).map(|p| (p, &atlas.stars_expressions[..])),
     );
-    renderer.set_lightmap_shader(
+    let lightmap = renderer.set_lightmap_shader(
         atlas.lightmap_shader.as_deref(),
         &atlas.lightmap_expressions,
     );
-    let clouds = renderer.set_clouds_shader(atlas.clouds_shader.as_deref());
+    let required = [world_text, gui_text, clouds, lines, sky, lightmap]
+        .into_iter()
+        .collect::<std::result::Result<(), String>>();
     renderer.set_custom_sky(&*pack.custom_sky);
     renderer.set_shared_material_maps(&atlas.material_maps);
     let cit_glints = pack.item_renderer.cit.as_ref().map(|c| &c.glint_textures);
@@ -128,7 +135,7 @@ pub(super) fn build_renderer(
         let r = atlas.sprites.get(name)?;
         Some([r.u0, r.v0, r.u1, r.v1])
     })?;
-    Ok((renderer, clouds))
+    Ok((renderer, required))
 }
 
 /// The loading screen's renderer: one atlas (the boot screen's until the
