@@ -343,7 +343,7 @@ fn lan(game: &mut super::Game<'_>) {
     // Each malformed body ends its own session by name, with no handler call and no reply.
     for (index, body) in [
         empty(7)[..5].to_vec(),          // truncated list length
-        vec![7, 0, 0, 0, 1, 0x10, 0, 0], // 4097 labels, no bytes to hold them
+        vec![7, 0, 0, 0, 1, 0x10, 0, 0], // 4097 labels
         nested(33),
         [empty(7).as_slice(), &[0xaa]].concat(),
     ]

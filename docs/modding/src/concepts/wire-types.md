@@ -72,6 +72,14 @@ the rest of the body, so a hostile count never forces a large allocation. The re
 charge `PAYLOAD_DECODE_BUDGET` for decoded storage, separately from the 8 MiB body cap.
 A failed encode is never queued.
 
+A typed payload is a registered payload, so like vanilla's registered payloads it is bounded by
+the connection's frames: 2,097,151 bytes per frame (`Varint21FrameDecoder`) and 8,388,608
+bytes uncompressed (`CompressionDecoder.MAXIMUM_UNCOMPRESSED_LENGTH`), with its body within the
+8 MiB `PAYLOAD_DECODE_BUDGET`. A raw channel keeps vanilla's limit for a channel the receiver
+does not know, the `MAX_PAYLOAD_SIZE` that `DiscardedPayload.codec` is given: 1,048,576 bytes
+clientbound (`ClientboundCustomPayloadPacket`) and 32,767 bytes serverbound
+(`ServerboundCustomPayloadPacket`).
+
 Ordinary Wire keeps the NBT `Tag` limit of **512** containers and the `Text` limit of
 **512** nested components. Both use stack-independent iterative codecs directly over
 their fields and are admitted to typed payloads, where they share `PAYLOAD_MAX_DEPTH`
