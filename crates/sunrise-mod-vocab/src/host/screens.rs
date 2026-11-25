@@ -155,8 +155,8 @@ pub trait ScreensClientHost {
     /// Adds the calling mod's `text` to the end of F3's frame rate line (vanilla's
     /// `DebugEntryFps`, the line that reads `60 fps T: 120 ...`), after a space, where a mod
     /// shows a state of its own (Dynamic FPS's reduced frame rate) without an entry of its own
-    /// that starts off. It stays until the mod sets another text or `None`, which takes it
-    /// away; set it when the state changes, not every frame. Several mods' texts follow in mod
+    /// that starts off. It stays until the mod sets another text, or `None` or an empty text,
+    /// which takes it away; set it when the state changes, not every frame. Several mods' texts follow in mod
     /// load order, and a disabled mod's is left out. Legacy colour codes (§) work; line breaks
     /// become spaces. False, setting nothing, outside a mod's call.
     fn set_debug_fps_text(&self, text: Option<&str>) -> bool;

@@ -483,28 +483,31 @@ impl Game<'_> {
         ));
     }
 
-    /// The mods' texts for the frame rate line, each after a space, in mod load order; a
-    /// disabled mod's is left out.
-    fn debug_fps_suffix(&self) -> String {
-        let texts = self.debug_fps_texts.borrow();
-        let mut shown: Vec<_> = texts
-            .iter()
-            .filter_map(|(id, text)| {
-                let index = mod_api::__private::mod_index(id)?;
-                mod_api::__private::mod_index_on(index).then_some((index, text))
-            })
-            .collect();
-        shown.sort_by_key(|(index, _)| *index);
-        shown
-            .into_iter()
-            .map(|(_, text)| format!(" {text}"))
-            .collect()
+    /// The mods' texts for the frame rate line, each after a space, in mod load order (the order
+    /// `set_debug_fps_text` keeps them in); a disabled mod's is left out. Written straight into
+    /// the line, with nothing collected first.
+    fn debug_fps_suffix(&self) -> impl std::fmt::Display + '_ {
+        struct Suffix<'a>(std::cell::Ref<'a, Vec<(&'static str, String)>>);
+        impl std::fmt::Display for Suffix<'_> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                for (id, text) in self.0.iter() {
+                    if mod_api::__private::mod_index(id)
+                        .is_some_and(|index| mod_api::__private::mod_index_on(index))
+                    {
+                        write!(f, " {text}")?;
+                    }
+                }
+                Ok(())
+            }
+        }
+        Suffix(self.debug_fps_texts.borrow())
     }
 
     /// `DebugEntryFps.display` with a mod's own text after vanilla's, as Dynamic FPS adds its
-    /// state there: `text` replaces what the calling mod set before, and `None` takes it away.
-    /// Line breaks become spaces, as the line is one line. False, setting nothing, when no mod
-    /// is calling.
+    /// state there: `text` replaces what the calling mod set before, and `None` or an empty text
+    /// takes it away. Line breaks become spaces, as the line is one line. The texts are kept in
+    /// mod load order, so the line is drawn without sorting. False, setting nothing, when no
+    /// mod is calling.
     pub(in crate::game) fn set_debug_fps_text(&self, text: Option<&str>) -> bool {
         let Some(id) = mod_api::content::crash::current_native_mod() else {
             return false;
@@ -512,7 +515,10 @@ impl Game<'_> {
         let mut texts = self.debug_fps_texts.borrow_mut();
         texts.retain(|(owner, _)| *owner != id);
         if let Some(text) = text.filter(|text| !text.is_empty()) {
-            texts.push((id, text.replace(['\n', '\r'], " ")));
+            let index = mod_api::__private::mod_index(id);
+            let at =
+                texts.partition_point(|(owner, _)| mod_api::__private::mod_index(owner) <= index);
+            texts.insert(at, (id, text.replace(['\n', '\r'], " ")));
         }
         true
     }
@@ -1566,6 +1572,11 @@ mod tests {
                     assert!(game.set_debug_fps_text(None));
                 });
                 assert_eq!(line(game), format!("{vanilla} §c(2 fps) idle"));
+                // An empty text takes the mod's text away too, as `None` does.
+                as_mod("second", &mut || {
+                    assert!(game.set_debug_fps_text(Some("")));
+                });
+                assert_eq!(line(game), vanilla);
             });
         });
     }
