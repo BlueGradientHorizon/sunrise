@@ -295,7 +295,6 @@ fn a_mannequin_keeps_its_immovable_flag_and_description() {
     assert_eq!(back.extra.description, D::Custom(own));
 }
 
-/// The only lib test that registers mod effects (once per process).
 #[test]
 fn a_mob_keeps_a_mod_effect() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -310,13 +309,7 @@ fn a_mob_keeps_a_mod_effect() {
         .into_iter()
         .map(|(k, v)| (k, Arc::new(v)))
         .collect();
-    crate::brewing::register_mod_effects([(
-        "testfx:glow".to_owned(),
-        1,
-        crate::brewing::Category::Harmful,
-        None,
-        "testfx".into(),
-    )]);
+    let _scope = crate::mobs::ai::effect_modifier_tests::register_test_mod_effects();
     let mut m = Mob::new(1, types["minecraft:pig"].clone(), Vec3::ZERO, 0.0);
     m.add_effect(crate::brewing::effect("testfx:glow").unwrap().id, 200, 2);
     let tag = mob_to_nbt(&m, [1, 2, 3, 4], None, None, |_| None, &Default::default());

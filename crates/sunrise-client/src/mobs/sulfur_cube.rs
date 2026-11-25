@@ -481,7 +481,7 @@ pub fn adopt_body(m: &mut Mob) {
         return;
     }
     let new = m.extra.body_id().map(std::sync::Arc::<str>::from);
-    let Some(map) = m.extra.armor_attributes.as_deref_mut() else {
+    let Some(map) = m.extra.generic_attributes.as_deref_mut() else {
         return;
     };
     let old = std::mem::replace(&mut m.extra.adopted_body, new.clone());
@@ -621,11 +621,12 @@ pub(crate) mod adopt_body_tests {
         kind.id = "minecraft:sulfur_cube".into();
         let mut m = Mob::new(1, Arc::new(kind), Vec3::ZERO, 0.0);
         m.extra.set_body(body.map(Into::into));
-        m.extra.armor_attributes = Some(Box::new(catalog.create("minecraft:sulfur_cube").unwrap()));
+        m.extra.generic_attributes =
+            Some(Box::new(catalog.create("minecraft:sulfur_cube").unwrap()));
         m
     }
     fn map(m: &mut Mob) -> &mut EntityAttributes {
-        m.extra.armor_attributes.as_deref_mut().unwrap()
+        m.extra.generic_attributes.as_deref_mut().unwrap()
     }
     fn value(m: &mut Mob, attribute: &str) -> f64 {
         let map = map(m);
@@ -738,7 +739,7 @@ pub(crate) mod adopt_body_tests {
     #[test]
     fn a_cube_without_a_map_or_of_another_species_adopts_nothing() {
         let mut m = cube(Some("minecraft:tnt"));
-        m.extra.armor_attributes = None;
+        m.extra.generic_attributes = None;
         adopt_body(&mut m);
         assert_eq!(m.extra.adopted_body, None);
         let mut other = cube(Some("minecraft:tnt"));

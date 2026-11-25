@@ -1920,7 +1920,7 @@ fn put_sulfur_attributes(map: &mut EntityTagWriter, m: &Mob) {
     if m.species() != crate::mobs::Species::SulfurCube {
         return;
     }
-    let Some(attributes) = m.extra.armor_attributes.as_deref() else {
+    let Some(attributes) = m.extra.generic_attributes.as_deref() else {
         return;
     };
     let mut list = match map.get(&"attributes".into()) {
@@ -2208,6 +2208,15 @@ fn mob_from_nbt_at(
             kind.attributes.contains_key(id)
                 && !Attr::ALL.iter().any(|a| *a != Attr::Armor && a.id() == id)
         });
+        // A saved scale (an effect's modifier, `/attribute`) sizes the mob
+        // as `onAttributeUpdated(SCALE)` does once the load dirtied it.
+        if let Some(Tag::List(list)) = tag.get("attributes")
+            && list
+                .iter()
+                .any(|entry| text(entry.get("id")).as_deref() == Some("minecraft:scale"))
+        {
+            crate::mobs::finalize::scale_changed(&mut m);
+        }
     }
     m.health = loaded_health(&m, float(tag.get("Health")));
     // LivingEntity.readAdditionalSaveData: `internalSetAbsorptionAmount`

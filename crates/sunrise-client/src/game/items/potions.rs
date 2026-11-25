@@ -17,7 +17,7 @@ use sunrise_client::{
     brewing,
     effects::{
         EffectAction, EffectInstance, EffectTickHost, OmenTick, PlayerEffects, TickingEffect,
-        effect_modifier,
+        effect_modifiers,
     },
     hud::HudBatch,
     hud_layout, hud_overlays, inventory_effects,
@@ -1317,10 +1317,10 @@ impl Game<'_> {
                 food.saturation = (food.saturation + nutrition as f32 * saturation * 2.0)
                     .clamp(0.0, food.food as f32);
             }
-            EffectAction::Update(id, amplifier) => {
-                self.update_player_effect_attributes(id, amplifier, true)
+            EffectAction::Update(_, index, amplifier) => {
+                self.update_player_effect_attributes(index, amplifier, true)
             }
-            EffectAction::Remove(id) => self.remove_player_effect_attributes(&[id]),
+            EffectAction::Remove(_, index) => self.remove_player_effect_attributes(&[index]),
         }
     }
     /// The local player's effects (`tick_mob_effects`), then the potions
@@ -1360,9 +1360,16 @@ impl Game<'_> {
                 ),
             );
             let ids: Vec<&'static str> = self.potions.effects.list.iter().map(|e| e.id).collect();
+            let indices: Vec<_> = self
+                .potions
+                .effects
+                .list
+                .iter()
+                .map(|e| e.registry_index)
+                .collect();
             self.potions.effects.clear();
             if !ids.is_empty() {
-                self.remove_player_effect_attributes(&ids);
+                self.remove_player_effect_attributes(&indices);
                 self.effects_on_death(&ids, bounds, self.player_silent(), None, None);
             }
         }
@@ -1612,8 +1619,9 @@ impl Game<'_> {
         let new = self.potions.effects.get(id).is_none();
         let changed = self.potions.effects.add(effect);
         if changed {
-            let amplifier = self.potions.effects.get(id).unwrap().amplifier;
-            self.update_player_effect_attributes(id, amplifier, !new);
+            let active = self.potions.effects.get(id).unwrap();
+            let (index, amplifier) = (active.registry_index, active.amplifier);
+            self.update_player_effect_attributes(index, amplifier, !new);
             self.apply_effect_status();
         }
         changed
@@ -1650,7 +1658,7 @@ impl Game<'_> {
             if cancel {
                 index += 1;
             } else {
-                removed.push(self.potions.effects.list.remove(index).id);
+                removed.push(self.potions.effects.list.remove(index).registry_index);
             }
         }
         if !removed.is_empty() {
@@ -1728,12 +1736,24 @@ impl Game<'_> {
     }
 
     /// `LivingEntity.onEffectAdded` and `onEffectUpdated`: only a server
-    /// writes the modifier. The client receives it with its attributes.
-    fn update_player_effect_attributes(&mut self, effect: &str, amplifier: i32, refresh: bool) {
+    /// writes the modifiers, vanilla's or a content mod's declared ones; an
+    /// attribute the player has no instance of takes none. The client
+    /// receives them with its attributes. `index` is the effect's resolved
+    /// registry index (`EffectInstance::registry_index`).
+    fn update_player_effect_attributes(
+        &mut self,
+        index: Option<usize>,
+        amplifier: i32,
+        refresh: bool,
+    ) {
         if self.remote.is_some() {
             return;
         }
-        if let Some((attribute, id, amount, operation)) = effect_modifier(effect) {
+        let modifiers = index
+            .and_then(sunrise_client_core::potions::effect_by_index)
+            .into_iter()
+            .flat_map(effect_modifiers);
+        for (attribute, id, amount, operation) in modifiers {
             let amount = amount * f64::from(amplifier.wrapping_add(1));
             // MobEffect.addAttributeModifiers replaces by id and stores permanently.
             if let Some(write) = AttributeWrite::add(id, amount, operation, true, true) {
@@ -1747,12 +1767,16 @@ impl Game<'_> {
 
     /// `LivingEntity.onEffectsRemoved`: refresh even if there was no modifier
     /// to remove; other writes can still have attributes pending.
-    fn remove_player_effect_attributes(&mut self, effects: &[&str]) {
+    fn remove_player_effect_attributes(&mut self, effects: &[Option<usize>]) {
         if self.remote.is_some() {
             return;
         }
-        for effect in effects {
-            if let Some((attribute, id, _, _)) = effect_modifier(effect) {
+        for index in effects {
+            for (attribute, id, _, _) in index
+                .and_then(sunrise_client_core::potions::effect_by_index)
+                .into_iter()
+                .flat_map(effect_modifiers)
+            {
                 self.write_attribute(
                     Target::Player,
                     attribute,
@@ -3033,11 +3057,11 @@ impl EffectTickHost for Game<'_> {
         self.add_player_effect(effect);
         !had && self.potions.effects.get(target_id).is_some()
     }
-    fn on_promoted(&mut self, id: &'static str, amplifier: i32) {
-        self.update_player_effect_attributes(id, amplifier, true);
+    fn on_promoted(&mut self, _: &'static str, registry_index: Option<usize>, amplifier: i32) {
+        self.update_player_effect_attributes(registry_index, amplifier, true);
     }
-    fn on_removed(&mut self, id: &'static str) {
-        self.remove_player_effect_attributes(&[id]);
+    fn on_removed(&mut self, _: &'static str, registry_index: Option<usize>) {
+        self.remove_player_effect_attributes(&[registry_index]);
     }
     fn keep_expired(&self, effect: TickingEffect) -> bool {
         if self.remote.is_some() || !mod_api::__private::listened(mod_api::HookId::MobEffectExpired)
@@ -3554,12 +3578,11 @@ pub(super) mod tests {
                         ("test:nourishment", "effect-owner"),
                         ("other-mod:foreign", "other-mod"),
                     ]
-                    .map(|(id, owner)| (
-                        id.into(),
+                    .map(|(id, owner)| brewing::ModEffect::new(
+                        id,
                         0,
                         brewing::Category::Beneficial,
-                        None,
-                        owner.into(),
+                        owner,
                     ))
                 ));
                 super::super::native_entity_refs::tests::with_game(|game| {
@@ -3784,12 +3807,11 @@ pub(super) mod tests {
                 .collect::<Vec<_>>()
                 .into(),
         );
-        assert!(brewing::register_mod_effects([(
-            "test:effect".into(),
+        assert!(brewing::register_mod_effects([brewing::ModEffect::new(
+            "test:effect",
             0,
             brewing::Category::Neutral,
-            None,
-            "test-potions".into(),
+            "test-potions",
         )]));
         applied
     }
@@ -4020,12 +4042,11 @@ pub(super) mod tests {
         mod_platform::testing::with_mods(
             Arc::from([mod_api::ModEntry::new("effect-owner", Box::new(observer))]),
             || {
-                assert!(brewing::register_mod_effects([(
-                    "test:comfort".into(),
+                assert!(brewing::register_mod_effects([brewing::ModEffect::new(
+                    "test:comfort",
                     0,
                     brewing::Category::Beneficial,
-                    None,
-                    "effect-owner".into(),
+                    "effect-owner",
                 )]));
                 super::super::native_entity_refs::tests::with_game(|game| {
                     game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
@@ -5916,6 +5937,91 @@ mod tick_effects_tests {
                     "borrowed PlayerEffects::tick_on must not allocate"
                 );
             });
+        });
+    }
+}
+
+/// #4473: the player's own attribute map, which its movement, the hits and
+/// the sync read, takes a content mod's declared modifier as vanilla's
+/// effects' (`onEffectAdded`, `onEffectUpdated`, `onEffectsRemoved`).
+#[cfg(test)]
+mod declared_modifier_player_tests {
+    use super::*;
+    use sunrise_client::brewing::{Category, ModEffect, register_mod_effects};
+    use sunrise_client::motion::PlayerMotion;
+
+    /// `testfx:lucky`, +1 luck per level, in the mod API's registry too (the
+    /// removal and the tick ask its events): process-wide, so the test runs
+    /// in a fresh child process.
+    fn lucky_mod() {
+        use mod_api::{self, *};
+        struct LuckyMod;
+        #[mod_api::__subscriptions]
+        impl Hooks for LuckyMod {
+            fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+                r.effect_key("testfx:lucky");
+            }
+        }
+        mod_platform::__private::install(vec![ModEntry::new("testfx", Box::new(LuckyMod))].into());
+        assert!(register_mod_effects([ModEffect {
+            modifiers: vec![(
+                "minecraft:luck".into(),
+                "testfx:effect/lucky".into(),
+                1.0,
+                sunrise_world::attributes::Operation::AddValue,
+            )],
+            ..ModEffect::new("testfx:lucky", 1, Category::Beneficial, "testfx")
+        }]));
+    }
+
+    /// The modifier is written on add, rewritten for a higher amplifier and
+    /// for the hidden instance taking over in the effect tick, and taken off
+    /// by a removal and by the effect running out: the tick's actions carry
+    /// the instance's registry index to the writes.
+    #[test]
+    #[ignore = "daily"]
+    fn a_declared_modifier_follows_the_players_effect_in_its_attribute_map() {
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::potions::declared_modifier_player_tests::a_declared_modifier_follows_the_players_effect_in_its_attribute_map",
+            "SUNRISE_DECLARED_MODIFIER_PLAYER_CHILD",
+            &["lucky"],
+        ) {
+            return;
+        }
+        lucky_mod();
+        super::super::native_entity_refs::tests::with_game(|game| {
+            let lucky = brewing::effect("testfx:lucky").unwrap();
+            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+            let luck = |game: &mut Game<'_>| {
+                game.player
+                    .as_mut()
+                    .unwrap()
+                    .attribute("minecraft:luck")
+                    .unwrap()
+            };
+            assert_eq!(luck(game), 0.0);
+            assert!(game.apply_player_effect(EffectInstance::from_def(lucky, -1, 0)));
+            assert_eq!(luck(game), 1.0);
+            assert!(game.apply_player_effect(EffectInstance::from_def(lucky, -1, 2)));
+            assert_eq!(luck(game), 3.0);
+            assert!(game.remove_player_effects(None));
+            assert_eq!(luck(game), 0.0);
+            // Amplifier 1 for 2 ticks over amplifier 0 for 6: the hidden
+            // instance takes over, then runs out.
+            assert!(game.apply_player_effect(EffectInstance::from_def(lucky, 6, 0)));
+            assert!(game.apply_player_effect(EffectInstance::from_def(lucky, 2, 1)));
+            assert_eq!(luck(game), 2.0);
+            let active = |game: &Game<'_>| game.potions.effects.get(lucky.id).map(|e| e.amplifier);
+            for _ in 0..3 {
+                game.tick_mob_effects();
+            }
+            assert_eq!(active(game), Some(0));
+            assert_eq!(luck(game), 1.0);
+            for _ in 0..10 {
+                game.tick_mob_effects();
+            }
+            assert_eq!(active(game), None);
+            assert_eq!(luck(game), 0.0);
         });
     }
 }
