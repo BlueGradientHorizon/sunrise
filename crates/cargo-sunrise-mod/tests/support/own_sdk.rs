@@ -28,7 +28,7 @@ impl OwnSdkScratch {
                 "sunrise-resources.json",
                 r#"{"schema":7,"minecraft":"26.3"}"#,
             ),
-            ("sunrise-prepare.json", r#"{"output_version":8}"#),
+            ("sunrise-prepare.json", r#"{"output_version":9}"#),
             ("registries.json", "{}"),
         ] {
             fs::write(resources.join(name), json).unwrap();
