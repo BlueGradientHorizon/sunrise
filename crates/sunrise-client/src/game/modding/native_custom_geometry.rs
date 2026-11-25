@@ -627,17 +627,9 @@ impl Game<'_> {
                                 .copied()
                         },
                     );
-                }
-                if let Some(state) = special {
-                    self.special_model_part(
-                        state,
-                        pose,
-                        copy.light,
-                        copy.color,
-                        entities,
-                        capacity,
-                        reserved_quads,
-                    );
+                    if let Some(state) = special {
+                        self.special_model_part(state, pose, copy.light, copy.color, &mut scope);
+                    }
                 }
             }
         }
@@ -954,9 +946,11 @@ mod tests {
                     pose,
                     0xF0F0,
                     color,
-                    &mut out,
-                    sunrise_client::gfx::EntityQuadCapacity::default_device(),
-                    0,
+                    &mut sunrise_client::gfx::EntityQuadScope::new(
+                        &mut out,
+                        sunrise_client::gfx::EntityQuadCapacity::default_device(),
+                        0,
+                    ),
                 );
                 out
             };
@@ -2557,7 +2551,7 @@ mod tests {
             &[make_baked()],
             |_| Some(7),
             TerrainModelOptions::default(),
-            |_, _, _, _, _| {},
+            |_, _, _| {},
         );
         let mut entities = draw.into_vertices();
         assert_eq!(entities.len(), 4, "1 terrain model quad admitted");
