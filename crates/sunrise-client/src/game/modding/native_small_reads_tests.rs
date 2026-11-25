@@ -121,6 +121,60 @@ fn restricted_level_support_and_sky_reads() {
     });
 }
 
+/// `EntityRef::is_sitting` answers each mob's own test (`Fox.isSitting`, `Panda.isSitting`,
+/// `Camel.isCamelSitting`, `TamableAnimal.isInSittingPose`), and none for a kind without one or
+/// a stale handle.
+#[test]
+#[ignore = "daily"]
+fn is_sitting_reads_each_mobs_own_test() {
+    use sunrise_client::mobs::{Mob, fox, panda};
+    use sunrise_core::geometry::Vec3;
+    with_game(|game| {
+        let kinds = [
+            "minecraft:wolf",
+            "minecraft:fox",
+            "minecraft:panda",
+            "minecraft:camel",
+            "minecraft:cow",
+        ];
+        for (i, kind) in kinds.iter().enumerate() {
+            let kind = game.res.mob_types().get(*kind).unwrap().clone();
+            game.mobs
+                .push(Mob::new(40 + i as u32, kind, Vec3::ZERO, 0.0));
+        }
+        game.next_entity = game.next_entity.max(44);
+        // An entity is found only in a loaded column.
+        game.world.chunks.insert(
+            (0, 0),
+            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+        );
+        let read = |game: &Game<'_>, id: u32| game.entity_is_sitting(game.entity(id).unwrap());
+        for id in 40..44 {
+            assert_eq!(read(game, id), Some(false), "mob {id} stands");
+        }
+        assert_eq!(read(game, 44), None, "a cow has no sitting test");
+        fn mob<'a>(game: &'a mut Game<'_>, id: u32) -> &'a mut Mob {
+            game.mobs.iter_mut().find(|m| m.id == id).unwrap()
+        }
+        mob(game, 40).extra.sitting_pose = true;
+        mob(game, 41).extra.ints[0] = fox::SITTING;
+        panda::set_flags(mob(game, 42), panda::FLAG_SIT);
+        mob(game, 43).extra.camel_sitting = true;
+        for id in 40..44 {
+            assert_eq!(read(game, id), Some(true), "mob {id} sits");
+        }
+        // A fox's other flags are not sitting.
+        mob(game, 41).extra.ints[0] = fox::CROUCHING;
+        assert_eq!(read(game, 41), Some(false));
+        let entity = game.entity(40).unwrap();
+        let stale = mod_api::EntityRef::new(
+            mod_api::WorldEpoch::new(entity.epoch().get() + 1),
+            entity.id(),
+        );
+        assert_eq!(game.entity_is_sitting(stale), None);
+    });
+}
+
 /// A guest's sprinting is written to its row, so it survives the turn boundary the body is
 /// rebuilt at, and its speed modifier stays with the flag; a stale handle sets nothing.
 #[test]
@@ -155,6 +209,105 @@ fn a_guests_sprinting_survives_a_turn() {
             entity.id(),
         );
         assert!(!game.entity_set_sprinting(stale, true));
+    });
+}
+
+/// `EntityRef::armor_stand_pose` and `armor_stand_flags` read the stand's pose rotations and
+/// client flags on a server and on a client; none for another kind or a stale handle.
+#[test]
+#[ignore = "daily"]
+fn armor_stand_pose_and_flags_read_the_stand() {
+    use super::native_entity_refs::tests::with_client_game;
+    use sunrise_client::entities::ArmorStand;
+    use sunrise_core::geometry::Vec3;
+    let check = |game: &mut Game<'_>| {
+        // An entity is found only in a loaded column.
+        game.world.chunks.insert(
+            (0, 0),
+            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+        );
+        // A server spawns the stand here; a client has it from the server's AddEntity.
+        if !game.armor_stands.iter().any(|s| s.id == 21) {
+            game.armor_stands
+                .push(ArmorStand::new(21, Vec3::new(0.5, 64.0, 0.5), 0.0));
+        }
+        let stand = game.armor_stands.iter_mut().find(|s| s.id == 21).unwrap();
+        stand.pose = [
+            [1.0, 2.0, 3.0],
+            [4.0, 5.0, 6.0],
+            [-10.0, 0.0, -10.0],
+            [-15.0, 0.0, 10.0],
+            [-1.0, 0.0, -1.0],
+            [1.0, 0.0, 1.0],
+        ];
+        stand.small = true;
+        stand.show_arms = true;
+        stand.no_base_plate = true;
+        game.next_entity = game.next_entity.max(21);
+        let entity = game.entity(21).expect("the stand's handle");
+        assert_eq!(
+            game.entity_armor_stand_pose(entity),
+            Some(mod_api::ArmorStandPose {
+                head: [1.0, 2.0, 3.0],
+                body: [4.0, 5.0, 6.0],
+                left_arm: [-10.0, 0.0, -10.0],
+                right_arm: [-15.0, 0.0, 10.0],
+                left_leg: [-1.0, 0.0, -1.0],
+                right_leg: [1.0, 0.0, 1.0],
+            })
+        );
+        assert_eq!(
+            game.entity_armor_stand_flags(entity),
+            Some(mod_api::ArmorStandFlags {
+                small: true,
+                show_arms: true,
+                show_base_plate: false,
+                marker: false,
+            })
+        );
+        let stale = mod_api::EntityRef::new(
+            mod_api::WorldEpoch::new(entity.epoch().get() + 1),
+            entity.id(),
+        );
+        assert_eq!(game.entity_armor_stand_pose(stale), None);
+        assert_eq!(game.entity_armor_stand_flags(stale), None);
+    };
+    with_game(|game| {
+        check(game);
+        // Another kind has neither.
+        let cow = game.res.mob_types().get("minecraft:cow").unwrap().clone();
+        game.mobs
+            .push(sunrise_client::mobs::Mob::new(22, cow, Vec3::ZERO, 0.0));
+        game.next_entity = game.next_entity.max(22);
+        let cow = game.entity(22).unwrap();
+        assert_eq!(game.entity_armor_stand_pose(cow), None);
+        assert_eq!(game.entity_armor_stand_flags(cow), None);
+    });
+    with_client_game(|game| {
+        use sunrise_protocol::packets::play::{self, Clientbound as C};
+        let _server = super::native_client_session::tests::logged_client(game);
+        let kind = game
+            .remote
+            .as_ref()
+            .unwrap()
+            .builtin
+            .get("minecraft:entity_type")
+            .unwrap()
+            .id("minecraft:armor_stand")
+            .unwrap();
+        game.handle_packet(C::AddEntity(play::AddEntity {
+            id: 21,
+            uuid: 21,
+            kind,
+            position: [0.5, 64.0, 0.5],
+            velocity: [0.0; 3],
+            pitch: 0,
+            yaw: 0,
+            head_yaw: 0,
+            data: 0,
+        }))
+        .unwrap();
+        check(game);
     });
 }
 

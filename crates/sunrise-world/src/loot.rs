@@ -13,7 +13,7 @@ mod fill;
 pub mod global_modifiers;
 pub mod number;
 pub mod query;
-use component_validation::retain_valid;
+use component_validation::{refuse, refused_entries};
 pub use component_validation::{
     validate_entity_predicate, validate_item_modifier, validate_item_predicate,
     validate_loot_condition, validate_loot_table, validate_slot_source,
@@ -686,8 +686,8 @@ pub fn shared_tables(root: &Path, overlay: &PackOverlay) -> io::Result<Arc<LootT
     if let Some(tables) = held(&mut LOADED.lock().unwrap_or_else(|e| e.into_inner())) {
         return Ok(tables);
     }
-    let mut tables = load_resources::load_ordered_kind(root, overlay, "loot_table")?;
-    tables.retain(|id, table| retain_valid("loot table", id, validate_loot_table(table)));
+    let tables = load_resources::load_ordered_kind(root, overlay, "loot_table")?;
+    refuse(refused_entries("loot table", &tables, validate_loot_table))?;
     let tables: LootTables = tables.into_iter().collect();
     let mut loaded = LOADED.lock().unwrap_or_else(|e| e.into_inner());
     // Another thread may have loaded the same tables meanwhile: keep one.
@@ -817,14 +817,13 @@ impl LootData {
         let mut recipes = HashMap::new();
         load_kind(&root.join("data"), "recipe", &mut recipes)?;
         overlay_map(overlay, "recipe", &mut recipes);
-        recipes.retain(|id, value| {
-            value["type"] != "minecraft:smelting"
-                || retain_valid(
-                    "recipe",
-                    id,
-                    crate::item_defaults::validate_stack(&value["result"]),
-                )
-        });
+        refuse(refused_entries(
+            "recipe",
+            recipes
+                .iter()
+                .filter(|(_, value)| value["type"] == "minecraft:smelting"),
+            |value| crate::item_defaults::validate_stack(&value["result"]),
+        ))?;
         let mut ids: Vec<&String> = recipes.keys().collect();
         ids.sort();
         loaded.smelting = ids
@@ -876,12 +875,15 @@ impl LootData {
     ) -> io::Result<Self> {
         let all = root.join("data");
         let tables = shared_tables(root, overlay)?;
-        let mut modifiers = load_resources::load_ordered_kind(root, overlay, "item_modifier")?;
-        modifiers
-            .retain(|id, value| retain_valid("item modifier", id, validate_item_modifier(value)));
-        let mut predicates = load_predicates(root, overlay)?;
-        predicates
-            .retain(|id, value| retain_valid("predicate", id, validate_loot_condition(value)));
+        let modifiers = load_resources::load_ordered_kind(root, overlay, "item_modifier")?;
+        let predicates = load_predicates(root, overlay)?;
+        let mut refused = refused_entries("item modifier", &modifiers, validate_item_modifier);
+        refused.extend(refused_entries(
+            "predicate",
+            &predicates,
+            validate_loot_condition,
+        ));
+        refuse(refused)?;
         let items = defaults
             .entries()
             .iter()
@@ -976,6 +978,8 @@ impl LootData {
             "entity_type",
             "predicate",
             "item_modifier",
+            // `LootTable.LIST_CODEC`'s tags: advancement rewards and the loot table trigger.
+            "loot_table",
             // What `location_check`'s `biomes` names.
             "worldgen/biome",
         ] {
@@ -993,6 +997,7 @@ impl LootData {
                     || crate::fluid::FluidKind::from_name(id).is_some(),
                     |ids| ids.contains(id),
                 ),
+                "loot_table" => tables.contains_key(id),
                 "predicate" => predicates.contains_key(id),
                 "item_modifier" => modifiers.contains_key(id),
                 _ => binding.ids(registry).map_or_else(
@@ -3365,6 +3370,58 @@ mod namespace_tests {
         assert!(data.in_tag("item", "minecraft:food", "minecraft:apple"));
         assert!(!data.in_tag("item", "minecraft:food", "minecraft:bread"));
         assert!(!data.in_tag("item", "minecraft:food", "minecraft:kelp"));
+        let _ = fs::remove_dir_all(&root);
+    }
+    /// A world pack's tag file (no `replace`, one optional entry that is not in the registry)
+    /// joins the tag the game's own files define, for every registry `load_table_candidate` binds
+    /// from files: the optional miss drops, the rest keep their layer order (`TagLoader.build`).
+    #[test]
+    fn pack_tag_files_reach_the_loot_readers_of_five_registries() {
+        let root =
+            std::env::temp_dir().join(format!("sunrise-loot-pack-tags-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let members = [
+            ("predicate", r#"{"type": "minecraft:survives_explosion"}"#),
+            ("item_modifier", r#"{"type": "minecraft:explosion_decay"}"#),
+            (
+                "enchantment",
+                r#"{"supported_items": "minecraft:stick", "max_level": 1}"#,
+            ),
+            ("instrument", "{}"),
+            ("worldgen/biome", "{}"),
+        ];
+        let mut overlay_files = Vec::new();
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("items.json"), r#"{"minecraft:stick": {}}"#).unwrap();
+        for (registry, body) in members {
+            for name in ["a", "b"] {
+                let path = root.join(format!("data/test/{registry}/{name}.json"));
+                fs::create_dir_all(path.parent().unwrap()).unwrap();
+                fs::write(path, body).unwrap();
+            }
+            let path = root.join(format!("data/test/tags/{registry}/t.json"));
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, r#"{"values": ["test:a"]}"#).unwrap();
+            overlay_files.push((
+                format!("tags/test:{registry}/t"),
+                vec![
+                    br#"{"values": ["test:b", {"id": "test:ghost", "required": false}]}"#.to_vec(),
+                ],
+            ));
+        }
+        let overlay = PackOverlay {
+            files: &overlay_files,
+            ..PackOverlay::default()
+        };
+        let defaults = crate::item_defaults::read(&root).unwrap();
+        let data = LootData::load(&root, &overlay, &defaults).unwrap();
+        for (registry, _) in members {
+            assert_eq!(
+                data.tag(registry, "test:t"),
+                ["test:a", "test:b"],
+                "{registry}"
+            );
+        }
         let _ = fs::remove_dir_all(&root);
     }
     /// `ToggleTooltips`: a loot table's toggles show the components an earlier

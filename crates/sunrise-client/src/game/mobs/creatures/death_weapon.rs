@@ -398,6 +398,8 @@ impl Game<'_> {
             .and_then(|id| self.mobs.iter().find(|o| o.id == id))
             .map(|o| LootEntity::new(&o.kind.id));
         let kind = crate::game::native_hooks::mob_kind(m);
+        let death_variants = matches!(m.species(), Species::Chicken | Species::Frog)
+            .then(|| self.world_variants().clone());
         let death = drops::Death {
             this_nbt: if loot.copies_entity_nbt() {
                 self.command_target_nbt(crate::game::commands::Target::Mob(m.id))
@@ -416,6 +418,7 @@ impl Game<'_> {
                 .rules
                 .bool_at(sunrise_client::gamerules::vanilla::MOB_DROPS),
             world_seed: self.level.seed,
+            variants: death_variants.as_ref(),
         };
         let raider = sunrise_client::mobs::raider::is_raider(m.species());
         let to_stack = |stack: &sunrise_world::loot::LootStack| {
@@ -534,10 +537,16 @@ impl Game<'_> {
             match d {
                 drops::Drop::CarriedBlock(state) => {
                     // Enderman.dropCustomDeathLoot: spawnAtLocation for each
-                    // of the carried block's silk-touch drops.
+                    // of the carried block's drops using `enderman_loot_drop`.
                     use sunrise_client::mobs::enderman;
-                    let tool = enderman::carried_block_tool();
                     let at = [m.position.x, m.position.y, m.position.z];
+                    let special = self.local_difficulty(at).special();
+                    let tool = enderman::carried_block_tool(
+                        &world_stations!(self).enchantments,
+                        world_items!(self),
+                        &mut m.random,
+                        special,
+                    );
                     let drops = self.roll_block_loot(
                         at.map(|c| c.floor() as i32),
                         state,

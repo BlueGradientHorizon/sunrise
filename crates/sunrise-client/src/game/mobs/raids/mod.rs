@@ -41,7 +41,6 @@ pub(super) struct Raiding {
     unseeded: Option<Vec<(i32, usize)>>,
     /// The last raider hurt each raid's bar has seen (`Raider.hurtServer`).
     bar_hurts: HashMap<i32, u64>,
-    attributes: Option<std::sync::Arc<GameplayAttributes>>,
     /// Beds near each raid's centre, rescanned now and then (`HOME` points
     /// of interest for `RaiderMoveThroughVillageGoal`).
     homes: HashMap<i32, (i64, std::sync::Arc<Vec<[i32; 3]>>)>,
@@ -394,13 +393,12 @@ impl Game<'_> {
             }
         }
     }
-    fn gameplay_attributes(&mut self) -> std::sync::Arc<GameplayAttributes> {
-        if self.raiding.attributes.is_none() {
-            self.raiding.attributes = Some(std::sync::Arc::new(GameplayAttributes::load(
-                &self.options.resources,
-            )));
-        }
-        self.raiding.attributes.clone().unwrap_or_default()
+    /// The world's attributes (`WorldTables::gameplay`); a game with no world has none.
+    fn gameplay_attributes(&self) -> std::sync::Arc<GameplayAttributes> {
+        self.world_tables
+            .as_ref()
+            .map(|tables| tables.gameplay.clone())
+            .unwrap_or_default()
     }
     /// A boolean gameplay attribute at a position (dimension, biome, then
     /// the timelines at the overworld clock).
@@ -1429,6 +1427,19 @@ impl Game<'_> {
     /// `ServerLevel.isVillage`: within one section of a village.
     fn is_village(centers: &HashSet<(i32, i32, i32)>, pos: [i32; 3]) -> bool {
         sunrise_gameplay::village_siege::is_village(centers, pos)
+    }
+    pub(super) fn level_is_village(
+        &self,
+        level: mod_api::LevelRef,
+        pos: [i32; 3],
+    ) -> Result<bool, mod_api::LevelReadError> {
+        let world = self.native_level_world_result(level)?;
+        let [x, y, z] = pos;
+        if level.dimension() != self.dim.key() || !world.loaded(x, z) || !world.shape.contains_y(y)
+        {
+            return Err(mod_api::LevelReadError::Unavailable);
+        }
+        Ok(Self::is_village(&self.village_centers(), pos))
     }
     /// A raider's ominous banner (drop chance 2.0: always dropped) and a
     /// patrol captain's ominous bottle (`entities/pillager`).

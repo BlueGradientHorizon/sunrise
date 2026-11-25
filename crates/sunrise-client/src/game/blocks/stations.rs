@@ -1779,7 +1779,7 @@ impl Game<'_> {
                 &display,
                 creative,
                 |id| {
-                    let v = self.painting_variants.get(id)?;
+                    let v = world_paintings!(self).get(id)?;
                     Some(PaintingTooltip {
                         title: v.title.as_ref(),
                         author: v.author.as_ref(),
@@ -2581,7 +2581,7 @@ impl Game<'_> {
         let (mut out, due) = b.tick_to_brew(
             &world_stations!(self).brewing,
             world_items!(self),
-            self.res.providers(),
+            world_providers!(self),
             &|s| fuel.resolve(world_items!(self), s),
         );
         let started = was_idle && b.brew_time > 0;

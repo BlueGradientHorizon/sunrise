@@ -42,8 +42,23 @@ impl Resources {
     pub(super) fn recipes(&self) -> &Recipes {
         &self.rest().recipes
     }
-    pub(super) fn transformers(&self) -> &sunrise_client::block_transform::Transformers {
-        &self.rest().transformers
+    pub(super) fn transformers(&self) -> Arc<sunrise_client::block_transform::Transformers> {
+        self.rest()
+            .transformers
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+    /// Publish the open world's `block_transformer` registry, replacing the last world's.
+    pub(super) fn set_transformers(
+        &self,
+        transformers: Arc<sunrise_client::block_transform::Transformers>,
+    ) {
+        *self
+            .rest()
+            .transformers
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = transformers;
     }
     pub(super) fn biomes(&self) -> &Arc<Biomes> {
         &self.core.biomes
@@ -72,6 +87,12 @@ impl Resources {
     }
     pub(super) fn providers(&self) -> &Providers {
         &self.rest().providers
+    }
+    pub(super) fn test_environments(&self) -> &HashMap<String, test_environments::Environment> {
+        &self.rest().test_environments
+    }
+    pub(super) fn test_instances(&self) -> &HashMap<String, test_instances::TestDef> {
+        &self.rest().test_instances
     }
     pub(super) fn block_entity_render(&self) -> &BlockEntityRenderer {
         &self.rest().block_entity_render
@@ -106,10 +127,9 @@ impl Resources {
     pub(super) fn motion(&self) -> &MotionResources {
         &self.core.motion
     }
-    /// The variant registries finalizeSpawn selects from
-    /// (`data/minecraft/<registry>`), shared with world generation.
-    pub fn spawn_registries(&self) -> &sunrise_client::mobs::finalize::SpawnRegistries {
-        &self.core.spawn_registries
+    /// The prepared vanilla variant tables for families on `REGISTRY_KINDS`.
+    pub fn variants(&self) -> &sunrise_client::mobs::variants::VariantTables {
+        &self.core.variants
     }
     pub(super) fn threads(&self) -> usize {
         self.core.threads
