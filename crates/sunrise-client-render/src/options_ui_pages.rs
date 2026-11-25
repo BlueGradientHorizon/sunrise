@@ -8,7 +8,8 @@ use sunrise_hooks::pages as added;
 pub(super) const PAGE_KEY: &str = "sunrise.pageKey";
 
 /// A registered page's key row by what names it, its page's id and its label, so a row that moves, greys or goes
-/// while it waits never takes another row's key.
+/// while it waits never takes another row's key. A page's key-row labels must therefore be unique: two key rows
+/// with one label on a page cannot be told apart, and the first one is found.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct PageKey {
     page: &'static str,
