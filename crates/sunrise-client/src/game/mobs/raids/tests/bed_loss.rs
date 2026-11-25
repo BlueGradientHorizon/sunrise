@@ -65,7 +65,7 @@ fn admitted_raid_loses_removed_loaded_bed_without_erasing_memory() {
     game.world.set(2, 200, 2, foot).unwrap();
     game.world.set(2, 200, 1, head).unwrap();
     game.native_lifecycle
-        .begin_open(Authority::IntegratedServer);
+        .begin_open(Some(Authority::IntegratedServer));
     let level = game.level_ref(game.native_lifecycle.epoch().unwrap(), game.dim.key());
     let bed = [2, 200, 1];
     assert_eq!(level.is_village(&game, bed), Ok(false));
