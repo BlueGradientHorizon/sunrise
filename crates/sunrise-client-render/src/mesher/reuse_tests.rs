@@ -54,10 +54,10 @@ fn padded_reuse_resets_missing_neighbors_and_matches_chunk_reads_across_layouts(
         let mut region = [[None; 3]; 3];
         region[1][1] = Some(&center);
         region[1][2] = Some(&neighbor);
-        pad.fill(&region, 1, &mut own);
+        pad.fill::<false>(&region, 1, &mut own);
         let buffers = (pad.blocks.as_ptr(), pad.light.as_ptr());
         for current in [region, [[None; 3]; 3], region] {
-            pad.fill(&current, 1, &mut own);
+            pad.fill::<false>(&current, 1, &mut own);
             for y in -B..16 + B {
                 for z in -B..16 + B {
                     for x in -B..16 + B {
@@ -119,7 +119,7 @@ fn padded_fill_reads_every_neighbour_and_its_light_like_chunk_reads() {
         let region: [[Option<&Chunk>; 3]; 3] =
             std::array::from_fn(|rz| std::array::from_fn(|rx| Some(&chunks[rz * 3 + rx])));
         for sy in [0, 1, 30, 31] {
-            pad.fill(&region, sy, &mut own);
+            pad.fill::<false>(&region, sy, &mut own);
             let base_y = min_y + sy * 16;
             for y in -B..16 + B {
                 for z in -B..16 + B {
@@ -190,6 +190,7 @@ fn a_shader_pack_lights_the_faces_itself() {
             cutout_leaves: true,
             opaque_ice: false,
             translucent_layers: &[],
+            layer_overrides: &[],
             leaf_culling: LeafCullingMode::Off,
             hidden_states: &[],
             part_tables: Default::default(),
@@ -256,6 +257,7 @@ fn a_shader_pack_lights_every_nether_face_like_an_up_face() {
             cutout_leaves: true,
             opaque_ice: false,
             translucent_layers: &[],
+            layer_overrides: &[],
             leaf_culling: LeafCullingMode::Off,
             hidden_states: &[],
             part_tables: Default::default(),
@@ -318,6 +320,7 @@ fn separate_ao_passes_ao_in_alpha_without_darkening_rgb() {
         cutout_leaves: true,
         opaque_ice: false,
         translucent_layers: &[],
+        layer_overrides: &[],
         leaf_culling: LeafCullingMode::Off,
         hidden_states: &[],
         part_tables: Default::default(),
@@ -403,6 +406,7 @@ fn reused_mesh_matches_fresh_geometry_across_sections_and_resource_reload() {
             cutout_leaves: reload == 0,
             opaque_ice: false,
             translucent_layers: &[],
+            layer_overrides: &[],
             leaf_culling: LeafCullingMode::Off,
             hidden_states: &[],
             part_tables: Default::default(),
@@ -481,7 +485,7 @@ fn benchmark_padded_reuse() {
     // Warm both code paths and the process allocator before recording samples.
     for _ in 0..1024 {
         std::hint::black_box(Padded::new(std::hint::black_box(&region), 0));
-        pad.fill(std::hint::black_box(&region), 0, &mut own);
+        pad.fill::<false>(std::hint::black_box(&region), 0, &mut own);
         std::hint::black_box(&pad);
     }
     for sample in 0..9 {
@@ -490,7 +494,7 @@ fn benchmark_padded_reuse() {
             let start = std::time::Instant::now();
             for _ in 0..ITERATIONS {
                 if reused {
-                    pad.fill(std::hint::black_box(&region), 0, &mut own);
+                    pad.fill::<false>(std::hint::black_box(&region), 0, &mut own);
                     std::hint::black_box(&pad);
                 } else {
                     std::hint::black_box(Padded::new(std::hint::black_box(&region), 0));
@@ -562,6 +566,7 @@ fn a_shader_pack_s_still_water_top_starts_at_its_south_west_corner() {
             cutout_leaves: true,
             opaque_ice: false,
             translucent_layers: &[],
+            layer_overrides: &[],
             leaf_culling: LeafCullingMode::Off,
             hidden_states: &[],
             part_tables: Default::default(),

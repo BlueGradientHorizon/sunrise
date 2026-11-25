@@ -8,33 +8,30 @@
 use sunrise_core::nbt::Tag;
 
 /// Guava `Hashing.crc32c()`: the CRC-32C (Castagnoli) of the bytes.
+#[cfg(test)]
 pub fn crc32c(bytes: &[u8]) -> u32 {
-    const TABLE: [u32; 256] = {
-        let mut table = [0u32; 256];
-        let mut i = 0;
-        while i < 256 {
-            let mut crc = i as u32;
-            let mut bit = 0;
-            while bit < 8 {
-                crc = if crc & 1 != 0 {
-                    (crc >> 1) ^ 0x82F6_3B78
-                } else {
-                    crc >> 1
-                };
-                bit += 1;
-            }
-            table[i] = crc;
-            i += 1;
-        }
-        table
-    };
-    let mut crc = !0u32;
-    for &b in bytes {
-        crc = TABLE[((crc ^ b as u32) & 0xFF) as usize] ^ (crc >> 8);
-    }
-    !crc
+    Hasher::default().bytes(bytes).hash().0
 }
 
+const TABLE: [u32; 256] = {
+    let mut table = [0u32; 256];
+    let mut i = 0;
+    while i < 256 {
+        let mut crc = i as u32;
+        let mut bit = 0;
+        while bit < 8 {
+            crc = if crc & 1 != 0 {
+                (crc >> 1) ^ 0x82F6_3B78
+            } else {
+                crc >> 1
+            };
+            bit += 1;
+        }
+        table[i] = crc;
+        i += 1;
+    }
+    table
+};
 /// A Guava `HashCode` of CRC32C: four bytes (`IntHashCode`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct HashCode(pub u32);
@@ -49,20 +46,26 @@ impl HashCode {
     }
 }
 
-/// A Guava `Hasher`: little-endian primitives, then the CRC of everything put.
-#[derive(Default)]
-struct Hasher(Vec<u8>);
+/// A Guava `Hasher`: feed the little-endian bytes directly into CRC32C.
+struct Hasher(u32);
+impl Default for Hasher {
+    fn default() -> Self {
+        Self(!0)
+    }
+}
 impl Hasher {
     fn byte(mut self, v: u8) -> Self {
-        self.0.push(v);
+        self.0 = TABLE[((self.0 ^ u32::from(v)) & 0xff) as usize] ^ (self.0 >> 8);
         self
     }
     fn bytes(mut self, v: &[u8]) -> Self {
-        self.0.extend_from_slice(v);
+        for &b in v {
+            self = self.byte(b);
+        }
         self
     }
     fn hash(self) -> HashCode {
-        HashCode(crc32c(&self.0))
+        HashCode(!self.0)
     }
 }
 
@@ -76,6 +79,7 @@ impl HashOps {
     pub fn empty_map() -> HashCode {
         Hasher::default().byte(2).byte(3).hash()
     }
+    #[cfg(test)]
     pub fn empty_list() -> HashCode {
         Hasher::default().byte(4).byte(5).hash()
     }
@@ -98,6 +102,7 @@ impl HashOps {
     pub fn create_double(bits: u64) -> HashCode {
         Hasher::default().byte(11).bytes(&bits.to_le_bytes()).hash()
     }
+    #[cfg(test)]
     pub fn create_f32(v: f32) -> HashCode {
         Self::create_float(v.to_bits())
     }
@@ -112,8 +117,14 @@ impl HashOps {
         h.hash()
     }
     pub fn create_string(v: &str) -> HashCode {
-        let units: Vec<u16> = v.encode_utf16().collect();
-        Self::create_string_units(&units)
+        let units = v.encode_utf16();
+        let mut h = Hasher::default()
+            .byte(12)
+            .bytes(&(units.clone().count() as i32).to_le_bytes());
+        for u in units {
+            h = h.bytes(&u.to_le_bytes());
+        }
+        h.hash()
     }
     pub fn create_boolean(v: bool) -> HashCode {
         Hasher::default().byte(13).byte(v as u8).hash()
@@ -121,7 +132,7 @@ impl HashOps {
     /// `createMap`: the entries sorted by key hash, then value hash (both as
     /// unsigned ints, `HashCode.padToLong`).
     pub fn create_map(mut entries: Vec<(HashCode, HashCode)>) -> HashCode {
-        entries.sort_by_key(|(k, v)| (k.0, v.0));
+        entries.sort_unstable_by_key(|(k, v)| (k.0, v.0));
         let mut h = Hasher::default().byte(2);
         for (k, v) in entries {
             h = h.bytes(&k.as_bytes()).bytes(&v.as_bytes());
@@ -205,12 +216,6 @@ impl RecordHash {
     pub fn field(mut self, name: &str, value: HashCode) -> Self {
         self.0.push((HashOps::create_string(name), value));
         self
-    }
-    pub fn optional(self, name: &str, value: Option<HashCode>) -> Self {
-        match value {
-            Some(v) => self.field(name, v),
-            None => self,
-        }
     }
     pub fn build(self) -> HashCode {
         HashOps::create_map(self.0)

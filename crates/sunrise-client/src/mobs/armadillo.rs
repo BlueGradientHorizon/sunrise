@@ -151,9 +151,11 @@ impl BabyFollowAdult {
 }
 impl Goal for BabyFollowAdult {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         MOVE | LOOK
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         if !m.is_baby() || !m.ai.nav.is_done() {
             return false;
@@ -163,6 +165,7 @@ impl Goal for BabyFollowAdult {
             (FOLLOW_MIN * FOLLOW_MIN..(FOLLOW_MAX + 1.0) * (FOLLOW_MAX + 1.0)).contains(&d)
         })
     }
+    #[inline]
     fn can_continue(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         m.is_baby()
             && !m.ai.nav.is_done()
@@ -170,18 +173,22 @@ impl Goal for BabyFollowAdult {
                 .target(m, cx)
                 .is_some_and(|(_, d)| d > (FOLLOW_MIN - 1.0) * (FOLLOW_MIN - 1.0))
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
         if let Some((at, _)) = self.target(m, cx) {
             m.nav_move_to_entity(cx.w, at, FOLLOW_MIN as i32 - 1, FOLLOW_SPEED);
         }
     }
+    #[inline]
     fn stop(&mut self, m: &mut Mob, _cx: &mut Cx) {
         m.nav_stop();
         self.adult = None;
     }
+    #[inline]
     fn every_tick(&self) -> bool {
         true
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         if let Some(s) = self.adult.and_then(|a| cx.w.seen(a)) {
             m.look_at([s.position.x, s.eye_y, s.position.z]);
@@ -317,6 +324,9 @@ pub fn after_hurt(m: &mut Mob, source: &Damage) {
 }
 /// `DamageTypeTags.PANIC_ENVIRONMENTAL_CAUSES`.
 pub fn environmental(kind: DamageKind) -> bool {
+    if let DamageKind::Named(named) = kind {
+        return named.has(super::NamedDamage::PANIC_ENVIRONMENTAL_CAUSES);
+    }
     matches!(
         kind,
         DamageKind::Cactus
@@ -409,7 +419,11 @@ pub fn server_ai_step(m: &mut Mob, cx: &mut Cx) {
     if m.extra.armadillo.danger == 0 && scared(m) {
         roll_out(m, events);
     }
-    if m.extra.armadillo.panic_activity && !m.extra.armadillo.ball_up && m.on_ground && !liquid(m) {
+    if m.extra.armadillo.panic_activity
+        && !m.extra.armadillo.ball_up
+        && m.ground.on_ground
+        && !liquid(m)
+    {
         // ArmadilloBallUp.start.
         m.extra.armadillo.ball_up = true;
         roll_up(m, events);
@@ -439,7 +453,7 @@ fn ball_up_tick(m: &mut Mob, events: &mut Vec<MobEvent>) {
     }
     if a.state == ROLLING && a.in_state_ticks > animation_duration(ROLLING) {
         set_state(m, SCARED);
-        if m.on_ground {
+        if m.ground.on_ground {
             play(m, events, "entity.armadillo.land");
         }
         return;
@@ -452,7 +466,7 @@ fn ball_up_tick(m: &mut Mob, events: &mut Vec<MobEvent>) {
     m.extra.armadillo.danger_was_around = around;
     let state = m.extra.armadillo.state;
     if state == SCARED {
-        if m.extra.armadillo.next_peek == 0 && m.on_ground && around {
+        if m.extra.armadillo.next_peek == 0 && m.ground.on_ground && around {
             peek(m, events);
             m.extra.armadillo.next_peek = next_peek_timer(m);
         }
@@ -540,22 +554,28 @@ fn animate(m: &mut Mob) {
 struct ArmadilloPanic(Panic);
 impl Goal for ArmadilloPanic {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         self.0.flags()
     }
+    #[inline]
     fn name(&self) -> &'static str {
         "Panic"
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         self.0.can_use(m, cx)
     }
+    #[inline]
     fn can_continue(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         self.0.can_continue(m, cx)
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
         roll_out(m, cx.events);
         self.0.start(m, cx);
     }
+    #[inline]
     fn stop(&mut self, m: &mut Mob, cx: &mut Cx) {
         self.0.stop(m, cx);
     }
@@ -570,27 +590,35 @@ fn idle(m: &Mob) -> bool {
 }
 impl<G: Goal + Clone + 'static> Goal for Idle<G> {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         self.0.flags()
     }
+    #[inline]
     fn name(&self) -> &'static str {
         self.0.name()
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         idle(m) && self.0.can_use(m, cx)
     }
+    #[inline]
     fn can_continue(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         idle(m) && self.0.can_continue(m, cx)
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
         self.0.start(m, cx);
     }
+    #[inline]
     fn stop(&mut self, m: &mut Mob, cx: &mut Cx) {
         self.0.stop(m, cx);
     }
+    #[inline]
     fn every_tick(&self) -> bool {
         self.0.every_tick()
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         self.0.tick(m, cx);
     }
@@ -601,24 +629,31 @@ impl<G: Goal + Clone + 'static> Goal for Idle<G> {
 struct ArmadilloTempt(Tempt);
 impl Goal for ArmadilloTempt {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         self.0.flags()
     }
+    #[inline]
     fn name(&self) -> &'static str {
         self.0.name()
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         self.0.can_use(m, cx)
     }
+    #[inline]
     fn can_continue(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         self.0.can_continue(m, cx)
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
         self.0.start(m, cx);
     }
+    #[inline]
     fn stop(&mut self, m: &mut Mob, cx: &mut Cx) {
         self.0.stop(m, cx);
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         self.0.stop_distance = if m.is_baby() { 1.0 } else { 2.0 };
         self.0.tick(m, cx);
@@ -630,9 +665,11 @@ impl Goal for ArmadilloTempt {
 struct Rolled;
 impl Goal for Rolled {
     goal_clone!();
+    #[inline]
     fn flags(&self) -> u8 {
         MOVE | LOOK
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, _cx: &mut Cx) -> bool {
         scared(m)
     }
@@ -651,7 +688,7 @@ mod tests {
         k.id = "minecraft:armadillo".into();
         k.species = Species::Armadillo;
         let mut m = Mob::new(1, kind, Vec3::ZERO, 0.0);
-        m.on_ground = true;
+        m.ground.on_ground = true;
         m
     }
 
@@ -742,7 +779,7 @@ mod tests {
             out = Some(at.map(|[x, y, z]| {
                 id += 1;
                 let mut m = Mob::new(id, kind.clone(), Vec3::new(x, y, z), 0.0);
-                m.on_ground = true;
+                m.ground.on_ground = true;
                 m
             }));
         });

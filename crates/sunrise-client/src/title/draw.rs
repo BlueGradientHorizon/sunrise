@@ -50,8 +50,14 @@ impl Title {
             // alone, centred, no progress.
             crate::ui::menu_background(batch, atlas, 0.0, 0.0, w, h, false);
             phases(crate::screen_draw::RenderPhase::Background, batch);
-            let text =
-                crate::lang::get_or("createWorld.preparing", "Preparing for world creation...");
+            let text = if self.pack_validation.is_some() {
+                crate::lang::get_or(
+                    "dataPack.validation.working",
+                    "Validating selected data packs...",
+                )
+            } else {
+                crate::lang::get_or("createWorld.preparing", "Preparing for world creation...")
+            };
             let tw = atlas.font.width_text(&Text::literal(text.clone()));
             let (tx, ty) = (w / 2.0 - tw / 2.0, h / 2.0 - 4.5);
             // `FocusableTextWidget.builder(title, font, 12)`: 12 pixels of
@@ -114,27 +120,23 @@ impl Title {
                 if let Some(nightly) = sunrise_core::release::nightly_label() {
                     batch.text(atlas, &nightly, 2.0, 2.0, u32::MAX, true);
                 }
-                let notice = &lang::get_or(
-                    "sunrise.title.not_affiliated",
-                    "Not affiliated with Mojang or Microsoft",
-                );
-                // TitleScreen.init's `PlainTextButton`: the text's width wide, 10
-                // high at `height - 10`; `extractContents` underlines it while
-                // hovered or focused, and its press opens the credits.
-                let tw = HudBatch::text_width(atlas, notice).ceil();
-                let rect = [w - tw - 2.0, h - 10.0, tw, 10.0];
-                self.credits_button.set(rect);
-                crate::widgets::record(notice, rect, true);
-                let inside = cursor.0 >= rect[0]
-                    && cursor.0 < rect[0] + rect[2]
-                    && cursor.1 >= rect[1]
-                    && cursor.1 < rect[1] + rect[3];
-                crate::widgets::widget_cursor(inside, true);
-                let mut text = Text::literal(notice);
-                if inside {
-                    text = text.underlined();
+                // `extractContents` underlines the notice while hovered or focused, and its
+                // press opens the credits; a mod may have removed it at init.
+                if !self.removed_children.contains(&CREDITS_ID) {
+                    let (notice, rect) = credits_notice(atlas, w, h);
+                    self.credits_button.set(rect);
+                    crate::widgets::record(&notice, rect, true);
+                    let inside = cursor.0 >= rect[0]
+                        && cursor.0 < rect[0] + rect[2]
+                        && cursor.1 >= rect[1]
+                        && cursor.1 < rect[1] + rect[3];
+                    crate::widgets::widget_cursor(inside, true);
+                    let mut text = Text::literal(notice);
+                    if inside {
+                        text = text.underlined();
+                    }
+                    batch.text_styled(atlas, &text, rect[0], rect[1], u32::MAX, true);
                 }
-                batch.text_styled(atlas, &text, rect[0], rect[1], u32::MAX, true);
             }
             Mode::Select { worlds, selected } => {
                 crate::ui::menu_background(batch, atlas, 0.0, 0.0, w, h, false);
@@ -269,7 +271,7 @@ impl Title {
                         };
                         let lit = if on_icon { "_highlighted" } else { "" };
                         for name in names {
-                            let sprite = format!("gui/sprites/world_list/{name}{lit}");
+                            let sprite = format!("world_list/{name}{lit}");
                             batch.sprite_scaled(atlas, &sprite, x, y, 32.0, 32.0, u32::MAX);
                         }
                     }
@@ -317,9 +319,18 @@ impl Title {
             Mode::CreateBuffet { buffet, .. } => {
                 buffet::draw(self, atlas, batch, cursor, buffet, phases)
             }
-            Mode::CreatePreset { .. } => {
+            Mode::CreatePreset { session, .. } => {
                 crate::ui::menu_background(batch, atlas, 0.0, 0.0, w, h, false);
                 phases(crate::screen_draw::RenderPhase::Background, batch);
+                let fallback;
+                let title = match session.title() {
+                    Some(title) => title,
+                    None => {
+                        fallback = preset_editors::preset_label(&session.preset);
+                        &fallback
+                    }
+                };
+                centered(atlas, batch, title, 8.0, u32::MAX);
             }
             Mode::Edit { name, focused, .. } => {
                 self.draw_edit(atlas, batch, (w, h), name, *focused, phases)
@@ -514,10 +525,10 @@ impl Title {
                 crate::widgets::target([x, y, width, BOX]);
                 let hover = (x..x + width).contains(&cursor.0) && (y..y + BOX).contains(&cursor.1);
                 let sprite = match (*erase_cache, hover) {
-                    (true, true) => "gui/sprites/widget/checkbox_selected_highlighted",
-                    (true, false) => "gui/sprites/widget/checkbox_selected",
-                    (false, true) => "gui/sprites/widget/checkbox_highlighted",
-                    (false, false) => "gui/sprites/widget/checkbox",
+                    (true, true) => "widget/checkbox_selected_highlighted",
+                    (true, false) => "widget/checkbox_selected",
+                    (false, true) => "widget/checkbox_highlighted",
+                    (false, false) => "widget/checkbox",
                 };
                 batch.sprite_scaled(atlas, sprite, x, y, BOX, BOX, u32::MAX);
                 batch.text(
@@ -558,6 +569,22 @@ impl Title {
                 for (i, line) in lines.iter().enumerate() {
                     centered(atlas, batch, line, top + 17.0 + i as f32 * 9.0, u32::MAX);
                 }
+            }
+            Mode::PackValidationFailed { .. } => {
+                crate::ui::menu_background(batch, atlas, 0.0, 0.0, w, h, false);
+                phases(crate::screen_draw::RenderPhase::Background, batch);
+                // ConfirmScreen with an empty message: the title alone.
+                self.message_lines.set(0);
+                centered(
+                    atlas,
+                    batch,
+                    &lang::get_or(
+                        "dataPack.validation.failed",
+                        "Failed to validate selected data packs!",
+                    ),
+                    confirm_top(h, 0),
+                    u32::MAX,
+                );
             }
             Mode::MissingBiomeRegions { missing, .. } => {
                 self.draw_missing_biome_regions(atlas, batch, (w, h), missing, phases)
@@ -671,7 +698,7 @@ impl Title {
                 crate::ui::nine_slice(
                     batch,
                     atlas,
-                    "gui/sprites/widget/text_field",
+                    "widget/text_field",
                     box_x,
                     box_y,
                     box_w,
@@ -707,10 +734,10 @@ impl Title {
                     .hovered(hover)
                 });
                 let sprite = match (*check, hover) {
-                    (true, true) => "gui/sprites/widget/checkbox_selected_highlighted",
-                    (true, false) => "gui/sprites/widget/checkbox_selected",
-                    (false, true) => "gui/sprites/widget/checkbox_highlighted",
-                    (false, false) => "gui/sprites/widget/checkbox",
+                    (true, true) => "widget/checkbox_selected_highlighted",
+                    (true, false) => "widget/checkbox_selected",
+                    (false, true) => "widget/checkbox_highlighted",
+                    (false, false) => "widget/checkbox",
                 };
                 batch.sprite_scaled(atlas, sprite, x, y, BOX, BOX, u32::MAX);
                 batch.text(
@@ -785,22 +812,14 @@ impl Title {
             let is_focused = self.focused_button == Some(b.id);
             let hover = b.enabled && (inside || is_focused);
             let sprite = if !b.enabled {
-                "gui/sprites/widget/button_disabled"
+                "widget/button_disabled"
             } else if hover {
-                "gui/sprites/widget/button_highlighted"
+                "widget/button_highlighted"
             } else {
-                "gui/sprites/widget/button"
+                "widget/button"
             };
-            // Nine-slice approximation: left and right halves of the 200-wide sprite.
-            if let Some(r) = atlas.sprites.get(sprite).copied() {
-                let half = b.w / 2.0;
-                let mut left = r;
-                left.u1 = r.u0 + (r.u1 - r.u0) * (half / r.w as f32);
-                batch.rect_uv(b.x, b.y, half, 20.0, left, u32::MAX);
-                let mut right = r;
-                right.u0 = r.u1 - (r.u1 - r.u0) * (half / r.w as f32);
-                batch.rect_uv(b.x + half, b.y, half, 20.0, right, u32::MAX);
-            }
+            // `AbstractButton.extractDefaultSprite`: `blitSprite`, as the sprite's `gui.scaling` says.
+            crate::ui::nine_slice(batch, atlas, sprite, b.x, b.y, b.w, 20.0, u32::MAX);
             let color = if b.enabled {
                 u32::MAX
             } else {
@@ -811,7 +830,7 @@ impl Title {
                 // a 15px icon in a 20px button starts at 10 - 7 = 3, not 2.
                 batch.sprite_scaled(
                     atlas,
-                    &format!("gui/sprites/{icon}"),
+                    icon,
                     b.x + (b.w / 2.0).floor() - (size / 2.0).floor(),
                     b.y + 10.0 - (size / 2.0).floor(),
                     size,
@@ -825,7 +844,7 @@ impl Title {
                 // TextAndIcon: `x + width - spriteWidth - 2`, centred in the height.
                 batch.sprite_scaled(
                     atlas,
-                    &format!("gui/sprites/{icon}"),
+                    icon,
                     b.x + b.w - size - 2.0,
                     b.y + 10.0 - (size / 2.0).floor(),
                     size,
@@ -867,9 +886,6 @@ impl Title {
         if let Some((key, rect)) = button_tooltip {
             let lines = atlas.font.split(&Text::translate(key, &[]), 170.0);
             crate::ui::tooltip_menu(batch, atlas, &lines, cursor, rect);
-        }
-        if let Some(toast) = &self.toast {
-            toast.draw(atlas, batch, 0.0);
         }
     }
 }

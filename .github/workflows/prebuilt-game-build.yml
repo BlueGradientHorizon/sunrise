@@ -11,6 +11,14 @@ on:
         description: Which legs to build, `all`, `linux` (both Linux legs) or `windows-macos`
         type: string
         default: all
+      c_source_test:
+        description: Whether the Windows and macOS legs also build a native mod with a C source (the daily's call only, so a Dev SDK publish never waits on it)
+        type: boolean
+        default: false
+      dev:
+        description: A Dev release's build (nightly-build.yml kind dev), whose macOS leg BLACKSMITH_DEV_MACOS may move
+        type: boolean
+        default: false
     outputs:
       needed:
         description: Whether sdk-<sha> was missing, so this run built it
@@ -69,7 +77,12 @@ jobs:
       matrix: ${{ fromJSON(needs.fresh.outputs.matrix) }}
     # Blacksmith's machines (owner, 2026-11-18): 16 vCPUs for Linux and Windows, the M4 Mac, the same images as
     # GitHub's with the Rust cache beside them. The repository variable BLACKSMITH=off puts every leg back on `os`.
-    runs-on: ${{ vars.BLACKSMITH != 'off' && matrix.blacksmith || matrix.os }}
+    # BLACKSMITH_DEV_MACOS=on (the owner's switch; unset or anything else is off) puts a Dev release's macOS leg alone
+    # back on Blacksmith while BLACKSMITH stays off: the leg the whole Dev release waits for (88m36 on GitHub's
+    # macos-15 on 2026-11-25).
+    runs-on: >-
+      ${{ (vars.BLACKSMITH != 'off' || (inputs.dev && matrix.name == 'macos' && vars.BLACKSMITH_DEV_MACOS == 'on'))
+      && matrix.blacksmith || matrix.os }}
     # Hosted macOS runner speed varies: 41 to 90+ minutes observed. Windows without its build cache (the first run after
     # a lock or toolchain change saves it) takes over 85 minutes in "Build and collect" alone.
     timeout-minutes: ${{ (matrix.os == 'macos-15' && 120) || (matrix.os == 'windows-latest' && 180) || 90 }}
@@ -97,12 +110,23 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: prebuilt-${{ matrix.name }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          # Not a Dev build's: saving took 3m56 at the end of the Windows leg the Dev build of 2026-11-25 waited for,
+          # and the daily run's legs save the same keys.
+          save-if: ${{ github.ref == 'refs/heads/main' && !inputs.dev }}
       - name: ALSA and udev headers
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev
       - name: Build and collect
         run: python tools/prebuilt_game.py build prebuilt ${{ matrix.server && '--server' || '' }}
+      # The staging pass on a clean checkout, with the sunrise-stage `build` compiled from this commit: HEAD's build
+      # data, each file headed with its commit, listed internals, and the tracked source
+      # untouched. A failure is its own daily issue (tools/ci/daily_summary.py SDK_CHECKS), and the leg's assets
+      # never upload, so no SDK publishes from a tree that does not stage.
+      - name: The source stages with this commit's build data
+        if: matrix.name == 'linux'
+        env:
+          SUNRISE_STAGE_TOOL: target/prebuilt/tools/release/sunrise-stage
+        run: python tools/ci/test_stage_catalog.py -v
       # Two starter mods, the second calling the first through its library as a mod calls a declared dependency
       # (on windows-gnu through the first's import library); `start` then loads both.
       - name: Two starter mods and the game executable build against the archive alone
@@ -123,11 +147,13 @@ jobs:
         id: linkage
         if: matrix.linkage
         run: python tools/native_dylib_probe.py --sdk prebuilt --output "$RUNNER_TEMP/native-dylib-probe"
-      - name: The starter mod checks against the API source alone, host and wasm32
+      # The archive is the SDK's api-source.tar.xz: sdk-publish.yml's index takes it from here rather than building
+      # the same bytes again (same commit, same bytes: tools/sdk_api_source.py).
+      - name: The starter mod checks against the API source alone
         if: matrix.name == 'linux'
         run: |
-          rustup target add wasm32-unknown-unknown
           python tools/sdk_api_source.py build "$RUNNER_TEMP/api-source"
+          python tools/sdk_api_source.py archive "$RUNNER_TEMP/api-source" "$RUNNER_TEMP/api-source.tar.xz"
           python tools/sdk_api_source.py check "$RUNNER_TEMP/api-source" --scratch "$RUNNER_TEMP/sdk-api-source-check"
       - name: Probe command log
         if: failure() && steps.linkage.outcome == 'failure'
@@ -141,13 +167,38 @@ jobs:
         run: >-
           python tools/prebuilt_game.py pack prebuilt dist
           --stage-tool target/prebuilt/tools/release/sunrise-stage${{ runner.os == 'Windows' && '.exe' || '' }}
-      # The shipped route on one native mod, against the SDK just built: the tool every SDK release ships
-      # (`cargo sunrise-mod native-build`), which `pack` built above. `ld` refuses a stack size unless it links a main
-      # executable, so a mod library reaches macOS's linker only if nothing of the game executable's link policy is
-      # passed to it.
+      # Build a native mod library on macOS against the SDK just built, using the release's
+      # own `cargo sunrise-mod native-build` tool.
       - name: A native mod builds through the shipped route
         if: matrix.name == 'macos'
         run: python tools/ci/native_build_route.py --sdk prebuilt --tool target/release/cargo-sunrise-mod --work "$RUNNER_TEMP/native-route"
+      # The mod tool builds a native mod whose build script compiles a C file with `cc`, against this leg's own SDK laid out
+      # as a signed release folder (the Linux legs' run of the same test is book-quickstart.yml's). `cc` must find the
+      # compiler of the leg's target: MinGW's GCC for windows-gnu, the system's clang on macOS.
+      - name: A native mod with a C source builds through the mod tool
+        if: inputs.c_source_test && (matrix.name == 'windows' || matrix.name == 'macos')
+        run: |
+          commit=$(git rev-parse HEAD)
+          scratch="$RUNNER_TEMP/c-source"
+          rm -rf "$scratch"
+          mkdir -p "$scratch/legs"
+          cp -R dist "$scratch/legs/sdk-leg-${{ matrix.name }}"
+          python tools/prebuilt_game.py gather "$scratch/legs" "$scratch/release"
+          python tools/sdk_api_source.py build "$scratch/api-source"
+          python tools/sdk_api_source.py archive "$scratch/api-source" "$scratch/release/api-source.tar.xz"
+          python tools/prebuilt_game.py index "$scratch/release"
+          EPHEMERAL=yes bash tools/ci/sign_release.sh "sdk-$commit" "$scratch"/release/*
+          echo "SUNRISE_SDK_TRUSTED_KEY=$(cat "$scratch/release/ephemeral.pub")" >> "$GITHUB_ENV"
+          rm "$scratch/release/ephemeral.pub"
+          mkdir -p "$scratch/sdk-base/nightly"
+          mv "$scratch/release" "$scratch/sdk-base/sdk-$commit"
+          cp "$scratch/sdk-base/sdk-$commit/sdk.json" "$scratch/sdk-base/nightly/sdk.json"
+          echo "SUNRISE_SDK_BASE=$scratch/sdk-base" >> "$GITHUB_ENV"
+      - name: The mod tool compiles the C source
+        if: inputs.c_source_test && (matrix.name == 'windows' || matrix.name == 'macos')
+        run: >-
+          cargo test --locked -p cargo-sunrise-mod --test build_errors --
+          --ignored --exact a_native_mod_compiles_its_c_source_with_cc_from_its_build_script
       - name: Asset sizes
         run: (cd dist && du -h *) | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
@@ -165,6 +216,17 @@ jobs:
         with:
           name: sdk-stage-tool
           path: target/prebuilt/tools/release/sunrise-stage
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
+      # The API source archive the check above built and checked, for sdk-publish.yml's index, which built it again
+      # (1m46 of the Dev release of 2026-11-25). Not a leg asset: its name is outside `sdk-leg-*`.
+      - name: The API source for the index
+        uses: actions/upload-artifact@v4
+        if: matrix.name == 'linux'
+        with:
+          name: sdk-api-source
+          path: ${{ runner.temp }}/api-source.tar.xz
           if-no-files-found: error
           retention-days: 1
           overwrite: true

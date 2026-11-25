@@ -1,9 +1,11 @@
 use super::*;
+use sunrise_client::mobs::spawner::SpawnerTypeFacts;
 
 pub(super) fn load_world_rest(
     resource_root: &sunrise_assets::resource_source::ResourceRoot,
     conditions: &sunrise_world::conditions::LoadConditions,
     resources: &Resources,
+    spawner_types: HashMap<String, SpawnerTypeFacts>,
     assets: &Assets,
     behaviour_json: &serde_json::Value,
     gameplay_projection: &[sunrise_client::blocks::GameplayProjection],
@@ -21,17 +23,20 @@ pub(super) fn load_world_rest(
     let biomes = resources.biomes();
     let threads = resources.threads();
     let registry = assets.registry;
+    let builtin = super::remote::builtin_registries(root).unwrap_or_default();
     let content = sunrise_client::datapack::DataPack::from_source(
         "sunrise-content".into(),
         resource_root.data_changes().clone(),
     );
-    let files = sunrise_client::datapack::DataStore::load(&[&content])
-        .files
-        .into_iter()
-        .collect::<Vec<_>>();
+    let store =
+        sunrise_client::datapack::DataStore::load(&sunrise_client::datapack::DataPacks::new(&[
+            &content,
+        ]));
+    let files = store.files.into_iter().collect::<Vec<_>>();
     let overlay = &sunrise_world::loot::PackOverlay {
         conditions,
         files: &files,
+        priority_layers: &store.priority_layers,
     };
     progress.set(6);
     // Independent tables load together, within the worker budget the settings
@@ -41,14 +46,22 @@ pub(super) fn load_world_rest(
             Items::load(root, registry, facts, overlay, resources.item_defaults())
         })?;
         items.bind_component_damage_catalog(&resources.motion().health.damage);
+        world_entry::bind_world_registry_tags(&mut items, root, overlay, overlay, biomes)?;
         api_values::resolve_item_registry(&items)?;
         log::info!("load items: {:.2}s", started.elapsed().as_secs_f32());
         progress.set(7);
+        // The recipes and the stations see the tags the items just bound
+        // (`neoforge:tag_empty`), as a world's own load does.
+        let conditions = overlay.conditions.with_tags(items.bound_tags());
+        let overlay = &sunrise_world::loot::PackOverlay {
+            conditions: &conditions,
+            ..*overlay
+        };
         // The recipe tables, the stations and the recipe book read one folder:
         // hold its files so it is read once.
         let _recipe_files = sunrise_client::json_folder::read(&root.join("data/minecraft/recipe"));
         let sources = startup::time("rest.recipe_sources", || {
-            lan::sync::initial_sources(root, &resources.core.item_data, overlay)
+            lan::sync::initial_sources(root, &resources.core.item_data, &items, overlay)
         })?;
         let recipes = startup::time("rest.recipes", || {
             Recipes::from_resolved(root, &items, overlay, &sources)
@@ -58,10 +71,10 @@ pub(super) fn load_world_rest(
                 root,
                 &items,
                 overlay,
-                resources.item_defaults(),
+                sunrise_client::banner::Banners::load(root, resources.item_defaults()),
                 (&sources, &recipes),
             )
-        });
+        })?;
         Ok((items, recipes, stations))
     };
     let load_behaviours = || {
@@ -74,12 +87,8 @@ pub(super) fn load_world_rest(
         if !draws {
             return Ok(Default::default());
         }
-        let mut renderer = BlockEntityRenderer::load_with_visibility(
-            resource_root,
-            registry,
-            visibility,
-            resources.item_defaults(),
-        )?;
+        let mut renderer =
+            BlockEntityRenderer::load_with_visibility(resource_root, registry, visibility)?;
         renderer.add_mod_signs(facts, registry);
         Ok(renderer)
     };
@@ -125,31 +134,24 @@ pub(super) fn load_world_rest(
             catalog,
             mod_api::__private::entity_attribute_modifications(),
         );
-        // The types mods name to `entity_tick_each` hear their ticks one entity at a time
-        // (game/modding/native_ticks.rs): marked once here, so a tick reads a flag.
-        let each = mod_api::__private::entity_tick_each();
         let mob_types: HashMap<_, _> = types
             .types
             .into_iter()
             .map(|(k, mut v)| {
-                v.flags.tick_alone = each.is_some_and(|each| each.names(&v.id));
+                // The entity-type registry is complete before the rest loads
+                // (`register_iterated_registries`): the type keeps its key from it.
+                v.type_key = mod_api::__private::resolved_entity_type_key(&v.id);
                 (k, Arc::new(v))
             })
             .collect();
-        let mut mob_data = sunrise_client::mobs::MobData::load(resource_root, facts);
-        // #847: the mods' spawn rules (`RegisterSpawnPlacementsEvent`) take
-        // their types' placement, heightmap and predicate here, once, so a
-        // spawn check reads one table with no pass over the mods.
-        for declaration in mod_api::__private::spawn_placement_declarations() {
-            if !mob_types.contains_key(&declaration.id) {
-                return Err(format!(
-                    "mod spawn placement of {} names no loaded entity type",
-                    declaration.id
-                )
-                .into());
-            }
-            mob_data.register_mod_spawn(&declaration.id, &declaration.rule);
-        }
+        let mut mob_data =
+            sunrise_client::mobs::MobData::load(resource_root, facts.states.len(), draws)?;
+        // NeoForge keys placements by EntityType, not by the subset backed by MobTypes.
+        // Use exactly the registry the spawners will consult, with facts already validated.
+        mob_data
+            .install_spawn_placements(mod_api::__private::spawn_placement_declarations(), |id| {
+                spawner_types.contains_key(id)
+            })?;
         crate::game::entity_part_state::refuse_entity_part_state_kinds(|kind| {
             mob_types.contains_key(kind)
         })?;
@@ -158,12 +160,13 @@ pub(super) fn load_world_rest(
         } else {
             sunrise_client::mobs::cem::CemModels::default()
         }));
-        sunrise_client::mobs::trial_spawner::load_registry(root);
         Ok((mob_types, mob_data))
     };
-    let load_transformers = || -> Result<_> {
-        let _step = startup::step("rest.transformers_models");
-        let transformers = sunrise_client::block_transform::Transformers::load(root, registry)?;
+    let load_player_models = || -> Result<_> {
+        let _step = startup::step("rest.player_models");
+        if !draws {
+            return Ok((None, [None, None], [None, None], None));
+        }
         let player_type = match entity_models {
             Some(document) => perspective::player_type_with_document(root, document),
             None => perspective::player_type(root),
@@ -177,7 +180,7 @@ pub(super) fn load_world_rest(
                 None => sunrise_client::mobs::load_model(root, "minecraft:spin_attack#main"),
             },
         );
-        Ok((transformers, models))
+        Ok(models)
     };
     // The errors cross threads as text.
     fn text<T, E: std::fmt::Display>(
@@ -191,7 +194,7 @@ pub(super) fn load_world_rest(
         block_entity_render,
         animate,
         mobs,
-        transformers,
+        player_models,
         providers,
         music,
         ambient,
@@ -206,18 +209,18 @@ pub(super) fn load_world_rest(
             });
             let animate = named_scope(scope, "animate", || text(load_animate()));
             let mobs = named_scope(scope, "mobs", || text(load_mobs()));
-            let transformers = named_scope(scope, "transformers", || text(load_transformers()));
+            let player_models = named_scope(scope, "player_models", || text(load_player_models()));
             let providers = named_scope(scope, "providers", || {
                 startup::time("rest.providers", || Providers::load(root))
             });
             let music = named_scope(scope, "music", || {
                 startup::time("rest.music", || {
-                    sunrise_client::music::MusicTables::load(root)
+                    sunrise_client::music::MusicTables::load(root, builtin.clone())
                 })
             });
             let ambient = named_scope(scope, "ambient", || {
                 startup::time("rest.ambient", || {
-                    sunrise_client::ambience::AmbientTables::load(root)
+                    sunrise_client::ambience::AmbientTables::load(root, builtin.clone())
                 })
             });
             let nether_environment = named_scope(scope, "nether_environment", || {
@@ -246,7 +249,7 @@ pub(super) fn load_world_rest(
                 block_entity_render.join().unwrap(),
                 animate.join().unwrap(),
                 mobs.join().unwrap(),
-                transformers.join().unwrap(),
+                player_models.join().unwrap(),
                 providers.join().unwrap(),
                 music.join().unwrap(),
                 ambient.join().unwrap(),
@@ -261,13 +264,13 @@ pub(super) fn load_world_rest(
             text(load_block_entity_render()),
             text(load_animate()),
             text(load_mobs()),
-            text(load_transformers()),
+            text(load_player_models()),
             Providers::load(root),
             startup::time("rest.music", || {
-                sunrise_client::music::MusicTables::load(root)
+                sunrise_client::music::MusicTables::load(root, builtin.clone())
             }),
             startup::time("rest.ambient", || {
-                sunrise_client::ambience::AmbientTables::load(root)
+                sunrise_client::ambience::AmbientTables::load(root, builtin.clone())
             }),
             startup::time("rest.nether_environment", || {
                 text(Environment::load_dimension(
@@ -286,10 +289,29 @@ pub(super) fn load_world_rest(
     // World staging checks conditions after the selected packs have supplied their winners.
     let (items, recipes, stations) = items?;
     let (animate, fog) = animate?;
-    let (mob_types, mob_data) = mobs?;
-    let (transformers, (player_type, player_arm, player_arm_slim, spin_attack)) = transformers?;
+    let (mob_types, mut mob_data) = mobs?;
+    let (player_type, player_arm, player_arm_slim, spin_attack) = player_models?;
+    if draws {
+        mob_data.frame_models = startup::time("rest.frame_models", || {
+            sunrise_client::mobs::render::BakedFrameModels::bake(
+                mob_types
+                    .values()
+                    .chain(player_type.iter())
+                    .map(Arc::as_ref),
+            )
+        });
+    }
     let nether_environment = nether_environment?;
     let end_environment = end_environment?;
+    let prepared_tests =
+        sunrise_client::lan::data::PackRegistryDefinitions::load_prepared_game_tests(
+            root,
+            item_defaults,
+        );
+    let (test_environments, test_instances) = test_instances::build_game_test_tables(
+        &prepared_tests,
+        &mod_api::GameTestFunctions::default(),
+    );
     log::info!(
         "Sunrise: resources loaded in {:.1}s; {} block states, {} items, {} biomes; {} worker threads",
         started.elapsed().as_secs_f32(),
@@ -303,7 +325,7 @@ pub(super) fn load_world_rest(
         stations,
         items: Arc::new(items),
         recipes,
-        transformers,
+        transformers: Default::default(),
         providers,
         block_entity_render: block_entity_render?,
         animate,
@@ -312,12 +334,16 @@ pub(super) fn load_world_rest(
         ambient,
         nether_environment,
         end_environment,
-        behaviours: behaviours?,
+        behaviours: Arc::new(behaviours?),
         mob_types,
+        living_type_keys: sunrise_client::health::LivingTypeKeys::resolve(),
         mob_data,
+        spawner_types,
         player_type,
         player_arm,
         player_arm_slim,
         spin_attack,
+        test_environments,
+        test_instances,
     })
 }

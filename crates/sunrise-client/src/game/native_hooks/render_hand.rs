@@ -13,8 +13,8 @@ impl Game<'_> {
     /// hands' view space, in blocks, +x right, +y up, -z into the screen,
     /// under the hand sway and before vanilla's per-item transforms; both
     /// hands share it, and `render.hand` says which one is asked. It is lit
-    /// with the light at the eyes; add geometry with `native_draw_cube`,
-    /// `native_draw_quad`, `native_draw_block` and `native_draw_item`. It
+    /// with the light at the eyes. Use `draw.render_arm` to submit either
+    /// physical arm with the local avatar's skin, without firing `render_arm`. It
     /// joins the hand's own vertices, ahead of vanilla's: the hand's field of
     /// view, the view bob, a shader pack's hand pass and `native_hand_drawn`
     /// see it as they see vanilla's hand. Unlike NeoForge, the pose stack is
@@ -23,7 +23,7 @@ impl Game<'_> {
     pub(in crate::game) fn native_render_hand(
         &self,
         render: &mut HandRender<'_>,
-        draw: &mut BlockEntityDraw,
+        draw: &mut dyn mod_api::HandDrawContext,
         canceled: &mut bool,
     ) {
         self.fire_render_hand(render, draw, canceled);
@@ -46,19 +46,32 @@ impl Game<'_> {
     ) -> bool {
         let start = out.len();
         let eye = self.eye_position().unwrap_or_default();
-        let mut draw = BlockEntityDraw::posed(
-            render.partial,
-            self.world.game_time,
-            light,
-            eye.map(|c| c.floor() as i32),
-            to_world,
-            sunrise_client::block_entity_render::diffuse_lights(self.dim == Dim::Nether),
-            std::mem::take(out),
-        )
-        .animated(self.animation_time());
+        let camera = self.native_camera_frame.as_ref().map_or_else(
+            || glam::DVec3::from_array(eye),
+            |c| glam::DVec3::from(c.position),
+        );
         let mut canceled = false;
-        self.native_render_hand(render, &mut draw, &mut canceled);
-        *out = draw.into_vertices();
+        self.with_world_view(camera, render.partial, None, |view| {
+            let mut draw = BlockEntityDraw::posed_with_view(
+                view,
+                light,
+                eye.map(|c| c.floor() as i32),
+                to_world,
+                sunrise_client::block_entity_render::diffuse_lights(self.dim == Dim::Nether),
+                std::mem::take(out),
+            )
+            .track_normal_pose()
+            .with_quad_budget(
+                self.entity_quad_capacity(),
+                self.entity_batch_reserved_quads(),
+            );
+            self.native_render_hand(
+                render,
+                &mut crate::game::host::draw::GameBlockEntityDrawContext::new(self, &mut draw),
+                &mut canceled,
+            );
+            *out = draw.into_vertices();
+        });
         if out.len() > start {
             runs.push((start as u32, 0));
         }

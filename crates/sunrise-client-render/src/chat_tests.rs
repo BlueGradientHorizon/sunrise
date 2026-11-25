@@ -72,7 +72,7 @@ fn clicked_suggestion_reports_the_actual_length_limited_input() {
     screen.type_text(&m, &c, "hi st");
     screen.key(&m, &c, &[], K::Tab, false, false);
     let [x, y, _, _] = screen.suggestions.as_ref().unwrap().rect;
-    assert!(screen.click(&m, &c, f64::from(x + 1), f64::from(y + 1)));
+    assert!(screen.click(&m, &c, f64::from(x + 1), f64::from(y + 1), false));
     assert_eq!(screen.value(), "hi Ste");
     assert_eq!(
         screen.take_suggestion_completion(),
@@ -204,6 +204,49 @@ fn clicking_seed_copies_the_raw_value_only_inside_the_link() {
 }
 
 #[test]
+fn inline_images_rewrap_chat_and_keep_source_and_link_targets() {
+    let atlas = HudAtlas::fonts(&Default::default()).unwrap();
+    let mut chat = Chat::default();
+    chat.options.width = 0.0;
+    let click = ClickEvent::SuggestCommand("/help".into());
+    let token = ":long_token:";
+    let source = Text::literal(token)
+        .with_style(&text::Style {
+            click: Some(click.clone()),
+            ..Default::default()
+        })
+        .append(Text::literal(" end"));
+    chat.add(&atlas, source.clone(), None, ChatSource::Server, 1, false);
+    assert!(chat.lines.len() > 1);
+    let revision = Some([1, 0, 0]);
+    assert!(chat.inline_images_stale(revision));
+    chat.refresh_inline_images(&atlas, revision, |source| {
+        let mut spans = source.spans.clone();
+        spans[0] = spans[0].with_text("\u{fffc}");
+        spans[0].style.inline_object = Some(text::InlineObject::Atlas {
+            atlas: "minecraft:gui".into(),
+            sprite: "demo:token".into(),
+            fallback: token.into(),
+        });
+        Some(Text::from_spans(spans))
+    });
+    assert!(!chat.inline_images_stale(revision));
+    assert_eq!(chat.lines.len(), 1);
+    assert_eq!(chat.messages[0].content, source);
+    assert_eq!(chat.message_at(360, 5.0, 315.0), Some(":long_token: end"));
+    assert_eq!(chat.click_at(&atlas.font, 360, 11.5, 315.0), Some(click));
+    assert_eq!(chat.click_at(&atlas.font, 360, 12.0, 315.0), None);
+    chat.set_search(&atlas, Some("long_token"));
+    assert_eq!(chat.lines.len(), 1);
+    // Atlas generation changed: the sprite can no longer resolve.
+    let revision = Some([2, 0, 0]);
+    assert!(chat.inline_images_stale(revision));
+    chat.refresh_inline_images(&atlas, revision, |_| None);
+    assert!(chat.lines.len() > 1);
+    assert_eq!(chat.messages[0].content, source);
+}
+
+#[test]
 fn click_targets_match_rendered_spans_when_scaled_wrapped_and_scrolled() {
     let font = font();
     let screenshot = ClickEvent::OpenFile("/tmp/My screenshots/世界.png".into());
@@ -282,7 +325,7 @@ fn locate_coordinates_fill_chat_with_teleport_without_submitting() {
         add(&mut chat, &font, Text::literal("Found at ").append(link));
         let mut screen = ChatScreen::new(&m, &commands, "draft", false, 0, 640, 360, full());
         let x = 4.0 + f64::from(font.width("Found at "));
-        assert!(!screen.click(&m, &commands, x, 315.0));
+        assert!(!screen.click(&m, &commands, x, 315.0, false));
         let Some(ClickEvent::SuggestCommand(command)) = chat.click_at(&font, 360, x, 315.0) else {
             panic!("locate coordinates must suggest a command");
         };
@@ -318,14 +361,15 @@ fn a_double_click_in_the_chat_box_selects_the_word() {
     };
     let mut screen = ChatScreen::new(&m, &c, "", false, 0, 640, 360, full());
     screen.type_text(&m, &c, "hello world");
-    // The pointer on the last letter: the first click places the caret there,
-    // the second takes the word.
+    // Two single clicks on the last letter still only move the caret.
     let x = f64::from(screen.input.x) + f64::from(font.width("hello world")) - 1.0;
     let y = f64::from(screen.input.y) + 2.0;
-    assert!(screen.click(&m, &c, x, y));
+    assert!(screen.click(&m, &c, x, y, false));
     assert!((10..=11).contains(&screen.input.cursor));
     assert_eq!(screen.input.highlight, screen.input.cursor);
-    assert!(screen.click(&m, &c, x, y));
+    assert!(screen.click(&m, &c, x, y, false));
+    assert_eq!(screen.input.highlight, screen.input.cursor);
+    assert!(screen.click(&m, &c, x, y, true));
     assert_eq!((screen.input.highlight, screen.input.cursor), (6, 11));
     assert_eq!(screen.input.selected_text(), "world");
 }
@@ -825,7 +869,12 @@ fn a_deleted_message_shows_60_ticks_then_becomes_the_marker() {
     assert_eq!(lines(&chat), ["<Alex> hi".to_owned(), marker.clone()]);
     assert!(chat.deletions.is_empty());
     let line = &chat.lines[1];
-    assert_eq!(line.tag.as_ref().map(|t| t.color), Some(SYSTEM_INDICATOR));
+    let tag = line.tag.as_ref().expect("a deleted marker has a tag");
+    assert_eq!(tag.color, 0xD0D0D0);
+    assert_eq!(tag.text.translation_key(), Some("chat.tag.system"));
+    assert!(!tag.icon);
+    assert_eq!(chat.messages[1].source, ChatSource::Server);
+    assert!(chat.messages[1].signature.is_none());
     assert_eq!(line.added, 100, "the marker keeps the message's time");
     assert!(
         line.content
@@ -1224,4 +1273,41 @@ fn the_suggestion_list_asks_for_the_pointing_hand() {
     let _ = crate::widgets::take_cursor();
     screen.draw(&m, (rect[0] - 1, rect[1] + 2), 0, 0);
     assert_eq!(crate::widgets::take_cursor(), crate::widgets::Cursor::Arrow);
+}
+
+/// `ChatComponent.MAX_CHAT_HISTORY` (#5598): the chat keeps 100 messages, wrapped lines and sent
+/// lines until a mod sets another cap; a higher cap keeps more, a lower one trims the oldest at
+/// once, and the cap stays within `1..=MAX_CHAT_HISTORY_LIMIT`.
+#[test]
+fn the_chat_history_cap_is_vanillas_100_until_a_mod_sets_another() {
+    let font = font();
+    let mut chat = Chat::default();
+    let post = |chat: &mut Chat, from: usize, n: usize| {
+        for i in from..from + n {
+            chat.add_message(
+                &font,
+                Text::literal(format!("m{i}")),
+                None,
+                ChatSource::Client,
+                0,
+                false,
+            );
+            chat.add_recent(&format!("s{i}"));
+        }
+    };
+    let sizes = |chat: &Chat| (chat.messages.len(), chat.lines.len(), chat.recent.len());
+    post(&mut chat, 0, 150);
+    assert_eq!(chat.history_limit(), DEFAULT_CHAT_HISTORY_LIMIT);
+    assert_eq!(sizes(&chat), (100, 100, 100));
+    chat.set_history_limit(300);
+    post(&mut chat, 150, 150);
+    assert_eq!(sizes(&chat), (250, 250, 250));
+    chat.set_history_limit(10);
+    assert_eq!(sizes(&chat), (10, 10, 10));
+    assert_eq!(chat.recent.first().map(String::as_str), Some("s290"));
+    assert_eq!(chat.recent.last().map(String::as_str), Some("s299"));
+    chat.set_history_limit(0);
+    assert_eq!(chat.history_limit(), 1);
+    chat.set_history_limit(usize::MAX);
+    assert_eq!(chat.history_limit(), MAX_CHAT_HISTORY_LIMIT);
 }

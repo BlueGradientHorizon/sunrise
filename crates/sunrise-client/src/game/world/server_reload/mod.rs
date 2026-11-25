@@ -7,11 +7,11 @@ mod tests;
 use super::packs::reload_files;
 use super::{Game, functions::PackStack};
 use mod_api::{
-    __private::reload::{ReloadStageError, apply_listeners, prepare_listeners},
-    FileToIdConverter, Identifier, ServerReloadContext, ServerReloadListener,
-    ServerReloadResources, VanillaServerListeners,
+    __private::reload::{ReloadStageError, RetainedEntry, apply_listeners, prepare_listeners},
+    FileToIdConverter, HookId, Identifier, ServerReloadContext, ServerReloadListener,
+    ServerReloadResources,
 };
-use sunrise_client::datapack::DataStore;
+use sunrise_client::datapack::{DataPacks, DataStore};
 
 pub(super) type PreparedReload = PreparedStep<Box<DataStore>>;
 
@@ -21,7 +21,7 @@ use mod_api::__private::reload::PreparedStep;
 /// retained listeners' store.
 pub(super) struct PreparedServerReload {
     pub(super) steps: Vec<PreparedReload>,
-    pub(super) resources: mod_api::RetainedListeners,
+    pub(super) retained: Vec<RetainedEntry>,
     pub(super) loot: std::sync::Arc<mod_api::GlobalLootModifierManager>,
 }
 impl PreparedServerReload {
@@ -32,14 +32,26 @@ impl PreparedServerReload {
     }
 }
 
-/// Loads the vanilla function library from `stack`, logging per-file failures.
-fn functions_store(stack: &PackStack) -> DataStore {
+/// Loads the vanilla function library from `stack`, logging per-file failures
+/// (`ServerFunctionLibrary`). A predicate, item modifier or slot source its codec
+/// refuses fails the load, every one listed (`RegistryDataLoader.logErrors`).
+fn functions_store(stack: &PackStack) -> Result<DataStore, ReloadStageError> {
     let packs: Vec<_> = stack.builtin.iter().chain(stack.enabled_packs()).collect();
-    let store = DataStore::load(&packs);
+    let store = DataStore::load(&DataPacks::new(&packs));
     for (id, e) in &store.errors {
         log::warn!("Sunrise: failed to load function {id}: {e}");
     }
-    store
+    if !store.refused.is_empty() {
+        return Err(ReloadStageError::DataSource(
+            store
+                .refused
+                .iter()
+                .map(|(entry, error)| format!("{entry}: {error}"))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        ));
+    }
+    Ok(store)
 }
 
 impl PackStack {
@@ -58,10 +70,6 @@ impl Game<'_> {
         &self,
         stack: &PackStack,
     ) -> Result<PreparedServerReload, ReloadStageError> {
-        let _reload = self
-            .mod_phase
-            .reloading()
-            .expect("server reload on its owning thread");
         sunrise_client::mod_content::check_jars(
             &self.options.resources,
             &sunrise_client::logging::game_home().join("jars"),
@@ -75,59 +83,41 @@ impl Game<'_> {
         let loot = super::global_loot_modifiers::register_anchor(&mut listeners)
             .map_err(ReloadStageError::Order)?;
         self.native_add_server_reload_listeners(&mut listeners);
-        let mut resources = mod_api::RetainedListeners::default();
         let ordered = listeners.finish().map_err(ReloadStageError::Order)?;
-        resources.install(ordered.retained);
         let steps = prepare_listeners(
             ordered.listeners,
+            HookId::AddServerReloadListeners,
             "server_reload_prepare",
-            |listener| {
-                (listener.id == VanillaServerListeners::functions())
-                    .then(|| Box::new(functions_store(stack)))
-            },
+            || functions_store(stack).map(Box::new),
             |id, converter| stack.reload_context(id, converter),
             ServerReloadListener::prepare,
         )?;
         Ok(PreparedServerReload {
             steps,
-            resources,
+            retained: ordered.retained,
             loot,
         })
-    }
-    pub(super) fn apply_server_reload_callbacks(
-        &mut self,
-        prepared: PreparedServerReload,
-    ) -> PreparedServerReload {
-        let phase = self.mod_phase.clone();
-        let _reload = phase
-            .reloading()
-            .expect("server apply on its owning thread");
-        let mut vanilla = Vec::new();
-        apply_listeners(prepared.steps, "server_reload_apply", |store| {
-            vanilla.push(PreparedStep::Vanilla(store))
-        });
-        PreparedServerReload {
-            steps: vanilla,
-            resources: prepared.resources,
-            loot: prepared.loot,
-        }
     }
     pub(super) fn apply_server_reload(
         &mut self,
         prepared: PreparedServerReload,
-        stack: &PackStack,
+        enabled_features: &[String],
     ) {
-        let phase = self.mod_phase.clone();
-        let _reload = phase
-            .reloading()
-            .expect("server apply on its owning thread");
-        apply_listeners(prepared.steps, "server_reload_apply", |store| {
-            self.admit_store(*store, stack);
-        });
+        let skipped = apply_listeners(
+            prepared.steps,
+            HookId::AddServerReloadListeners,
+            "server_reload_apply",
+            |store| {
+                self.build_native_commands(enabled_features);
+                self.admit_store(*store);
+                Ok::<_, std::convert::Infallible>(())
+            },
+        )
+        .unwrap();
         if let Some(tables) = &self.world_tables {
             prepared.loot.bind_from(&tables.loot_modifier_manager);
         }
-        self.reload_resources = prepared.resources;
+        self.reload_resources.install(prepared.retained, &skipped);
         self.structure_templates.clear();
     }
     /// The retained server reload listeners of the last successful reload.
