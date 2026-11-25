@@ -46,6 +46,9 @@ pub trait PackPostExt: Sized {
         skin: Option<&SkinFrame>,
         motion: (&[(u32, u64)], &[u32]),
     );
+    /// After `prepare_entities`: the view and revision of each dynamic texture the pack's entity
+    /// draws bind as their texture.
+    fn resolve_entity_textures(&mut self, resolve: impl FnMut(u64) -> (wgpu::TextureView, u64));
     /// Runs the pack over the world drawn into `world` (colour) and `world_depth`, then draws
     /// the result onto `screen`. Notifies after the sky if the frame assigned the stage to this
     /// pack, and after the last pack world pass, before composition. Fails once the device is lost (`lost`).
@@ -174,6 +177,12 @@ impl PackPostExt for PackPost {
             skin,
             motion,
         );
+    }
+
+    fn resolve_entity_textures(&mut self, resolve: impl FnMut(u64) -> (wgpu::TextureView, u64)) {
+        if let Some(e) = &mut self.entities {
+            e.geometry.resolve_textures(resolve);
+        }
     }
 
     /// Runs the pack over the world drawn into `world` (colour) and `world_depth`, then draws

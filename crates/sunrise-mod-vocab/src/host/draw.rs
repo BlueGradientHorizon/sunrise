@@ -354,15 +354,18 @@ pub trait BlockEntityDrawContext {
     /// texture, as vanilla's `TextureManager.getTexture` answers after `release`. Light follows
     /// `quad`: `set_light`, `level_light`, and `unlit(true)` for full bright and no directional
     /// shading. `cutout` and `translucent` discard texels under alpha 0.1
-    /// (`ALPHA_CUTOUT`); `translucent` blends, writes depth and sorts far to near. `solid` keeps
-    /// the entity shader's alpha discard too, where vanilla's `ENTITY_SOLID` has none: give it an
-    /// opaque texture. Under a shader pack the quad draws in Sunrise's own entity pass, bound to
-    /// its texture and lit by the lightmap, not by the pack's programs.
+    /// (`ALPHA_CUTOUT`); `translucent` blends, writes depth and, outside a shader pack, sorts far
+    /// to near. `solid` keeps the entity shader's alpha discard too, where vanilla's
+    /// `ENTITY_SOLID` has none: give it an opaque texture. Under a shader pack the quad draws through the pack's entity program (the
+    /// block entity program in a block entity's draw), with its texture bound as the entity
+    /// texture.
+    ///
+    /// It takes only a dynamic texture id: a render type made for any other id, such as a
+    /// texture in the resource packs, draws nothing and returns false.
     ///
     /// Returns false, appending nothing, when `render_type` is not one of the three
-    /// texture-taking built-ins or is stale, when no dynamic texture named by it is live (this
-    /// draw takes only dynamic texture ids), when a corner or UV is not finite, or
-    /// in a first-person hand draw. It never panics.
+    /// texture-taking built-ins or is stale, when no dynamic texture named by it is live, when a
+    /// corner or UV is not finite, or in a first-person hand draw. It never panics.
     fn textured_quad(
         &mut self,
         render_type: RenderTypeRef,

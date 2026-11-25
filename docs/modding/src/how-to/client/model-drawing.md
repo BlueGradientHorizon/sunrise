@@ -617,8 +617,9 @@ in the texture's own unit square (0 to 1), not texels of 16. The same texture gi
 type, so keep it. Light and `unlit` apply as for `quad`. The call returns false, drawing nothing,
 for an id that is not a live dynamic texture, a first-person hand draw or a coordinate that is not
 finite. A texture released after the quad was submitted draws the missing texture. Resource-stack
-textures are not accepted. A shader pack does not light these quads through its programs: Sunrise's
-own entity pass draws them.
+textures are not accepted. Under a shader pack these quads are drawn by the
+pack's entity program (the block entity program in a block entity's draw) with the texture bound
+as the entity texture.
 
 ## Copycat faces
 

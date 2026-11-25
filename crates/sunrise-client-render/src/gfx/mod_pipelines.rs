@@ -619,6 +619,12 @@ struct Compiled {
     vertex_layouts: Vec<OwnedVertexBufferLayout>,
     /// Lazy modifier variants indexed by variant id (`ModPipelines::variant_ids`; `0` unused).
     variants: Vec<Option<CachedVariant>>,
+    /// The state and label each modifier variant resolves to, by variant id, kept so shader-pack
+    /// variants can be compiled for whichever pack target is current.
+    variant_states: Vec<Option<(PipelineState, String)>>,
+    /// Lazy modifier variants for the current shader-pack target (`ModPipelines::pack_pipelines`),
+    /// by variant id; cleared when that target changes.
+    pack_variants: Vec<Option<CachedVariant>>,
     /// Compiled OIT variants (`DepthBounds`, `Transmittance`, `Accumulate`) when opted in and
     /// supported by the device.
     oit: Option<CompiledOit>,
@@ -1525,6 +1531,8 @@ impl ModPipelines {
             color_targets: built.color_targets.clone(),
             vertex_layouts,
             variants: Vec::new(),
+            variant_states: Vec::new(),
+            pack_variants: Vec::new(),
             oit,
             #[cfg(test)]
             textured: sprite_binding.is_some(),
@@ -1545,7 +1553,11 @@ impl ModPipelines {
             .as_ref()
             .is_some_and(|(prev, list)| *prev == key && list.len() == self.pipelines.len())
         {
+            self.ensure_pack_variants(device);
             return;
+        }
+        for compiled in self.pipelines.iter_mut().flatten() {
+            compiled.pack_variants.clear();
         }
         let color_formats = [format];
         let target = TargetState {
@@ -1589,6 +1601,69 @@ impl ModPipelines {
             })
             .collect();
         self.pack_pipelines = Some((key, compiled));
+        self.ensure_pack_variants(device);
+    }
+
+    /// Compile the shader-pack target's variant of every modifier stack seen so far that is not
+    /// compiled yet, like [`Self::ensure_modifier_variant`] does for the main frame.
+    fn ensure_pack_variants(&mut self, device: &wgpu::Device) {
+        let Some(&((format, rgb), _)) = self.pack_pipelines.as_ref() else {
+            return;
+        };
+        let color_formats = [format];
+        let target = TargetState {
+            color_formats: &color_formats,
+            standard_z: true,
+            write_mask: if rgb {
+                wgpu::ColorWrites::COLOR
+            } else {
+                wgpu::ColorWrites::ALL
+            },
+        };
+        for compiled in self.pipelines.iter_mut().flatten() {
+            if compiled.pack_variants.len() < compiled.variant_states.len() {
+                compiled
+                    .pack_variants
+                    .resize_with(compiled.variant_states.len(), || None);
+            }
+            for idx in 1..compiled.variant_states.len() {
+                let Some((modified, label)) = &compiled.variant_states[idx] else {
+                    continue;
+                };
+                if compiled.pack_variants[idx].is_some() {
+                    continue;
+                }
+                if *modified == compiled.state {
+                    compiled.pack_variants[idx] = Some(CachedVariant::Base);
+                    continue;
+                }
+                let frag = compiled
+                    .pack_fragment_shader
+                    .as_ref()
+                    .unwrap_or(&compiled.fragment_shader);
+                compiled.pack_variants[idx] = Some(
+                    match Self::build_render_pipeline(
+                        device,
+                        &format!("{label}/pack"),
+                        &compiled.pipeline_layout,
+                        &compiled.vertex_shader,
+                        frag,
+                        &compiled.vertex_layouts,
+                        *modified,
+                        &compiled.color_targets,
+                        target,
+                    ) {
+                        Ok(pipeline) => CachedVariant::Compiled(pipeline),
+                        Err(error) => {
+                            log::warn!(
+                                "Sunrise: pipeline modifier variant {label} refused for shader-pack target {format:?}: {error}"
+                            );
+                            CachedVariant::Refused
+                        }
+                    },
+                );
+            }
+        }
     }
 
     /// Builds the pipelines of `set` unless they are built already. A required pipeline the GPU
@@ -1760,11 +1835,15 @@ impl ModPipelines {
             return;
         }
         let modified = ModifierStacks::apply_slots(slots, compiled.state, defs);
+        let label = ModifierStacks::label_slots(slots, &compiled.id.to_string(), defs);
+        if compiled.variant_states.len() <= idx {
+            compiled.variant_states.resize_with(idx + 1, || None);
+        }
+        compiled.variant_states[idx] = Some((modified, label.clone()));
         if modified == compiled.state {
             compiled.variants[idx] = Some(CachedVariant::Base);
             return;
         }
-        let label = ModifierStacks::label_slots(slots, &compiled.id.to_string(), defs);
         let color_formats = [color_format];
         match Self::build_render_pipeline(
             device,
@@ -2054,6 +2133,7 @@ impl ModPipelines {
                 set1_bind_group: None,
             });
         }
+        self.ensure_pack_variants(device);
         if self.runs.is_empty()
             && self.oit_runs.is_empty()
             && self.draws.is_empty()
@@ -3018,10 +3098,20 @@ impl ModPipelines {
                 continue;
             }
             let pipeline = match pack_list {
-                Some(list) => match list.get(cmd.slot) {
-                    Some(Some(p)) => p,
-                    _ => continue,
-                },
+                Some(list) => {
+                    let Some(Some(base)) = list.get(cmd.slot) else {
+                        continue;
+                    };
+                    if cmd.modifier_stack == ModifierStacks::EMPTY {
+                        base
+                    } else {
+                        match compiled.pack_variants.get(cmd.modifier_stack as usize) {
+                            Some(Some(CachedVariant::Base)) => base,
+                            Some(Some(CachedVariant::Compiled(p))) => p,
+                            _ => continue,
+                        }
+                    }
+                }
                 None => {
                     if cmd.modifier_stack == ModifierStacks::EMPTY {
                         &compiled.pipeline
@@ -3170,10 +3260,20 @@ impl ModPipelines {
                 continue;
             }
             let pipeline = match pack_list {
-                Some(list) => match list.get(run.slot) {
-                    Some(Some(p)) => p,
-                    _ => continue,
-                },
+                Some(list) => {
+                    let Some(Some(base)) = list.get(run.slot) else {
+                        continue;
+                    };
+                    if run.modifier_stack == ModifierStacks::EMPTY {
+                        base
+                    } else {
+                        match compiled.pack_variants.get(run.modifier_stack as usize) {
+                            Some(Some(CachedVariant::Base)) => base,
+                            Some(Some(CachedVariant::Compiled(p))) => p,
+                            _ => continue,
+                        }
+                    }
+                }
                 None => {
                     if run.modifier_stack == ModifierStacks::EMPTY {
                         &compiled.pipeline
@@ -5088,6 +5188,172 @@ void main() {
         );
     }
 
+    /// A strip-topology pipeline whose modifier switches it to `Quads` draws the quad's list
+    /// indices on a shader-pack target: the pack path builds the modifier's own variant rather
+    /// than drawing the base strip pipeline (which has no strip index format).
+    #[test]
+    #[ignore = "daily"]
+    fn strip_pipeline_with_quads_modifier_draws_on_a_shader_pack_target() {
+        use mod_api::PipelineModifier;
+        let _gpu = crate::gfx::test_gpu::lock();
+        let Some((device, queue)) = device() else {
+            eprintln!("no GPU adapter: skipped");
+            return;
+        };
+        let registered = [RenderPipeline::new(
+            Identifier::parse("test:strip").unwrap(),
+            Identifier::parse("test:core/p0").unwrap(),
+            PipelineBlend::Opaque,
+            WorldDepth::Tested,
+        )
+        .topology(PrimitiveTopology::TriangleStrip)
+        .optional()];
+        let set = Pipelines::build(&registered, 96, |file| match file {
+            "assets/test/shaders/core/p0.vsh" => Ok(Some(VSH.to_owned())),
+            "assets/test/shaders/core/p0.fsh" => Ok(Some(PASS.to_owned())),
+            other => Ok(stub_asset(other)),
+        })
+        .unwrap();
+        let modifiers = [
+            PipelineModifier::new(Identifier::parse("test:quads").unwrap())
+                .topology(PrimitiveTopology::Quads),
+        ];
+        let mut stacks = ModifierStacks::new();
+        let quads = stacks.intern(&[0]);
+        let vertices = quad([16.0, 16.0, 48.0, 48.0], 2.0, [255, 0, 0, 255]);
+        let runs = [PipelineRun {
+            slot: 0,
+            stage: 0,
+            quads: 1,
+            modifier_stack: quads,
+        }];
+
+        let format = wgpu::TextureFormat::Rgba8Unorm;
+        let mut primitives = WorldPrimitives::new(&device, (format, false));
+        primitives.pipelines.build(&device, &set, None).unwrap();
+        primitives.prepare_pack_pass(&device, format, false, false);
+        let texture = |format, usage| {
+            device.create_texture(&wgpu::TextureDescriptor {
+                label: None,
+                size: wgpu::Extent3d {
+                    width: SIZE,
+                    height: SIZE,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage,
+                view_formats: &[],
+            })
+        };
+        let color = texture(
+            format,
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        );
+        let depth = texture(
+            wgpu::TextureFormat::Depth32Float,
+            wgpu::TextureUsages::RENDER_ATTACHMENT,
+        );
+        let atlas = texture(
+            wgpu::TextureFormat::Rgba8Unorm,
+            wgpu::TextureUsages::TEXTURE_BINDING,
+        );
+        assert!(primitives.prepare(
+            &device,
+            &mut |buffer, bytes| queue.write_buffer(buffer, 0, bytes),
+            &world_primitives::Batch {
+                pipelines: Batch {
+                    set: Some(&set),
+                    vertices: &vertices,
+                    runs: &runs,
+                    modifiers: Some(&stacks),
+                    modifier_defs: Some(&modifiers),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            view_proj(),
+            [SIZE, SIZE],
+            &atlas.create_view(&Default::default()),
+            None,
+        ));
+        let color_view = color.create_view(&Default::default());
+        let depth_view = depth.create_view(&Default::default());
+        let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let mut encoder = device.create_command_encoder(&Default::default());
+        drop(encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: None,
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &color_view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color {
+                        r: CLEAR,
+                        g: CLEAR,
+                        b: CLEAR,
+                        a: 1.0,
+                    }),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &depth_view,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(1.0),
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
+            ..Default::default()
+        }));
+        assert!(primitives.draw_pack_stages(&mut encoder, &color_view, &depth_view, 0, STAGES - 1));
+        let readback = device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: u64::from(SIZE * SIZE * 4),
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        encoder.copy_texture_to_buffer(
+            color.as_image_copy(),
+            wgpu::TexelCopyBufferInfo {
+                buffer: &readback,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(SIZE * 4),
+                    rows_per_image: None,
+                },
+            },
+            color.size(),
+        );
+        queue.submit([encoder.finish()]);
+        readback.slice(..).map_async(wgpu::MapMode::Read, |_| {});
+        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+        assert!(
+            pollster::block_on(validation.pop()).is_none(),
+            "drawing the modifier's quads variant on a pack target is valid"
+        );
+        let bytes = readback.slice(..).get_mapped_range().unwrap().to_vec();
+        let at = |x: u32, y: u32| {
+            let i = ((y * SIZE + x) * 4) as usize;
+            std::array::from_fn(|channel| f32::from(bytes[i + channel]))
+        };
+        assert_near(
+            at(32, 32),
+            [255.0, 0.0, 0.0, 255.0],
+            1.0,
+            "the quads variant fills the pack target",
+        );
+        assert_near(
+            at(4, 4),
+            [64.0, 64.0, 64.0, 255.0],
+            0.0,
+            "outside the quad stays clear",
+        );
+    }
+
     #[test]
     #[ignore = "daily"]
     fn set1_uniform_buffer_inline_uniform_push_constant_and_texel_buffer_draw_expected_pixels() {
@@ -5363,12 +5629,15 @@ void main() {
         })
         .expect("textured set-1 pipeline must translate");
 
-        let dyn_id = Identifier::parse("mod_c3:dyn_stripe").unwrap();
         let rgba: [u8; 8] = [255, 0, 0, 255, 0, 0, 255, 255];
-        let mut uniforms = crate::gfx::mod_uniforms::ModUniformBuffers::default();
-        let (view_id, view) = uniforms
-            .resolve_dynamic_texture(&device, &queue, &dyn_id, [2, 1], &rgba, 1)
-            .unwrap();
+        let (_texture, view) = crate::gfx::mod_uniforms::create_rgba_texture(
+            &device,
+            &queue,
+            "Mod dynamic texture",
+            [2, 1],
+            &rgba,
+        );
+        let view_id = crate::gfx::mod_uniforms::DYNAMIC_VIEW_ID_BIT | 1;
 
         let quad = [
             PipelineVertex {

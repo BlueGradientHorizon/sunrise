@@ -1006,6 +1006,17 @@ pub fn render_pack(
     vertices: &[Vertex],
     spans: &[pack_draw::EntitySpan],
 ) -> std::result::Result<Vec<[u8; 4]>, String> {
+    render_pack_with(vertices, spans, None)
+}
+
+/// [`render_pack`], with `gbuffers_entities` writing what it samples from `dynamic_texture` instead of its
+/// flat colour when given: a 1 x 1 dynamic texture of that colour (handle 1) the draws of that
+/// handle (`DYNAMIC_TEXTURE_*_OVERLAY` quads naming it) bind as their texture.
+fn render_pack_with(
+    vertices: &[Vertex],
+    spans: &[pack_draw::EntitySpan],
+    dynamic_texture: Option<[u8; 4]>,
+) -> std::result::Result<Vec<[u8; 4]>, String> {
     let _gpu = crate::gfx::test_gpu::lock();
     use std::io::Write;
     let colour = |[r, g, b, _]: [u8; 4]| format!("vec4({r}.0, {g}.0, {b}.0, 255.0) / 255.0");
@@ -1018,21 +1029,30 @@ pub fn render_pack(
         zip.write_all(source.as_bytes())
     };
     let programs = ["gbuffers_entities", "gbuffers_block", "gbuffers_textured"];
-    for (program, rgba) in programs.into_iter().zip(PACK_COLOURS) {
-        add(
-            &format!("{program}.vsh"),
-            "#version 120\nvoid main() { gl_Position = vec4(gl_Vertex.xy * 0.5, 0.5, 1.0); }\n",
-        )
-        .and_then(|()| {
-            add(
-                &format!("{program}.fsh"),
-                &format!(
+    for (i, (program, rgba)) in programs.into_iter().zip(PACK_COLOURS).enumerate() {
+        let sampled = dynamic_texture.is_some() && i == 0;
+        let (vertex, fragment) = if sampled {
+            (
+                "#version 120\nvarying vec2 uv;\nvoid main() { uv = gl_MultiTexCoord0.xy; \
+                 gl_Position = vec4(gl_Vertex.xy * 0.5, 0.5, 1.0); }\n"
+                    .to_string(),
+                "#version 120\nuniform sampler2D texture;\nvarying vec2 uv;\n\
+                 void main() { gl_FragData[0] = texture2D(texture, uv); }\n"
+                    .to_string(),
+            )
+        } else {
+            (
+                "#version 120\nvoid main() { gl_Position = vec4(gl_Vertex.xy * 0.5, 0.5, 1.0); }\n"
+                    .to_string(),
+                format!(
                     "#version 120\nvoid main() {{ gl_FragData[0] = {}; }}\n",
                     colour(rgba)
                 ),
             )
-        })
-        .map_err(|error| error.to_string())?;
+        };
+        add(&format!("{program}.vsh"), &vertex)
+            .and_then(|()| add(&format!("{program}.fsh"), &fragment))
+            .map_err(|error| error.to_string())?;
     }
     add(
         "final.vsh",
@@ -1119,6 +1139,25 @@ pub fn render_pack(
         None,
         (&[], &[]),
     );
+    let store = crate::hud::dynamic_textures::Store::default();
+    if let Some(rgba) = dynamic_texture {
+        let mut uploads = super::upload::Uploads::new(&device);
+        let mut encoder = device.create_command_encoder(&Default::default());
+        store.apply(
+            &device,
+            &mut uploads,
+            &mut encoder,
+            None,
+            &[crate::hud::dynamic_textures::Command::Create {
+                handle: 1,
+                size: [1, 1],
+                rgba: rgba.to_vec(),
+            }],
+        );
+        uploads.finish(&encoder);
+        queue.submit([encoder.finish()]);
+    }
+    post.resolve_entity_textures(|handle| store.view(handle).expect("the texture was created"));
     let (world, depth, screen) = (
         texture(SIZE, format),
         texture(SIZE, wgpu::TextureFormat::Depth32Float),
@@ -2978,6 +3017,34 @@ mod dynamic_quads {
         assert_eq!(pixel(&frames[0], 48, 48), YELLOW);
         assert_eq!(pixel(&frames[1], 48, 48), WHITE);
         assert_eq!(pixel(&frames[1], 16, 16), RED);
+    }
+
+    /// Under a shader pack, a `textured_quad` is drawn by the pack's entity program with the run's
+    /// texture bound as the entity texture: the pack's sampler reads the texture's colour back.
+    #[test]
+    #[ignore = "daily"]
+    fn a_shader_pack_draws_a_quad_with_its_texture_through_its_entity_program() {
+        const COLOUR: [u8; 4] = [10, 200, 30, 255];
+        let spans = [pack_draw::EntitySpan {
+            start: 0,
+            id: 12,
+            stage: sunrise_shaders::render_stage("ENTITIES"),
+            ..Default::default()
+        }];
+        let frame = render_pack_with(
+            &full_quad(DYNAMIC_TEXTURE_CUTOUT_OVERLAY, 1),
+            &spans,
+            Some(COLOUR),
+        )
+        .expect("software Vulkan pack");
+        let at = |x: u32, y: u32| frame[(y * SIZE + x) as usize];
+        assert_eq!(at(32, 32), COLOUR);
+        assert_eq!(at(20, 44), COLOUR);
+        assert_eq!(
+            at(4, 4),
+            [0, 0, 0, 0],
+            "outside the quad the cleared target is untouched"
+        );
     }
 
     /// A texture released after its quad was submitted draws vanilla's missing texture

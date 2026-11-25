@@ -1,6 +1,5 @@
 //! Retained GPU uniform buffers backing [`mod_api::UniformBufferRef`], plus cached standalone
-//! and dynamic GPU textures backing [`mod_api::TextureSource::DynamicTexture`] and
-//! [`mod_api::TextureSource::StandaloneTexture`].
+//! GPU textures backing [`mod_api::TextureSource::StandaloneTexture`].
 //!
 //! Uniform buffer sizes are bounded strictly by `device.limits().max_uniform_buffer_binding_size`
 //! and `device.limits().max_buffer_size` (zero uncited per-mod cap). Handles are generational,
@@ -11,25 +10,20 @@ use mod_api::__private::game::Fields;
 use mod_api::{BufferError, Identifier, PipelineDrawError, UniformBufferRef};
 use std::collections::{BTreeMap, BTreeSet};
 
-/// Reserved view IDs for engine-owned textures (never issued to cached dynamic/standalone views).
+/// Reserved view IDs for engine-owned textures (never issued to cached standalone views).
 pub const ATLAS_VIEW_ID: u64 = 1;
 pub const LIGHTMAP_VIEW_ID: u64 = 2;
 pub const WORLD_DEPTH_VIEW_ID: u64 = 3;
 const FIRST_CUSTOM_VIEW_ID: u64 = 16;
+/// Set on the view ID of a dynamic texture, whose ID is its GPU texture's revision from the HUD's
+/// own counter: that keeps it apart from the IDs above, which a bind group's cache key shares.
+pub const DYNAMIC_VIEW_ID_BIT: u64 = 1 << 63;
 
 struct ModUniformBuffer {
     generation: u64,
     owner: Option<&'static str>,
     buffer: wgpu::Buffer,
     byte_len: u64,
-}
-
-struct CachedDynamicTexture {
-    view_id: u64,
-    size: [u32; 2],
-    pixel_revision: u64,
-    texture: wgpu::Texture,
-    view: wgpu::TextureView,
 }
 
 struct CachedStandaloneTexture {
@@ -43,7 +37,6 @@ pub struct ModUniformBuffers {
     next_generation: u64,
     slots: Vec<Option<ModUniformBuffer>>,
     next_view_id: u64,
-    dynamic_textures: BTreeMap<Identifier, CachedDynamicTexture>,
     standalone_textures: BTreeMap<Identifier, Option<CachedStandaloneTexture>>,
 }
 
@@ -53,7 +46,6 @@ impl Default for ModUniformBuffers {
             next_generation: 0,
             slots: Vec::new(),
             next_view_id: FIRST_CUSTOM_VIEW_ID,
-            dynamic_textures: BTreeMap::new(),
             standalone_textures: BTreeMap::new(),
         }
     }
@@ -153,11 +145,10 @@ impl ModUniformBuffers {
         Ok(())
     }
 
-    /// Retire all retained uniform buffers and clear cached standalone/dynamic textures (called on
+    /// Retire all retained uniform buffers and clear cached standalone textures (called on
     /// world close and resource reload).
     pub fn clear(&mut self) {
         self.slots.clear();
-        self.dynamic_textures.clear();
         self.standalone_textures.clear();
     }
 
@@ -171,11 +162,6 @@ impl ModUniformBuffers {
                 *slot = None;
             }
         }
-    }
-
-    /// Drop any cached GPU copy of a freed dynamic texture.
-    pub fn remove_dynamic_texture(&mut self, id: &Identifier) {
-        self.dynamic_textures.remove(id);
     }
 
     /// Resolve a retained [`UniformBufferRef`] for a draw call, validating ownership, liveness,
@@ -193,47 +179,6 @@ impl ModUniformBuffers {
             return Err(PipelineDrawError::InvalidBinding);
         }
         Ok((buf.generation, buf.buffer.clone(), buf.byte_len))
-    }
-
-    /// Resolve or lazily upload a standalone GPU texture for a live dynamic texture (`id`,
-    /// `size`, `rgba`, `pixel_revision`), returning `(unique_view_id, view)`.
-    pub fn resolve_dynamic_texture(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        id: &Identifier,
-        size: [u32; 2],
-        rgba: &[u8],
-        pixel_revision: u64,
-    ) -> Result<(u64, wgpu::TextureView), PipelineDrawError> {
-        if size[0] == 0 || size[1] == 0 || rgba.len() != (size[0] as usize) * (size[1] as usize) * 4
-        {
-            return Err(PipelineDrawError::InvalidBinding);
-        }
-        if let Some(cached) = self.dynamic_textures.get_mut(id)
-            && cached.size == size
-        {
-            if cached.pixel_revision != pixel_revision {
-                upload_rgba_texture(queue, &cached.texture, size, rgba);
-                cached.pixel_revision = pixel_revision;
-            }
-            return Ok((cached.view_id, cached.view.clone()));
-        }
-        let max_dim = device.limits().max_texture_dimension_2d;
-        if size[0] > max_dim || size[1] > max_dim {
-            return Err(PipelineDrawError::InvalidBinding);
-        }
-        let (texture, view) = create_rgba_texture(device, queue, "Mod dynamic texture", size, rgba);
-        let view_id = self.alloc_view_id();
-        let entry = CachedDynamicTexture {
-            view_id,
-            size,
-            pixel_revision,
-            texture,
-            view: view.clone(),
-        };
-        self.dynamic_textures.insert(id.clone(), entry);
-        Ok((view_id, view))
     }
 
     /// Resolve or lazily decode+upload a standalone PNG texture asset (`id`), using `read_png`
@@ -305,7 +250,7 @@ impl ModUniformBuffers {
     }
 }
 
-fn create_rgba_texture(
+pub(crate) fn create_rgba_texture(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     label: &str,
@@ -392,7 +337,7 @@ impl super::Renderer {
             .release(owner, buffer)
     }
 
-    /// Retire all retained uniform buffers and cached standalone/dynamic textures (called on world
+    /// Retire all retained uniform buffers and cached standalone textures (called on world
     /// close and resource reload).
     pub fn clear_mod_uniforms(&self) {
         self.mod_uniforms
@@ -409,14 +354,6 @@ impl super::Renderer {
             .retire_disabled(disabled);
     }
 
-    /// Drop any cached GPU copy of a freed dynamic texture.
-    pub fn remove_mod_dynamic_texture(&self, id: &Identifier) {
-        self.mod_uniforms
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .remove_dynamic_texture(id);
-    }
-
     /// Resolve a retained [`UniformBufferRef`] for a draw call.
     pub fn resolve_mod_uniform_buffer(
         &self,
@@ -428,20 +365,6 @@ impl super::Renderer {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .resolve(owner, handle, min_size)
-    }
-
-    /// Resolve or lazily upload a standalone GPU texture for a live dynamic texture.
-    pub fn resolve_mod_dynamic_texture(
-        &self,
-        id: &Identifier,
-        size: [u32; 2],
-        rgba: &[u8],
-        pixel_revision: u64,
-    ) -> Result<(u64, wgpu::TextureView), PipelineDrawError> {
-        self.mod_uniforms
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .resolve_dynamic_texture(&self.device, &self.queue, id, size, rgba, pixel_revision)
     }
 
     /// Resolve or lazily decode+upload a standalone PNG texture asset.

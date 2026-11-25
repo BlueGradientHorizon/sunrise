@@ -3833,7 +3833,7 @@ mod tests {
         uv[3][0] = f32::INFINITY;
         assert!(!d.textured_quad(CORNERS, uv, SOLID, 7, 0xFFFFFF));
         assert!(d.vertices.is_empty());
-        d.normal_pose = Some(Mat4::IDENTITY);
+        d.normal_pose = Some(ModelNormals::from_rotation(Mat4::IDENTITY));
         assert!(!d.textured_quad(CORNERS, UNIT_UV, SOLID, 7, 0xFFFFFF));
         assert!(d.vertices.is_empty());
     }
@@ -3851,6 +3851,47 @@ mod tests {
             assert_eq!(v.light, FULL_BRIGHT);
             assert_eq!(v.normal, [0; 4]);
         }
+    }
+
+    /// `textured_quad` draws nothing for a render type whose texture is not a live dynamic
+    /// texture, and for a handle that is not one of the three texture-taking constructors'
+    /// (`entity_solid`, `entity_cutout`, `entity_translucent`), here `minecraft:eyes`'.
+    #[test]
+    #[ignore = "daily"]
+    fn a_textured_quad_of_a_texture_that_is_not_live_or_a_plain_render_type_draws_nothing() {
+        use sunrise_client_render::mod_pipelines::{BuiltinRenderType, Pipelines};
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
+            let mut render = sunrise_client_render::assets::RenderAssets::unpublished();
+            render.mod_pipelines = Pipelines::load(
+                &sunrise_assets::resource_source::ResourceSource::directory(
+                    "/nonexistent/sunrise-test-assets".into(),
+                ),
+                7,
+            )
+            .unwrap();
+            game.pack.render = std::sync::Arc::new(render);
+            let texture = mod_api::Identifier::parse("example:dynamic/none").unwrap();
+            let mut d = draw();
+            for kind in [
+                BuiltinRenderType::EntitySolid,
+                BuiltinRenderType::EntityCutout,
+                BuiltinRenderType::EntityTranslucent,
+            ] {
+                let made = game
+                    .pack
+                    .render
+                    .textured_render_type(kind, &texture)
+                    .unwrap();
+                assert!(!game.native_draw_textured_quad(&mut d, made, CORNERS, UNIT_UV, 0xFFFFFF));
+            }
+            let eyes = game
+                .pack
+                .render
+                .render_type(&mod_api::Identifier::parse("minecraft:eyes").unwrap())
+                .unwrap();
+            assert!(!game.native_draw_textured_quad(&mut d, eyes, CORNERS, UNIT_UV, 0xFFFFFF));
+            assert!(d.vertices.is_empty());
+        });
     }
 
     /// A quad (what `cube` and `model_part` emit) drawn after `unlit(true)` has no shading

@@ -26,6 +26,10 @@ ids = [
     "handle:PipelineModifier::depth_compare",
     "handle:PipelineModifier::depth_bias",
     "handle:PipelineModifier::topology",
+    "method:WorldDrawContext::pipeline_quads",
+    "method:PrepareRenderBuffersContext::pipeline_quads",
+    "hook:register_render_pipelines",
+    "hook:register_pipeline_modifiers",
 ]
 why = "Complete vanilla/NeoForge 26.3 PipelineState on RenderPipeline and PipelineModifier: DepthState with DepthCompare and depth bias (Option<DepthState> for depthless passes), PipelineBlend::Custom(BlendFunction) with vanilla's BlendFunction presets, multi-target ColorTargetState up to MAX_COLOR_TARGETS = 8, and vanilla PrimitiveTopology (Lines, DebugLines, DebugLineStrip, Points, Triangles, TriangleStrip, TriangleFan, Quads) with PipelineDrawError::TopologyMismatch. Custom blends using a Constant* factor are refused at registration."
 migrate = "Read depth state from PipelineState.depth_stencil (Option<DepthState> with .compare, .write, .depth_bias_constant, .depth_bias_slope_scale) instead of PipelineState.depth / .depth_write, and from PipelineModifier.depth_compare instead of PipelineModifier.depth. Builder methods .depth(WorldDepth) and .depth_write(bool) remain on both RenderPipeline and PipelineModifier, alongside .depth_compare, .depth_bias, .depth_stencil, .color_target, and .topology."

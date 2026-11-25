@@ -1344,6 +1344,9 @@ impl Pipelines {
         custom: &[RenderSetup],
         id: &Identifier,
     ) -> Result<RenderTypeRef, RenderTypeError> {
+        if self.generation == 0 {
+            return Err(RenderTypeError::Unknown);
+        }
         if let Some(slot) = builtin_render_type_slot(id) {
             return Ok(mod_api::__private::built::render_type_ref(
                 self.generation,
@@ -2037,7 +2040,7 @@ void main() {
             Ok((BuiltinRenderType::EntitySolid, b))
         );
         assert_eq!(
-            set.textured_render_type_in(0, BuiltinRenderType::Lines, &a),
+            set.textured_render_type_in(0, BuiltinRenderType::Lightning, &a),
             Err(RenderTypeError::Invalid)
         );
         // A plain built-in handle names no texture, and a handle of another load is stale.
