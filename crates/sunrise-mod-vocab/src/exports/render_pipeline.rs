@@ -14,6 +14,11 @@ pub use client::render_pipeline::{
     MeshIndexInit, MeshRef, OutlineProperty, PackBinding, PackDepthTarget, PackGlslInput,
 };
 pub use client::render_pipeline::{
+    OffscreenPass, RenderTargetBackendRef, RenderTargetContext, RenderTargetDepth,
+    RenderTargetDescriptor, RenderTargetError, RenderTargetFormat, RenderTargetMipView,
+    RenderTargetRef,
+};
+pub use client::render_pipeline::{
     PackOverrideState, PackPassSlot, PackUniformDecl, PackUniformType, PackUniformValue,
     PipelineBlend, PipelineDrawError, PipelineGeometryClass, PipelineModifier, PipelineModifierRef,
     PipelineQuad, PipelineState,
@@ -24,10 +29,6 @@ pub use client::render_pipeline::{
     RenderTypeRef, RenderTypeTexture,
 };
 pub use client::render_pipeline::{RenderCapabilities, StorageImageAccess, StorageImageBinding};
-pub use client::render_pipeline::{
-    RenderTargetBackendRef, RenderTargetContext, RenderTargetDepth, RenderTargetDescriptor,
-    RenderTargetError, RenderTargetFormat, RenderTargetMipView, RenderTargetRef,
-};
 pub use client::render_pipeline::{
     RenderTypeTextureSource, SamplerAddress, SamplerFilter, TexelBufferFormat, TextureSource,
     TextureTransform, UniformBufferBackendRef, UniformBufferContext, UniformBufferRef,

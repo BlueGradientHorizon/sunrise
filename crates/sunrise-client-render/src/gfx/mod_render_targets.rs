@@ -2,8 +2,8 @@
 //!
 //! Target dimensions are bounded strictly by `device.limits().max_texture_dimension_2d` and
 //! colour attachment counts by [`mod_api::MAX_COLOR_TARGETS`] (zero uncited per-mod cap).
-//! Targets retain their contents across frames until reallocated by
-//! [`mod_api::RenderTargetRef::resize`]. Calling `resize` with the current dimensions is a no-op
+//! Targets retain their contents across frames until cleared by an
+//! [`mod_api::OffscreenPass`] or reallocated by [`mod_api::RenderTargetRef::resize`]. Calling `resize` with the current dimensions is a no-op
 //! that preserves existing pixels.
 //!
 //! Colour attachments can carry a mip chain (`mip_levels`, vanilla's `GpuTexture.getMipLevels`)
@@ -15,9 +15,9 @@
 
 use mod_api::__private::game::Fields;
 use mod_api::{
-    PipelineDrawError, RenderCapabilities, RenderTargetDepth, RenderTargetDescriptor,
-    RenderTargetError, RenderTargetFormat, RenderTargetRef, StorageImageAccess,
-    StorageImageBinding,
+    OffscreenPass, PipelineDrawError, RenderCapabilities, RenderTargetDepth,
+    RenderTargetDescriptor, RenderTargetError, RenderTargetFormat, RenderTargetRef,
+    StorageImageAccess, StorageImageBinding,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -107,6 +107,18 @@ pub fn wgpu_depth_format(depth: RenderTargetDepth) -> Option<wgpu::TextureFormat
     }
 }
 
+/// Cloned texture views and format metadata for executing an [`OffscreenPass`] without holding
+/// the [`ModRenderTargets`] mutex across GPU pass recording.
+pub struct ResolvedOffscreenTarget {
+    pub handle: RenderTargetRef,
+    pub size: [u32; 2],
+    pub color_views: Vec<wgpu::TextureView>,
+    pub color_formats: Vec<wgpu::TextureFormat>,
+    pub depth_view: Option<wgpu::TextureView>,
+    pub depth_format: Option<wgpu::TextureFormat>,
+    pub has_stencil: bool,
+}
+
 struct ColorAttachment {
     #[allow(dead_code)]
     texture: wgpu::Texture,
@@ -124,8 +136,11 @@ struct ColorAttachment {
 struct DepthAttachment {
     #[allow(dead_code)]
     texture: wgpu::Texture,
+    attachment_view: wgpu::TextureView,
     sample_view: wgpu::TextureView,
     view_id: u64,
+    format: wgpu::TextureFormat,
+    has_stencil: bool,
 }
 
 struct ModRenderTarget {
@@ -231,6 +246,7 @@ impl ModRenderTargets {
         }
 
         let depth = wgpu_depth_format(depth_format).map(|format| {
+            let has_stencil = matches!(format, wgpu::TextureFormat::Depth24PlusStencil8);
             let texture = device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("Mod render target depth"),
                 size: extent,
@@ -243,6 +259,7 @@ impl ModRenderTargets {
                     | wgpu::TextureUsages::COPY_SRC,
                 view_formats: &[],
             });
+            let attachment_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
             let sample_view = texture.create_view(&wgpu::TextureViewDescriptor {
                 aspect: wgpu::TextureAspect::DepthOnly,
                 ..Default::default()
@@ -250,8 +267,11 @@ impl ModRenderTargets {
             let view_id = self.alloc_view_id();
             DepthAttachment {
                 texture,
+                attachment_view,
                 sample_view,
                 view_id,
+                format,
+                has_stencil,
             }
         });
         let validation = pollster::block_on(validation.pop());
@@ -542,6 +562,37 @@ impl ModRenderTargets {
         Ok((depth.view_id, depth.sample_view.clone()))
     }
 
+    /// Snapshot the views of mip level `mip_level` and format metadata for executing an
+    /// [`OffscreenPass`]; `size` is that level's size
+    /// (`GpuTextureView.getWidth(mipLevel)`, `getHeight(mipLevel)`).
+    pub fn resolve_target(
+        &self,
+        owner: Option<&'static str>,
+        handle: RenderTargetRef,
+        mip_level: u32,
+    ) -> Result<ResolvedOffscreenTarget, RenderTargetError> {
+        let entry = self.get_owned(owner, handle)?;
+        if mip_level >= entry.mip_levels {
+            return Err(RenderTargetError::InvalidMipLevels);
+        }
+        Ok(ResolvedOffscreenTarget {
+            handle,
+            size: [
+                (entry.size[0] >> mip_level).max(1),
+                (entry.size[1] >> mip_level).max(1),
+            ],
+            color_views: entry
+                .colors
+                .iter()
+                .map(|c| c.mips[mip_level as usize].1.clone())
+                .collect(),
+            color_formats: entry.colors.iter().map(|c| c.format).collect(),
+            depth_view: entry.depth.as_ref().map(|d| d.attachment_view.clone()),
+            depth_format: entry.depth.as_ref().map(|d| d.format),
+            has_stencil: entry.depth.as_ref().is_some_and(|d| d.has_stencil),
+        })
+    }
+
     /// Access the underlying colour texture of `handle` (used by GPU readback tests).
     #[cfg(test)]
     pub(crate) fn color_texture(
@@ -601,6 +652,10 @@ impl super::Renderer {
                 .features()
                 .contains(wgpu::Features::FLOAT32_FILTERABLE),
             read_write_storage,
+            self.device.features().contains(wgpu::Features::SUBGROUP),
+            self.device
+                .features()
+                .contains(wgpu::Features::INDIRECT_FIRST_INSTANCE),
         )
     }
 
@@ -686,6 +741,37 @@ impl super::Renderer {
             .retire_unloaded(unloaded);
     }
 
+    /// Maximum 2D texture dimension supported by this renderer's GPU device.
+    pub fn max_texture_dimension_2d(&self) -> u32 {
+        self.device.limits().max_texture_dimension_2d
+    }
+
+    /// Maximum workgroup count of one compute dispatch dimension on this renderer's GPU device.
+    pub fn max_compute_workgroups_per_dimension(&self) -> u32 {
+        self.device.limits().max_compute_workgroups_per_dimension
+    }
+
+    /// Whether this renderer's GPU device supports linear filtering on `R32Float` textures.
+    pub fn float32_filterable(&self) -> bool {
+        self.device
+            .features()
+            .contains(wgpu::Features::FLOAT32_FILTERABLE)
+    }
+
+    /// Record a distinct frame-graph cycle warning once per reload/world session.
+    pub fn warn_frame_graph_cycle_once(&self, passes: &[String]) {
+        let mut warned = self
+            .warned_frame_graph_cycles
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if warned.insert(passes.to_vec()) {
+            log::warn!(
+                "Sunrise: frame graph cycle detected between {}",
+                passes.join(", ")
+            );
+        }
+    }
+
     /// Resolve a mod render target colour attachment for set-1 sampling.
     pub fn resolve_mod_render_target_color(
         &self,
@@ -745,6 +831,86 @@ impl super::Renderer {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .resolve_depth(owner, target, filterable)
+    }
+
+    /// Snapshot attachment views for executing an [`OffscreenPass`].
+    pub fn resolve_mod_render_target(
+        &self,
+        owner: Option<&'static str>,
+        target: RenderTargetRef,
+        mip_level: u32,
+    ) -> Result<ResolvedOffscreenTarget, RenderTargetError> {
+        self.mod_render_targets
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .resolve_target(owner, target, mip_level)
+    }
+
+    /// Record an offscreen pass into an active `CommandEncoder` (shared seam for
+    /// `frame_graph_setup` and picture-in-picture GUI renderers).
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_mod_offscreen_pass(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        owner: Option<&'static str>,
+        pass: &OffscreenPass,
+        draws: &[super::mod_pipelines::PipelineDraw],
+        transient_vertices: &[u8],
+        transient_indices: &[u8],
+        inline_uniforms: &[u8],
+        texel_data: &[u8],
+    ) -> Result<(), RenderTargetError> {
+        let target = self.resolve_mod_render_target(owner, pass.target, pass.mip_level)?;
+        let Some(primitives) = self.world_primitives.as_mut() else {
+            return Err(RenderTargetError::Unavailable);
+        };
+        primitives.execute_offscreen_pass(
+            &self.device,
+            &self.queue,
+            encoder,
+            &super::mod_pipelines::OffscreenPassData {
+                pass,
+                target: &target,
+                draws,
+                transient_vertices,
+                transient_indices,
+                inline_uniforms,
+                texel_data,
+            },
+        );
+        Ok(())
+    }
+
+    /// Execute and submit a standalone offscreen pass onto a mod-owned [`RenderTargetRef`]
+    /// (for picture-in-picture GUI renderers running outside the world frame encoder).
+    #[allow(clippy::too_many_arguments)]
+    pub fn execute_mod_offscreen_pass(
+        &mut self,
+        owner: Option<&'static str>,
+        pass: &OffscreenPass,
+        draws: &[super::mod_pipelines::PipelineDraw],
+        transient_vertices: &[u8],
+        transient_indices: &[u8],
+        inline_uniforms: &[u8],
+        texel_data: &[u8],
+    ) -> Result<(), RenderTargetError> {
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Mod offscreen render pass"),
+            });
+        self.record_mod_offscreen_pass(
+            &mut encoder,
+            owner,
+            pass,
+            draws,
+            transient_vertices,
+            transient_indices,
+            inline_uniforms,
+            texel_data,
+        )?;
+        self.queue.submit([encoder.finish()]);
+        Ok(())
     }
 
     /// The textures of render target attachments freed since the last call.
