@@ -2133,6 +2133,49 @@ impl Behaviours {
     ) {
         self.sim(level, ticks).set_placed_by(pos, state);
     }
+    /// Record a placement operation's writes and effects against a tentative level,
+    /// deferring their update passes and effects until acceptance.
+    pub fn capture_placement_operations<L: LevelAccess + ?Sized>(
+        &self,
+        level: &mut L,
+        ticks: &mut Ticks,
+        run: impl FnOnce(&Self, &mut L, &mut Ticks),
+    ) -> Vec<super::ticks::PlacementOperation> {
+        struct Capture<'a>(&'a mut Ticks);
+        impl Drop for Capture<'_> {
+            fn drop(&mut self) {
+                self.0.placement = None;
+            }
+        }
+        let capture = Capture(ticks);
+        capture.0.placement = Some(Vec::new());
+        run(self, level, capture.0);
+        capture.0.placement.take().unwrap()
+    }
+
+    /// Publish a captured callback effect. The caller has already accepted its writes.
+    pub fn publish_placement_effect<L: LevelAccess + ?Sized>(
+        &self,
+        level: &mut L,
+        ticks: &mut Ticks,
+        effect: super::ticks::PlacementEffect,
+    ) {
+        use super::ticks::PlacementEffect;
+        let mut sim = self.sim(level, ticks);
+        match effect {
+            PlacementEffect::Neighbors(at, block, orientation) => {
+                sim.update_neighbors_at_oriented(at, block, orientation);
+            }
+            PlacementEffect::LevelEvent(event) => sim.emit(event),
+            PlacementEffect::BlockEvent(event) => {
+                sim.ticks.queue_block_event(event);
+            }
+            PlacementEffect::BlockTick(at, block, delay, priority) => {
+                sim.schedule_tick_priority(at, block, delay, priority);
+            }
+        }
+    }
+
     /// `BlockItem.place` for the item in `ctx`: resolves the replaced
     /// position, computes `getStateForPlacement`, checks survival and entity
     /// obstruction, writes the block (flags 11), runs `setPlacedBy` (second
