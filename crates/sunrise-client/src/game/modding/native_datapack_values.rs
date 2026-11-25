@@ -435,6 +435,9 @@ struct ReadOnlyLevel<'a> {
     biomes: &'a sunrise_client::biome::Biomes,
     dimension: LevelDimension,
     sea_level: i32,
+    /// Only `LevelAccess::random` asks for it. `WouldSurvivePredicate.test` calls
+    /// `BlockState.canSurvive(LevelReader, BlockPos)`, which takes no random and draws none, and
+    /// `can_survive` never reads this stream, so its seed is not observable.
     random: LegacyRandom,
 }
 
