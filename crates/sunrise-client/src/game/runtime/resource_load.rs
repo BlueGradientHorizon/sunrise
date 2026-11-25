@@ -11,6 +11,30 @@ mod scope_tests;
 #[path = "resource_load/facts_memo.rs"]
 mod facts_memo;
 
+#[cfg(test)]
+#[path = "resource_load/test_cache.rs"]
+mod test_cache;
+
+#[cfg(test)]
+pub(in crate::game) use test_cache::{acquire_fresh_child_permit, cached_structure_spawns};
+
+#[cfg(test)]
+thread_local! {
+    static SKIP_FACTS_MEMO: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+pub(self) fn with_skip_facts_memo<R>(f: impl FnOnce() -> R) -> R {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            SKIP_FACTS_MEMO.set(self.0);
+        }
+    }
+    let _restore = Restore(SKIP_FACTS_MEMO.replace(true));
+    f()
+}
+
 pub(super) const STAGE_LINES: [&str; 10] = [
     "Loading menu",
     "Loading assets",
@@ -362,8 +386,12 @@ pub(super) fn gameplay_tables(
         BlockFacts::load_with_projection(root, assets.registry, &behaviour_json, parallel)
             .map_err(|e| e.to_string())?;
     #[cfg(test)]
-    let (facts, gameplay_projection) =
-        facts_memo::load(root, assets.registry, &behaviour_json, parallel)?;
+    let (facts, gameplay_projection) = if SKIP_FACTS_MEMO.get() {
+        BlockFacts::load_with_projection(root, assets.registry, &behaviour_json, parallel)
+            .map_err(|e| e.to_string())?
+    } else {
+        facts_memo::load(root, assets.registry, &behaviour_json, parallel)?
+    };
     drop(facts_step);
     progress.set(2);
     let (light, motion) = std::thread::scope(|scope| {
@@ -584,7 +612,7 @@ pub(super) fn load_resources(
     progress: &Progress,
     publish: &mut dyn FnMut(UiResources, &std::path::Path),
 ) -> Result<Loaded> {
-    load_resources_for_mods(
+    test_cache::load(
         roots.into(),
         additional_data,
         launch_world,
@@ -592,12 +620,82 @@ pub(super) fn load_resources(
         settings,
         started,
         menu,
-        role,
+        false,
+        role.into(),
         progress,
         publish,
-        &mut || unreachable!("fixture without pack recovery"),
-        &mods::ModsState::default(),
     )
+}
+
+/// [`load_resources`] that leaves process-wide language untouched, for `isolated_server_game`.
+#[allow(clippy::too_many_arguments)]
+#[cfg(test)]
+pub(super) fn load_resources_skip_lang(
+    roots: impl Into<packs::PackRoots>,
+    additional_data: Vec<Arc<sunrise_client::datapack::DataPack>>,
+    launch_world: Option<&str>,
+    vanilla_root: &std::path::Path,
+    settings: &Settings,
+    started: Instant,
+    role: impl Into<mods::LoadRole>,
+    progress: &Progress,
+    publish: &mut dyn FnMut(UiResources, &std::path::Path),
+) -> Result<Loaded> {
+    test_cache::load(
+        roots.into(),
+        additional_data,
+        launch_world,
+        vanilla_root,
+        settings,
+        started,
+        false,
+        true,
+        role.into(),
+        progress,
+        publish,
+    )
+}
+
+/// Private, uncached [`load_resources`] for tests that mutate `Resources` or test distinct loads.
+#[allow(clippy::too_many_arguments)]
+#[cfg(test)]
+pub(super) fn load_resources_uncached(
+    roots: impl Into<packs::PackRoots>,
+    additional_data: Vec<Arc<sunrise_client::datapack::DataPack>>,
+    launch_world: Option<&str>,
+    vanilla_root: &std::path::Path,
+    settings: &Settings,
+    started: Instant,
+    menu: bool,
+    role: impl Into<mods::LoadRole>,
+    progress: &Progress,
+    publish: &mut dyn FnMut(UiResources, &std::path::Path),
+) -> Result<Loaded> {
+    let _permit = test_cache::acquire_in_process_load_permit();
+    let load_role: mods::LoadRole = role.into();
+    let mut loaded = with_skip_facts_memo(|| {
+        load_resources_for_mods(
+            roots.into(),
+            additional_data,
+            launch_world,
+            vanilla_root,
+            settings,
+            started,
+            menu,
+            load_role,
+            progress,
+            publish,
+            &mut || unreachable!("fixture without pack recovery"),
+            &mods::ModsState::default(),
+        )
+    })?;
+    if !menu && load_role.execution.is_client() {
+        if let Some(gui) = loaded.gui.as_mut() {
+            gui.atlas.pack_pixels_sync();
+        }
+        loaded.pack.render.pixels.pack_sync();
+    }
+    Ok(loaded)
 }
 
 /// The prepared resource location, optional world to preload, and launch start time.

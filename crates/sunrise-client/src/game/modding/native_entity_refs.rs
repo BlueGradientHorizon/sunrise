@@ -1409,6 +1409,7 @@ pub(in crate::game) mod tests {
         let scratch_owner = tempfile::tempdir().unwrap();
         let target = scratch_owner.path();
         let run = |case: &str| {
+            let _permit = super::super::resource_load::acquire_fresh_child_permit();
             let scratch = target.join(format!("fresh-case-{case}"));
             std::fs::create_dir(&scratch).unwrap();
             let mut command = std::process::Command::new(std::env::current_exe().unwrap());
@@ -1760,12 +1761,78 @@ pub(in crate::game) mod tests {
         );
     }
 
+    pub(in crate::game) fn with_uncached_game(test: impl FnOnce(&mut super::Game<'_>)) {
+        with_game_role_and_facts_with(
+            fixture_root(),
+            super::super::execution_role::ExecutionRole::IntegratedServer,
+            None,
+            false,
+            test,
+        );
+    }
+
+    pub(in crate::game) fn with_uncached_client_game(test: impl FnOnce(&mut super::Game<'_>)) {
+        with_game_role_and_facts_with(
+            fixture_root(),
+            super::super::execution_role::ExecutionRole::Client,
+            None,
+            false,
+            test,
+        );
+    }
+
     pub(in crate::game) fn with_game_role(
         root: std::path::PathBuf,
         role: super::super::execution_role::ExecutionRole,
         test: impl FnOnce(&mut super::Game<'_>),
     ) {
         with_game_role_and_facts(root, role, None, test);
+    }
+
+    /// Cached unique block names of `root`'s `facts.json` so `with_game` skips re-parsing 9.7 MB.
+    fn fixture_block_names(root: &std::path::Path) -> std::sync::Arc<Vec<String>> {
+        use std::path::PathBuf;
+        use std::sync::{Arc, Mutex, OnceLock};
+        use std::time::SystemTime;
+        type Stamp = Option<(u64, Option<SystemTime>)>;
+        type Slot = Arc<OnceLock<Arc<Vec<String>>>>;
+        static NAMES: Mutex<Vec<((PathBuf, Stamp), Slot)>> = Mutex::new(Vec::new());
+
+        let canon = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+        let stamp = std::fs::metadata(canon.join("facts.json"))
+            .ok()
+            .map(|m| (m.len(), m.modified().ok()));
+        let key = (canon, stamp);
+        let slot = {
+            let mut entries = NAMES.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(pos) = entries.iter().position(|(k, _)| *k == key) {
+                let entry = entries.remove(pos);
+                let slot = entry.1.clone();
+                entries.push(entry);
+                slot
+            } else {
+                if entries.len() >= 4 {
+                    entries.remove(0);
+                }
+                let slot = Arc::new(OnceLock::new());
+                entries.push((key, slot.clone()));
+                slot
+            }
+        };
+        slot.get_or_init(|| {
+            let (registry, _) = sunrise_world::level::data::load_registry_with_flags(root).unwrap();
+            let ids: std::collections::HashSet<_> = (0..registry.len())
+                .map(|i| {
+                    registry
+                        .state(sunrise_world::registry::BlockStateId(i as u32))
+                        .unwrap()
+                        .name
+                        .clone()
+                })
+                .collect();
+            Arc::new(ids.into_iter().collect())
+        })
+        .clone()
     }
 
     /// Configure the fixture's owned gameplay facts before constructing the game.
@@ -1777,22 +1844,27 @@ pub(in crate::game) mod tests {
         >,
         test: impl FnOnce(&mut super::Game<'_>),
     ) {
-        use super::super::{Audio, Game, Options, Progress, Settings, load_resources};
+        with_game_role_and_facts_with(root, role, configure, configure.is_none(), test);
+    }
+
+    fn with_game_role_and_facts_with(
+        root: std::path::PathBuf,
+        role: super::super::execution_role::ExecutionRole,
+        configure: Option<
+            fn(&sunrise_world::registry::BlockRegistry, &mut sunrise_client::blocks::BlockFacts),
+        >,
+        cached: bool,
+        test: impl FnOnce(&mut super::Game<'_>),
+    ) {
+        use super::super::{
+            Audio, Game, Options, Progress, Settings, load_resources, load_resources_uncached,
+        };
         use mod_api::Authority;
 
         // Parts registration replaces its metadata snapshot. Finish registration before
         // loading the resource graph, whose registry retains one immutable worker snapshot.
-        let (registry, _) = sunrise_world::level::data::load_registry_with_flags(&root).unwrap();
-        let ids: std::collections::HashSet<_> = (0..registry.len())
-            .map(|i| {
-                registry
-                    .state(sunrise_world::registry::BlockStateId(i as u32))
-                    .unwrap()
-                    .name
-                    .clone()
-            })
-            .collect();
-        crate::game::api_values::register_game_keys(ids);
+        let ids = fixture_block_names(&root);
+        crate::game::api_values::register_game_keys(ids.iter().cloned());
         // Parts registration also clears particle keys. Restore the load-owned
         // providers as content_root does, rather than relying on a prior test.
         super::super::mods::resolve_particle_providers(
@@ -1801,19 +1873,35 @@ pub(in crate::game) mod tests {
         .unwrap();
         let saves = tempfile::tempdir().unwrap();
         let settings = Settings::default();
-        let mut loaded = load_resources(
-            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
-            Vec::new(),
-            None,
-            &root,
-            &settings,
-            std::time::Instant::now(),
-            false,
-            role,
-            &Progress::new(),
-            &mut |_, _| unreachable!(),
-        )
-        .unwrap();
+        let mut loaded = if cached {
+            load_resources(
+                sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+                Vec::new(),
+                None,
+                &root,
+                &settings,
+                std::time::Instant::now(),
+                false,
+                role,
+                &Progress::new(),
+                &mut |_, _| unreachable!(),
+            )
+            .unwrap()
+        } else {
+            load_resources_uncached(
+                sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+                Vec::new(),
+                None,
+                &root,
+                &settings,
+                std::time::Instant::now(),
+                false,
+                role,
+                &Progress::new(),
+                &mut |_, _| unreachable!(),
+            )
+            .unwrap()
+        };
         if let Some(configure) = configure {
             configure(
                 loaded.pack.assets.registry,

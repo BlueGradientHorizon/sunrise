@@ -1,6 +1,7 @@
 #[allow(unused_imports)]
 use crate::game::{
-    Dim, Game, Progress, native_entity_refs::tests::with_client_game, packs::stage_pack,
+    Dim, Game, Progress, native_entity_refs::tests::with_uncached_client_game as with_client_game,
+    packs::stage_pack,
 };
 #[allow(unused_imports)]
 use std::sync::Arc;

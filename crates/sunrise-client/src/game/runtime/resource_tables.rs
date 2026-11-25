@@ -181,12 +181,46 @@ impl Game<'_> {
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    static DYNAMIC_TEXTURE_POOL_OVERRIDE: std::cell::Cell<Option<bool>> =
+        const { std::cell::Cell::new(None) };
+}
+
+#[cfg(test)]
+pub(super) fn with_dynamic_texture_pool_override<R>(pool: bool, f: impl FnOnce() -> R) -> R {
+    struct Restore(Option<bool>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            DYNAMIC_TEXTURE_POOL_OVERRIDE.set(self.0);
+        }
+    }
+    let _restore = Restore(DYNAMIC_TEXTURE_POOL_OVERRIDE.replace(Some(pool)));
+    f()
+}
+
 /// Whether the HUD atlas packs the pool of dynamic texture slots: whenever a client mod is
 /// loaded, since any of them can call `ClientHost::create_dynamic_texture`, with
 /// no mixin and no opt-in (#4437). A game with no mod packs no slot and its atlas does not grow.
 /// Read where the atlas is built: at the first load and on a resource reload.
 pub(in crate::game) fn dynamic_texture_pool() -> bool {
+    #[cfg(test)]
+    if let Some(pool) = DYNAMIC_TEXTURE_POOL_OVERRIDE.get() {
+        return pool;
+    }
     !mod_api::__private::mods().is_empty()
+}
+
+#[cfg(test)]
+impl UiResources {
+    pub(in crate::game) fn clone_for_tests(&self) -> Self {
+        Self {
+            atlas: self.atlas.clone_for_tests(),
+            panorama: self.panorama.clone(),
+            splashes: self.splashes.clone(),
+            plain_texts: PlainTexts::default(),
+        }
+    }
 }
 
 impl UiResources {

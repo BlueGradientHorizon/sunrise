@@ -201,9 +201,105 @@ pub(in crate::game) fn resolve_block_definitions(
     if mod_api::__private::block_definitions().is_some() {
         return bind_worker_blocks(registry);
     }
-    let mut blocks = std::collections::BTreeMap::<_, Vec<_>>::new();
-    // The map is sorted for lookup, but keys publish in registry order: the
-    // first state that names a block is that block's registration position.
+    resolve_block_keys_from_registry(registry)?;
+    bind_worker_blocks(registry)
+}
+
+#[cfg(test)]
+pub(in crate::game) fn resolve_cached_block_definitions(
+    cached_registry: &'static sunrise_world::registry::BlockRegistry,
+) -> Result<&'static sunrise_world::registry::BlockRegistry, String> {
+    if !mod_api::__private::parts_installation::parts_installed() {
+        mod_platform::__private::part_tests::install_parts_fixture(&[])
+            .map_err(|errors| errors.join("\n"))?;
+    }
+    let _tick = TickThread::mint();
+    block_state::clear();
+    if mod_api::__private::block_definitions().is_none() {
+        resolve_block_keys_from_registry(cached_registry)?;
+    }
+    let metadata = mod_api::__private::block_definitions()
+        .ok_or_else(|| "worker block metadata is unavailable".to_owned())?;
+    if let Ok(worker) = super::native_worldgen::WorkerResources::get(cached_registry)
+        && std::ptr::eq(worker.metadata, metadata)
+    {
+        block_state::install(worker.index.clone());
+        return Ok(cached_registry);
+    }
+    // Caller requested custom block keys; fork a tiny wrapper sharing `Arc<Data>`.
+    let forked = cached_registry.fork_wrapper();
+    bind_worker_blocks(forked)?;
+    Ok(forked)
+}
+
+fn resolve_block_keys_from_registry(
+    registry: &sunrise_world::registry::BlockRegistry,
+) -> Result<(), String> {
+    #[cfg(test)]
+    {
+        type Grouped = (
+            Vec<String>,
+            std::collections::HashMap<
+                String,
+                (Vec<std::collections::BTreeMap<String, String>>, u16),
+            >,
+        );
+        static GROUPED: std::sync::Mutex<Vec<(usize, std::sync::Arc<Grouped>)>> =
+            std::sync::Mutex::new(Vec::new());
+        let key = registry.payload_identity();
+        let grouped = {
+            let cache = GROUPED.lock().unwrap_or_else(|e| e.into_inner());
+            cache
+                .iter()
+                .find(|(k, _)| *k == key)
+                .map(|(_, g)| g.clone())
+        };
+        let grouped = grouped.unwrap_or_else(|| {
+            let built = std::sync::Arc::new(group_block_states(registry));
+            let mut cache = GROUPED.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some((_, existing)) = cache.iter().find(|(k, _)| *k == key) {
+                return existing.clone();
+            }
+            if cache.len() >= 4 {
+                cache.remove(0);
+            }
+            cache.push((key, built.clone()));
+            built
+        });
+        return mod_api::__private::resolve_block_keys(
+            grouped.0.iter().map(String::as_str),
+            |name| {
+                let (states, ordinal) = &grouped.1[name];
+                let refs: Vec<_> = states.iter().collect();
+                sunrise_mod_runtime::block_definitions::BlockDefinition::new(&refs, *ordinal)
+                    .map_err(|error| format!("block {name}: {error:?}"))
+            },
+        )
+        .map_err(|errors| errors.join("\n"));
+    }
+    #[cfg(not(test))]
+    {
+        let (ordered, blocks) = group_block_states(registry);
+        mod_api::__private::resolve_block_keys(ordered.iter().map(String::as_str), |name| {
+            let (states, ordinal) = &blocks[name];
+            let refs: Vec<_> = states.iter().collect();
+            sunrise_mod_runtime::block_definitions::BlockDefinition::new(&refs, *ordinal)
+                .map_err(|error| format!("block {name}: {error:?}"))
+        })
+        .map_err(|errors| errors.join("\n"))
+    }
+}
+
+fn group_block_states(
+    registry: &sunrise_world::registry::BlockRegistry,
+) -> (
+    Vec<String>,
+    std::collections::HashMap<String, (Vec<std::collections::BTreeMap<String, String>>, u16)>,
+) {
+    let mut blocks = std::collections::HashMap::<
+        String,
+        Vec<(usize, std::collections::BTreeMap<String, String>)>,
+    >::new();
     let mut ordered = Vec::new();
     let mut seen = std::collections::HashSet::new();
     for index in 0..registry.len() {
@@ -211,37 +307,33 @@ pub(in crate::game) fn resolve_block_definitions(
             .state(sunrise_world::registry::BlockStateId(index as u32))
             .expect("registry index is in bounds");
         if seen.insert(state.name.as_str()) {
-            ordered.push(state.name.as_str());
+            ordered.push(state.name.clone());
         }
-        blocks
-            .entry(state.name.as_str())
-            .or_default()
-            .push((index, &state.properties));
-    }
-    mod_api::__private::resolve_block_keys(ordered, |name| {
-        let states = &blocks[name];
-        let default = registry
-            .default_state(name)
-            .expect("registry owns block defaults");
-        let ordinal = states
+        let props = state
+            .properties
             .iter()
-            .position(|(index, _)| *index == default.0 as usize)
-            .expect("default belongs to block");
-        let states: Vec<std::collections::BTreeMap<_, _>> = states
-            .iter()
-            .map(|(_, properties)| {
-                properties
-                    .iter()
-                    .map(|(name, value)| (name.clone(), value.clone()))
-                    .collect()
-            })
+            .map(|(name, value)| (name.clone(), value.clone()))
             .collect();
-        let states: Vec<_> = states.iter().collect();
-        sunrise_mod_runtime::block_definitions::BlockDefinition::new(&states, ordinal as u16)
-            .map_err(|error| format!("block {name}: {error:?}"))
-    })
-    .map_err(|errors| errors.join("\n"))?;
-    bind_worker_blocks(registry)
+        blocks
+            .entry(state.name.clone())
+            .or_default()
+            .push((index, props));
+    }
+    let grouped = blocks
+        .into_iter()
+        .map(|(name, states)| {
+            let default = registry
+                .default_state(&name)
+                .expect("registry owns block defaults");
+            let ordinal = states
+                .iter()
+                .position(|(index, _)| *index == default.0 as usize)
+                .expect("default belongs to block") as u16;
+            let maps = states.into_iter().map(|(_, props)| props).collect();
+            (name, (maps, ordinal))
+        })
+        .collect();
+    (ordered, grouped)
 }
 
 fn bind_worker_blocks(registry: &sunrise_world::registry::BlockRegistry) -> Result<(), String> {

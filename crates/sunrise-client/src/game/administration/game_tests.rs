@@ -1708,19 +1708,34 @@ pub(in crate::game) mod tests {
         );
         let settings = Settings::default();
         let mut gui = None;
-        let mut loaded = load_resources(
-            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
-            Vec::new(),
-            None,
-            &root,
-            &settings,
-            std::time::Instant::now(),
-            menu,
-            execution_role::ExecutionRole::IntegratedServer,
-            &Progress::new(),
-            &mut |ui, _| gui = Some(ui),
-        )
-        .unwrap();
+        let mut loaded = if menu {
+            load_resources_skip_lang(
+                sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+                Vec::new(),
+                None,
+                &root,
+                &settings,
+                std::time::Instant::now(),
+                execution_role::ExecutionRole::IntegratedServer,
+                &Progress::new(),
+                &mut |ui, _| gui = Some(ui),
+            )
+            .unwrap()
+        } else {
+            load_resources(
+                sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+                Vec::new(),
+                None,
+                &root,
+                &settings,
+                std::time::Instant::now(),
+                false,
+                execution_role::ExecutionRole::IntegratedServer,
+                &Progress::new(),
+                &mut |ui, _| gui = Some(ui),
+            )
+            .unwrap()
+        };
         if let Some(rest) = loaded.rest_loader.take() {
             rest.finish().unwrap();
         }

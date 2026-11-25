@@ -151,7 +151,7 @@ pub(in crate::game) mod tests {
                 .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
         );
         let settings = Settings::default();
-        let mut loaded = load_resources(
+        let mut loaded = load_resources_uncached(
             ResourceRoot::directory(root.clone()),
             Vec::new(),
             None,

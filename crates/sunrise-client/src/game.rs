@@ -15,13 +15,13 @@ use loading_screen::{
 #[allow(unused_imports)]
 use motion_ids::{motion_at, motion_block_entity};
 #[allow(unused_imports)]
-#[cfg(test)]
-use resource_load::load_resources;
-#[allow(unused_imports)]
 use resource_load::{
     Progress, StartupLoadContext, launch_world, load_resources_for_mods, load_resources_sync,
     named_scope, synchronous_startup,
 };
+#[allow(unused_imports)]
+#[cfg(test)]
+use resource_load::{load_resources, load_resources_skip_lang, load_resources_uncached};
 /// The content tables the world plays with, as field-level borrows: the
 /// world's data packs' over the game's own. The `Game::items`/`recipes`/
 /// `stations` methods read the same tables, but taking `&self` blocks a
@@ -6584,8 +6584,11 @@ impl<'a> Game<'a> {
             .options
             .spikes
             .unwrap_or(sunrise_client::client_perf::SLOW_FRAME_MS);
+        #[cfg(not(test))]
         let structure_spawns =
             sunrise_client::mobs::spawn_selection::StructureSpawns::load(&prep.options.resources);
+        #[cfg(test)]
+        let structure_spawns = resource_load::cached_structure_spawns(&prep.options.resources);
         let fog = sunrise_client::fog::FogState::default();
         let clock = FixedStep::default();
         let vanilla_mappings = sunrise_client::keymapping::VanillaMappings::default();

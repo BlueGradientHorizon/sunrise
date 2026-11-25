@@ -65,7 +65,9 @@ fn root_with_asset(name: &str, bytes: &[u8]) -> PathBuf {
 #[test]
 #[ignore = "daily"]
 fn panicking_client_reload_registration_discards_its_listener_and_edges() {
-    use crate::game::{Progress, native_entity_refs::tests::with_client_game, packs::stage_pack};
+    use crate::game::{
+        Progress, native_entity_refs::tests::with_uncached_client_game, packs::stage_pack,
+    };
     use mod_api::{AddClientReloadListenersEvent, Hooks, ModEntry, VanillaClientListeners};
     use std::sync::{
         Mutex,
@@ -150,7 +152,7 @@ fn panicking_client_reload_registration_discards_its_listener_and_edges() {
         }
     }
 
-    with_client_game(|game| {
+    with_uncached_client_game(|game| {
         let staged_failure = Arc::new(AtomicBool::new(false));
         let trace = Arc::new(Mutex::new(Vec::new()));
         let mods = vec![
@@ -1156,11 +1158,13 @@ fn resolved_ui_resources_do_not_restore_a_filtered_panorama_face() {
 #[test]
 #[ignore = "daily"]
 fn refused_client_context_keeps_pack_and_listeners() {
-    use crate::game::{Progress, native_entity_refs::tests::with_client_game, packs::stage_pack};
+    use crate::game::{
+        Progress, native_entity_refs::tests::with_uncached_client_game, packs::stage_pack,
+    };
     use mod_api::__private::reload::PreparedStep;
     use std::sync::atomic::{AtomicBool, Ordering};
 
-    with_client_game(|game| {
+    with_uncached_client_game(|game| {
         let mut staged = stage_pack(
             &game.vanilla_root(),
             &[],
