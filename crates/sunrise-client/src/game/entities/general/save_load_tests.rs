@@ -65,7 +65,16 @@ fn with_types_and(observer: Option<mod_api::ModEntry>, test: impl FnOnce(&mut Ga
     let _phase = mod_platform::__private::RegistrationGuard::open();
     let mut mods = vec![mod_api::ModEntry::new("mymod", Box::new(Declare))];
     mods.extend(observer);
-    mod_platform::testing::with_mods(mods.into(), || with_game(test));
+    mod_platform::testing::with_mods(mods.into(), || {
+        with_game(|game| resident_origin(game, test))
+    });
+}
+
+/// Run `test` with chunk (0, 0) loaded: a handle resolves only for an entity in an
+/// accessible section (`LevelEntityGetter`), and these fixtures' entities stand in it.
+fn resident_origin(game: &mut Game<'_>, test: impl FnOnce(&mut Game<'_>)) {
+    fixture_resident_column(&mut game.world, (0, 0));
+    test(game);
 }
 
 /// One record's save tag, the format `to_tag` writes.
@@ -552,6 +561,9 @@ fn mixed_passengers_sit_and_unload_with_their_actual_root() {
         // The leaf's and the intermediate mob's chunks do not own the tree.
         game.mob_object_mut(pig).unwrap().position.x = 18.5;
         game.resident_entities.general.rows[1].position.x = 33.5;
+        // Loaded, so the moved riders stay resolvable while their own chunks are asked.
+        fixture_resident_column(&mut game.world, (1, 0));
+        fixture_resident_column(&mut game.world, (2, 0));
         let own = game.entity_chunks(&HashSet::from([(1, 0), (2, 0)]), true);
         assert!(own.iter().all(|(_, tags)| tags.is_empty()));
         assert!(game.entity(pig).is_some() && game.entity(leaf).is_some());
@@ -1098,7 +1110,7 @@ fn with_types_and_guests(test: impl FnOnce(&mut Game<'_>)) {
     let _phase = mod_platform::__private::RegistrationGuard::open();
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("mymod", Box::new(Declare))].into();
     mod_platform::testing::with_mods(mods, || {
-        crate::game::native_guest_turn_tests::with_guests(test)
+        crate::game::native_guest_turn_tests::with_guests(|game| resident_origin(game, test))
     });
 }
 

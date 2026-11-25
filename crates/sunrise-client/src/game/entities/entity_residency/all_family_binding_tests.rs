@@ -1,4 +1,4 @@
-use super::super::native_entity_refs::tests::with_game;
+use super::super::native_entity_refs::tests::{fixture_resident_column, with_game};
 use super::{Game, SlotAccess};
 use mod_api::DimensionKey;
 use std::{
@@ -26,6 +26,9 @@ static VALUE: AttachmentType<i32> = AttachmentType {
 #[ignore = "daily"]
 fn every_ordinary_resident_family_binds_its_actual_owned_slot() {
     with_game(|game| {
+        // A handle resolves only for an entity in an accessible section
+        // (`LevelEntityGetter`); every entity here stands in chunk (0, 0).
+        fixture_resident_column(&mut game.world, (0, 0));
         let index = Arc::new(Mutex::new(AttachmentIndex::default()));
         let key = ("test".into(), "all_resident_families".into());
         let mut maps = Vec::new();
