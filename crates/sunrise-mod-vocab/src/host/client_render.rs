@@ -14,6 +14,19 @@ pub trait ClientRenderClientHost {
     /// resolved from its resource packs.
     fn item_uses_block_light(&self, stack: &ItemStack, context: ItemDisplayContext) -> bool;
     /// Side: client.
+    /// Resolve `stack`'s item model once for `display` and `seed`
+    /// (`ItemModelResolver.updateForTopItem`, no owner), returning a retained [`PreparedItemRef`]
+    /// for [`BlockEntityDrawContext::prepared_item`]. Returns [`ModelError::UnknownModel`] for
+    /// an empty stack, an unknown/invalid stack, or a model that draws nothing. The handle goes
+    /// stale on a successful resource reload, world close, owner mod disable, or
+    /// [`PreparedItemRef::destroy`].
+    fn prepare_item(
+        &self,
+        stack: &ItemStack,
+        display: ItemDisplayContext,
+        seed: i32,
+    ) -> Result<PreparedItemRef, ModelError>;
+    /// Side: client.
     /// Asks `block_render_visibility` again for every state and, when the answers differ
     /// from those in use, remeshes every loaded section with them. While a mod listens to
     /// `section_visibility`, rebuilds meshes in the player's current level and asks about them
@@ -202,4 +215,7 @@ pub trait ClientRenderClientBackend {
     /// Retire retained model copies; called through [`InstanceGroupRef::destroy`].
     #[manual_handle]
     fn instance_group_destroy(&self, group: InstanceGroupRef) -> Result<(), GroupError>;
+    /// Retire a prepared item render state; called through [`PreparedItemRef::destroy`].
+    #[manual_handle]
+    fn prepared_item_destroy(&self, item: PreparedItemRef) -> Result<(), ModelError>;
 }

@@ -1,5 +1,8 @@
 //! The GLSL preprocessor a program's stage file goes through before translation (spec 1.4,
 //! 1.5, 1.6): comments removed, `#include` expanded, conditionals evaluated, macros expanded.
+//! The macros and the `#if` arithmetic are `sunrise-glsl`'s ([`sunrise_glsl::macros`],
+//! [`sunrise_glsl::condition`]); the pack's files, its includes and how Iris treats a bad
+//! directive are this module's.
 //! Every output line remembers the pack file and line it came from, so errors found later point
 //! at the pack's own code.
 //!
@@ -12,12 +15,10 @@ use std::collections::HashMap;
 
 use crate::Macros;
 use crate::Pack;
-use crate::condition::{Conditionals, split_directive};
+use crate::condition::{self, Conditionals, split_directive};
 use crate::pack::normalize;
 
 const MAX_DEPTH: usize = 10;
-/// How many lines one macro call may span.
-const MAX_CALL_LINES: usize = 64;
 
 /// Where a line came from: an index into [`Preprocessed::files`] and a line number from 1.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -123,15 +124,7 @@ impl Run<'_> {
             n += 1;
             // A macro call's arguments may span lines: they join the line the call starts on.
             if !line.trim_start().starts_with('#') && self.conditionals.active() {
-                while n < lines.len()
-                    && n - first < MAX_CALL_LINES
-                    && !lines[n].trim_start().starts_with('#')
-                    && self.macros.unfinished_call(&line, &lines[n..])
-                {
-                    line.push(' ');
-                    line.push_str(lines[n]);
-                    n += 1;
-                }
+                n += self.macros.join_call(&mut line, &lines[n..], n - first - 1);
             }
             let origin = Origin {
                 file,
@@ -169,7 +162,7 @@ impl Run<'_> {
         let Some((word, rest)) = split_directive(after) else {
             return self.diagnose(origin, &format!("unknown directive `#{}`", after.trim()));
         };
-        match self.conditionals.apply(word, rest, &self.macros) {
+        match condition::apply(&mut self.conditionals, word, rest, &self.macros) {
             // As Iris loads such a pack: the branch is skipped, the program kept.
             Err(e) if e.ends_with("read as false") => {
                 return self.out.warnings.push(Diagnostic { origin, message: e });

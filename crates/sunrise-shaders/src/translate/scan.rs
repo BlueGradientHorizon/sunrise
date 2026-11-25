@@ -1300,9 +1300,28 @@ impl<'p> Stage<'p> {
 
     /// `layout(std430, binding = n) buffer Name {`: an SSBO, in set 4 at its binding. Its
     /// access qualifiers go, so that every stage binds it alike (read and write).
+    ///
+    /// A `set` in its layout is refused with an error naming the block: packs are GLSL written
+    /// for OpenGL (spec rev 1, line 810), and GLSL 4.60.8, 4.4.5 makes `set` a compile-time
+    /// error when not targeting an API that supports descriptor sets (asked in
+    /// `docs/cleanroom/questions/Q-002.md`).
     fn buffer_block(&mut self, words: &[usize]) {
         let mut binding = None;
+        // The depth of the parentheses of a `layout(..)` group the word is in, 0 outside one.
+        let mut layout = 0usize;
+        let mut set = None;
         for (k, &i) in words.iter().enumerate() {
+            match self.tokens[i] {
+                "(" if layout > 0
+                    || k.checked_sub(1)
+                        .is_some_and(|p| self.tokens[words[p]] == "layout") =>
+                {
+                    layout += 1
+                }
+                ")" if layout > 0 => layout -= 1,
+                "set" if layout > 0 => _ = set.get_or_insert(i),
+                _ => {}
+            }
             match self.tokens[i] {
                 // An extension adds real buffer syntax even in a GLSL 1.x stage.
                 // It must not take the legacy identifier rename for `buffer`.
@@ -1320,6 +1339,17 @@ impl<'p> Stage<'p> {
                 }
                 _ => {}
             }
+        }
+        if let Some(at) = set {
+            let name = (words.iter())
+                .skip_while(|&&i| self.tokens[i] != "buffer")
+                .nth(1)
+                .map_or("", |&i| self.tokens[i]);
+            let message = format!(
+                "buffer block `{name}` names a descriptor `set` in its layout, which GLSL 4.60 \
+                 (4.4.5) allows only when targeting Vulkan; shader packs target OpenGL"
+            );
+            self.errors.push(self.error(at, &message));
         }
         match binding {
             Some(b) => _ = self.buffers.insert(b),

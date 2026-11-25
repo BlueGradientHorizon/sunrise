@@ -37,13 +37,21 @@ impl<'a, 'g> GameWorldStageDriver<'a, 'g> {
     }
 
     fn view<'v>(
+        game: &Game<'_>,
         camera: &'v mod_api::Camera,
         alpha: f64,
-        game_time: i64,
         sections: &'v [mod_api::RenderableSection],
         oit_on: bool,
     ) -> mod_api::WorldRenderView<'v> {
-        mod_api::WorldRenderView::new(camera, alpha as f32, game_time, oit_on, sections)
+        mod_api::WorldRenderView::new(
+            camera,
+            game.world_camera_entity_eye(),
+            alpha as f32,
+            game.world.game_time,
+            game.animation_time(),
+            oit_on,
+            sections,
+        )
     }
 }
 
@@ -59,26 +67,14 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
     }
 
     fn on_custom_geometry(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool) {
-        let view = Self::view(
-            self.frame_camera,
-            self.alpha,
-            self.game.world.game_time,
-            sections,
-            oit_on,
-        );
+        let view = Self::view(self.game, self.frame_camera, self.alpha, sections, oit_on);
         self.draw.begin_custom_geometry();
         self.game.native_submit_custom_geometry(&view, self.draw);
         self.game.submit_debug_geometry(&view, self.draw);
     }
 
     fn on_after_sky(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool) {
-        let view = Self::view(
-            self.frame_camera,
-            self.alpha,
-            self.game.world.game_time,
-            sections,
-            oit_on,
-        );
+        let view = Self::view(self.game, self.frame_camera, self.alpha, sections, oit_on);
         let mut surface = self.draw.stage_surface(RenderLevelStage::AfterSky);
         self.game
             .native_render_level_stage(RenderLevelStage::AfterSky, &view, &mut surface);
@@ -90,13 +86,7 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
         oit_on: bool,
         out: &mut sunrise_client::gfx::world_primitives::PreparedHookGeometry,
     ) {
-        let view = Self::view(
-            self.frame_camera,
-            self.alpha,
-            self.game.world.game_time,
-            sections,
-            oit_on,
-        );
+        let view = Self::view(self.game, self.frame_camera, self.alpha, sections, oit_on);
         self.game.native_prepare_render_buffers(&view, self.draw);
         self.draw.finalize();
         self.game.resolve_submitted_groups(self.draw);
@@ -126,13 +116,7 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
         sections: &[mod_api::RenderableSection],
         oit_on: bool,
     ) -> &[sunrise_client::gfx::world_primitives::DrawRanges] {
-        let view = Self::view(
-            self.frame_camera,
-            self.alpha,
-            self.game.world.game_time,
-            sections,
-            oit_on,
-        );
+        let view = Self::view(self.game, self.frame_camera, self.alpha, sections, oit_on);
         let mut surface = self.draw.stage_surface(stage);
         self.game
             .native_render_level_stage(stage, &view, &mut surface);
@@ -144,13 +128,7 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
     }
 
     fn on_after_level(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool) {
-        let view = Self::view(
-            self.frame_camera,
-            self.alpha,
-            self.game.world.game_time,
-            sections,
-            oit_on,
-        );
+        let view = Self::view(self.game, self.frame_camera, self.alpha, sections, oit_on);
         let mut surface = self.draw.stage_surface(RenderLevelStage::AfterLevel);
         self.game
             .native_render_level_stage(RenderLevelStage::AfterLevel, &view, &mut surface);
@@ -268,8 +246,10 @@ impl Game<'_> {
         draw.set_time(((self.world.game_time.rem_euclid(72_000) as f64 + alpha) / 20.0) as f32);
         let view = mod_api::WorldRenderView::new(
             frame_camera,
+            self.world_camera_entity_eye(),
             alpha as f32,
             self.world.game_time,
+            self.animation_time(),
             oit_on,
             sections,
         );

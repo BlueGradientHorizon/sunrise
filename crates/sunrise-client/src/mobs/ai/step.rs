@@ -28,8 +28,33 @@ pub fn inherited_step_sound(
         | S::Nautilus
         | S::ZombieNautilus => None,
         S::Armadillo => quiet("entity.armadillo.step"),
-        S::Chicken | S::Cow | S::Pig | S::Wolf => {
-            crate::mobs::finalize::variant_sound(m, "step").and_then(quiet)
+        S::Pig => {
+            if let Some(sound) = super::pig_sound(m, w.side.variant_tables(), "step") {
+                Some((Cow::Owned(sound.to_owned()), 0.15, 1.0))
+            } else {
+                quiet("entity.pig.step")
+            }
+        }
+        S::Cow => {
+            if let Some(sound) = super::cow_sound(m, w.side.variant_tables(), "step") {
+                Some((Cow::Owned(sound.to_owned()), 0.15, 1.0))
+            } else {
+                quiet("entity.cow.step")
+            }
+        }
+        S::Chicken => {
+            if let Some(sound) = super::chicken_sound(m, w.side.variant_tables(), "step") {
+                Some((Cow::Owned(sound.to_owned()), 0.15, 1.0))
+            } else {
+                quiet("entity.chicken.step")
+            }
+        }
+        S::Wolf => {
+            if let Some(sound) = super::wolf_sound(m, w.side.variant_tables(), "step") {
+                Some((Cow::Owned(sound.to_owned()), 0.15, 1.0))
+            } else {
+                quiet("entity.wolf.step")
+            }
         }
         S::Mooshroom => quiet("entity.cow.step"),
         S::Llama | S::TraderLlama => quiet("entity.llama.step"),

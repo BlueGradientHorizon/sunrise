@@ -564,6 +564,7 @@ impl Game<'_> {
                 .ok_or_else(stale)?;
                 sunrise_client::mobs::armor::prepare(&new, &self.motion.attributes);
                 self.resolve_loaded_profession(&mut new);
+                entity_nbt::read_mob_variants(&mut new, &tag, self.world_variants());
                 let unresolved = self
                     .stations()
                     .professions
@@ -930,7 +931,7 @@ impl Game<'_> {
                 let (pos, facing) =
                     entity_nbt::painting_placement_from_nbt(&tag).ok_or_else(stale)?;
                 let known = entity_nbt::painting_from_nbt(&tag)
-                    .and_then(|(_, _, v)| self.painting_variants.get(&v?).cloned());
+                    .and_then(|(_, _, v)| world_paintings!(self).get(&v?).cloned());
                 let p = self
                     .paintings
                     .iter_mut()

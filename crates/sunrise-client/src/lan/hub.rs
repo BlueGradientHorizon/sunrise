@@ -401,7 +401,7 @@ pub struct Hub {
     pub loop_context: Arc<LoopContext>,
     pub encoder: ChunkEncoder,
     pub guests: super::guest_list::GuestList,
-    pub(super) sync: Arc<SyncData>,
+    pub sync: Arc<SyncData>,
     /// The active world session rule definitions.
     pub rule_registry: Arc<crate::gamerules::RuleRegistry>,
     pub ticks: u64,
@@ -476,7 +476,6 @@ pub struct Hub {
     /// the other operators get a command's `[name: ...]` line (vanilla's
     /// broadcastToAdmins). False keeps it to the console's log.
     pub admin_feedback_to_ops: bool,
-    chat_type: i32,
     dimension_type: i32,
     clock_ids: Vec<i32>,
     /// The total and rate the guests are told of every clock but the Overworld's and the one
@@ -774,9 +773,6 @@ impl Hub {
         config: HubConfig,
         loop_context: Arc<LoopContext>,
     ) -> Self {
-        let chat_type = sync
-            .id("minecraft:chat_type", "minecraft:chat")
-            .unwrap_or(0);
         let dimension_type = sync
             .id(
                 "minecraft:dimension_type",
@@ -823,7 +819,6 @@ impl Hub {
             admin_feedback_to_ops: true,
             weather: (false, 0.0, 0.0),
             level_sync: Default::default(),
-            chat_type,
             dimension_type,
             clock_ids,
             clock_states: Default::default(),
@@ -1169,10 +1164,14 @@ impl Hub {
     }
     /// A chat message from the host (a disguised chat: the host has no connection to sign with).
     pub fn chat(&self, sender: &str, text: &str) {
+        // ChatType.bind throws without the type: nothing is sent.
+        let Some(chat_type) = self.chat_type_id("chat") else {
+            return;
+        };
         self.broadcast(&C::DisguisedChat(play::DisguisedChat {
             message: literal(text),
             chat_type: play::ChatTypeBound {
-                chat_type: self.chat_type,
+                chat_type: chat_type.network_id() as i32,
                 name: literal(sender),
                 target: None,
             },
@@ -2991,6 +2990,7 @@ impl Hub {
         let mut batches = Vec::new();
         for i in 0..self.guests.len() {
             if self.watches(&self.guests[i]) {
+                self.update_far(i);
                 self.update_view(i);
                 if let Some(batch) = self.next_batch(i, world, ctx.streaming) {
                     batches.push((i, batch));
@@ -3146,12 +3146,13 @@ impl Hub {
                     z: cz,
                 }));
             }
-            // Chunks that left the view.
+            // Chunks that left the view, but for those an area keeps past it.
+            let kept = &g.viewed.own.kept;
             let forget: Vec<_> = g
                 .sent_chunks
                 .iter()
                 .copied()
-                .filter(|&(x, z)| !tracked(cx, cz, r, x, z))
+                .filter(|&(x, z)| !tracked(cx, cz, r, x, z) && !kept.contains(&(x, z)))
                 .collect();
             for (x, z) in forget {
                 g.sent_chunks.remove(&(x, z));
@@ -3159,6 +3160,8 @@ impl Hub {
                 g.send(&C::ForgetLevelChunk(play::ForgetLevelChunk { pos: [x, z] }));
             }
             requeue(&mut g.chunk_queue, &g.sent_chunks, (cx, cz), r);
+            let own = &g.viewed.own;
+            super::viewed_levels::own::queue_far(&mut g.chunk_queue, &g.sent_chunks, own);
         });
     }
 
@@ -5114,6 +5117,7 @@ impl Hub {
             g.sent_chunks.clear();
             g.chunk_queue.clear();
             g.viewed.forget_views();
+            g.viewed.own.reset();
             g.entity_id
         });
         self.respawned(id);
@@ -5184,6 +5188,7 @@ impl Hub {
             g.sent_chunks.clear();
             g.chunk_queue.clear();
             g.tracker.clear();
+            g.viewed.own.reset();
         });
         self.resend_teleport(i, None);
         let spawn = self.default_spawn(ctx.spawn, ctx.spawn_angle, ctx.spawn_dimension);
@@ -7548,22 +7553,29 @@ mod tests {
         ));
         let folder = root.join("data").join("minecraft").join("advancement");
         std::fs::create_dir_all(&folder).unwrap();
-        let display = |icon: &str, title: &str| {
-            format!(r#"{{"icon":{{"id":"{icon}"}},"title":"{title}","description":"{title}"}}"#)
+        // `Advancement.validate`: a visible root has a background, any other advancement none.
+        let display = |icon: &str, title: &str, background: &str| {
+            format!(
+                r#"{{"icon":{{"id":"{icon}"}},"title":"{title}","description":"{title}"{background}}}"#
+            )
         };
         std::fs::write(
             folder.join("root.json"),
             format!(
-                r#"{{"display":{},"criteria":{{}}}}"#,
-                display("minecraft:stone", "Root")
+                r#"{{"display":{},"criteria":{{"never":{{"trigger":"minecraft:impossible"}}}}}}"#,
+                display(
+                    "minecraft:stone",
+                    "Root",
+                    r#","background":"minecraft:block/stone""#
+                )
             ),
         )
         .unwrap();
         std::fs::write(
             folder.join("task.json"),
             format!(
-                r#"{{"parent":"minecraft:root","display":{},"criteria":{{}}}}"#,
-                display("minecraft:dirt", "Task")
+                r#"{{"parent":"minecraft:root","display":{},"criteria":{{"never":{{"trigger":"minecraft:impossible"}}}}}}"#,
+                display("minecraft:dirt", "Task", "")
             ),
         )
         .unwrap();

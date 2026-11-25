@@ -148,7 +148,7 @@ impl Properties {
         conditionals: &mut Conditionals,
         macros: &mut Macros,
     ) {
-        match conditionals.apply(word, rest, macros) {
+        match crate::condition::apply(conditionals, word, rest, macros) {
             Err(e) => self.note(number, &e),
             Ok(true) => {}
             Ok(false) if conditionals.active() => match word {

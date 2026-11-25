@@ -295,9 +295,9 @@ pub(super) fn load_core(
                     world_loading::preload_launch_world(
                         folder,
                         root,
+                        resources.data(),
                         resources.data_changes(),
                         registry,
-                        biomes.clone(),
                         additional_data,
                     );
                 }
@@ -895,9 +895,9 @@ pub(super) fn load_resources_for_mods_with_limit(
         world_loading::preload_launch_world(
             folder,
             &root,
+            resolved.data(),
             resolved.data_changes(),
             assets.registry,
-            biomes.clone(),
             &additional_data,
         );
     }
@@ -953,7 +953,7 @@ pub(super) fn load_resources_for_mods_with_limit(
             collision,
             motion,
             suffocation,
-            spawn_registries: sunrise_client::mobs::finalize::SpawnRegistries::load(&root),
+            variants: Arc::new(sunrise_client::mobs::variants::VariantTables::load_prepared(&root)),
             threads,
         },
         rest: std::sync::OnceLock::new(),

@@ -30,11 +30,37 @@ macro_rules! world_items {
         }
     };
 }
+macro_rules! world_variants {
+    ($s:ident) => {
+        match &$s.world_tables {
+            Some(t) => &*t.variants,
+            None => $s.res.variants(),
+        }
+    };
+}
 macro_rules! world_recipes {
     ($s:ident) => {
         match &$s.world_tables {
             Some(t) => &t.recipes,
             None => $s.res.recipes(),
+        }
+    };
+}
+/// The painting variants the world places with (`Painting.create`): its own
+/// registry and `#minecraft:placeable`, else the prepared root's.
+macro_rules! world_paintings {
+    ($s:ident) => {
+        match &$s.world_tables {
+            Some(t) => &t.painting_variants,
+            None => &$s.painting_variants,
+        }
+    };
+}
+macro_rules! world_providers {
+    ($s:ident) => {
+        match &$s.world_tables {
+            Some(t) => &t.providers,
+            None => $s.res.providers(),
         }
     };
 }
@@ -617,6 +643,9 @@ mod fov;
 mod foxes;
 #[path = "game/interface/frame_geometry.rs"]
 mod frame_geometry;
+#[cfg(test)]
+#[path = "game/modding/frame_view_retained_draw_tests.rs"]
+mod frame_view_retained_draw_tests;
 #[path = "game/entities/frames.rs"]
 mod frames;
 #[cfg(feature = "friends")]
@@ -1068,6 +1097,9 @@ mod native_block_states;
 #[path = "game/modding/native_block_tables.rs"]
 mod native_block_tables;
 #[cfg(test)]
+#[path = "game/modding/native_block_tables_tests.rs"]
+mod native_block_tables_tests;
+#[cfg(test)]
 #[path = "game/modding/native_block_use_criteria_tests.rs"]
 mod native_block_use_criteria_tests;
 #[path = "game/modding/native_book_apply.rs"]
@@ -1177,6 +1209,8 @@ mod native_datafix;
 mod native_datafix_tests;
 #[path = "game/modding/native_datapack_refs.rs"]
 mod native_datapack_refs;
+#[path = "game/modding/native_datapack_values.rs"]
+mod native_datapack_values;
 #[path = "game/modding/native_death_weapon.rs"]
 mod native_death_weapon;
 #[path = "game/modding/native_detached_generation.rs"]
@@ -1667,6 +1701,11 @@ mod native_registry_ids_tests;
 #[cfg(test)]
 #[path = "game/modding/native_registry_processor_tests.rs"]
 mod native_registry_processor_tests;
+#[path = "game/modding/native_render_hooks.rs"]
+mod native_render_hooks;
+#[cfg(test)]
+#[path = "game/modding/native_render_hooks_tests.rs"]
+mod native_render_hooks_tests;
 #[cfg(test)]
 #[path = "game/modding/native_render_pair_tests.rs"]
 pub(in crate::game) mod native_render_pair_tests;
@@ -2677,6 +2716,13 @@ impl Mining {
         (self.progress > 0.0).then(|| ((self.progress * 10.0) as u8).min(9))
     }
 }
+/// What a transform does beyond the swap: its `transform_type` and the `drop_strategy` its loot
+/// table's stacks pop with (both empty for a tool ability outside the table).
+#[derive(Clone, Debug, Default)]
+pub(crate) struct TransformKind {
+    pub(crate) transform_type: String,
+    pub(crate) drop_strategy: String,
+}
 #[derive(Clone, Copy)]
 struct TransformContext<'a> {
     world: &'a World,
@@ -2792,6 +2838,7 @@ struct GameLevel<'w> {
     /// (`Entity.isIgnoringBlockTriggers`).
     trigger_extras: Vec<Aabb>,
     biomes: &'w Biomes,
+    biome_keys: Option<&'w mod_api::__private::BiomeKeys>,
     /// `BiomeManager`'s zoom over this level's seed, for `biome_name`.
     biome_zoom: sunrise_core::biome::BiomeZoom,
     seed: i64,
@@ -2971,7 +3018,7 @@ impl GameLevel<'_> {
 impl<'w> entity::EntityLists<'w> {
     /// Non-player, non-mob boxes with `Entity.blocksBuilding`. The block level
     /// supplies its minecart snapshot; the mob level reads the live cart boxes.
-    fn non_mob_building_blocker_boxes(
+    pub(in crate::game) fn non_mob_building_blocker_boxes(
         self,
         carts: impl Iterator<Item = Aabb> + 'w,
         crystals: &'w [dragon::Crystal],
@@ -3111,14 +3158,16 @@ struct WorldCore {
     collision: Arc<BlockCollisionRegistry<'static>>,
     motion: MotionResources,
     suffocation: sunrise_world::suffocation::SuffocationRegistry<'static>,
-    spawn_registries: sunrise_client::mobs::finalize::SpawnRegistries,
+    variants: Arc<sunrise_client::mobs::variants::VariantTables>,
     threads: usize,
 }
 
 struct WorldRest {
     items: Arc<Items>,
     recipes: Recipes,
-    transformers: sunrise_client::block_transform::Transformers,
+    /// The open world's `block_transformer` registry, published by
+    /// [`Resources::set_transformers`] (empty until a world opens).
+    transformers: std::sync::RwLock<Arc<sunrise_client::block_transform::Transformers>>,
     mob_types: HashMap<String, Arc<MobType>>,
     /// The registry keys of the player, the armor stand and the dragon, resolved with these
     /// resources as each mob type's own key is ([`MobType::type_key`]).
@@ -3143,6 +3192,8 @@ struct WorldRest {
     /// `SpinAttackEffectModel` (Riptide's spinning boxes).
     spin_attack: Option<sunrise_client::mobs::Part>,
     stations: sunrise_client::stations::StationData,
+    test_environments: Arc<HashMap<String, test_environments::Environment>>,
+    test_instances: Arc<HashMap<String, test_instances::TestDef>>,
 }
 
 /// The content tables a world's data packs change, loaded when the world
@@ -3159,6 +3210,14 @@ struct WorldTables {
     items: Arc<Items>,
     /// Registry definitions stay frozen at world open, even when tags reload.
     packed_registries: Arc<sunrise_client::lan::data::PackRegistryDefinitions>,
+    painting_variants: paintings::PaintingVariants,
+    /// `block_transformer`, bound to the block registry.
+    transformers: Arc<sunrise_client::block_transform::Transformers>,
+    /// Frozen `minecraft:timeline` entries and their bound tags, read by `Environment` and
+    /// `/time`.
+    timelines: sunrise_client::environment::TimelineTable,
+    /// Data-driven mob variant and sound-variant registries, frozen at world open.
+    variants: Arc<sunrise_client::mobs::variants::VariantTables>,
     providers: Providers,
     biomes: Arc<world_loading::WorldBiomeRegistry>,
     loot: Arc<sunrise_world::loot::LootData>,
@@ -3171,6 +3230,12 @@ struct WorldTables {
     /// Pack tags used by advancement predicates and built-in data maps
     /// (`TagLoader.loadTagsForExistingRegistries`). Damage tags live in the catalog.
     pack_tags: HashMap<&'static str, HashMap<String, HashSet<String>>>,
+    /// The gameplay attributes of the dimension types, biomes and timelines (with the
+    /// packs' timeline tags) that the raid code reads.
+    gameplay: Arc<sunrise_client::patrol::GameplayAttributes>,
+    /// `Registries.TEST_ENVIRONMENT` and `Registries.TEST_INSTANCE`, frozen at world open.
+    test_environments: Arc<HashMap<String, test_environments::Environment>>,
+    test_instances: Arc<HashMap<String, test_instances::TestDef>>,
 }
 
 struct PreparedParts {
@@ -3411,6 +3476,7 @@ struct Game<'a> {
     /// The title and menu bundle (GUI atlas, font and panorama).
     gui: UiResources,
     instance_groups: std::cell::RefCell<native_instance_groups::InstanceGroupStorage>,
+    prepared_items: std::cell::RefCell<native_instance_groups::PreparedItemStorage>,
     standalone_geometry: native_block_entity_draw::StandaloneGeometry,
     /// `FogRenderer`'s evolving state.
     fog: sunrise_client::fog::FogState,
@@ -3997,6 +4063,9 @@ struct Game<'a> {
     /// The camera the last frame drew from (position, yaw, pitch, fov), for the locator bar.
     locator_camera: Option<([f64; 3], f32, f32, f32)>,
     native_camera_frame: Option<mod_api::Camera>,
+    /// The camera entity's interpolated eye position for the current world frame, or `None`
+    /// when there is no camera entity (title screen, scenes).
+    native_camera_entity_eye: Option<[f64; 3]>,
     /// The yaw, pitch and roll a native mod's or spectated camera drew the last frame from,
     /// none when it drew from the local player's vanilla view.
     posed_rotation: Option<(f32, f32, f32)>,
@@ -4303,11 +4372,6 @@ struct Game<'a> {
     /// by id, a miss included (game/administration/structure_blocks.rs).
     structure_templates: HashMap<String, Option<structure_blocks::TemplateEntry>>,
     structure_spawns: sunrise_client::mobs::spawn_selection::StructureSpawns,
-    /// The game tests read so far, by id (the test instance registry).
-    test_defs: std::cell::RefCell<HashMap<String, Option<test_instances::TestDef>>>,
-    /// `test_defs` holds the world's whole test instance registry
-    /// (`snapshot_test_defs`), so a miss is final.
-    test_defs_snapshot: bool,
     /// `GameTestBlockHighlightRenderer.markers`: block, text, removal time.
     test_highlights: HashMap<(i32, i32, i32), (String, std::time::Instant)>,
     /// `GameTestTicker.SINGLETON`: the game tests running on this server.
@@ -5696,7 +5760,12 @@ impl Game<'_> {
         let rules = self.level_rules();
         let native_authoritative = self.native_authoritative();
         let liquid_transaction_open = self.has_level_transaction();
-        let environment = self.res.environment_of(&self.dimension_type().id);
+        let environment = Self::level_environment(
+            self.remote.as_ref(),
+            &self.res,
+            self.dim.id(),
+            &self.dimension_type().id,
+        );
         let other_entities = entity::entity_lists_of!(self, without_carts);
         let loot_clocks = self.loot_clock_ticks();
         let mut level = GameLevel {
@@ -5750,6 +5819,9 @@ impl Game<'_> {
             building_player_boxes,
             player_collision,
             biomes: world_biomes!(self),
+            biome_keys: (self.serving.is_some() || self.options.dedicated.is_some())
+                .then(|| self.world_tables.as_ref().map(|t| &*t.data_maps.biome_keys))
+                .flatten(),
             biome_zoom: self.streaming.biome_zoom,
             seed: self.level.seed,
             behaviours: self.res.behaviours(),
@@ -9123,6 +9195,11 @@ impl Game<'_> {
                 continue;
             }
             if let Some(resolved) = native_entity_renderers::experience_orb_renderer() {
+                let [width, height, eye_height] = o
+                    .size_answer
+                    .filter(|s| s.vanilla == sunrise_client::entities::ExperienceOrb::DIMENSIONS)
+                    .and_then(|s| s.size)
+                    .unwrap_or(sunrise_client::entities::ExperienceOrb::DIMENSIONS);
                 let entity: mod_api::EntityRenderState =
                     mod_api::__private::built::EntityRenderState {
                         id: o.id,
@@ -9130,6 +9207,11 @@ impl Game<'_> {
                         age: o.age as f32 + partial,
                         yaw: o.rotation[0],
                         pitch: o.rotation[1],
+                        position: at,
+                        size: [width, height],
+                        eye_height,
+                        distance_to_camera_sq: (glam::DVec3::from_array(at) - camera)
+                            .length_squared(),
                         living: None,
                         tnt_fuse: None,
                         orb_value: Some(o.value),
@@ -9888,7 +9970,14 @@ impl Game<'_> {
         &self,
         stack: &ItemStack,
         hit: &Hit,
-    ) -> Option<(BlockStateId, String, Option<String>, u32, String, String)> {
+    ) -> Option<(
+        BlockStateId,
+        String,
+        Option<String>,
+        u32,
+        String,
+        TransformKind,
+    )> {
         let blocking = self
             .offhand
             .as_ref()
@@ -9912,7 +10001,14 @@ impl Game<'_> {
         stack: &ItemStack,
         hit: &Hit,
         context: TransformContext<'_>,
-    ) -> Option<(BlockStateId, String, Option<String>, u32, String, String)> {
+    ) -> Option<(
+        BlockStateId,
+        String,
+        Option<String>,
+        u32,
+        String,
+        TransformKind,
+    )> {
         use sunrise_client::block_transform::Around;
         let TransformContext {
             world,
@@ -9965,9 +10061,8 @@ impl Game<'_> {
             registry,
             pos,
         };
-        let vanilla = self
-            .res
-            .transformers()
+        let transformers = self.res.transformers();
+        let vanilla = transformers
             .apply(self.items(), registry, &id, face_name, &around)
             .and_then(|(_, t, state)| Some((registry.resolve(&state).ok()?, t)));
         let result = |new, t: &sunrise_client::block_transform::Transform| {
@@ -9977,7 +10072,10 @@ impl Game<'_> {
                 t.loot.clone(),
                 t.damage,
                 t.particle.clone(),
-                t.transform_type.clone(),
+                TransformKind {
+                    transform_type: t.transform_type.clone(),
+                    drop_strategy: t.drop_strategy.clone(),
+                },
             )
         };
         let mapped = self.axe_mapped(&id, block);
@@ -10031,16 +10129,25 @@ impl Game<'_> {
     fn use_block_transformer(&mut self, stack: &ItemStack, hit: &Hit) -> Result<bool> {
         let pos = hit.pos;
         let face = hit.face;
-        let Some((new, sound, loot, damage, particle, transform_type)) =
-            self.block_transform(stack, hit)
+        let Some((new, sound, loot, damage, particle, kind)) = self.block_transform(stack, hit)
         else {
             return Ok(false);
         };
+        let transform_type = kind.transform_type;
         // BlockTransformer.transformBlock: ITEM_USED_ON_BLOCK before the swap.
         self.trigger_block("minecraft:item_used_on_block", pos, stack);
-        // A loot table drops on the clicked face, before the block changes.
-        if loot.as_deref() == Some("minecraft:till/rooted_dirt") {
-            self.pop_resource_from_face(pos, face, ItemStack::new("minecraft:hanging_roots", 1));
+        // Block.dropFromBlockInteractLootTable of the transform's own loot table, popped by its
+        // drop strategy, before the block changes.
+        if let Some(table) = loot {
+            let state = self.world.block(pos[0], pos[1], pos[2]);
+            let actor = self.interacting_loot_entity();
+            for drop in self.interact_loot_at(&table, pos, state, Some(actor), Some(stack)) {
+                if kind.drop_strategy == "clicked_face" {
+                    self.pop_resource_from_face(pos, face, drop);
+                } else {
+                    self.pop_resource(pos, drop);
+                }
+            }
         }
         let old = self.world.block(pos[0], pos[1], pos[2]);
         self.level_set(pos, new)?;
@@ -11524,15 +11631,35 @@ impl Game<'_> {
             environment.set_frame(&frame);
             polytone_frame = Some(&frame);
         }
-        let mut sky = environment.sample(&sunrise_client::environment::Sample {
-            day_time: self.view_day_time(),
-            rain,
-            thunder,
-            blend: Some(&blend),
-            biome: Some(attributes_of(biome)),
-            post_blend: Some(&post_blend),
-            post_biome: Some(post_of(biome)),
-        });
+        let fixed_time = self
+            .settings
+            .extras
+            .pvp
+            .tweaks
+            .time
+            .filter(|_| self.own_view())
+            .map(|_| self.view_day_time());
+        let sample_clock = |clock: &str| {
+            if let Some(t) = fixed_time {
+                t
+            } else if let Some(remote) = self.remote.as_ref() {
+                remote.named_clock_time(clock)
+            } else {
+                self.command_clock_time(clock)
+            }
+        };
+        let mut sky = environment.sample_with_clock(
+            &sunrise_client::environment::Sample {
+                day_time: self.view_day_time(),
+                rain,
+                thunder,
+                blend: Some(&blend),
+                biome: Some(attributes_of(biome)),
+                post_blend: Some(&post_blend),
+                post_biome: Some(post_of(biome)),
+            },
+            &sample_clock,
+        );
         self.end_flash_sky(&mut sky, alpha);
         if self.flash > 0 && !self.settings.file.bool("hideLightningFlashes") {
             // ClientLevel's flash layer while skyFlashTime > 0: the sky colour
@@ -11678,6 +11805,8 @@ impl Game<'_> {
         self.screen_blur_requested.set(false);
         // GUI and world hooks read the same frame snapshot. Keep its dimension allocation
         // between frames rather than formatting another copy for the world renderer.
+        self.native_camera_entity_eye =
+            (!title && self.camera_subject().is_some()).then_some(self.view.eye);
         let previous_camera = self.native_camera_frame.take();
         self.native_camera_frame = (!title && !mod_api::__private::mods().is_empty()).then(|| {
             let mut dimension =
@@ -14196,6 +14325,7 @@ impl<'a> Game<'a> {
             pack,
             gui,
             instance_groups: Default::default(),
+            prepared_items: Default::default(),
             standalone_geometry,
             fog: Default::default(),
             screen_fx: Default::default(),
@@ -14516,6 +14646,7 @@ impl<'a> Game<'a> {
             waypoints: Default::default(),
             locator_camera: None,
             native_camera_frame: None,
+            native_camera_entity_eye: None,
             posed_rotation: None,
             post_effects: Vec::new(),
             requested_post_effects_buf: Vec::new(),
@@ -14684,8 +14815,6 @@ impl<'a> Game<'a> {
             command_block_screen: None,
             block_editor: None,
             structure_templates: HashMap::new(),
-            test_defs: std::cell::RefCell::new(HashMap::new()),
-            test_defs_snapshot: false,
             test_highlights: HashMap::new(),
             game_tests: game_tests::GameTests::default(),
             #[cfg(feature = "friends")]

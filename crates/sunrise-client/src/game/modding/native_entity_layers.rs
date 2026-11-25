@@ -289,25 +289,28 @@ impl Game<'_> {
     }
 
     /// Draws `layers` over `mob`, told as the entity `id`, each from its frame (at the feet,
-    /// turned with the body), in the order they were added. Each layer borrows the same final
-    /// `model`, if this draw produced a body pose.
+    /// turned with the body), in the order they were added, using `view` (or the current
+    /// world view when `None`). Each layer borrows the same final `model`, if this draw
+    /// produced a body pose.
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::game) fn registered_layer_geometry(
+    pub(in crate::game) fn registered_layer_geometry_with_view(
         &self,
         mob: &Mob,
         id: u32,
         layers: &Layers,
         model: Option<&dyn FrameModel>,
         partial: f32,
-        camera: DVec3,
+        render_origin: DVec3,
+        explicit_view: Option<&mod_api::WorldRenderView<'_>>,
         light: u32,
         out: &mut Vec<Vertex>,
     ) {
-        let entity = entity_render_state(mob, id, partial);
+        let view_camera = explicit_view.map_or(render_origin, |v| DVec3::from(v.camera.position));
+        let entity = entity_render_state(mob, id, partial, view_camera);
         let feet = mob.previous.lerp(mob.position, f64::from(partial));
         let feet = DVec3::new(feet.x, feet.y, feet.z);
         let pose = mob_pose(
-            feet - camera,
+            feet - render_origin,
             entity.living.expect("mob living state").body_rot,
         );
         let block = [feet.x, feet.y, feet.z].map(|c| c.floor() as i32);
@@ -322,6 +325,8 @@ impl Game<'_> {
                 pose,
                 light,
                 None,
+                view_camera,
+                explicit_view,
                 out,
                 |draw| layer.layer.submit(&entity, model, draw),
             );

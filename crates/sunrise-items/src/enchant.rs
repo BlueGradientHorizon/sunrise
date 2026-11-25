@@ -4,9 +4,11 @@
 //! value/attribute effect components (`LevelBasedValue`, `EnchantmentValueEffect`
 //! and the loot-condition subset that enchantment requirements use).
 mod holder_sets;
+mod providers;
 use crate::item_data::{CodecBool, Levels};
 use crate::items::{ItemStack, Items};
 pub use holder_sets::HolderSetBinding;
+pub use providers::{EnchantmentProvider, EnchantmentSet};
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -250,6 +252,9 @@ pub struct Enchantment {
     pub description: String,
     /// `description`'s translation key (`enchantment.minecraft.<name>`).
     pub description_key: String,
+    /// `Enchantment.description`, the definition's component as written: a translatable key
+    /// with its fallback and arguments, or a literal, with its style.
+    pub description_text: sunrise_client_core::text::Text,
     pub max_level: u32,
     pub weight: u32,
     pub anvil_cost: u32,
@@ -293,6 +298,8 @@ pub struct Enchantments {
     primary_answers: sunrise_world::enchantment_answers::AnswerTable,
     /// The item's support answer, resolved at install for this registry snapshot.
     support_answers: sunrise_world::enchantment_answers::AnswerTable,
+    /// `minecraft:enchantment_provider` registry entries frozen for this world.
+    providers: BTreeMap<String, EnchantmentProvider>,
 }
 
 fn string_list(v: &Value) -> Vec<String> {
@@ -473,6 +480,11 @@ fn parse_entry(
             }
         }),
         description_key: key.to_owned(),
+        description_text: if v["description"].is_null() {
+            sunrise_client_core::text::Text::literal(id)
+        } else {
+            sunrise_client_core::scoreboard::comp_text(&v["description"])
+        },
         max_level: v["max_level"].as_u64().unwrap_or(1) as u32,
         weight: v["weight"].as_u64().unwrap_or(1) as u32,
         anvil_cost: v["anvil_cost"].as_u64().unwrap_or(0) as u32,
@@ -538,12 +550,14 @@ impl Enchantments {
                 binding.bind(id, value)?;
             }
         }
-        Self::load_selected(
+        let mut enchantments = Self::load_selected(
             root,
             overlay,
             defaults,
             files.iter().map(|(id, value)| (id.as_str(), value)),
-        )
+        )?;
+        enchantments.install_providers(providers::load_from_resources(root, overlay)?);
+        Ok(enchantments)
     }
 
     /// Assemble gameplay behavior from the selected, holder-bound definitions in id order.
@@ -670,7 +684,33 @@ impl Enchantments {
             lang,
             primary_answers: Default::default(),
             support_answers: Default::default(),
+            providers: BTreeMap::new(),
         })
+    }
+    /// Replace the `minecraft:enchantment_provider` table for this snapshot.
+    pub fn install_providers(&mut self, providers: BTreeMap<String, EnchantmentProvider>) {
+        self.providers = providers;
+    }
+    /// Look up one `minecraft:enchantment_provider` by canonical id.
+    pub fn provider(&self, id: &str) -> Option<&EnchantmentProvider> {
+        self.providers.get(id)
+    }
+    /// `EnchantmentHelper.enchantItemFromProvider`: look up `provider_id` in
+    /// the `minecraft:enchantment_provider` registry and compute the
+    /// `(enchantment, level)` upgrades for `stack`. Returns empty (drawing
+    /// nothing from `random`) if the provider is not registered.
+    pub fn enchant_from_provider<R: RandomSource>(
+        &self,
+        provider_id: &str,
+        items: &Items,
+        random: &mut R,
+        stack: &ItemStack,
+        special_multiplier: f32,
+    ) -> Levels {
+        let Some(provider) = self.providers.get(provider_id) else {
+            return Vec::new();
+        };
+        provider.enchant(self, items, random, stack, special_multiplier)
     }
     /// The `isPrimaryItemFor` answers the server resolved for this snapshot when its parts
     /// installed; selection reads them.
@@ -2012,6 +2052,7 @@ pub mod tests {
                 id: Arc::from(*id),
                 description: id.trim_start_matches("minecraft:").into(),
                 description_key: v["description"]["translate"].as_str().unwrap_or("").into(),
+                description_text: sunrise_client_core::scoreboard::comp_text(&v["description"]),
                 max_level: v["max_level"].as_u64().unwrap() as u32,
                 weight: v["weight"].as_u64().unwrap() as u32,
                 anvil_cost: v["anvil_cost"].as_u64().unwrap() as u32,
@@ -2096,6 +2137,7 @@ pub mod tests {
             lang: HashMap::new(),
             primary_answers: Default::default(),
             support_answers: Default::default(),
+            providers: BTreeMap::new(),
         }
     }
     pub fn sample_items() -> Items {
@@ -2634,6 +2676,7 @@ mod ignite_tests {
             id: Arc::from("minecraft:fire_aspect"),
             description: "fire_aspect".into(),
             description_key: String::new(),
+            description_text: sunrise_client_core::text::Text::literal("fire_aspect"),
             max_level: 2,
             weight: 2,
             anvil_cost: 4,

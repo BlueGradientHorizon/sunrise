@@ -151,6 +151,10 @@ pub(super) struct ModsState {
     /// The entries of the mods' datapack registries this world session has published, at the
     /// generation of the load or reload that built them; `None` when no mod declared one.
     pub(super) datapack_registries: Option<Arc<mod_api::DatapackRegistrySet>>,
+    /// Decoded vanilla codec values (`IntProvider`, `BlockStateProvider`, `BlockPredicate`,
+    /// `HolderSet`) for [`Self::datapack_registries`], swapped atomically on load and `/reload`.
+    pub(super) datapack_vanilla_values:
+        Option<Arc<super::native_datapack_values::DatapackVanillaValues>>,
 }
 
 impl ModsState {
@@ -2440,6 +2444,7 @@ impl Game<'_> {
         self.instance_groups
             .borrow_mut()
             .retire_disabled(&effective);
+        self.prepared_items.borrow_mut().retire_disabled(&effective);
         self.mods.apply_code_switches(&effective);
     }
 }

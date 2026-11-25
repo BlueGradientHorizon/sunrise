@@ -27,8 +27,7 @@ use crate::{
     items::{ItemStack, Items},
     living_attributes::EquipmentDeltas,
 };
-use serde_json::Value;
-use std::{borrow::Cow, fs, path::Path, sync::Arc};
+use std::{borrow::Cow, sync::Arc};
 use sunrise_core::{equipment_slot::EquipmentSlot, geometry::Aabb, random::RandomSource};
 use sunrise_world::attributes::entity::Catalog;
 
@@ -51,6 +50,10 @@ pub trait FinalizeLevel {
     fn biome_tag(&self, tag: &str, pos: [i32; 3]) -> bool;
     /// The structures with a piece at a block.
     fn structures_with_piece_at(&self, pos: [i32; 3]) -> Vec<String>;
+    /// Whether `structure` belongs to a `worldgen/structure` tag (`minecraft:...`).
+    fn structure_tag(&self, _tag: &str, _structure: &str) -> bool {
+        false
+    }
     /// `EnvironmentAttributes.MOON_PHASE` at a block (0 full moon to 7).
     fn moon_phase(&self, pos: [i32; 3]) -> usize;
     /// `ServerLevel.isSpawningMonsters`.
@@ -123,7 +126,10 @@ pub enum Group {
     Fox(Ageable, u8),
     Rabbit(Ageable, u8),
     Axolotl(Ageable, [u8; 2]),
-    Wolf(Ageable, u8),
+    Wolf(
+        Ageable,
+        crate::lan::data::RegistryRef<super::variants::WolfVariant>,
+    ),
     /// `AbstractSchoolingFish.SchoolSpawnGroupData` (the leader's id), and
     /// `TropicalFishGroupData` with its variant.
     School(u32, Option<(u8, u8, u8)>),
@@ -143,188 +149,10 @@ impl Group {
     }
 }
 
-/// A variant registry entry's spawn conditions (`SpawnPrioritySelectors`).
-#[derive(Clone, Debug)]
-enum Condition {
-    Biome(Vec<String>),
-    Structure(Vec<String>),
-    Moon(Option<f64>, Option<f64>),
-}
-#[derive(Clone, Debug)]
-pub struct VariantRegistry {
-    /// Entry names in registry order (sorted by id).
-    pub names: Vec<String>,
-    selectors: Vec<(usize, Option<Condition>, i32)>,
-}
-impl VariantRegistry {
-    fn load(dir: &Path, structure_tags: &dyn Fn(&str) -> Vec<String>) -> Self {
-        let mut names: Vec<String> = fs::read_dir(dir)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .filter_map(|e| {
-                e.file_name()
-                    .to_str()
-                    .and_then(|n| n.strip_suffix(".json"))
-                    .map(str::to_owned)
-            })
-            .collect();
-        names.sort();
-        let mut selectors = Vec::new();
-        for (i, name) in names.iter().enumerate() {
-            let Ok(bytes) = fs::read(dir.join(format!("{name}.json"))) else {
-                continue;
-            };
-            let Ok(v) = serde_json::from_slice::<Value>(&bytes) else {
-                continue;
-            };
-            for s in v["spawn_conditions"].as_array().into_iter().flatten() {
-                let priority = s["priority"].as_i64().unwrap_or(0) as i32;
-                let c = &s["condition"];
-                let list = |v: &Value| -> Vec<String> {
-                    match v {
-                        Value::String(s) => vec![s.clone()],
-                        Value::Array(a) => a
-                            .iter()
-                            .filter_map(|x| x.as_str().map(str::to_owned))
-                            .collect(),
-                        _ => Vec::new(),
-                    }
-                };
-                let condition = match c["type"].as_str() {
-                    Some("minecraft:biome") => Some(Condition::Biome(list(&c["biomes"]))),
-                    Some("minecraft:structure") => Some(Condition::Structure(
-                        list(&c["structures"])
-                            .into_iter()
-                            .flat_map(|s| match s.strip_prefix('#') {
-                                Some(tag) => structure_tags(tag),
-                                None => vec![s],
-                            })
-                            .collect(),
-                    )),
-                    Some("minecraft:moon_brightness") => {
-                        let r = &c["range"];
-                        Some(match r.as_f64() {
-                            Some(x) => Condition::Moon(Some(x), Some(x)),
-                            None => Condition::Moon(r["min"].as_f64(), r["max"].as_f64()),
-                        })
-                    }
-                    _ => None,
-                };
-                selectors.push((i, condition, priority));
-            }
-        }
-        Self { names, selectors }
-    }
-    pub fn index(&self, name: &str) -> Option<usize> {
-        let name = name.strip_prefix("minecraft:").unwrap_or(name);
-        self.names.iter().position(|n| n == name)
-    }
-    /// `VariantUtils.selectVariantToSpawn`: the entries of the highest
-    /// priority whose condition holds, one of them at random.
-    pub fn select<L: FinalizeLevel + ?Sized>(
-        &self,
-        level: &L,
-        pos: [i32; 3],
-        random: &mut impl RandomSource,
-    ) -> Option<usize> {
-        let mut unpacked: Vec<&(usize, Option<Condition>, i32)> = self.selectors.iter().collect();
-        unpacked.sort_by_key(|s| std::cmp::Reverse(s.2));
-        let mut highest = i32::MIN;
-        let mut selected = Vec::new();
-        for (entry, condition, priority) in unpacked {
-            if *priority < highest {
-                continue;
-            }
-            let ok = match condition {
-                None => true,
-                Some(Condition::Biome(list)) => list.iter().any(|b| match b.strip_prefix('#') {
-                    Some(tag) => level.biome_tag(tag, pos),
-                    None => level.biome(pos) == *b,
-                }),
-                Some(Condition::Structure(list)) => {
-                    let here = level.structures_with_piece_at(pos);
-                    here.iter().any(|s| list.contains(s))
-                }
-                Some(Condition::Moon(min, max)) => {
-                    let b = f64::from(super::spawning::MOON_BRIGHTNESS[level.moon_phase(pos) & 7]);
-                    min.is_none_or(|m| b >= m) && max.is_none_or(|m| b <= m)
-                }
-            };
-            if ok {
-                highest = *priority;
-                selected.push(*entry);
-            }
-        }
-        if selected.is_empty() {
-            return None;
-        }
-        Some(selected[random.next_int_bound(selected.len() as i32).unwrap_or(0) as usize])
-    }
-    /// `Registry.getRandom`: any entry.
-    pub fn random(&self, random: &mut impl RandomSource) -> usize {
-        if self.names.is_empty() {
-            return 0;
-        }
-        random.next_int_bound(self.names.len() as i32).unwrap_or(0) as usize
-    }
-}
-
-/// The registries finalizeSpawn reads.
-pub struct SpawnRegistries {
-    pub pig: VariantRegistry,
-    pub cow: VariantRegistry,
-    pub chicken: VariantRegistry,
-    pub cat: VariantRegistry,
-    pub wolf: VariantRegistry,
-    pub frog: VariantRegistry,
-    pub zombie_nautilus: VariantRegistry,
-    pub pig_sound: VariantRegistry,
-    pub cow_sound: VariantRegistry,
-    pub chicken_sound: VariantRegistry,
-    pub cat_sound: VariantRegistry,
-    pub wolf_sound: VariantRegistry,
-}
-impl SpawnRegistries {
-    /// Loads the variant registries from a resources directory
-    /// (`data/minecraft/<registry>/`).
-    pub fn load(root: &Path) -> Self {
-        let data = root.join("data/minecraft");
-        let structure_tag = |tag: &str| -> Vec<String> {
-            let path = tag.strip_prefix("minecraft:").unwrap_or(tag);
-            let file = data.join(format!("tags/worldgen/structure/{path}.json"));
-            let Ok(bytes) = fs::read(file) else {
-                return Vec::new();
-            };
-            serde_json::from_slice::<Value>(&bytes)
-                .ok()
-                .and_then(|v| v["values"].as_array().cloned())
-                .into_iter()
-                .flatten()
-                .filter_map(|x| x.as_str().map(str::to_owned))
-                .collect()
-        };
-        let r = |name: &str| VariantRegistry::load(&data.join(name), &structure_tag);
-        Self {
-            pig: r("pig_variant"),
-            cow: r("cow_variant"),
-            chicken: r("chicken_variant"),
-            cat: r("cat_variant"),
-            wolf: r("wolf_variant"),
-            frog: r("frog_variant"),
-            zombie_nautilus: r("zombie_nautilus_variant"),
-            pig_sound: r("pig_sound_variant"),
-            cow_sound: r("cow_sound_variant"),
-            chicken_sound: r("chicken_sound_variant"),
-            cat_sound: r("cat_sound_variant"),
-            wolf_sound: r("wolf_sound_variant"),
-        }
-    }
-}
-
-/// What finalizeSpawn needs besides the level: registries, enchantments.
+/// What finalizeSpawn needs besides the level: variant tables, enchantments.
+#[derive(Clone)]
 pub struct SpawnData<'a> {
-    pub registries: &'a SpawnRegistries,
+    pub variants: &'a super::variants::VariantTables,
     pub enchantments: &'a Enchantments,
     pub items: &'a Items,
     /// `EntityTypes.CAMEL_HUSK` dimensions (width, height).
@@ -1823,7 +1651,12 @@ impl<L: FinalizeLevel + ?Sized, R: RandomSource> Ctx<'_, L, R> {
             && self.int(300) == 0
             && item(m, MAINHAND).as_deref() == Some("minecraft:crossbow")
         {
-            gear::upgrade(m, gear::MAIN, "minecraft:piercing", 1);
+            self.enchant_from_provider(
+                m,
+                MAINHAND,
+                "minecraft:crossbow",
+                "minecraft:pillager_spawn_crossbow",
+            );
         }
         // EquipmentSlot.VALUES order: feet, legs, chest, head.
         for slot in [FEET, LEGS, CHEST, HEAD] {
@@ -1835,23 +1668,16 @@ impl<L: FinalizeLevel + ?Sized, R: RandomSource> Ctx<'_, L, R> {
         if self.float() >= chance * self.special() {
             return;
         }
-        self.enchant_by_cost(m, slot, &id);
+        self.enchant_from_provider(m, slot, &id, "minecraft:mob_spawn_equipment");
     }
-    /// `EnchantmentsByCostWithDifficulty.enchant` (`mob_spawn_equipment`:
-    /// cost 5 to 5 + 17 x the special multiplier, `#on_mob_spawn_equipment`).
-    fn enchant_by_cost(&mut self, m: &mut Mob, slot: usize, id: &str) {
-        let top = 5 + (self.special() * 17.0) as i32;
-        let cost = self.random.next_int_between_inclusive(5, top).unwrap_or(5);
+    /// `EnchantmentHelper.enchantItemFromProvider`: apply `provider` to `slot`.
+    fn enchant_from_provider(&mut self, m: &mut Mob, slot: usize, id: &str, provider: &str) {
+        let special = self.special();
+        let stack = item_stack(m, slot).unwrap_or_else(|| crate::items::ItemStack::new(id, 1));
         let d = self.level.spawn_data();
-        let e = d.enchantments;
-        let pool = e.tag("minecraft:on_mob_spawn_equipment");
-        let picked = e.select(
-            d.items,
-            self.random,
-            &item_stack(m, slot).unwrap_or_else(|| crate::items::ItemStack::new(id, 1)),
-            cost,
-            pool,
-        );
+        let picked =
+            d.enchantments
+                .enchant_from_provider(provider, d.items, self.random, &stack, special);
         for (enchantment, level) in picked {
             gear::upgrade(m, gear_slot(slot), &enchantment, level);
         }
@@ -2226,74 +2052,136 @@ impl<L: FinalizeLevel + ?Sized, R: RandomSource> Ctx<'_, L, R> {
         let at = block(m);
         m.extra.variant = self.level.mob_maps().villager_type(&self.level.biome(at));
     }
-    /// `VariantUtils.selectVariantToSpawn` into `variant`, by registry name.
-    fn variant(&mut self, m: &mut Mob, registry: fn(&SpawnRegistries) -> &VariantRegistry) {
-        let r = registry(self.level.spawn_data().registries);
-        let at = block(m);
-        if let Some(i) = r.select(&*self.level, at, self.random) {
-            let name = r.names[i].clone();
-            m.extra.variant = variant_index(m.species(), &name);
-        }
-    }
-    fn sound(&mut self, m: &mut Mob, registry: fn(&SpawnRegistries) -> &VariantRegistry) {
-        let r = registry(self.level.spawn_data().registries);
-        m.extra.sound_variant = Some(r.random(self.random) as u8);
-    }
 
     /// `finalizeSpawn` of the mob's class.
     pub fn finalize(&mut self, m: &mut Mob, reason: Reason, g: Option<Group>) -> Option<Group> {
         use Species as S;
         let s = m.species();
         match s {
-            S::Pig | S::Cow | S::Chicken => {
-                let (v, sound): (
-                    fn(&SpawnRegistries) -> &VariantRegistry,
-                    fn(&SpawnRegistries) -> &VariantRegistry,
-                ) = match s {
-                    S::Pig => (|r| &r.pig, |r| &r.pig_sound),
-                    S::Cow => (|r| &r.cow, |r| &r.cow_sound),
-                    _ => (|r| &r.chicken, |r| &r.chicken_sound),
-                };
-                self.variant(m, v);
-                self.sound(m, sound);
+            S::Pig => {
+                let at = block(m);
+                if let Some(v) =
+                    self.level
+                        .spawn_data()
+                        .variants
+                        .pig
+                        .select(&*self.level, at, self.random)
+                {
+                    m.extra.pig_variant = Some(v);
+                }
+                m.extra.pig_sound_variant = self
+                    .level
+                    .spawn_data()
+                    .variants
+                    .pig_sound
+                    .random(self.random);
+                self.ageable(m, g)
+            }
+            S::Cow => {
+                let at = block(m);
+                if let Some(v) =
+                    self.level
+                        .spawn_data()
+                        .variants
+                        .cow
+                        .select(&*self.level, at, self.random)
+                {
+                    m.extra.cow_variant = Some(v);
+                }
+                m.extra.cow_sound_variant = self
+                    .level
+                    .spawn_data()
+                    .variants
+                    .cow_sound
+                    .random(self.random);
+                self.ageable(m, g)
+            }
+            S::Chicken => {
+                let at = block(m);
+                if let Some(v) =
+                    self.level
+                        .spawn_data()
+                        .variants
+                        .chicken
+                        .select(&*self.level, at, self.random)
+                {
+                    m.extra.chicken_variant = Some(v);
+                }
+                m.extra.chicken_sound_variant = self
+                    .level
+                    .spawn_data()
+                    .variants
+                    .chicken_sound
+                    .random(self.random);
                 self.ageable(m, g)
             }
             S::Cat => {
                 let g = self.ageable(m, g);
-                self.variant(m, |r| &r.cat);
-                self.sound(m, |r| &r.cat_sound);
+                let at = block(m);
+                if let Some(v) =
+                    self.level
+                        .spawn_data()
+                        .variants
+                        .cat
+                        .select(&*self.level, at, self.random)
+                {
+                    m.extra.cat_variant = Some(v);
+                }
+                m.extra.cat_sound_variant = self
+                    .level
+                    .spawn_data()
+                    .variants
+                    .cat_sound
+                    .random(self.random);
                 g
             }
             S::Wolf => {
                 let g = match g {
                     Some(Group::Wolf(a, v)) => {
-                        m.extra.variant = v;
+                        m.extra.wolf_variant = Some(v);
                         Some(Group::Wolf(a, v))
                     }
                     other => {
-                        let r = &self.level.spawn_data().registries.wolf;
+                        let r = &self.level.spawn_data().variants.wolf;
                         let at = block(m);
                         match r.select(&*self.level, at, self.random) {
-                            Some(i) => {
-                                let v = variant_index(s, &r.names[i]);
-                                m.extra.variant = v;
+                            Some(v) => {
+                                m.extra.wolf_variant = Some(v);
                                 Some(Group::Wolf(Ageable::babies(false), v))
                             }
                             None => other,
                         }
                     }
                 };
-                self.sound(m, |r| &r.wolf_sound);
+                m.extra.wolf_sound_variant = self
+                    .level
+                    .spawn_data()
+                    .variants
+                    .wolf_sound
+                    .random(self.random);
                 self.ageable(m, g)
             }
             S::Frog => {
-                self.variant(m, |r| &r.frog);
+                if let Some(v) = self.level.spawn_data().variants.frog.select(
+                    &*self.level,
+                    block(m),
+                    self.random,
+                ) {
+                    m.extra.frog_variant = Some(v);
+                }
                 let jump = self.uniform(100, 140);
                 set_memory(m, "long_jump_cooling_down", i64::from(jump), i64::MAX);
                 self.ageable(m, g)
             }
             S::ZombieNautilus => {
-                self.variant(m, |r| &r.zombie_nautilus);
+                let at = block(m);
+                if let Some(v) = self.level.spawn_data().variants.zombie_nautilus.select(
+                    &*self.level,
+                    at,
+                    self.random,
+                ) {
+                    m.extra.zombie_nautilus_variant = Some(v);
+                }
                 let cooldown = self.uniform(2400, 3600);
                 set_memory(m, "attack_target_cooldown", i64::from(cooldown), i64::MAX);
                 m.extra.counter = cooldown;
@@ -2691,13 +2579,11 @@ fn sulfur_size(m: &mut Mob, size: i32) {
 fn cube_size(m: &mut Mob, size: i32) {
     super::cube::set_size(m, size);
 }
-/// The index the game keeps for a variant registry entry.
+/// The index the game keeps for an enum variant species (`Mooshroom`, `Fox`,
+/// `Horse`, `Llama`, `TraderLlama`).
 pub fn variant_index(s: Species, name: &str) -> u8 {
     let name = name.strip_prefix("minecraft:").unwrap_or(name);
     let i = match s {
-        Species::Cat => super::tame::CAT_VARIANTS.iter().position(|v| *v == name),
-        Species::Wolf => super::tame::WOLF_VARIANTS.iter().position(|v| v.0 == name),
-        Species::ZombieNautilus => super::nautilus::VARIANTS.iter().position(|v| *v == name),
         // MushroomCow.Variant: red is the codec's default, brown the other.
         Species::Mooshroom => ["red", "brown"].iter().position(|v| *v == name),
         // Fox.Variant, read from a `minecraft:fox/variant` component; the save
@@ -2709,9 +2595,7 @@ pub fn variant_index(s: Species, name: &str) -> u8 {
         Species::Llama | Species::TraderLlama => {
             super::llama::VARIANTS.iter().position(|v| *v == name)
         }
-        _ => ["temperate", "warm", "cold"]
-            .iter()
-            .position(|v| *v == name),
+        _ => None,
     };
     i.unwrap_or(0) as u8
 }
@@ -2720,101 +2604,66 @@ pub fn variant_index(s: Species, name: &str) -> u8 {
 pub fn variant_component(m: &Mob) -> Option<(&'static str, String)> {
     species_variant_component(m.species(), m.extra.variant)
 }
-/// [`variant_component`] of a species with the game's variant index.
+/// [`variant_component`] resolved against the world's data-driven variant tables
+/// for species whose variants are registry holders.
+pub fn variant_component_in(
+    m: &Mob,
+    variants: &super::variants::VariantTables,
+) -> Option<(&'static str, String)> {
+    match m.species() {
+        Species::Wolf => {
+            let r = m.wolf_variant(&variants.wolf)?;
+            let id = variants.wolf.id(r)?;
+            Some(("minecraft:wolf/variant", id.to_owned()))
+        }
+        Species::Cat => {
+            let r = m.cat_variant(&variants.cat)?;
+            let id = variants.cat.id(r)?;
+            Some(("minecraft:cat/variant", id.to_owned()))
+        }
+        Species::Pig => {
+            let r = m.pig_variant(&variants.pig)?;
+            let id = variants.pig.id(r)?;
+            Some(("minecraft:pig/variant", id.to_owned()))
+        }
+        Species::Cow => {
+            let r = m.cow_variant(&variants.cow)?;
+            let id = variants.cow.id(r)?;
+            Some(("minecraft:cow/variant", id.to_owned()))
+        }
+        Species::Chicken => {
+            let r = m.chicken_variant(&variants.chicken)?;
+            let id = variants.chicken.id(r)?;
+            Some(("minecraft:chicken/variant", id.to_owned()))
+        }
+        Species::Frog => {
+            let r = m.frog_variant(&variants.frog)?;
+            let id = variants.frog.id(r)?;
+            Some(("minecraft:frog/variant", id.to_owned()))
+        }
+        Species::ZombieNautilus => {
+            let r = m.zombie_nautilus_variant(&variants.zombie_nautilus)?;
+            let id = variants.zombie_nautilus.id(r)?;
+            Some(("minecraft:zombie_nautilus/variant", id.to_owned()))
+        }
+        _ => variant_component(m),
+    }
+}
+/// [`variant_component`] of an enum-variant species with the game's variant index.
 pub fn species_variant_component(s: Species, variant: u8) -> Option<(&'static str, String)> {
     let component = match s {
-        Species::Wolf => "minecraft:wolf/variant",
-        Species::Cat => "minecraft:cat/variant",
-        Species::Frog => "minecraft:frog/variant",
-        Species::Pig => "minecraft:pig/variant",
-        Species::Cow => "minecraft:cow/variant",
         Species::Mooshroom => "minecraft:mooshroom/variant",
-        Species::Chicken => "minecraft:chicken/variant",
-        Species::ZombieNautilus => "minecraft:zombie_nautilus/variant",
         Species::Horse => "minecraft:horse/variant",
         Species::Llama | Species::TraderLlama => "minecraft:llama/variant",
         _ => return None,
     };
     Some((component, format!("minecraft:{}", variant_name(s, variant))))
 }
-/// Whether the mob's save keeps its variant under `variant` — the registry
-/// id `VariantUtils.writeVariant` stores — rather than under its own key (a
-/// fox's and a mooshroom's `Type`) or a packed int (a horse's and a llama's
-/// `Variant`). Only these seven classes call `writeVariant`, so reporting the
-/// component does not mean the save carries the name.
-pub(crate) fn saves_variant_name(s: Species) -> bool {
-    matches!(
-        s,
-        Species::Wolf
-            | Species::Cat
-            | Species::Frog
-            | Species::Pig
-            | Species::Cow
-            | Species::Chicken
-            | Species::ZombieNautilus
-    )
-}
-/// The `*_sound_variant` registry of a species, in registry order.
-pub fn sound_variants(s: Species) -> &'static [&'static str] {
-    match s {
-        Species::Pig => &["big", "classic", "mini"],
-        Species::Cow => &["classic", "moody"],
-        Species::Chicken => &["classic", "picky"],
-        Species::Cat => &["classic", "royal"],
-        Species::Wolf => &["angry", "big", "classic", "cute", "grumpy", "puglin", "sad"],
-        _ => &[],
-    }
-}
-/// A sound of the mob's `*_sound_variant` set (`Pig.getSoundSet`,
-/// `Wolf.getSoundSet`, `Cat.getSoundSet`, ...): `kind` is the sound's key
-/// (`ambient`, `hurt`, `step`, `growl`, `purreow`...). Babies use the species'
-/// baby set (cows have none); an adult's set is `entity.<species>.*` for
-/// `classic` and `entity.<species>_<variant>.*` otherwise, except the
-/// footsteps that every variant shares (not the cow's). None for a species
-/// without sound variants.
-pub fn variant_sound(m: &Mob, kind: &str) -> Option<&'static str> {
-    use std::{collections::HashMap, sync::Mutex};
-    let species = m.species();
-    let name = match species {
-        Species::Pig => "pig",
-        Species::Cow => "cow",
-        Species::Chicken => "chicken",
-        Species::Wolf => "wolf",
-        Species::Cat => "cat",
-        _ => return None,
-    };
-    let variant = m
-        .extra
-        .sound_variant
-        .and_then(|i| sound_variants(species).get(i as usize))
-        .copied()
-        .unwrap_or("classic");
-    let id = if m.is_baby() && species != Species::Cow {
-        format!("entity.baby_{name}.{kind}")
-    } else if variant == "classic" || (kind == "step" && species != Species::Cow) {
-        format!("entity.{name}.{kind}")
-    } else {
-        format!("entity.{name}_{variant}.{kind}")
-    };
-    // A handful of ids in all: keep each one as a `&'static str`.
-    static IDS: Mutex<Option<HashMap<String, &'static str>>> = Mutex::new(None);
-    let mut ids = IDS.lock().ok()?;
-    let ids = ids.get_or_insert_with(HashMap::new);
-    Some(
-        *ids.entry(id)
-            .or_insert_with_key(|k| Box::leak(k.clone().into_boxed_str())),
-    )
-}
-/// The registry name of the game's variant index.
+/// The enum name of the game's variant index (`Mooshroom`, `Horse`, `Llama`,
+/// `TraderLlama`).
 pub fn variant_name(s: Species, index: u8) -> &'static str {
     let i = index as usize;
     match s {
-        Species::Cat => super::tame::CAT_VARIANTS.get(i).copied().unwrap_or("black"),
-        Species::Wolf => super::tame::WOLF_VARIANTS.get(i).map_or("pale", |v| v.0),
-        Species::ZombieNautilus => super::nautilus::VARIANTS
-            .get(i)
-            .copied()
-            .unwrap_or("temperate"),
         Species::Mooshroom => ["red", "brown"].get(i).copied().unwrap_or("red"),
         Species::Horse => super::equine::VARIANT_NAMES
             .get(i)
@@ -2823,10 +2672,7 @@ pub fn variant_name(s: Species, index: u8) -> &'static str {
         Species::Llama | Species::TraderLlama => {
             super::llama::VARIANTS.get(i).copied().unwrap_or("creamy")
         }
-        _ => ["temperate", "warm", "cold"]
-            .get(i)
-            .copied()
-            .unwrap_or("temperate"),
+        _ => "",
     }
 }
 /// `VillagerType.BY_BIOME` (index into `render::VILLAGER_TYPES`: plains,
@@ -2983,21 +2829,6 @@ mod tests {
         assert_eq!(variant_index(Species::Llama, "minecraft:temperate"), 0);
         assert_eq!(variant_name(Species::Horse, 7), "white");
         assert_eq!(variant_name(Species::TraderLlama, 4), "creamy");
-        assert_eq!(variant_name(Species::Cat, 20), "black");
-        // Only `VariantUtils.writeVariant` species save the name; a horse and
-        // a llama save a packed `Variant` int, a fox and a mooshroom `Type`.
-        for species in [Species::Wolf, Species::Cat, Species::Chicken, Species::Pig] {
-            assert!(saves_variant_name(species), "{species:?}");
-        }
-        for species in [
-            Species::Horse,
-            Species::Llama,
-            Species::TraderLlama,
-            Species::Fox,
-            Species::Mooshroom,
-        ] {
-            assert!(!saves_variant_name(species), "{species:?}");
-        }
     }
     /// #2269: the offspring of a spawn egg used on a mob is a baby of that
     /// kind (`SpawnEggItem.spawnOffspringFromSpawnEgg`), and only the mob's
@@ -3242,6 +3073,235 @@ mod tests {
         let mut unenchanted = ItemStack::new("minecraft:iron_chestplate", 1);
         unenchanted.damage = 2;
         assert!(!read.matches_stack(&unenchanted));
+    }
+
+    struct ProviderTestLevel {
+        variants: crate::mobs::variants::VariantTables,
+        items: Items,
+    }
+    impl FinalizeLevel for ProviderTestLevel {
+        fn biome(&self, _: [i32; 3]) -> String {
+            "minecraft:plains".into()
+        }
+        fn biome_tag(&self, _: &str, _: [i32; 3]) -> bool {
+            false
+        }
+        fn structures_with_piece_at(&self, _: [i32; 3]) -> Vec<String> {
+            Vec::new()
+        }
+        fn moon_phase(&self, _: [i32; 3]) -> usize {
+            0
+        }
+        fn spawning_monsters(&self) -> bool {
+            true
+        }
+        fn no_collision(&self, _: Aabb) -> bool {
+            true
+        }
+        fn free_chicken(&self, _: Aabb) -> Option<u32> {
+            None
+        }
+        fn ride_chicken(&mut self, _: u32, _: u32) {}
+        fn game_time(&self) -> i64 {
+            0
+        }
+        fn halloween(&self) -> bool {
+            false
+        }
+        fn create(&mut self, _: &str, _: Reason) -> Option<Mob> {
+            None
+        }
+        fn spawn_data(&self) -> SpawnData<'_> {
+            SpawnData {
+                variants: &self.variants,
+                enchantments: &self.items.enchantments,
+                items: &self.items,
+                camel_husk_size: (1.7, 2.375),
+            }
+        }
+    }
+
+    fn provider_test_level(files: &[(String, Vec<Vec<u8>>)]) -> ProviderTestLevel {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(
+            root.path().join("items.json"),
+            serde_json::json!({
+                "minecraft:iron_sword": {},
+                "minecraft:iron_shovel": {},
+                "minecraft:crossbow": {},
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let defaults = sunrise_world::item_defaults::read(root.path()).unwrap();
+        let overlay = sunrise_world::loot::PackOverlay::new(files);
+        let (packed, admitted) = crate::lan::data::SyncData::stage_registry_definitions(
+            root.path(),
+            &defaults,
+            &overlay,
+            &Default::default(),
+            &Default::default(),
+            |_| true,
+        );
+        admitted.unwrap();
+        let mut items = Items::tags_only(root.path(), &overlay, &defaults).unwrap();
+        packed
+            .install_items(&mut items, root.path(), &overlay, &defaults)
+            .unwrap();
+        ProviderTestLevel {
+            variants: Default::default(),
+            items,
+        }
+    }
+
+    #[test]
+    fn mob_spawn_equipment_provider_override_enchants_zombie_sword_with_pack_sharpness() {
+        let files = [
+            (
+                "enchantment/minecraft:sharpness".into(),
+                vec![
+                    serde_json::json!({
+                        "description": "Sharpness",
+                        "weight": 10,
+                        "max_level": 5,
+                        "anvil_cost": 1,
+                        "min_cost": {"base": 1, "per_level_above_first": 11},
+                        "max_cost": {"base": 21, "per_level_above_first": 11},
+                        "supported_items": "minecraft:iron_sword",
+                        "slots": ["mainhand"]
+                    })
+                    .to_string()
+                    .into_bytes(),
+                ],
+            ),
+            (
+                "enchantment_provider/minecraft:mob_spawn_equipment".into(),
+                vec![
+                    serde_json::json!({
+                        "type": "minecraft:single",
+                        "enchantment": "minecraft:sharpness",
+                        "level": 5
+                    })
+                    .to_string()
+                    .into_bytes(),
+                ],
+            ),
+        ];
+        let mut level = provider_test_level(&files);
+        let mut kind = (*crate::mobs::sensor_scan_tests::kind()).clone();
+        kind.species = Species::Zombie;
+        let kind = Arc::new(kind);
+        let difficulty = LocalDifficulty {
+            base: 3,
+            effective: 6.75,
+            normal: false,
+            hard: true,
+            id: 3,
+        };
+        let mut found = false;
+        for seed in 0..5000_i64 {
+            let mut m = Mob::new(
+                1,
+                Arc::clone(&kind),
+                sunrise_core::geometry::Vec3::ZERO,
+                0.0,
+            );
+            let mut rng = sunrise_core::random::LegacyRandom::new(seed);
+            let mut cx = Ctx {
+                level: &mut level,
+                random: &mut rng,
+                difficulty,
+                created: Vec::new(),
+                jockey_rider: None,
+            };
+            finalize(&mut cx, &mut m, Reason::Natural, None);
+            if item(&m, MAINHAND).as_deref() == Some("minecraft:iron_sword")
+                && gear::enchanted(&m, gear::MAIN)
+            {
+                assert_eq!(gear::level(&m, gear::MAIN, "minecraft:sharpness"), 5);
+                found = true;
+                break;
+            }
+        }
+        assert!(
+            found,
+            "expected a seeded zombie with an enchanted iron sword"
+        );
+    }
+
+    #[test]
+    fn pillager_spawn_crossbow_provider_override_changes_spawned_pillager_crossbow() {
+        let files = [
+            (
+                "enchantment/minecraft:multishot".into(),
+                vec![
+                    serde_json::json!({
+                        "description": "Multishot",
+                        "weight": 2,
+                        "max_level": 1,
+                        "anvil_cost": 4,
+                        "min_cost": {"base": 20, "per_level_above_first": 0},
+                        "max_cost": {"base": 50, "per_level_above_first": 0},
+                        "supported_items": "minecraft:crossbow",
+                        "slots": ["mainhand"]
+                    })
+                    .to_string()
+                    .into_bytes(),
+                ],
+            ),
+            (
+                "enchantment_provider/minecraft:pillager_spawn_crossbow".into(),
+                vec![
+                    serde_json::json!({
+                        "type": "minecraft:single",
+                        "enchantment": "minecraft:multishot",
+                        "level": 1
+                    })
+                    .to_string()
+                    .into_bytes(),
+                ],
+            ),
+        ];
+        let mut level = provider_test_level(&files);
+        let mut kind = (*crate::mobs::sensor_scan_tests::kind()).clone();
+        kind.species = Species::Pillager;
+        let kind = Arc::new(kind);
+        // special == 0.0 so only the 1-in-300 `pillager_spawn_crossbow` roll fires.
+        let difficulty = LocalDifficulty {
+            base: 2,
+            effective: 1.0,
+            normal: true,
+            hard: false,
+            id: 2,
+        };
+        let mut found = false;
+        for seed in 0..5000_i64 {
+            let mut m = Mob::new(
+                1,
+                Arc::clone(&kind),
+                sunrise_core::geometry::Vec3::ZERO,
+                0.0,
+            );
+            let mut rng = sunrise_core::random::LegacyRandom::new(seed);
+            let mut cx = Ctx {
+                level: &mut level,
+                random: &mut rng,
+                difficulty,
+                created: Vec::new(),
+                jockey_rider: None,
+            };
+            finalize(&mut cx, &mut m, Reason::Natural, None);
+            if gear::enchanted(&m, gear::MAIN) {
+                assert_eq!(gear::level(&m, gear::MAIN, "minecraft:multishot"), 1);
+                assert_eq!(gear::level(&m, gear::MAIN, "minecraft:piercing"), 0);
+                found = true;
+                break;
+            }
+        }
+        assert!(
+            found,
+            "expected a seeded pillager to hit the 1-in-300 spawn crossbow roll"
+        );
     }
 }
 

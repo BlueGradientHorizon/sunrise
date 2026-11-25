@@ -303,11 +303,14 @@ pub struct Advancement {
 #[derive(Default)]
 pub struct Tree {
     pub list: Vec<Advancement>,
+    /// The files `Advancement.CODEC` refuses, as `advancement <id>: <reason>`. Any entry
+    /// fails the load (`RegistryDataLoader.logErrors`).
+    pub refused: Vec<String>,
     pub by_id: BTreeMap<String, usize>,
     /// trigger id -> (advancement index, criterion index).
     pub by_trigger: HashMap<String, Vec<(usize, usize)>>,
     /// `recipe_unlocked` criteria by the recipe they name (`index_recipes`);
-    /// those naming none in `recipes_any`.
+    /// those naming none, a list or a `#tag` (`HolderSet<Recipe>`) in `recipes_any`.
     by_recipe: HashMap<String, Vec<(usize, usize)>>,
     recipes_any: Vec<(usize, usize)>,
     /// The triggers with a criterion that may test what the player looks at
@@ -418,16 +421,6 @@ fn frame(v: &Value) -> Frame {
     }
 }
 impl Tree {
-    /// `PlayerAdvancements.checkForAutomaticTriggers`: the advancements that
-    /// have no criteria at all, so nothing can ever grant them a criterion and
-    /// vanilla hands them over (and grants their rewards) as the player's
-    /// progress loads.
-    pub fn automatic(&self) -> Vec<usize> {
-        (0..self.list.len())
-            .filter(|&i| self.list[i].criteria.is_empty())
-            .collect()
-    }
-
     /// [`Tree::load`], shared while anyone holds it: a server's advancement
     /// packets (`ServerAdvancements`) and its game's criteria read the same
     /// files, and each kept its own copy (7 MB). A world whose data packs bring
@@ -492,10 +485,17 @@ impl Tree {
             };
             let ns = ns.file_name().to_string_lossy().into_owned();
             for file in &folder.files {
-                if sunrise_world::json_folder::valid_resource_path(&ns, &file.name)
-                    && let Ok(v) = serde_json::from_slice::<Value>(file.bytes().unwrap_or_default())
-                {
-                    json.insert(format!("{ns}:{}", file.name), v);
+                if sunrise_world::json_folder::valid_resource_path(&ns, &file.name) {
+                    let id = format!("{ns}:{}", file.name);
+                    match serde_json::from_slice::<Value>(file.bytes().unwrap_or_default()) {
+                        Ok(v) => {
+                            json.insert(id, v);
+                        }
+                        Err(e) => {
+                            json.remove(&id);
+                            tree.refused.push(format!("advancement {id}: {e}"));
+                        }
+                    }
                 }
             }
         }
@@ -504,23 +504,29 @@ impl Tree {
                 Ok(v) => {
                     json.insert(id.to_owned(), v);
                 }
-                Err(e) => log::warn!("Sunrise: pack advancement {id} not loaded: {e}"),
+                Err(e) => {
+                    json.remove(id);
+                    tree.refused.push(format!("advancement {id}: {e}"));
+                }
             }
         }
         for (id, v) in json {
             if !overlay.conditions.allows_id(&v, "advancement", &id) {
                 continue;
             }
-            if let Some(a) = parse_with(&id, &v, &mut source) {
-                let index = tree.list.len();
-                for (ci, c) in a.criteria.iter().enumerate() {
-                    tree.by_trigger
-                        .entry(c.trigger.clone())
-                        .or_default()
-                        .push((index, ci));
+            match parse_with(&id, &v, &mut source) {
+                Err(error) => tree.refused.push(format!("advancement {id}: {error}")),
+                Ok(a) => {
+                    let index = tree.list.len();
+                    for (ci, c) in a.criteria.iter().enumerate() {
+                        tree.by_trigger
+                            .entry(c.trigger.clone())
+                            .or_default()
+                            .push((index, ci));
+                    }
+                    tree.by_id.insert(id, index);
+                    tree.list.push(a);
                 }
-                tree.by_id.insert(id, index);
-                tree.list.push(a);
             }
         }
         tree.index_recipes();
@@ -528,6 +534,39 @@ impl Tree {
         tree.index_nbt();
         tree.index_player_facts();
         tree
+    }
+    /// The advancements that name a `#tag` of `loot_table` or `recipe` ids (a reward's `loot`,
+    /// `recipe_unlocked`/`recipe_crafted`'s `recipes`, `player_generates_container_loot`'s
+    /// `loot_tables`) that `bound(registry, full tag id)` denies. `HolderSetCodec.lookupTag`
+    /// fails an advancement with such a tag ("Missing tag"), like any other refused one.
+    pub fn unbound_tags(&self, bound: impl Fn(&str, &str) -> bool) -> Vec<String> {
+        let mut refused = Vec::new();
+        let mut check = |advancement: &str, registry: &str, entry: Option<&str>| {
+            if let Some(tag) = entry.and_then(|s| s.strip_prefix('#'))
+                && !bound(registry, &full(tag))
+            {
+                refused.push(format!(
+                    "advancement {advancement}: Missing tag: '{}' in '{registry}'",
+                    full(tag)
+                ));
+            }
+        };
+        for a in &self.list {
+            for entry in &a.rewards.loot {
+                check(&a.id, "loot_table", Some(entry));
+            }
+            for c in &a.criteria {
+                let (registry, key) = match c.trigger.as_str() {
+                    "minecraft:recipe_unlocked" | "minecraft:recipe_crafted" => {
+                        ("recipe", "recipes")
+                    }
+                    "minecraft:player_generates_container_loot" => ("loot_table", "loot_tables"),
+                    _ => continue,
+                };
+                check(&a.id, registry, c.conditions.read()[key].as_str());
+            }
+        }
+        refused
     }
     /// Index the `recipe_unlocked` criteria by recipe: a grant that unlocks
     /// twenty recipes tested every one of the ~1,300 recipe advancements'
@@ -543,12 +582,12 @@ impl Tree {
         {
             // `read`: the index alone keeps none of the criteria read.
             match self.list[ai].criteria[ci].conditions.read()["recipes"].as_str() {
-                Some(r) => self
+                Some(r) if !r.starts_with('#') => self
                     .by_recipe
                     .entry(full(r).into_owned())
                     .or_default()
                     .push((ai, ci)),
-                None => self.recipes_any.push((ai, ci)),
+                _ => self.recipes_any.push((ai, ci)),
             }
         }
     }
@@ -3722,6 +3761,38 @@ mod tests {
         drop(tree);
     }
 
+    /// A `#tag` in a reward's loot, a recipe trigger or the loot table trigger that is not bound
+    /// refuses the advancement (`HolderSetCodec.lookupTag`); a bound one and a plain id pass.
+    #[test]
+    fn an_unbound_tag_in_loot_or_recipes_is_reported() {
+        let a = parse(
+            "test:a",
+            &serde_json::json!({"criteria": {
+                "unlocked": {"trigger": "recipe_unlocked", "conditions": {"recipes": "#gone"}},
+                "crafted": {"trigger": "recipe_crafted", "conditions": {"recipes": "#kept"}},
+                "opened": {"trigger": "player_generates_container_loot",
+                    "conditions": {"loot_tables": "#lost"}},
+                "plain": {"trigger": "recipe_unlocked", "conditions": {"recipes": "stick"}}
+            }, "rewards": {"loot": ["#minecraft:missing", "#kept", "test:table"]}}),
+        )
+        .unwrap();
+        let mut tree = Tree::default();
+        tree.list.push(a);
+        let mut refused = tree.unbound_tags(|registry, tag| {
+            registry == "recipe" && tag == "minecraft:kept"
+                || registry == "loot_table" && tag == "minecraft:kept"
+        });
+        refused.sort();
+        assert_eq!(
+            refused,
+            [
+                "advancement test:a: Missing tag: 'minecraft:gone' in 'recipe'",
+                "advancement test:a: Missing tag: 'minecraft:lost' in 'loot_table'",
+                "advancement test:a: Missing tag: 'minecraft:missing' in 'loot_table'",
+            ]
+        );
+    }
+
     /// A bare trigger, item or recipe id reaches the indexes as `minecraft:`.
     #[test]
     fn bare_ids_reach_the_trigger_and_item_indexes() {
@@ -3821,6 +3892,7 @@ mod tests {
             "minecraft:t",
             &serde_json::json!({
                 "display": {
+                    "background": "minecraft:gui/advancements/backgrounds/stone",
                     "icon": {
                         "id": "minecraft:wooden_pickaxe",
                         "components": {"minecraft:enchantment_glint_override": true}
@@ -3836,27 +3908,41 @@ mod tests {
         assert_eq!(&*icon.item, "minecraft:wooden_pickaxe");
         assert!(icon.has_foil(None), "the glint override survives the load");
     }
-    /// `AdvancementRequirements.test` answers false with no requirement groups, so an advancement
-    /// without criteria is never done by `isDone`; `PlayerAdvancements.checkForAutomaticTriggers`
-    /// still grants its rewards as progress loads, and `Tree::automatic` is the list it walks.
+    /// `Advancement.CODEC`: no criteria, and requirements that name a criterion the
+    /// advancement lacks or leave one of its own out, refuse the file.
     #[test]
-    fn an_advancement_without_criteria_is_not_done_but_granted_automatically() {
-        let empty = parse("minecraft:free", &serde_json::json!({"criteria": {}})).unwrap();
-        assert!(!Progress::default().done(&empty), "no groups: not done");
-        let waiting = parse(
-            "minecraft:waits",
-            &serde_json::json!({"criteria": {"a": {"trigger": "minecraft:tick"}}}),
-        )
-        .unwrap();
-        assert!(!Progress::default().done(&waiting));
-        let tree = tree_of(&[
-            (
-                "minecraft:waits",
-                serde_json::json!({"criteria": {"a": {"trigger": "minecraft:tick"}}}),
-            ),
-            ("minecraft:free", serde_json::json!({"criteria": {}})),
-        ]);
-        assert_eq!(tree.automatic(), vec![1]);
+    fn criteria_and_requirements_must_match_as_the_codec_demands() {
+        let tick = serde_json::json!({"trigger": "minecraft:tick"});
+        assert!(parse("minecraft:free", &serde_json::json!({"criteria": {}})).is_none());
+        let unknown = serde_json::json!({"criteria": {"a": tick}, "requirements": [["b"]]});
+        assert!(parse("minecraft:t", &unknown).is_none());
+        let missing = serde_json::json!({"criteria": {"a": tick, "b": tick},
+            "requirements": [["a"]]});
+        assert!(parse("minecraft:t", &missing).is_none());
+        let exact = serde_json::json!({"criteria": {"a": tick}, "requirements": [["a"]]});
+        assert!(parse("minecraft:t", &exact).is_some());
+    }
+    /// `Advancement.validate`: a visible root needs a background, and only a root may have one.
+    #[test]
+    fn backgrounds_belong_to_visible_roots_only() {
+        let display = |background: Option<&str>| {
+            serde_json::json!({"icon": {"id": "minecraft:stone"}, "title": "t",
+                "description": "d", "background": background})
+        };
+        let criteria = serde_json::json!({"a": {"trigger": "minecraft:tick"}});
+        let stone = "minecraft:gui/advancements/backgrounds/stone";
+        let load = |parent: Option<&str>, display: serde_json::Value| {
+            parse(
+                "minecraft:t",
+                &serde_json::json!({"parent": parent, "display": display, "criteria": criteria}),
+            )
+        };
+        assert!(load(None, display(None)).is_none());
+        assert!(load(None, display(Some(stone))).is_some());
+        assert!(load(Some("minecraft:r"), display(Some(stone))).is_none());
+        assert!(load(Some("minecraft:r"), display(None)).is_some());
+        let hidden_root = serde_json::json!({"criteria": criteria});
+        assert!(parse("minecraft:t", &hidden_root).is_some());
     }
     #[test]
     fn layout_spreads_children_like_tree_node_position() {
@@ -4369,7 +4455,8 @@ mod tests {
                 &serde_json::json!({
                     "parent": parent,
                     "criteria": {"crit": {"trigger": "minecraft:tick"}},
-                    "display": {"icon": {"id": "minecraft:stone"}, "title": "t", "description": "d"}
+                    "display": {"icon": {"id": "minecraft:stone"}, "title": "t", "description": "d",
+                        "background": parent.is_none().then_some("minecraft:gui/advancements/backgrounds/stone")}
                 }),
             )
             .unwrap();
@@ -4382,7 +4469,8 @@ mod tests {
                 &id,
                 &serde_json::json!({
                     "criteria": {"crit": {"trigger": "minecraft:tick"}},
-                    "display": {"icon": {"id": "minecraft:stone"}, "title": "t", "description": "d"}
+                    "display": {"icon": {"id": "minecraft:stone"}, "title": "t", "description": "d",
+                        "background": "minecraft:gui/advancements/backgrounds/stone"}
                 }),
             )
             .unwrap();
