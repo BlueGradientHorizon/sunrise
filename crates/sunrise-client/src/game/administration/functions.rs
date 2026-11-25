@@ -2041,7 +2041,8 @@ mod tests {
                 (0, 0),
                 std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
             );
-            game.world_root = std::env::current_dir().unwrap().join("h155-causal-world");
+            let scratch = tempfile::tempdir().unwrap();
+            game.world_root = scratch.path().join("h155-causal-world");
             let pack = game.world_root.join("datapacks/h155_causal");
             let dir = pack.join("data/h155c/function");
             std::fs::create_dir_all(&dir).unwrap();
@@ -2345,7 +2346,8 @@ mod tests {
                 (0, 0),
                 std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
             );
-            game.world_root = std::env::current_dir().unwrap().join("h155-world");
+            let scratch = tempfile::tempdir().unwrap();
+            game.world_root = scratch.path().join("h155-world");
             let pack = game.world_root.join("datapacks/h155_unit");
             let dir = pack.join("data/h155/function");
             std::fs::create_dir_all(&dir).unwrap();
