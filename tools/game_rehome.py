@@ -1592,10 +1592,35 @@ def _collect_test_and_external_method_calls(root: Path) -> set[str]:
                 called.update(call_re.findall(fp.read_text(encoding="utf-8", errors="replace")))
     src_dir = crate_root / "src"
     if src_dir.is_dir():
-        for fp in src_dir.rglob("*.rs"):
+        cfg_test_files: set[Path] = set()
+        cfg_mod_re = re.compile(
+            r"#\[cfg\(test\)\]\s*(?:#\[[^\]]*\]\s*)*(?:#\[path\s*=\s*\"([^\"]+)\"\]\s*)?(?:pub(?:\([^)]*\))?\s+)?mod\s+([a-zA-Z0-9_]+)\s*;"
+        )
+        all_rs = list(src_dir.rglob("*.rs"))
+        for fp in all_rs:
+            txt = fp.read_text(encoding="utf-8", errors="replace")
+            if "#[cfg(test)]" in txt:
+                for m in cfg_mod_re.finditer(txt):
+                    rel_p, mod_nm = m.group(1), m.group(2)
+                    base_d = fp.parent if fp.name in ("mod.rs", "lib.rs", "main.rs") or rel_p else fp.with_suffix("")
+                    if rel_p:
+                        cand = (fp.parent / rel_p).resolve()
+                        if cand.is_file():
+                            cfg_test_files.add(cand)
+                    else:
+                        for cand in (base_d / f"{mod_nm}.rs", base_d / mod_nm / "mod.rs", fp.parent / f"{mod_nm}.rs"):
+                            if cand.is_file():
+                                cfg_test_files.add(cand.resolve())
+        for fp in all_rs:
             rel = fp.relative_to(src_dir).as_posix()
             txt = fp.read_text(encoding="utf-8", errors="replace")
-            if rel.endswith(("_tests.rs", "_test.rs", "_tests_client.rs", "_tests_server.rs")) or "/tests/" in rel or rel.endswith("/tests.rs"):
+            if (
+                fp.resolve() in cfg_test_files
+                or rel.endswith(("_tests.rs", "_test.rs", "_tests_client.rs", "_tests_server.rs"))
+                or "/tests/" in rel
+                or "/incoming_tests/" in rel
+                or rel.endswith("/tests.rs")
+            ):
                 called.update(call_re.findall(txt))
             elif "#[cfg(test)]" in txt:
                 # Scan everything after the first `#[cfg(test)]` conservatively.
