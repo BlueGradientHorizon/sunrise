@@ -186,6 +186,17 @@ pub trait ClientRenderClientHost {
     /// owner-checked generational [`UniformBufferRef`] handle. Retired automatically on mod
     /// disable, world close, resource reload, or [`UniformBufferRef::release`].
     fn create_uniform_buffer(&self, bytes: &[u8]) -> Result<UniformBufferRef, BufferError>;
+    /// Side: client.
+    /// Allocate a retained GPU storage buffer (vanilla's `GpuBuffer`), returning an owner-checked
+    /// generational [`StorageBufferRef`]. `desc.size` is at least 4, a multiple of 4 and at most
+    /// `device.limits().max_buffer_size`; a binding takes a range of at most
+    /// `max_storage_buffer_binding_size` bytes ([`StorageBufferRef::slice`]). The buffer survives
+    /// a resource reload and a world close, and is freed by [`StorageBufferRef::release`] or when
+    /// the mod unloads. Refused, never panicking, for a size the device cannot hold.
+    fn create_storage_buffer(
+        &self,
+        desc: &StorageBufferDescriptor,
+    ) -> Result<StorageBufferRef, BufferError>;
 }
 
 /// The retained instance-group and mesh operations behind [`InstanceGroupRef`] and [`MeshRef`].
@@ -253,4 +264,24 @@ pub trait ClientRenderClientBackend {
     /// [`UniformBufferRef::release`].
     #[manual_handle]
     fn uniform_buffer_release(&self, buffer: UniformBufferRef) -> Result<(), BufferError>;
+    /// Queue `data` for `offset` of a retained storage buffer (`CommandEncoder.writeToBuffer` on a
+    /// `GpuBufferSlice`; called through [`StorageBufferRef::write_range`]); `offset` and `data.len()` are multiples of 4 and the range lies inside
+    /// the buffer. Writes are applied in call order before the next frame, as updates to dynamic
+    /// textures are.
+    #[manual_handle]
+    fn storage_buffer_write_range(
+        &self,
+        buffer: StorageBufferRef,
+        offset: u64,
+        data: &[u8],
+    ) -> Result<(), BufferError>;
+    /// The size in bytes the storage buffer was created with; called through
+    /// [`StorageBufferRef::size`].
+    #[manual_handle]
+    fn storage_buffer_size(&self, buffer: StorageBufferRef) -> Result<u64, BufferError>;
+    /// Free a retained storage buffer and retire the handle ([`BufferError::Stale`] thereafter);
+    /// called through [`StorageBufferRef::release`].
+    /// Writes queued for it and not yet applied are dropped.
+    #[manual_handle]
+    fn storage_buffer_release(&self, buffer: StorageBufferRef) -> Result<(), BufferError>;
 }
