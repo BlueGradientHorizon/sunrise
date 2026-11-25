@@ -112,36 +112,42 @@ fn a_replaced_finish_still_stops_the_use() {
     use sunrise_client::motion::PlayerMotion;
     use sunrise_core::geometry::Vec3;
     use sunrise_protocol::connection::Pipe;
-    let mods: mod_api::Mods = vec![mod_api::ModEntry::new("apple", Box::new(Parts))].into();
-    mod_platform::testing::with_mods(mods.clone(), || {
-        crate::game::api_values::install_parts(&mods).unwrap();
-        tests::with_game(|game| {
-            game.options.execution_role = ExecutionRole::Client;
-            let (local, _peer) = Pipe::pair();
-            game.connect_local(local, "StopUsingTest").unwrap();
-            let remote = game.remote.as_mut().unwrap();
-            remote.logged_in = true;
-            remote.entity_id = 71;
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
-            tests::bind_local_player(game, 71, 0x0000_0001_0000_0002_0000_0003_0000_0004);
-            game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
-            game.selected = 0;
-            game.screen = Screen::Playing;
-            heard();
-            let apple = ItemStack::new("minecraft:golden_apple", 1);
-            let info = game.items().get(&apple.item).unwrap().clone();
-            let replacement = ItemStack::new("minecraft:bread", 3);
-            game.inventory[0] = Some(replacement.clone());
-            game.remote_use_item_finished(0, &apple, &info);
-            assert_eq!(
-                game.inventory[0].as_ref(),
-                Some(&replacement),
-                "the listener's stack stays"
-            );
-            let stops = heard();
-            assert_eq!(stops.len(), 1, "one stop: {stops:?}");
-            assert!(!stops[0].0, "heard on the client");
-            assert_eq!(stops[0].3, 0, "a finished use has no time left");
-        });
-    });
+    crate::game::in_own_process(
+        "game::stop_using_tests::a_replaced_finish_still_stops_the_use",
+        || {
+            let mods: mod_api::Mods = vec![mod_api::ModEntry::new("apple", Box::new(Parts))].into();
+            mod_platform::testing::with_mods(mods.clone(), || {
+                crate::game::api_values::install_parts(&mods).unwrap();
+                tests::with_game(|game| {
+                    game.options.execution_role = ExecutionRole::Client;
+                    let (local, _peer) = Pipe::pair();
+                    game.connect_local(local, "StopUsingTest").unwrap();
+                    let remote = game.remote.as_mut().unwrap();
+                    remote.logged_in = true;
+                    remote.entity_id = 71;
+                    game.player =
+                        Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
+                    tests::bind_local_player(game, 71, 0x0000_0001_0000_0002_0000_0003_0000_0004);
+                    game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
+                    game.selected = 0;
+                    game.screen = Screen::Playing;
+                    heard();
+                    let apple = ItemStack::new("minecraft:golden_apple", 1);
+                    let info = game.items().get(&apple.item).unwrap().clone();
+                    let replacement = ItemStack::new("minecraft:bread", 3);
+                    game.inventory[0] = Some(replacement.clone());
+                    game.remote_use_item_finished(0, &apple, &info);
+                    assert_eq!(
+                        game.inventory[0].as_ref(),
+                        Some(&replacement),
+                        "the listener's stack stays"
+                    );
+                    let stops = heard();
+                    assert_eq!(stops.len(), 1, "one stop: {stops:?}");
+                    assert!(!stops[0].0, "heard on the client");
+                    assert_eq!(stops[0].3, 0, "a finished use has no time left");
+                });
+            });
+        },
+    );
 }
