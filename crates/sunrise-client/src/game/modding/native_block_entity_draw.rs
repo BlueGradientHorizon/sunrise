@@ -3853,6 +3853,45 @@ mod tests {
         }
     }
 
+    /// `textured_quad` draws nothing for a render type whose texture is not a live dynamic
+    /// texture, and for a handle that is not one of the three texture-taking constructors'
+    /// (`entity_solid`, `entity_cutout`, `entity_translucent`), here `minecraft:eyes`'.
+    #[test]
+    #[ignore = "daily"]
+    fn a_textured_quad_of_a_texture_that_is_not_live_or_a_plain_render_type_draws_nothing() {
+        use sunrise_client_render::mod_pipelines::{BuiltinRenderType, Pipelines};
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
+            game.pack.render.mod_pipelines = Pipelines::load(
+                &sunrise_assets::resource_source::ResourceSource::directory(
+                    "/nonexistent/sunrise-test-assets".into(),
+                ),
+                7,
+            )
+            .unwrap();
+            let texture = mod_api::Identifier::parse("example:dynamic/none").unwrap();
+            let mut d = draw();
+            for kind in [
+                BuiltinRenderType::EntitySolid,
+                BuiltinRenderType::EntityCutout,
+                BuiltinRenderType::EntityTranslucent,
+            ] {
+                let made = game
+                    .pack
+                    .render
+                    .textured_render_type(kind, &texture)
+                    .unwrap();
+                assert!(!game.native_draw_textured_quad(&mut d, made, CORNERS, UNIT_UV, 0xFFFFFF));
+            }
+            let eyes = game
+                .pack
+                .render
+                .render_type(&mod_api::Identifier::parse("minecraft:eyes").unwrap())
+                .unwrap();
+            assert!(!game.native_draw_textured_quad(&mut d, eyes, CORNERS, UNIT_UV, 0xFFFFFF));
+            assert!(d.vertices.is_empty());
+        });
+    }
+
     /// A quad (what `cube` and `model_part` emit) drawn after `unlit(true)` has no shading
     /// normal, its plain tint and full bright light, even under `level_light`; after
     /// `unlit(false)` a bottom face is shaded (vanilla's 0.4) and lit by the draw's light again.

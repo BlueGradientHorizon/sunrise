@@ -25,8 +25,9 @@ pub(super) struct DynamicEntity {
     sampler: wgpu::Sampler,
     /// The bind group of each drawn texture and the revision of the texture it was made for.
     groups: HashMap<u64, (u64, wgpu::BindGroup)>,
-    /// What a texture with no view draws as, made when first needed.
-    missing: Option<wgpu::BindGroup>,
+    /// What a texture with no view draws as, made when first needed: its view and the group
+    /// sampling it.
+    missing: Option<(wgpu::TextureView, wgpu::BindGroup)>,
     /// This frame's runs, with `first` counted in quads from the start of the entity buffer.
     runs: Vec<DynamicTextureRun>,
     /// Reused by every frame's `prepare`.
@@ -115,26 +116,7 @@ impl DynamicEntity {
             let Some((view, revision)) = found else {
                 // Released since the quad was submitted: vanilla's missing texture.
                 self.groups.remove(&handle);
-                if self.missing.is_none() {
-                    let (width, height, pixels) = missing_image();
-                    let texture = device.create_texture(&wgpu::TextureDescriptor {
-                        label: Some("Missing dynamic texture"),
-                        size: wgpu::Extent3d {
-                            width,
-                            height,
-                            depth_or_array_layers: 1,
-                        },
-                        mip_level_count: 1,
-                        sample_count: 1,
-                        dimension: wgpu::TextureDimension::D2,
-                        format: wgpu::TextureFormat::Rgba8Unorm,
-                        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                        view_formats: &[],
-                    });
-                    uploads.texture(encoder, texture.as_image_copy(), width, height, &pixels);
-                    let view = texture.create_view(&Default::default());
-                    self.missing = Some(self.group(device, &view));
-                }
+                self.missing_view(device, uploads, encoder);
                 continue;
             };
             let group = self.group(device, &view);
@@ -142,6 +124,56 @@ impl DynamicEntity {
         }
         self.drawn = drawn;
         self.changed = changed;
+    }
+
+    /// Vanilla's missing texture (`MissingTextureAtlasSprite.generateMissingImage`), made when
+    /// first needed.
+    fn missing_view(
+        &mut self,
+        device: &wgpu::Device,
+        uploads: &mut super::upload::Uploads,
+        encoder: &mut wgpu::CommandEncoder,
+    ) -> &wgpu::TextureView {
+        if self.missing.is_none() {
+            let (width, height, pixels) = missing_image();
+            let texture = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("Missing dynamic texture"),
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
+            uploads.texture(encoder, texture.as_image_copy(), width, height, &pixels);
+            let view = texture.create_view(&Default::default());
+            let group = self.group(device, &view);
+            self.missing = Some((view, group));
+        }
+        &self.missing.as_ref().expect("made above").0
+    }
+
+    /// The view and revision of the dynamic texture `handle` for a shader pack's entity draw: the
+    /// missing texture's, at a revision no texture has, when it no longer exists.
+    pub(super) fn view(
+        &mut self,
+        device: &wgpu::Device,
+        uploads: &mut super::upload::Uploads,
+        encoder: &mut wgpu::CommandEncoder,
+        store: &Store,
+        handle: u64,
+    ) -> (wgpu::TextureView, u64) {
+        store.view(handle).unwrap_or_else(|| {
+            (
+                self.missing_view(device, uploads, encoder).clone(),
+                u64::MAX,
+            )
+        })
     }
 
     /// Draws this frame's runs of `overlay` (`DYNAMIC_TEXTURE_*_OVERLAY`) with the pipeline and
@@ -152,7 +184,7 @@ impl DynamicEntity {
                 .groups
                 .get(&run.handle)
                 .map(|(_, group)| group)
-                .or(self.missing.as_ref())
+                .or(self.missing.as_ref().map(|(_, group)| group))
             else {
                 continue;
             };

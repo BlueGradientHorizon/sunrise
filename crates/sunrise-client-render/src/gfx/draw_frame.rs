@@ -1683,6 +1683,17 @@ impl Renderer {
                 skin.filter(|_| pack_skin),
                 (frame.entity_motion, frame.entity_motion_posed),
             );
+            // `RenderTypes.entitySolid` of a mod's texture: the pack's program draws it with that
+            // texture bound as the entity texture.
+            post.resolve_entity_textures(|handle| {
+                self.dynamic_entity.view(
+                    &self.device,
+                    &mut self.uploads,
+                    &mut encoder,
+                    self.hud.dynamic(),
+                    handle,
+                )
+            });
             entities = &self.pack_entity_rest;
         }
         self.hook_geometry.entity_spans.clear();

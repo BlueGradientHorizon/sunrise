@@ -356,8 +356,9 @@ pub trait BlockEntityDrawContext {
     /// shading. `cutout` and `translucent` discard texels under alpha 0.1
     /// (`ALPHA_CUTOUT`); `translucent` blends, writes depth and sorts far to near. `solid` keeps
     /// the entity shader's alpha discard too, where vanilla's `ENTITY_SOLID` has none: give it an
-    /// opaque texture. Under a shader pack the quad draws in Sunrise's own entity pass, bound to
-    /// its texture and lit by the lightmap, not by the pack's programs.
+    /// opaque texture. Under a shader pack the quad draws through the pack's entity program (the
+    /// block entity program in a block entity's draw), with its texture bound as the entity
+    /// texture.
     ///
     /// Returns false, appending nothing, when `render_type` is not one of the three
     /// texture-taking built-ins or is stale, when no dynamic texture named by it is live (this
