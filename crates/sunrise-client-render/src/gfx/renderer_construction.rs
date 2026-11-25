@@ -2406,6 +2406,7 @@ impl Renderer {
             particle_pipelines,
             explicit_opaque_particles: Default::default(),
             explicit_translucent_particles: Default::default(),
+            explicit_additive_particles: Default::default(),
             static_entity_pipeline,
             hdr_mark_pipeline,
             hdr_entity_mark_pipeline,

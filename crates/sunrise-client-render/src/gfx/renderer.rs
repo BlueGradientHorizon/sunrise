@@ -154,6 +154,7 @@ pub struct Renderer {
     pub(super) particle_pipelines: particle_draws::ParticlePipelines,
     pub(super) explicit_opaque_particles: particle_draws::ParticleDraws,
     pub(super) explicit_translucent_particles: particle_draws::ParticleDraws,
+    pub(super) explicit_additive_particles: particle_draws::ParticleDraws,
     pub(crate) static_entity_pipeline: wgpu::RenderPipeline,
     pub(crate) static_entity_group: wgpu::BindGroup,
     pub(crate) static_entity_transform: wgpu::Buffer,
