@@ -87,3 +87,92 @@ impl Game<'_> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::game::{
+        native_client_session::tests::logged_client,
+        native_entity_refs::tests::{with_client_game, with_game},
+        startup_menu::StartupMenu,
+    };
+    use winit::{event::WindowEvent, event_loop::ControlFlow};
+
+    struct NoLoop(std::cell::Cell<bool>);
+    impl EventLoopCtl for NoLoop {
+        fn exit(&self) {
+            self.0.set(true);
+        }
+        fn set_control_flow(&self, _: ControlFlow) {}
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn tick_body_dispatches_by_role_and_remote() {
+        with_client_game(|game| {
+            let time_before = game.world.game_time;
+            game.destroy_block_progress(-1, [0, 64, 0], 5);
+            game.world.game_time = time_before + 401;
+            game.tick().unwrap();
+            assert_eq!(game.ticks, 0, "client without remote must not tick a level");
+            assert_eq!(game.world.game_time, time_before + 401);
+            assert!(
+                game.client.destroying.is_empty(),
+                "client-only crack expiry still runs without a remote"
+            );
+            assert!(game.tick_first_level().is_err());
+            assert!(game.tick_server_first().is_err());
+
+            let _server = logged_client(game);
+            game.tick().unwrap();
+            assert_eq!(game.ticks, 1, "client with remote ticks its remote level");
+        });
+
+        with_game(|game| {
+            let time_before = game.world.game_time;
+            game.tick().unwrap();
+            assert_eq!(game.ticks, 1);
+            assert_eq!(game.world.game_time, time_before + 1);
+
+            let _server = logged_client(game);
+            assert!(
+                game.tick().is_err(),
+                "server-role game with a remote connection must fail loudly"
+            );
+            assert!(game.tick_server_first().is_err());
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn client_redraw_without_title_or_remote_fails_loudly() {
+        with_client_game(|game| {
+            game.title.0 = None;
+            assert!(game.remote.is_none());
+            let loop_ctl = NoLoop(std::cell::Cell::new(false));
+            game.handle_window_event_inner(&loop_ctl, WindowEvent::RedrawRequested, None, None);
+            assert!(
+                game.error.is_some(),
+                "client RedrawRequested without title or remote must record an error"
+            );
+            assert!(
+                loop_ctl.0.get(),
+                "client RedrawRequested without title or remote must exit the event loop"
+            );
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn startup_menu_handoff_without_title_opens_title_on_disconnected_client() {
+        with_client_game(|game| {
+            game.title.0 = None;
+            assert!(game.remote.is_none());
+            StartupMenu::default().handoff(game);
+            assert!(
+                game.title.0.is_some(),
+                "handoff must never leave a disconnected client without a title screen"
+            );
+        });
+    }
+}

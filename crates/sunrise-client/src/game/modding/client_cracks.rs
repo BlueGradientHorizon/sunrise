@@ -350,6 +350,10 @@ mod tests {
             assert!(game.client.destroying.contains_key(&-11));
             game.world.game_time += 401;
             game.tick().unwrap();
+            assert_eq!(
+                game.ticks, 0,
+                "a client without a remote must not tick a server level"
+            );
             assert!(game.client.destroying.is_empty());
             game.destroy_block_progress(-11, [2, 64, 1], 3);
             game.reset_client_world(0);
