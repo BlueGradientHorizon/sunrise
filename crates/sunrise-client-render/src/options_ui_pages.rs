@@ -292,13 +292,7 @@ impl OptionsUi {
     /// A key's wait ends when its row is no longer an active key, on whatever page it waits; and when the open
     /// registered page's rows changed since its layout was made (a row greyed, a value moved), it is laid out again.
     pub(super) fn refresh_added_rows(&mut self) {
-        if self.selected_key == Some(PAGE_KEY)
-            && self.selected_page_key.and_then(find_page_key).is_none()
-        {
-            self.selected_key = None;
-            self.selected_page_key = None;
-            self.relayout();
-        }
+        self.end_stale_page_key();
         let Page::Added(i) = self.page() else {
             return;
         };
@@ -312,6 +306,18 @@ impl OptionsUi {
         }
         self.added_seen = rows;
         self.relayout();
+    }
+
+    /// Ends a page key's wait whose row is no longer an active key. Shell screens (Extras) never lay out through
+    /// `refresh_added_rows`, so their input calls this before it treats a pressed key or button as the binding.
+    pub(super) fn end_stale_page_key(&mut self) {
+        if self.selected_key == Some(PAGE_KEY)
+            && self.selected_page_key.and_then(find_page_key).is_none()
+        {
+            self.selected_key = None;
+            self.selected_page_key = None;
+            self.relayout();
+        }
     }
 
     /// Binds the waiting key row where it is now, found again by its page and label: a row that went inactive or
@@ -718,8 +724,8 @@ mod tests {
         );
     }
 
-    /// A key row greyed while it waits on the Extras page, no registered page open, stops waiting at once, so the
-    /// next key isn't swallowed.
+    /// A key row greyed while it waits on the Extras page, no registered page open, stops waiting when the next key
+    /// arrives, and that key is not swallowed.
     #[test]
     fn a_waiting_key_row_greyed_off_its_own_page_stops_waiting() {
         use crate::settings_shell::{Capture, Output};
@@ -735,7 +741,11 @@ mod tests {
         ui.shell_events(&mut s, vec![Output::Bind(Capture::Page(0, 0))]);
         assert_eq!(ui.selected_key, Some(PAGE_KEY));
         *SHIFTING.greyed.lock().unwrap() = true;
-        ui.refresh_added_rows();
+        let atlas = super::super::tests::atlas();
+        let (handled, events) =
+            ui.key_input(&mut s, &atlas, winit::keyboard::KeyCode::KeyC, None, false);
+        assert!(!handled, "the key is not taken as a binding");
+        assert!(events.is_empty());
         assert_eq!(
             (ui.selected_key, ui.selected_page_key, ui.waiting()),
             (None, None, None)

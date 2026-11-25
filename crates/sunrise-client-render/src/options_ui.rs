@@ -3340,6 +3340,7 @@ impl OptionsUi {
                 return (Vec::new(), true);
             }
             // Waiting on a key: a mouse button binds, as on Key Binds.
+            self.end_stale_page_key();
             if self.selected_key.is_some() {
                 let button = if right {
                     winit::event::MouseButton::Right
@@ -4332,6 +4333,7 @@ impl OptionsUi {
             }
             return (true, vec![Event::Changed]);
         }
+        self.end_stale_page_key();
         if self.selected_key.is_some() {
             // KeyBindsScreen.keyPressed: Escape unbinds.
             if self.selected_key == Some(MOD_KEY)
