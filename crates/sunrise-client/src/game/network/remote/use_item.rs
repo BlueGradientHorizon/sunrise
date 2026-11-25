@@ -168,7 +168,9 @@ impl Game<'_> {
         let goes_on = began
             .as_ref()
             .zip(held.as_ref())
-            .is_some_and(|(began, held)| self.can_continue_using(began, held, None, hand));
+            .is_some_and(|(began, held)| {
+                self.can_continue_using(began, held, Some(self.own_entity_id()), hand)
+            });
         let Some(stack) = held.filter(|_| goes_on) else {
             self.using = None;
             self.use_start = Default::default();
