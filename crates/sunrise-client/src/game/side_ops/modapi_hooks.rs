@@ -78,12 +78,12 @@ impl SideOps for crate::game::server_side::ServerState {
         }
     }
     fn side_creative_holders(game: &crate::game::Game<'_, Self>) -> Option<Holders> {
-        { game.server_creative_holders() }
+        game.server_creative_holders()
     }
     fn side_creative_catalog<'__side_g>(
         game: &'__side_g crate::game::Game<'_, Self>,
     ) -> &'__side_g Arc<Catalog> {
-        { game.server_creative_catalog() }
+        game.server_creative_catalog()
     }
     fn side_reset_creative_screen(game: &mut crate::game::Game<'_, Self>) {
         {}
@@ -92,16 +92,16 @@ impl SideOps for crate::game::server_side::ServerState {
         game: &crate::game::Game<'_, Self>,
         check: SwimmingCheck,
     ) -> Option<bool> {
-        { game.server_ask_swim_eligibility(check) }
+        game.server_ask_swim_eligibility(check)
     }
     fn side_acting_id(game: &mut crate::game::Game<'_, Self>) -> u128 {
-        { game.server_acting_id() }
+        game.server_acting_id()
     }
     fn side_clicker(game: &mut crate::game::Game<'_, Self>) -> (u128, i32) {
-        { game.server_clicker() }
+        game.server_clicker()
     }
     fn side_acting_or_local_player(game: &crate::game::Game<'_, Self>) -> Option<PlayerRef> {
-        { game.server_acting_or_local_player() }
+        game.server_acting_or_local_player()
     }
     fn side_chunks_loaded(game: &mut crate::game::Game<'_, Self>) {
         {
@@ -128,12 +128,12 @@ impl SideOps for crate::game::client_side::ClientState {
         }
     }
     fn side_creative_holders(game: &crate::game::Game<'_, Self>) -> Option<Holders> {
-        { game.client_creative_holders() }
+        game.client_creative_holders()
     }
     fn side_creative_catalog<'__side_g>(
         game: &'__side_g crate::game::Game<'_, Self>,
     ) -> &'__side_g Arc<Catalog> {
-        { game.client_creative_catalog() }
+        game.client_creative_catalog()
     }
     fn side_reset_creative_screen(game: &mut crate::game::Game<'_, Self>) {
         {
@@ -144,16 +144,16 @@ impl SideOps for crate::game::client_side::ClientState {
         game: &crate::game::Game<'_, Self>,
         check: SwimmingCheck,
     ) -> Option<bool> {
-        { game.client_ask_swim_eligibility(check) }
+        game.client_ask_swim_eligibility(check)
     }
     fn side_acting_id(game: &mut crate::game::Game<'_, Self>) -> u128 {
-        { game.client_acting_id() }
+        game.client_acting_id()
     }
     fn side_clicker(game: &mut crate::game::Game<'_, Self>) -> (u128, i32) {
-        { game.client_clicker() }
+        game.client_clicker()
     }
     fn side_acting_or_local_player(game: &crate::game::Game<'_, Self>) -> Option<PlayerRef> {
-        { game.client_acting_or_local_player() }
+        game.client_acting_or_local_player()
     }
     fn side_chunks_loaded(game: &mut crate::game::Game<'_, Self>) {
         {

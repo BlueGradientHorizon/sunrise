@@ -143,22 +143,22 @@ impl SideOps for crate::game::server_side::ServerState {
         }
     }
     fn side_item_pick(game: &crate::game::Game<'_, Self>) -> Option<Hit> {
-        { game.server_item_pick() }
+        game.server_item_pick()
     }
     fn side_bucket_liquid_user_entity_id(game: &crate::game::Game<'_, Self>) -> Option<u32> {
-        { game.server_bucket_liquid_user_entity_id() }
+        game.server_bucket_liquid_user_entity_id()
     }
     fn side_in_rain(game: &mut crate::game::Game<'_, Self>, at: Vec3, top: f64) -> bool {
-        { game.server_in_rain(at, top) }
+        game.server_in_rain(at, top)
     }
     fn side_projectile_player_uuid(game: &mut crate::game::Game<'_, Self>) -> Option<u128> {
-        { game.server_projectile_player_uuid() }
+        game.server_projectile_player_uuid()
     }
     fn side_acting_player_ref(game: &crate::game::Game<'_, Self>) -> Option<mod_api::PlayerRef> {
-        { game.server_acting_player_ref() }
+        game.server_acting_player_ref()
     }
     fn side_current_level_ref(game: &crate::game::Game<'_, Self>) -> Option<mod_api::LevelRef> {
-        { game.server_current_level_ref() }
+        game.server_current_level_ref()
     }
 }
 #[cfg(feature = "client")]
@@ -203,21 +203,21 @@ impl SideOps for crate::game::client_side::ClientState {
         }
     }
     fn side_item_pick(game: &crate::game::Game<'_, Self>) -> Option<Hit> {
-        { game.client_item_pick() }
+        game.client_item_pick()
     }
     fn side_bucket_liquid_user_entity_id(game: &crate::game::Game<'_, Self>) -> Option<u32> {
-        { game.client_bucket_liquid_user_entity_id() }
+        game.client_bucket_liquid_user_entity_id()
     }
     fn side_in_rain(game: &mut crate::game::Game<'_, Self>, at: Vec3, top: f64) -> bool {
-        { game.client_in_rain(at, top) }
+        game.client_in_rain(at, top)
     }
     fn side_projectile_player_uuid(game: &mut crate::game::Game<'_, Self>) -> Option<u128> {
-        { game.client_projectile_player_uuid() }
+        game.client_projectile_player_uuid()
     }
     fn side_acting_player_ref(game: &crate::game::Game<'_, Self>) -> Option<mod_api::PlayerRef> {
-        { game.client_acting_player_ref() }
+        game.client_acting_player_ref()
     }
     fn side_current_level_ref(game: &crate::game::Game<'_, Self>) -> Option<mod_api::LevelRef> {
-        { game.client_current_level_ref() }
+        game.client_current_level_ref()
     }
 }

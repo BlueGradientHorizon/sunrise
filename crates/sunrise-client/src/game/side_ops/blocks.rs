@@ -81,10 +81,10 @@ impl SideOps for crate::game::server_side::ServerState {
         entity: &BlockEntity,
         block: &str,
     ) -> Tag {
-        { game.server_encode_live_block_entity(key, entity, block) }
+        game.server_encode_live_block_entity(key, entity, block)
     }
     fn side_station_changed(game: &mut crate::game::Game<'_, Self>) {
-        { game.server_station_changed() }
+        game.server_station_changed()
     }
     fn side_combiner_take_effects(
         game: &mut crate::game::Game<'_, Self>,
@@ -92,7 +92,7 @@ impl SideOps for crate::game::server_side::ServerState {
         pos: [i32; 3],
         level_change: i32,
     ) -> bool {
-        { game.server_combiner_take_effects(kind, pos, level_change) }
+        game.server_combiner_take_effects(kind, pos, level_change)
     }
     fn side_move_local_player(
         game: &mut crate::game::Game<'_, Self>,
@@ -100,16 +100,16 @@ impl SideOps for crate::game::server_side::ServerState {
         movement: Vec3,
         auto_jump: bool,
     ) -> Result<Option<Vec3>> {
-        { game.server_move_local_player(mover, movement, auto_jump) }
+        game.server_move_local_player(mover, movement, auto_jump)
     }
     fn side_push_piston_entities(
         game: &mut crate::game::Game<'_, Self>,
         pushes: Vec<piston_push::Push>,
     ) {
-        { game.server_push_piston_entities(pushes) }
+        game.server_push_piston_entities(pushes)
     }
     fn side_carry_pass(game: &mut crate::game::Game<'_, Self>, start: &Prepared) {
-        { game.server_carry_pass(start) }
+        game.server_carry_pass(start)
     }
 }
 #[cfg(feature = "client")]
@@ -121,10 +121,10 @@ impl SideOps for crate::game::client_side::ClientState {
         entity: &BlockEntity,
         block: &str,
     ) -> Tag {
-        { game.client_encode_live_block_entity(key, entity, block) }
+        game.client_encode_live_block_entity(key, entity, block)
     }
     fn side_station_changed(game: &mut crate::game::Game<'_, Self>) {
-        { game.client_station_changed() }
+        game.client_station_changed()
     }
     fn side_combiner_take_effects(
         game: &mut crate::game::Game<'_, Self>,
@@ -132,7 +132,7 @@ impl SideOps for crate::game::client_side::ClientState {
         pos: [i32; 3],
         level_change: i32,
     ) -> bool {
-        { game.client_combiner_take_effects(kind, pos, level_change) }
+        game.client_combiner_take_effects(kind, pos, level_change)
     }
     fn side_move_local_player(
         game: &mut crate::game::Game<'_, Self>,
@@ -140,15 +140,15 @@ impl SideOps for crate::game::client_side::ClientState {
         movement: Vec3,
         auto_jump: bool,
     ) -> Result<Option<Vec3>> {
-        { game.client_move_local_player(mover, movement, auto_jump) }
+        game.client_move_local_player(mover, movement, auto_jump)
     }
     fn side_push_piston_entities(
         game: &mut crate::game::Game<'_, Self>,
         pushes: Vec<piston_push::Push>,
     ) {
-        { game.client_push_piston_entities(pushes) }
+        game.client_push_piston_entities(pushes)
     }
     fn side_carry_pass(game: &mut crate::game::Game<'_, Self>, start: &Prepared) {
-        { game.client_carry_pass(start) }
+        game.client_carry_pass(start)
     }
 }

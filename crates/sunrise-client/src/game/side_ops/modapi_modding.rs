@@ -544,7 +544,7 @@ impl SideOps for crate::game::server_side::ServerState {
         game: &'__side_g crate::game::Game<'_, Self>,
         level: LevelRef,
     ) -> Option<(&'__side_g World, bool)> {
-        { game.server_collision_scan_world(level) }
+        game.server_collision_scan_world(level)
     }
     fn side_crafting_remainder_hook(
         game: &crate::game::Game<'_, Self>,
@@ -559,61 +559,61 @@ impl SideOps for crate::game::server_side::ServerState {
         game: &crate::game::Game<'_, Self>,
         entity: EntityRef,
     ) -> Option<[[f64; 3]; 2]> {
-        { game.server_entity_bounding_box(entity) }
+        game.server_entity_bounding_box(entity)
     }
     fn side_entity_eye_height(
         game: &crate::game::Game<'_, Self>,
         entity: EntityRef,
     ) -> Option<f64> {
-        { game.server_entity_eye_height(entity) }
+        game.server_entity_eye_height(entity)
     }
     fn side_entity_is_shift_key_down(
         game: &crate::game::Game<'_, Self>,
         entity: EntityRef,
     ) -> Option<bool> {
-        { game.server_entity_is_shift_key_down(entity) }
+        game.server_entity_is_shift_key_down(entity)
     }
     fn side_entity_kind(
         game: &crate::game::Game<'_, Self>,
         entity: EntityRef,
     ) -> Option<EntityTypeKey> {
-        { game.server_entity_kind(entity) }
+        game.server_entity_kind(entity)
     }
     fn side_entity_level(
         game: &crate::game::Game<'_, Self>,
         entity: EntityRef,
     ) -> Option<LevelRef> {
-        { game.server_entity_level(entity) }
+        game.server_entity_level(entity)
     }
     fn side_entity_main_arm(
         game: &crate::game::Game<'_, Self>,
         entity: EntityRef,
     ) -> Option<MainHand> {
-        { game.server_entity_main_arm(entity) }
+        game.server_entity_main_arm(entity)
     }
     fn side_entity_residency(
         game: &crate::game::Game<'_, Self>,
         entity: EntityRef,
     ) -> EntityResidency {
-        { game.server_entity_residency(entity) }
+        game.server_entity_residency(entity)
     }
     fn side_entity_velocity(
         game: &crate::game::Game<'_, Self>,
         entity: EntityRef,
     ) -> Option<[f64; 3]> {
-        { game.server_entity_velocity(entity) }
+        game.server_entity_velocity(entity)
     }
     fn side_item_combat_actor(
         game: &crate::game::Game<'_, Self>,
         actor: LivingRef,
     ) -> Option<(bool, bool, f64, bool)> {
-        { game.server_item_combat_actor(actor) }
+        game.server_item_combat_actor(actor)
     }
     fn side_item_entity(
         game: &crate::game::Game<'_, Self>,
         entity: EntityRef,
     ) -> Option<ItemEntityRef> {
-        { game.server_item_entity(entity) }
+        game.server_item_entity(entity)
     }
     fn side_level_block_face_sturdy(
         game: &crate::game::Game<'_, Self>,
@@ -622,29 +622,29 @@ impl SideOps for crate::game::server_side::ServerState {
         face: BlockFace,
         support: SupportType,
     ) -> Option<bool> {
-        { game.server_level_block_face_sturdy(level, pos, face, support) }
+        game.server_level_block_face_sturdy(level, pos, face, support)
     }
     fn side_level_datapack_set(
         game: &crate::game::Game<'_, Self>,
         level: LevelRef,
     ) -> Option<Arc<DatapackRegistrySet>> {
-        { game.server_level_datapack_set(level) }
+        game.server_level_datapack_set(level)
     }
     fn side_level_handle_current(game: &crate::game::Game<'_, Self>, level: LevelRef) -> bool {
-        { game.server_level_handle_current(level) }
+        game.server_level_handle_current(level)
     }
     fn side_level_is_raining_at(
         game: &crate::game::Game<'_, Self>,
         level: LevelRef,
         pos: [i32; 3],
     ) -> Option<bool> {
-        { game.server_level_is_raining_at(level, pos) }
+        game.server_level_is_raining_at(level, pos)
     }
     fn side_level_view_world<'__side_g>(
         game: &'__side_g crate::game::Game<'_, Self>,
         level: LevelRef,
     ) -> Option<&'__side_g World> {
-        { game.server_level_view_world(level) }
+        game.server_level_view_world(level)
     }
     fn side_level_visit_entities_in(
         game: &crate::game::Game<'_, Self>,
@@ -653,12 +653,12 @@ impl SideOps for crate::game::server_side::ServerState {
         max: [f64; 3],
         visit: &mut dyn FnMut(EntityRef) -> ControlFlow<()>,
     ) -> Result<ControlFlow<()>, LevelReadError> {
-        { game.server_level_visit_entities_in(level, min, max, visit) }
+        game.server_level_visit_entities_in(level, min, max, visit)
     }
     fn side_lid_openers<'__side_g>(
         game: &'__side_g crate::game::Game<'_, Self>,
     ) -> Option<&'__side_g HashMap<(i32, i32, i32), i32>> {
-        { game.server_lid_openers() }
+        game.server_lid_openers()
     }
     fn side_lifecycle_open_started(game: &mut crate::game::Game<'_, Self>) {
         {
@@ -682,61 +682,61 @@ impl SideOps for crate::game::server_side::ServerState {
         game: &crate::game::Game<'_, Self>,
         living: LivingRef,
     ) -> Option<f32> {
-        { game.server_living_absorption(living) }
+        game.server_living_absorption(living)
     }
     fn side_living_attribute_value(
         game: &crate::game::Game<'_, Self>,
         living: LivingRef,
         id: &str,
     ) -> Option<f64> {
-        { game.server_living_attribute_value(living, id) }
+        game.server_living_attribute_value(living, id)
     }
     fn side_living_equipment_stack<'__side_g>(
         game: &'__side_g crate::game::Game<'_, Self>,
         living: LivingRef,
         slot: EquipmentSlot,
     ) -> Option<EquipmentRead<'__side_g>> {
-        { game.server_living_equipment_stack(living, slot) }
+        game.server_living_equipment_stack(living, slot)
     }
     fn side_living_read_target(
         game: &crate::game::Game<'_, Self>,
         living: LivingRef,
     ) -> Option<Target> {
-        { game.server_living_read_target(living) }
+        game.server_living_read_target(living)
     }
     fn side_living_target_alive(game: &crate::game::Game<'_, Self>, id: u32) -> bool {
-        { game.server_living_target_alive(id) }
+        game.server_living_target_alive(id)
     }
     fn side_living_use_ticks(
         game: &crate::game::Game<'_, Self>,
         living: LivingRef,
     ) -> Option<Option<u32>> {
-        { game.server_living_use_ticks(living) }
+        game.server_living_use_ticks(living)
     }
     fn side_living_used_item_hand(
         game: &crate::game::Game<'_, Self>,
         living: LivingRef,
     ) -> Option<Hand> {
-        { game.server_living_used_item_hand(living) }
+        game.server_living_used_item_hand(living)
     }
     fn side_menu_carried(
         game: &crate::game::Game<'_, Self>,
         menu: MenuRef,
     ) -> Option<Option<ItemStack>> {
-        { game.server_menu_carried(menu) }
+        game.server_menu_carried(menu)
     }
     fn side_menu_kind(game: &crate::game::Game<'_, Self>, menu: MenuRef) -> Option<Option<String>> {
-        { game.server_menu_kind(menu) }
+        game.server_menu_kind(menu)
     }
     fn side_menu_slot(
         game: &crate::game::Game<'_, Self>,
         menu: MenuRef,
         slot: usize,
     ) -> Option<Option<ItemStack>> {
-        { game.server_menu_slot(menu, slot) }
+        game.server_menu_slot(menu, slot)
     }
     fn side_menu_slot_count(game: &crate::game::Game<'_, Self>, menu: MenuRef) -> Option<usize> {
-        { game.server_menu_slot_count(menu) }
+        game.server_menu_slot_count(menu)
     }
     fn side_pick_section_move(game: &mut crate::game::Game<'_, Self>, id: u32, to: [f64; 3]) {
         {
@@ -754,25 +754,25 @@ impl SideOps for crate::game::server_side::ServerState {
         }
     }
     fn side_player(game: &crate::game::Game<'_, Self>, uuid: u128) -> Option<PlayerRef> {
-        { game.server_player(uuid) }
+        game.server_player(uuid)
     }
     fn side_player_client_brand<'__side_g>(
         game: &'__side_g crate::game::Game<'_, Self>,
         player: PlayerRef,
     ) -> Option<&'__side_g str> {
-        { game.server_player_client_brand(player) }
+        game.server_player_client_brand(player)
     }
     fn side_player_collision_flags(
         game: &crate::game::Game<'_, Self>,
         player: PlayerRef,
     ) -> Result<Option<CollisionFlags>, LevelReadError> {
-        { game.server_player_collision_flags(player) }
+        game.server_player_collision_flags(player)
     }
     fn side_player_container_menu(
         game: &crate::game::Game<'_, Self>,
         player: PlayerRef,
     ) -> Option<MenuRef> {
-        { game.server_player_container_menu(player) }
+        game.server_player_container_menu(player)
     }
     fn side_player_destroy_progress(
         game: &mut crate::game::Game<'_, Self>,
@@ -781,13 +781,13 @@ impl SideOps for crate::game::server_side::ServerState {
         pos: [i32; 3],
         state: BlockStateId,
     ) -> Option<f32> {
-        { game.server_player_destroy_progress(player, level, pos, state) }
+        game.server_player_destroy_progress(player, level, pos, state)
     }
     fn side_player_dimension_key(
         game: &crate::game::Game<'_, Self>,
         player: PlayerRef,
     ) -> Option<DimensionKey> {
-        { game.server_player_dimension_key(player) }
+        game.server_player_dimension_key(player)
     }
     fn side_player_has_correct_tool_for_drops(
         game: &mut crate::game::Game<'_, Self>,
@@ -796,13 +796,13 @@ impl SideOps for crate::game::server_side::ServerState {
         pos: [i32; 3],
         state: BlockStateId,
     ) -> Option<bool> {
-        { game.server_player_has_correct_tool_for_drops(player, level, pos, state) }
+        game.server_player_has_correct_tool_for_drops(player, level, pos, state)
     }
     fn side_player_read_both<'__side_g>(
         game: &'__side_g crate::game::Game<'_, Self>,
         player: PlayerRef,
     ) -> Option<PlayerRead<'__side_g>> {
-        { game.server_player_read_both(player) }
+        game.server_player_read_both(player)
     }
     fn side_retire_disabled_instance_groups(
         game: &crate::game::Game<'_, Self>,
@@ -825,53 +825,53 @@ impl SideOps for crate::game::server_side::ServerState {
         level: LevelRef,
         pos: [i32; 3],
     ) -> Option<BlockEntityRef> {
-        { game.server_signal_block_entity(level, pos) }
+        game.server_signal_block_entity(level, pos)
     }
     fn side_signal_block_entity_data(
         game: &crate::game::Game<'_, Self>,
         entity: BlockEntityRef,
     ) -> Option<Compound> {
-        { game.server_signal_block_entity_data(entity) }
+        game.server_signal_block_entity_data(entity)
     }
     fn side_signal_capability_site(
         game: &crate::game::Game<'_, Self>,
         at: BlockSide,
     ) -> Option<BlockCapabilitySite> {
-        { game.server_signal_capability_site(at) }
+        game.server_signal_capability_site(at)
     }
     fn side_signal_container_size(
         game: &crate::game::Game<'_, Self>,
         at: BlockSide,
     ) -> Option<usize> {
-        { game.server_signal_container_size(at) }
+        game.server_signal_container_size(at)
     }
     fn side_signal_container_stack(
         game: &crate::game::Game<'_, Self>,
         at: BlockSide,
         slot: usize,
     ) -> Option<mod_api::ItemStack> {
-        { game.server_signal_container_stack(at, slot) }
+        game.server_signal_container_stack(at, slot)
     }
     fn side_tick_uses_server_sections(game: &crate::game::Game<'_, Self>) -> bool {
-        { game.server_tick_uses_server_sections() }
+        game.server_tick_uses_server_sections()
     }
     fn side_world_table_items<'__side_g>(
         game: &'__side_g crate::game::Game<'_, Self>,
     ) -> Option<&'__side_g Arc<Items>> {
-        { game.server_world_table_items() }
+        game.server_world_table_items()
     }
     fn side_level_ref(
         game: &crate::game::Game<'_, Self>,
         epoch: WorldEpoch,
         key: DimensionKey,
     ) -> LevelRef {
-        { game.level_ref(epoch, key) }
+        game.level_ref(epoch, key)
     }
     fn side_online_player_sender(
         game: &crate::game::Game<'_, Self>,
         player: PlayerRef,
     ) -> Option<PlayerSender> {
-        { game.online_player_record(player).map(|g| g.sender.clone()) }
+        game.online_player_record(player).map(|g| g.sender.clone())
     }
 }
 #[cfg(feature = "client")]
@@ -886,7 +886,7 @@ impl SideOps for crate::game::client_side::ClientState {
         game: &'__side_g crate::game::Game<'_, Self>,
         level: LevelRef,
     ) -> Option<(&'__side_g World, bool)> {
-        { game.client_collision_scan_world(level) }
+        game.client_collision_scan_world(level)
     }
     fn side_crafting_remainder_hook(
         game: &crate::game::Game<'_, Self>,
@@ -901,61 +901,61 @@ impl SideOps for crate::game::client_side::ClientState {
         game: &crate::game::Game<'_, Self>,
         entity: EntityRef,
     ) -> Option<[[f64; 3]; 2]> {
-        { game.client_entity_bounding_box(entity) }
+        game.client_entity_bounding_box(entity)
     }
     fn side_entity_eye_height(
         game: &crate::game::Game<'_, Self>,
         entity: EntityRef,
     ) -> Option<f64> {
-        { game.client_entity_eye_height(entity) }
+        game.client_entity_eye_height(entity)
     }
     fn side_entity_is_shift_key_down(
         game: &crate::game::Game<'_, Self>,
         entity: EntityRef,
     ) -> Option<bool> {
-        { game.client_entity_is_shift_key_down(entity) }
+        game.client_entity_is_shift_key_down(entity)
     }
     fn side_entity_kind(
         game: &crate::game::Game<'_, Self>,
         entity: EntityRef,
     ) -> Option<EntityTypeKey> {
-        { game.client_entity_kind(entity) }
+        game.client_entity_kind(entity)
     }
     fn side_entity_level(
         game: &crate::game::Game<'_, Self>,
         entity: EntityRef,
     ) -> Option<LevelRef> {
-        { game.client_entity_level(entity) }
+        game.client_entity_level(entity)
     }
     fn side_entity_main_arm(
         game: &crate::game::Game<'_, Self>,
         entity: EntityRef,
     ) -> Option<MainHand> {
-        { game.client_entity_main_arm(entity) }
+        game.client_entity_main_arm(entity)
     }
     fn side_entity_residency(
         game: &crate::game::Game<'_, Self>,
         entity: EntityRef,
     ) -> EntityResidency {
-        { game.client_entity_residency(entity) }
+        game.client_entity_residency(entity)
     }
     fn side_entity_velocity(
         game: &crate::game::Game<'_, Self>,
         entity: EntityRef,
     ) -> Option<[f64; 3]> {
-        { game.client_entity_velocity(entity) }
+        game.client_entity_velocity(entity)
     }
     fn side_item_combat_actor(
         game: &crate::game::Game<'_, Self>,
         actor: LivingRef,
     ) -> Option<(bool, bool, f64, bool)> {
-        { game.client_item_combat_actor(actor) }
+        game.client_item_combat_actor(actor)
     }
     fn side_item_entity(
         game: &crate::game::Game<'_, Self>,
         entity: EntityRef,
     ) -> Option<ItemEntityRef> {
-        { game.client_item_entity(entity) }
+        game.client_item_entity(entity)
     }
     fn side_level_block_face_sturdy(
         game: &crate::game::Game<'_, Self>,
@@ -964,29 +964,29 @@ impl SideOps for crate::game::client_side::ClientState {
         face: BlockFace,
         support: SupportType,
     ) -> Option<bool> {
-        { game.client_level_block_face_sturdy(level, pos, face, support) }
+        game.client_level_block_face_sturdy(level, pos, face, support)
     }
     fn side_level_datapack_set(
         game: &crate::game::Game<'_, Self>,
         level: LevelRef,
     ) -> Option<Arc<DatapackRegistrySet>> {
-        { game.client_level_datapack_set(level) }
+        game.client_level_datapack_set(level)
     }
     fn side_level_handle_current(game: &crate::game::Game<'_, Self>, level: LevelRef) -> bool {
-        { game.client_level_handle_current(level) }
+        game.client_level_handle_current(level)
     }
     fn side_level_is_raining_at(
         game: &crate::game::Game<'_, Self>,
         level: LevelRef,
         pos: [i32; 3],
     ) -> Option<bool> {
-        { game.client_level_is_raining_at(level, pos) }
+        game.client_level_is_raining_at(level, pos)
     }
     fn side_level_view_world<'__side_g>(
         game: &'__side_g crate::game::Game<'_, Self>,
         level: LevelRef,
     ) -> Option<&'__side_g World> {
-        { game.client_level_view_world(level) }
+        game.client_level_view_world(level)
     }
     fn side_level_visit_entities_in(
         game: &crate::game::Game<'_, Self>,
@@ -995,12 +995,12 @@ impl SideOps for crate::game::client_side::ClientState {
         max: [f64; 3],
         visit: &mut dyn FnMut(EntityRef) -> ControlFlow<()>,
     ) -> Result<ControlFlow<()>, LevelReadError> {
-        { game.client_level_visit_entities_in(level, min, max, visit) }
+        game.client_level_visit_entities_in(level, min, max, visit)
     }
     fn side_lid_openers<'__side_g>(
         game: &'__side_g crate::game::Game<'_, Self>,
     ) -> Option<&'__side_g HashMap<(i32, i32, i32), i32>> {
-        { game.client_lid_openers() }
+        game.client_lid_openers()
     }
     fn side_lifecycle_open_started(game: &mut crate::game::Game<'_, Self>) {
         {
@@ -1026,61 +1026,61 @@ impl SideOps for crate::game::client_side::ClientState {
         game: &crate::game::Game<'_, Self>,
         living: LivingRef,
     ) -> Option<f32> {
-        { game.client_living_absorption(living) }
+        game.client_living_absorption(living)
     }
     fn side_living_attribute_value(
         game: &crate::game::Game<'_, Self>,
         living: LivingRef,
         id: &str,
     ) -> Option<f64> {
-        { game.client_living_attribute_value(living, id) }
+        game.client_living_attribute_value(living, id)
     }
     fn side_living_equipment_stack<'__side_g>(
         game: &'__side_g crate::game::Game<'_, Self>,
         living: LivingRef,
         slot: EquipmentSlot,
     ) -> Option<EquipmentRead<'__side_g>> {
-        { game.client_living_equipment_stack(living, slot) }
+        game.client_living_equipment_stack(living, slot)
     }
     fn side_living_read_target(
         game: &crate::game::Game<'_, Self>,
         living: LivingRef,
     ) -> Option<Target> {
-        { game.client_living_read_target(living) }
+        game.client_living_read_target(living)
     }
     fn side_living_target_alive(game: &crate::game::Game<'_, Self>, id: u32) -> bool {
-        { game.client_living_target_alive(id) }
+        game.client_living_target_alive(id)
     }
     fn side_living_use_ticks(
         game: &crate::game::Game<'_, Self>,
         living: LivingRef,
     ) -> Option<Option<u32>> {
-        { game.client_living_use_ticks(living) }
+        game.client_living_use_ticks(living)
     }
     fn side_living_used_item_hand(
         game: &crate::game::Game<'_, Self>,
         living: LivingRef,
     ) -> Option<Hand> {
-        { game.client_living_used_item_hand(living) }
+        game.client_living_used_item_hand(living)
     }
     fn side_menu_carried(
         game: &crate::game::Game<'_, Self>,
         menu: MenuRef,
     ) -> Option<Option<ItemStack>> {
-        { game.client_menu_carried(menu) }
+        game.client_menu_carried(menu)
     }
     fn side_menu_kind(game: &crate::game::Game<'_, Self>, menu: MenuRef) -> Option<Option<String>> {
-        { game.client_menu_kind(menu) }
+        game.client_menu_kind(menu)
     }
     fn side_menu_slot(
         game: &crate::game::Game<'_, Self>,
         menu: MenuRef,
         slot: usize,
     ) -> Option<Option<ItemStack>> {
-        { game.client_menu_slot(menu, slot) }
+        game.client_menu_slot(menu, slot)
     }
     fn side_menu_slot_count(game: &crate::game::Game<'_, Self>, menu: MenuRef) -> Option<usize> {
-        { game.client_menu_slot_count(menu) }
+        game.client_menu_slot_count(menu)
     }
     fn side_pick_section_move(game: &mut crate::game::Game<'_, Self>, id: u32, to: [f64; 3]) {
         {
@@ -1098,25 +1098,25 @@ impl SideOps for crate::game::client_side::ClientState {
         }
     }
     fn side_player(game: &crate::game::Game<'_, Self>, uuid: u128) -> Option<PlayerRef> {
-        { game.client_player(uuid) }
+        game.client_player(uuid)
     }
     fn side_player_client_brand<'__side_g>(
         game: &'__side_g crate::game::Game<'_, Self>,
         player: PlayerRef,
     ) -> Option<&'__side_g str> {
-        { game.client_player_client_brand(player) }
+        game.client_player_client_brand(player)
     }
     fn side_player_collision_flags(
         game: &crate::game::Game<'_, Self>,
         player: PlayerRef,
     ) -> Result<Option<CollisionFlags>, LevelReadError> {
-        { game.client_player_collision_flags(player) }
+        game.client_player_collision_flags(player)
     }
     fn side_player_container_menu(
         game: &crate::game::Game<'_, Self>,
         player: PlayerRef,
     ) -> Option<MenuRef> {
-        { game.client_player_container_menu(player) }
+        game.client_player_container_menu(player)
     }
     fn side_player_destroy_progress(
         game: &mut crate::game::Game<'_, Self>,
@@ -1125,13 +1125,13 @@ impl SideOps for crate::game::client_side::ClientState {
         pos: [i32; 3],
         state: BlockStateId,
     ) -> Option<f32> {
-        { game.client_player_destroy_progress(player, level, pos, state) }
+        game.client_player_destroy_progress(player, level, pos, state)
     }
     fn side_player_dimension_key(
         game: &crate::game::Game<'_, Self>,
         player: PlayerRef,
     ) -> Option<DimensionKey> {
-        { game.client_player_dimension_key(player) }
+        game.client_player_dimension_key(player)
     }
     fn side_player_has_correct_tool_for_drops(
         game: &mut crate::game::Game<'_, Self>,
@@ -1140,13 +1140,13 @@ impl SideOps for crate::game::client_side::ClientState {
         pos: [i32; 3],
         state: BlockStateId,
     ) -> Option<bool> {
-        { game.client_player_has_correct_tool_for_drops(player, level, pos, state) }
+        game.client_player_has_correct_tool_for_drops(player, level, pos, state)
     }
     fn side_player_read_both<'__side_g>(
         game: &'__side_g crate::game::Game<'_, Self>,
         player: PlayerRef,
     ) -> Option<PlayerRead<'__side_g>> {
-        { game.client_player_read_both(player) }
+        game.client_player_read_both(player)
     }
     fn side_retire_disabled_instance_groups(
         game: &crate::game::Game<'_, Self>,
@@ -1169,52 +1169,52 @@ impl SideOps for crate::game::client_side::ClientState {
         level: LevelRef,
         pos: [i32; 3],
     ) -> Option<BlockEntityRef> {
-        { game.client_signal_block_entity(level, pos) }
+        game.client_signal_block_entity(level, pos)
     }
     fn side_signal_block_entity_data(
         game: &crate::game::Game<'_, Self>,
         entity: BlockEntityRef,
     ) -> Option<Compound> {
-        { game.client_signal_block_entity_data(entity) }
+        game.client_signal_block_entity_data(entity)
     }
     fn side_signal_capability_site(
         game: &crate::game::Game<'_, Self>,
         at: BlockSide,
     ) -> Option<BlockCapabilitySite> {
-        { game.client_signal_capability_site(at) }
+        game.client_signal_capability_site(at)
     }
     fn side_signal_container_size(
         game: &crate::game::Game<'_, Self>,
         at: BlockSide,
     ) -> Option<usize> {
-        { game.client_signal_container_size(at) }
+        game.client_signal_container_size(at)
     }
     fn side_signal_container_stack(
         game: &crate::game::Game<'_, Self>,
         at: BlockSide,
         slot: usize,
     ) -> Option<mod_api::ItemStack> {
-        { game.client_signal_container_stack(at, slot) }
+        game.client_signal_container_stack(at, slot)
     }
     fn side_tick_uses_server_sections(game: &crate::game::Game<'_, Self>) -> bool {
-        { game.client_tick_uses_server_sections() }
+        game.client_tick_uses_server_sections()
     }
     fn side_world_table_items<'__side_g>(
         game: &'__side_g crate::game::Game<'_, Self>,
     ) -> Option<&'__side_g Arc<Items>> {
-        { game.client_world_table_items() }
+        game.client_world_table_items()
     }
     fn side_level_ref(
         game: &crate::game::Game<'_, Self>,
         epoch: WorldEpoch,
         key: DimensionKey,
     ) -> LevelRef {
-        { LevelRef::new(epoch, key) }
+        LevelRef::new(epoch, key)
     }
     fn side_online_player_sender(
         game: &crate::game::Game<'_, Self>,
         player: PlayerRef,
     ) -> Option<PlayerSender> {
-        { None }
+        None
     }
 }

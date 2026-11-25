@@ -67,13 +67,13 @@ impl SideOps for crate::game::server_side::ServerState {
     fn side_world_tables<'__side_g>(
         game: &'__side_g crate::game::Game<'_, Self>,
     ) -> Option<&'__side_g WorldTables> {
-        { game.server_world_tables() }
+        game.server_world_tables()
     }
     fn side_acting_player_uuid(game: &crate::game::Game<'_, Self>) -> Option<u128> {
-        { game.server_acting_player_uuid() }
+        game.server_acting_player_uuid()
     }
     fn side_tags_ready(game: &crate::game::Game<'_, Self>) -> bool {
-        { game.server_tags_ready() }
+        game.server_tags_ready()
     }
     fn side_resolve_enchant_particles(game: &crate::game::Game<'_, Self>) {
         {}
@@ -108,13 +108,13 @@ impl SideOps for crate::game::client_side::ClientState {
     fn side_world_tables<'__side_g>(
         game: &'__side_g crate::game::Game<'_, Self>,
     ) -> Option<&'__side_g WorldTables> {
-        { game.client_world_tables() }
+        game.client_world_tables()
     }
     fn side_acting_player_uuid(game: &crate::game::Game<'_, Self>) -> Option<u128> {
-        { game.client_acting_player_uuid() }
+        game.client_acting_player_uuid()
     }
     fn side_tags_ready(game: &crate::game::Game<'_, Self>) -> bool {
-        { game.client_tags_ready() }
+        game.client_tags_ready()
     }
     fn side_resolve_enchant_particles(game: &crate::game::Game<'_, Self>) {
         {

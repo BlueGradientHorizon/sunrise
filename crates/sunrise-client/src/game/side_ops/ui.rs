@@ -35,31 +35,31 @@ pub(in crate::game) trait SideOps: Sized {
 #[allow(unused_variables)]
 impl SideOps for crate::game::server_side::ServerState {
     fn side_block_entity_nbt(game: &crate::game::Game<'_, Self>, pos: [i32; 3]) -> Option<Tag> {
-        { game.server_block_entity_nbt(pos) }
+        game.server_block_entity_nbt(pos)
     }
     fn side_send_chat_command(game: &mut crate::game::Game<'_, Self>, command: &str) {
-        { game.server_send_chat_command(command) }
+        game.server_send_chat_command(command)
     }
     fn side_apply_item_splash(game: &mut crate::game::Game<'_, Self>, splash: ItemSplash) {
-        { game.server_apply_item_splash(splash) }
+        game.server_apply_item_splash(splash)
     }
     fn side_level_min_y(game: &crate::game::Game<'_, Self>) -> i32 {
-        { game.server_level_min_y() }
+        game.server_level_min_y()
     }
 }
 #[cfg(feature = "client")]
 #[allow(unused_variables)]
 impl SideOps for crate::game::client_side::ClientState {
     fn side_block_entity_nbt(game: &crate::game::Game<'_, Self>, pos: [i32; 3]) -> Option<Tag> {
-        { game.client_block_entity_nbt(pos) }
+        game.client_block_entity_nbt(pos)
     }
     fn side_send_chat_command(game: &mut crate::game::Game<'_, Self>, command: &str) {
-        { game.client_send_chat_command(command) }
+        game.client_send_chat_command(command)
     }
     fn side_apply_item_splash(game: &mut crate::game::Game<'_, Self>, splash: ItemSplash) {
-        { game.client_apply_item_splash(splash) }
+        game.client_apply_item_splash(splash)
     }
     fn side_level_min_y(game: &crate::game::Game<'_, Self>) -> i32 {
-        { game.client_level_min_y() }
+        game.client_level_min_y()
     }
 }

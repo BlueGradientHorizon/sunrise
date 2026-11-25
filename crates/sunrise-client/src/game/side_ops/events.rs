@@ -179,7 +179,7 @@ pub(in crate::game) trait SideOps: Sized {
 #[allow(unused_variables)]
 impl SideOps for crate::game::server_side::ServerState {
     fn side_process_level_events(game: &mut crate::game::Game<'_, Self>) -> Result<()> {
-        { game.server_process_level_events() }
+        game.server_process_level_events()
     }
     fn side_level_event_at(
         game: &mut crate::game::Game<'_, Self>,
@@ -218,10 +218,10 @@ impl SideOps for crate::game::server_side::ServerState {
         }
     }
     fn side_sculk_actor(game: &crate::game::Game<'_, Self>) -> Option<Who> {
-        { game.server_sculk_actor() }
+        game.server_sculk_actor()
     }
     fn side_bell_gather(game: &crate::game::Game<'_, Self>, pos: [i32; 3]) -> Vec<u64> {
-        { game.server_bell_gather(pos) }
+        game.server_bell_gather(pos)
     }
     fn side_bell_heard(game: &mut crate::game::Game<'_, Self>, pos: [i32; 3], time: i64) {
         {
@@ -261,7 +261,7 @@ impl SideOps for crate::game::server_side::ServerState {
         game: &mut crate::game::Game<'_, Self>,
         commit: bool,
     ) -> Option<transactions::StorageSettlement> {
-        { game.server_tx_close_storage_transaction(commit) }
+        game.server_tx_close_storage_transaction(commit)
     }
     fn side_tx_run_after(game: &mut crate::game::Game<'_, Self>, after: transactions::After) {
         {
@@ -273,7 +273,7 @@ impl SideOps for crate::game::server_side::ServerState {
         pos: (i32, i32, i32),
         holder: Option<BlockEntityIdentity>,
     ) -> transactions::After {
-        { game.server_tx_container_change_effect(pos, holder) }
+        game.server_tx_container_change_effect(pos, holder)
     }
     fn side_tx_journal_player(game: &mut crate::game::Game<'_, Self>, uuid: u128) {
         {
@@ -295,7 +295,7 @@ impl SideOps for crate::game::server_side::ServerState {
 #[allow(unused_variables)]
 impl SideOps for crate::game::client_side::ClientState {
     fn side_process_level_events(game: &mut crate::game::Game<'_, Self>) -> Result<()> {
-        { game.client_process_level_events() }
+        game.client_process_level_events()
     }
     fn side_level_event_at(
         game: &mut crate::game::Game<'_, Self>,
@@ -334,10 +334,10 @@ impl SideOps for crate::game::client_side::ClientState {
         }
     }
     fn side_sculk_actor(game: &crate::game::Game<'_, Self>) -> Option<Who> {
-        { game.client_sculk_actor() }
+        game.client_sculk_actor()
     }
     fn side_bell_gather(game: &crate::game::Game<'_, Self>, pos: [i32; 3]) -> Vec<u64> {
-        { game.client_bell_gather(pos) }
+        game.client_bell_gather(pos)
     }
     fn side_bell_heard(game: &mut crate::game::Game<'_, Self>, pos: [i32; 3], time: i64) {
         {
@@ -377,7 +377,7 @@ impl SideOps for crate::game::client_side::ClientState {
         game: &mut crate::game::Game<'_, Self>,
         commit: bool,
     ) -> Option<transactions::StorageSettlement> {
-        { game.client_tx_close_storage_transaction(commit) }
+        game.client_tx_close_storage_transaction(commit)
     }
     fn side_tx_run_after(game: &mut crate::game::Game<'_, Self>, after: transactions::After) {
         {
@@ -389,7 +389,7 @@ impl SideOps for crate::game::client_side::ClientState {
         pos: (i32, i32, i32),
         holder: Option<BlockEntityIdentity>,
     ) -> transactions::After {
-        { game.client_tx_container_change_effect(pos, holder) }
+        game.client_tx_container_change_effect(pos, holder)
     }
     fn side_tx_journal_player(game: &mut crate::game::Game<'_, Self>, uuid: u128) {
         {

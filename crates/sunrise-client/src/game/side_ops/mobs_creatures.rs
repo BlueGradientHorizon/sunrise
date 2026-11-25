@@ -23,7 +23,7 @@ impl SideOps for crate::game::server_side::ServerState {
         game: &mut crate::game::Game<'_, Self>,
         events: &mut Vec<MobEvent>,
     ) -> Result<()> {
-        { game.server_handle_mob_events_reusable(events) }
+        game.server_handle_mob_events_reusable(events)
     }
 }
 #[cfg(feature = "client")]
@@ -33,6 +33,6 @@ impl SideOps for crate::game::client_side::ClientState {
         game: &mut crate::game::Game<'_, Self>,
         events: &mut Vec<MobEvent>,
     ) -> Result<()> {
-        { game.client_handle_mob_events_reusable(events) }
+        game.client_handle_mob_events_reusable(events)
     }
 }

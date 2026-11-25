@@ -165,10 +165,10 @@ impl SideOps for crate::game::server_side::ServerState {
         hand: Hand,
         animation: SwingAnimation,
     ) -> bool {
-        { game.server_swing_hand(hand, animation) }
+        game.server_swing_hand(hand, animation)
     }
     fn side_sound_event_names(game: &crate::game::Game<'_, Self>) -> Vec<String> {
-        { game.server_sound_event_names() }
+        game.server_sound_event_names()
     }
     fn side_sync_pack_tag_ids(game: &mut crate::game::Game<'_, Self>) {
         {
@@ -181,10 +181,10 @@ impl SideOps for crate::game::server_side::ServerState {
         }
     }
     fn side_has_singleplayer_server(game: &crate::game::Game<'_, Self>) -> bool {
-        { game.server_has_singleplayer_server() }
+        game.server_has_singleplayer_server()
     }
     fn side_is_published(game: &crate::game::Game<'_, Self>) -> bool {
-        { game.server_is_lan_published() }
+        game.server_is_lan_published()
     }
     fn side_clear_lod(game: &mut crate::game::Game<'_, Self>) {
         {
@@ -205,31 +205,31 @@ impl SideOps for crate::game::server_side::ServerState {
         game: &mut crate::game::Game<'_, Self>,
         key: (i32, i32, i32),
     ) -> bool {
-        { game.server_update_spawner_display(key) }
+        game.server_update_spawner_display(key)
     }
     fn side_memory_inputs(game: &crate::game::Game<'_, Self>) -> MemoryInputs {
-        { game.server_memory_inputs() }
+        game.server_memory_inputs()
     }
     fn side_memory_report(game: &crate::game::Game<'_, Self>) -> MemoryReport {
-        { game.server_memory_report() }
+        game.server_memory_report()
     }
     fn side_test_holder_padding(game: &crate::game::Game<'_, Self>, pos: (i32, i32, i32)) -> i32 {
-        { game.server_test_holder_padding(pos) }
+        game.server_test_holder_padding(pos)
     }
     fn side_test_rotation(game: &crate::game::Game<'_, Self>, pos: (i32, i32, i32)) -> Rotation {
-        { game.server_test_rotation(pos) }
+        game.server_test_rotation(pos)
     }
     fn side_pick_camera_id(game: &crate::game::Game<'_, Self>) -> Option<u32> {
-        { game.server_pick_camera_id() }
+        game.server_pick_camera_id()
     }
     fn side_live_remote_camera_id(game: &crate::game::Game<'_, Self>) -> Option<u32> {
-        { game.server_live_remote_camera_id() }
+        game.server_live_remote_camera_id()
     }
     fn side_is_pick_camera(game: &crate::game::Game<'_, Self>, id: u32) -> bool {
-        { game.server_is_pick_camera(id) }
+        game.server_is_pick_camera(id)
     }
     fn side_outline_camera_kind(game: &crate::game::Game<'_, Self>) -> EntityContextKind {
-        { game.server_outline_camera_kind() }
+        game.server_outline_camera_kind()
     }
     fn side_close_container(game: &mut crate::game::Game<'_, Self>) {
         {
@@ -245,10 +245,10 @@ impl SideOps for crate::game::client_side::ClientState {
         hand: Hand,
         animation: SwingAnimation,
     ) -> bool {
-        { game.client_swing_hand(hand, animation) }
+        game.client_swing_hand(hand, animation)
     }
     fn side_sound_event_names(game: &crate::game::Game<'_, Self>) -> Vec<String> {
-        { game.client_sound_event_names() }
+        game.client_sound_event_names()
     }
     fn side_sync_pack_tag_ids(game: &mut crate::game::Game<'_, Self>) {
         {
@@ -261,10 +261,10 @@ impl SideOps for crate::game::client_side::ClientState {
         }
     }
     fn side_has_singleplayer_server(game: &crate::game::Game<'_, Self>) -> bool {
-        { game.client_has_singleplayer_server() }
+        game.client_has_singleplayer_server()
     }
     fn side_is_published(game: &crate::game::Game<'_, Self>) -> bool {
-        { game.client_is_published() }
+        game.client_is_published()
     }
     fn side_clear_lod(game: &mut crate::game::Game<'_, Self>) {
         {
@@ -285,31 +285,31 @@ impl SideOps for crate::game::client_side::ClientState {
         game: &mut crate::game::Game<'_, Self>,
         key: (i32, i32, i32),
     ) -> bool {
-        { game.client_update_spawner_display(key) }
+        game.client_update_spawner_display(key)
     }
     fn side_memory_inputs(game: &crate::game::Game<'_, Self>) -> MemoryInputs {
-        { game.client_memory_inputs() }
+        game.client_memory_inputs()
     }
     fn side_memory_report(game: &crate::game::Game<'_, Self>) -> MemoryReport {
-        { game.client_memory_report() }
+        game.client_memory_report()
     }
     fn side_test_holder_padding(game: &crate::game::Game<'_, Self>, pos: (i32, i32, i32)) -> i32 {
-        { game.client_test_holder_padding(pos) }
+        game.client_test_holder_padding(pos)
     }
     fn side_test_rotation(game: &crate::game::Game<'_, Self>, pos: (i32, i32, i32)) -> Rotation {
-        { game.client_test_rotation(pos) }
+        game.client_test_rotation(pos)
     }
     fn side_pick_camera_id(game: &crate::game::Game<'_, Self>) -> Option<u32> {
-        { game.client_pick_camera_id() }
+        game.client_pick_camera_id()
     }
     fn side_live_remote_camera_id(game: &crate::game::Game<'_, Self>) -> Option<u32> {
-        { game.client_live_remote_camera_id() }
+        game.client_live_remote_camera_id()
     }
     fn side_is_pick_camera(game: &crate::game::Game<'_, Self>, id: u32) -> bool {
-        { game.client_is_pick_camera(id) }
+        game.client_is_pick_camera(id)
     }
     fn side_outline_camera_kind(game: &crate::game::Game<'_, Self>) -> EntityContextKind {
-        { game.client_outline_camera_kind() }
+        game.client_outline_camera_kind()
     }
     fn side_close_container(game: &mut crate::game::Game<'_, Self>) {
         {

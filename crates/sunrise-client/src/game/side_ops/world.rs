@@ -158,10 +158,10 @@ impl SideOps for crate::game::server_side::ServerState {
         placement_preview: bool,
         f: impl FnOnce(&Behaviours, &mut GameLevel<'_>, &mut Ticks) -> R,
     ) -> R {
-        { game.server_with_level_access(placement_preview, f) }
+        game.server_with_level_access(placement_preview, f)
     }
     fn side_after_with_level(game: &mut crate::game::Game<'_, Self>) {
-        { game.server_after_with_level() }
+        game.server_after_with_level()
     }
     fn side_set_block_live(
         game: &mut crate::game::Game<'_, Self>,
@@ -170,16 +170,16 @@ impl SideOps for crate::game::server_side::ServerState {
         flags: i32,
         create_entity: bool,
     ) -> bool {
-        { game.server_set_block_live(pos, state, flags, create_entity) }
+        game.server_set_block_live(pos, state, flags, create_entity)
     }
     fn side_update_chunk_tickets(game: &mut crate::game::Game<'_, Self>) {
-        { game.server_update_chunk_tickets() }
+        game.server_update_chunk_tickets()
     }
     fn side_section_mesh_pending_in(
         game: &crate::game::Game<'_, Self>,
         section: (i32, i32, i32),
     ) -> bool {
-        { game.server_section_mesh_pending_in(section) }
+        game.server_section_mesh_pending_in(section)
     }
     fn side_landing_change_cancelled(
         game: &mut crate::game::Game<'_, Self>,
@@ -188,40 +188,40 @@ impl SideOps for crate::game::server_side::ServerState {
         from: BlockStateId,
         to: BlockStateId,
     ) -> bool {
-        { game.server_landing_change_cancelled(player, position, from, to) }
+        game.server_landing_change_cancelled(player, position, from, to)
     }
     fn side_tick(game: &mut crate::game::Game<'_, Self>) -> Result<()> {
-        { game.server_tick() }
+        game.server_tick()
     }
     fn side_drop_stack_from_eyes(
         game: &mut crate::game::Game<'_, Self>,
         stack: ItemStack,
         thrown_from_hand: bool,
     ) -> Option<u32> {
-        { game.server_drop_stack_from_eyes(stack, thrown_from_hand) }
+        game.server_drop_stack_from_eyes(stack, thrown_from_hand)
     }
     fn side_give_experience_points(game: &mut crate::game::Game<'_, Self>, points: i32) {
-        { game.server_give_experience_points(points) }
+        game.server_give_experience_points(points)
     }
     fn side_journal_entity(game: &mut crate::game::Game<'_, Self>, id: u32) {
-        { game.server_journal_entity(id) }
+        game.server_journal_entity(id)
     }
     fn side_active_level_ref(
         game: &crate::game::Game<'_, Self>,
         epoch: mod_api::WorldEpoch,
     ) -> Option<mod_api::LevelRef> {
-        { game.server_active_level_ref(epoch) }
+        game.server_active_level_ref(epoch)
     }
     fn side_recipes<'__side_g>(game: &'__side_g crate::game::Game<'_, Self>) -> &'__side_g Recipes {
-        { game.server_recipes() }
+        game.server_recipes()
     }
     fn side_reset_entity_residency(game: &mut crate::game::Game<'_, Self>) {
-        { game.server_reset_entity_residency() }
+        game.server_reset_entity_residency()
     }
     fn side_game_side_meta(
         game: &crate::game::Game<'_, Self>,
     ) -> (Option<u128>, Option<mod_api::LevelRef>, bool) {
-        { game.server_game_side_meta() }
+        game.server_game_side_meta()
     }
 }
 #[cfg(feature = "client")]
@@ -232,10 +232,10 @@ impl SideOps for crate::game::client_side::ClientState {
         placement_preview: bool,
         f: impl FnOnce(&Behaviours, &mut GameLevel<'_>, &mut Ticks) -> R,
     ) -> R {
-        { game.client_with_level_access(placement_preview, f) }
+        game.client_with_level_access(placement_preview, f)
     }
     fn side_after_with_level(game: &mut crate::game::Game<'_, Self>) {
-        { game.client_after_with_level() }
+        game.client_after_with_level()
     }
     fn side_set_block_live(
         game: &mut crate::game::Game<'_, Self>,
@@ -244,16 +244,16 @@ impl SideOps for crate::game::client_side::ClientState {
         flags: i32,
         create_entity: bool,
     ) -> bool {
-        { game.client_set_block_live(pos, state, flags, create_entity) }
+        game.client_set_block_live(pos, state, flags, create_entity)
     }
     fn side_update_chunk_tickets(game: &mut crate::game::Game<'_, Self>) {
-        { game.client_update_chunk_tickets() }
+        game.client_update_chunk_tickets()
     }
     fn side_section_mesh_pending_in(
         game: &crate::game::Game<'_, Self>,
         section: (i32, i32, i32),
     ) -> bool {
-        { game.client_section_mesh_pending_in(section) }
+        game.client_section_mesh_pending_in(section)
     }
     fn side_landing_change_cancelled(
         game: &mut crate::game::Game<'_, Self>,
@@ -262,39 +262,39 @@ impl SideOps for crate::game::client_side::ClientState {
         from: BlockStateId,
         to: BlockStateId,
     ) -> bool {
-        { game.client_landing_change_cancelled(player, position, from, to) }
+        game.client_landing_change_cancelled(player, position, from, to)
     }
     fn side_tick(game: &mut crate::game::Game<'_, Self>) -> Result<()> {
-        { game.client_tick() }
+        game.client_tick()
     }
     fn side_drop_stack_from_eyes(
         game: &mut crate::game::Game<'_, Self>,
         stack: ItemStack,
         thrown_from_hand: bool,
     ) -> Option<u32> {
-        { game.client_drop_stack_from_eyes(stack, thrown_from_hand) }
+        game.client_drop_stack_from_eyes(stack, thrown_from_hand)
     }
     fn side_give_experience_points(game: &mut crate::game::Game<'_, Self>, points: i32) {
-        { game.client_give_experience_points(points) }
+        game.client_give_experience_points(points)
     }
     fn side_journal_entity(game: &mut crate::game::Game<'_, Self>, id: u32) {
-        { game.client_journal_entity(id) }
+        game.client_journal_entity(id)
     }
     fn side_active_level_ref(
         game: &crate::game::Game<'_, Self>,
         epoch: mod_api::WorldEpoch,
     ) -> Option<mod_api::LevelRef> {
-        { game.client_active_level_ref(epoch) }
+        game.client_active_level_ref(epoch)
     }
     fn side_recipes<'__side_g>(game: &'__side_g crate::game::Game<'_, Self>) -> &'__side_g Recipes {
-        { game.client_recipes() }
+        game.client_recipes()
     }
     fn side_reset_entity_residency(game: &mut crate::game::Game<'_, Self>) {
-        { game.client_reset_entity_residency() }
+        game.client_reset_entity_residency()
     }
     fn side_game_side_meta(
         game: &crate::game::Game<'_, Self>,
     ) -> (Option<u128>, Option<mod_api::LevelRef>, bool) {
-        { game.client_game_side_meta() }
+        game.client_game_side_meta()
     }
 }

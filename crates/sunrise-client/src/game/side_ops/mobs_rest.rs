@@ -234,7 +234,7 @@ impl SideOps for crate::game::server_side::ServerState {
         own_seat: Option<Vec3>,
         index: &HashMap<u32, usize>,
     ) -> Option<glam::DVec3> {
-        { game.server_passenger_riding_position(vehicle, me, own_seat, index) }
+        game.server_passenger_riding_position(vehicle, me, own_seat, index)
     }
     fn side_position_riders(game: &mut crate::game::Game<'_, Self>) {
         {
@@ -246,7 +246,7 @@ impl SideOps for crate::game::server_side::ServerState {
         vehicle: u32,
         rider: u32,
     ) -> Option<Vec3> {
-        { game.server_general_passenger_position(vehicle, rider) }
+        game.server_general_passenger_position(vehicle, rider)
     }
     fn side_play_player_bound_sound(
         game: &mut crate::game::Game<'_, Self>,
@@ -270,13 +270,13 @@ impl SideOps for crate::game::server_side::ServerState {
         }
     }
     fn side_boat_can_simulate_movement(game: &crate::game::Game<'_, Self>, id: u32) -> bool {
-        { game.server_boat_can_simulate_movement(id) }
+        game.server_boat_can_simulate_movement(id)
     }
     fn side_boat_has_room(game: &crate::game::Game<'_, Self>, i: usize) -> bool {
-        { game.server_boat_has_room(i) }
+        game.server_boat_has_room(i)
     }
     fn side_player_boat_seat(game: &crate::game::Game<'_, Self>, i: usize) -> Vec3 {
-        { game.server_player_boat_seat(i) }
+        game.server_player_boat_seat(i)
     }
     fn side_tick_boat_leash(game: &mut crate::game::Game<'_, Self>, b: &mut Boat) {
         {
@@ -289,7 +289,7 @@ impl SideOps for crate::game::server_side::ServerState {
         feet: Vec3,
         response: BodyRestitution,
     ) -> Vec3 {
-        { game.server_finish_body_restitution(entity, feet, response) }
+        game.server_finish_body_restitution(entity, feet, response)
     }
     fn side_body_step_on(
         game: &mut crate::game::Game<'_, Self>,
@@ -298,7 +298,7 @@ impl SideOps for crate::game::server_side::ServerState {
         ground: &GroundState,
         velocity: &mut Vec3,
     ) -> Vec<mod_api::EntityWrite> {
-        { game.server_body_step_on(entity, footprint, ground, velocity) }
+        game.server_body_step_on(entity, footprint, ground, velocity)
     }
     fn side_item_fall_on(
         game: &mut crate::game::Game<'_, Self>,
@@ -315,14 +315,14 @@ impl SideOps for crate::game::server_side::ServerState {
         item: &mut ItemEntity,
         client: bool,
     ) -> bool {
-        { game.server_item_post_move_contacts(item, client) }
+        game.server_item_post_move_contacts(item, client)
     }
     fn side_boat_collision_root(
         game: &crate::game::Game<'_, Self>,
         id: u32,
         target: Target,
     ) -> Option<u32> {
-        { game.server_boat_collision_root(id, target) }
+        game.server_boat_collision_root(id, target)
     }
     fn side_vehicle_solids(
         game: &crate::game::Game<'_, Self>,
@@ -338,24 +338,24 @@ impl SideOps for crate::game::server_side::ServerState {
         game: &crate::game::Game<'_, Self>,
         id: u32,
     ) -> Option<usize> {
-        { game.server_resident_dragon_part_index(id) }
+        game.server_resident_dragon_part_index(id)
     }
     fn side_entity_in(game: &crate::game::Game<'_, Self>, room: Aabb) -> bool {
-        { game.server_entity_in(room) }
+        game.server_entity_in(room)
     }
     fn side_pick_knot_fence(game: &crate::game::Game<'_, Self>, id: u32) -> Option<[i32; 3]> {
-        { game.server_pick_knot_fence(id) }
+        game.server_pick_knot_fence(id)
     }
     fn side_entity_is_taken(game: &crate::game::Game<'_, Self>, id: u32) -> bool {
-        { game.server_entity_is_taken(id) }
+        game.server_entity_is_taken(id)
     }
     fn side_own_passenger_index(game: &crate::game::Game<'_, Self>, mob_id: u32) -> usize {
-        { game.server_own_passenger_index(mob_id) }
+        game.server_own_passenger_index(mob_id)
     }
     fn side_game_side_fields(
         game: &crate::game::Game<'_, Self>,
     ) -> (Option<u128>, Option<mod_api::LevelRef>, bool) {
-        { game.server_game_side_fields() }
+        game.server_game_side_fields()
     }
 }
 #[cfg(feature = "client")]
@@ -368,7 +368,7 @@ impl SideOps for crate::game::client_side::ClientState {
         own_seat: Option<Vec3>,
         index: &HashMap<u32, usize>,
     ) -> Option<glam::DVec3> {
-        { game.client_passenger_riding_position(vehicle, me, own_seat, index) }
+        game.client_passenger_riding_position(vehicle, me, own_seat, index)
     }
     fn side_position_riders(game: &mut crate::game::Game<'_, Self>) {
         {
@@ -380,7 +380,7 @@ impl SideOps for crate::game::client_side::ClientState {
         vehicle: u32,
         rider: u32,
     ) -> Option<Vec3> {
-        { game.client_general_passenger_position(vehicle, rider) }
+        game.client_general_passenger_position(vehicle, rider)
     }
     fn side_play_player_bound_sound(
         game: &mut crate::game::Game<'_, Self>,
@@ -404,13 +404,13 @@ impl SideOps for crate::game::client_side::ClientState {
         }
     }
     fn side_boat_can_simulate_movement(game: &crate::game::Game<'_, Self>, id: u32) -> bool {
-        { game.client_boat_can_simulate_movement(id) }
+        game.client_boat_can_simulate_movement(id)
     }
     fn side_boat_has_room(game: &crate::game::Game<'_, Self>, i: usize) -> bool {
-        { game.client_boat_has_room(i) }
+        game.client_boat_has_room(i)
     }
     fn side_player_boat_seat(game: &crate::game::Game<'_, Self>, i: usize) -> Vec3 {
-        { game.client_player_boat_seat(i) }
+        game.client_player_boat_seat(i)
     }
     fn side_tick_boat_leash(game: &mut crate::game::Game<'_, Self>, b: &mut Boat) {
         {
@@ -423,7 +423,7 @@ impl SideOps for crate::game::client_side::ClientState {
         feet: Vec3,
         response: BodyRestitution,
     ) -> Vec3 {
-        { game.client_finish_body_restitution(entity, feet, response) }
+        game.client_finish_body_restitution(entity, feet, response)
     }
     fn side_body_step_on(
         game: &mut crate::game::Game<'_, Self>,
@@ -432,7 +432,7 @@ impl SideOps for crate::game::client_side::ClientState {
         ground: &GroundState,
         velocity: &mut Vec3,
     ) -> Vec<mod_api::EntityWrite> {
-        { game.client_body_step_on(entity, footprint, ground, velocity) }
+        game.client_body_step_on(entity, footprint, ground, velocity)
     }
     fn side_item_fall_on(
         game: &mut crate::game::Game<'_, Self>,
@@ -449,14 +449,14 @@ impl SideOps for crate::game::client_side::ClientState {
         item: &mut ItemEntity,
         client: bool,
     ) -> bool {
-        { game.client_item_post_move_contacts(item, client) }
+        game.client_item_post_move_contacts(item, client)
     }
     fn side_boat_collision_root(
         game: &crate::game::Game<'_, Self>,
         id: u32,
         target: Target,
     ) -> Option<u32> {
-        { game.client_boat_collision_root(id, target) }
+        game.client_boat_collision_root(id, target)
     }
     fn side_vehicle_solids(
         game: &crate::game::Game<'_, Self>,
@@ -472,23 +472,23 @@ impl SideOps for crate::game::client_side::ClientState {
         game: &crate::game::Game<'_, Self>,
         id: u32,
     ) -> Option<usize> {
-        { game.client_resident_dragon_part_index(id) }
+        game.client_resident_dragon_part_index(id)
     }
     fn side_entity_in(game: &crate::game::Game<'_, Self>, room: Aabb) -> bool {
-        { game.client_entity_in(room) }
+        game.client_entity_in(room)
     }
     fn side_pick_knot_fence(game: &crate::game::Game<'_, Self>, id: u32) -> Option<[i32; 3]> {
-        { game.client_pick_knot_fence(id) }
+        game.client_pick_knot_fence(id)
     }
     fn side_entity_is_taken(game: &crate::game::Game<'_, Self>, id: u32) -> bool {
-        { game.client_entity_is_taken(id) }
+        game.client_entity_is_taken(id)
     }
     fn side_own_passenger_index(game: &crate::game::Game<'_, Self>, mob_id: u32) -> usize {
-        { game.client_own_passenger_index(mob_id) }
+        game.client_own_passenger_index(mob_id)
     }
     fn side_game_side_fields(
         game: &crate::game::Game<'_, Self>,
     ) -> (Option<u128>, Option<mod_api::LevelRef>, bool) {
-        { game.client_game_side_fields() }
+        game.client_game_side_fields()
     }
 }

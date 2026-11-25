@@ -35,13 +35,13 @@ impl SideOps for crate::game::server_side::ServerState {
         holder: mod_api::Holder,
         access: AttachmentAccess,
     ) -> Result<&'__side_g mut mod_api::Attachments, mod_api::AttachmentError> {
-        { game.server_attachment_map(holder, access) }
+        game.server_attachment_map(holder, access)
     }
     fn side_entity_residence(
         game: &crate::game::Game<'_, Self>,
         holder: mod_api::EntityRef,
     ) -> Residence {
-        { game.server_entity_residence(holder) }
+        game.server_entity_residence(holder)
     }
 }
 #[cfg(feature = "client")]
@@ -52,12 +52,12 @@ impl SideOps for crate::game::client_side::ClientState {
         holder: mod_api::Holder,
         access: AttachmentAccess,
     ) -> Result<&'__side_g mut mod_api::Attachments, mod_api::AttachmentError> {
-        { game.client_attachment_map(holder, access) }
+        game.client_attachment_map(holder, access)
     }
     fn side_entity_residence(
         game: &crate::game::Game<'_, Self>,
         holder: mod_api::EntityRef,
     ) -> Residence {
-        { game.client_entity_residence(holder) }
+        game.client_entity_residence(holder)
     }
 }
