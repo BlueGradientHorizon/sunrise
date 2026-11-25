@@ -164,7 +164,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Some(d @ Tag::Compound(_)) => d.clone(),
             _ => Tag::Compound(Default::default()),
         };
-        let mut clocks = vec![(
+        let mut clocks: Vec<(String, i64, _)> = vec![(
             OVERWORLD_CLOCK.to_owned(),
             self.command_clock_time(OVERWORLD_CLOCK),
             self.ui.clock,

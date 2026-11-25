@@ -13,21 +13,6 @@ use sunrise_gameplay::stats::StatValues;
 use super::native_namespaced_id::namespaced;
 
 impl Game<'_, crate::game::server_side::ServerState> {
-    /// Whether `player` still names the same player on this server.
-    pub(in crate::game::server_side) fn native_player_current(&self, player: PlayerRef) -> bool {
-        self.player_handle_read(player).is_some()
-    }
-    /// The guest record `player` reads from outside their turn, or None
-    /// when their state is in the game (they act, or they are the host).
-    pub(in crate::game::server_side) fn native_player_resting(
-        &self,
-        player: PlayerRef,
-    ) -> Option<&sunrise_client::lan::guest::Guest> {
-        match self.player_handle_read(player)? {
-            PlayerRead::Guest(guest) => Some(guest),
-            PlayerRead::Acting { .. } => None,
-        }
-    }
     /// The player's statistics, including the counter lent to a nested turn.
     fn native_player_stats(&self, player: PlayerRef) -> Option<Option<&Stats>> {
         match self.player_handle_read(player) {
@@ -169,21 +154,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             None => self.level.recipe_book.recipes.contains(&id),
         })
     }
-    /// Every recipe the player's recipe book knows (`ServerRecipeBook.recipes`), qualified ids in
-    /// order. None for a player it can't reach.
-    pub(in crate::game) fn player_discovered_recipes(
-        &self,
-        player: PlayerRef,
-    ) -> Option<Vec<String>> {
-        if !self.native_player_current(player) {
-            return None;
-        }
-        let book = match self.native_player_resting(player) {
-            Some(g) => &g.recipe_book.recipes,
-            None => &self.level.recipe_book.recipes,
-        };
-        Some(book.iter().cloned().collect())
-    }
     /// `ServerPlayer.awardRecipes`, as `/recipe give` does: the recipes
     /// unlock in the player's book, with their toasts and the
     /// `player_recipe_discovered` hook, and the client hears of them.
@@ -227,6 +197,41 @@ impl Game<'_, crate::game::server_side::ServerState> {
             count = game.change_recipes(give, &ids);
         })
         .then_some(count)
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// Whether `player` still names the same player on this server.
+    pub(in crate::game) fn native_player_current(&self, player: PlayerRef) -> bool {
+        self.player_handle_read(player).is_some()
+    }
+
+    /// The guest record `player` reads from outside their turn, or None
+    /// when their state is in the game (they act, or they are the host).
+    pub(in crate::game) fn native_player_resting(
+        &self,
+        player: PlayerRef,
+    ) -> Option<&sunrise_client::lan::guest::Guest> {
+        match self.player_handle_read(player)? {
+            PlayerRead::Guest(guest) => Some(guest),
+            PlayerRead::Acting { .. } => None,
+        }
+    }
+
+    /// Every recipe the player's recipe book knows (`ServerRecipeBook.recipes`), qualified ids in
+    /// order. None for a player it can't reach.
+    pub(in crate::game) fn player_discovered_recipes(
+        &self,
+        player: PlayerRef,
+    ) -> Option<Vec<String>> {
+        if !self.native_player_current(player) {
+            return None;
+        }
+        let book = match self.native_player_resting(player) {
+            Some(g) => &g.recipe_book.recipes,
+            None => &self.level.recipe_book.recipes,
+        };
+        Some(book.iter().cloned().collect())
     }
 }
 

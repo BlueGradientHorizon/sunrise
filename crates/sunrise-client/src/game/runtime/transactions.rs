@@ -78,12 +78,12 @@ pub(in crate::game) struct QuickMoveNotice {
     pub(in crate::game) holder: BlockEntityIdentity,
 }
 
-pub(in crate::game) struct QuickMoveNotices<'a, 'g> {
-    pub(in crate::game) game: &'a mut Game<'g>,
+pub(in crate::game) struct QuickMoveNotices<'a, 'g, S: crate::game::Side> {
+    pub(in crate::game) game: &'a mut Game<'g, S>,
     pub(in crate::game) outer: Option<Vec<QuickMoveNotice>>,
 }
 
-impl Drop for QuickMoveNotices<'_, '_> {
+impl<S: crate::game::Side> Drop for QuickMoveNotices<'_, '_, S> {
     fn drop(&mut self) {
         self.game.transactions.quick_move_notices = self.outer.take();
     }
@@ -302,12 +302,12 @@ impl std::ops::DerefMut for OpenTransactions {
 }
 
 /// Puts the closing phase back when a close ends, however it ends.
-pub(in crate::game) struct ClosingPhase<'a, 'g> {
-    pub(in crate::game) game: &'a mut Game<'g>,
+pub(in crate::game) struct ClosingPhase<'a, 'g, S: crate::game::Side> {
+    pub(in crate::game) game: &'a mut Game<'g, S>,
     pub(in crate::game) outer: Option<TransactionLifecycle>,
 }
 
-impl Drop for ClosingPhase<'_, '_> {
+impl<S: crate::game::Side> Drop for ClosingPhase<'_, '_, S> {
     fn drop(&mut self) {
         self.game.transactions.closing = self.outer;
     }
@@ -1055,12 +1055,12 @@ pub(in crate::game) enum StorageSettlement {
 
 /// RAII guard for one open transaction frame. Dropping it without `close` aborts this frame
 /// and any nested frames still open inside it.
-pub(in crate::game) struct StorageScope<'a, 'g> {
-    pub(in crate::game) game: &'a mut Game<'g>,
+pub(in crate::game) struct StorageScope<'a, 'g, S: crate::game::Side> {
+    pub(in crate::game) game: &'a mut Game<'g, S>,
     pub(in crate::game) frame: Option<TransactionFrame>,
 }
 
-impl StorageScope<'_, '_> {
+impl<S: crate::game::Side> StorageScope<'_, '_, S> {
     pub(in crate::game) fn close(mut self, commit: bool) -> Option<StorageSettlement> {
         self.frame
             .take()
@@ -1068,7 +1068,7 @@ impl StorageScope<'_, '_> {
     }
 }
 
-impl Drop for StorageScope<'_, '_> {
+impl<S: crate::game::Side> Drop for StorageScope<'_, '_, S> {
     fn drop(&mut self) {
         if let Some(frame) = self.frame.take() {
             let _ = self.game.close_storage_frame(frame, false);
@@ -1152,7 +1152,10 @@ impl<'g, __Side: crate::game::Side> Game<'g, __Side> {
         self.close_storage_transaction(commit)
     }
     /// An engine batch opens a frame only when it has a callback to journal.
-    pub(in crate::game) fn storage_scope_guard(&mut self, open: bool) -> StorageScope<'_, 'g> {
+    pub(in crate::game) fn storage_scope_guard(
+        &mut self,
+        open: bool,
+    ) -> StorageScope<'_, 'g, __Side> {
         let frame = open.then(|| self.open_storage_transaction());
         StorageScope { game: self, frame }
     }

@@ -29,7 +29,7 @@ impl<'g, 'a> JournalLevelWrite<'g, 'a> {
         (game.level_in_place(level) && game.has_level_transaction()).then_some(Self { game, level })
     }
 
-    fn read(&self) -> ReadLevel<'_, 'a> {
+    fn read(&self) -> ReadLevel<'_, 'a, crate::game::server_side::ServerState> {
         ReadLevel {
             game: self.game,
             level: self.level,

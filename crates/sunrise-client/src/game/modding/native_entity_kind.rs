@@ -1,8 +1,28 @@
 //! Entity-type key reads share the completed registry and never format a type name.
-use super::{Game, commands::Target};
+use super::commands::Target;
 use mod_api::{EntityRef, EntityTypeKey, LevelReadError, PushReaction};
 
-impl Game<'_, crate::game::server_side::ServerState> {
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    fn native_kind_for_physical_read(
+        &self,
+        entity: EntityRef,
+        target: Option<Target>,
+    ) -> Option<&str> {
+        match target {
+            Some(target) => self.native_entity_kind_name(target),
+            None => self
+                .native_client_tracked(entity)
+                .map(|(kind, _)| kind)
+                .or_else(|| {
+                    (self.native_lifecycle.epoch() == Some(entity.epoch())).then_some(())?;
+                    self.mob_in_other_level(entity.id())
+                        .map(|(_, mob)| mob.kind.id.as_str())
+                }),
+        }
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     pub(in crate::game) fn native_entity_kind_key(&self, target: Target) -> Option<EntityTypeKey> {
         // A living entity's type key was resolved with the accepted resources; other kinds
         // resolve their name.
@@ -48,7 +68,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Target::Painting(_) => "minecraft:painting",
             Target::Boat(id) => self.boats.iter().find(|b| b.id == id)?.entity_type_name(),
             Target::Cart(id) => self.carts.iter().find(|cart| cart.id == id)?.kind.id(),
-            Target::Other(id) => &self.side.others.0.iter().find(|other| other.id == id)?.kind,
+            Target::Other(id) => &crate::game::Side::others(&self.side)?.iter().find(|other| other.id == id)?.kind,
             Target::Crystal(_) => "minecraft:end_crystal",
             Target::Dragon(_) | Target::DragonPart(_) => super::native_living_body::ENDER_DRAGON,
             Target::Tnt(_) => "minecraft:tnt",
@@ -117,24 +137,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     "minecraft:painting" | "minecraft:item_frame" | "minecraft:glow_item_frame"
                 )
             }))
-    }
-
-    fn native_kind_for_physical_read(
-        &self,
-        entity: EntityRef,
-        target: Option<Target>,
-    ) -> Option<&str> {
-        match target {
-            Some(target) => self.native_entity_kind_name(target),
-            None => self
-                .native_client_tracked(entity)
-                .map(|(kind, _)| kind)
-                .or_else(|| {
-                    (self.native_lifecycle.epoch() == Some(entity.epoch())).then_some(())?;
-                    self.mob_in_other_level(entity.id())
-                        .map(|(_, mob)| mob.kind.id.as_str())
-                }),
-        }
     }
 }
 

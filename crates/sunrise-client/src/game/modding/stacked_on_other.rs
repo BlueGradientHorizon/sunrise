@@ -32,14 +32,14 @@ pub(in crate::game) enum Pickup {
 }
 
 /// The click, run with the mods' answer (`None`: no listener, the plain click).
-type Perform<'p> = Box<dyn FnOnce(&mut Game<'_>, Option<&StackedOutcome>) + 'p>;
+type Perform<'p, S> = Box<dyn FnOnce(&mut Game<'_, S>, Option<&StackedOutcome>) + 'p>;
 /// What a click reads now, to compare with what it froze.
-type Current<'p> = Box<dyn Fn(&Game<'_>) -> Option<StackedClick> + 'p>;
+type Current<'p, S> = Box<dyn Fn(&Game<'_, S>) -> Option<StackedClick> + 'p>;
 
-struct Shared<'p> {
+struct Shared<'p, S> {
     frozen: StackedClick,
-    current: Current<'p>,
-    perform: RefCell<Option<Perform<'p>>>,
+    current: Current<'p, S>,
+    perform: RefCell<Option<Perform<'p, S>>>,
     answer: RefCell<Option<StackedOutcome>>,
     /// A slot rule or a stale input refused the mods' edit (`StackedOutcome::refused`).
     refused: Cell<bool>,
@@ -47,10 +47,18 @@ struct Shared<'p> {
 
 /// The decision's target: an id that names the route's menu (a second click on it while this one
 /// is active is refused as busy), and what the click froze.
-#[derive(Clone)]
-struct PickupTarget<'p> {
+struct PickupTarget<'p, S> {
     id: MenuId,
-    shared: Rc<Shared<'p>>,
+    shared: Rc<Shared<'p, S>>,
+}
+
+impl<S> Clone for PickupTarget<'_, S> {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id,
+            shared: Rc::clone(&self.shared),
+        }
+    }
 }
 
 /// What the click read: the journaled-write epoch before the listeners ran.
@@ -61,7 +69,7 @@ struct PickupReads {
 /// The one thing a pickup decision plans: that the click runs. The write set is the click's own.
 struct PickupPlan;
 
-impl<'a, 'g> ActionTarget<GameHost<'a, 'g>> for PickupTarget<'_> {
+impl<'a, 'g, S: crate::game::Side> ActionTarget<GameHost<'a, 'g, S>> for PickupTarget<'_, S> {
     type Reads = PickupReads;
     type View = PickupReads;
     type Plan = PickupPlan;
@@ -70,7 +78,7 @@ impl<'a, 'g> ActionTarget<GameHost<'a, 'g>> for PickupTarget<'_> {
     fn id(&self) -> MenuId {
         self.id
     }
-    fn capture(&self, host: &GameHost<'a, 'g>) -> std::result::Result<PickupReads, Outcome> {
+    fn capture(&self, host: &GameHost<'a, 'g, S>) -> std::result::Result<PickupReads, Outcome> {
         Ok(PickupReads {
             writes: host.game.transactions.writes(),
         })
@@ -93,7 +101,7 @@ impl<'a, 'g> ActionTarget<GameHost<'a, 'g>> for PickupTarget<'_> {
     /// click would read now must still be what it froze.
     fn validate(
         &self,
-        host: &GameHost<'a, 'g>,
+        host: &GameHost<'a, 'g, S>,
         reads: &PickupReads,
     ) -> std::result::Result<(), Outcome> {
         if host.game.transactions.writes() != reads.writes {
@@ -104,7 +112,7 @@ impl<'a, 'g> ActionTarget<GameHost<'a, 'g>> for PickupTarget<'_> {
             _ => Err(Outcome::Stale(StaleReason::Snapshot)),
         }
     }
-    fn apply(&self, host: &mut GameHost<'a, 'g>, _: PickupPlan) {
+    fn apply(&self, host: &mut GameHost<'a, 'g, S>, _: PickupPlan) {
         let perform = self.shared.perform.take().expect("a pickup runs once");
         let answer = self.shared.answer.take();
         perform(host.game, answer.as_ref());
@@ -242,7 +250,7 @@ pub(in crate::game) fn stacked_listens_for(frozen: &StackedClick) -> bool {
 /// The accepted answer is kept for the click; any bad answer refuses it.
 fn fire<__Side: crate::game::Side>(
     game: &mut Game<'_, __Side>,
-    shared: &Shared<'_>,
+    shared: &Shared<'_, __Side>,
     probe_carried: impl FnOnce(&mut Game<'_, __Side>, Option<ItemStack>, Option<ItemStack>) -> bool,
 ) -> Reply {
     let frozen = &shared.frozen;

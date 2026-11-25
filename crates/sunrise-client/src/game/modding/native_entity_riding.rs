@@ -66,80 +66,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         Some([x, top, z])
     }
 
-    /// The id of the entity `t` rides, if it rides one.
-    pub(in crate::game) fn native_vehicle_id(&self, t: Target) -> Option<u32> {
-        match t {
-            Target::Player => self.riding,
-            Target::Guest(conn) => self.command_guest(conn)?.vehicle,
-            Target::Mob(id) => self.mob_object(id).filter(|m| !m.removed)?.extra.mount,
-            Target::General(id) => self.general_row(id)?.mount,
-            _ => None,
-        }
-    }
-    /// The side's own copy of the entity for a read. On a client only tracked
-    /// entities and the local player have handles.
-    pub(in crate::game::server_side) fn riding_read(
-        &self,
-        entity: EntityRef,
-    ) -> Option<RidingRead<'_>> {
-        if self.is_logical_server() {
-            return self.native_entity_target(entity).map(RidingRead::Server);
-        }
-        (self.entity(entity.id())? == entity).then_some(RidingRead::Client(self.remote.as_ref()?))
-    }
 
-    /// What the entity rides (`Entity.getVehicle`), if its vehicle has a handle.
-    pub(in crate::game) fn entity_vehicle(&self, entity: EntityRef) -> Option<EntityRef> {
-        match self.riding_read(entity)? {
-            RidingRead::Server(target) => self.entity(self.native_vehicle_id(target)?),
-            RidingRead::Client(remote) => self.entity(remote.passenger_vehicle(entity.id())?),
-        }
-    }
-    /// Whether the entity rides another object, even one without a handle.
-    pub(in crate::game) fn entity_is_passenger(&self, entity: EntityRef) -> Option<bool> {
-        let vehicle = match self.riding_read(entity)? {
-            RidingRead::Server(target) => self.native_vehicle_id(target),
-            RidingRead::Client(remote) => remote.passenger_vehicle(entity.id()),
-        };
-        Some(vehicle.is_some())
-    }
-    /// The lowest vehicle under the entity (`Entity.getRootVehicle`): the
-    /// entity itself when it rides nothing. Off-level intermediaries are traversed;
-    /// an off-level root or a cycle returns no handle, never a descendant substitute.
-    pub(in crate::game) fn entity_root_vehicle(&self, entity: EntityRef) -> Option<EntityRef> {
-        match self.riding_read(entity)? {
-            RidingRead::Server(target) => {
-                self.entity(self.native_root_vehicle_id(entity.id(), target)?)
-            }
-            RidingRead::Client(remote) => {
-                let root = passenger_root(&remote.passenger_vehicles, entity.id()).ok()?;
-                self.entity(root)
-            }
-        }
-    }
 
-    /// Follow full object links, returning no root for a cycle without allocating a visited set.
-    pub(in crate::game) fn native_root_vehicle_id(&self, id: u32, target: Target) -> Option<u32> {
-        let mut root = id;
-        let mut next = self.native_vehicle_id(target);
-        for _ in 0..=self.riding_link_limit() {
-            let Some(vehicle) = next else {
-                return Some(root);
-            };
-            root = vehicle;
-            next = self.vehicle_of_any(vehicle);
-        }
-        None
-    }
-    /// The number of objects that could themselves have a mount, bounding a
-    /// walk of valid links. Only mobs, general rows and players can be riders.
-    pub(in crate::game) fn riding_link_limit(&self) -> usize {
-        self.mobs.len()
-            + self.persist.off_level.len()
-            + self.resident_entities.general.rows.len()
-            + self.lan.as_ref().map_or(0, |host| host.hub.guests.len())
-            + 1
-    }
 
     /// A live portal root carries a direct or indirect mount through complete objects.
     pub(in crate::game::server_side) fn vehicle_tree_contains_mount(
@@ -160,31 +88,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && target.is_some_and(|target| self.native_root_vehicle_id(mount, target) == Some(root))
     }
 
-    /// The entities riding this one (`Entity.getPassengers`), in `addPassenger`'s order.
-    pub(in crate::game) fn entity_passengers(&self, entity: EntityRef) -> Option<Vec<EntityRef>> {
-        Some(match self.riding_read(entity)? {
-            RidingRead::Server(_) => self
-                .seated_passengers(entity.id())
-                .into_iter()
-                .filter_map(|(_, id, _)| self.entity(id))
-                .collect(),
-            RidingRead::Client(remote) => {
-                let mut seats: Vec<_> = remote
-                    .passenger_seats(entity.id())
-                    .filter_map(|(id, index)| Some((index, self.entity(id)?)))
-                    .collect();
-                seats.sort_unstable_by_key(|seat| seat.0);
-                seats.into_iter().map(|(_, handle)| handle).collect()
-            }
-        })
-    }
-    /// Whether any object rides the entity, even one without a handle.
-    pub(in crate::game) fn entity_is_vehicle(&self, entity: EntityRef) -> Option<bool> {
-        Some(match self.riding_read(entity)? {
-            RidingRead::Server(_) => self.has_seated_passengers(entity.id()),
-            RidingRead::Client(remote) => remote.has_passengers(entity.id()),
-        })
-    }
     /// Every entity riding this one, at any depth (`Entity.getIndirectPassengers`): each
     /// passenger in boarding order, followed by those riding it. Traverse off-level
     /// intermediaries but return only resident handles.
@@ -881,6 +784,114 @@ impl Game<'_, crate::game::server_side::ServerState> {
             any |= self.entity_stop_riding(p);
         }
         any
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// The id of the entity `t` rides, if it rides one.
+    pub(in crate::game) fn native_vehicle_id(&self, t: Target) -> Option<u32> {
+        match t {
+            Target::Player => self.riding,
+            Target::Guest(conn) => self.command_guest(conn)?.vehicle,
+            Target::Mob(id) => self.mob_object(id).filter(|m| !m.removed)?.extra.mount,
+            Target::General(id) => self.general_row(id)?.mount,
+            _ => None,
+        }
+    }
+
+    /// The side's own copy of the entity for a read. On a client only tracked
+    /// entities and the local player have handles.
+    pub(in crate::game) fn riding_read(
+        &self,
+        entity: EntityRef,
+    ) -> Option<RidingRead<'_>> {
+        if self.is_logical_server() {
+            return self.native_entity_target(entity).map(RidingRead::Server);
+        }
+        (self.entity(entity.id())? == entity).then_some(RidingRead::Client(self.remote.as_ref()?))
+    }
+
+    /// What the entity rides (`Entity.getVehicle`), if its vehicle has a handle.
+    pub(in crate::game) fn entity_vehicle(&self, entity: EntityRef) -> Option<EntityRef> {
+        match self.riding_read(entity)? {
+            RidingRead::Server(target) => self.entity(self.native_vehicle_id(target)?),
+            RidingRead::Client(remote) => self.entity(remote.passenger_vehicle(entity.id())?),
+        }
+    }
+
+    /// Whether the entity rides another object, even one without a handle.
+    pub(in crate::game) fn entity_is_passenger(&self, entity: EntityRef) -> Option<bool> {
+        let vehicle = match self.riding_read(entity)? {
+            RidingRead::Server(target) => self.native_vehicle_id(target),
+            RidingRead::Client(remote) => remote.passenger_vehicle(entity.id()),
+        };
+        Some(vehicle.is_some())
+    }
+
+    /// The lowest vehicle under the entity (`Entity.getRootVehicle`): the
+    /// entity itself when it rides nothing. Off-level intermediaries are traversed;
+    /// an off-level root or a cycle returns no handle, never a descendant substitute.
+    pub(in crate::game) fn entity_root_vehicle(&self, entity: EntityRef) -> Option<EntityRef> {
+        match self.riding_read(entity)? {
+            RidingRead::Server(target) => {
+                self.entity(self.native_root_vehicle_id(entity.id(), target)?)
+            }
+            RidingRead::Client(remote) => {
+                let root = passenger_root(&remote.passenger_vehicles, entity.id()).ok()?;
+                self.entity(root)
+            }
+        }
+    }
+
+    /// Follow full object links, returning no root for a cycle without allocating a visited set.
+    pub(in crate::game) fn native_root_vehicle_id(&self, id: u32, target: Target) -> Option<u32> {
+        let mut root = id;
+        let mut next = self.native_vehicle_id(target);
+        for _ in 0..=self.riding_link_limit() {
+            let Some(vehicle) = next else {
+                return Some(root);
+            };
+            root = vehicle;
+            next = self.vehicle_of_any(vehicle);
+        }
+        None
+    }
+
+    /// The number of objects that could themselves have a mount, bounding a
+    /// walk of valid links. Only mobs, general rows and players can be riders.
+    pub(in crate::game) fn riding_link_limit(&self) -> usize {
+        self.mobs.len()
+            + self.persist.off_level.len()
+            + self.resident_entities.general.rows.len()
+            + self.lan.as_ref().map_or(0, |host| host.hub.guests.len())
+            + 1
+    }
+
+    /// The entities riding this one (`Entity.getPassengers`), in `addPassenger`'s order.
+    pub(in crate::game) fn entity_passengers(&self, entity: EntityRef) -> Option<Vec<EntityRef>> {
+        Some(match self.riding_read(entity)? {
+            RidingRead::Server(_) => self
+                .seated_passengers(entity.id())
+                .into_iter()
+                .filter_map(|(_, id, _)| self.entity(id))
+                .collect(),
+            RidingRead::Client(remote) => {
+                let mut seats: Vec<_> = remote
+                    .passenger_seats(entity.id())
+                    .filter_map(|(id, index)| Some((index, self.entity(id)?)))
+                    .collect();
+                seats.sort_unstable_by_key(|seat| seat.0);
+                seats.into_iter().map(|(_, handle)| handle).collect()
+            }
+        })
+    }
+
+    /// Whether any object rides the entity, even one without a handle.
+    pub(in crate::game) fn entity_is_vehicle(&self, entity: EntityRef) -> Option<bool> {
+        Some(match self.riding_read(entity)? {
+            RidingRead::Server(_) => self.has_seated_passengers(entity.id()),
+            RidingRead::Client(remote) => remote.has_passengers(entity.id()),
+        })
     }
 }
 

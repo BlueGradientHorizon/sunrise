@@ -126,16 +126,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         host.mob_players.retain(|_, conn| *conn != guest.conn);
         self.side.guest_combat.0.remove(&guest.conn);
     }
-    pub(in crate::game) fn cloning_guest(&self, uuid: u128) -> Option<&Guest> {
-        let &(_, conn, _) = self
-            .player_state
-            .cloning_players
-            .iter()
-            .rev()
-            .find(|&&(player, _, _)| player == uuid)?;
-        self.command_guest(conn)
-            .filter(|_| !self.side.lan_guest_swaps.contains(&conn))
-    }
     pub(in crate::game) fn fake_action_actor(
         &self,
         player: PlayerRef,
@@ -684,82 +674,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         None
     }
-    pub(in crate::game) fn player_handle_read(&self, player: PlayerRef) -> Option<PlayerRead<'_>> {
-        (self.native_lifecycle.epoch()? == player.fields().entity.epoch()).then_some(())?;
-        if self.side.lan_acting_fake
-            && self.side.lan_acting_uuid == Some(player.fields().uuid)
-            && self.side.lan_acting_entity == Some(player.fields().entity.id())
-        {
-            return Some(PlayerRead::Acting {
-                mode: Some(self.mode_id()),
-                body: self.player.as_ref(),
-                abilities: self.side.acting_abilities,
-                last_death: self.level.last_death.as_ref(),
-            });
-        }
-        if let Some((read, id)) = self.player_lookup(player.fields().uuid)
-            && id == player.fields().entity.id()
-        {
-            return Some(read);
-        }
-        let guests = &self.lan.as_ref()?.hub.guests;
-        let guest = guests
-            .get(guests.identity_index(player.fields().uuid, player.fields().entity.id())?)?;
-        if !guest.placed || !guest.is_fake() || self.side.lan_guest_swaps.contains(&guest.conn) {
-            return None;
-        }
-        Some(PlayerRead::Guest(guest))
-    }
     /// Whether a live player handle names a connectionless actor.
     pub(in crate::game) fn player_is_fake(&self, player: PlayerRef) -> Option<bool> {
         match self.player_handle_read(player)? {
             PlayerRead::Acting { .. } => Some(self.side.lan_acting_fake),
             PlayerRead::Guest(guest) => Some(guest.is_fake()),
         }
-    }
-    pub(in crate::game) fn player_lookup(&self, uuid: u128) -> Option<(PlayerRead<'_>, u32)> {
-        if self.side.lan_acting_uuid == Some(uuid) && !self.side.lan_acting_fake {
-            return Some((
-                PlayerRead::Acting {
-                    mode: Some(self.mode_id()),
-                    body: self.player.as_ref(),
-                    abilities: self.side.acting_abilities,
-                    last_death: self.level.last_death.as_ref(),
-                },
-                self.side.lan_acting_entity?,
-            ));
-        }
-        if let Some(guest) = self.cloning_guest(uuid).or_else(|| {
-            self.lan.as_ref().and_then(|host| {
-                host.hub.guests.simulation_iter().find(|guest| {
-                    host.hub.online(guest)
-                        && guest.uuid == uuid
-                        && !self.side.lan_guest_swaps.contains(&guest.conn)
-                })
-            })
-        }) {
-            return Some((PlayerRead::Guest(guest), guest.entity_id as u32));
-        }
-        if self.side.lan_acting_uuid.is_none()
-            && self.serving.is_some()
-            && self
-                .level
-                .player_uuid
-                .map(sunrise_client::lan::playerdata::ints_uuid)
-                == Some(uuid)
-        {
-            let body = self.player.as_ref()?;
-            return Some((
-                PlayerRead::Acting {
-                    mode: Some(self.mode_id()),
-                    body: Some(body),
-                    abilities: self.side.acting_abilities,
-                    last_death: self.level.last_death.as_ref(),
-                },
-                body.entity_id as u32,
-            ));
-        }
-        None
     }
     /// The stable name of a connected or acting player. None for a stale or
     /// unavailable player; displaced online players retain their identity.
@@ -1878,6 +1798,91 @@ impl Game<'_, crate::game::server_side::ServerState> {
         pos: [i32; 3],
     ) -> Option<bool> {
         self.level_is_raining_at(level, pos)
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    pub(in crate::game) fn cloning_guest(&self, uuid: u128) -> Option<&Guest> {
+        let &(_, conn, _) = self
+            .player_state
+            .cloning_players
+            .iter()
+            .rev()
+            .find(|&&(player, _, _)| player == uuid)?;
+        self.command_guest(conn)
+            .filter(|_| !crate::game::Side::lan_guest_swaps(&self.side).contains(&conn))
+    }
+
+    pub(in crate::game) fn player_handle_read(&self, player: PlayerRef) -> Option<PlayerRead<'_>> {
+        (self.native_lifecycle.epoch()? == player.fields().entity.epoch()).then_some(())?;
+        if crate::game::Side::lan_acting_fake(&self.side)
+            && crate::game::Side::lan_acting_uuid(&self.side) == Some(player.fields().uuid)
+            && crate::game::Side::lan_acting_entity(&self.side) == Some(player.fields().entity.id())
+        {
+            return Some(PlayerRead::Acting {
+                mode: Some(self.mode_id()),
+                body: self.player.as_ref(),
+                abilities: crate::game::Side::acting_abilities(&self.side),
+                last_death: self.level.last_death.as_ref(),
+            });
+        }
+        if let Some((read, id)) = self.player_lookup(player.fields().uuid)
+            && id == player.fields().entity.id()
+        {
+            return Some(read);
+        }
+        let guests = &self.lan.as_ref()?.hub.guests;
+        let guest = guests
+            .get(guests.identity_index(player.fields().uuid, player.fields().entity.id())?)?;
+        if !guest.placed || !guest.is_fake() || crate::game::Side::lan_guest_swaps(&self.side).contains(&guest.conn) {
+            return None;
+        }
+        Some(PlayerRead::Guest(guest))
+    }
+
+    pub(in crate::game) fn player_lookup(&self, uuid: u128) -> Option<(PlayerRead<'_>, u32)> {
+        if crate::game::Side::lan_acting_uuid(&self.side) == Some(uuid) && !crate::game::Side::lan_acting_fake(&self.side) {
+            return Some((
+                PlayerRead::Acting {
+                    mode: Some(self.mode_id()),
+                    body: self.player.as_ref(),
+                    abilities: crate::game::Side::acting_abilities(&self.side),
+                    last_death: self.level.last_death.as_ref(),
+                },
+                crate::game::Side::lan_acting_entity(&self.side)?,
+            ));
+        }
+        if let Some(guest) = self.cloning_guest(uuid).or_else(|| {
+            self.lan.as_ref().and_then(|host| {
+                host.hub.guests.simulation_iter().find(|guest| {
+                    host.hub.online(guest)
+                        && guest.uuid == uuid
+                        && !crate::game::Side::lan_guest_swaps(&self.side).contains(&guest.conn)
+                })
+            })
+        }) {
+            return Some((PlayerRead::Guest(guest), guest.entity_id as u32));
+        }
+        if crate::game::Side::lan_acting_uuid(&self.side).is_none()
+            && self.serving.is_some()
+            && self
+                .level
+                .player_uuid
+                .map(sunrise_client::lan::playerdata::ints_uuid)
+                == Some(uuid)
+        {
+            let body = self.player.as_ref()?;
+            return Some((
+                PlayerRead::Acting {
+                    mode: Some(self.mode_id()),
+                    body: Some(body),
+                    abilities: crate::game::Side::acting_abilities(&self.side),
+                    last_death: self.level.last_death.as_ref(),
+                },
+                body.entity_id as u32,
+            ));
+        }
+        None
     }
 }
 

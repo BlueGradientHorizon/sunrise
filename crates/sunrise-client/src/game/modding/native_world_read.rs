@@ -183,11 +183,11 @@ pub(in crate::game) fn engine_fluid_kind(fluid: FluidKey) -> Option<FluidKind> {
 
 /// The blocks around one position of a level, as `FluidState.getHeight` reads them: an unloaded
 /// block is empty and has no sturdy underside.
-struct FluidColumn<'a, 'g> {
-    game: &'a Game<'g, crate::game::server_side::ServerState>,
+struct FluidColumn<'a, 'g, S: crate::game::Side> {
+    game: &'a Game<'g, S>,
     level: LevelRef,
 }
-impl FluidColumn<'_, '_> {
+impl<S: crate::game::Side> FluidColumn<'_, '_, S> {
     fn fluid_at(&self, pos: [i32; 3]) -> EngineFluidState {
         self.game
             .level_block_state(self.level, pos)
@@ -196,7 +196,7 @@ impl FluidColumn<'_, '_> {
             })
     }
 }
-impl FluidHeightWorld for FluidColumn<'_, '_> {
+impl<S: crate::game::Side> FluidHeightWorld for FluidColumn<'_, '_, S> {
     type Error = std::convert::Infallible;
     fn fluid(&mut self, pos: [i32; 3]) -> Result<EngineFluidState, Self::Error> {
         Ok(self.fluid_at(pos))
@@ -215,6 +215,87 @@ impl FluidHeightWorld for FluidColumn<'_, '_> {
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
+
+
+
+
+
+    /// The fluid state at `pos` of the level `level` names (`BlockGetter.getFluidState`). None
+    /// for a stale handle, a chunk that isn't loaded or a `y` outside the world: a read never
+    /// loads a chunk.
+    pub(in crate::game) fn level_fluid_state(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+    ) -> Option<FluidState> {
+        let state = self.level_block_state(level, pos)?;
+        self.state_fluid_state(state)
+    }
+
+
+    /// `Fluid.getTickDelay(level)` of `fluid` at `pos` in the level in place: vanilla's by its
+    /// family and the dimension (`World::fast_lava`), a mod fluid's as registered and as its
+    /// `fluid_rules` parts change it there (the one rule path the flow itself reads). None for
+    /// another level, a stale handle, a client, an unloaded or out-of-height position and a
+    /// fluid with no world form.
+    pub(in crate::game) fn level_fluid_tick_delay(
+        &self,
+        level: LevelRef,
+        fluid: FluidKey,
+        pos: [i32; 3],
+    ) -> Option<i32> {
+        let [x, y, z] = pos;
+        if !self.level_in_place(level) || !self.world.is_loaded_at(x, y, z) {
+            return None;
+        }
+        let kind = engine_fluid_kind(fluid)?;
+        let view = ReadLevel { game: self, level };
+        Some(fluid_tick_delay(kind, self.world.fast_lava, || {
+            let fluid = kind.mod_fluid()?;
+            Some(super::GameLevel::answered_fluid_rules(
+                self.dim.level(),
+                BlockPos::new(x, y, z),
+                fluid,
+                fluid.get().rules,
+                |call| mod_api::dispatch_fluid_rules(&view, call),
+            ))
+        }))
+    }
+
+
+
+
+
+
+
+
+    /// Read a loaded block in a server tick hook, without loading a chunk.
+    /// The returned name and properties are owned and remain valid after the hook.
+    #[allow(dead_code)]
+    pub(in crate::game::server_side) fn native_server_block(
+        &self,
+        context: &LifecycleContext,
+        dimension: &str,
+        pos: [i32; 3],
+    ) -> Result<BlockState, NativeBlockReadError> {
+        if !self.native_lifecycle.permits_read(context) {
+            return Err(NativeBlockReadError::InactiveContext);
+        }
+        if !Dim::exists(dimension) {
+            return Err(NativeBlockReadError::UnavailableDimension);
+        }
+        let dim = Dim::from_id(dimension);
+        let world = if dim == self.dim {
+            Some(&self.world)
+        } else {
+            self.side.levels.0.parked_world(dim)
+        }
+        .ok_or(NativeBlockReadError::UnavailableDimension)?;
+        read_block(world, self.pack.assets.registry, pos)
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// The saved name for an engine-issued unresolved fluid.
     pub(in crate::game) fn unresolved_fluid_id(&self, fluid: UnresolvedFluid) -> String {
         mod_api::__private::unresolved_fluid_name(fluid)
@@ -251,18 +332,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         Some(fluid_in_tag(self.native_tag_items()?, fluid, tag))
     }
 
-    /// The fluid state at `pos` of the level `level` names (`BlockGetter.getFluidState`). None
-    /// for a stale handle, a chunk that isn't loaded or a `y` outside the world: a read never
-    /// loads a chunk.
-    pub(in crate::game) fn level_fluid_state(
-        &self,
-        level: LevelRef,
-        pos: [i32; 3],
-    ) -> Option<FluidState> {
-        let state = self.level_block_state(level, pos)?;
-        self.state_fluid_state(state)
-    }
-
     /// The fluid's shape at `pos` (`FluidState.getShape`), block-local: none for no fluid, else
     /// the floor to `FluidState.getHeight`, a full block under the same fluid and the fluid's
     /// own height otherwise. None as for `level_block_state`; an unloaded block above is no
@@ -278,35 +347,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .level_block_state(level, [pos[0], pos[1] + 1, pos[2]])
             .map(|state| behaviours.fluid(state));
         Some(fluid_shape(fluid, above).into_iter().collect())
-    }
-
-    /// `Fluid.getTickDelay(level)` of `fluid` at `pos` in the level in place: vanilla's by its
-    /// family and the dimension (`World::fast_lava`), a mod fluid's as registered and as its
-    /// `fluid_rules` parts change it there (the one rule path the flow itself reads). None for
-    /// another level, a stale handle, a client, an unloaded or out-of-height position and a
-    /// fluid with no world form.
-    pub(in crate::game) fn level_fluid_tick_delay(
-        &self,
-        level: LevelRef,
-        fluid: FluidKey,
-        pos: [i32; 3],
-    ) -> Option<i32> {
-        let [x, y, z] = pos;
-        if !self.level_in_place(level) || !self.world.is_loaded_at(x, y, z) {
-            return None;
-        }
-        let kind = engine_fluid_kind(fluid)?;
-        let view = ReadLevel { game: self, level };
-        Some(fluid_tick_delay(kind, self.world.fast_lava, || {
-            let fluid = kind.mod_fluid()?;
-            Some(super::GameLevel::answered_fluid_rules(
-                self.dim.level(),
-                BlockPos::new(x, y, z),
-                fluid,
-                fluid.get().rules,
-                |call| mod_api::dispatch_fluid_rules(&view, call),
-            ))
-        }))
     }
 
     /// `FluidState.getHeight(level, pos)` of the fluid at `pos`. None for a stale handle or a
@@ -386,31 +426,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `minecraft:empty`, for a tank-only fluid and for a name no fluid has.
     pub(in crate::game) fn fluid_empty_sound(&self, fluid: &str) -> Option<&'static str> {
         sunrise_world::level::fluid_empty_sound(fluid_kind(fluid)?)
-    }
-
-    /// Read a loaded block in a server tick hook, without loading a chunk.
-    /// The returned name and properties are owned and remain valid after the hook.
-    #[allow(dead_code)]
-    pub(in crate::game::server_side) fn native_server_block(
-        &self,
-        context: &LifecycleContext,
-        dimension: &str,
-        pos: [i32; 3],
-    ) -> Result<BlockState, NativeBlockReadError> {
-        if !self.native_lifecycle.permits_read(context) {
-            return Err(NativeBlockReadError::InactiveContext);
-        }
-        if !Dim::exists(dimension) {
-            return Err(NativeBlockReadError::UnavailableDimension);
-        }
-        let dim = Dim::from_id(dimension);
-        let world = if dim == self.dim {
-            Some(&self.world)
-        } else {
-            self.side.levels.0.parked_world(dim)
-        }
-        .ok_or(NativeBlockReadError::UnavailableDimension)?;
-        read_block(world, self.pack.assets.registry, pos)
     }
 }
 

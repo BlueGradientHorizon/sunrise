@@ -28,9 +28,11 @@ use sunrise_world::{
     world_ray::{RayBlockMode, RayFluidMode, RayWorld, clip_world},
 };
 
-pub(in crate::game) struct OutlineFluidRay<'a, 'r>(pub(in crate::game) &'a Game<'r>);
+pub(in crate::game) struct OutlineFluidRay<'a, 'r, S: crate::game::Side>(
+    pub(in crate::game) &'a Game<'r, S>,
+);
 
-impl RayWorld for OutlineFluidRay<'_, '_> {
+impl<S: crate::game::Side> RayWorld for OutlineFluidRay<'_, '_, S> {
     type Error = io::Error;
     type Block = BlockStateId;
     type Fluid = Option<(f32, bool, Fluid)>;

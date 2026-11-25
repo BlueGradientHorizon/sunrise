@@ -69,6 +69,22 @@ impl Game<'_, crate::game::server_side::ServerState> {
             None => 0,
         }
     }
+    /// The guest whose entity id `id` is, when the `LivingRef` reads answer for it from its hub
+    /// record now (`Target::Guest`, not the player in place): the causing entity a hit may lend
+    /// read-only ([`HitLend::parked_guest`](sunrise_client::health::HitLend::parked_guest)).
+    /// None for anything else, so a hit's view never answers where `LivingRef` does not.
+    pub(in crate::game) fn native_parked_causer(&self, id: i32) -> Option<u32> {
+        let epoch = self.native_lifecycle.epoch()?;
+        let living =
+            mod_api::LivingRef::new(mod_api::EntityRef::new(epoch, u32::try_from(id).ok()?));
+        match self.native_living_target(living)? {
+            Target::Guest(conn) if self.side.lan_acting != Some(conn) => Some(conn),
+            _ => None,
+        }
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// The body a living target names now, where its reads are: the player in place's own
     /// fields, a guest's hub record, a mob that is not removed, an armor stand or the dragon.
     pub(in crate::game) fn native_living_body(&self, target: Target) -> Option<LivingBody<'_>> {
@@ -109,18 +125,5 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Target::Dragon(id) => dragon_body(self.dragon.as_ref().filter(|d| d.id == id)?),
             _ => return None,
         })
-    }
-    /// The guest whose entity id `id` is, when the `LivingRef` reads answer for it from its hub
-    /// record now (`Target::Guest`, not the player in place): the causing entity a hit may lend
-    /// read-only ([`HitLend::parked_guest`](sunrise_client::health::HitLend::parked_guest)).
-    /// None for anything else, so a hit's view never answers where `LivingRef` does not.
-    pub(in crate::game) fn native_parked_causer(&self, id: i32) -> Option<u32> {
-        let epoch = self.native_lifecycle.epoch()?;
-        let living =
-            mod_api::LivingRef::new(mod_api::EntityRef::new(epoch, u32::try_from(id).ok()?));
-        match self.native_living_target(living)? {
-            Target::Guest(conn) if self.side.lan_acting != Some(conn) => Some(conn),
-            _ => None,
-        }
     }
 }

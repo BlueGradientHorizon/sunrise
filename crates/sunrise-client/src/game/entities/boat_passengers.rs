@@ -140,52 +140,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .set(Some((self.mobs.len(), reach)));
         Some(reach)
     }
-    /// Resident mob riders in slot order, including those whose removal is pending.
-    /// During an indexed vehicle pass, all lookups share the same slots until
-    /// the mob list is next written.
-    pub(in crate::game::server_side) fn resident_mob_riders(
-        &self,
-        id: u32,
-    ) -> impl Iterator<Item = (usize, &Mob)> {
-        let slots = if self.vehicle_mobs_indexed() {
-            let stamp = self.mobs.stamp();
-            let cache = &self.side.vehicle_mobs.riders;
-            if cache.borrow().as_ref().is_none_or(|(s, _)| *s != stamp) {
-                let mut by_vehicle = FxHashMap::<u32, Vec<usize>>::default();
-                for (slot, mob) in self.mobs.iter().enumerate() {
-                    if let Some(vehicle) = mob.extra.mount {
-                        by_vehicle.entry(vehicle).or_default().push(slot);
-                    }
-                }
-                cache.replace(Some((stamp, by_vehicle)));
-            }
-            Some(Ref::map(cache.borrow(), |index| {
-                index
-                    .as_ref()
-                    .and_then(|(_, by_vehicle)| by_vehicle.get(&id))
-                    .map_or(&[][..], Vec::as_slice)
-            }))
-        } else {
-            None
-        };
-        let mut at = 0;
-        let mut scan = self.mobs.iter().enumerate();
-        std::iter::from_fn(move || {
-            if let Some(slots) = &slots {
-                let &slot = slots.get(at)?;
-                at += 1;
-                Some((slot, &self.mobs[slot]))
-            } else {
-                scan.find(|(_, mob)| mob.extra.mount == Some(id))
-            }
-        })
-    }
-    /// Whether what a stretch of vehicle ticks reads from the mob list may stand in for a walk
-    /// over it: a stretch runs, and no native mod is loaded (a hook can move a mob unseen, as
-    /// for the carts' `CartIndex`).
-    fn vehicle_mobs_indexed(&self) -> bool {
-        self.side.vehicle_mobs.reach.get().is_some() && mod_api::__private::mods().is_empty()
-    }
     /// The slots, ascending, of the mobs whose box may meet `area` into `out` (a superset: the
     /// caller still tests each box), from a grid of the mobs' boxes that the first query of a
     /// stretch of vehicle ticks builds. False: walk them all. That is outside a stretch or with
@@ -664,6 +618,56 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.snap_mob_passengers(rider);
         }
         self.dismount_general_passengers(id);
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// Resident mob riders in slot order, including those whose removal is pending.
+    /// During an indexed vehicle pass, all lookups share the same slots until
+    /// the mob list is next written.
+    pub(in crate::game) fn resident_mob_riders(
+        &self,
+        id: u32,
+    ) -> impl Iterator<Item = (usize, &Mob)> {
+        let slots = if self.vehicle_mobs_indexed() {
+            let stamp = self.mobs.stamp();
+            let cache = &crate::game::Side::vehicle_mobs(&self.side).expect("vehicle_mobs_indexed requires server").riders;
+            if cache.borrow().as_ref().is_none_or(|(s, _)| *s != stamp) {
+                let mut by_vehicle = FxHashMap::<u32, Vec<usize>>::default();
+                for (slot, mob) in self.mobs.iter().enumerate() {
+                    if let Some(vehicle) = mob.extra.mount {
+                        by_vehicle.entry(vehicle).or_default().push(slot);
+                    }
+                }
+                cache.replace(Some((stamp, by_vehicle)));
+            }
+            Some(Ref::map(cache.borrow(), |index| {
+                index
+                    .as_ref()
+                    .and_then(|(_, by_vehicle)| by_vehicle.get(&id))
+                    .map_or(&[][..], Vec::as_slice)
+            }))
+        } else {
+            None
+        };
+        let mut at = 0;
+        let mut scan = self.mobs.iter().enumerate();
+        std::iter::from_fn(move || {
+            if let Some(slots) = &slots {
+                let &slot = slots.get(at)?;
+                at += 1;
+                Some((slot, &self.mobs[slot]))
+            } else {
+                scan.find(|(_, mob)| mob.extra.mount == Some(id))
+            }
+        })
+    }
+
+    /// Whether what a stretch of vehicle ticks reads from the mob list may stand in for a walk
+    /// over it: a stretch runs, and no native mod is loaded (a hook can move a mob unseen, as
+    /// for the carts' `CartIndex`).
+    fn vehicle_mobs_indexed(&self) -> bool {
+        crate::game::Side::vehicle_mobs(&self.side).is_some_and(|vm| vm.reach.get().is_some()) && mod_api::__private::mods().is_empty()
     }
 }
 

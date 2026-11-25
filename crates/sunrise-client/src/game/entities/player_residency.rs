@@ -187,107 +187,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
 
-    pub(in crate::game::server_side) fn specialized_resident_source(
-        &self,
-        at: Location,
-    ) -> Option<SourceEntity<(SpecializedSource<'_>, Target)>> {
-        let (source, id, target) = match (at.owner.kind, at.source) {
-            (Kind::Player, Source::LocalPlayer) => {
-                if self.side.lan_acting.is_some()
-                    || self.resident_entities.local_player.location() != Some(at)
-                {
-                    return None;
-                }
-                let player = self.player.as_ref()?;
-                if self.resident_entities.local_player.identity()?.id.get()
-                    != player.entity_id as u32
-                {
-                    return None;
-                }
-                (
-                    SpecializedSource::Player(player),
-                    player.entity_id as u32,
-                    Target::Player,
-                )
-            }
-            (Kind::Player, Source::Guest(conn)) => {
-                let host = self.lan.as_ref()?;
-                let guest = &host.hub.guests[host.hub.guests.connection_index(conn)?];
-                if guest.residency.location() != Some(at) || guest.released {
-                    return None;
-                }
-                if self.side.lan_acting == Some(conn) {
-                    let player = self.player.as_ref()?;
-                    if player.entity_id != guest.entity_id {
-                        return None;
-                    }
-                    (
-                        SpecializedSource::Player(player),
-                        guest.entity_id as u32,
-                        Target::Player,
-                    )
-                } else {
-                    if self.side.lan_guest_swaps.contains(&conn) {
-                        return None;
-                    }
-                    (
-                        SpecializedSource::Guest(guest),
-                        guest.entity_id as u32,
-                        Target::Guest(conn),
-                    )
-                }
-            }
-            (Kind::Hook, Source::Hook { caster }) => {
-                let hook = match caster {
-                    None => {
-                        if self.side.lan_acting.is_some() {
-                            return None;
-                        }
-                        let hook = self.hook.as_ref()?;
-                        if hook.caster_generation != self.resident_entities.local_player.join() {
-                            return None;
-                        }
-                        hook
-                    }
-                    Some(conn) => {
-                        let host = self.lan.as_ref()?;
-                        let guest = host
-                            .hub
-                            .guests
-                            .connection_index(conn)
-                            .map(|index| &host.hub.guests[index]);
-                        let hook = if self.side.lan_acting == Some(conn) {
-                            self.hook.as_ref()?
-                        } else {
-                            if self.side.lan_guest_swaps.contains(&conn) {
-                                return None;
-                            }
-                            host.play.get(&conn)?.hook.as_ref()?
-                        };
-                        if guest
-                            .is_some_and(|guest| hook.caster_generation != guest.residency.join())
-                        {
-                            return None;
-                        }
-                        hook
-                    }
-                };
-                if hook.join_seq() != at.join || hook.caster != caster {
-                    return None;
-                }
-                (
-                    SpecializedSource::Hook(hook),
-                    hook.id(),
-                    Target::Hook(hook.id()),
-                )
-            }
-            _ => return None,
-        };
-        Some(SourceEntity {
-            id,
-            value: (source, target),
-        })
-    }
 
     pub(in crate::game::server_side) fn with_specialized_resident_slot<R>(
         &mut self,
@@ -330,7 +229,112 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
 
-    pub(in crate::game::server_side) fn locate_specialized_resident_owner(
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    pub(in crate::game) fn specialized_resident_source(
+        &self,
+        at: Location,
+    ) -> Option<SourceEntity<(SpecializedSource<'_>, Target)>> {
+        let (source, id, target) = match (at.owner.kind, at.source) {
+            (Kind::Player, Source::LocalPlayer) => {
+                if crate::game::Side::lan_acting(&self.side).is_some()
+                    || self.resident_entities.local_player.location() != Some(at)
+                {
+                    return None;
+                }
+                let player = self.player.as_ref()?;
+                if self.resident_entities.local_player.identity()?.id.get()
+                    != player.entity_id as u32
+                {
+                    return None;
+                }
+                (
+                    SpecializedSource::Player(player),
+                    player.entity_id as u32,
+                    Target::Player,
+                )
+            }
+            (Kind::Player, Source::Guest(conn)) => {
+                let host = self.lan.as_ref()?;
+                let guest = &host.hub.guests[host.hub.guests.connection_index(conn)?];
+                if guest.residency.location() != Some(at) || guest.released {
+                    return None;
+                }
+                if crate::game::Side::lan_acting(&self.side) == Some(conn) {
+                    let player = self.player.as_ref()?;
+                    if player.entity_id != guest.entity_id {
+                        return None;
+                    }
+                    (
+                        SpecializedSource::Player(player),
+                        guest.entity_id as u32,
+                        Target::Player,
+                    )
+                } else {
+                    if crate::game::Side::lan_guest_swaps(&self.side).contains(&conn) {
+                        return None;
+                    }
+                    (
+                        SpecializedSource::Guest(guest),
+                        guest.entity_id as u32,
+                        Target::Guest(conn),
+                    )
+                }
+            }
+            (Kind::Hook, Source::Hook { caster }) => {
+                let hook = match caster {
+                    None => {
+                        if crate::game::Side::lan_acting(&self.side).is_some() {
+                            return None;
+                        }
+                        let hook = self.hook.as_ref()?;
+                        if hook.caster_generation != self.resident_entities.local_player.join() {
+                            return None;
+                        }
+                        hook
+                    }
+                    Some(conn) => {
+                        let host = self.lan.as_ref()?;
+                        let guest = host
+                            .hub
+                            .guests
+                            .connection_index(conn)
+                            .map(|index| &host.hub.guests[index]);
+                        let hook = if crate::game::Side::lan_acting(&self.side) == Some(conn) {
+                            self.hook.as_ref()?
+                        } else {
+                            if crate::game::Side::lan_guest_swaps(&self.side).contains(&conn) {
+                                return None;
+                            }
+                            host.play.get(&conn)?.hook.as_ref()?
+                        };
+                        if guest
+                            .is_some_and(|guest| hook.caster_generation != guest.residency.join())
+                        {
+                            return None;
+                        }
+                        hook
+                    }
+                };
+                if hook.join_seq() != at.join || hook.caster != caster {
+                    return None;
+                }
+                (
+                    SpecializedSource::Hook(hook),
+                    hook.id(),
+                    Target::Hook(hook.id()),
+                )
+            }
+            _ => return None,
+        };
+        Some(SourceEntity {
+            id,
+            value: (source, target),
+        })
+    }
+
+    pub(in crate::game) fn locate_specialized_resident_owner(
         &self,
         at: Location,
     ) -> Option<SourceEntity<(Target, bool)>> {

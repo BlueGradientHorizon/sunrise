@@ -1095,7 +1095,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             &self.world,
             self.pack.assets.registry,
             &mut lent,
-            Some(world_items!(self)),
+            Some(server_world_items!(self)),
             Some(&self.pack.block_registries),
             &self.damage_hooks,
         )
@@ -1258,12 +1258,6 @@ macro_rules! define_entity_handles {
                     debug_assert_eq!(self$(.$list)+.len(), expected);
                 })*
             }
-            /// Every entity's handle: lengths read now, nothing allocated, and
-            /// no borrow of `Game` held, so the caller can change it mid-walk.
-            pub(in crate::game) fn entity_handles(&self) -> impl Iterator<Item = EntityHandle> + use<> {
-                std::iter::empty()
-                    $(.chain((0..self$(.$list)+.len()).map(EntityHandle::$kind)))*
-            }
 
             pub(in crate::game::server_side) fn entity_id_cursor(&self) -> EntityIdCursor {
                 EntityIdCursor {
@@ -1326,6 +1320,15 @@ macro_rules! define_entity_handles {
                     $(.chain((0..self$(.$list)+.len()).rev().map(EntityHandle::$kind)))*
             }
         }
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+            /// Every entity's handle: lengths read now, nothing allocated, and
+            /// no borrow of `Game` held, so the caller can change it mid-walk.
+            pub(in crate::game) fn entity_handles(&self) -> impl Iterator<Item = EntityHandle> + use<__Side> {
+                std::iter::empty()
+                    $(.chain((0..self$(.$list)+.len()).map(EntityHandle::$kind)))*
+            }
+}
     };
 }
 #[allow(unused_imports)]
@@ -1542,7 +1545,7 @@ macro_rules! hit_effects_of {
     };
     ($game:ident, $lend:expr) => {
         sunrise_client::health::HitEffects::new(
-            &mut $game.server.pending_native_sounds,
+            &mut $game.side.pending_native_sounds,
             $game.lan.as_ref().map(|lan| &lan.hub),
             $game.dim.id(),
             $game.native_lifecycle.epoch(),
@@ -1565,7 +1568,7 @@ macro_rules! hit_reads_of {
                 attributes: &$game.motion.attributes,
                 player_effects: Some(&$game.potions.effects),
                 player_equipment: acting_equipment!($game),
-                player_uuid: $game.server.lan_acting_uuid,
+                player_uuid: $game.side.lan_acting_uuid,
                 player_attachments: Some(&$game.player_state.attachments),
                 entity_attachments: Some(&*$game.entity_attachments),
             })
@@ -1678,13 +1681,13 @@ macro_rules! damage_level_of {
         &mut sunrise_client::health::DamageLevel::of(
             &mut $game.world,
             $game.pack.assets.registry,
-            Some(world_items!($game)),
+            Some(server_world_items!($game)),
             Some(&$game.pack.block_registries),
             &$game.damage_hooks,
         )
         .attacked_by($attack)
         .no_push()
-        .with_mob_hurt_handoff(&mut $game.paused_mob_hurt.0)
+        .with_mob_hurt_handoff(&mut $game.side.paused_mob_hurt.0)
         .with_effects(crate::game::entity::hit_effects_of!($game, $lend))
         .with_reads(crate::game::entity::hit_reads_of!($game))
         $(.with_player_equipment($equipment))?
@@ -1693,13 +1696,13 @@ macro_rules! damage_level_of {
         &mut sunrise_client::health::DamageLevel::of(
             &mut $game.world,
             $game.pack.assets.registry,
-            Some(world_items!($game)),
+            Some(server_world_items!($game)),
             Some(&$game.pack.block_registries),
             &$game.damage_hooks,
         )
         .attacked_by($attack)
         .with_knockback_credit($credit)
-        .with_mob_hurt_handoff(&mut $game.paused_mob_hurt.0)
+        .with_mob_hurt_handoff(&mut $game.side.paused_mob_hurt.0)
         .with_effects(crate::game::entity::hit_effects_of!($game, $lend))
         .with_reads(crate::game::entity::hit_reads_of!($game))
     };
@@ -1713,7 +1716,7 @@ macro_rules! player_resolver {
         sunrise_client::health::PlayerResolver {
             in_place: $game.player.is_some().then(|| {
                 $game
-                    .server
+                    .side
                     .lan_acting_uuid
                     .map(sunrise_client::lan::playerdata::uuid_ints)
                     .or($game.level.player_uuid)

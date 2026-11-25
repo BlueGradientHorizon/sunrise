@@ -45,47 +45,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
 
-    /// The ticks the entity has glided (`LivingEntity.getFallFlyingTicks`),
-    /// counted from 0 again the tick after the glide ends. Players (including
-    /// inactive guests) and mobs read their own stored body counter. None
-    /// for an armor stand or the dragon.
-    pub(in crate::game) fn living_gliding_ticks(&self, living: LivingRef) -> Option<i32> {
-        match self.native_living_read_target(living)? {
-            Target::Player => Some(self.player.as_ref()?.fall_fly_ticks),
-            Target::Guest(conn) => Some(
-                self.command_guest(conn)?
-                    .motion
-                    .as_ref()
-                    .map_or(0, |m| m.fall_fly_ticks),
-            ),
-            Target::Mob(id) => Some(
-                self.mobs
-                    .iter()
-                    .find(|m| m.id == id && !m.removed)?
-                    .extra
-                    .fall_fly_ticks,
-            ),
-            _ => None,
-        }
-    }
-    /// Whether the entity glides on elytra (`LivingEntity.isFallFlying`;
-    /// Paper's `LivingEntity#isGliding`). The player in place and the guests
-    /// answer from their fall-flying flag, a mob from its own. None for an
-    /// armor stand or the dragon: the game keeps no glide for them.
-    pub(in crate::game) fn living_is_gliding(&self, living: LivingRef) -> Option<bool> {
-        match self.native_living_read_target(living)? {
-            Target::Player => Some(self.player.as_ref()?.fall_flying),
-            Target::Guest(conn) => Some(self.command_guest(conn)?.fall_flying),
-            Target::Mob(id) => Some(
-                self.mobs
-                    .iter()
-                    .find(|m| m.id == id && !m.removed)?
-                    .extra
-                    .fall_flying,
-            ),
-            _ => None,
-        }
-    }
     /// `LivingEntity.startFallFlying`: sets the glide flag, so the next tick glides.
     /// The raw flag write: the caller owns the canGlide checks. True for a player, a
     /// guest or a mob; false for an armor stand or the dragon.
@@ -144,41 +103,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
 
-    /// Whether the entity sleeps in a bed (`LivingEntity.isSleeping`): the
-    /// player in place, a guest, or a villager or wandering trader asleep in
-    /// its bed. Other mobs never sleep. None for an armor stand or the
-    /// dragon.
-    pub(in crate::game) fn living_is_sleeping(&self, living: LivingRef) -> Option<bool> {
-        match self.native_living_read_target(living)? {
-            Target::Player => Some(self.sleeping.is_some()),
-            Target::Guest(conn) => Some(self.command_guest(conn)?.sleeping),
-            Target::Mob(id) => Some(
-                self.mobs
-                    .iter()
-                    .find(|m| m.id == id && !m.removed)
-                    .map(villager::sleeping)
-                    .unwrap_or(false),
-            ),
-            _ => None,
-        }
-    }
-    /// The head of the bed the entity sleeps in (`LivingEntity.getSleepingPos`),
-    /// as the block position it lies at. A guest keeps the bed it last slept
-    /// in while it sleeps, a villager or wandering trader its own. None for
-    /// an awake entity, another mob, an armor stand or the dragon.
-    pub(in crate::game) fn living_sleeping_pos(&self, living: LivingRef) -> Option<[i32; 3]> {
-        match self.native_living_read_target(living)? {
-            Target::Player => self.sleeping,
-            Target::Guest(conn) => {
-                let g = self.command_guest(conn)?;
-                g.bed.filter(|_| g.sleeping)
-            }
-            Target::Mob(id) => {
-                villager::sleeping_pos(self.mobs.iter().find(|m| m.id == id && !m.removed)?)
-            }
-            _ => None,
-        }
-    }
     /// `LivingEntity.startSleeping`: the entity lies in the bed whose head
     /// `pos` names, with the effect the game's own sleep has. The player in
     /// place is moved onto the bed, put to sleep and occupies it; a
@@ -313,19 +237,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             true
         })
     }
-    /// Whether the entity jumps (`LivingEntity.isJumping`; Paper's
-    /// `LivingEntity#isJumping`): the player in place answers from their
-    /// own jump state. The guests' jump is their client's, and a mob has no
-    /// jump controller in the game's own AI, so both read false. None for
-    /// an armor stand or the dragon.
-    pub(in crate::game) fn living_is_jumping(&self, living: LivingRef) -> Option<bool> {
-        match self.native_living_read_target(living)? {
-            Target::Player => Some(self.player.as_ref()?.jumping),
-            Target::Guest(_) => Some(false),
-            Target::Mob(_) => Some(false),
-            _ => None,
-        }
-    }
     /// `LivingEntity.setJumping`: whether the player in place's next step
     /// jumps, as their own key does. False for a guest outside its turn,
     /// whose client holds its own jump, a mob, an armor stand or the
@@ -346,6 +257,119 @@ impl Game<'_, crate::game::server_side::ServerState> {
             _ => false,
         }
     }
+    /// The climbing decision for a mob currently lent out of the game's list.
+    pub(in crate::game::server_side) fn native_mob_is_climbing(
+        &self,
+        mob: &sunrise_client::mobs::Mob,
+    ) -> bool {
+        let mut world = FlagClimbing {
+            world: &self.world,
+            context: &self.loop_context,
+            entity: mob.id,
+            position: BlockPos::containing(mob.position),
+            spectator: false,
+            gliding: mob.extra.fall_flying,
+        };
+        climbing::on_climbable(&mut world, &self.motion.climbing).unwrap_or(false)
+    }
+
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// The ticks the entity has glided (`LivingEntity.getFallFlyingTicks`),
+    /// counted from 0 again the tick after the glide ends. Players (including
+    /// inactive guests) and mobs read their own stored body counter. None
+    /// for an armor stand or the dragon.
+    pub(in crate::game) fn living_gliding_ticks(&self, living: LivingRef) -> Option<i32> {
+        match self.native_living_read_target(living)? {
+            Target::Player => Some(self.player.as_ref()?.fall_fly_ticks),
+            Target::Guest(conn) => Some(
+                self.command_guest(conn)?
+                    .motion
+                    .as_ref()
+                    .map_or(0, |m| m.fall_fly_ticks),
+            ),
+            Target::Mob(id) => Some(
+                self.mobs
+                    .iter()
+                    .find(|m| m.id == id && !m.removed)?
+                    .extra
+                    .fall_fly_ticks,
+            ),
+            _ => None,
+        }
+    }
+
+    /// Whether the entity glides on elytra (`LivingEntity.isFallFlying`;
+    /// Paper's `LivingEntity#isGliding`). The player in place and the guests
+    /// answer from their fall-flying flag, a mob from its own. None for an
+    /// armor stand or the dragon: the game keeps no glide for them.
+    pub(in crate::game) fn living_is_gliding(&self, living: LivingRef) -> Option<bool> {
+        match self.native_living_read_target(living)? {
+            Target::Player => Some(self.player.as_ref()?.fall_flying),
+            Target::Guest(conn) => Some(self.command_guest(conn)?.fall_flying),
+            Target::Mob(id) => Some(
+                self.mobs
+                    .iter()
+                    .find(|m| m.id == id && !m.removed)?
+                    .extra
+                    .fall_flying,
+            ),
+            _ => None,
+        }
+    }
+
+    /// Whether the entity sleeps in a bed (`LivingEntity.isSleeping`): the
+    /// player in place, a guest, or a villager or wandering trader asleep in
+    /// its bed. Other mobs never sleep. None for an armor stand or the
+    /// dragon.
+    pub(in crate::game) fn living_is_sleeping(&self, living: LivingRef) -> Option<bool> {
+        match self.native_living_read_target(living)? {
+            Target::Player => Some(self.sleeping.is_some()),
+            Target::Guest(conn) => Some(self.command_guest(conn)?.sleeping),
+            Target::Mob(id) => Some(
+                self.mobs
+                    .iter()
+                    .find(|m| m.id == id && !m.removed)
+                    .map(villager::sleeping)
+                    .unwrap_or(false),
+            ),
+            _ => None,
+        }
+    }
+
+    /// The head of the bed the entity sleeps in (`LivingEntity.getSleepingPos`),
+    /// as the block position it lies at. A guest keeps the bed it last slept
+    /// in while it sleeps, a villager or wandering trader its own. None for
+    /// an awake entity, another mob, an armor stand or the dragon.
+    pub(in crate::game) fn living_sleeping_pos(&self, living: LivingRef) -> Option<[i32; 3]> {
+        match self.native_living_read_target(living)? {
+            Target::Player => self.sleeping,
+            Target::Guest(conn) => {
+                let g = self.command_guest(conn)?;
+                g.bed.filter(|_| g.sleeping)
+            }
+            Target::Mob(id) => {
+                villager::sleeping_pos(self.mobs.iter().find(|m| m.id == id && !m.removed)?)
+            }
+            _ => None,
+        }
+    }
+
+    /// Whether the entity jumps (`LivingEntity.isJumping`; Paper's
+    /// `LivingEntity#isJumping`): the player in place answers from their
+    /// own jump state. The guests' jump is their client's, and a mob has no
+    /// jump controller in the game's own AI, so both read false. None for
+    /// an armor stand or the dragon.
+    pub(in crate::game) fn living_is_jumping(&self, living: LivingRef) -> Option<bool> {
+        match self.native_living_read_target(living)? {
+            Target::Player => Some(self.player.as_ref()?.jumping),
+            Target::Guest(_) => Some(false),
+            Target::Mob(_) => Some(false),
+            _ => None,
+        }
+    }
+
     /// Whether the entity is on a climbable block this tick
     /// (`LivingEntity.onClimbable`; Paper's `LivingEntity#isClimbing`), by
     /// the block at its feet: a ladder, a vine, a scaffold or an open
@@ -382,21 +406,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             gliding,
         };
         Some(climbing::on_climbable(&mut world, &self.motion.climbing).unwrap_or(false))
-    }
-    /// The climbing decision for a mob currently lent out of the game's list.
-    pub(in crate::game::server_side) fn native_mob_is_climbing(
-        &self,
-        mob: &sunrise_client::mobs::Mob,
-    ) -> bool {
-        let mut world = FlagClimbing {
-            world: &self.world,
-            context: &self.loop_context,
-            entity: mob.id,
-            position: BlockPos::containing(mob.position),
-            spectator: false,
-            gliding: mob.extra.fall_flying,
-        };
-        climbing::on_climbable(&mut world, &self.motion.climbing).unwrap_or(false)
     }
 
     /// Whether the entity is a baby (`LivingEntity.isBaby`): a mob answers

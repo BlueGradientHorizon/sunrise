@@ -28,9 +28,13 @@ pub(in crate::game) fn precipitation_at(
 /// What `Level.precipitationAt` reads of the level in place: it rains (the rain level above 0.2),
 /// the sky light is 15, the motion-blocking height, and the biome's precipitation there
 /// (`ClientLevel.getPrecipitationAt`'s zoomed biome; snow is `Some(true)` there).
-pub(in crate::game) struct GamePrecipitation<'a, 'g>(pub(in crate::game) &'a Game<'g>);
+pub(in crate::game) struct GamePrecipitation<'a, 'g, S: crate::game::Side>(
+    pub(in crate::game) &'a Game<'g, S>,
+);
 
-impl sunrise_world::level::weather::PrecipitationReads for GamePrecipitation<'_, '_> {
+impl<S: crate::game::Side> sunrise_world::level::weather::PrecipitationReads
+    for GamePrecipitation<'_, '_, S>
+{
     fn is_raining(&self) -> bool {
         self.0.weather_levels(1.0).0 > 0.2
     }

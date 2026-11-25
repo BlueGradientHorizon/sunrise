@@ -107,12 +107,12 @@ pub(in crate::game) trait ActionHost {
 /// Stage-2 adapter. No real menu route constructs this yet. Identity is supplied
 /// by the action's game-side caller and checked against the live lifecycle on
 /// each validation, not recovered from mod-controlled output.
-pub(in crate::game) struct GameHost<'a, 'g> {
-    pub game: &'a mut crate::game::Game<'g>,
+pub(in crate::game) struct GameHost<'a, 'g, S: crate::game::Side> {
+    pub game: &'a mut crate::game::Game<'g, S>,
     pub identity: Identity,
 }
 
-impl ActionHost for GameHost<'_, '_> {
+impl<S: crate::game::Side> ActionHost for GameHost<'_, '_, S> {
     fn identity(&self) -> Identity {
         let mut identity = self.identity;
         if let Some(world) = self.game.native_lifecycle.epoch() {

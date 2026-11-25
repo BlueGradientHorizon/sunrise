@@ -198,7 +198,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         let resource = mod_api::ItemResource::of(&snapshot);
         let component = |id| {
             resource.value(
-                self,
+                __Side::as_host(self),
                 &mod_api::ComponentId::new(id).expect("built-in component"),
             )
         };
@@ -216,7 +216,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 sunrise_items::bundle::Contents::of(self.items(), &effective)?.bar()?;
             return Some(mod_api::ItemBar { width, color });
         }
-        if !resource.damageable(self) {
+        if !resource.damageable(__Side::as_host(self)) {
             return None;
         }
         let max_damage = component("minecraft:max_damage")
@@ -270,8 +270,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             return None;
         }
         self.native_entity_read_target(target)?;
-        let target = self.entity_kind(target)?.id(self)?;
-        let actor = self.entity_kind(attacker.entity())?.id(self)?;
+        let target = self.entity_kind(target)?.id(__Side::as_host(self))?;
+        let actor = self.entity_kind(attacker.entity())?.id(__Side::as_host(self))?;
         let source = self.item_resource_damage_source(stack, attacker)?;
         let source = source.damage_type.to_string();
         let effective = self.item_combat_stack(stack);

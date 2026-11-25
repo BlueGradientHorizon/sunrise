@@ -56,16 +56,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             PlayerRead::Guest(guest) => guest.previous_game_mode.and_then(GameMode::from_id),
         })
     }
-    /// `Player.isSecondaryUseActive`: whether the player uses items and
-    /// blocks as with sneak held, as vanilla reads it from the shift-key
-    /// flag (the same read as `EntityRef::is_shift_key_down`). None for a
-    /// stale or unavailable player.
-    pub(in crate::game) fn player_is_secondary_use_active(
-        &self,
-        player: PlayerRef,
-    ) -> Option<bool> {
-        self.entity_is_shift_key_down(player.entity())
-    }
     /// `Player.mayUseItemAt(pos, face, stack)`: the game's own check for an
     /// item used on a block (`Game::may_use_item_at`), with the player's
     /// `mayBuild` as the handle reads it. None for a stale or unavailable
@@ -104,6 +94,19 @@ impl Game<'_, crate::game::server_side::ServerState> {
             attacker,
             victim,
         ))
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// `Player.isSecondaryUseActive`: whether the player uses items and
+    /// blocks as with sneak held, as vanilla reads it from the shift-key
+    /// flag (the same read as `EntityRef::is_shift_key_down`). None for a
+    /// stale or unavailable player.
+    pub(in crate::game) fn player_is_secondary_use_active(
+        &self,
+        player: PlayerRef,
+    ) -> Option<bool> {
+        self.entity_is_shift_key_down(player.entity())
     }
 }
 

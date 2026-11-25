@@ -7,6 +7,87 @@ use super::Target;
 use sunrise_client::text::Text;
 
 impl Game<'_, crate::game::server_side::ServerState> {
+    /// `Nameable.getPlainTextName`: `getName().getString()`, the name without
+    /// the team's prefix and suffix that `getDisplayName` adds.
+    pub(in crate::game) fn target_plain_name(&self, t: Target) -> String {
+        match t {
+            Target::Player => self.acting_player_name().to_owned(),
+            Target::Guest(conn) => self
+                .command_guest(conn)
+                .map_or_else(String::new, |g| g.name.clone()),
+            Target::Mob(id) => self
+                .mobs
+                .iter()
+                .find(|m| m.id == id)
+                .map_or_else(String::new, |m| m.command_name().plain()),
+            other => self.target_base_name(other).plain(),
+        }
+    }
+    /// Capture enough of `t` before `/kill` removes its storage to build
+    /// `Entity.getDisplayName` afterwards (`KillCommand` calls `getDisplayName`
+    /// after `entity.kill`, when `Scoreboard.entityRemoved` has already left
+    /// any team for removed non-player entities).
+    pub(in crate::game) fn capture_kill_display(&self, t: Target) -> KillDisplay {
+        match t {
+            Target::Player | Target::Guest(_) | Target::Mob(_) => {
+                KillDisplay::Ready(self.target_name(t))
+            }
+            other => KillDisplay::Entity {
+                kind: self.target_type(other),
+                uuid: super::super::native_entities::target_id(other)
+                    .and_then(|id| self.persist.uuid_of(id)),
+                name: self.target_base_name(other),
+            },
+        }
+    }
+    /// Finish `Entity.getDisplayName` for a killed target against the post-kill
+    /// scoreboard team state.
+    pub(in crate::game) fn finish_kill_display(&self, captured: KillDisplay) -> Text {
+        match captured {
+            KillDisplay::Ready(text) => text,
+            KillDisplay::Entity { kind, uuid, name } => {
+                let holder = uuid.map(sunrise_client::save::uuid_text);
+                let team = holder
+                    .as_deref()
+                    .and_then(|holder| self.score.board.players_team(holder));
+                Self::decorate_entity_display_name_with_uuid(&kind, uuid, team, name)
+            }
+        }
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    fn decorate_entity_display_name_with_uuid(
+        kind: &str,
+        uuid: Option<[i32; 4]>,
+        team: Option<&sunrise_client::scoreboard::Team>,
+        name: Text,
+    ) -> Text {
+        let shown = match team {
+            Some(team) => team.formatted_name(name.clone()),
+            None => name.clone(),
+        };
+        let Some(uuid) = uuid else {
+            return shown;
+        };
+        let uuid = sunrise_client::save::uuid_text(uuid);
+        let kind = sunrise_client::command::args::normalize(kind);
+        shown.set_component_fields(vec![
+            (
+                "hover_event".into(),
+                serde_json::json!({
+                    "action": "show_entity",
+                    "id": kind,
+                    "uuid": uuid,
+                    "name": name.component(),
+                }),
+            ),
+            ("insertion".into(), uuid.into()),
+        ])
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// Decoded `CustomName` with `Entity.removeAction` applied, or `None` when
     /// absent or invalid under vanilla's `ComponentSerialization.CODEC`.
     fn custom_name_of(&self, id: u32) -> Option<Text> {
@@ -14,9 +95,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let decoded = sunrise_client::entity_nbt::decode_custom_name_text(raw)?;
         Some(sunrise_client::scoreboard::remove_click_events(&decoded))
     }
+
     /// `Entity.getName`: the decoded `CustomName` with click actions removed,
     /// else the entity's type name, free of team formatting, hover or insertion.
-    pub(in crate::game::server_side) fn target_base_name(&self, t: Target) -> Text {
+    pub(in crate::game) fn target_base_name(&self, t: Target) -> Text {
         match t {
             Target::Player => Text::literal(self.acting_player_name()),
             Target::Guest(conn) => self
@@ -74,23 +156,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         }
     }
-    /// `Nameable.getPlainTextName`: `getName().getString()`, the name without
-    /// the team's prefix and suffix that `getDisplayName` adds.
-    pub(in crate::game) fn target_plain_name(&self, t: Target) -> String {
-        match t {
-            Target::Player => self.acting_player_name().to_owned(),
-            Target::Guest(conn) => self
-                .command_guest(conn)
-                .map_or_else(String::new, |g| g.name.clone()),
-            Target::Mob(id) => self
-                .mobs
-                .iter()
-                .find(|m| m.id == id)
-                .map_or_else(String::new, |m| m.command_name().plain()),
-            other => self.target_base_name(other).plain(),
-        }
-    }
-    pub(in crate::game::server_side) fn bolt_plain_name(&self, id: u32) -> Text {
+
+    pub(in crate::game) fn bolt_plain_name(&self, id: u32) -> Text {
         if let Some(name) = self
             .bolts
             .iter()
@@ -102,6 +169,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         Text::translate("entity.minecraft.lightning_bolt", &[])
     }
+
     /// Shared `Entity.getDisplayName` decoration: `PlayerTeam.formatNameForTeam`
     /// of `getName()`, then `withHoverEvent(createHoverEvent())` (a `ShowEntity`
     /// of the type, UUID and name) and `withInsertion(getStringUUID())`.
@@ -114,80 +182,23 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Text {
         Self::decorate_entity_display_name_with_uuid(kind, self.persist.uuid_of(id), team, name)
     }
-    fn decorate_entity_display_name_with_uuid(
-        kind: &str,
-        uuid: Option<[i32; 4]>,
-        team: Option<&sunrise_client::scoreboard::Team>,
-        name: Text,
-    ) -> Text {
-        let shown = match team {
-            Some(team) => team.formatted_name(name.clone()),
-            None => name.clone(),
-        };
-        let Some(uuid) = uuid else {
-            return shown;
-        };
-        let uuid = sunrise_client::save::uuid_text(uuid);
-        let kind = sunrise_client::command::args::normalize(kind);
-        shown.set_component_fields(vec![
-            (
-                "hover_event".into(),
-                serde_json::json!({
-                    "action": "show_entity",
-                    "id": kind,
-                    "uuid": uuid,
-                    "name": name.component(),
-                }),
-            ),
-            ("insertion".into(), uuid.into()),
-        ])
-    }
+
     /// `Entity.getDisplayName` for the mob `id`.
-    pub(in crate::game::server_side) fn mob_command_name(&self, id: u32) -> Text {
+    pub(in crate::game) fn mob_command_name(&self, id: u32) -> Text {
         let Some(m) = self.mobs.iter().find(|m| m.id == id) else {
             return Text::translate("entity.", &[]);
         };
         self.decorate_entity_display_name(id, &m.kind.id, self.mob_team_of(m), m.command_name())
     }
+
     /// `Entity.getDisplayName` for any non-player, non-mob target.
-    pub(in crate::game::server_side) fn entity_display_name(&self, t: Target) -> Text {
+    pub(in crate::game) fn entity_display_name(&self, t: Target) -> Text {
         let name = self.target_base_name(t);
         let Some(id) = super::super::native_entities::target_id(t) else {
             return name;
         };
         let kind = self.target_type(t);
         self.decorate_entity_display_name(id, &kind, self.entity_team(id), name)
-    }
-    /// Capture enough of `t` before `/kill` removes its storage to build
-    /// `Entity.getDisplayName` afterwards (`KillCommand` calls `getDisplayName`
-    /// after `entity.kill`, when `Scoreboard.entityRemoved` has already left
-    /// any team for removed non-player entities).
-    pub(in crate::game) fn capture_kill_display(&self, t: Target) -> KillDisplay {
-        match t {
-            Target::Player | Target::Guest(_) | Target::Mob(_) => {
-                KillDisplay::Ready(self.target_name(t))
-            }
-            other => KillDisplay::Entity {
-                kind: self.target_type(other),
-                uuid: super::super::native_entities::target_id(other)
-                    .and_then(|id| self.persist.uuid_of(id)),
-                name: self.target_base_name(other),
-            },
-        }
-    }
-    /// Finish `Entity.getDisplayName` for a killed target against the post-kill
-    /// scoreboard team state.
-    pub(in crate::game) fn finish_kill_display(&self, captured: KillDisplay) -> Text {
-        match captured {
-            KillDisplay::Ready(text) => text,
-            KillDisplay::Entity { kind, uuid, name } => {
-                let holder = uuid.map(sunrise_client::save::uuid_text);
-                let team = holder
-                    .as_deref()
-                    .and_then(|holder| self.score.board.players_team(holder));
-                Self::decorate_entity_display_name_with_uuid(&kind, uuid, team, name)
-            }
-        }
     }
 }
 

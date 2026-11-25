@@ -31,32 +31,8 @@ mod query_tests;
 mod saved_entity_tests;
 
 impl Game<'_, crate::game::server_side::ServerState> {
-    pub(in crate::game) fn attachment_query(
-        &self,
-        namespace: &str,
-        name: &str,
-    ) -> Result<mod_api::AttachmentBatch, mod_api::AttachmentError> {
-        mod_api::__private::validate_attachment_use(namespace, name, false)?;
-        let batch = self
-            .attachment_indexes
-            .get(&self.dim)
-            .map_or_else(AttachmentBatch::empty, |index| {
-                AttachmentBatch::new(index.lock().unwrap().snapshot_named(namespace, name))
-            });
-        Ok(batch
-            .in_scope(&self.transactions.attachment_query_scopes)
-            .into())
-    }
 
-    pub(in crate::game) fn attachment_read_scope(
-        &self,
-    ) -> Result<mod_api::AttachmentReadScope<'_>, mod_api::AttachmentRowError> {
-        Ok(self.attachment_frame_borrow())
-    }
 
-    pub(in crate::game) fn attachment_frame_borrow(&self) -> mod_api::AttachmentReadScope<'_> {
-        mod_api::__private::game::attachment_read_scope(&self.transactions.attachment_query_scopes)
-    }
 
     pub(in crate::game) fn attachment_validate_write(
         &self,
@@ -127,6 +103,35 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     ))
                 },
             )));
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    pub(in crate::game) fn attachment_query(
+        &self,
+        namespace: &str,
+        name: &str,
+    ) -> Result<mod_api::AttachmentBatch, mod_api::AttachmentError> {
+        mod_api::__private::validate_attachment_use(namespace, name, false)?;
+        let batch = self
+            .attachment_indexes
+            .get(&self.dim)
+            .map_or_else(AttachmentBatch::empty, |index| {
+                AttachmentBatch::new(index.lock().unwrap().snapshot_named(namespace, name))
+            });
+        Ok(batch
+            .in_scope(&self.transactions.attachment_query_scopes)
+            .into())
+    }
+
+    pub(in crate::game) fn attachment_read_scope(
+        &self,
+    ) -> Result<mod_api::AttachmentReadScope<'_>, mod_api::AttachmentRowError> {
+        Ok(self.attachment_frame_borrow())
+    }
+
+    pub(in crate::game) fn attachment_frame_borrow(&self) -> mod_api::AttachmentReadScope<'_> {
+        mod_api::__private::game::attachment_read_scope(&self.transactions.attachment_query_scopes)
     }
 }
 

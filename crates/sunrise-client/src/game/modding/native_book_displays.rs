@@ -2,8 +2,8 @@
 use super::*;
 use sunrise_client::recipe_book::{DisplayResources, ModBookIndex};
 
-pub(super) struct Resources<'a, 'w>(pub(super) &'a Game<'w>);
-impl DisplayResources for Resources<'_, '_> {
+pub(super) struct Resources<'a, 'w, S: crate::game::Side>(pub(super) &'a Game<'w, S>);
+impl<S: crate::game::Side> DisplayResources for Resources<'_, '_, S> {
     fn book(&self, key: &mod_api::item::recipe_book::RecipeBookTypeKey) -> bool {
         key.is_registered()
     }

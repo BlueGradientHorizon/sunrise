@@ -1620,46 +1620,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         });
         own.chain(guests)
     }
-    /// The cast hook with an entity id, and who cast it.
-    pub(in crate::game) fn fishing_hook_by_id(
-        &self,
-        id: u32,
-    ) -> Option<(&Hook, super::commands::Target)> {
-        use sunrise_client::join_seq::residency::{
-            Kind, Source,
-            table::{EntityLookup, SourceEntity},
-        };
-        let found = self
-            .resident_entities
-            .table
-            .borrow_mut()
-            .server_entity_lookup(id, |at| {
-                if at.owner.kind != Kind::Hook {
-                    return None;
-                }
-                let source = self.specialized_resident_source(at)?;
-                let super::player_residency::SpecializedSource::Hook(hook) = source.value.0 else {
-                    return None;
-                };
-                let Source::Hook { caster } = at.source else {
-                    return None;
-                };
-                Some(SourceEntity {
-                    id: hook.id(),
-                    value: (
-                        hook,
-                        caster.map_or(
-                            super::commands::Target::Player,
-                            super::commands::Target::Guest,
-                        ),
-                    ),
-                })
-            });
-        match found {
-            EntityLookup::Found { value, .. } => Some(value),
-            EntityLookup::Taken | EntityLookup::Missing => None,
-        }
-    }
     /// Update a cast bobber's support in the level that owns the hook.
     pub(in crate::game::server_side) fn set_fishing_hook_ground(
         &mut self,
@@ -1723,6 +1683,49 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.hook.discard();
         } else if let Some(play) = caster.and_then(|conn| self.lan.as_mut()?.play.get_mut(&conn)) {
             play.hook.discard();
+        }
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// The cast hook with an entity id, and who cast it.
+    pub(in crate::game) fn fishing_hook_by_id(
+        &self,
+        id: u32,
+    ) -> Option<(&Hook, super::commands::Target)> {
+        use sunrise_client::join_seq::residency::{
+            Kind, Source,
+            table::{EntityLookup, SourceEntity},
+        };
+        let found = self
+            .resident_entities
+            .table
+            .borrow_mut()
+            .server_entity_lookup(id, |at| {
+                if at.owner.kind != Kind::Hook {
+                    return None;
+                }
+                let source = self.specialized_resident_source(at)?;
+                let super::player_residency::SpecializedSource::Hook(hook) = source.value.0 else {
+                    return None;
+                };
+                let Source::Hook { caster } = at.source else {
+                    return None;
+                };
+                Some(SourceEntity {
+                    id: hook.id(),
+                    value: (
+                        hook,
+                        caster.map_or(
+                            super::commands::Target::Player,
+                            super::commands::Target::Guest,
+                        ),
+                    ),
+                })
+            });
+        match found {
+            EntityLookup::Found { value, .. } => Some(value),
+            EntityLookup::Taken | EntityLookup::Missing => None,
         }
     }
 }

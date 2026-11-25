@@ -120,7 +120,7 @@ impl KeptOwner {
     }
 }
 
-impl ActionTarget<GameHost<'_, '_>> for Target {
+impl ActionTarget<GameHost<'_, '_, crate::game::server_side::ServerState>> for Target {
     type Reads = EngineReads;
     type View = EngineMenu;
     type Plan = EnginePlan;
@@ -130,11 +130,14 @@ impl ActionTarget<GameHost<'_, '_>> for Target {
         self.id
     }
 
-    fn keep(&self, host: &mut GameHost<'_, '_>) {
+    fn keep(&self, host: &mut GameHost<'_, '_, crate::game::server_side::ServerState>) {
         self.keep_in(host.game);
     }
 
-    fn capture(&self, host: &GameHost<'_, '_>) -> Result<EngineReads, Outcome> {
+    fn capture(
+        &self,
+        host: &GameHost<'_, '_, crate::game::server_side::ServerState>,
+    ) -> Result<EngineReads, Outcome> {
         let (owner, menu) = self
             .read(host.game)
             .ok_or(Outcome::Stale(StaleReason::MenuInstance))?;
@@ -160,7 +163,11 @@ impl ActionTarget<GameHost<'_, '_>> for Target {
         plan.0.is_none()
     }
 
-    fn validate(&self, host: &GameHost<'_, '_>, reads: &EngineReads) -> Result<(), Outcome> {
+    fn validate(
+        &self,
+        host: &GameHost<'_, '_, crate::game::server_side::ServerState>,
+        reads: &EngineReads,
+    ) -> Result<(), Outcome> {
         let (owner, menu) = self
             .read(host.game)
             .ok_or(Outcome::Stale(StaleReason::MenuInstance))?;
@@ -173,7 +180,11 @@ impl ActionTarget<GameHost<'_, '_>> for Target {
         Ok(())
     }
 
-    fn apply(&self, host: &mut GameHost<'_, '_>, plan: EnginePlan) {
+    fn apply(
+        &self,
+        host: &mut GameHost<'_, '_, crate::game::server_side::ServerState>,
+        plan: EnginePlan,
+    ) {
         if let Some(snapshot) = plan.0 {
             self.edit(host.game, |menu| menu.restore(snapshot))
                 .expect("validated live menu owner");

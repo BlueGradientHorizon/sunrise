@@ -208,24 +208,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             _ => false,
         }
     }
-    /// `LivingEntity.getUsedItemHand` while `isUsingItem`: the hand of the item
-    /// a player or a mob uses, None when it uses none. On a client, the local
-    /// player's only.
-    pub(in crate::game) fn living_used_item_hand(&self, living: LivingRef) -> Option<Hand> {
-        match self.native_living_read_target(living)? {
-            Target::Player => self.used_hand(),
-            Target::Guest(conn) => self.lan.as_ref()?.play.get(&conn)?.used_hand(),
-            Target::Mob(id) => {
-                let mob = self.mobs.iter().find(|m| m.id == id)?;
-                spear_use::is_using_item(mob).then_some(if mob.extra.using_off_hand {
-                    Hand::Off
-                } else {
-                    Hand::Main
-                })
-            }
-            _ => None,
-        }
-    }
     /// `LivingEntity.startUsingItem`: starts using the item in `hand`, for its
     /// `getUseDuration` as a mod's use-item Start hook left it, without the
     /// item's own `use` (no ammo check, no sound). True when the use started:
@@ -336,6 +318,27 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.native_edit_waypoint_icon(living, |icon| {
             icon.color = rgb.map(|rgb| (rgb & 0xFF_FFFF) as i32);
         })
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// `LivingEntity.getUsedItemHand` while `isUsingItem`: the hand of the item
+    /// a player or a mob uses, None when it uses none. On a client, the local
+    /// player's only.
+    pub(in crate::game) fn living_used_item_hand(&self, living: LivingRef) -> Option<Hand> {
+        match self.native_living_read_target(living)? {
+            Target::Player => self.used_hand(),
+            Target::Guest(conn) => self.lan.as_ref()?.play.get(&conn)?.used_hand(),
+            Target::Mob(id) => {
+                let mob = self.mobs.iter().find(|m| m.id == id)?;
+                spear_use::is_using_item(mob).then_some(if mob.extra.using_off_hand {
+                    Hand::Off
+                } else {
+                    Hand::Main
+                })
+            }
+            _ => None,
+        }
     }
 }
 

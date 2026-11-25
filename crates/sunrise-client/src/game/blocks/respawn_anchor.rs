@@ -395,27 +395,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn block_collision_shape(&self, p: [i32; 3]) -> VoxelShape {
         self.block_collision_shape_in(&self.world, p)
     }
-    pub(in crate::game) fn block_collision_shape_in(
-        &self,
-        world: &sunrise_client::world::World,
-        p: [i32; 3],
-    ) -> VoxelShape {
-        let state = world.block(p[0], p[1], p[2]);
-        let binding = self.collision;
-        let mut scene = SceneCollisions {
-            world,
-            binding,
-            subject: None,
-        };
-        binding
-            .collision_shape_with_context(
-                &mut scene,
-                state,
-                BlockPos::new(p[0], p[1], p[2]),
-                &CollisionContext::empty(false),
-            )
-            .unwrap_or_else(|_| VoxelShape::empty())
-    }
     /// `DismountHelper.canDismountTo(level, entity, box)`: no block collides
     /// with the box and it is inside the world border.
     pub(in crate::game::server_side) fn can_dismount_to(&self, bounds: Aabb) -> bool {
@@ -594,6 +573,30 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             answer => answer.map(|([x, y, z], yaw, pitch)| (Vec3::new(x, y, z), yaw, pitch)),
         }
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    pub(in crate::game) fn block_collision_shape_in(
+        &self,
+        world: &sunrise_client::world::World,
+        p: [i32; 3],
+    ) -> VoxelShape {
+        let state = world.block(p[0], p[1], p[2]);
+        let binding = self.collision;
+        let mut scene = SceneCollisions {
+            world,
+            binding,
+            subject: None,
+        };
+        binding
+            .collision_shape_with_context(
+                &mut scene,
+                state,
+                BlockPos::new(p[0], p[1], p[2]),
+                &CollisionContext::empty(false),
+            )
+            .unwrap_or_else(|_| VoxelShape::empty())
     }
 }
 

@@ -206,11 +206,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         })
         .unwrap_or(false)
     }
-    /// The level in place (`minecraft:overworld`), for a hook that isn't told
-    /// which it runs in.
-    pub(in crate::game) fn dimension(&self) -> &'static str {
-        self.dim.id()
-    }
     /// Whether this game simulates a world, as `native_set_block` asks
     /// (the fluid helpers ask it too).
     pub(in crate::game::server_side) fn native_simulates(&self) -> bool {
@@ -223,6 +218,17 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.native_simulates()
             .then(|| self.level_ref(epoch, self.dim.key()))
     }
+}
+
+impl<__Side: crate::game::Side> Game<'_, __Side> {
+    /// The level in place (`minecraft:overworld`), for a hook that isn't told
+    /// which it runs in.
+    pub(in crate::game) fn dimension(&self) -> &'static str {
+        self.dim.id()
+    }
+}
+
+impl Game<'_, crate::game::server_side::ServerState> {
     /// Up to `count` out of slot `slot` of `view`, without `setChanged`.
     fn take_up_to(&mut self, view: &View, slot: usize, count: u32) -> Option<ItemStack> {
         if matches!(view.kind, Kind::Composter(_)) {

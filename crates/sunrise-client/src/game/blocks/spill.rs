@@ -1420,7 +1420,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         level.roll_block_loot(at, state, entity, roll, source.as_deref())
                     });
                 }
-                world_items!(self).block_drops(
+                server_world_items!(self).block_drops(
                     self.pack.assets.registry,
                     state,
                     roll,

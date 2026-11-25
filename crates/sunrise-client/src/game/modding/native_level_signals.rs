@@ -10,12 +10,12 @@ use sunrise_world::{level::signal_access::SignalAccess, registry::BlockStateId};
 /// Created for the game's current level (`self.level(self.dim.id())` or after
 /// `level_in_place` confirms the level matches `self.world`). No mutable world,
 /// random source, entity snapshots or transaction is needed by a signal read.
-pub(in crate::game) struct ReadLevel<'g, 'a> {
-    pub game: &'g Game<'a>,
+pub(in crate::game) struct ReadLevel<'g, 'a, S: crate::game::Side> {
+    pub game: &'g Game<'a, S>,
     pub level: mod_api::LevelRef,
 }
 
-super::native_tags::impl_tags!(ReadLevel<'_, '_>, level, level.game.native_tag_items());
+super::native_tags::impl_tags!(ReadLevel<'_, '_, S>, level, level.game.native_tag_items(); generics(S: crate::game::Side));
 
 /// The output side passed to Parts is opposite SignalGetter's input direction.
 /// Both the shared view and the write context apply the same output bound.
@@ -49,7 +49,7 @@ pub(in crate::game) fn block_entity_signal(
     crate::game::jukebox_common::jukebox_signals(world, items, pos).map_or(0, |(signal, _)| signal)
 }
 
-impl SignalAccess for ReadLevel<'_, '_> {
+impl<S: crate::game::Side> SignalAccess for ReadLevel<'_, '_, S> {
     fn block_state(&self, pos: BlockPos) -> BlockStateId {
         self.game.world.block(pos.x, pos.y, pos.z)
     }
@@ -194,7 +194,7 @@ impl SignalAccess for ReadLevel<'_, '_> {
     }
 }
 
-impl ReadLevel<'_, '_> {
+impl<S: crate::game::Side> ReadLevel<'_, '_, S> {
     pub(in crate::game) fn capability_site(
         &self,
         at: mod_api::BlockSide,
@@ -203,9 +203,9 @@ impl ReadLevel<'_, '_> {
     }
 }
 
-impl LevelHost for ReadLevel<'_, '_> {
+impl<S: crate::game::Side> LevelHost for ReadLevel<'_, '_, S> {
     fn block_states(&self) -> mod_api::BlockStates<'_> {
-        mod_api::BlockStates::of(self.game)
+        mod_api::BlockStates::of(S::as_block_states_backend(self.game))
     }
     fn block_face_sturdy(
         &self,

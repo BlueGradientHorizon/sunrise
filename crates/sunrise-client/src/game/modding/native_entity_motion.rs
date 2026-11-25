@@ -57,11 +57,6 @@ pub(in crate::game) fn corners(b: Aabb) -> [[f64; 3]; 2] {
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
-    /// The simulated entity (one of the shared entity walk's lists) with `id`.
-    pub(in crate::game::server_side) fn native_walk_entity(&self, id: u32) -> Option<EntityHandle> {
-        self.entity_handles()
-            .find(|h| with_entity!(self, *h, e => e.id() == id))
-    }
     /// This window's own player, when a client's target names it.
     #[allow(dead_code)]
     pub(in crate::game::server_side) fn native_client_player(
@@ -71,17 +66,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.remote.as_ref()?;
         (t == Target::Player).then_some(())?;
         self.player.as_ref()
-    }
-    /// The server's copy of the player a target names.
-    pub(in crate::game::server_side) fn native_target_guest(
-        &self,
-        t: Target,
-    ) -> Option<&sunrise_client::lan::guest::Guest> {
-        match t {
-            Target::Player => self.command_guest(self.side.lan_acting?),
-            Target::Guest(conn) => self.command_guest(conn),
-            _ => None,
-        }
     }
     /// The entity's velocity in blocks a tick (`Entity.getDeltaMovement`). A
     /// player's is the move its client last reported (`getKnownMovement`); an
@@ -224,27 +208,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         };
         with_entity_mut!(self, h, e => e.reset_fall_distance());
         true
-    }
-    /// Whether the entity stands on a block (`Entity.onGround`). API 379.
-    pub(in crate::game) fn entity_on_ground(&self, entity: EntityRef) -> Option<bool> {
-        let t = self.native_entity_read_target(entity)?;
-        if t == Target::Player
-            && let Some(p) = self.player.as_ref()
-        {
-            return Some(p.ground.on_ground);
-        }
-        if let Some(g) = self.native_target_guest(t) {
-            return Some(g.on_ground);
-        }
-        if let Target::Hook(id) = t
-            && let Some((hook, _)) = self.fishing_hook_by_id(id)
-        {
-            return Some(hook.ground.on_ground);
-        }
-        Some(
-            self.native_walk_entity(entity.id())
-                .is_some_and(|h| with_entity!(self, h, e => e.on_ground())),
-        )
     }
     /// `Entity.setOnGround` on its live server body, with no movement or fall processing.
     pub(in crate::game) fn entity_set_on_ground(
@@ -413,13 +376,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let [yaw, pitch] = self.entity_rotation(entity)?;
         Some(turned_view_vector(yaw, pitch, 0.0))
     }
-    /// The unit vector that points up out of the entity's head
-    /// (`Entity.getUpVector`): its view vector turned a quarter of a turn
-    /// toward the zenith.
-    pub(in crate::game) fn entity_up_vector(&self, entity: EntityRef) -> Option<[f64; 3]> {
-        let [yaw, pitch] = self.entity_rotation(entity)?;
-        Some(turned_view_vector(yaw, pitch, -90.0))
-    }
     /// `Entity.mainSupportingBlockPos`, retained by bodies with a shared ground state.
     /// Families that have not moved onto that state still use their existing support read.
     pub(in crate::game::server_side) fn native_supporting_block(
@@ -485,6 +441,56 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let p = self.entity_position(entity)?;
         let [dx, dy, dz] = std::array::from_fn(|i| p[i] - pos[i]);
         Some(dx * dx + dy * dy + dz * dz)
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// The simulated entity (one of the shared entity walk's lists) with `id`.
+    pub(in crate::game) fn native_walk_entity(&self, id: u32) -> Option<EntityHandle> {
+        self.entity_handles()
+            .find(|h| with_entity!(self, *h, e => e.id() == id))
+    }
+
+    /// The server's copy of the player a target names.
+    pub(in crate::game) fn native_target_guest(
+        &self,
+        t: Target,
+    ) -> Option<&sunrise_client::lan::guest::Guest> {
+        match t {
+            Target::Player => self.command_guest(crate::game::Side::lan_acting(&self.side)?),
+            Target::Guest(conn) => self.command_guest(conn),
+            _ => None,
+        }
+    }
+
+    /// Whether the entity stands on a block (`Entity.onGround`). API 379.
+    pub(in crate::game) fn entity_on_ground(&self, entity: EntityRef) -> Option<bool> {
+        let t = self.native_entity_read_target(entity)?;
+        if t == Target::Player
+            && let Some(p) = self.player.as_ref()
+        {
+            return Some(p.ground.on_ground);
+        }
+        if let Some(g) = self.native_target_guest(t) {
+            return Some(g.on_ground);
+        }
+        if let Target::Hook(id) = t
+            && let Some((hook, _)) = self.fishing_hook_by_id(id)
+        {
+            return Some(hook.ground.on_ground);
+        }
+        Some(
+            self.native_walk_entity(entity.id())
+                .is_some_and(|h| with_entity!(self, h, e => e.on_ground())),
+        )
+    }
+
+    /// The unit vector that points up out of the entity's head
+    /// (`Entity.getUpVector`): its view vector turned a quarter of a turn
+    /// toward the zenith.
+    pub(in crate::game) fn entity_up_vector(&self, entity: EntityRef) -> Option<[f64; 3]> {
+        let [yaw, pitch] = self.entity_rotation(entity)?;
+        Some(turned_view_vector(yaw, pitch, -90.0))
     }
 }
 

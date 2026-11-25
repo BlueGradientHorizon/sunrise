@@ -22,7 +22,7 @@ pub(in crate::game) enum Wearer {
 }
 
 pub(in crate::game) struct World<'a, 'g> {
-    pub(in crate::game) game: &'a mut Game<'g>,
+    pub(in crate::game) game: &'a mut crate::game::ServerGame<'g>,
     pub(in crate::game) original: &'a ItemStack,
     pub(in crate::game) wearer: Wearer,
     pub(in crate::game) broken: Option<ItemStack>,
@@ -64,7 +64,7 @@ impl DurabilityWorld for World<'_, '_> {
     }
 }
 
-impl<__Side: crate::game::Side> Game<'_, __Side> {
+impl crate::game::ServerGame<'_> {
     /// Compute the server durability update without firing equip effects:
     /// the acting player's stack when `player`, else one nobody holds.
     pub(in crate::game) fn damage_stack(

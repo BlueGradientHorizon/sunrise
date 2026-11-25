@@ -5,6 +5,12 @@ use std::collections::BTreeSet;
 use sunrise_assets::resource_source::{ResourceSource, read_winning_resource};
 
 impl Game<'_, crate::game::server_side::ServerState> {
+
+
+
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// `pack_type`'s top folder and its stack, lowest priority first. Client
     /// resources are already resolved into `PackResources::source` by
     /// `packs::resources` (filters and overrides included, each pack's copy kept
@@ -23,12 +29,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
             ("assets", vec![&self.pack.source])
         } else {
             let mut sources = Vec::new();
-            if !self.side.cmds.0.vanilla_disabled {
+            if !crate::game::Side::cmds(&self.side).is_some_and(|c| c.vanilla_disabled) {
                 sources.push(&self.pack.data_source);
             }
             sources.push(&self.pack.data_changes);
-            if self.options.execution_role.is_logical_server() {
-                sources.extend(self.side.fns.0.pack_sources().rev());
+            if self.options.execution_role.is_logical_server()
+                && let Some(fns) = crate::game::Side::fns(&self.side)
+            {
+                sources.extend(fns.pack_sources().rev());
             }
             ("data", sources)
         })

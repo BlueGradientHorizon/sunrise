@@ -131,14 +131,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .rules
                 .bool_at(sunrise_client::gamerules::vanilla::SEND_COMMAND_FEEDBACK)
     }
-    /// The name of the player the game acts for: a guest's own while their
-    /// command or action runs (`Player.getName`).
-    pub(in crate::game) fn acting_player_name(&self) -> &str {
-        self.side
-            .lan_acting_name
-            .as_deref()
-            .unwrap_or(PLAYER_NAME)
-    }
     /// `CommandSourceStack.getDisplayName` for the admin line: the executing
     /// entity's name, read where `execute in` put the command (`source.dimension`,
     /// in place); a command-block minecart executing as itself, and a command
@@ -1831,28 +1823,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         out
     }
-    /// Entity.getDisplayName.
-    pub(in crate::game) fn target_name(&self, t: Target) -> Text {
-        match t {
-            Target::Player => {
-                let name = self.acting_player_name();
-                if let Some(uuid) = self.side.lan_acting_uuid {
-                    return self.player_text(name, uuid);
-                }
-                match self.score.board.players_team(name) {
-                    // PlayerTeam.formatNameForTeam.
-                    Some(team) => team.formatted_name(Text::literal(name)),
-                    None => Text::literal(name),
-                }
-            }
-            Target::Guest(conn) => match self.command_guest(conn) {
-                Some(g) => self.player_text(&g.name, g.uuid),
-                None => Text::empty(),
-            },
-            Target::Mob(id) => self.mob_command_name(id),
-            other => self.entity_display_name(other),
-        }
-    }
     /// `t` teleported into another level than its own: an entity crosses at
     /// once (`teleport_target_across`), a server's player is queued to move
     /// after the command (ServerPlayer.teleport). False when `t` cannot
@@ -1983,6 +1953,37 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .map_or_else(|| self.own_entity_id(), |id| id as i32);
         self.native_player_xp_change(player, player_entity_id, &name, &mut amount, &mut cancel);
         (!cancel).then_some(amount)
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// The name of the player the game acts for: a guest's own while their
+    /// command or action runs (`Player.getName`).
+    pub(in crate::game) fn acting_player_name(&self) -> &str {
+        crate::game::Side::lan_acting_name(&self.side).unwrap_or(PLAYER_NAME)
+    }
+
+    /// Entity.getDisplayName.
+    pub(in crate::game) fn target_name(&self, t: Target) -> Text {
+        match t {
+            Target::Player => {
+                let name = self.acting_player_name();
+                if let Some(uuid) = crate::game::Side::lan_acting_uuid(&self.side) {
+                    return self.player_text(name, uuid);
+                }
+                match self.score.board.players_team(name) {
+                    // PlayerTeam.formatNameForTeam.
+                    Some(team) => team.formatted_name(Text::literal(name)),
+                    None => Text::literal(name),
+                }
+            }
+            Target::Guest(conn) => match self.command_guest(conn) {
+                Some(g) => self.player_text(&g.name, g.uuid),
+                None => Text::empty(),
+            },
+            Target::Mob(id) => self.mob_command_name(id),
+            other => self.entity_display_name(other),
+        }
     }
 }
 

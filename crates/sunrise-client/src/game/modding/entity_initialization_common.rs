@@ -42,7 +42,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             Holder::Entity(id) => {
                 let Some(kind) = self
                     .entity(id)
-                    .and_then(|entity| self.entity_kind(entity)?.id(self))
+                    .and_then(|entity| self.entity_kind(entity)?.id(__Side::as_host(self)))
                 else {
                     return;
                 };

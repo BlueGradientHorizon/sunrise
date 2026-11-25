@@ -23,14 +23,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
 
-    /// Internal object lookup, including a passenger refused level residency.
-    /// This is deliberately separate from `level_entity` and native handle queries.
-    pub(in crate::game) fn mob_object(&self, id: u32) -> Option<&Mob> {
-        self.mobs
-            .iter()
-            .find(|mob| mob.id == id)
-            .or_else(|| self.persist.off_level.get(&id).and_then(OffLevel::as_mob))
-    }
 
     /// Mutate an extant mob object without making it resident.
     pub(in crate::game) fn mob_object_mut(&mut self, id: u32) -> Option<&mut Mob> {
@@ -1046,6 +1038,17 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.persist.removed_vehicles.remove(&id);
             self.forget_entity(id);
         }
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// Internal object lookup, including a passenger refused level residency.
+    /// This is deliberately separate from `level_entity` and native handle queries.
+    pub(in crate::game) fn mob_object(&self, id: u32) -> Option<&Mob> {
+        self.mobs
+            .iter()
+            .find(|mob| mob.id == id)
+            .or_else(|| self.persist.off_level.get(&id).and_then(OffLevel::as_mob))
     }
 }
 

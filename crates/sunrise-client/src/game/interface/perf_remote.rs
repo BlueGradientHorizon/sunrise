@@ -265,7 +265,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         dir: reports_dir(),
                     };
                     match self.start_server_capture(target, Live::new()) {
-                        Ok(path) => self.perf_started(conn, name, &wanted, &shown(&path)),
+                        Ok(path) => {
+                            let path: std::path::PathBuf = path;
+                            self.perf_started(conn, name, &wanted, &shown(&path));
+                        }
                         Err(e) => {
                             log::error!("Sunrise: {name}'s server profile did not start: {e}");
                             self.perf_refused(conn, Refusal::Failed);

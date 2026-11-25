@@ -21,9 +21,11 @@ use sunrise_core::geometry::{Aabb, Vec3};
 #[allow(unused_imports)]
 use sunrise_gameplay::painting_variants::{painting_coexists, painting_facing};
 
-pub(in crate::game) struct PlacementWorld<'a, 'r>(pub(in crate::game) &'a Game<'r>);
+pub(in crate::game) struct PlacementWorld<'a, 'r, S: crate::game::Side>(
+    pub(in crate::game) &'a Game<'r, S>,
+);
 
-impl sunrise_client::cushion::World for PlacementWorld<'_, '_> {
+impl<S: crate::game::Side> sunrise_client::cushion::World for PlacementWorld<'_, '_, S> {
     fn outline_bounds(&self, p: [i32; 3]) -> Option<Aabb> {
         let boxes = self.0.outline_boxes(p);
         let mut shape = *boxes.first()?;

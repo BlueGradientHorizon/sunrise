@@ -210,13 +210,6 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         self.native_configs_load(kinds, Some(world));
     }
 
-    /// The server stops: its `Server` configs unload.
-    pub(in crate::game) fn native_configs_server_stop(&mut self) {
-        for file in self.native_configs.drop_server() {
-            self.native_config_unloading(&file);
-        }
-    }
-
     /// Hands changed files over again, at most once a second.
     pub(in crate::game) fn native_configs_poll(&mut self) {
         if !self.native_configs.due(Instant::now()) {
@@ -224,6 +217,15 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         }
         for file in self.native_configs.changed() {
             self.native_config_reloading(&file);
+        }
+    }
+}
+
+impl crate::game::ServerGame<'_> {
+    /// The server stops: its `Server` configs unload.
+    pub(in crate::game) fn native_configs_server_stop(&mut self) {
+        for file in self.native_configs.drop_server() {
+            self.native_config_unloading(&file);
         }
     }
 }

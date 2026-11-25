@@ -702,6 +702,26 @@ impl Game<'_, crate::game::server_side::ServerState> {
             ..s
         })
     }
+    /// Evaluate `f` with `source` as the command source, in the source's
+    /// level (`CommandSourceStack.getLevel`): a server puts that level in
+    /// place for it.
+    pub(in crate::game) fn with_source<T>(
+        &mut self,
+        source: Source,
+        f: impl FnOnce(&mut Self) -> T,
+    ) -> T {
+        let previous = self.side.command_source.replace(source);
+        let back = self.enter_command_level(source.dimension);
+        let out = f(self);
+        if let Some(back) = back {
+            self.enter_command_level(back);
+        }
+        self.side.command_source = previous;
+        out
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// `Entity.getYRot` and `getXRot`: the entity's angles, not the direction its model faces.
     pub(in crate::game) fn target_rotation(&self, t: Target) -> [f32; 2] {
         use crate::game::entity::Entity;
@@ -816,11 +836,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Target::Hook(id) => self
                 .fishing_hook_by_id(id)
                 .map_or([0.0; 2], |(hook, _)| [hook.yaw, hook.pitch]),
-            Target::Other(id) => self
-                .side.others
-                .0
-                .iter()
-                .find(|o| o.id == id)
+            Target::Other(id) => crate::game::Side::others(&self.side)
+                .and_then(|others| others.iter().find(|o| o.id == id))
                 .map_or([0.0; 2], |o| [o.yaw, o.pitch]),
             Target::General(id) => self
                 .resident_entities
@@ -838,13 +855,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
             Target::DragonPart(_) | Target::Knot(_) => [0.0; 2],
         }
     }
+
     /// `ServerLevel.getEntity(UUID)`: any entity of the level in place, not
     /// only mobs (displays, armor stands, items...). The map is keyed by id,
     /// so a killed entity and a later summon of the same UUID can both be
     /// in it; the one the level still holds is the entity.
     pub(in crate::game) fn target_with_uuid(&self, uuid: [i32; 4]) -> Option<Target> {
-        if is_player_in_place(uuid, self.side.lan_acting_uuid, self.level.player_uuid) {
-            if self.side.native_command_filter {
+        if is_player_in_place(uuid, crate::game::Side::lan_acting_uuid(&self.side), self.level.player_uuid) {
+            if crate::game::Side::native_command_filter(&self.side) {
                 return self
                     .player(sunrise_client::lan::playerdata::ints_uuid(uuid))
                     .and_then(|player| self.native_entity_target(player.entity()));
@@ -857,23 +875,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             self.level_entity(i32::try_from(id).ok()?)
         })
-    }
-    /// Evaluate `f` with `source` as the command source, in the source's
-    /// level (`CommandSourceStack.getLevel`): a server puts that level in
-    /// place for it.
-    pub(in crate::game) fn with_source<T>(
-        &mut self,
-        source: Source,
-        f: impl FnOnce(&mut Self) -> T,
-    ) -> T {
-        let previous = self.side.command_source.replace(source);
-        let back = self.enter_command_level(source.dimension);
-        let out = f(self);
-        if let Some(back) = back {
-            self.enter_command_level(back);
-        }
-        self.side.command_source = previous;
-        out
     }
 }
 

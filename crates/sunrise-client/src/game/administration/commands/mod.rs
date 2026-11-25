@@ -277,30 +277,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         ordered
     }
 
-    /// `Level.getEntity`: the entity of the level in place with a network
-    /// id, players aside.
-    pub(in crate::game) fn level_entity(&self, id: i32) -> Option<Target> {
-        let id = id as u32;
-        match self.server_resident_entity(id) {
-            sunrise_client::join_seq::residency::table::EntityLookup::Found { location, value }
-                if location.owner.dimension == self.dim.key()
-                    && !matches!(
-                        location.owner.kind,
-                        sunrise_client::join_seq::residency::Kind::Player
-                            | sunrise_client::join_seq::residency::Kind::Hook
-                            | sunrise_client::join_seq::residency::Kind::DragonPart
-                    ) =>
-            {
-                Some(value)
-            }
-            // A client's own copy of a row its server shows it.
-            _ => self
-                .remote
-                .as_ref()
-                .is_some_and(|r| r.general.rows.contains_key(&(id as i32)))
-                .then_some(Target::General(id)),
-        }
-    }
     /// `ServerLevel.getEntityOrPart` for a part: the `EnderDragonPart` of the
     /// level in place with this network id. `level_entity` does not find it,
     /// as `Level.getEntity` does not: no selector or command reaches a part.
@@ -325,10 +301,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let result = f(self);
         self.enter_command_level(back);
         Some(result)
-    }
-    pub(in crate::game) fn entity_tag_matches(&self, tag: &str, ty: &str) -> bool {
-        let tag = sunrise_client::command::args::normalized(tag);
-        self.items().entity_type_tags.contains(&tag, ty)
     }
     /// EntityArgument.getEntities / getPlayers / getEntity / getPlayer.
     pub(in crate::game) fn entities(
@@ -2233,6 +2205,38 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         out.push(rest);
         out
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// `Level.getEntity`: the entity of the level in place with a network
+    /// id, players aside.
+    pub(in crate::game) fn level_entity(&self, id: i32) -> Option<Target> {
+        let id = id as u32;
+        match self.server_resident_entity(id) {
+            sunrise_client::join_seq::residency::table::EntityLookup::Found { location, value }
+                if location.owner.dimension == self.dim.key()
+                    && !matches!(
+                        location.owner.kind,
+                        sunrise_client::join_seq::residency::Kind::Player
+                            | sunrise_client::join_seq::residency::Kind::Hook
+                            | sunrise_client::join_seq::residency::Kind::DragonPart
+                    ) =>
+            {
+                Some(value)
+            }
+            // A client's own copy of a row its server shows it.
+            _ => self
+                .remote
+                .as_ref()
+                .is_some_and(|r| r.general.rows.contains_key(&(id as i32)))
+                .then_some(Target::General(id)),
+        }
+    }
+
+    pub(in crate::game) fn entity_tag_matches(&self, tag: &str, ty: &str) -> bool {
+        let tag = sunrise_client::command::args::normalized(tag);
+        self.items().entity_type_tags.contains(&tag, ty)
     }
 }
 

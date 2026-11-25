@@ -101,87 +101,8 @@ impl LevelAccess for RainView<'_> {
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
-    /// `Level.getSkyDarken` for an active or parked level, without switching dimensions.
-    pub(in crate::game) fn level_get_sky_darken(&self, level: LevelRef) -> Option<i32> {
-        let world = self.native_level_read_world(level)?;
-        if level.dimension() == self.native_level_key() {
-            return Some(self.sky_darken());
-        }
-        Some(self.sky_darken_in(world, Dim::from_id(level.dimension_id())))
-    }
 
-    /// Dimension shape of a loaded server level, including parked levels.
-    pub(in crate::game) fn level_dimension_shape(
-        &self,
-        level: LevelRef,
-    ) -> Option<LevelDimensionShape> {
-        let shape = self.native_level_world(level)?.shape;
-        Some(LevelDimensionShape::new(
-            shape.min_y,
-            shape.height,
-            shape.logical_height,
-            shape.sky_light,
-            shape.has_ceiling,
-        ))
-    }
 
-    /// The level's dimension type with its gameplay attributes, from the facts the game uses.
-    pub(in crate::game) fn level_dimension_type(
-        &self,
-        level: LevelRef,
-    ) -> Option<LevelDimensionType> {
-        use sunrise_world::dimension_type::{CardinalLight, Skybox};
-        use sunrise_world::worldgen::value_provider::IntProvider;
-        self.native_level_read_world(level)?;
-        let key = sunrise_core::LevelKey::parse(level.dimension_id()).ok()?;
-        let facts = self.dimension_facts_for(key);
-        Some(LevelDimensionType {
-            id: facts.id.clone(),
-            min_y: facts.height.min_y,
-            height: facts.height.height,
-            logical_height: facts.height.logical_height,
-            has_skylight: facts.height.has_skylight,
-            has_ceiling: facts.height.has_ceiling,
-            has_fixed_time: facts.has_fixed_time,
-            has_ender_dragon_fight: facts.has_ender_dragon_fight,
-            coordinate_scale: facts.coordinate_scale,
-            ambient_light: facts.ambient_light,
-            infiniburn: facts.infiniburn.clone(),
-            monster_spawn_light_level: match facts.monster_spawn_light_level {
-                IntProvider::Constant(n) => Some((n, n)),
-                IntProvider::Uniform { min, max } => Some((min, max)),
-                _ => None,
-            },
-            monster_spawn_block_light_limit: facts.monster_spawn_block_light_limit,
-            skybox: match facts.skybox {
-                Skybox::None => "none".to_owned(),
-                Skybox::Overworld => "overworld".to_owned(),
-                Skybox::End => "end".to_owned(),
-            },
-            cardinal_light: match facts.cardinal_light {
-                CardinalLight::Default => "default".to_owned(),
-                CardinalLight::Nether => "nether".to_owned(),
-            },
-            water_evaporates: facts.water_evaporates,
-            fast_lava: facts.fast_lava,
-            respawn_anchor_works: facts.respawn_anchor_works,
-            nether_portal_spawns_piglin: facts.nether_portal_spawns_piglin,
-            piglins_zombify: facts.piglins_zombify,
-            snow_golem_melts: facts.snow_golem_melts,
-            can_start_raid: facts.can_start_raid,
-            sky_light_level: facts.sky_light_level,
-            timelines: facts.timelines.clone(),
-            default_clock: facts.default_clock.clone(),
-            bed_can_sleep: facts.bed_rule.can_sleep.name().to_owned(),
-            bed_can_set_spawn: facts.bed_rule.can_set_spawn.name().to_owned(),
-            bed_destroy_on_use: facts.bed_rule.destroy_on_use,
-            bed_destroy_on_leave: facts.bed_rule.destroy_on_leave,
-            straw_bed_can_sleep: facts.straw_bed_rule.can_sleep.name().to_owned(),
-            straw_bed_can_set_spawn: facts.straw_bed_rule.can_set_spawn.name().to_owned(),
-            straw_bed_destroy_on_use: facts.straw_bed_rule.destroy_on_use,
-            straw_bed_destroy_on_leave: facts.straw_bed_rule.destroy_on_leave,
-        })
-    }
 
     /// The sea level the game uses for the level (`Dim::sea_level`). None as the host call says.
     pub(in crate::game) fn level_sea_level(&self, level: LevelRef) -> Option<i32> {
@@ -361,17 +282,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .filter_map(|r| Some((r.name.clone(), rules.get(&r.name)?)))
             .collect())
     }
-    /// The rain and thunder levels, each 0.0 to 1.0 (`Level.getRainLevel`,
-    /// `getThunderLevel` at partial tick 1.0): both 0 in a level with no weather.
-    /// Reads any open server level or the client's current synchronized level;
-    /// None for a stale handle, an unavailable level or a client not logged in.
-    pub(in crate::game) fn level_weather(&self, level: LevelRef) -> Option<(f32, f32)> {
-        let world = self.native_level_read_world(level)?;
-        Some(weather_for_world(
-            world,
-            level.dimension() == Dim::End.key(),
-        ))
-    }
     /// Whether it rains (`Level.isRaining`: a rain level above 0.2).
     pub(in crate::game) fn level_is_raining(&self, level: LevelRef) -> Option<bool> {
         let world = self.native_level_world(level)?;
@@ -422,6 +332,102 @@ impl Game<'_, crate::game::server_side::ServerState> {
             ))
             .1,
         )
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// `Level.getSkyDarken` for an active or parked level, without switching dimensions.
+    pub(in crate::game) fn level_get_sky_darken(&self, level: LevelRef) -> Option<i32> {
+        let world = self.native_level_read_world(level)?;
+        if level.dimension() == self.native_level_key() {
+            return Some(self.sky_darken());
+        }
+        Some(self.sky_darken_in(world, Dim::from_id(level.dimension_id())))
+    }
+
+    /// Dimension shape of a loaded server level, including parked levels.
+    pub(in crate::game) fn level_dimension_shape(
+        &self,
+        level: LevelRef,
+    ) -> Option<LevelDimensionShape> {
+        let shape = self.native_level_world(level)?.shape;
+        Some(LevelDimensionShape::new(
+            shape.min_y,
+            shape.height,
+            shape.logical_height,
+            shape.sky_light,
+            shape.has_ceiling,
+        ))
+    }
+
+    /// The level's dimension type with its gameplay attributes, from the facts the game uses.
+    pub(in crate::game) fn level_dimension_type(
+        &self,
+        level: LevelRef,
+    ) -> Option<LevelDimensionType> {
+        use sunrise_world::dimension_type::{CardinalLight, Skybox};
+        use sunrise_world::worldgen::value_provider::IntProvider;
+        self.native_level_read_world(level)?;
+        let key = sunrise_core::LevelKey::parse(level.dimension_id()).ok()?;
+        let facts = self.dimension_facts_for(key);
+        Some(LevelDimensionType {
+            id: facts.id.clone(),
+            min_y: facts.height.min_y,
+            height: facts.height.height,
+            logical_height: facts.height.logical_height,
+            has_skylight: facts.height.has_skylight,
+            has_ceiling: facts.height.has_ceiling,
+            has_fixed_time: facts.has_fixed_time,
+            has_ender_dragon_fight: facts.has_ender_dragon_fight,
+            coordinate_scale: facts.coordinate_scale,
+            ambient_light: facts.ambient_light,
+            infiniburn: facts.infiniburn.clone(),
+            monster_spawn_light_level: match facts.monster_spawn_light_level {
+                IntProvider::Constant(n) => Some((n, n)),
+                IntProvider::Uniform { min, max } => Some((min, max)),
+                _ => None,
+            },
+            monster_spawn_block_light_limit: facts.monster_spawn_block_light_limit,
+            skybox: match facts.skybox {
+                Skybox::None => "none".to_owned(),
+                Skybox::Overworld => "overworld".to_owned(),
+                Skybox::End => "end".to_owned(),
+            },
+            cardinal_light: match facts.cardinal_light {
+                CardinalLight::Default => "default".to_owned(),
+                CardinalLight::Nether => "nether".to_owned(),
+            },
+            water_evaporates: facts.water_evaporates,
+            fast_lava: facts.fast_lava,
+            respawn_anchor_works: facts.respawn_anchor_works,
+            nether_portal_spawns_piglin: facts.nether_portal_spawns_piglin,
+            piglins_zombify: facts.piglins_zombify,
+            snow_golem_melts: facts.snow_golem_melts,
+            can_start_raid: facts.can_start_raid,
+            sky_light_level: facts.sky_light_level,
+            timelines: facts.timelines.clone(),
+            default_clock: facts.default_clock.clone(),
+            bed_can_sleep: facts.bed_rule.can_sleep.name().to_owned(),
+            bed_can_set_spawn: facts.bed_rule.can_set_spawn.name().to_owned(),
+            bed_destroy_on_use: facts.bed_rule.destroy_on_use,
+            bed_destroy_on_leave: facts.bed_rule.destroy_on_leave,
+            straw_bed_can_sleep: facts.straw_bed_rule.can_sleep.name().to_owned(),
+            straw_bed_can_set_spawn: facts.straw_bed_rule.can_set_spawn.name().to_owned(),
+            straw_bed_destroy_on_use: facts.straw_bed_rule.destroy_on_use,
+            straw_bed_destroy_on_leave: facts.straw_bed_rule.destroy_on_leave,
+        })
+    }
+
+    /// The rain and thunder levels, each 0.0 to 1.0 (`Level.getRainLevel`,
+    /// `getThunderLevel` at partial tick 1.0): both 0 in a level with no weather.
+    /// Reads any open server level or the client's current synchronized level;
+    /// None for a stale handle, an unavailable level or a client not logged in.
+    pub(in crate::game) fn level_weather(&self, level: LevelRef) -> Option<(f32, f32)> {
+        let world = self.native_level_read_world(level)?;
+        Some(weather_for_world(
+            world,
+            level.dimension() == Dim::End.key(),
+        ))
     }
 }
 

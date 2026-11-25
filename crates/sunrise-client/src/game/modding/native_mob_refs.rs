@@ -298,24 +298,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             )
     }
 
-    /// The entity as a vanilla Mob: a mob or the ender dragon. Players, armor
-    /// stands, stale handles and clients are rejected. Mobs taken out for
-    /// ticking are unavailable (a #29 follow-up).
-    pub(in crate::game) fn mob(&self, entity: EntityRef) -> Option<MobRef> {
-        match self.native_entity_target(entity)? {
-            Target::Mob(_) | Target::Dragon(_) => Some(MobRef::new(entity)),
-            _ => None,
-        }
-    }
 
-    /// The existing portal decision for an available mob in the current level.
-    pub(in crate::game) fn mob_can_use_portal(&self, mob: MobRef) -> Option<bool> {
-        let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
-            return None;
-        };
-        let mob = self.mobs.iter().find(|m| m.id == id)?;
-        Some(self.mob_portal_eligible(mob))
-    }
 
     /// `Mob.getTarget`. Brain-backed mobs read their attack memory; piglins
     /// and hoglins use Sunrise's `ai.target` stand-in. Invalid targets, an
@@ -907,6 +890,27 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .find(|m| m.id == id && !m.removed)
             .map(|m| m.extra.pick_up_loot = can_pick_up)
             .is_some()
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// The entity as a vanilla Mob: a mob or the ender dragon. Players, armor
+    /// stands, stale handles and clients are rejected. Mobs taken out for
+    /// ticking are unavailable (a #29 follow-up).
+    pub(in crate::game) fn mob(&self, entity: EntityRef) -> Option<MobRef> {
+        match self.native_entity_target(entity)? {
+            Target::Mob(_) | Target::Dragon(_) => Some(MobRef::new(entity)),
+            _ => None,
+        }
+    }
+
+    /// The existing portal decision for an available mob in the current level.
+    pub(in crate::game) fn mob_can_use_portal(&self, mob: MobRef) -> Option<bool> {
+        let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
+            return None;
+        };
+        let mob = self.mobs.iter().find(|m| m.id == id)?;
+        Some(self.mob_portal_eligible(mob))
     }
 }
 

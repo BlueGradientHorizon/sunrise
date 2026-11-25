@@ -54,14 +54,14 @@ pub(in crate::game) fn added(
 
 /// The player acting, holding the stack in `slot` (`stack_in_mut`'s numbers), as
 /// `ItemUtils.createFilledResult` and the cauldron see them.
-pub(in crate::game) struct HeldSlot<'g, 'a> {
-    pub(in crate::game) game: &'g mut Game<'a>,
+pub(in crate::game) struct HeldSlot<'g, 'a, S: crate::game::Side> {
+    pub(in crate::game) game: &'g mut Game<'a, S>,
     pub(in crate::game) slot: usize,
     /// The UUID of the player a mod's write acts as: what doesn't fit waits for the root
     /// commit of an open transaction. None for the game's own use.
     pub(in crate::game) dropper: Option<u128>,
 }
-impl cauldron::Player for HeldSlot<'_, '_> {
+impl<S: crate::game::Side> cauldron::Player for HeldSlot<'_, '_, S> {
     fn creative(&self) -> bool {
         self.game.creative
     }

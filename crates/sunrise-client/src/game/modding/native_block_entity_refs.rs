@@ -19,38 +19,8 @@ use sunrise_items::items::ItemStack;
 use sunrise_world::registry::BlockStateId;
 
 impl Game<'_, crate::game::server_side::ServerState> {
-    fn native_block_entity_target(&self, entity: BlockEntityRef) -> Option<(&World, &BlockEntity)> {
-        let world = self.native_level_read_world(entity.fields().level)?;
-        Some((world, resident_block_entity(world, entity)?))
-    }
 
-    /// Find a block entity in a loaded chunk of an open level, or on a client in
-    /// the level it shows.
-    pub(in crate::game) fn block_entity(
-        &self,
-        level: LevelRef,
-        pos: [i32; 3],
-    ) -> Option<BlockEntityRef> {
-        let world = self.native_level_read_world(level)?;
-        world_block_entity(world, level, pos)
-    }
 
-    /// `block_entity`, also for a block entity temporarily taken out by an engine operation:
-    /// its generation stays in place while it is out.
-    pub(in crate::game) fn block_entity_identity(
-        &self,
-        level: LevelRef,
-        pos: [i32; 3],
-    ) -> Option<BlockEntityRef> {
-        let world = self.native_level_read_world(level)?;
-        if !world.loaded(pos[0], pos[2]) {
-            return None;
-        }
-        let generation = world.block_entities.generation(&(pos[0], pos[1], pos[2]))?;
-        Some(mod_api::__private::game::block_entity_ref(
-            level, pos, generation,
-        ))
-    }
 
     /// The data of the block entity at `pos`, as saved without identity or position
     /// metadata, for the hook that hears its block's removal: the entity is gone from
@@ -123,48 +93,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
 
-    /// The block entity's type (`BlockEntity.getType`).
-    pub(in crate::game) fn block_entity_kind(
-        &self,
-        entity: BlockEntityRef,
-    ) -> Option<BlockEntityTypeKey> {
-        let (world, block_entity) = self.native_block_entity_target(entity)?;
-        let [x, y, z] = entity.fields().position;
-        let block = &self.pack.assets.registry.state(world.block(x, y, z))?.name;
-        mod_api::__private::block_entity_type_key(save::block_entity_id(block_entity, block))
-    }
 
-    /// The block entity's position.
-    pub(in crate::game) fn block_entity_position(
-        &self,
-        entity: BlockEntityRef,
-    ) -> Option<[i32; 3]> {
-        self.native_block_entity_target(entity)?;
-        Some(entity.fields().position)
-    }
 
-    /// The block entity's level.
-    pub(in crate::game) fn block_entity_level(&self, entity: BlockEntityRef) -> Option<LevelRef> {
-        self.native_block_entity_target(entity)?;
-        Some(entity.fields().level)
-    }
 
-    /// The data saved without identity or position metadata
-    /// (`BlockEntity.saveWithoutMetadata`).
-    pub(in crate::game) fn block_entity_data(&self, entity: BlockEntityRef) -> Option<Compound> {
-        let world = self.native_level_read_world(entity.fields().level)?;
-        world_block_entity_data(world, self.pack.assets.registry, self.res.items(), entity)
-    }
 
-    /// The resident lock, independent of the block entity's synthesized save payload.
-    pub(in crate::game) fn block_entity_lock(&self, entity: BlockEntityRef) -> Option<&Compound> {
-        let (world, _) = self.native_block_entity_target(entity)?;
-        let [x, y, z] = entity.fields().position;
-        match world.block_lock((x, y, z))? {
-            Tag::Compound(lock) => Some(lock),
-            _ => None,
-        }
-    }
 
     /// Change the lock through the same storage used by container opening and saving.
     pub(in crate::game) fn block_entity_set_lock(
@@ -229,17 +161,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         Some((key, block))
     }
 
-    /// A snapshot of a mod block entity's menu data slots, on the server or in the
-    /// client's copy. None for a stale/missing/vanilla entity. Item storage is separate.
-    pub(in crate::game) fn block_entity_data_slots(
-        &self,
-        entity: BlockEntityRef,
-    ) -> Option<Vec<i32>> {
-        let (_, BlockEntity::Mod(block_entity)) = self.native_block_entity_target(entity)? else {
-            return None;
-        };
-        Some(block_entity.data.clone())
-    }
 
     /// Set a mod block entity's menu data slot silently in the current transaction.
     /// Ok(false) for a vanilla entity, invalid slot or equal value; Stale for an invalidated
@@ -317,23 +238,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             unreachable!("resolved mod holder replaced before its write")
         };
         edit(block_entity);
-    }
-
-    /// Read a configured mod holder's declared internal item slot, without automation policy.
-    pub(in crate::game) fn block_entity_item_slot(
-        &self,
-        entity: BlockEntityRef,
-        slot: u32,
-    ) -> Result<Option<ItemStack>, BlockEntityItemError> {
-        let (world, BlockEntity::Mod(block_entity)) = self
-            .native_block_entity_target(entity)
-            .ok_or(BlockEntityItemError::Stale)?
-        else {
-            return Err(BlockEntityItemError::Unavailable);
-        };
-        let [x, y, z] = entity.fields().position;
-        mod_item_slots(world, (x, y, z), slot)?;
-        Ok(block_entity.items.get(slot as usize).cloned().flatten())
     }
 
     /// Replace internal storage under the existing transaction; external ITEMS routing is separate.
@@ -675,6 +579,113 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         self.block_entity_updated(key);
         Ok(true)
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// Read a configured mod holder's declared internal item slot, without automation policy.
+    pub(in crate::game) fn block_entity_item_slot(
+        &self,
+        entity: BlockEntityRef,
+        slot: u32,
+    ) -> Result<Option<ItemStack>, BlockEntityItemError> {
+        let (world, BlockEntity::Mod(block_entity)) = self
+            .native_block_entity_target(entity)
+            .ok_or(BlockEntityItemError::Stale)?
+        else {
+            return Err(BlockEntityItemError::Unavailable);
+        };
+        let [x, y, z] = entity.fields().position;
+        mod_item_slots(world, (x, y, z), slot)?;
+        Ok(block_entity.items.get(slot as usize).cloned().flatten())
+    }
+
+    fn native_block_entity_target(&self, entity: BlockEntityRef) -> Option<(&World, &BlockEntity)> {
+        let world = self.native_level_read_world(entity.fields().level)?;
+        Some((world, resident_block_entity(world, entity)?))
+    }
+
+    /// Find a block entity in a loaded chunk of an open level, or on a client in
+    /// the level it shows.
+    pub(in crate::game) fn block_entity(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+    ) -> Option<BlockEntityRef> {
+        let world = self.native_level_read_world(level)?;
+        world_block_entity(world, level, pos)
+    }
+
+    /// `block_entity`, also for a block entity temporarily taken out by an engine operation:
+    /// its generation stays in place while it is out.
+    pub(in crate::game) fn block_entity_identity(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+    ) -> Option<BlockEntityRef> {
+        let world = self.native_level_read_world(level)?;
+        if !world.loaded(pos[0], pos[2]) {
+            return None;
+        }
+        let generation = world.block_entities.generation(&(pos[0], pos[1], pos[2]))?;
+        Some(mod_api::__private::game::block_entity_ref(
+            level, pos, generation,
+        ))
+    }
+
+    /// The block entity's type (`BlockEntity.getType`).
+    pub(in crate::game) fn block_entity_kind(
+        &self,
+        entity: BlockEntityRef,
+    ) -> Option<BlockEntityTypeKey> {
+        let (world, block_entity) = self.native_block_entity_target(entity)?;
+        let [x, y, z] = entity.fields().position;
+        let block = &self.pack.assets.registry.state(world.block(x, y, z))?.name;
+        mod_api::__private::block_entity_type_key(save::block_entity_id(block_entity, block))
+    }
+
+    /// The block entity's position.
+    pub(in crate::game) fn block_entity_position(
+        &self,
+        entity: BlockEntityRef,
+    ) -> Option<[i32; 3]> {
+        self.native_block_entity_target(entity)?;
+        Some(entity.fields().position)
+    }
+
+    /// The block entity's level.
+    pub(in crate::game) fn block_entity_level(&self, entity: BlockEntityRef) -> Option<LevelRef> {
+        self.native_block_entity_target(entity)?;
+        Some(entity.fields().level)
+    }
+
+    /// The data saved without identity or position metadata
+    /// (`BlockEntity.saveWithoutMetadata`).
+    pub(in crate::game) fn block_entity_data(&self, entity: BlockEntityRef) -> Option<Compound> {
+        let world = self.native_level_read_world(entity.fields().level)?;
+        world_block_entity_data(world, self.pack.assets.registry, self.res.items(), entity)
+    }
+
+    /// The resident lock, independent of the block entity's synthesized save payload.
+    pub(in crate::game) fn block_entity_lock(&self, entity: BlockEntityRef) -> Option<&Compound> {
+        let (world, _) = self.native_block_entity_target(entity)?;
+        let [x, y, z] = entity.fields().position;
+        match world.block_lock((x, y, z))? {
+            Tag::Compound(lock) => Some(lock),
+            _ => None,
+        }
+    }
+
+    /// A snapshot of a mod block entity's menu data slots, on the server or in the
+    /// client's copy. None for a stale/missing/vanilla entity. Item storage is separate.
+    pub(in crate::game) fn block_entity_data_slots(
+        &self,
+        entity: BlockEntityRef,
+    ) -> Option<Vec<i32>> {
+        let (_, BlockEntity::Mod(block_entity)) = self.native_block_entity_target(entity)? else {
+            return None;
+        };
+        Some(block_entity.data.clone())
     }
 }
 

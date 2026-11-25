@@ -1,4 +1,5 @@
 //! `RegistryAccess.lookup` and `HolderLookup.listElements` on the current side's actual tables.
+#[allow(unused_imports)]
 use super::Game;
 use mod_api::RegistryEntry;
 use std::{collections::BTreeMap, sync::Arc};
@@ -61,14 +62,31 @@ impl LocalRegistry<'_> {
     }
 }
 
-impl Game<'_, crate::game::server_side::ServerState> {
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    fn registry_generator_data(
+        &self,
+    ) -> Option<Arc<sunrise_world::worldgen::generator::GeneratorData>> {
+        self.end
+            .locator()
+            .map(|terrain| Arc::clone(terrain.generator_data()))
+            .or_else(|| {
+                self.res
+                    .behaviours()
+                    .live_features()
+                    .map(|features| Arc::clone(features.data()))
+            })
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// The same published provider definitions that `/compute` evaluates.
-    pub(in crate::game::server_side) fn context_registry(
+    pub(in crate::game) fn context_registry(
         &self,
         registry: &str,
     ) -> Option<&std::collections::HashMap<String, serde_json::Value>> {
         self.active_providers().registry(registry)
     }
+
     fn local_registry(&self, registry: &str) -> Option<LocalRegistry<'_>> {
         Some(match registry {
             "minecraft:enchantment" => {
@@ -76,9 +94,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             "minecraft:advancement" => LocalRegistry::Advancements(&self.adv.tree),
             "minecraft:game_rule" => LocalRegistry::Rules(&self.level.rule_registry),
-            "minecraft:predicate" => LocalRegistry::Json(&self.side.fns.0.store.predicates),
-            "minecraft:item_modifier" => LocalRegistry::Json(&self.side.fns.0.store.item_modifiers),
-            "minecraft:slot_source" => LocalRegistry::Json(&self.side.fns.0.store.slot_sources),
+            "minecraft:predicate" => LocalRegistry::Json(&crate::game::Side::fns(&self.side)?.store.predicates),
+            "minecraft:item_modifier" => LocalRegistry::Json(&crate::game::Side::fns(&self.side)?.store.item_modifiers),
+            "minecraft:slot_source" => LocalRegistry::Json(&crate::game::Side::fns(&self.side)?.store.slot_sources),
             "minecraft:loot_table" => LocalRegistry::Loot(self.items()),
             "minecraft:recipe" => LocalRegistry::Recipes(self.recipes()),
             "minecraft:trade_set" => LocalRegistry::HashJson(&self.stations().trades.sets),
@@ -119,20 +137,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     &self.pack_files(),
                 )
                 .ok()
-            })
-    }
-
-    fn registry_generator_data(
-        &self,
-    ) -> Option<Arc<sunrise_world::worldgen::generator::GeneratorData>> {
-        self.end
-            .locator()
-            .map(|terrain| Arc::clone(terrain.generator_data()))
-            .or_else(|| {
-                self.res
-                    .behaviours()
-                    .live_features()
-                    .map(|features| Arc::clone(features.data()))
             })
     }
 
@@ -223,7 +227,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if registry == "minecraft:dimension" {
             return identifiers(
                 std::iter::once(self.dim.id())
-                    .chain(self.side.levels.0.parked.keys().map(|dimension| dimension.id())),
+                    .chain(crate::game::Side::levels(&self.side).into_iter().flat_map(|l| l.parked.keys().map(|dimension| dimension.id()))),
             );
         }
         if registry == "minecraft:trial_spawner" {
@@ -289,11 +293,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         if registry == "minecraft:slot_source" {
             return Some(
-                self.side.fns
-                    .0
-                    .store
-                    .slot_source_tag(&tag)
-                    .is_ok_and(|members| members.iter().any(|member| member == &id)),
+                crate::game::Side::fns(&self.side)
+                    .is_some_and(|f| f.store.slot_source_tag(&tag).is_ok_and(|members| members.iter().any(|member| member == &id))),
             );
         }
         if registry == "minecraft:villager_trade" {
@@ -332,7 +333,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         {
             return Some(found);
         }
-        if let Some(tables) = &self.side.world_tables.0
+        if let Some(tables) = crate::game::Side::world_tables(&self.side)
             && let Some(kind) = registry.strip_prefix("minecraft:")
             && let Some(tags) = tables.pack_tags.get(kind)
         {

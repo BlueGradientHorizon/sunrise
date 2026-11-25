@@ -14,15 +14,6 @@ pub(in crate::game::server_side) use sunrise_client::{
 pub(in crate::game::server_side) use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 impl Game<'_, crate::game::server_side::ServerState> {
-    /// `PlayerList.getPlayers` but the player in place: the guests who
-    /// joined the world.
-    pub(in crate::game::server_side) fn command_players(&self) -> impl Iterator<Item = &Guest> {
-        let acting = self.side.lan_acting;
-        self.lan
-            .iter()
-            .flat_map(|h| h.hub.online_players())
-            .filter(move |g| Some(g.conn) != acting && self.native_command_player_available(g))
-    }
     /// Run `f` for the player `t` (None for anything else): in place, or
     /// with the guest's state swapped in, in their level, as their own turn.
     /// What `f` tells the player (`system_message`) goes to their chat; the
@@ -78,14 +69,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             log::error!("could not reopen {}: {e}", back.id());
         }
         Some(out)
-    }
-    /// Native console calls cannot reach an outer turn's displaced player.
-    /// Ordinary command resolution is unchanged, including nested turns.
-    pub(in crate::game::server_side) fn native_command_player_available(
-        &self,
-        guest: &Guest,
-    ) -> bool {
-        !self.side.native_command_filter || self.entity(guest.entity_id as u32).is_some()
     }
     /// The guests a selector looks at, in join order (`PlayerList.getPlayers`),
     /// the one in place as `Target::Player`: all of them, or those in the
@@ -180,10 +163,32 @@ impl Game<'_, crate::game::server_side::ServerState> {
             None => self.player.is_some().then_some(Target::Player),
         }
     }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// `PlayerList.getPlayers` but the player in place: the guests who
+    /// joined the world.
+    pub(in crate::game) fn command_players(&self) -> impl Iterator<Item = &Guest> {
+        let acting = crate::game::Side::lan_acting(&self.side);
+        self.lan
+            .iter()
+            .flat_map(|h| h.hub.online_players())
+            .filter(move |g| Some(g.conn) != acting && self.native_command_player_available(g))
+    }
+
+    /// Native console calls cannot reach an outer turn's displaced player.
+    /// Ordinary command resolution is unchanged, including nested turns.
+    pub(in crate::game) fn native_command_player_available(
+        &self,
+        guest: &Guest,
+    ) -> bool {
+        !crate::game::Side::native_command_filter(&self.side) || self.entity(guest.entity_id as u32).is_some()
+    }
+
     /// `EntitySelector.findEntities` with a UUID: the player with it, else
     /// the entity.
     pub(in crate::game) fn target_by_uuid(&self, uuid: u128) -> Option<Target> {
-        let own = self.side.lan_acting_uuid.or_else(|| {
+        let own = crate::game::Side::lan_acting_uuid(&self.side).or_else(|| {
             self.level.player_uuid.map(|[a, b, c, d]| {
                 (u128::from(a as u32) << 96)
                     | (u128::from(b as u32) << 64)
@@ -192,7 +197,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             })
         });
         if self.player.is_some() && own == Some(uuid) {
-            return (!self.side.lan_acting_fake).then_some(Target::Player);
+            return (!crate::game::Side::lan_acting_fake(&self.side)).then_some(Target::Player);
         }
         if let Some(g) = self.command_players().find(|g| g.uuid == uuid) {
             return Some(Target::Guest(g.conn));

@@ -32,16 +32,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
 
-    /// `ItemCooldowns.getCooldownGroup(stack)`: the group `stack`'s
-    /// cooldown is filed under, the group its `use_cooldown` component names
-    /// (its own, else its item's default), else its item id.
-    pub(in crate::game) fn item_cooldown_group(&self, stack: &ItemStack) -> String {
-        let default = self
-            .items()
-            .get(&stack.item)
-            .and_then(|info| info.use_cooldown.as_ref());
-        sunrise_client::cooldowns::group(stack, default).to_string()
-    }
     /// Every group the player waits on and its ticks left, ordered by
     /// group.
     pub(in crate::game) fn player_item_cooldowns(
@@ -157,6 +147,19 @@ impl Game<'_, crate::game::server_side::ServerState> {
             game.load_warden_tracker();
             game.side.sculk.tracker.cooldown_ticks = i32::try_from(ticks).unwrap_or(i32::MAX);
         })
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// `ItemCooldowns.getCooldownGroup(stack)`: the group `stack`'s
+    /// cooldown is filed under, the group its `use_cooldown` component names
+    /// (its own, else its item's default), else its item id.
+    pub(in crate::game) fn item_cooldown_group(&self, stack: &ItemStack) -> String {
+        let default = self
+            .items()
+            .get(&stack.item)
+            .and_then(|info| info.use_cooldown.as_ref());
+        sunrise_client::cooldowns::group(stack, default).to_string()
     }
 }
 

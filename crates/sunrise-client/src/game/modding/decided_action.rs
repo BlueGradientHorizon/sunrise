@@ -41,19 +41,27 @@ thread_local! {
     pub(in crate::game) static DECIDED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-type Fresh<'p> = Box<dyn Fn(&Game<'_, crate::game::server_side::ServerState>) -> bool + 'p>;
-type Perform<'p> = Box<dyn FnOnce(&mut Game<'_, crate::game::server_side::ServerState>) + 'p>;
+type Fresh<'p, S> = Box<dyn Fn(&Game<'_, S>) -> bool + 'p>;
+type Perform<'p, S> = Box<dyn FnOnce(&mut Game<'_, S>) + 'p>;
 
-struct Shared<'p> {
+struct Shared<'p, S> {
     epoch: Epoch<'p>,
-    fresh: Fresh<'p>,
-    perform: RefCell<Option<Perform<'p>>>,
+    fresh: Fresh<'p, S>,
+    perform: RefCell<Option<Perform<'p, S>>>,
 }
 
-#[derive(Clone)]
-struct Action<'p> {
+struct Action<'p, S> {
     id: MenuId,
-    shared: Rc<Shared<'p>>,
+    shared: Rc<Shared<'p, S>>,
+}
+
+impl<S> Clone for Action<'_, S> {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id,
+            shared: Rc::clone(&self.shared),
+        }
+    }
 }
 
 struct Reads {
@@ -62,7 +70,7 @@ struct Reads {
 
 struct Plan;
 
-impl<'a, 'g> ActionTarget<GameHost<'a, 'g>> for Action<'_> {
+impl<'a, 'g, S: crate::game::Side> ActionTarget<GameHost<'a, 'g, S>> for Action<'_, S> {
     type Reads = Reads;
     type View = Reads;
     type Plan = Plan;
@@ -71,7 +79,7 @@ impl<'a, 'g> ActionTarget<GameHost<'a, 'g>> for Action<'_> {
     fn id(&self) -> MenuId {
         self.id
     }
-    fn capture(&self, host: &GameHost<'a, 'g>) -> std::result::Result<Reads, Outcome> {
+    fn capture(&self, host: &GameHost<'a, 'g, S>) -> std::result::Result<Reads, Outcome> {
         Ok(Reads {
             player_writes: host.game.transactions.player_writes(),
         })
@@ -85,7 +93,11 @@ impl<'a, 'g> ActionTarget<GameHost<'a, 'g>> for Action<'_> {
     fn empty(_: &Plan) -> bool {
         false
     }
-    fn validate(&self, host: &GameHost<'a, 'g>, reads: &Reads) -> std::result::Result<(), Outcome> {
+    fn validate(
+        &self,
+        host: &GameHost<'a, 'g, S>,
+        reads: &Reads,
+    ) -> std::result::Result<(), Outcome> {
         let check_player_writes = match self.shared.epoch {
             Epoch::Player => true,
             Epoch::Click(handled) => !handled.get(),
@@ -99,7 +111,7 @@ impl<'a, 'g> ActionTarget<GameHost<'a, 'g>> for Action<'_> {
             Err(Outcome::Stale(StaleReason::Snapshot))
         }
     }
-    fn apply(&self, host: &mut GameHost<'a, 'g>, _: Plan) {
+    fn apply(&self, host: &mut GameHost<'a, 'g, S>, _: Plan) {
         let perform = self.shared.perform.take().expect("an action runs once");
         perform(host.game);
     }

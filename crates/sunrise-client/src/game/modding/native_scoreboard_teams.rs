@@ -334,7 +334,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Ok(name) = self.team_for_write(team) else {
             return false;
         };
-        let Some(key) = self.score_holder_key(&holder) else {
+        let Some(key): Option<String> = self.score_holder_key(&holder) else {
             return false;
         };
         if self.score.board.players_team(&key).map(|t| &t.name) != Some(&name) {

@@ -30,10 +30,6 @@ pub(in crate::game) fn mode_name(id: i32) -> &'static str {
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
-    /// The guest `conn`, while the hub is in `self.lan`.
-    pub(in crate::game) fn command_guest(&self, conn: u32) -> Option<&Guest> {
-        self.lan.as_ref()?.hub.guest(conn)
-    }
 
     /// `CommandSourceStack.getPlayerOrException` for the commands whose
     /// player argument is optional: the source's player (the player in
@@ -62,5 +58,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn guest_level_and_mode(&self, conn: u32) -> Option<(i32, &'static str)> {
         self.command_guest(conn)
             .map(|g| (g.xp_level, mode_name(g.game_mode)))
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// The guest `conn`, while the hub is in `self.lan`.
+    pub(in crate::game) fn command_guest(&self, conn: u32) -> Option<&Guest> {
+        self.lan.as_ref()?.hub.guest(conn)
     }
 }

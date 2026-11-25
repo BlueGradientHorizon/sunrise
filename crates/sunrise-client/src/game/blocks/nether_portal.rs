@@ -1065,18 +1065,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.set_portal_cooldown(id);
         }
     }
-    /// `canUsePortal(false)` of a mob: what the mob itself decides
-    /// (`mobs::mob_can_use_portal`), riding nothing, not asleep, and not
-    /// carrying the players this side does.
-    pub(in crate::game::server_side) fn mob_portal_eligible(
-        &self,
-        m: &sunrise_client::mobs::Mob,
-    ) -> bool {
-        sunrise_client::mobs::mob_can_use_portal(m)
-            && m.extra.mount.is_none()
-            && self.riding != Some(m.id)
-            && (!self.guest_rides(m.id) || self.carries_riders())
-    }
     /// `Entity.canUsePortal(false)` for a primed TNT: it carries no mob.
     pub(in crate::game::server_side) fn tnt_can_use_portal(&self, id: u32) -> bool {
         // Id 0: not tracked yet, nothing to key its portal state by.
@@ -1091,12 +1079,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         // Mob riders always go along; server players only on a server.
         !self.ridden_by_guest(id) || self.carries_riders()
-    }
-    /// Whether a vehicle can take the server players riding it through a
-    /// portal: only a server moves players between its levels. Elsewhere a
-    /// ridden vehicle stays, rather than leave its rider behind.
-    pub(in crate::game::server_side) fn carries_riders(&self) -> bool {
-        self.options.dedicated.is_some()
     }
     /// The vehicles that went through a portal in `dim` with server players
     /// on them.
@@ -1996,6 +1978,28 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if sunrise_client::save::write_dat(&self.arrivals_path(), root).is_ok() {
             self.portals.dirty = false;
         }
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// `canUsePortal(false)` of a mob: what the mob itself decides
+    /// (`mobs::mob_can_use_portal`), riding nothing, not asleep, and not
+    /// carrying the players this side does.
+    pub(in crate::game) fn mob_portal_eligible(
+        &self,
+        m: &sunrise_client::mobs::Mob,
+    ) -> bool {
+        sunrise_client::mobs::mob_can_use_portal(m)
+            && m.extra.mount.is_none()
+            && self.riding != Some(m.id)
+            && (!self.guest_rides(m.id) || self.carries_riders())
+    }
+
+    /// Whether a vehicle can take the server players riding it through a
+    /// portal: only a server moves players between its levels. Elsewhere a
+    /// ridden vehicle stays, rather than leave its rider behind.
+    pub(in crate::game) fn carries_riders(&self) -> bool {
+        self.options.dedicated.is_some()
     }
 }
 

@@ -752,12 +752,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             || (self.options.dedicated.is_none() && self.player.is_some() && self.dim == dim)
     }
 
-    /// Whether `level` names the level now open under its id: the world open it was made in, and
-    /// for a runtime level the open it was given. A handle of an earlier open reads as stale.
-    pub(in crate::game) fn level_handle_current(&self, level: LevelRef) -> bool {
-        self.native_lifecycle.epoch() == Some(level.epoch())
-            && level.generation() == self.side.levels.0.runtime.generation_of(level.dimension_id())
-    }
 
     /// A handle to the server level `key`, of the generation it is open with.
     pub(in crate::game) fn level_ref(
@@ -953,5 +947,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Option<(Generate, i64)> {
         let level = self.side.levels.0.runtime.level_of(dim.id())?;
         Some((Generate::of(level)?, level.seed))
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// Whether `level` names the level now open under its id: the world open it was made in, and
+    /// for a runtime level the open it was given. A handle of an earlier open reads as stale.
+    pub(in crate::game) fn level_handle_current(&self, level: LevelRef) -> bool {
+        self.native_lifecycle.epoch() == Some(level.epoch())
+            && level.generation() == crate::game::Side::levels_generation(&self.side, level.dimension_id())
     }
 }

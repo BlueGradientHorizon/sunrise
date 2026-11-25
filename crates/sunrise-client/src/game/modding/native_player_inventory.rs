@@ -68,21 +68,6 @@ pub(in crate::game) fn lend_inventory_view(
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
-    /// Lend `Inventory.getItem` over the resident slots.
-    pub(in crate::game) fn player_inventory_slots(
-        &self,
-        player: PlayerRef,
-        read: &mut dyn for<'a> FnMut(InventoryView<'a>),
-    ) -> Option<()> {
-        let (inventory, armor, offhand, equipment) = match self.player_read_both(player)? {
-            PlayerRead::Acting { .. } => {
-                (&self.inventory, &self.armor, &self.offhand, &self.equipment)
-            }
-            PlayerRead::Guest(g) => (&g.inventory, &g.armor, &g.offhand, &g.equipment),
-        };
-        lend_inventory_view(inventory, armor, offhand, equipment, read);
-        Some(())
-    }
 
     /// Why a write to this player's inventory, ender chest or hands is refused
     /// before it starts: a client, a handle with no online player, a dead player.
@@ -124,5 +109,23 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else {
             Err(PlayerDataRefusal::Stale)
         }
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// Lend `Inventory.getItem` over the resident slots.
+    pub(in crate::game) fn player_inventory_slots(
+        &self,
+        player: PlayerRef,
+        read: &mut dyn for<'a> FnMut(InventoryView<'a>),
+    ) -> Option<()> {
+        let (inventory, armor, offhand, equipment) = match self.player_read_both(player)? {
+            PlayerRead::Acting { .. } => {
+                (&self.inventory, &self.armor, &self.offhand, &self.equipment)
+            }
+            PlayerRead::Guest(g) => (&g.inventory, &g.armor, &g.offhand, &g.equipment),
+        };
+        lend_inventory_view(inventory, armor, offhand, equipment, read);
+        Some(())
     }
 }

@@ -17,19 +17,6 @@ use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_protocol::packets::play;
 
 impl Game<'_, crate::game::server_side::ServerState> {
-    /// The server player whose entity id is `id`, in the level in place: the
-    /// player in place or a guest here. None on a client, or for any other id.
-    pub(in crate::game::server_side) fn player_vehicle(&self, id: u32) -> Option<Target> {
-        let entity = EntityRef::new(self.native_lifecycle.epoch()?, id);
-        match self.native_entity_target(entity)? {
-            Target::Player => self.player.as_ref().map(|_| Target::Player),
-            Target::Guest(conn) => self
-                .command_guest(conn)
-                .filter(|g| g.dimension == self.dim.id())
-                .map(|_| Target::Guest(conn)),
-            _ => None,
-        }
-    }
 
     /// The entity id a player target has: the vehicle id its passengers keep.
     pub(in crate::game::server_side) fn player_vehicle_id(&self, player: Target) -> Option<u32> {
@@ -47,24 +34,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
 
-    /// What `id` rides, when `id` may be a player: the next link of a
-    /// vehicle walk that can pass through a player carrying a mob.
-    pub(in crate::game) fn vehicle_of_any(&self, id: u32) -> Option<u32> {
-        match self.player_vehicle(id) {
-            Some(player) => self.native_player_vehicle_id(player),
-            None => self
-                .native_vehicle_id(Target::Mob(id))
-                .or_else(|| self.native_vehicle_id(Target::General(id))),
-        }
-    }
 
-    fn native_player_vehicle_id(&self, player: Target) -> Option<u32> {
-        match player {
-            Target::Player => self.riding,
-            Target::Guest(conn) => self.command_guest(conn)?.vehicle,
-            _ => None,
-        }
-    }
 
     /// `Entity.startRiding(player, force)` for the mob `entity`, with each
     /// refusal named. The mount itself is `start_riding_target`'s, the path
@@ -262,6 +232,41 @@ impl Game<'_, crate::game::server_side::ServerState> {
         riding
             .told_self
             .retain(|id, _| guests.iter().any(|g| g.entity_id == *id));
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// The server player whose entity id is `id`, in the level in place: the
+    /// player in place or a guest here. None on a client, or for any other id.
+    pub(in crate::game) fn player_vehicle(&self, id: u32) -> Option<Target> {
+        let entity = EntityRef::new(self.native_lifecycle.epoch()?, id);
+        match self.native_entity_target(entity)? {
+            Target::Player => self.player.as_ref().map(|_| Target::Player),
+            Target::Guest(conn) => self
+                .command_guest(conn)
+                .filter(|g| g.dimension == self.dim.id())
+                .map(|_| Target::Guest(conn)),
+            _ => None,
+        }
+    }
+
+    /// What `id` rides, when `id` may be a player: the next link of a
+    /// vehicle walk that can pass through a player carrying a mob.
+    pub(in crate::game) fn vehicle_of_any(&self, id: u32) -> Option<u32> {
+        match self.player_vehicle(id) {
+            Some(player) => self.native_player_vehicle_id(player),
+            None => self
+                .native_vehicle_id(Target::Mob(id))
+                .or_else(|| self.native_vehicle_id(Target::General(id))),
+        }
+    }
+
+    fn native_player_vehicle_id(&self, player: Target) -> Option<u32> {
+        match player {
+            Target::Player => self.riding,
+            Target::Guest(conn) => self.command_guest(conn)?.vehicle,
+            _ => None,
+        }
     }
 }
 

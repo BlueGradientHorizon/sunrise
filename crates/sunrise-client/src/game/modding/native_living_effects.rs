@@ -78,24 +78,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
 
-    /// Where a player's or a guest's effects are: the acting player's own
-    /// are the game's (swapped in by the entry of `guest_turn`; a player handle names
-    /// the acting player, and a game without a hub keeps its single
-    /// player's the same way), any other guest's are their hub record's.
-    /// None for another kind.
-    pub(in crate::game::server_side) fn native_living_player_effects(
-        &self,
-        t: Target,
-    ) -> Option<&PlayerEffects> {
-        match t {
-            Target::Player => Some(&self.potions.effects),
-            Target::Guest(conn) if self.side.lan_acting == Some(conn) => {
-                Some(&self.potions.effects)
-            }
-            Target::Guest(conn) => Some(&self.lan.as_ref()?.hub.guest(conn)?.effects),
-            _ => None,
-        }
-    }
 
     /// `LivingEntity.addEffect(instance)`: gives the living entity the
     /// effect by the game's own path. A player's or a guest's goes through
@@ -158,48 +140,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
 
-    /// The entity's instance of `effect` (`LivingEntity.getEffect`): its id
-    /// namespaced as the registry has it, the ticks left (-1 infinite), the
-    /// amplifier and the flags. The effect is a registration-slot key resolved at load.
-    /// None when it has the effect not, before effect resolution, or for an armor
-    /// stand, the dragon, a stale handle or a client.
-    pub(in crate::game) fn living_effect(
-        &self,
-        living: LivingRef,
-        effect: EffectKey,
-    ) -> Option<ActiveEffect> {
-        let def = mod_api::__private::effect_index(effect)
-            .and_then(sunrise_client_core::potions::effect_by_index)?;
-        let target = self.native_living_read_target(living)?;
-        super::native_living_body::body_effect(self.native_living_body(target)?, def.index)
-    }
 
-    /// The entity's active effects (`LivingEntity.getActiveEffects`), in the
-    /// order their store keeps them, in `Some` even when it has none. None
-    /// for an armor stand, the dragon, a stale handle or a client.
-    pub(in crate::game) fn living_effects(&self, living: LivingRef) -> Option<Vec<ActiveEffect>> {
-        let target = self.native_living_read_target(living)?;
-        super::native_living_body::body_effects(self.native_living_body(target)?)
-    }
 
-    /// Whether the entity has `effect` (`LivingEntity.hasEffect`), using its resolved key.
-    /// False before effect resolution, for an armor stand, the dragon or a stale handle;
-    /// on a client, for any entity but the local player, whose copy of what the server
-    /// sent it is read.
-    pub(in crate::game) fn living_potion_affected(
-        &self,
-        living: LivingRef,
-        effect: EffectKey,
-    ) -> bool {
-        let Some(def) = mod_api::__private::effect_index(effect)
-            .and_then(sunrise_client_core::potions::effect_by_index)
-        else {
-            return false;
-        };
-        self.native_living_read_target(living)
-            .and_then(|target| self.native_living_body(target))
-            .is_some_and(|body| super::native_living_body::body_potion_affected(body, def.index))
-    }
 
     /// `LivingEntity.removeEffect(effect)` the way its running out goes
     /// (`LivingEntity.tickEffects` drops it): what the effect gave the
@@ -298,6 +240,70 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             _ => false,
         }
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// Where a player's or a guest's effects are: the acting player's own
+    /// are the game's (swapped in by the entry of `guest_turn`; a player handle names
+    /// the acting player, and a game without a hub keeps its single
+    /// player's the same way), any other guest's are their hub record's.
+    /// None for another kind.
+    pub(in crate::game) fn native_living_player_effects(
+        &self,
+        t: Target,
+    ) -> Option<&PlayerEffects> {
+        match t {
+            Target::Player => Some(&self.potions.effects),
+            Target::Guest(conn) if crate::game::Side::lan_acting(&self.side) == Some(conn) => {
+                Some(&self.potions.effects)
+            }
+            Target::Guest(conn) => Some(&self.lan.as_ref()?.hub.guest(conn)?.effects),
+            _ => None,
+        }
+    }
+
+    /// The entity's instance of `effect` (`LivingEntity.getEffect`): its id
+    /// namespaced as the registry has it, the ticks left (-1 infinite), the
+    /// amplifier and the flags. The effect is a registration-slot key resolved at load.
+    /// None when it has the effect not, before effect resolution, or for an armor
+    /// stand, the dragon, a stale handle or a client.
+    pub(in crate::game) fn living_effect(
+        &self,
+        living: LivingRef,
+        effect: EffectKey,
+    ) -> Option<ActiveEffect> {
+        let def = mod_api::__private::effect_index(effect)
+            .and_then(sunrise_client_core::potions::effect_by_index)?;
+        let target = self.native_living_read_target(living)?;
+        super::native_living_body::body_effect(self.native_living_body(target)?, def.index)
+    }
+
+    /// The entity's active effects (`LivingEntity.getActiveEffects`), in the
+    /// order their store keeps them, in `Some` even when it has none. None
+    /// for an armor stand, the dragon, a stale handle or a client.
+    pub(in crate::game) fn living_effects(&self, living: LivingRef) -> Option<Vec<ActiveEffect>> {
+        let target = self.native_living_read_target(living)?;
+        super::native_living_body::body_effects(self.native_living_body(target)?)
+    }
+
+    /// Whether the entity has `effect` (`LivingEntity.hasEffect`), using its resolved key.
+    /// False before effect resolution, for an armor stand, the dragon or a stale handle;
+    /// on a client, for any entity but the local player, whose copy of what the server
+    /// sent it is read.
+    pub(in crate::game) fn living_potion_affected(
+        &self,
+        living: LivingRef,
+        effect: EffectKey,
+    ) -> bool {
+        let Some(def) = mod_api::__private::effect_index(effect)
+            .and_then(sunrise_client_core::potions::effect_by_index)
+        else {
+            return false;
+        };
+        self.native_living_read_target(living)
+            .and_then(|target| self.native_living_body(target))
+            .is_some_and(|body| super::native_living_body::body_potion_affected(body, def.index))
     }
 }
 

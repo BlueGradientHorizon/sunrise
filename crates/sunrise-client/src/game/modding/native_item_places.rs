@@ -231,11 +231,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             || self.armor_stands.iter().any(|a| a.id == entity))
         .then_some(7)
     }
-    /// `EntityType.is(TagKey)`: whether `entity_type` (`minecraft:player`) is in the entity
-    /// type tag `tag` (`minecraft:cannot_be_pushed_onto_boats`).
-    pub(in crate::game) fn entity_type_in_tag(&self, entity_type: &str, tag: &str) -> bool {
-        self.entity_tag_matches(tag, entity_type)
-    }
     /// Lend a native place's stack without encoding components. Reading a chest vehicle's
     /// `EntitySlot` unpacks its pending loot table without a player
     /// (`ContainerEntity.getChestVehicleItem`).
@@ -973,6 +968,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // `Block.popResource`'s default pickup delay, at the root commit.
             self.after_commit(After::Drop(pos, stack));
         }
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// `EntityType.is(TagKey)`: whether `entity_type` (`minecraft:player`) is in the entity
+    /// type tag `tag` (`minecraft:cannot_be_pushed_onto_boats`).
+    pub(in crate::game) fn entity_type_in_tag(&self, entity_type: &str, tag: &str) -> bool {
+        self.entity_tag_matches(tag, entity_type)
     }
 }
 

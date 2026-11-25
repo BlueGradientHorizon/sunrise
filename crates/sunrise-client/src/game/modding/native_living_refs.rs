@@ -259,7 +259,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut level = DamageLevel::of(
             world,
             self.pack.assets.registry,
-            Some(world_items!(self)),
+            Some(server_world_items!(self)),
             Some(&self.pack.block_registries),
             &self.damage_hooks,
         )
@@ -385,49 +385,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         )
     }
 
-    /// The base value of an attribute, before modifiers
-    /// (`AttributeMap.getBaseValue`), read as the effective value is.
-    pub(in crate::game) fn living_attribute_base(
-        &self,
-        living: LivingRef,
-        id: &str,
-    ) -> Option<f64> {
-        self.native_living_attribute(living, id, sunrise_world::attribute_map::ValueKind::Base)
-    }
 
-    /// The ids of the attributes the entity's type has
-    /// (`AttributeMap`'s holder's attribute set), in registry order: the same
-    /// set the value and base reads answer for. None for a stale handle or an
-    /// unavailable entity; on a client, for any entity but the local player
-    /// (the client keeps no attribute map of another entity's, only the few
-    /// fields it draws).
-    pub(in crate::game) fn living_attributes(&self, living: LivingRef) -> Option<Vec<Identifier>> {
-        let catalog = &self.motion.attributes;
-        let entity = self.native_living_attribute_entity(living)?;
-        Some(
-            catalog
-                .attributes()
-                .filter(|(id, _)| catalog.default_base(entity, *id).is_some())
-                // The catalog's names are canonical, so none is dropped.
-                .filter_map(|(_, a)| Identifier::parse(&a.name).ok())
-                .collect(),
-        )
-    }
 
-    /// The modifiers on the entity's attribute `id`
-    /// (`AttributeInstance.getModifiers`), in the order they were added: a
-    /// mod's transient and permanent ones, the saved list's, and what the
-    /// worn and held items grant. An attribute no modifier is on answers an
-    /// empty list; None for an attribute the entity type does not have, a
-    /// stale handle, or on a client for any entity but the local player,
-    /// whose copy of the synced instances it reads.
-    pub(in crate::game) fn living_attribute_modifiers(
-        &self,
-        living: LivingRef,
-        id: &str,
-    ) -> Option<Vec<AttributeModifier>> {
-        self.native_target_attribute_modifiers(self.native_living_read_target(living)?, id)
-    }
 
     /// Adds an attribute modifier (`AttributeInstance.addTransientModifier`
     /// or `addPermanentModifier`). A permanent one is saved with the entity;
@@ -545,110 +504,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .unwrap_or(false)
     }
 
-    pub(in crate::game::server_side) fn native_living_attribute(
-        &self,
-        living: LivingRef,
-        name: &str,
-        kind: sunrise_world::attribute_map::ValueKind,
-    ) -> Option<f64> {
-        self.native_target_attribute(self.native_living_read_target(living)?, name, kind)
-    }
 
-    /// The entity's type key, for the catalog's attribute defaults: the same
-    /// set the value and base reads answer for. On a client only the local
-    /// player resolves (`native_living_read_target`).
-    pub(in crate::game::server_side) fn native_living_attribute_entity(
-        &self,
-        living: LivingRef,
-    ) -> Option<&str> {
-        match self.native_living_read_target(living)? {
-            Target::Player | Target::Guest(_) => Some("minecraft:player"),
-            Target::Mob(id) => self
-                .mobs
-                .iter()
-                .find(|m| m.id == id && !m.removed)
-                .map(|m| m.kind.id.as_str()),
-            Target::Stand(_) => Some("minecraft:armor_stand"),
-            Target::Dragon(_) => Some("minecraft:ender_dragon"),
-            _ => None,
-        }
-    }
 
-    /// The modifiers of `name` on `target`'s attribute map, as
-    /// `native_target_attribute` reads its value.
-    pub(in crate::game::server_side) fn native_target_attribute_modifiers(
-        &self,
-        target: Target,
-        name: &str,
-    ) -> Option<Vec<AttributeModifier>> {
-        let catalog = &self.motion.attributes;
-        let player = match target {
-            Target::Player => self.player.as_ref()?,
-            Target::Guest(conn) => self.command_guest(conn)?.motion.as_deref()?,
-            Target::Mob(id) => {
-                let m = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
-                return m
-                    .extra
-                    .live
-                    .modifiers(catalog, &m.kind.id, name, || {
-                        sunrise_client::entity_nbt::attribute_entries(m)
-                            .into_iter()
-                            .map(|(_, entry)| entry)
-                            .collect()
-                    })
-                    .map(attribute_modifiers);
-            }
-            Target::Stand(id) => {
-                let a = self.armor_stands.iter().find(|a| a.id == id)?;
-                return a
-                    .live
-                    .modifiers(catalog, "minecraft:armor_stand", name, Vec::new)
-                    .map(attribute_modifiers);
-            }
-            Target::Dragon(id) => {
-                let d = self.dragon.as_ref().filter(|d| d.id == id)?;
-                return d
-                    .live
-                    .modifiers(catalog, "minecraft:ender_dragon", name, Vec::new)
-                    .map(attribute_modifiers);
-            }
-            _ => return None,
-        };
-        // The base read's own None: an attribute the type does not have.
-        let key = player.attributes.key(name)?;
-        player
-            .attributes
-            .value(
-                Some(key.clone()),
-                sunrise_world::attribute_map::ValueKind::Base,
-            )
-            .ok()?;
-        Some(
-            player
-                .attributes
-                .lookup(Some(&key))
-                .and_then(|handle| player.attributes.instance(&handle).ok())
-                .map(|instance| instance.modifiers())
-                .unwrap_or_default()
-                .iter()
-                .filter_map(api_modifier)
-                .collect(),
-        )
-    }
 
-    pub(in crate::game::server_side) fn native_target_attribute(
-        &self,
-        target: Target,
-        name: &str,
-        kind: sunrise_world::attribute_map::ValueKind,
-    ) -> Option<f64> {
-        super::native_living_body::body_attribute(
-            self.native_living_body(target)?,
-            &self.motion.attributes,
-            name,
-            kind,
-        )
-    }
 
     /// `Entity.canUsePortal`: the decision the game's own portal trip runs —
     /// a player's (alive, nobody's passenger, not asleep: the engine's own
@@ -755,23 +613,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
 
-    /// The entity's health (`LivingEntity.getHealth`; Paper's
-    /// `Damageable#getHealth`). During a player's turn only that player
-    /// resolves: the hub is out for their action, and other players'
-    /// handles read `None` until it is back.
-    pub(in crate::game) fn living_health(&self, living: LivingRef) -> Option<f32> {
-        let target = self.native_living_read_target(living)?;
-        super::native_living_body::body_health(self.native_living_body(target)?)
-    }
-    /// The entity's maximum health (`LivingEntity.getMaxHealth`; Paper's
-    /// `Damageable#getMaxHealth`). Players and guests read their attribute
-    /// map; a mob, an armor stand and the dragon their own fields (the
-    /// armor stand the fixed 20 the game seeds it with, the dragon its
-    /// 200) until live attribute maps cover them.
-    pub(in crate::game) fn living_max_health(&self, living: LivingRef) -> Option<f32> {
-        let target = self.native_living_read_target(living)?;
-        super::native_living_body::body_max_health(self.native_living_body(target)?)
-    }
     /// Whether the entity is alive (`LivingEntity.isAlive`; Paper's
     /// `Entity#isDead` is its inverse). A dying mob, mid death
     /// animation, is not.
@@ -1029,15 +870,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         super::native_living_body::body_equipment(body, slot)
     }
 
-    /// Lend the stack in `slot` (`LivingEntity.getItemBySlot`).
-    pub(in crate::game) fn living_equipment(
-        &self,
-        living: LivingRef,
-        slot: EquipmentSlot,
-        read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
-    ) -> Option<()> {
-        lend_equipment(self.living_equipment_stack(living, slot)?, read)
-    }
 
     /// Damage an equipped stack without an equip/unequip notification.
     pub(in crate::game) fn living_hurt_and_break(
@@ -1182,15 +1014,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         );
     }
 
-    /// Lend the stack in `hand` (`LivingEntity.getItemInHand`).
-    pub(in crate::game) fn living_hand_item(
-        &self,
-        living: LivingRef,
-        hand: Hand,
-        read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
-    ) -> Option<()> {
-        self.living_equipment(living, hand_slot(hand), read)
-    }
     /// Puts `stack` in hand `hand` (`LivingEntity.setItemInHand`): the main
     /// hand's slot or the off hand's, written as `set_equipment`
     /// writes them, with its equip events and sound. None, air or a zero count
@@ -1473,6 +1296,196 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let item = self.just_spawned_item()?;
         item.thrower = thrower;
         Some(item.id)
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// The base value of an attribute, before modifiers
+    /// (`AttributeMap.getBaseValue`), read as the effective value is.
+    pub(in crate::game) fn living_attribute_base(
+        &self,
+        living: LivingRef,
+        id: &str,
+    ) -> Option<f64> {
+        self.native_living_attribute(living, id, sunrise_world::attribute_map::ValueKind::Base)
+    }
+
+    /// The ids of the attributes the entity's type has
+    /// (`AttributeMap`'s holder's attribute set), in registry order: the same
+    /// set the value and base reads answer for. None for a stale handle or an
+    /// unavailable entity; on a client, for any entity but the local player
+    /// (the client keeps no attribute map of another entity's, only the few
+    /// fields it draws).
+    pub(in crate::game) fn living_attributes(&self, living: LivingRef) -> Option<Vec<Identifier>> {
+        let catalog = &self.motion.attributes;
+        let entity = self.native_living_attribute_entity(living)?;
+        Some(
+            catalog
+                .attributes()
+                .filter(|(id, _)| catalog.default_base(entity, *id).is_some())
+                // The catalog's names are canonical, so none is dropped.
+                .filter_map(|(_, a)| Identifier::parse(&a.name).ok())
+                .collect(),
+        )
+    }
+
+    /// The modifiers on the entity's attribute `id`
+    /// (`AttributeInstance.getModifiers`), in the order they were added: a
+    /// mod's transient and permanent ones, the saved list's, and what the
+    /// worn and held items grant. An attribute no modifier is on answers an
+    /// empty list; None for an attribute the entity type does not have, a
+    /// stale handle, or on a client for any entity but the local player,
+    /// whose copy of the synced instances it reads.
+    pub(in crate::game) fn living_attribute_modifiers(
+        &self,
+        living: LivingRef,
+        id: &str,
+    ) -> Option<Vec<AttributeModifier>> {
+        self.native_target_attribute_modifiers(self.native_living_read_target(living)?, id)
+    }
+
+    pub(in crate::game) fn native_living_attribute(
+        &self,
+        living: LivingRef,
+        name: &str,
+        kind: sunrise_world::attribute_map::ValueKind,
+    ) -> Option<f64> {
+        self.native_target_attribute(self.native_living_read_target(living)?, name, kind)
+    }
+
+    /// The entity's type key, for the catalog's attribute defaults: the same
+    /// set the value and base reads answer for. On a client only the local
+    /// player resolves (`native_living_read_target`).
+    pub(in crate::game) fn native_living_attribute_entity(
+        &self,
+        living: LivingRef,
+    ) -> Option<&str> {
+        match self.native_living_read_target(living)? {
+            Target::Player | Target::Guest(_) => Some("minecraft:player"),
+            Target::Mob(id) => self
+                .mobs
+                .iter()
+                .find(|m| m.id == id && !m.removed)
+                .map(|m| m.kind.id.as_str()),
+            Target::Stand(_) => Some("minecraft:armor_stand"),
+            Target::Dragon(_) => Some("minecraft:ender_dragon"),
+            _ => None,
+        }
+    }
+
+    /// The modifiers of `name` on `target`'s attribute map, as
+    /// `native_target_attribute` reads its value.
+    pub(in crate::game) fn native_target_attribute_modifiers(
+        &self,
+        target: Target,
+        name: &str,
+    ) -> Option<Vec<AttributeModifier>> {
+        let catalog = &self.motion.attributes;
+        let player = match target {
+            Target::Player => self.player.as_ref()?,
+            Target::Guest(conn) => self.command_guest(conn)?.motion.as_deref()?,
+            Target::Mob(id) => {
+                let m = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
+                return m
+                    .extra
+                    .live
+                    .modifiers(catalog, &m.kind.id, name, || {
+                        sunrise_client::entity_nbt::attribute_entries(m)
+                            .into_iter()
+                            .map(|(_, entry)| entry)
+                            .collect()
+                    })
+                    .map(attribute_modifiers);
+            }
+            Target::Stand(id) => {
+                let a = self.armor_stands.iter().find(|a| a.id == id)?;
+                return a
+                    .live
+                    .modifiers(catalog, "minecraft:armor_stand", name, Vec::new)
+                    .map(attribute_modifiers);
+            }
+            Target::Dragon(id) => {
+                let d = self.dragon.as_ref().filter(|d| d.id == id)?;
+                return d
+                    .live
+                    .modifiers(catalog, "minecraft:ender_dragon", name, Vec::new)
+                    .map(attribute_modifiers);
+            }
+            _ => return None,
+        };
+        // The base read's own None: an attribute the type does not have.
+        let key = player.attributes.key(name)?;
+        player
+            .attributes
+            .value(
+                Some(key.clone()),
+                sunrise_world::attribute_map::ValueKind::Base,
+            )
+            .ok()?;
+        Some(
+            player
+                .attributes
+                .lookup(Some(&key))
+                .and_then(|handle| player.attributes.instance(&handle).ok())
+                .map(|instance| instance.modifiers())
+                .unwrap_or_default()
+                .iter()
+                .filter_map(api_modifier)
+                .collect(),
+        )
+    }
+
+    pub(in crate::game) fn native_target_attribute(
+        &self,
+        target: Target,
+        name: &str,
+        kind: sunrise_world::attribute_map::ValueKind,
+    ) -> Option<f64> {
+        super::native_living_body::body_attribute(
+            self.native_living_body(target)?,
+            &self.motion.attributes,
+            name,
+            kind,
+        )
+    }
+
+    /// The entity's health (`LivingEntity.getHealth`; Paper's
+    /// `Damageable#getHealth`). During a player's turn only that player
+    /// resolves: the hub is out for their action, and other players'
+    /// handles read `None` until it is back.
+    pub(in crate::game) fn living_health(&self, living: LivingRef) -> Option<f32> {
+        let target = self.native_living_read_target(living)?;
+        super::native_living_body::body_health(self.native_living_body(target)?)
+    }
+
+    /// The entity's maximum health (`LivingEntity.getMaxHealth`; Paper's
+    /// `Damageable#getMaxHealth`). Players and guests read their attribute
+    /// map; a mob, an armor stand and the dragon their own fields (the
+    /// armor stand the fixed 20 the game seeds it with, the dragon its
+    /// 200) until live attribute maps cover them.
+    pub(in crate::game) fn living_max_health(&self, living: LivingRef) -> Option<f32> {
+        let target = self.native_living_read_target(living)?;
+        super::native_living_body::body_max_health(self.native_living_body(target)?)
+    }
+
+    /// Lend the stack in `slot` (`LivingEntity.getItemBySlot`).
+    pub(in crate::game) fn living_equipment(
+        &self,
+        living: LivingRef,
+        slot: EquipmentSlot,
+        read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
+    ) -> Option<()> {
+        lend_equipment(self.living_equipment_stack(living, slot)?, read)
+    }
+
+    /// Lend the stack in `hand` (`LivingEntity.getItemInHand`).
+    pub(in crate::game) fn living_hand_item(
+        &self,
+        living: LivingRef,
+        hand: Hand,
+        read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
+    ) -> Option<()> {
+        self.living_equipment(living, hand_slot(hand), read)
     }
 }
 

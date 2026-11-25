@@ -1907,10 +1907,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         crystal.to_nbt(uuid, raw)
     }
 
-    /// The compound an entity was loaded with (and commands have edited).
-    pub(in crate::game) fn persist_raw(&self, id: u32) -> Option<&Tag> {
-        self.persist.raw.get(&id)
-    }
     /// An entity Sunrise keeps no compound for (orbs, projectiles, the
     /// crystals and the dragon) still keeps its `Tags`, by entity id, so
     /// `@e[tag=]`, `/tag` and `/data get` see them, and the `Item` a
@@ -2480,6 +2476,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
         for (chunk, count) in counts {
             self.native_entities_unload(self.dim.id(), [chunk.0, chunk.1], count);
         }
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// The compound an entity was loaded with (and commands have edited).
+    pub(in crate::game) fn persist_raw(&self, id: u32) -> Option<&Tag> {
+        self.persist.raw.get(&id)
     }
 }
 impl Game<'_, crate::game::server_side::ServerState> {

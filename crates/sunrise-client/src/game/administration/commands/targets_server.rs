@@ -153,6 +153,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }),
         }
     }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     pub(in crate::game) fn target_type(&self, t: Target) -> String {
         match t {
             Target::Player | Target::Guest(_) => "minecraft:player".into(),
@@ -193,11 +196,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .iter()
                 .find(|c| c.id == id)
                 .map_or_else(|| "minecraft:minecart".into(), |c| c.kind.id().into()),
-            Target::Other(id) => self
-                .side.others
-                .0
-                .iter()
-                .find(|o| o.id == id)
+            Target::Other(id) => crate::game::Side::others(&self.side)
+                .and_then(|others| others.iter().find(|o| o.id == id))
                 .map_or_else(String::new, |o| o.kind.clone()),
             Target::Crystal(_) => "minecraft:end_crystal".into(),
             // `EnderDragonPart` takes its parent's type.

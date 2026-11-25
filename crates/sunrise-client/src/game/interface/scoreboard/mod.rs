@@ -645,21 +645,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
 
     // ---- teams in gameplay -----------------------------------------------------
 
-    /// `Entity.getScoreboardName`: another player's profile name
-    /// (`Player.getScoreboardName`), any other entity's UUID.
-    pub(in crate::game::server_side) fn scoreboard_name(&self, id: u32, uuid: [i32; 4]) -> String {
-        self.remote_player_name(id)
-            .map_or_else(|| uuid_text(uuid), str::to_owned)
-    }
-    /// `Entity.getTeam`: the team holding this entity's scoreboard name (its UUID).
-    pub(in crate::game::server_side) fn entity_team(&self, id: u32) -> Option<&sb::Team> {
-        if self.score.board.teams.is_empty() {
-            return None;
-        }
-        let uuid = *self.persist.uuids.get(&id)?;
-        let own = self.scoreboard_name(id, uuid);
-        self.score.board.players_team(&own)
-    }
     /// `TamableAnimal.getTeam` of a mob or another player: its own team, else,
     /// when it is a tamed pet, its root owner's.
     pub(in crate::game) fn mob_team(&self, id: u32) -> Option<&sb::Team> {
@@ -671,13 +656,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.team_with_owner(id, || {
             self.mobs.iter().find(|m| m.id == id).and_then(tame_owner)
         })
-    }
-    /// [`mob_team`](Self::mob_team) of a mob at hand, without looking it up.
-    pub(in crate::game) fn mob_team_of(&self, m: &sunrise_client::mobs::Mob) -> Option<&sb::Team> {
-        if self.score.board.teams.is_empty() {
-            return None;
-        }
-        self.team_with_owner(m.id, || tame_owner(m))
     }
     /// `mob_team_of` while the mob tick has lent its mobs out of `Game`.
     /// The active mob and the disjoint live loan replace `self.mobs` for
@@ -736,41 +714,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         };
         pet_team(&self.score.board, &own, Some(&owner_name))
-    }
-    /// A mob's own team, else its tamed owner's (`owner` is asked only then).
-    pub(in crate::game::server_side) fn team_with_owner(
-        &self,
-        id: u32,
-        owner: impl FnOnce() -> Option<[i32; 4]>,
-    ) -> Option<&sb::Team> {
-        let uuid = *self.persist.uuids.get(&id)?;
-        let own = self.scoreboard_name(id, uuid);
-        if let Some(team) = self.score.board.players_team(&own) {
-            return Some(team);
-        }
-        let owner = owner().and_then(|o| self.root_owner_name(o));
-        pet_team(&self.score.board, &own, owner.as_deref())
-    }
-    /// `TamableAnimal.getRootOwner().getScoreboardName`: a pet's owner, through
-    /// owners that are tamed pets themselves.
-    pub(in crate::game::server_side) fn root_owner_name(&self, owner: [i32; 4]) -> Option<String> {
-        let pet_owner = |uuid: [i32; 4]| {
-            let Target::Mob(pet) = self.target_by_uuid(ints_uuid(uuid))? else {
-                return None;
-            };
-            self.mobs
-                .iter()
-                .find(|m| m.id == pet && m.extra.tame)?
-                .extra
-                .owner
-        };
-        let root = root_owner(owner, pet_owner);
-        Some(match self.target_by_uuid(ints_uuid(root))? {
-            Target::Player => self.acting_player_name().to_owned(),
-            Target::Guest(conn) => self.command_guest(conn)?.name.clone(),
-            Target::Mob(id) => self.scoreboard_name(id, root),
-            _ => uuid_text(root),
-        })
     }
     pub(in crate::game) fn player_team(&self) -> Option<&sb::Team> {
         self.score.board.players_team(self.acting_player_name())
@@ -961,6 +904,70 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 
     // ---- the sidebar -----------------------------------------------------------
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// `Entity.getScoreboardName`: another player's profile name
+    /// (`Player.getScoreboardName`), any other entity's UUID.
+    pub(in crate::game) fn scoreboard_name(&self, id: u32, uuid: [i32; 4]) -> String {
+        self.remote_player_name(id)
+            .map_or_else(|| uuid_text(uuid), str::to_owned)
+    }
+
+    /// `Entity.getTeam`: the team holding this entity's scoreboard name (its UUID).
+    pub(in crate::game) fn entity_team(&self, id: u32) -> Option<&sb::Team> {
+        if self.score.board.teams.is_empty() {
+            return None;
+        }
+        let uuid = *self.persist.uuids.get(&id)?;
+        let own = self.scoreboard_name(id, uuid);
+        self.score.board.players_team(&own)
+    }
+
+    /// [`mob_team`](Self::mob_team) of a mob at hand, without looking it up.
+    pub(in crate::game) fn mob_team_of(&self, m: &sunrise_client::mobs::Mob) -> Option<&sb::Team> {
+        if self.score.board.teams.is_empty() {
+            return None;
+        }
+        self.team_with_owner(m.id, || tame_owner(m))
+    }
+
+    /// A mob's own team, else its tamed owner's (`owner` is asked only then).
+    pub(in crate::game) fn team_with_owner(
+        &self,
+        id: u32,
+        owner: impl FnOnce() -> Option<[i32; 4]>,
+    ) -> Option<&sb::Team> {
+        let uuid = *self.persist.uuids.get(&id)?;
+        let own = self.scoreboard_name(id, uuid);
+        if let Some(team) = self.score.board.players_team(&own) {
+            return Some(team);
+        }
+        let owner = owner().and_then(|o| self.root_owner_name(o));
+        pet_team(&self.score.board, &own, owner.as_deref())
+    }
+
+    /// `TamableAnimal.getRootOwner().getScoreboardName`: a pet's owner, through
+    /// owners that are tamed pets themselves.
+    pub(in crate::game) fn root_owner_name(&self, owner: [i32; 4]) -> Option<String> {
+        let pet_owner = |uuid: [i32; 4]| {
+            let Target::Mob(pet) = self.target_by_uuid(ints_uuid(uuid))? else {
+                return None;
+            };
+            self.mobs
+                .iter()
+                .find(|m| m.id == pet && m.extra.tame)?
+                .extra
+                .owner
+        };
+        let root = root_owner(owner, pet_owner);
+        Some(match self.target_by_uuid(ints_uuid(root))? {
+            Target::Player => self.acting_player_name().to_owned(),
+            Target::Guest(conn) => self.command_guest(conn)?.name.clone(),
+            Target::Mob(id) => self.scoreboard_name(id, root),
+            _ => uuid_text(root),
+        })
+    }
 }
 
 pub(in crate::game) fn tab_players_needed(shown: bool, changed: bool) -> bool {

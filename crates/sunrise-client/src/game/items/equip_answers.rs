@@ -48,7 +48,9 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         let Some(entity) = self.entity(entity) else {
             return false;
         };
-        let native = crate::game::native_hooks::NativeHookHost { host: self };
+        let native = crate::game::native_hooks::NativeHookHost {
+            host: crate::game::Side::as_host(self),
+        };
         let mut can_equip = data;
         native.native_can_equip(
             stack,
@@ -62,25 +64,25 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
     /// `can_equip` lent to a menu click that runs while the game is at hand (the player's own
     /// inventory menu, predicted or authoritative).
-    pub(in crate::game) fn menu_can_equip(&self) -> MenuEquip<'_, '_> {
+    pub(in crate::game) fn menu_can_equip(&self) -> MenuEquip<'_, '_, __Side> {
         MenuEquip { game: self }
     }
 }
 
 /// The game lent to a menu click as its `CanEquip`.
-pub(in crate::game) struct MenuEquip<'g, 'a> {
-    game: &'g Game<'a>,
+pub(in crate::game) struct MenuEquip<'g, 'a, S: crate::game::Side> {
+    game: &'g Game<'a, S>,
 }
 
 /// Call-scoped `CanEquip` that lazily converts one unchanged `ItemStack` at most once across a
 /// synchronous candidate loop. Rust's `&'s ItemStack` borrow prevents mutation during the loop.
-struct ScopedMenuEquip<'g, 'a, 's> {
-    game: &'g Game<'a>,
+struct ScopedMenuEquip<'g, 'a, 's, S: crate::game::Side> {
+    game: &'g Game<'a, S>,
     stack: &'s ItemStack,
     prepared: std::cell::OnceCell<EquipStack>,
 }
 
-impl CanEquip for ScopedMenuEquip<'_, '_, '_> {
+impl<S: crate::game::Side> CanEquip for ScopedMenuEquip<'_, '_, '_, S> {
     fn listens(&self, item: &str) -> bool {
         mod_api::__private::item_listens(mod_api::HookId::CanEquip, item)
     }
@@ -107,7 +109,7 @@ impl CanEquip for ScopedMenuEquip<'_, '_, '_> {
     }
 }
 
-impl CanEquip for MenuEquip<'_, '_> {
+impl<S: crate::game::Side> CanEquip for MenuEquip<'_, '_, S> {
     fn listens(&self, item: &str) -> bool {
         mod_api::__private::item_listens(mod_api::HookId::CanEquip, item)
     }

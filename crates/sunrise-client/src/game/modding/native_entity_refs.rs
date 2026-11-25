@@ -104,56 +104,8 @@ pub(in crate::game::server_side) fn list_query_body<T: Entity + Joined, const DI
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
-    /// What a handle names now, or None for a stale or foreign one.
-    pub(in crate::game) fn native_entity_target(&self, entity: EntityRef) -> Option<Target> {
-        self.native_entity_target_with_location(entity)
-            .map(|(target, _)| target)
-    }
 
-    /// Resolve the handle and return its resident location, if admitted to the level.
-    pub(in crate::game) fn native_entity_target_with_location(
-        &self,
-        entity: EntityRef,
-    ) -> Option<(Target, Option<Location>)> {
-        self.native_entity_target_in(entity, self.dim.key())
-    }
 
-    /// [`Self::native_entity_target_with_location`] for an entity resident in the open server
-    /// level `dimension`, the one in place or a parked one.
-    pub(in crate::game::server_side) fn native_entity_target_in(
-        &self,
-        entity: EntityRef,
-        dimension: DimensionKey,
-    ) -> Option<(Target, Option<Location>)> {
-        if self.side.held_out.contains(&entity.id())
-            || !self.is_logical_server()
-            || self.native_lifecycle.epoch() != Some(entity.epoch())
-        {
-            return None;
-        }
-        let EntityLookup::Found { location, value } = self.server_resident_entity(entity.id())
-        else {
-            // A lifecycle event lends the body without admitting it to the level.
-            let &(_, conn, _) = self
-                .player_state
-                .cloning_players
-                .iter()
-                .rev()
-                .find(|&&(_, _, id)| id == entity.id())?;
-            return if self.side.lan_acting == Some(conn) {
-                Some((Target::Player, None))
-            } else if self.side.lan_guest_swaps.contains(&conn) {
-                None
-            } else {
-                Some((Target::Guest(conn), None))
-            };
-        };
-        // Players are server-wide records. Ordinary body operations retain
-        // their existing current-level domain; source membership is global.
-        (matches!(value, Target::Player | Target::Guest(_))
-            || location.owner.dimension == dimension)
-            .then_some((value, Some(location)))
-    }
     /// `ServerLevel.getEntity(UUID)` for [`LevelRef::entity_by_uuid`]: the level's UUID index,
     /// in place or parked, then the same resolution and visibility as any handle of that level.
     pub(in crate::game) fn level_entity_by_uuid(
@@ -445,69 +397,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         Some(hits)
     }
 
-    pub(in crate::game) fn level_ray_trace_nearest_entity(
-        &self,
-        level: LevelRef,
-        from: [f64; 3],
-        to: [f64; 3],
-        margin: f64,
-        exclude: Option<EntityRef>,
-        accept: &mut dyn FnMut(EntityRef) -> bool,
-    ) -> Result<Option<EntityRayHit>, LevelReadError> {
-        let mut nearest = None;
-        self.visit_entity_ray_hits(
-            level,
-            from,
-            to,
-            margin,
-            exclude,
-            accept,
-            |hit, distance_squared| {
-                if nearest.is_none_or(|(_, best)| distance_squared < best) {
-                    nearest = Some((hit, distance_squared));
-                }
-            },
-        )?;
-        Ok(nearest.map(|(hit, _)| hit))
-    }
 
-    pub(in crate::game::server_side) fn visit_entity_ray_hits(
-        &self,
-        level: LevelRef,
-        from: [f64; 3],
-        to: [f64; 3],
-        margin: f64,
-        exclude: Option<EntityRef>,
-        mut accept: impl FnMut(EntityRef) -> bool,
-        mut visit: impl FnMut(EntityRayHit, f64),
-    ) -> Result<(), LevelReadError> {
-        if !(margin.is_finite() && from.iter().chain(&to).all(|v| v.is_finite())) {
-            return Err(LevelReadError::Unavailable);
-        }
-        // Every box the inflated or deflated test can hit meets the segment's own box
-        // padded by `margin.abs()` (including over-deflated boxes swapped by `Aabb::new`).
-        let pad = margin.abs();
-        let min = std::array::from_fn(|i| from[i].min(to[i]) - pad);
-        let max = std::array::from_fn(|i| from[i].max(to[i]) + pad);
-        let start = Vec3::new(from[0], from[1], from[2]);
-        let end = Vec3::new(to[0], to[1], to[2]);
-        let padding = Vec3::new(margin, margin, margin);
-        let _ = self.level_visit_entities_in(level, min, max, &mut |entity| {
-            // Match `ProjectileUtil.getEntityHitResult`: filter candidates before reading and
-            // clipping their bounding boxes. The walk releases any residency borrow before
-            // calling mod code.
-            if Some(entity) != exclude
-                && accept(entity)
-                && let Some(bounds) = self.entity_bounding_box(entity)
-                && let Some((hit, distance_squared)) =
-                    clip_entity_ray(start, end, padding, entity, bounds)
-            {
-                visit(hit, distance_squared);
-            }
-            ControlFlow::Continue(())
-        })?;
-        Ok(())
-    }
     /// What the block at `pos` would drop (`Block.getDrops`) with `tool` and `entity` as the
     /// breaker, without breaking it: the level's `block_drops_of`, which draws from the random
     /// as vanilla's roll does. None for a refused write, a stale or parked handle, a client, an
@@ -732,21 +622,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.notify_block_clients((pos[0], pos[1], pos[2]));
         true
     }
-    /// `ItemStack.getDestroySpeed` of `tool` on the block at `pos`.
-    pub(in crate::game) fn level_block_break_speed(
-        &self,
-        level: LevelRef,
-        pos: [i32; 3],
-        tool: Option<&ItemStack>,
-    ) -> Option<f32> {
-        let world = self.native_level_read_world(level)?;
-        if !world.loaded(pos[0], pos[2]) || !world.shape.contains_y(pos[1]) {
-            return None;
-        }
-        let state = world.block(pos[0], pos[1], pos[2]);
-        let name = &self.res.facts().get(state).name;
-        Some(self.items().mining_speed(tool, name))
-    }
     /// Apply bone meal to the block at `pos` as a dispenser does (`BoneMealItem.growCrop`, then
     /// `growWaterPlant`): the mods' `bonemeal` hook first, level event 1505 when something grew.
     /// False for a refused write, a stale or parked handle, a client, and a block that did not
@@ -811,74 +686,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && self.world.loaded(pos[0], pos[2])
             && self.world.shape.contains_y(pos[1])
     }
-    /// The supplied state's block-local outline or collision boxes at a level
-    /// position with an empty context. The world is never modified. Returns None
-    /// for a stale or unavailable level. Unloaded neighbors
-    /// read as air; collision errors return no boxes, like `block_collision`.
-    pub(in crate::game) fn level_block_shape(
-        &self,
-        level: LevelRef,
-        state: BlockStateId,
-        pos: [i32; 3],
-        kind: BlockShapeKind,
-    ) -> Option<Vec<[f64; 6]>> {
-        if !self.is_logical_server() {
-            return (self.native_client_level() == Some(level))
-                .then(|| self.state_shape_boxes(&self.world, &self.be_anims, state, pos, kind));
-        }
-        if !self.level_handle_current(level) {
-            return None;
-        }
-        let (world, anims) = if self.dim.key() == level.dimension() {
-            (&self.world, &self.be_anims)
-        } else {
-            let dim = self
-                .side.levels
-                .0
-                .parked_dims()
-                .into_iter()
-                .find(|dim| dim.key() == level.dimension())?;
-            (
-                self.side.levels.0.parked_world(dim)?,
-                self.side.levels.0.parked_anims(dim)?,
-            )
-        };
-        Some(self.state_shape_boxes(world, anims, state, pos, kind))
-    }
 
-    /// The local face support in an open server level or the current client level,
-    /// including shapes published by local block entities. None for unavailable
-    /// levels, unloaded or out-of-height blocks, or a shape query error.
-    pub(in crate::game) fn level_block_face_sturdy(
-        &self,
-        level: LevelRef,
-        pos: [i32; 3],
-        face: BlockFace,
-        support: mod_api::SupportType,
-    ) -> Option<bool> {
-        super::native_world_read::block_face_sturdy(
-            self.native_level_read_world(level)?,
-            self.res.behaviours(),
-            self.res.collision(),
-            pos,
-            face,
-            support,
-        )
-    }
 
-    /// The entity's yaw and pitch in degrees (`Entity.getYRot`, `getXRot`); 0
-    /// for the kinds that don't turn. API 373.
-    pub(in crate::game) fn entity_rotation(&self, entity: EntityRef) -> Option<[f32; 2]> {
-        Some(self.target_rotation(self.native_entity_read_target(entity)?))
-    }
 
-    pub(in crate::game::server_side) fn native_client_general(
-        &self,
-        entity: EntityRef,
-    ) -> Option<&super::remote::RemoteGeneral> {
-        let (remote, id) = self.native_client_entity_context(entity)?;
-        remote.general.rows.get(&id)
-    }
     /// Server-side `Entity.getType`: `minecraft:zombie`. API 373.
     pub(in crate::game) fn server_entity_kind(
         &self,
@@ -895,34 +705,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 None
             }
         }
-    }
-    /// A mob of this game that is resident in a loaded level other than the
-    /// one in place, as a kill credit can name one (`getEntityInAnyDimension`):
-    /// its identity reads (`entity_kind`, `entity_uuid`, `entity_level`)
-    /// answer from there. None on a client or for anything else.
-    pub(in crate::game::server_side) fn mob_in_other_level(
-        &self,
-        id: u32,
-    ) -> Option<(super::Dim, &super::Mob)> {
-        use sunrise_client::join_seq::residency::table::EntityLookup;
-        if !self.is_logical_server() {
-            return None;
-        }
-        let EntityLookup::Found {
-            location,
-            value: Target::Mob(_),
-        } = self.server_resident_entity(id)
-        else {
-            return None;
-        };
-        let (dim, parked) = self
-            .side.levels
-            .0
-            .parked
-            .iter()
-            .find(|(dim, _)| dim.key() == location.owner.dimension)?;
-        let mob = parked.mobs.get(parked.mobs.locate(location.join)?)?;
-        Some((*dim, mob))
     }
     /// The entity's UUID (`Entity.getUUID`), the one it is saved with; an
     /// entity that has none yet gets it now, as a new vanilla entity does.
@@ -983,6 +765,233 @@ impl Game<'_, crate::game::server_side::ServerState> {
             None => return None,
         };
         Some(self.level_ref(entity.epoch(), key))
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// What a handle names now, or None for a stale or foreign one.
+    pub(in crate::game) fn native_entity_target(&self, entity: EntityRef) -> Option<Target> {
+        self.native_entity_target_with_location(entity)
+            .map(|(target, _)| target)
+    }
+
+    /// Resolve the handle and return its resident location, if admitted to the level.
+    pub(in crate::game) fn native_entity_target_with_location(
+        &self,
+        entity: EntityRef,
+    ) -> Option<(Target, Option<Location>)> {
+        self.native_entity_target_in(entity, self.dim.key())
+    }
+
+    /// [`Self::native_entity_target_with_location`] for an entity resident in the open server
+    /// level `dimension`, the one in place or a parked one.
+    pub(in crate::game) fn native_entity_target_in(
+        &self,
+        entity: EntityRef,
+        dimension: DimensionKey,
+    ) -> Option<(Target, Option<Location>)> {
+        if crate::game::Side::held_out(&self.side).contains(&entity.id())
+            || !self.is_logical_server()
+            || self.native_lifecycle.epoch() != Some(entity.epoch())
+        {
+            return None;
+        }
+        let EntityLookup::Found { location, value } = self.server_resident_entity(entity.id())
+        else {
+            // A lifecycle event lends the body without admitting it to the level.
+            let &(_, conn, _) = self
+                .player_state
+                .cloning_players
+                .iter()
+                .rev()
+                .find(|&&(_, _, id)| id == entity.id())?;
+            return if crate::game::Side::lan_acting(&self.side) == Some(conn) {
+                Some((Target::Player, None))
+            } else if crate::game::Side::lan_guest_swaps(&self.side).contains(&conn) {
+                None
+            } else {
+                Some((Target::Guest(conn), None))
+            };
+        };
+        // Players are server-wide records. Ordinary body operations retain
+        // their existing current-level domain; source membership is global.
+        (matches!(value, Target::Player | Target::Guest(_))
+            || location.owner.dimension == dimension)
+            .then_some((value, Some(location)))
+    }
+
+    pub(in crate::game) fn level_ray_trace_nearest_entity(
+        &self,
+        level: LevelRef,
+        from: [f64; 3],
+        to: [f64; 3],
+        margin: f64,
+        exclude: Option<EntityRef>,
+        accept: &mut dyn FnMut(EntityRef) -> bool,
+    ) -> Result<Option<EntityRayHit>, LevelReadError> {
+        let mut nearest = None;
+        self.visit_entity_ray_hits(
+            level,
+            from,
+            to,
+            margin,
+            exclude,
+            accept,
+            |hit, distance_squared| {
+                if nearest.is_none_or(|(_, best)| distance_squared < best) {
+                    nearest = Some((hit, distance_squared));
+                }
+            },
+        )?;
+        Ok(nearest.map(|(hit, _)| hit))
+    }
+
+    pub(in crate::game) fn visit_entity_ray_hits(
+        &self,
+        level: LevelRef,
+        from: [f64; 3],
+        to: [f64; 3],
+        margin: f64,
+        exclude: Option<EntityRef>,
+        mut accept: impl FnMut(EntityRef) -> bool,
+        mut visit: impl FnMut(EntityRayHit, f64),
+    ) -> Result<(), LevelReadError> {
+        if !(margin.is_finite() && from.iter().chain(&to).all(|v| v.is_finite())) {
+            return Err(LevelReadError::Unavailable);
+        }
+        // Every box the inflated or deflated test can hit meets the segment's own box
+        // padded by `margin.abs()` (including over-deflated boxes swapped by `Aabb::new`).
+        let pad = margin.abs();
+        let min = std::array::from_fn(|i| from[i].min(to[i]) - pad);
+        let max = std::array::from_fn(|i| from[i].max(to[i]) + pad);
+        let start = Vec3::new(from[0], from[1], from[2]);
+        let end = Vec3::new(to[0], to[1], to[2]);
+        let padding = Vec3::new(margin, margin, margin);
+        let _ = self.level_visit_entities_in(level, min, max, &mut |entity| {
+            // Match `ProjectileUtil.getEntityHitResult`: filter candidates before reading and
+            // clipping their bounding boxes. The walk releases any residency borrow before
+            // calling mod code.
+            if Some(entity) != exclude
+                && accept(entity)
+                && let Some(bounds) = self.entity_bounding_box(entity)
+                && let Some((hit, distance_squared)) =
+                    clip_entity_ray(start, end, padding, entity, bounds)
+            {
+                visit(hit, distance_squared);
+            }
+            ControlFlow::Continue(())
+        })?;
+        Ok(())
+    }
+
+    /// `ItemStack.getDestroySpeed` of `tool` on the block at `pos`.
+    pub(in crate::game) fn level_block_break_speed(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+        tool: Option<&ItemStack>,
+    ) -> Option<f32> {
+        let world = self.native_level_read_world(level)?;
+        if !world.loaded(pos[0], pos[2]) || !world.shape.contains_y(pos[1]) {
+            return None;
+        }
+        let state = world.block(pos[0], pos[1], pos[2]);
+        let name = &self.res.facts().get(state).name;
+        Some(self.items().mining_speed(tool, name))
+    }
+
+    /// The supplied state's block-local outline or collision boxes at a level
+    /// position with an empty context. The world is never modified. Returns None
+    /// for a stale or unavailable level. Unloaded neighbors
+    /// read as air; collision errors return no boxes, like `block_collision`.
+    pub(in crate::game) fn level_block_shape(
+        &self,
+        level: LevelRef,
+        state: BlockStateId,
+        pos: [i32; 3],
+        kind: BlockShapeKind,
+    ) -> Option<Vec<[f64; 6]>> {
+        if !self.is_logical_server() {
+            return (self.native_client_level() == Some(level))
+                .then(|| self.state_shape_boxes(&self.world, &self.be_anims, state, pos, kind));
+        }
+        if !self.level_handle_current(level) {
+            return None;
+        }
+        let (world, anims) = if self.dim.key() == level.dimension() {
+            (&self.world, &self.be_anims)
+        } else {
+            let dim = crate::game::Side::levels(&self.side)?
+                .parked_dims()
+                .into_iter()
+                .find(|dim| dim.key() == level.dimension())?;
+            (
+                crate::game::Side::levels(&self.side)?.parked_world(dim)?,
+                crate::game::Side::levels(&self.side)?.parked_anims(dim)?,
+            )
+        };
+        Some(self.state_shape_boxes(world, anims, state, pos, kind))
+    }
+
+    /// The local face support in an open server level or the current client level,
+    /// including shapes published by local block entities. None for unavailable
+    /// levels, unloaded or out-of-height blocks, or a shape query error.
+    pub(in crate::game) fn level_block_face_sturdy(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+        face: BlockFace,
+        support: mod_api::SupportType,
+    ) -> Option<bool> {
+        super::native_world_read::block_face_sturdy(
+            self.native_level_read_world(level)?,
+            self.res.behaviours(),
+            self.res.collision(),
+            pos,
+            face,
+            support,
+        )
+    }
+
+    /// The entity's yaw and pitch in degrees (`Entity.getYRot`, `getXRot`); 0
+    /// for the kinds that don't turn. API 373.
+    pub(in crate::game) fn entity_rotation(&self, entity: EntityRef) -> Option<[f32; 2]> {
+        Some(self.target_rotation(self.native_entity_read_target(entity)?))
+    }
+
+    pub(in crate::game) fn native_client_general(
+        &self,
+        entity: EntityRef,
+    ) -> Option<&super::remote::RemoteGeneral> {
+        let (remote, id) = self.native_client_entity_context(entity)?;
+        remote.general.rows.get(&id)
+    }
+
+    /// A mob of this game that is resident in a loaded level other than the
+    /// one in place, as a kill credit can name one (`getEntityInAnyDimension`):
+    /// its identity reads (`entity_kind`, `entity_uuid`, `entity_level`)
+    /// answer from there. None on a client or for anything else.
+    pub(in crate::game) fn mob_in_other_level(
+        &self,
+        id: u32,
+    ) -> Option<(super::Dim, &super::Mob)> {
+        use sunrise_client::join_seq::residency::table::EntityLookup;
+        if !self.is_logical_server() {
+            return None;
+        }
+        let EntityLookup::Found {
+            location,
+            value: Target::Mob(_),
+        } = self.server_resident_entity(id)
+        else {
+            return None;
+        };
+        let (dim, parked) = crate::game::Side::levels(&self.side)?
+            .parked
+            .iter()
+            .find(|(dim, _)| dim.key() == location.owner.dimension)?;
+        let mob = parked.mobs.get(parked.mobs.locate(location.join)?)?;
+        Some((*dim, mob))
     }
 }
 

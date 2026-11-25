@@ -36,6 +36,78 @@ impl Game<'_, crate::game::server_side::ServerState> {
         ))
     }
 
+
+    /// `LivingEntity.randomTeleport(x, y, z, true, avoid)`: the point `at`
+    /// is clamped into the world border and drops to the first block in
+    /// `minecraft:entities_can_teleport_to` below it, losing a block of height
+    /// per step down. The entity lands there, keeping its motion, unless that
+    /// ground or a block in its box at the landing is in the `avoid` block
+    /// tag, the box collides or holds a liquid, or the species refuses the
+    /// spot (an enderman never lands on ground holding water). A landing
+    /// stops a mob's navigation and broadcasts entity event 46 (the portal
+    /// particles). Nothing else is played: a chorus fruit's sound and an
+    /// enderman's own teleport effects belong to their callers.
+    ///
+    /// True when the entity moved. False when no spot was found, for a
+    /// non-finite point, a fake player, a player in another level, an armor
+    /// stand or the dragon, a stale handle, or on a client.
+    pub(in crate::game) fn living_random_teleport(
+        &mut self,
+        living: LivingRef,
+        at: [f64; 3],
+        avoid: Option<&str>,
+    ) -> bool {
+        if !at.iter().all(|v| v.is_finite()) {
+            return false;
+        }
+        let at = Vec3::new(at[0], at[1], at[2]);
+        match self.native_living_target(living) {
+            Some(target @ (Target::Player | Target::Guest(_))) => {
+                if self.target_level(target) != self.dim {
+                    return false;
+                }
+                self.native_player_sleep_write(target, |game| {
+                    game.player.is_some() && game.random_teleport(at, avoid)
+                })
+            }
+            Some(Target::Mob(id)) => {
+                if !self.mobs.iter().any(|m| m.id == id && !m.removed) {
+                    return false;
+                }
+                let mut mobs = self.mobs.lift();
+                #[cfg(test)]
+                super::entity::taken_pass_tests::after_take(self);
+                let w = self.mob_world_base(&[]);
+                let mut events = Vec::new();
+                let mut teleported = None;
+                let moved = mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
+                    let from = m.position;
+                    let moved = sunrise_client::mobs::living::random_teleport(
+                        m,
+                        &w,
+                        at,
+                        avoid,
+                        &mut events,
+                    );
+                    teleported = moved.then_some((from, m.position));
+                    moved
+                });
+                self.mobs
+                    .restore(mobs, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
+                let _ = self.handle_mob_events(events);
+                // `teleportTo` is one position update, told at once.
+                if let Some((from, to)) = teleported {
+                    let (from, to) = ([from.x, from.y, from.z], [to.x, to.y, to.z]);
+                    self.entity_section_moved(id, Some(from), to);
+                }
+                moved
+            }
+            _ => false,
+        }
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// `LivingEntity.getDimensions(Pose)`: the box the living entity has in
     /// `pose` — its width, height and eye height, `minecraft:scale`
     /// included, the fixed 0.2 box of a sleeping pose included. The species'
@@ -104,75 +176,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 Some([16.0_f32, 8.0, 6.8].map(|v| f64::from(v * scale)))
             }
             _ => None,
-        }
-    }
-
-    /// `LivingEntity.randomTeleport(x, y, z, true, avoid)`: the point `at`
-    /// is clamped into the world border and drops to the first block in
-    /// `minecraft:entities_can_teleport_to` below it, losing a block of height
-    /// per step down. The entity lands there, keeping its motion, unless that
-    /// ground or a block in its box at the landing is in the `avoid` block
-    /// tag, the box collides or holds a liquid, or the species refuses the
-    /// spot (an enderman never lands on ground holding water). A landing
-    /// stops a mob's navigation and broadcasts entity event 46 (the portal
-    /// particles). Nothing else is played: a chorus fruit's sound and an
-    /// enderman's own teleport effects belong to their callers.
-    ///
-    /// True when the entity moved. False when no spot was found, for a
-    /// non-finite point, a fake player, a player in another level, an armor
-    /// stand or the dragon, a stale handle, or on a client.
-    pub(in crate::game) fn living_random_teleport(
-        &mut self,
-        living: LivingRef,
-        at: [f64; 3],
-        avoid: Option<&str>,
-    ) -> bool {
-        if !at.iter().all(|v| v.is_finite()) {
-            return false;
-        }
-        let at = Vec3::new(at[0], at[1], at[2]);
-        match self.native_living_target(living) {
-            Some(target @ (Target::Player | Target::Guest(_))) => {
-                if self.target_level(target) != self.dim {
-                    return false;
-                }
-                self.native_player_sleep_write(target, |game| {
-                    game.player.is_some() && game.random_teleport(at, avoid)
-                })
-            }
-            Some(Target::Mob(id)) => {
-                if !self.mobs.iter().any(|m| m.id == id && !m.removed) {
-                    return false;
-                }
-                let mut mobs = self.mobs.lift();
-                #[cfg(test)]
-                super::entity::taken_pass_tests::after_take(self);
-                let w = self.mob_world_base(&[]);
-                let mut events = Vec::new();
-                let mut teleported = None;
-                let moved = mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
-                    let from = m.position;
-                    let moved = sunrise_client::mobs::living::random_teleport(
-                        m,
-                        &w,
-                        at,
-                        avoid,
-                        &mut events,
-                    );
-                    teleported = moved.then_some((from, m.position));
-                    moved
-                });
-                self.mobs
-                    .restore(mobs, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
-                let _ = self.handle_mob_events(events);
-                // `teleportTo` is one position update, told at once.
-                if let Some((from, to)) = teleported {
-                    let (from, to) = ([from.x, from.y, from.z], [to.x, to.y, to.z]);
-                    self.entity_section_moved(id, Some(from), to);
-                }
-                moved
-            }
-            _ => false,
         }
     }
 }

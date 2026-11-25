@@ -282,82 +282,8 @@ impl Parked {
 }
 
 impl Game<'_, crate::game::server_side::ServerState> {
-    /// Resolve through the exact owner, never by trying dimension swaps.
-    pub(in crate::game::server_side) fn locate_server_resident_owner(
-        &self,
-        at: Location,
-    ) -> Option<SourceEntity<(Target, bool)>> {
-        if matches!(
-            at.owner.kind,
-            sunrise_client::join_seq::residency::Kind::Player
-                | sunrise_client::join_seq::residency::Kind::Hook
-        ) {
-            return self.locate_specialized_resident_owner(at);
-        }
-        if at.owner.dimension == self.dim.key() {
-            // An open transaction's removal reads as gone already.
-            return self.locate_resident_owner(at).map(|mut source| {
-                source.value.1 &= !self.removal_pending(&source.value.0);
-                source
-            });
-        }
-        let dim = match at.owner.dimension {
-            DimensionKey::OVERWORLD => Dim::Overworld,
-            DimensionKey::NETHER => Dim::Nether,
-            DimensionKey::END => Dim::End,
-            key => Dim::Extra(key),
-        };
-        // The transactions stay with the game when a level is parked: its pending removals too.
-        self.side.levels
-            .0
-            .parked
-            .get(&dim)?
-            .locate_resident_owner(at)
-            .map(|mut source| {
-                source.value.1 &= !self.removal_pending_in(dim, &source.value.0);
-                source
-            })
-    }
 
-    /// Whether `target` counts as removed in the level in place: a mod removed it, or an open
-    /// transaction did and its root commit has not run the removal yet.
-    pub(in crate::game) fn target_removed(&self, target: &Target) -> bool {
-        self.persist.removals.contains(target)
-            || self.persist.destroying_vehicles.contains(target)
-            || self.removal_pending(target)
-    }
 
-    pub(in crate::game::server_side) fn resident_source_target_visible(
-        &self,
-        dimension: DimensionKey,
-        target: Target,
-    ) -> bool {
-        let player = match target {
-            Target::Guest(conn) => Some(conn),
-            Target::Player => self.side.lan_acting,
-            _ => None,
-        };
-        if player
-            .and_then(|conn| self.command_guest(conn))
-            .is_some_and(|guest| !guest.body_present())
-        {
-            return false;
-        }
-        if dimension == self.dim.key() {
-            return !self.target_removed(&target);
-        }
-        let dim = match dimension {
-            DimensionKey::OVERWORLD => Dim::Overworld,
-            DimensionKey::NETHER => Dim::Nether,
-            DimensionKey::END => Dim::End,
-            key => Dim::Extra(key),
-        };
-        self.side.levels.0.parked.get(&dim).is_none_or(|parked| {
-            !parked.persist.removals.contains(&target)
-                && !parked.persist.destroying_vehicles.contains(&target)
-                && !self.removal_pending_in(dim, &target)
-        })
-    }
 
     /// Visit exactly the actual physical lifetime slot. Resolution releases the
     /// table and its journal before lending storage; no lift, swap or replacement
@@ -447,24 +373,6 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
 
-    pub(in crate::game) fn server_resident_entity(&self, id: u32) -> EntityLookup<Target> {
-        let found = self
-            .resident_entities
-            .table
-            .borrow_mut()
-            .server_entity_lookup(id, |at| self.locate_server_resident_owner(at));
-        match found {
-            EntityLookup::Found {
-                location,
-                value: (value, true),
-            } => EntityLookup::Found { location, value },
-            EntityLookup::Found {
-                value: (_, false), ..
-            }
-            | EntityLookup::Missing => EntityLookup::Missing,
-            EntityLookup::Taken => EntityLookup::Taken,
-        }
-    }
     /// `ServerLevel.getEntity(UUID)`: search this level's admitted entities, not unloaded
     /// saves or tracking entries. A departure can overlap a replacement with the same UUID.
     pub(in crate::game::server_side) fn level_target_by_uuid(
@@ -543,6 +451,103 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.bind_specialized_resident_owners(&journal);
         for (dim, parked) in &mut self.side.levels.0.parked {
             parked.bind_resident_owners(&journal, dim.key(), true);
+        }
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// Resolve through the exact owner, never by trying dimension swaps.
+    pub(in crate::game) fn locate_server_resident_owner(
+        &self,
+        at: Location,
+    ) -> Option<SourceEntity<(Target, bool)>> {
+        if matches!(
+            at.owner.kind,
+            sunrise_client::join_seq::residency::Kind::Player
+                | sunrise_client::join_seq::residency::Kind::Hook
+        ) {
+            return self.locate_specialized_resident_owner(at);
+        }
+        if at.owner.dimension == self.dim.key() {
+            // An open transaction's removal reads as gone already.
+            return crate::game::Side::locate_resident_owner(self, at).map(|mut source| {
+                source.value.1 &= !self.removal_pending(&source.value.0);
+                source
+            });
+        }
+        let dim = match at.owner.dimension {
+            DimensionKey::OVERWORLD => Dim::Overworld,
+            DimensionKey::NETHER => Dim::Nether,
+            DimensionKey::END => Dim::End,
+            key => Dim::Extra(key),
+        };
+        // The transactions stay with the game when a level is parked: its pending removals too.
+        crate::game::Side::levels(&self.side)?
+            .parked
+            .get(&dim)?
+            .locate_resident_owner(at)
+            .map(|mut source| {
+                source.value.1 &= !self.removal_pending_in(dim, &source.value.0);
+                source
+            })
+    }
+
+    /// Whether `target` counts as removed in the level in place: a mod removed it, or an open
+    /// transaction did and its root commit has not run the removal yet.
+    pub(in crate::game) fn target_removed(&self, target: &Target) -> bool {
+        self.persist.removals.contains(target)
+            || self.persist.destroying_vehicles.contains(target)
+            || self.removal_pending(target)
+    }
+
+    pub(in crate::game) fn resident_source_target_visible(
+        &self,
+        dimension: DimensionKey,
+        target: Target,
+    ) -> bool {
+        let player = match target {
+            Target::Guest(conn) => Some(conn),
+            Target::Player => crate::game::Side::lan_acting(&self.side),
+            _ => None,
+        };
+        if player
+            .and_then(|conn| self.command_guest(conn))
+            .is_some_and(|guest| !guest.body_present())
+        {
+            return false;
+        }
+        if dimension == self.dim.key() {
+            return !self.target_removed(&target);
+        }
+        let dim = match dimension {
+            DimensionKey::OVERWORLD => Dim::Overworld,
+            DimensionKey::NETHER => Dim::Nether,
+            DimensionKey::END => Dim::End,
+            key => Dim::Extra(key),
+        };
+        crate::game::Side::levels(&self.side).and_then(|l| l.parked.get(&dim)).is_none_or(|parked| {
+            !parked.persist.removals.contains(&target)
+                && !parked.persist.destroying_vehicles.contains(&target)
+                && !self.removal_pending_in(dim, &target)
+        })
+    }
+
+    pub(in crate::game) fn server_resident_entity(&self, id: u32) -> EntityLookup<Target> {
+        let found = self
+            .resident_entities
+            .table
+            .borrow_mut()
+            .server_entity_lookup(id, |at| self.locate_server_resident_owner(at));
+        match found {
+            EntityLookup::Found {
+                location,
+                value: (value, true),
+            } => EntityLookup::Found { location, value },
+            EntityLookup::Found {
+                value: (_, false), ..
+            }
+            | EntityLookup::Missing => EntityLookup::Missing,
+            EntityLookup::Taken => EntityLookup::Taken,
         }
     }
 }

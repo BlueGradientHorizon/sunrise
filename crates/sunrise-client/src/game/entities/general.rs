@@ -787,31 +787,8 @@ impl RiderIndex {
     }
 }
 
-impl Game<'_, crate::game::server_side::ServerState> {
-    /// A general entity row in the active level. Removal hides it before the sweep.
-    pub(in crate::game) fn general_row(&self, id: u32) -> Option<&GeneralRow> {
-        if !self.persist.removals.is_empty() && self.persist.removals.contains(&Target::General(id))
-        {
-            return None;
-        }
-        self.general_object(id)
-    }
-
-    /// The owning row through its removal callback, before the physical sweep. Through the rider
-    /// index's place map while it is current (a miss then is final), else by scan.
-    pub(in crate::game) fn general_object(&self, id: u32) -> Option<&GeneralRow> {
-        let store = &self.resident_entities.general;
-        if store.rows.is_empty() {
-            return None;
-        }
-        if store.riders.is_fresh(&store.rows, store.mount_writes) {
-            let &place = store.riders.places.get(&id)?;
-            return store.rows.get(place);
-        }
-        store.rows.iter().find(|row| row.id == id)
-    }
-
-    pub(in crate::game::server_side) fn general_passengers(
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    pub(in crate::game) fn general_passengers(
         &self,
         vehicle: u32,
     ) -> impl Iterator<Item = &GeneralRow> {
@@ -841,6 +818,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         })
     }
+}
+
+impl Game<'_, crate::game::server_side::ServerState> {
 
     /// Change a general row's seat. The caller owns mount notifications.
     pub(in crate::game::server_side) fn set_general_mount(
@@ -1292,6 +1272,31 @@ impl Game<'_, crate::game::server_side::ServerState> {
         self.bind_saved_entity_attachments(id, &mut row.attachment_lifetime);
         self.resident_entities.general.rows.push(row);
         id
+    }
+}
+
+impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+    /// A general entity row in the active level. Removal hides it before the sweep.
+    pub(in crate::game) fn general_row(&self, id: u32) -> Option<&GeneralRow> {
+        if !self.persist.removals.is_empty() && self.persist.removals.contains(&Target::General(id))
+        {
+            return None;
+        }
+        self.general_object(id)
+    }
+
+    /// The owning row through its removal callback, before the physical sweep. Through the rider
+    /// index's place map while it is current (a miss then is final), else by scan.
+    pub(in crate::game) fn general_object(&self, id: u32) -> Option<&GeneralRow> {
+        let store = &self.resident_entities.general;
+        if store.rows.is_empty() {
+            return None;
+        }
+        if store.riders.is_fresh(&store.rows, store.mount_writes) {
+            let &place = store.riders.places.get(&id)?;
+            return store.rows.get(place);
+        }
+        store.rows.iter().find(|row| row.id == id)
     }
 }
 
