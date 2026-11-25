@@ -202,6 +202,24 @@ impl PackPost {
         &self.bound_mod_slots
     }
 
+    /// The shadow pass as `frame` sees it, or `None` when the pack has no shadow pass: the map's
+    /// side in texels, `shadowDistance`, and the column-major `shadowModelView` and
+    /// `shadowProjection` (camera-relative space).
+    pub fn shadow_state(
+        &self,
+        frame: &UniformFrameView<'_>,
+    ) -> Option<(u32, f32, [f32; 16], [f32; 16])> {
+        let targets = self.shadow_targets.as_ref()?;
+        let shadow = &self.uniforms.shadow;
+        let (model_view, projection) = crate::pack_uniforms::shadow_view(frame, shadow);
+        Some((
+            targets.size,
+            shadow.distance,
+            model_view.to_cols_array(),
+            projection.to_cols_array(),
+        ))
+    }
+
     /// Counts of currently allocated mod auxiliary `(depth, opaque_depth)` targets.
     pub fn allocated_mod_depth_targets(&self) -> (usize, usize) {
         let Some(targets) = &self.targets else {

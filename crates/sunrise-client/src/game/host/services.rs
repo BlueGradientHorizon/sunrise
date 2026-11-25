@@ -145,4 +145,13 @@ impl RenderAssets for Game<'_> {
     fn animation(&self, id: &Identifier) -> Option<AnimationHolder> {
         CallbackOwner::call_host(|| self.pack.render.animation(id))
     }
+    fn pipeline_pack_bound(&self, pipeline: RenderPipelineRef) -> bool {
+        CallbackOwner::call_host(|| {
+            self.pack
+                .render
+                .mod_pipelines
+                .slot(pipeline)
+                .is_ok_and(|slot| self.pack_slot_bound(slot as usize))
+        })
+    }
 }

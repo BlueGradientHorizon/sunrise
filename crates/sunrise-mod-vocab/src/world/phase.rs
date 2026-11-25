@@ -247,6 +247,9 @@ impl crate::RenderAssets for EmptyClientReloadServices {
     ) -> Result<crate::BakedModelView<'_>, crate::ModelError> {
         Err(crate::ModelError::UnknownModel)
     }
+    fn pipeline_pack_bound(&self, _: crate::RenderPipelineRef) -> bool {
+        false
+    }
 }
 
 impl crate::InstanceGroups for EmptyClientReloadServices {

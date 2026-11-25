@@ -3642,6 +3642,11 @@ struct Game<'a> {
     /// `Renderer::render` so `ClientHost` queries still see framebuffer size and
     /// prepared-model limits.
     render_snapshot: std::cell::Cell<Option<RenderSnapshot>>,
+    /// The shader pack's state and bound mod pipeline slots as the latest frame's render
+    /// callbacks read them, set before `Renderer::render` takes `self.renderer` away
+    /// (`ClientOptionsClientHost::shader_pack_state`, `RenderAssets::pipeline_pack_bound`).
+    pack_frame_state: std::cell::Cell<Option<mod_api::ShaderPackState>>,
+    pack_frame_slots: std::cell::RefCell<Vec<usize>>,
     /// `DebugRenderer.renderers`: active mod renderers and their owners, resolved at refresh.
     debug_renderers: Vec<sunrise_client::debug_entries::ActiveDebugRenderer>,
     /// `DebugRenderer.lastDebugEntriesVersion`: none before the first view of a world.
@@ -12164,6 +12169,12 @@ impl Game<'_> {
                     max_buffer_size: renderer.max_buffer_size(),
                     staged_prepared_draws: prepared_draws.len() as u64,
                 }));
+                self.pack_frame_state
+                    .set(renderer.shader_pack_state(&frame));
+                let mut slots = self.pack_frame_slots.borrow_mut();
+                slots.clear();
+                slots.extend_from_slice(renderer.pack_bound_mod_slots());
+                drop(slots);
                 let world_camera = self
                     .native_camera_frame
                     .as_ref()
@@ -14295,6 +14306,8 @@ impl<'a> Game<'a> {
             model_copy_order: Default::default(),
             world_geometry: Some(Default::default()),
             render_snapshot: std::cell::Cell::new(None),
+            pack_frame_state: std::cell::Cell::new(None),
+            pack_frame_slots: Default::default(),
             debug_renderers: Vec::new(),
             debug_renderers_version: None,
             hud_layer_next: None,

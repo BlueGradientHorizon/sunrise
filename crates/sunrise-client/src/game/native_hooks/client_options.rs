@@ -80,6 +80,23 @@ impl Game<'_> {
             self.renderer.as_ref().and_then(|r| r.shader_pack_kind()),
         )
     }
+    /// The active shader pack's cloud and shadow-pass state, as the latest frame's render
+    /// callbacks read it; `None` while the panorama shows even when a pack remains loaded.
+    pub(in crate::game) fn shader_pack_state(&self) -> Option<ShaderPackState> {
+        pack_state_in_view(self.shows_panorama(), self.pack_frame_state.get())
+    }
+    /// Whether the active shader pack bound the mod pipeline in `slot` to one of its programs.
+    pub(in crate::game) fn pack_slot_bound(&self, slot: usize) -> bool {
+        self.shader_pack_state().is_some() && self.pack_frame_slots.borrow().contains(&slot)
+    }
+}
+
+/// Pure lifecycle rule for [`Game::shader_pack_state`]: the same as `shader_pack_in_use`'s.
+fn pack_state_in_view(
+    on_title_screen: bool,
+    state: Option<ShaderPackState>,
+) -> Option<ShaderPackState> {
+    state.filter(|_| !on_title_screen)
 }
 
 /// Pure lifecycle rule for [`Game::shader_pack_active`]: a loaded pack is inactive while the
@@ -189,5 +206,15 @@ mod tests {
         assert!(!shader_pack_in_use(true, None));
         assert!(!shader_pack_in_use(true, Some("iris")));
         assert!(shader_pack_in_use(false, Some("iris")));
+    }
+
+    #[test]
+    fn shader_pack_state_is_none_on_title_screen_and_keeps_the_frames_values_in_world() {
+        let state = ShaderPackState::new(true, None, 7);
+        assert_eq!(pack_state_in_view(true, Some(state)), None);
+        assert_eq!(pack_state_in_view(false, None), None);
+        let read = pack_state_in_view(false, Some(state)).expect("in world");
+        assert!(read.hides_clouds);
+        assert_eq!(read.generation, 7);
     }
 }

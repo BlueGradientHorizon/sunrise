@@ -420,6 +420,18 @@ pub trait RenderAssets {
     fn baked_model(&self, key: BakedModelKey) -> Result<BakedModelView<'_>, ModelError> {
         unimplemented!("RenderAssets::baked_model")
     }
+    /// Side: client.
+    /// Whether a shader pack is active and compiled a pack program for `pipeline`'s
+    /// [`PackBinding`], so the pack draws it (Iris's `DHCompatInternal.shouldOverride` and
+    /// `shouldOverrideShadow`; `incompatiblePack` is the opposite). `false` when no pack is
+    /// active (the title screen included), when `pipeline` is stale or invalid, and when the
+    /// pack has no matching program or the pipeline has no `PackBinding`: the engine then draws
+    /// the pipeline through the mod's own shaders. Read in the render callbacks, as the state
+    /// was at the start of the frame; [`ShaderPackState::generation`] says when to ask again.
+    fn pipeline_pack_bound(&self, pipeline: RenderPipelineRef) -> bool {
+        let _ = pipeline;
+        unimplemented!("RenderAssets::pipeline_pack_bound")
+    }
 }
 
 /// Client-side persistent copies of resolved models.

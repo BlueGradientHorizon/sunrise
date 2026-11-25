@@ -28,6 +28,6 @@ pub use client::render_pipeline::{
     UniformValue, VANILLA_BIND_GROUP_LAYOUT_NAMES, VERTEX_ALIGNMENT,
 };
 pub use client::render_pipeline::{
-    VertexAttribute, VertexAttributeFormat, VertexFormat, VertexFormatBuilder, VertexFormatError,
-    VertexStepMode,
+    ShaderPackShadowView, ShaderPackState, VertexAttribute, VertexAttributeFormat, VertexFormat,
+    VertexFormatBuilder, VertexFormatError, VertexStepMode,
 };

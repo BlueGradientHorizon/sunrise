@@ -287,6 +287,30 @@ shader (`PackOverrideState::UnboundPack`), or no pack is active (`PackOverrideSt
 and rendering the world (always `false` on the title screen, matching `IrisApi.isShaderPackInUse()`),
 call `host.shader_pack_active()`.
 
+### Shadow pass, clouds and pack changes
+
+`host.shader_pack_state()` returns `None` when no pack is active (the same rule as
+`shader_pack_active()`) and otherwise a `ShaderPackState`, taken at the start of each frame's render
+and read unchanged by that frame's render callbacks:
+
+- `hides_clouds`: the pack sets `clouds=off` or draws its own, so a custom sky or cloud renderer
+  should not draw clouds over it (Iris's `DHCompatInternal.avoidRenderingClouds`).
+- `shadow`: `None` when the pack has no shadow pass, otherwise the map's `resolution`, the shadow
+  `distance` (half the covered side, in blocks) and the column-major `model_view` and
+  `projection`. They are in the same camera-relative space as `WorldRenderView` and are the current
+  frame's values. Use them to cull shadow-casting geometry you submit to `PackPassSlot::Shadow`
+  against the shadow volume (Iris's `ShadowRenderer` `MODELVIEW` and `PROJECTION`).
+- `generation`: changes every time a pack is loaded, switched or turned off, and at no other time.
+  Compare it each frame and re-read whatever you derived from the pack when it differs. It covers a
+  pack switch that fires no resource reload.
+
+`host.render_assets().pipeline_pack_bound(pipeline)` says whether the active pack compiled a program
+for the pipeline's `PackBinding`. It is `false` with no pack, for a stale or invalid handle, and when
+the pipeline has a `PackBinding` but the pack has no matching program. In that last case the engine
+draws the pipeline through the mod's own shaders, exactly as `PackOverrideState::UnboundPack` reports
+it, so the mod's fallback shader must be able to draw it. Like the state above, it reads the frame's
+snapshot during render callbacks.
+
 ## Fixed-function state (`PipelineState`)
 
 Every `RenderPipeline` carries a `PipelineState` with vanilla's core rasterization, depth, blend,

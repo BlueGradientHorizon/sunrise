@@ -972,6 +972,79 @@ pub enum PackOverrideState {
     Bound,
 }
 
+/// What the active Iris/OptiFine shader pack does that a mod's own rendering must account for,
+/// read through [`crate::ClientOptionsClientHost::shader_pack_state`]. `None` there when no pack
+/// is active, with [`crate::ClientOptionsClientHost::shader_pack_active`]'s rule (false on the
+/// title screen and while unloading).
+///
+/// It is taken at the start of each frame's render and read unchanged by that frame's render
+/// callbacks, so everything in it is that frame's value.
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
+// no wire: local client query value describing the active shader pack.
+pub struct ShaderPackState {
+    /// Whether the pack hides vanilla clouds (`clouds=off`, or it draws its own), as Iris's
+    /// `DHCompatInternal.avoidRenderingClouds` reads the pack: a mod that draws clouds or a sky
+    /// should skip its clouds while this is true.
+    pub hides_clouds: bool,
+    /// The shadow pass, or `None` when the pack has none.
+    pub shadow: Option<ShaderPackShadowView>,
+    /// Changes every time a shader pack is loaded, switched or turned off, including a reload of
+    /// the same pack and a dimension change that loads the pack again, and at no other time.
+    /// Compare it each frame and re-read what you derived from the pack when it differs: that
+    /// covers a pack switch with no resource reload.
+    pub generation: u32,
+}
+
+impl ShaderPackState {
+    /// A state, built by the game.
+    pub fn new(hides_clouds: bool, shadow: Option<ShaderPackShadowView>, generation: u32) -> Self {
+        Self {
+            hides_clouds,
+            shadow,
+            generation,
+        }
+    }
+}
+
+/// The active shader pack's shadow pass for the current frame (Iris's `ShadowRenderer`:
+/// `MODELVIEW`, `PROJECTION`, shadow map resolution and half-plane distance), for a mod that
+/// submits shadow-casting geometry or culls its own against the shadow volume.
+///
+/// `model_view` and `projection` are in the same camera-relative space as
+/// [`WorldRenderView`](crate::WorldRenderView) and column-major like its matrices. They are the
+/// current frame's values, valid while that frame's render callbacks run.
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
+// no wire: local client query value describing the active shader pack's shadow pass.
+pub struct ShaderPackShadowView {
+    /// The shadow map's side in texels (`shadowMapResolution`).
+    pub resolution: u32,
+    /// Half the side of the area the map covers, in blocks (`shadowDistance`).
+    pub distance: f32,
+    /// `shadowModelView`: camera-relative world space to shadow view space, column-major.
+    pub model_view: [f32; 16],
+    /// `shadowProjection`: shadow view space to shadow clip space, column-major.
+    pub projection: [f32; 16],
+}
+
+impl ShaderPackShadowView {
+    /// A shadow view, built by the game.
+    pub fn new(
+        resolution: u32,
+        distance: f32,
+        model_view: [f32; 16],
+        projection: [f32; 16],
+    ) -> Self {
+        Self {
+            resolution,
+            distance,
+            model_view,
+            projection,
+        }
+    }
+}
+
 /// Per-frame value for a mod-declared shader-pack uniform ([`PackUniformDecl`]),
 /// supplied through [`crate::WorldDrawContext::set_pack_uniform`].
 #[derive(Clone, Copy, Debug, PartialEq)]
