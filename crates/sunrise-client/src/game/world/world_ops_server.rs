@@ -204,6 +204,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .map_or_else(|| self.res.recipes(), |t| &t.recipes)
     }
 
+    #[allow(dead_code)]
     pub(in crate::game) fn server_reset_entity_residency(&mut self) {
         self.reset_entity_residency();
     }

@@ -733,7 +733,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 &self.world,
                 self.pack.assets.registry,
                 &mut lent,
-                Some(world_items!(self)),
+                Some(server_world_items!(self)),
                 Some(&self.pack.block_registries),
                 &self.damage_hooks,
             )
@@ -2445,8 +2445,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             biome_zoom: self.streaming.biome_zoom,
             seed: self.level.seed,
             behaviours: self.res.behaviours(),
-            items: world_items!(self),
-            recipes: world_recipes!(self),
+            items: server_world_items!(self),
+            recipes: server_world_recipes!(self),
             // A client rolls no loot (LootTable.getRandomItems needs a
             // ServerLevel): it doesn't load the tables on its game thread.
             loot: if self.remote.is_some() {
@@ -2486,7 +2486,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 end: &self.end,
                 tags: advancements::TagSources {
                     pack_tags: self.side.world_tables.0.as_ref().map(|t| &t.pack_tags),
-                    items: world_items!(self),
+                    items: server_world_items!(self),
                     mob_data: self.res.mob_data(),
                     damage: &self.health_resources.damage,
                     resources: &self.options.resources,

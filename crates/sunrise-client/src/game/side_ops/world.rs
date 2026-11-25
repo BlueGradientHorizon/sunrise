@@ -68,6 +68,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn side_recipes(&self) -> &Recipes { <__Side as SideOps>::side_recipes(self) }
 
     #[inline(always)]
+    #[allow(dead_code)]
     pub(in crate::game) fn side_reset_entity_residency(&mut self) { <__Side as SideOps>::side_reset_entity_residency(self) }
 
     #[inline(always)]
@@ -91,6 +92,7 @@ pub(in crate::game) trait SideOps: Sized {
     fn side_journal_entity(game: &mut crate::game::Game<'_, Self>, id: u32);
     fn side_active_level_ref(game: &crate::game::Game<'_, Self>, epoch: mod_api::WorldEpoch) -> Option<mod_api::LevelRef>;
     fn side_recipes<'__side_g>(game: &'__side_g crate::game::Game<'_, Self>) -> &'__side_g Recipes;
+    #[allow(dead_code)]
     fn side_reset_entity_residency(game: &mut crate::game::Game<'_, Self>);
     fn side_game_side_meta(game: &crate::game::Game<'_, Self>) -> (Option<u128>, Option<mod_api::LevelRef>, bool);
 }

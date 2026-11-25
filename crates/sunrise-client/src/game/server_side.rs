@@ -1620,12 +1620,15 @@ pub(in crate::game) struct ServerState {
 }
 
 impl ServerState {
-    // Kept out-of-line so its field temporaries do not bloat `Game::construct`'s unoptimised frame.
+    // Kept out-of-line so its field temporaries do not bloat `ServerGame::new`'s unoptimised frame.
     #[inline(never)]
-    pub(in crate::game) fn new(
+    pub(in crate::game) fn build(
         structure_spawns: sunrise_client::mobs::spawn_selection::StructureSpawns,
-    ) -> Self {
-        Self {
+        save: ServerShared<Arc<SaveDir>>,
+        creative_catalog: ServerOnly<Arc<sunrise_items::creative_catalog::Catalog>>,
+        ws: Box<super::WrappedServerInit>,
+    ) -> Box<Self> {
+        Box::new(Self {
             structure_spawns,
             data_map_registries: Vec::new(),
             craft_table: None,
@@ -1764,7 +1767,34 @@ impl ServerState {
             pending_native_sounds: Vec::new(),
             effect_rng: sunrise_core::random::LegacyRandom::new(0),
             sculk: Default::default(),
-        }
+            save,
+            player_autosaves: ws.player_autosaves,
+            session_lock: ws.session_lock,
+            paused_mob_hurt: ws.paused_mob_hurt,
+            raiding: ws.raiding,
+            world_tables: ws.world_tables,
+            server_loot: ws.server_loot,
+            levels: ws.levels,
+            tickets: ws.tickets,
+            random_tick_sections: ws.random_tick_sections,
+            others: ServerShared::new(Default::default()),
+            spill: ws.spill,
+            creative_catalog,
+            lent_mobs: ws.lent_mobs,
+            test_defs: ws.test_defs,
+            game_tests: ws.game_tests,
+            native_commands: ws.native_commands,
+            lan_building_boxes: ws.lan_building_boxes,
+            lan_displaced_players: ws.lan_displaced_players,
+            fake_action: ws.fake_action,
+            server_lists: ws.server_lists,
+            cmds: ws.cmds,
+            reload_resources: ws.reload_resources,
+            combat: ws.combat,
+            guest_combat: ws.guest_combat,
+            fns: ws.fns,
+            exec: ws.exec,
+        })
     }
 }
 
@@ -1800,13 +1830,24 @@ impl crate::game::Side for ServerState {
     fn as_host<'a, 'g>(game: &'g crate::game::Game<'a, Self>) -> &'g dyn mod_api::Host {
         game
     }
-    fn as_config_context<'a, 'g>(game: &'g crate::game::Game<'a, Self>) -> &'g dyn mod_api::ConfigContext {
+    fn as_block_states_backend<'a, 'g>(
+        game: &'g crate::game::Game<'a, Self>,
+    ) -> &'g dyn mod_api::prelude::BlockStatesBackend {
         game
     }
-    fn as_reload_context<'a, 'g>(game: &'g crate::game::Game<'a, Self>) -> &'g dyn mod_api::ReloadContext {
+    fn as_config_context<'a, 'g>(
+        game: &'g crate::game::Game<'a, Self>,
+    ) -> &'g dyn mod_api::ConfigContext {
         game
     }
-    fn as_pack_discovery_context_mut<'a, 'g>(game: &'g mut crate::game::Game<'a, Self>) -> &'g mut dyn mod_api::PackDiscoveryContext {
+    fn as_reload_context<'a, 'g>(
+        game: &'g crate::game::Game<'a, Self>,
+    ) -> &'g dyn mod_api::ReloadContext {
+        game
+    }
+    fn as_pack_discovery_context_mut<'a, 'g>(
+        game: &'g mut crate::game::Game<'a, Self>,
+    ) -> &'g mut dyn mod_api::PackDiscoveryContext {
         game
     }
     fn as_server_host_mut<'a, 'g>(game: &'g mut crate::game::Game<'a, Self>) -> Option<&'g mut dyn mod_api::ServerHost> {
@@ -1840,5 +1881,26 @@ impl crate::game::Side for ServerState {
     }
     fn game_side_tag_items<'a>(&self, _remote: &'a Option<crate::game::remote::Remote>, res: &'a crate::game::Resources) -> Option<&'a sunrise_client::items::Items> {
         self.session_lock.0.is_some().then(|| res.items())
+    }
+    fn levels(&self) -> Option<&crate::game::levels::Levels> { Some(&self.levels.0) }
+    fn others(&self) -> Option<&sunrise_client::join_seq::ResidentList<crate::game::commands::OtherEntity>> { Some(&self.others.0) }
+    fn held_out(&self) -> &[u32] { &self.held_out }
+    fn fns(&self) -> Option<&crate::game::functions::FnState> { Some(&self.fns.0) }
+    fn cmds(&self) -> Option<&crate::game::commands::extra::CommandExtras> { Some(&self.cmds.0) }
+    fn lan_acting(&self) -> Option<u32> { self.lan_acting }
+    fn lan_acting_entity(&self) -> Option<u32> { self.lan_acting_entity }
+    fn lan_acting_fake(&self) -> bool { self.lan_acting_fake }
+    fn lan_guest_swaps(&self) -> &[u32] { &self.lan_guest_swaps }
+    fn acting_abilities(&self) -> Option<sunrise_client::lan::abilities::PlayerAbilities> { self.acting_abilities }
+    fn native_command_filter(&self) -> bool { self.native_command_filter }
+    fn riding_order(&self) -> i64 { self.riding_order }
+    fn vehicle_mobs(&self) -> Option<&crate::game::server_side::boat_passengers::VehicleMobs> { Some(&self.vehicle_mobs) }
+    fn lan_acting_name(&self) -> Option<&str> { self.lan_acting_name.as_deref() }
+    fn server_tick_deadline(&self) -> Option<std::time::Instant> { self.server_tick_deadline }
+    fn locate_resident_owner<'a>(
+        game: &crate::game::Game<'a, Self>,
+        at: sunrise_client::join_seq::residency::table::Location,
+    ) -> Option<sunrise_client::join_seq::residency::table::SourceEntity<(crate::game::commands::Target, bool)>> {
+        game.locate_resident_owner(at)
     }
 }

@@ -56,14 +56,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     let drops = match json["random_sequence"].as_str() {
                         Some(sequence) => {
                             let random = self.side.rand_sequences.get(sequence, self.level.seed);
-                            world_items!(self).inline_loot_table_for_command(
+                            server_world_items!(self).inline_loot_table_for_command(
                                 &json,
                                 held.as_ref(),
                                 random,
                                 keep_empty,
                             )
                         }
-                        None => world_items!(self).inline_loot_table_for_command(
+                        None => server_world_items!(self).inline_loot_table_for_command(
                             &json,
                             held.as_ref(),
                             &mut self.world.random,
@@ -80,10 +80,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     } else {
                         None
                     };
-                    let drops = match world_items!(self).loot_sequence(&table) {
+                    let drops = match server_world_items!(self).loot_sequence(&table) {
                         Some(seq) => {
                             let random = self.side.rand_sequences.get(&seq, self.level.seed);
-                            world_items!(self).loot_table_for_command(
+                            server_world_items!(self).loot_table_for_command(
                                 &table,
                                 false,
                                 held.as_ref(),
@@ -91,7 +91,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 keep_empty,
                             )
                         }
-                        None => world_items!(self).loot_table_for_command(
+                        None => server_world_items!(self).loot_table_for_command(
                             &table,
                             false,
                             held.as_ref(),

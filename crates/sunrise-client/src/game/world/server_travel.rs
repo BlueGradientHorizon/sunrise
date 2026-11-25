@@ -174,7 +174,7 @@ macro_rules! server_ctx {
         TickCtx {
             world: &mut $s.world,
             entities: &[],
-            next_entity: &mut $s.server.next_entity,
+            next_entity: &mut $s.side.next_entity,
             spawn,
             spawn_angle: $s.level.world_spawn_angle,
             spawn_dimension: crate::game::Dim::of_world_spawn(&$s.level).id(),

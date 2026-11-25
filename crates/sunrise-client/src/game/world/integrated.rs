@@ -1304,10 +1304,9 @@ pub(in crate::game::server_side) fn server_game(
     pack: PackResources,
     options: Options,
     settings: Settings,
-) -> Result<Game<'_, crate::game::server_side::ServerState>> {
+) -> Result<crate::game::ServerGame<'_>> {
     let gui = UiResources::server(&pack.source)?;
-    let audio = Audio::silent(&pack.source);
-    Game::new(res, pack, gui, options, settings, audio, None)
+    crate::game::ServerGame::new(res, pack, gui, options, settings, None)
 }
 
 /// Who the integrated server turns away: anyone but the owner until it is opened to the LAN.

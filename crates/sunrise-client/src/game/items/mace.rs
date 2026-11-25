@@ -336,8 +336,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 held.as_ref(),
                 &kind,
                 source.kind,
-                world_items!(self),
-                &world_stations!(self).enchantments,
+                server_world_items!(self),
+                &server_world_stations!(self).enchantments,
             );
             let (victim, lend) =
                 crate::game::entity::victim_and_causer!(self, index, attack.attacker, decision);

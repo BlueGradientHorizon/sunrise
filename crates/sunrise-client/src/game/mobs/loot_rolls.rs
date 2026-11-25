@@ -130,9 +130,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .server_items
             .clone()
             .zip(self.listened_kill_target(target));
-        let sequence = world_items!(self).loot_sequence(table);
+        let sequence = server_world_items!(self).loot_sequence(table);
         let Some((items, entity)) = listened else {
-            let items = world_items!(self);
+            let items = server_world_items!(self);
             return match sequence {
                 Some(id) => {
                     let random = self.side.rand_sequences.get(&id, self.level.seed);
@@ -297,7 +297,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             )
         });
         self.caller_loot(origin, None).with(|| {
-            let items = world_items!(self);
+            let items = server_world_items!(self);
             match items.loot_sequence(table) {
                 Some(sequence) => {
                     let random = self.side.rand_sequences.get(&sequence, self.level.seed);

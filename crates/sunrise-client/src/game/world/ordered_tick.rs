@@ -322,7 +322,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             .get_or_insert_with(random_source::entity)
                             .next_float()
                     };
-                    let side = game_side!(self);
+                    let side = server_game_side!(self);
                     let motion = sunrise_client::motion::BodyMotion {
                         world: &self.world,
                         collision: self.collision,
@@ -413,10 +413,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         }
                     }
                     let registry = self.pack.assets.registry;
-                    let tags = world_items!(self);
+                    let tags = server_world_items!(self);
                     let block_registries = &self.pack.block_registries;
                     let hooks = &self.damage_hooks;
-                    let side = game_side!(self);
+                    let side = server_game_side!(self);
                     let o = &mut self.orbs[i];
                     o.velocity = velocity;
                     let pending_sounds = &mut self.side.pending_sounds;

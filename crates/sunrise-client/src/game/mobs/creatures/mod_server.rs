@@ -904,8 +904,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 weapon,
                 &kind,
                 paused.source_kind(),
-                world_items!(self),
-                &world_stations!(self).enchantments,
+                server_world_items!(self),
+                &server_world_stations!(self).enchantments,
             );
             // The paused hit carries its setup's decision: an attacker id only if it was lent then.
             let lent_index = paused

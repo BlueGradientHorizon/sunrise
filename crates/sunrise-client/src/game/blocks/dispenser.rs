@@ -1559,12 +1559,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
         table: &str,
         held: Option<&ItemStack>,
     ) -> Vec<ItemStack> {
-        match world_items!(self).loot_sequence(parent) {
+        match server_world_items!(self).loot_sequence(parent) {
             Some(sequence) => {
                 let random = self.side.rand_sequences.get(&sequence, self.level.seed);
-                world_items!(self).loot_table_from(table, false, held, random)
+                server_world_items!(self).loot_table_from(table, false, held, random)
             }
-            None => world_items!(self).loot_table(table, false, held, &mut self.world.random),
+            None => {
+                server_world_items!(self).loot_table(table, false, held, &mut self.world.random)
+            }
         }
     }
     /// `Entity.spawnAtLocation(level, stack, offset)`: an item at the entity's

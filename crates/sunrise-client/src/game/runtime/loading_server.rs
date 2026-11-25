@@ -30,15 +30,7 @@ pub(in crate::game) fn start_dedicated_game(
             false,
         )?),
     };
-    let mut game = Game::new(
-        res,
-        pack,
-        gui,
-        options,
-        settings,
-        Audio::for_server(),
-        prepared,
-    )?;
+    let mut game = crate::game::ServerGame::new(res, pack, gui, options, settings, prepared)?;
     if game.options.benchmark.is_some() {
         game.settings.vsync = false;
         game.settings.max_fps = 260;

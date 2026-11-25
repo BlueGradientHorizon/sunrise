@@ -1556,17 +1556,21 @@ pub(in crate::game) struct ClientConstructEffects {
 }
 
 impl ClientState {
-    // Kept out-of-line so its field temporaries do not bloat `Game::construct`'s unoptimised frame.
+    // Kept out-of-line so its field temporaries do not bloat `ClientGame::construct`'s unoptimised frame.
     #[inline(never)]
-    pub(in crate::game) fn new(
+    #[allow(clippy::too_many_arguments, clippy::boxed_local)]
+    pub(in crate::game) fn build(
         now: Instant,
         music_toast: u8,
         tutorial: tutorial::Tutorial,
         standalone_geometry: native_block_entity_draw::StandaloneGeometry,
         prepared: Box<ClientCpuResources>,
         effects: Box<ClientConstructEffects>,
-    ) -> Self {
-        Self {
+        extra: Box<super::ClientSidePrep>,
+        wc: Box<super::WrappedClientInit>,
+        wr: Box<super::WrappedRendererInit>,
+    ) -> Box<Self> {
+        Box::new(Self {
             debug_density: RefCell::default(),
             pending_pack_reload: false,
             frame_attempted: render_settings::FrameAttempt::default(),
@@ -1825,7 +1829,63 @@ impl ClientState {
             requested_camera_type: Default::default(),
             darkness_blend: (0.0, 0.0),
             player_model: None,
-        }
+            pending_entry: wc.pending_entry,
+            pack_reload: wc.pack_reload,
+            server_packs: wc.server_packs,
+            client_reports: wc.client_reports,
+            command_prompt: wc.command_prompt,
+            dialogs: wc.dialogs,
+            pending_initial_models: wc.pending_initial_models,
+            stitching_block_atlas: wc.stitching_block_atlas,
+            lod: wc.lod,
+            lod_blue_map: wc.lod_blue_map,
+            video_modes: wc.video_modes,
+            screen_state: wc.screen_state,
+            window: wc.window,
+            renderer: wr.renderer,
+            skin_models: wc.skin_models,
+            lent_level_random: wc.lent_level_random,
+            pad: wc.pad,
+            live_scenes: wc.live_scenes,
+            debug_renderers: wc.debug_renderers,
+            audio: extra.audio,
+            particles: extra.particles,
+            pickups: wc.pickups,
+            creation_job: wc.creation_job,
+            title: wc.title,
+            armor_stand_assets: extra.armor_stand_assets,
+            text_displays: wc.text_displays,
+            skin_downloads: extra.skin_downloads,
+            recipe_ui: wc.recipe_ui,
+            spawners: wc.spawners,
+            mod_screen: wc.mod_screen,
+            creative_screen: extra.creative_screen,
+            pending_screenshot: wc.pending_screenshot,
+            screenshot_sequence: wc.screenshot_sequence,
+            pending_render_capture: wc.pending_render_capture,
+            pending_bench: wc.pending_bench,
+            flight: wc.flight,
+            ui_wait: wc.ui_wait,
+            input_trace: wc.input_trace,
+            repro: wc.repro,
+            occlusion: wc.occlusion,
+            async_particle_culler: wc.async_particle_culler,
+            pending_uploads: wc.pending_uploads,
+            pending_uploads_merge: wc.pending_uploads_merge,
+            mod_jobs: wc.mod_jobs,
+            client_item_use: wc.client_item_use,
+            client_tasks: wc.client_tasks,
+            pending_client_tasks: wc.pending_client_tasks,
+            world_options: wc.world_options,
+            command_block_screen: wc.command_block_screen,
+            block_editor: wc.block_editor,
+            registered_debug_entries: extra.registered_debug_entries,
+            debug_entries: extra.debug_entries,
+            clipboard: wc.clipboard,
+            pending_save: wc.pending_save,
+            tab_list: wc.tab_list,
+            adv_ui: wc.adv_ui,
+        })
     }
 }
 
@@ -1861,13 +1921,24 @@ impl crate::game::Side for ClientState {
     fn as_host<'a, 'g>(game: &'g crate::game::Game<'a, Self>) -> &'g dyn mod_api::Host {
         game
     }
-    fn as_config_context<'a, 'g>(game: &'g crate::game::Game<'a, Self>) -> &'g dyn mod_api::ConfigContext {
+    fn as_block_states_backend<'a, 'g>(
+        game: &'g crate::game::Game<'a, Self>,
+    ) -> &'g dyn mod_api::prelude::BlockStatesBackend {
         game
     }
-    fn as_reload_context<'a, 'g>(game: &'g crate::game::Game<'a, Self>) -> &'g dyn mod_api::ReloadContext {
+    fn as_config_context<'a, 'g>(
+        game: &'g crate::game::Game<'a, Self>,
+    ) -> &'g dyn mod_api::ConfigContext {
         game
     }
-    fn as_pack_discovery_context_mut<'a, 'g>(game: &'g mut crate::game::Game<'a, Self>) -> &'g mut dyn mod_api::PackDiscoveryContext {
+    fn as_reload_context<'a, 'g>(
+        game: &'g crate::game::Game<'a, Self>,
+    ) -> &'g dyn mod_api::ReloadContext {
+        game
+    }
+    fn as_pack_discovery_context_mut<'a, 'g>(
+        game: &'g mut crate::game::Game<'a, Self>,
+    ) -> &'g mut dyn mod_api::PackDiscoveryContext {
         game
     }
     fn as_client_host_mut<'a, 'g>(game: &'g mut crate::game::Game<'a, Self>) -> Option<&'g mut dyn mod_api::ClientHost> {

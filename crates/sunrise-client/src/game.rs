@@ -29,7 +29,17 @@ use resource_load::{load_resources, load_resources_skip_lang, load_resources_unc
 /// which borrows stay disjoint from.
 macro_rules! world_items {
     ($s:ident) => {
-        match (&$s.server_items, &$s.world_tables.0) {
+        match (&$s.server_items, $crate::game::Side::world_tables(&$s.side)) {
+            (Some(items), _) => &**items,
+            (None, Some(t)) => &t.items,
+            (None, None) => $s.res.items(),
+        }
+    };
+}
+#[allow(unused_macros)]
+macro_rules! server_world_items {
+    ($s:ident) => {
+        match (&$s.server_items, $s.side.world_tables.0.as_ref()) {
             (Some(items), _) => &**items,
             (None, Some(t)) => &t.items,
             (None, None) => $s.res.items(),
@@ -38,7 +48,16 @@ macro_rules! world_items {
 }
 macro_rules! world_recipes {
     ($s:ident) => {
-        match &$s.world_tables.0 {
+        match $crate::game::Side::world_tables(&$s.side) {
+            Some(t) => &t.recipes,
+            None => $s.res.recipes(),
+        }
+    };
+}
+#[allow(unused_macros)]
+macro_rules! server_world_recipes {
+    ($s:ident) => {
+        match $s.side.world_tables.0.as_ref() {
             Some(t) => &t.recipes,
             None => $s.res.recipes(),
         }
@@ -46,7 +65,16 @@ macro_rules! world_recipes {
 }
 macro_rules! world_stations {
     ($s:ident) => {
-        match &$s.world_tables.0 {
+        match $crate::game::Side::world_tables(&$s.side) {
+            Some(t) => &t.stations,
+            None => $s.res.stations(),
+        }
+    };
+}
+#[allow(unused_macros)]
+macro_rules! server_world_stations {
+    ($s:ident) => {
+        match $s.side.world_tables.0.as_ref() {
             Some(t) => &t.stations,
             None => $s.res.stations(),
         }
@@ -90,7 +118,7 @@ macro_rules! game_side {
                 Some(mod_api::LevelRef::with_generation(
                     epoch,
                     key,
-                    $s.levels.0.runtime.generation_of(id),
+                    $crate::game::Side::levels_generation(&$s.side, id),
                 ))
             }),
             facts: $s.res.facts(),
@@ -111,15 +139,11 @@ macro_rules! game_side {
                 living_types: $s.res.living_type_keys(),
                 attributes: &$s.motion.attributes,
                 player_effects: &$s.potions.effects,
-                player_uuid: $s.server.lan_acting_uuid,
+                player_uuid: $crate::game::Side::lan_acting_uuid(&$s.side),
                 player_attachments: &$s.player_state.attachments,
                 entity_attachments: &*$s.entity_attachments,
             },
-            tag_items: if $s.options.execution_role.is_client() {
-                $s.remote.as_ref().and_then(|remote| remote.tags.as_ref())
-            } else {
-                $s.session_lock.0.is_some().then(|| $s.res.items())
-            },
+            tag_items: $crate::game::Side::game_side_tag_items(&$s.side, &$s.remote, &$s.res),
         }
     };
     ($s:expr, $server:expr) => {{
@@ -156,6 +180,25 @@ macro_rules! game_side {
                 session_lock.then(|| $s.res.items())
             },
         }
+    }};
+}
+/// Server-side `game_side!` using direct field borrows on `self.side` so sibling mutable borrows
+/// of unrelated `ServerState` fields (e.g. `pending_sounds`, `ordered.lava_random`) stay disjoint.
+#[allow(unused_macros)]
+macro_rules! server_game_side {
+    ($s:expr) => {{
+        let level = $s.native_lifecycle.epoch().and_then(|epoch| {
+            let key = $s.dim.key();
+            let id = mod_api::__private::dimension_id(key)?;
+            Some(mod_api::LevelRef::with_generation(
+                epoch,
+                key,
+                $s.side.levels.0.runtime.generation_of(id),
+            ))
+        });
+        let player_uuid = $s.side.lan_acting_uuid;
+        let session_lock = $s.side.session_lock.0.is_some();
+        game_side!($s, (player_uuid, level, session_lock))
     }};
 }
 /// The world's packs' content files, as a field-level borrow (see the macros).
@@ -3622,9 +3665,14 @@ pub(in crate::game) trait Side: Sized + crate::game::side_ops::blocks::SideOps +
     fn is_server() -> bool { Self::IS_SERVER }
     fn host_side<'a, 'g>(game: &'g mut Game<'a, Self>) -> mod_api::HostSide<'g>;
     fn as_host<'a, 'g>(game: &'g Game<'a, Self>) -> &'g dyn mod_api::Host;
+    fn as_block_states_backend<'a, 'g>(
+        game: &'g Game<'a, Self>,
+    ) -> &'g dyn mod_api::prelude::BlockStatesBackend;
     fn as_config_context<'a, 'g>(game: &'g Game<'a, Self>) -> &'g dyn mod_api::ConfigContext;
     fn as_reload_context<'a, 'g>(game: &'g Game<'a, Self>) -> &'g dyn mod_api::ReloadContext;
-    fn as_pack_discovery_context_mut<'a, 'g>(game: &'g mut Game<'a, Self>) -> &'g mut dyn mod_api::PackDiscoveryContext;
+    fn as_pack_discovery_context_mut<'a, 'g>(
+        game: &'g mut Game<'a, Self>,
+    ) -> &'g mut dyn mod_api::PackDiscoveryContext;
     fn as_server_host_mut<'a, 'g>(_game: &'g mut Game<'a, Self>) -> Option<&'g mut dyn mod_api::ServerHost> { None }
     fn as_client_host_mut<'a, 'g>(_game: &'g mut Game<'a, Self>) -> Option<&'g mut dyn mod_api::ClientHost> { None }
     fn as_client_text_host<'a, 'g>(_game: &'g Game<'a, Self>) -> Option<&'g dyn mod_api::prelude::ClientTextClientHost> { None }
@@ -3635,6 +3683,27 @@ pub(in crate::game) trait Side: Sized + crate::game::side_ops::blocks::SideOps +
     fn session_lock_active(&self) -> bool { false }
     fn level_ref(&self, _dim: Dim, _epoch: Option<mod_api::WorldEpoch>) -> Option<mod_api::LevelRef> { None }
     fn game_side_tag_items<'a>(&self, _remote: &'a Option<remote::Remote>, _res: &'a Resources) -> Option<&'a Items> { None }
+    fn levels(&self) -> Option<&levels::Levels> { None }
+    fn others(&self) -> Option<&sunrise_client::join_seq::ResidentList<commands::OtherEntity>> { None }
+    fn held_out(&self) -> &[u32] { &[] }
+    fn fns(&self) -> Option<&functions::FnState> { None }
+    fn cmds(&self) -> Option<&commands::extra::CommandExtras> { None }
+    fn lan_acting(&self) -> Option<u32> { None }
+    fn lan_acting_entity(&self) -> Option<u32> { None }
+    fn lan_acting_fake(&self) -> bool { false }
+    fn lan_guest_swaps(&self) -> &[u32] { &[] }
+    fn acting_abilities(&self) -> Option<sunrise_client::lan::abilities::PlayerAbilities> { None }
+    fn native_command_filter(&self) -> bool { false }
+    fn riding_order(&self) -> i64 { 0 }
+    fn vehicle_mobs(&self) -> Option<&crate::game::server_side::boat_passengers::VehicleMobs> { None }
+    fn lan_acting_name(&self) -> Option<&str> { None }
+    fn server_tick_deadline(&self) -> Option<Instant> { None }
+    fn locate_resident_owner<'a>(
+        _game: &Game<'a, Self>,
+        _at: sunrise_client::join_seq::residency::table::Location,
+    ) -> Option<sunrise_client::join_seq::residency::table::SourceEntity<(commands::Target, bool)>> {
+        None
+    }
 }
 
 struct Game<'a, S> {
@@ -5366,13 +5435,26 @@ fn load_forcefield(root: &sunrise_assets::resource_source::ResourceSource) -> (u
         .filter(|(w, h, _)| w == h && w.is_power_of_two())
         .unwrap_or((1, 1, vec![0; 4]))
 }
-struct ConstructPrep {
+struct ServerConstructPrep {
     level: Level,
     save: Arc<SaveDir>,
     painting_variants: paintings::PaintingVariants,
-    armor_stand_assets: armor_stands::ArmorStandAssets,
     item_features: sunrise_items::creative_catalog::ItemFeatureRequirements,
     creative_catalog: Arc<sunrise_items::creative_catalog::Catalog>,
+    world: World,
+    now: Instant,
+    pack: PackResources,
+    gui: UiResources,
+    options: Options,
+    settings: Settings,
+    streaming: Streaming,
+}
+
+struct ClientConstructPrep {
+    level: Level,
+    painting_variants: paintings::PaintingVariants,
+    armor_stand_assets: armor_stands::ArmorStandAssets,
+    item_features: sunrise_items::creative_catalog::ItemFeatureRequirements,
     creative_screen: Creative,
     client_prepared: Box<client_state::ClientCpuResources>,
     world: World,
@@ -5389,8 +5471,16 @@ struct ConstructPrep {
     standalone_geometry: native_block_entity_draw::StandaloneGeometry,
 }
 
-struct ConstructEffects {
+struct ServerConstructEffects {
     structure_spawns: sunrise_client::mobs::spawn_selection::StructureSpawns,
+    clock: FixedStep,
+    tick: sunrise_client::parallel::TickThread,
+    skin_profiles: RefCell<sunrise_client::skins::Resolver>,
+    profile: profile_capture::Profile,
+    ui: chat::UiState,
+}
+
+struct ClientConstructEffectsBundle {
     clock: FixedStep,
     tick: sunrise_client::parallel::TickThread,
     skin_downloads: RefCell<sunrise_client::skins::Downloader>,
@@ -5402,8 +5492,24 @@ struct ConstructEffects {
     client: Box<client_state::ClientConstructEffects>,
 }
 
+pub(in crate::game) struct ClientSidePrep {
+    pub(in crate::game) audio: client_side::ClientShared<Audio>,
+    pub(in crate::game) particles:
+        client_side::ClientShared<sunrise_client::particles::ParticleEngine>,
+    pub(in crate::game) armor_stand_assets:
+        client_side::ClientOnly<armor_stands::ArmorStandAssets>,
+    pub(in crate::game) creative_screen: client_side::ClientOnly<Creative>,
+    pub(in crate::game) skin_downloads:
+        client_side::ClientOnly<RefCell<sunrise_client::skins::Downloader>>,
+    pub(in crate::game) registered_debug_entries: client_side::ClientOnly<
+        std::sync::Arc<[sunrise_client::debug_entries::RegisteredDebugEntry]>,
+    >,
+    pub(in crate::game) debug_entries:
+        client_side::ClientOnly<sunrise_client::debug_entries::DebugEntries>,
+}
+
 // Out-of-line init bundles for wrapped Game fields so finish_construct's unoptimised stack stays small.
-struct WrappedClientInit {
+pub(in crate::game) struct WrappedClientInit {
     pending_entry: client_side::ClientOnly<Option<PendingWorldEntry>>,
     pack_reload: client_side::ClientOnly<Option<packs::PackReload>>,
     server_packs: client_side::ClientOnly<server_packs::ServerPackState>,
@@ -5463,7 +5569,7 @@ struct WrappedClientInit {
     adv_ui: client_side::ClientOnly<advancements_screen::AdvUi>,
 }
 
-struct WrappedServerInit {
+pub(in crate::game) struct WrappedServerInit {
     player_autosaves: server_side::ServerOnly<sunrise_client::lan::playerdata::Autosaves>,
     session_lock: server_side::ServerShared<Option<sunrise_client::save::SessionLock>>,
     paused_mob_hurt: server_side::ServerOnly<Option<Box<sunrise_client::mobs::PausedMobHurt>>>,
@@ -5494,24 +5600,13 @@ struct WrappedServerInit {
     exec: server_side::ServerOnly<commands::execute::ExecState>,
 }
 
-struct WrappedRendererInit {
+pub(in crate::game) struct WrappedRendererInit {
     renderer: client_side::ClientShared<Option<Box<Renderer>>>,
 }
 
 struct WrappedPrepInit {
-    save: server_side::ServerShared<Arc<SaveDir>>,
-    audio: client_side::ClientShared<Audio>,
-    particles: client_side::ClientShared<sunrise_client::particles::ParticleEngine>,
-    armor_stand_assets: client_side::ClientOnly<armor_stands::ArmorStandAssets>,
     item_features: sunrise_items::creative_catalog::ItemFeatureRequirements,
-    creative_catalog: server_side::ServerOnly<Arc<sunrise_items::creative_catalog::Catalog>>,
-    creative_screen: client_side::ClientOnly<Creative>,
-    skin_downloads: client_side::ClientOnly<RefCell<sunrise_client::skins::Downloader>>,
     skin_profiles: RefCell<sunrise_client::skins::Resolver>,
-    registered_debug_entries: client_side::ClientOnly<
-        std::sync::Arc<[sunrise_client::debug_entries::RegisteredDebugEntry]>,
-    >,
-    debug_entries: client_side::ClientOnly<sunrise_client::debug_entries::DebugEntries>,
     level: Level,
     painting_variants: paintings::PaintingVariants,
     world: World,
@@ -5525,8 +5620,6 @@ struct WrappedPrepInit {
     tick: sunrise_client::parallel::TickThread,
     profile: profile_capture::Profile,
     ui: chat::UiState,
-    server: Box<ServerState>,
-    client: Box<ClientState>,
 }
 
 // Const-generic impl keeps constructor helpers out of line without creating replacement slots.
@@ -5637,38 +5730,20 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
         })
     }
     #[inline(never)]
-    fn wrap_prep_and_effects(
-        prep: Box<ConstructPrep>,
-        effects: Box<ConstructEffects>,
-    ) -> (
-        Box<WrappedPrepInit>,
-        sunrise_assets::resource_source::ResourceSource,
-    ) {
-        let music_toast = prep.settings.file.int("musicToast").clamp(0, 2) as u8;
-        let server = Box::new(ServerState::new(effects.structure_spawns));
-        let client = Box::new(ClientState::new(
-            prep.now,
-            music_toast,
-            prep.tutorial,
-            prep.standalone_geometry,
-            prep.client_prepared,
-            effects.client,
-        ));
-        let resource_source = prep.resource_source;
+    fn wrap_server_prep_and_effects(
+        prep: Box<ServerConstructPrep>,
+        effects: Box<ServerConstructEffects>,
+    ) -> (Box<WrappedPrepInit>, Box<ServerState>) {
+        let ws = Self::build_wrapped_server();
+        let server = ServerState::build(
+            effects.structure_spawns,
+            server_side::ServerShared::new(prep.save),
+            server_side::ServerOnly::new(prep.creative_catalog),
+            ws,
+        );
         let wp = Box::new(WrappedPrepInit {
-            save: server_side::ServerShared::new(prep.save),
-            audio: client_side::ClientShared::new(prep.audio),
-            particles: client_side::ClientShared::new(prep.particles),
-            armor_stand_assets: client_side::ClientOnly::new(prep.armor_stand_assets),
             item_features: prep.item_features,
-            creative_catalog: server_side::ServerOnly::new(prep.creative_catalog),
-            creative_screen: client_side::ClientOnly::new(prep.creative_screen),
-            skin_downloads: client_side::ClientOnly::new(effects.skin_downloads),
             skin_profiles: effects.skin_profiles,
-            registered_debug_entries: client_side::ClientOnly::new(
-                effects.registered_debug_entries,
-            ),
-            debug_entries: client_side::ClientOnly::new(effects.debug_entries),
             level: prep.level,
             painting_variants: prep.painting_variants,
             world: prep.world,
@@ -5682,19 +5757,65 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             tick: effects.tick,
             profile: effects.profile,
             ui: effects.ui,
-            server,
-            client,
         });
-        (wp, resource_source)
+        (wp, server)
     }
     #[inline(never)]
-    fn assemble_game<'a>(
+    fn wrap_client_prep_and_effects(
+        prep: Box<ClientConstructPrep>,
+        effects: Box<ClientConstructEffectsBundle>,
+    ) -> (Box<WrappedPrepInit>, Box<ClientState>) {
+        let music_toast = prep.settings.file.int("musicToast").clamp(0, 2) as u8;
+        let wc = Self::build_wrapped_client();
+        let wr = Self::build_wrapped_renderer();
+        let extra = Box::new(ClientSidePrep {
+            audio: client_side::ClientShared::new(prep.audio),
+            particles: client_side::ClientShared::new(prep.particles),
+            armor_stand_assets: client_side::ClientOnly::new(prep.armor_stand_assets),
+            creative_screen: client_side::ClientOnly::new(prep.creative_screen),
+            skin_downloads: client_side::ClientOnly::new(effects.skin_downloads),
+            registered_debug_entries: client_side::ClientOnly::new(
+                effects.registered_debug_entries,
+            ),
+            debug_entries: client_side::ClientOnly::new(effects.debug_entries),
+        });
+        let client = ClientState::build(
+            prep.now,
+            music_toast,
+            prep.tutorial,
+            prep.standalone_geometry,
+            prep.client_prepared,
+            effects.client,
+            extra,
+            wc,
+            wr,
+        );
+        let wp = Box::new(WrappedPrepInit {
+            item_features: prep.item_features,
+            skin_profiles: effects.skin_profiles,
+            level: prep.level,
+            painting_variants: prep.painting_variants,
+            world: prep.world,
+            now: prep.now,
+            pack: prep.pack,
+            gui: prep.gui,
+            options: prep.options,
+            settings: prep.settings,
+            streaming: prep.streaming,
+            clock: effects.clock,
+            tick: effects.tick,
+            profile: effects.profile,
+            ui: effects.ui,
+        });
+        (wp, client)
+    }
+    #[inline(never)]
+    #[allow(clippy::boxed_local)]
+    fn assemble_game<'a, S>(
         res: &'a Arc<Resources>,
         wp: Box<WrappedPrepInit>,
-        wc: Box<WrappedClientInit>,
-        ws: Box<WrappedServerInit>,
-        wr: Box<WrappedRendererInit>,
-    ) -> Game<'a> {
+        side: Box<S>,
+    ) -> Game<'a, S> {
         let loop_side = wp.options.execution_role.loop_side();
         let mod_sources = wp.options.mods.clone();
         let registry = wp.pack.assets.registry;
@@ -5708,25 +5829,15 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             world_biomes_base: None,
             res: res.clone(),
             rest_loader: None,
-            pending_entry: wc.pending_entry,
-            pack_reload: wc.pack_reload,
-            server_packs: wc.server_packs,
-            client_reports: wc.client_reports,
-            command_prompt: wc.command_prompt,
-            dialogs: wc.dialogs,
             integrated_starting: None,
             collision: res.collision(),
             motion: res.motion(),
             health_resources: res.motion().health.clone(),
             damage_tag_generation: 1,
-            pending_initial_models: wc.pending_initial_models,
-            stitching_block_atlas: wc.stitching_block_atlas,
             pack: wp.pack,
             gui: wp.gui,
             world: wp.world,
             streaming: wp.streaming,
-            lod: wc.lod,
-            lod_blue_map: wc.lod_blue_map,
             options: wp.options,
             player: None,
             spawn: None,
@@ -5752,42 +5863,23 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             } else {
                 sunrise_client::command::args::GameMode::Survival
             },
-            video_modes: wc.video_modes,
             pause: false,
-            screen_state: wc.screen_state,
-            window: wc.window,
-            renderer: wr.renderer,
-            skin_models: wc.skin_models,
-            lent_level_random: wc.lent_level_random,
             previous: wp.now,
-            pad: wc.pad,
-            live_scenes: wc.live_scenes,
-            debug_renderers: wc.debug_renderers,
             ticks: 0,
             error: None,
-            save: wp.save,
             level: wp.level,
-            player_autosaves: ws.player_autosaves,
-            session_lock: ws.session_lock,
-            audio: wp.audio,
             loop_context: Self::build_loop_context(res, loop_side),
             tick: wp.tick,
             setting_overrides: Default::default(),
             damage_hooks: native_hooks::DAMAGE_HOOKS,
-            paused_mob_hurt: ws.paused_mob_hurt,
             dropped: Default::default(),
-            particles: wp.particles,
-            pickups: wc.pickups,
-            creation_job: wc.creation_job,
             mobs: Default::default(),
             mob_index: Default::default(),
             creatures: Default::default(),
-            raiding: ws.raiding,
             be_anims: Self::build_be_anims(registry),
             using: None,
             use_duration: 0,
             use_start: Default::default(),
-            title: wc.title,
             armor: [None, None, None, None],
             offhand: None,
             equipment: Default::default(),
@@ -5804,15 +5896,10 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             sleeping: None,
             sleep_timer: 0,
             dim: Dim::Overworld,
-            world_tables: ws.world_tables,
-            server_loot: ws.server_loot,
             world_flat: false,
-            levels: ws.levels,
             portals: Default::default(),
             end: Default::default(),
             block_ticks: Ticks::new(0),
-            tickets: ws.tickets,
-            random_tick_sections: ws.random_tick_sections,
             level_events: Vec::new(),
             falling: Default::default(),
             paintings: Default::default(),
@@ -5820,8 +5907,6 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             item_frames: Default::default(),
             armor_stands: Default::default(),
             cushions: Default::default(),
-            others: server_side::ServerShared::new(Default::default()),
-            armor_stand_assets: wp.armor_stand_assets,
             boats: Default::default(),
             carts: Default::default(),
             bolts: Default::default(),
@@ -5829,55 +5914,32 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             dragon: Default::default(),
             crystals: Default::default(),
             breath_clouds: Default::default(),
-            text_displays: wc.text_displays,
-            skin_downloads: wp.skin_downloads,
             skin_profiles: wp.skin_profiles,
             riding: None,
             posed_rider: None,
             pending: Default::default(),
-            spill: ws.spill,
-            recipe_ui: wc.recipe_ui,
             hook: Default::default(),
             tridents: Default::default(),
             rockets: Default::default(),
             ominous_spawners: Default::default(),
-            spawners: wc.spawners,
             tnts: Default::default(),
             transactions: Default::default(),
-            mod_screen: wc.mod_screen,
             spawner_tick_positions: Vec::new(),
             trial_spawner_tick_positions: Vec::new(),
             loop_states: Default::default(),
             item_features: wp.item_features,
-            creative_catalog: wp.creative_catalog,
-            creative_screen: wp.creative_screen,
             creative_contents: Default::default(),
             entity_initialization: Default::default(),
             kinetic_feedback: HashMap::new(),
             control: None,
             perf: Default::default(),
-            pending_screenshot: wc.pending_screenshot,
-            screenshot_sequence: wc.screenshot_sequence,
-            pending_render_capture: wc.pending_render_capture,
-            pending_bench: wc.pending_bench,
-            flight: wc.flight,
-            ui_wait: wc.ui_wait,
             events: Default::default(),
-            input_trace: wc.input_trace,
-            repro: wc.repro,
             profile: wp.profile,
             agent: agent::Agent::default(),
-            occlusion: wc.occlusion,
-            async_particle_culler: wc.async_particle_culler,
-            pending_uploads: wc.pending_uploads,
-            pending_uploads_merge: wc.pending_uploads_merge,
             mods: mod_sources,
-            mod_jobs: wc.mod_jobs,
             recipe_tables: Default::default(),
-            client_item_use: wc.client_item_use,
             native_lifecycle: Default::default(),
             resident_entities: Default::default(),
-            lent_mobs: ws.lent_mobs,
             native_configs: Default::default(),
             native_net: Default::default(),
             sky_darken_memo: Default::default(),
@@ -5887,8 +5949,6 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             collider_histories: Default::default(),
             attachment_indexes: Default::default(),
             remote: None,
-            client_tasks: wc.client_tasks,
-            pending_client_tasks: wc.pending_client_tasks,
             realm_session: false,
             lan_session: false,
             replay: Default::default(),
@@ -5897,92 +5957,49 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             serving: None,
             #[cfg(feature = "friends")]
             friends: None,
-            world_options: wc.world_options,
-            command_block_screen: wc.command_block_screen,
-            block_editor: wc.block_editor,
-            test_defs: ws.test_defs,
-            game_tests: ws.game_tests,
-            registered_debug_entries: wp.registered_debug_entries,
-            debug_entries: wp.debug_entries,
             passages: Default::default(),
             previous_mode: None,
-            clipboard: wc.clipboard,
-            pending_save: wc.pending_save,
             entity_reach: 3.0,
             block_reach: 4.5,
-            native_commands: ws.native_commands,
-            lan_building_boxes: ws.lan_building_boxes,
-            lan_displaced_players: ws.lan_displaced_players,
             player_state: Default::default(),
-            fake_action: ws.fake_action,
-            server_lists: ws.server_lists,
-            cmds: ws.cmds,
             server_items: None,
-            reload_resources: ws.reload_resources,
             ui: wp.ui,
-            combat: ws.combat,
-            guest_combat: ws.guest_combat,
             mount: Default::default(),
             stats: Default::default(),
             score: Default::default(),
-            fns: ws.fns,
-            exec: ws.exec,
             border: Default::default(),
-            tab_list: wc.tab_list,
             adv: Default::default(),
-            adv_ui: wc.adv_ui,
             fangs: Default::default(),
-            server: *wp.server,
-            client: *wp.client,
+            side: *side,
         }
     }
 }
 
-impl<'a, __Side: crate::game::Side> Game<'a, __Side> {
-    /// A game with no world open, over the loaded resources: the window's,
-    /// or an integrated server's on its own thread.
-    fn new(
+impl<'a> ServerGame<'a> {
+    /// A logical server game (dedicated server or integrated server thread).
+    pub(in crate::game) fn new(
         res: &'a Arc<Resources>,
         pack: PackResources,
         gui: UiResources,
         options: Options,
         settings: Settings,
-        audio: Audio,
         prepared: Option<GameCpuResources>,
     ) -> Result<Self> {
-        Self::construct(res, pack, gui, options, settings, audio, prepared, None)
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn construct(
-        res: &'a Arc<Resources>,
-        pack: PackResources,
-        gui: UiResources,
-        options: Options,
-        settings: Settings,
-        audio: Audio,
-        prepared: Option<GameCpuResources>,
-        initial: Option<&mut Option<initial_client_models::InitialModelGeneration>>,
-    ) -> Result<Self> {
-        // Preparation, effectful init, and struct assembly live in separate out-of-line frames to keep unoptimised stack small.
-        let prep =
-            Self::prepare_construct(res, pack, gui, options, settings, audio, prepared, initial)?;
+        debug_assert!(options.execution_role.is_logical_server());
+        let prep = Self::prepare_construct(res, pack, gui, options, settings, prepared)?;
         let effects = Self::prepare_effects(&prep);
         Ok(Self::finish_construct(res, prep, effects))
     }
 
     #[inline(never)]
-    #[allow(clippy::too_many_arguments)]
     fn prepare_construct(
         res: &'a Arc<Resources>,
         pack: PackResources,
         gui: UiResources,
         options: Options,
         settings: Settings,
-        audio: Audio,
         prepared: Option<GameCpuResources>,
-        initial: Option<&mut Option<initial_client_models::InitialModelGeneration>>,
-    ) -> Result<Box<ConstructPrep>> {
+    ) -> Result<Box<ServerConstructPrep>> {
         #[cfg(test)]
         Self::initialize_mod_runtime_for_tests();
         // A scoped hook on this thread asks this game's parts.
@@ -6009,24 +6026,148 @@ impl<'a, __Side: crate::game::Side> Game<'a, __Side> {
                 !options.execution_role.is_dedicated_server(),
             )
         })?;
-        let world = if options.execution_role.is_logical_server() {
-            crate::game::authoritative_world_for_mods(res, 0)
-        } else {
-            crate::game::world_for_mods(res.facts().air, 0)
-        };
+        let world = crate::game::authoritative_world_for_mods(res, 0);
+        let now = Instant::now();
+        // Until a world is opened the streamer is idle.
+        let mut streaming = Streaming::new(
+            Arc::new(TestTerrain::new(registry, res.biomes())?),
+            pack.context.clone(),
+            1,
+        );
+        streaming.paused = true;
+        let painting_variants = prepared.painting_variants;
+        let item_features = prepared.item_features;
+        let creative_catalog = prepared.creative_screen.catalog().clone();
+        Ok(Box::new(ServerConstructPrep {
+            level,
+            save,
+            painting_variants,
+            item_features,
+            creative_catalog,
+            world,
+            now,
+            pack,
+            gui,
+            options,
+            settings,
+            streaming,
+        }))
+    }
+
+    #[inline(never)]
+    fn prepare_effects(prep: &ServerConstructPrep) -> Box<ServerConstructEffects> {
+        let slow_frame_ms = prep
+            .options
+            .spikes
+            .unwrap_or(sunrise_client::client_perf::SLOW_FRAME_MS);
+        #[cfg(not(test))]
+        let structure_spawns =
+            sunrise_client::mobs::spawn_selection::StructureSpawns::load(&prep.options.resources);
+        #[cfg(test)]
+        let structure_spawns = resource_load::cached_structure_spawns(&prep.options.resources);
+        let clock = FixedStep::default();
+        let tick = sunrise_client::parallel::TickThread::mint();
+        let skin_profiles = RefCell::new(sunrise_client::skins::Resolver::new());
+        let profile = profile_capture::Profile::new(slow_frame_ms);
+        let ui = chat::UiState::new();
+        Box::new(ServerConstructEffects {
+            structure_spawns,
+            clock,
+            tick,
+            skin_profiles,
+            profile,
+            ui,
+        })
+    }
+
+    #[inline(never)]
+    fn finish_construct(
+        res: &'a Arc<Resources>,
+        prep: Box<ServerConstructPrep>,
+        effects: Box<ServerConstructEffects>,
+    ) -> Self {
+        let (wp, server) = ConstructInit::<true>::wrap_server_prep_and_effects(prep, effects);
+        let mut game = ConstructInit::<true>::assemble_game(res, wp, server);
+        game.reset_entity_residency();
+        game
+    }
+}
+
+impl<'a> ClientGame<'a> {
+    /// A client game with no world open, over the loaded resources.
+    #[allow(dead_code)]
+    pub(in crate::game) fn new(
+        res: &'a Arc<Resources>,
+        pack: PackResources,
+        gui: UiResources,
+        options: Options,
+        settings: Settings,
+        audio: Audio,
+        prepared: Option<GameCpuResources>,
+    ) -> Result<Self> {
+        Self::construct(res, pack, gui, options, settings, audio, prepared, None)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(in crate::game) fn construct(
+        res: &'a Arc<Resources>,
+        pack: PackResources,
+        gui: UiResources,
+        options: Options,
+        settings: Settings,
+        audio: Audio,
+        prepared: Option<GameCpuResources>,
+        initial: Option<&mut Option<initial_client_models::InitialModelGeneration>>,
+    ) -> Result<Self> {
+        debug_assert!(!options.execution_role.is_logical_server());
+        // Preparation, effectful init, and struct assembly live in separate out-of-line frames to keep unoptimised stack small.
+        let prep =
+            Self::prepare_construct(res, pack, gui, options, settings, audio, prepared, initial)?;
+        let effects = Self::prepare_effects(&prep);
+        Ok(Self::finish_construct(res, prep, effects))
+    }
+
+    #[inline(never)]
+    #[allow(clippy::too_many_arguments)]
+    fn prepare_construct(
+        res: &'a Arc<Resources>,
+        pack: PackResources,
+        gui: UiResources,
+        options: Options,
+        settings: Settings,
+        audio: Audio,
+        prepared: Option<GameCpuResources>,
+        initial: Option<&mut Option<initial_client_models::InitialModelGeneration>>,
+    ) -> Result<Box<ClientConstructPrep>> {
+        #[cfg(test)]
+        Self::initialize_mod_runtime_for_tests();
+        // A scoped hook on this thread asks this game's parts.
+        mod_api::__private::mark_game_thread();
+        let root = options.resources.clone();
+        let registry = pack.assets.registry;
+        let level = Level::default();
+        let prepared = prepared.map(Ok).unwrap_or_else(|| {
+            GameCpuResources::load(
+                &sunrise_assets::resource_source::ResourceRoot::new(
+                    root.clone(),
+                    packs::cache_dir(),
+                    pack.source.clone(),
+                ),
+                None,
+                pack.render.model_library.as_deref().ok(),
+                true,
+            )
+        })?;
+        let world = crate::game::world_for_mods(res.facts().air, 0);
         let tutorial = tutorial::Tutorial::new(tutorial::Step::from_option(
             settings.file.int("tutorialStep"),
         ));
         let now = Instant::now();
-        let mut particles = if options.execution_role.is_logical_server() {
-            sunrise_client::particles::ParticleEngine::without_sprites()
-        } else {
-            sunrise_client::particles::ParticleEngine::new(
-                &pack.source,
-                &gui.atlas.sprites,
-                &gui.atlas.translucent,
-            )
-        };
+        let mut particles = sunrise_client::particles::ParticleEngine::new(
+            &pack.source,
+            &gui.atlas.sprites,
+            &gui.atlas.translucent,
+        );
         particles.set_block_state_source(crate::game::particle_block_states);
         let resource_source = pack.source.clone();
         let (pack, gui) = if let Some(initial) = initial {
@@ -6077,7 +6218,6 @@ impl<'a, __Side: crate::game::Side> Game<'a, __Side> {
             item_features,
             creative_screen,
         } = prepared;
-        let creative_catalog = creative_screen.catalog().clone();
         let client_prepared = Box::new(client_state::ClientCpuResources {
             frame_model,
             glow_frame_model,
@@ -6094,13 +6234,11 @@ impl<'a, __Side: crate::game::Side> Game<'a, __Side> {
             trident_model,
             entity_models,
         });
-        Ok(Box::new(ConstructPrep {
+        Ok(Box::new(ClientConstructPrep {
             level,
-            save,
             painting_variants,
             armor_stand_assets,
             item_features,
-            creative_catalog,
             creative_screen,
             client_prepared,
             world,
@@ -6120,16 +6258,11 @@ impl<'a, __Side: crate::game::Side> Game<'a, __Side> {
 
     // Evaluates all effectful literal initialisers in their original base order before tail assembly.
     #[inline(never)]
-    fn prepare_effects(prep: &ConstructPrep) -> Box<ConstructEffects> {
+    fn prepare_effects(prep: &ClientConstructPrep) -> Box<ClientConstructEffectsBundle> {
         let slow_frame_ms = prep
             .options
             .spikes
             .unwrap_or(sunrise_client::client_perf::SLOW_FRAME_MS);
-        #[cfg(not(test))]
-        let structure_spawns =
-            sunrise_client::mobs::spawn_selection::StructureSpawns::load(&prep.options.resources);
-        #[cfg(test)]
-        let structure_spawns = resource_load::cached_structure_spawns(&prep.options.resources);
         let fog = sunrise_client::fog::FogState::default();
         let clock = FixedStep::default();
         let vanilla_mappings = sunrise_client::keymapping::VanillaMappings::default();
@@ -6175,8 +6308,7 @@ impl<'a, __Side: crate::game::Side> Game<'a, __Side> {
             tick_script,
             social,
         });
-        Box::new(ConstructEffects {
-            structure_spawns,
+        Box::new(ClientConstructEffectsBundle {
             clock,
             tick,
             skin_downloads,
@@ -6192,16 +6324,11 @@ impl<'a, __Side: crate::game::Side> Game<'a, __Side> {
     #[inline(never)]
     fn finish_construct(
         res: &'a Arc<Resources>,
-        prep: Box<ConstructPrep>,
-        effects: Box<ConstructEffects>,
+        prep: Box<ClientConstructPrep>,
+        effects: Box<ClientConstructEffectsBundle>,
     ) -> Self {
-        let (wp, _resource_source) = ConstructInit::<true>::wrap_prep_and_effects(prep, effects);
-        let wc = ConstructInit::<true>::build_wrapped_client();
-        let ws = ConstructInit::<true>::build_wrapped_server();
-        let wr = ConstructInit::<true>::build_wrapped_renderer();
-        let mut game = ConstructInit::<true>::assemble_game(res, wp, wc, ws, wr);
-        game.side_reset_entity_residency();
-        game
+        let (wp, client) = ConstructInit::<true>::wrap_client_prep_and_effects(prep, effects);
+        ConstructInit::<true>::assemble_game(res, wp, client)
     }
 }
 

@@ -259,7 +259,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         creatures.projectiles,
         resident_entities.knots,
         resident_entities.general.rows,
-        others.0
+        side.others.0
     );
 }
 
