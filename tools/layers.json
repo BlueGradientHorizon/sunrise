@@ -91,6 +91,7 @@
     "sunrise-mod-pipeline": "engine",
     "sunrise-server-launch": "platform",
     "sunrise-mod-package": "engine",
+    "sunrise-dependency-rule": "engine",
     "sunrise-mod-runtime": "engine",
     "sunrise-mod-dimension-game": "tool",
     "sunrise-hot-paths-game": "tool",
