@@ -50,6 +50,9 @@ class ToolFoldersTests(unittest.TestCase):
         self.assertEqual(document["tag"], "mod-tool")
         self.assertIsInstance(document["native_contract"], int)
         self.assertIsInstance(document["release_contract"], int)
+        number = (ROOT / "crates/sunrise-mod-package/src/sdk/package-format").read_text().split()[0]
+        self.assertEqual(document["package_format"], int(number))
+        self.assertEqual(document["schema"], 1)
 
 
 class WorkflowTests(unittest.TestCase):
