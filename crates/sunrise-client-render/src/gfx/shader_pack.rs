@@ -67,12 +67,19 @@ impl Renderer {
                 .as_ref()
                 .map(|wp| wp.pipelines.set1_bind_group_layouts())
                 .unwrap_or_default();
+            let mod_vertex_stages = self
+                .world_primitives
+                .as_ref()
+                .map(|wp| wp.pipelines.pack_vertex_stages())
+                .unwrap_or_default();
             pack_post::PackPost::new_with_mods(
                 (&self.device, &self.queue, &self.adapter),
                 post,
                 self.output.frame.format,
                 world,
-                mod_runtime.as_runtime_with_layouts(&mod_vertex_buffers, &mod_set1_layouts),
+                mod_runtime
+                    .as_runtime_with_layouts(&mod_vertex_buffers, &mod_set1_layouts)
+                    .with_vertex_stages(&mod_vertex_stages),
                 &std::sync::atomic::AtomicBool::new(false),
             )
         });
@@ -272,6 +279,11 @@ impl Renderer {
                     .collect()
             })
             .unwrap_or_default();
+        let mod_vertex_stages = self
+            .world_primitives
+            .as_ref()
+            .map(|wp| wp.pipelines.pack_vertex_stages())
+            .unwrap_or_default();
         let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let cancelled = cancel.clone();
         let build = move || {
@@ -308,7 +320,9 @@ impl Renderer {
                 pack,
                 format,
                 world,
-                mod_runtime.as_runtime_with_layouts(&mod_vertex_buffers, &mod_set1_refs),
+                mod_runtime
+                    .as_runtime_with_layouts(&mod_vertex_buffers, &mod_set1_refs)
+                    .with_vertex_stages(&mod_vertex_stages),
                 &cancelled,
             );
             // The ids come back with it, for `install_shader_pack`.

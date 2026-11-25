@@ -318,6 +318,33 @@ active pack is loaded, switched or turned off, and no pack-reload signal exists 
 again when you need the id instead of caching it across frames. Item and entity ids
 (`item.properties`, `entity.properties`) are not part of it.
 
+### Your own vertex stage, and the main depth
+
+`PackBinding::program_mode(PackProgramMode::ModVertexPackFragment)` keeps your own vertex shader,
+with its `VertexFormat` and its set-1 bindings, and links it to the fragment stage of the pack's
+program for one of the pipeline's stems, so your geometry is shaded into the pack's `colortex*`
+buffers by the pack's own code. The stages link by GLSL varying name, as Iris links them: the
+pack's translator picks each varying's location, so name your vertex outputs after the pack's
+varyings (a struct member or `out` variable named `uv` feeds the pack's `varying vec2 uv`) and the
+engine renumbers them to the pack's locations; the order you declare them in does not matter. It
+works only when the pack ships such a program and every varying its fragment stage reads is
+written by your vertex shader under the same name, type and interpolation. It is also refused when
+the pack's program has a geometry stage, which needs the pack's own vertex stage. When any of this
+fails, or the device cannot hold your bind groups after the pack's (the adapter's own
+`max_bind_groups`), the pipeline is unbound: `pipeline_pack_bound` reports `false` and your own
+shaders draw. Your bind groups go after the pack's, which are left as the pack declared them; a
+vertex shader that uses push constants is left unbound.
+
+`PackBinding::depth_target(PackDepthTarget::Main)` makes the pipeline draw into the pack's main
+depth (`depthtex0`) with depth writes on (when the pipeline is depth-tested). The depth comes
+from your vertex stage's position output: a pipeline whose geometry is in another projection (far
+terrain) emits the depth the world's projection gives, so no copy of an auxiliary depth plane into
+the pack's depth is needed; the same works when the projections match. Under a pack the fragment
+stage is the pack's, so `gl_FragDepth` is not yours to write. `PackDepthTarget::new(id)` is the
+auxiliary plane as before.
+
+A stencil test inside a pack pass is not part of this: the pack's main depth has no stencil plane.
+
 ### Shadow pass, clouds and pack changes
 
 `host.shader_pack_state()` returns `None` when no pack is active (the same rule as
