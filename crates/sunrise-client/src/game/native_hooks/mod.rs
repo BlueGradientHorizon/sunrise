@@ -259,6 +259,7 @@ mod death_source_tests;
 mod default_components_bound;
 mod destroy_progress;
 mod dispense_method;
+mod dragon_fight;
 mod draw_measures;
 mod effect_particle_modification;
 mod empty_contents;

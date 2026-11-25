@@ -6,6 +6,7 @@ pub(crate) mod attachment_query;
 pub(crate) mod chunk_areas;
 pub(crate) mod collider;
 pub(crate) mod death_loot;
+pub(crate) mod dragon_fight;
 pub(crate) mod entity_reach;
 pub(crate) mod entity_tags;
 pub(crate) mod entity_type_defaults;
