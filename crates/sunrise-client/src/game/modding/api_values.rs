@@ -276,16 +276,13 @@ pub(in crate::game) fn resolve_block_keys_from_registry(
             cache.push((key, built.clone()));
             built
         });
-        return mod_api::__private::resolve_block_keys(
-            grouped.0.iter().map(String::as_str),
-            |name| {
-                let (states, ordinal) = &grouped.1[name];
-                let refs: Vec<_> = states.iter().collect();
-                sunrise_mod_runtime::block_definitions::BlockDefinition::new(&refs, *ordinal)
-                    .map_err(|error| format!("block {name}: {error:?}"))
-            },
-        )
-        .map_err(|errors| errors.join("\n"));
+        mod_api::__private::resolve_block_keys(grouped.0.iter().map(String::as_str), |name| {
+            let (states, ordinal) = &grouped.1[name];
+            let refs: Vec<_> = states.iter().collect();
+            sunrise_mod_runtime::block_definitions::BlockDefinition::new(&refs, *ordinal)
+                .map_err(|error| format!("block {name}: {error:?}"))
+        })
+        .map_err(|errors| errors.join("\n"))
     }
     #[cfg(not(test))]
     {
