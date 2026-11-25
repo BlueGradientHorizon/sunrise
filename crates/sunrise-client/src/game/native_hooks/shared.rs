@@ -1076,7 +1076,13 @@ fn seed_native_menu(game: &mut Game<'_>, window: i32, name: &str) -> u64 {
     menu.generation
 }
 
-/// Where a mod moved the open screen's slots after it opened, over the
+/// How many of a menu's player slots are the main inventory's rows, which
+/// come before the hotbar in menu order
+/// (`AbstractContainerMenu.addStandardInventorySlots`).
+const MAIN_INVENTORY_SLOTS: usize = 27;
+
+/// Where a mod moved the open screen's slots (container slots, then the
+/// player's, in menu order) after it opened, over the
 /// positions its `MenuScreenLayout` declared. Interior state, as the screen callbacks that
 /// move slots hold `&self`. A move is pending until the layout build commits
 /// it, so drawing and hit-testing read one position within a frame and both
@@ -1100,33 +1106,34 @@ impl SlotMoves {
             .copied()
             .unwrap_or(declared)
     }
-    /// Where slot `slot` of a screen that declared `slots` will be from the
-    /// next build: the last move, pending or committed, else its declaration.
-    fn latest(&self, slots: &[Option<mod_api::ScreenSlot>], slot: usize) -> Option<[f32; 2]> {
-        let declared = slots.get(slot)?.as_ref().map(|slot| slot.position);
+    /// Where menu slot `slot` will be from the next build: the last move,
+    /// pending or committed, else its declaration. `declared` is the screen's
+    /// declaration (`OpenNativeScreen::declared_slot`), None for no such slot.
+    fn latest(&self, slot: usize, declared: Option<Option<[f32; 2]>>) -> Option<[f32; 2]> {
+        let declared = declared?;
         let pending = self.pending.borrow().get(&slot).copied();
         match pending {
             Some(pending) => pending,
             None => self.position(slot, declared),
         }
     }
-    /// Moves or activates slot `slot` of a screen that declared `slots` to `pos`,
-    /// or hides it with None, from the next build (`Slot.isActive()`). A refusal
-    /// or a repeat changes nothing, not even the move count.
+    /// Moves or activates menu slot `slot` to `pos`, or hides it with None,
+    /// from the next build (`Slot.isActive()`). `declared` is as in `latest`.
+    /// A refusal or a repeat changes nothing, not even the move count.
     fn set(
         &self,
-        slots: &[Option<mod_api::ScreenSlot>],
         slot: usize,
+        declared: Option<Option<[f32; 2]>>,
         pos: Option<[f32; 2]>,
     ) -> Result<(), mod_api::ScreenSlotRefusal> {
         use mod_api::ScreenSlotRefusal;
-        if slot >= slots.len() {
+        if declared.is_none() {
             return Err(ScreenSlotRefusal::NoSuchSlot);
         }
         if pos.is_some_and(|[x, y]| !x.is_finite() || !y.is_finite()) {
             return Err(ScreenSlotRefusal::BadPosition);
         }
-        if self.latest(slots, slot) != pos {
+        if self.latest(slot, declared) != pos {
             self.pending.borrow_mut().insert(slot, pos);
             self.count.set(self.count.get().wrapping_add(1));
         }
@@ -1238,6 +1245,49 @@ impl OpenNativeScreen {
             .map_or(36, sunrise_client::containers::ModMenuType::player_slots)
     }
 
+    /// Where the screen declared menu slot `slot` (container slots, then the
+    /// player's main inventory and hotbar, as `AbstractContainerMenu.slots`
+    /// holds them): Some(None) for a container slot declared inactive, None
+    /// for no such slot.
+    fn declared_slot(&self, slot: usize) -> Option<Option<[f32; 2]>> {
+        let layout = self.layout();
+        if let Some(declared) = layout.slots.get(slot) {
+            return Some(declared.as_ref().map(|slot| slot.position));
+        }
+        let player = slot - layout.slots.len();
+        if player >= self.player_slots() {
+            return None;
+        }
+        let (column, row_y) = if player < MAIN_INVENTORY_SLOTS {
+            (player % 9, layout.inventory_y + (player / 9) as f32 * 18.0)
+        } else {
+            (player - MAIN_INVENTORY_SLOTS, layout.inventory_y + 58.0)
+        };
+        Some(Some([layout.inventory_x + column as f32 * 18.0, row_y]))
+    }
+
+    /// Menu slot of the player's inventory slot `slot` (0..9 the hotbar, 9..36
+    /// the main inventory), None when the menu has no such player slot.
+    fn player_menu_slot(&self, slot: usize) -> Option<usize> {
+        if slot >= 9 + MAIN_INVENTORY_SLOTS {
+            return None;
+        }
+        let player = if slot >= 9 {
+            slot - 9
+        } else {
+            MAIN_INVENTORY_SLOTS + slot
+        };
+        (player < self.player_slots()).then(|| self.layout().slots.len() + player)
+    }
+
+    /// Where this frame puts the player's inventory slot `slot`: where the
+    /// last build committed it (None once hidden), else its declared place.
+    fn player_slot_position(&self, slot: usize) -> Option<[f32; 2]> {
+        let menu_slot = self.player_menu_slot(slot)?;
+        self.slot_moves
+            .position(menu_slot, self.declared_slot(menu_slot)?)
+    }
+
     fn visible_container_slots(&self) -> impl Iterator<Item = usize> + '_ {
         let base = self.container_slot_base();
         self.layout()
@@ -1252,7 +1302,9 @@ impl OpenNativeScreen {
     }
 
     pub(super) fn visible_slots(&self) -> impl Iterator<Item = usize> + '_ {
-        (0..self.player_slots()).chain(self.visible_container_slots())
+        (0..self.player_slots())
+            .filter(move |&slot| self.player_slot_position(slot).is_some())
+            .chain(self.visible_container_slots())
     }
 }
 
@@ -1986,7 +2038,7 @@ impl Game<'_> {
                 let _ = self.level_set_block(level, at, state, flags);
             }
             sunrise_world::level::LandingWrite::DestroyBlock { drop } => {
-                self.level_destroy_block(level, at, drop, None, false);
+                self.level_destroy_block(level, at, drop, None, None, false);
             }
             // A write a later API adds that this game does not know is not applied.
             _ => {}
@@ -2011,11 +2063,34 @@ pub(super) fn use_totem(
     cancel
 }
 
+/// `native_living_death_protection` for the damage code: a mod's protector from outside the
+/// hands, once neither hand protected.
+pub(super) fn death_protection_source(
+    level: DamageLevel<'_>,
+    hurting: Hurting<'_>,
+) -> Option<ItemStack> {
+    if !mod_api::__private::listened(mod_api::HookId::LivingDeathProtection) {
+        return None;
+    }
+    let (entity, kind, source) = hurt_server_args(hurting, level.attack());
+    let mut protector = None;
+    HitLevel(level).native_living_death_protection(entity, kind, &source, &mut protector);
+    protector
+}
+
 /// The level a hit or a landing happens in, as its hooks' level host: its blocks, its random and its
 /// own attachments. Not `GameLevel`, which a hit can't build: a mob's hit lands in the mob
 /// tick, where the world is read by every mob and its random is lent out, and building one
 /// per hit would allocate its entity boxes.
 pub(super) struct HitLevel<'a>(pub(super) DamageLevel<'a>);
+
+impl<'a> HitLevel<'a> {
+    /// The item table a mod's stack is checked against as it comes back into the hit
+    /// (`living_death_protection`'s protector): the authoritative world's, as for the hit's reads.
+    pub(in crate::game) fn stack_boundary_items(&self) -> Option<&'a sunrise_client::items::Items> {
+        self.0.tags()
+    }
+}
 
 /// Let listeners override the vanilla invulnerability decision for this hit.
 pub(super) fn invulnerability_check(
@@ -2530,6 +2605,7 @@ pub(super) const DAMAGE_HOOKS: DamageHooks = DamageHooks {
     owner_post_listened: Some(|| mod_api::__private::listened(mod_api::HookId::LivingDamagePost)),
     knockback: Some(knockback),
     totem: Some(use_totem),
+    protector: Some(death_protection_source),
     shield: Some(shield_block),
     accepted: Some(living_death::capture_hit),
 };
@@ -3449,6 +3525,13 @@ impl Game<'_> {
         let [x, y] = s.slot_moves.position(slot, declared)?;
         Some((x, y))
     }
+    /// Where the open mod screen puts the player's inventory slot `slot` (0..9
+    /// the hotbar, 9..36 the main inventory) this frame; None when hidden or
+    /// when no mod screen is shown.
+    pub(in crate::game) fn native_screen_player_slot(&self, slot: usize) -> Option<(f32, f32)> {
+        let [x, y] = self.shown_native_screen()?.player_slot_position(slot)?;
+        Some((x, y))
+    }
     pub(in crate::game) fn native_screen_slot_icon(&self, slot: usize) -> Option<&str> {
         self.shown_native_screen()?
             .layout()
@@ -3458,14 +3541,16 @@ impl Game<'_> {
             .no_item_icon
             .as_deref()
     }
-    /// Where the open screen of mod menu type `menu` puts container slot
-    /// `slot` from the next frame: the mod's last move, else the screen's
-    /// declaration; None for an inactive/hidden slot, another menu type's screen or none.
+    /// Where the open screen of mod menu type `menu` puts menu slot `slot`
+    /// (container slots, then the player's) from the next frame: the mod's last
+    /// move, else the screen's declaration; None for an inactive/hidden slot,
+    /// another menu type's screen or none.
     pub(in crate::game) fn screen_slot(&self, menu: &str, slot: usize) -> Option<[f32; 2]> {
         let s = self.shown_native_screen().filter(|s| s.menu.name == menu)?;
-        s.slot_moves.latest(&s.layout().slots, slot)
+        s.slot_moves.latest(slot, s.declared_slot(slot))
     }
-    /// Moves or activates container slot `slot` of the open screen of menu type
+    /// Moves or activates menu slot `slot` (container slots, then the player's)
+    /// of the open screen of menu type
     /// `menu` to `pos` (relative to the screen's origin), or hides it with None,
     /// from the next frame (`SlotMoves::set`).
     pub(in crate::game) fn set_screen_slot(
@@ -3478,7 +3563,7 @@ impl Game<'_> {
             .shown_native_screen()
             .filter(|s| s.menu.name == menu)
             .ok_or(mod_api::ScreenSlotRefusal::NoScreen)?;
-        s.slot_moves.set(&s.layout().slots, slot, pos)
+        s.slot_moves.set(slot, s.declared_slot(slot), pos)
     }
     /// The internal container slot base of the open mod screen (`MOD_MENU_SLOT_BASE`
     /// for a `ModMenuType`, `300` for a stock menu).
@@ -3769,6 +3854,8 @@ impl Game<'_> {
                     label: spec.label.clone(),
                     tooltip: spec.tooltip.clone(),
                     value,
+                    category: mod_api::__private::setting_category(mod_id, &spec.key)
+                        .map(str::to_owned),
                 }
             })
             .collect()
@@ -3831,13 +3918,6 @@ impl Game<'_> {
         if let Some(page) = row.and_then(|m| m.native.as_mut()) {
             page.settings = settings;
         }
-    }
-    /// What native mods hand shader packs in this frame (`native_shader_params`),
-    /// with values that aren't finite as 0.
-    pub(super) fn native_shader_params_now(&self, partial: f32) -> [[f32; 4]; 8] {
-        let mut params = [[0.0; 4]; 8];
-        self.native_shader_params(partial, &mut params);
-        finite_params(params)
     }
 }
 

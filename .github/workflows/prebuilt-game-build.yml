@@ -110,7 +110,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: prebuilt-${{ matrix.name }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          # Not a Dev build's: saving took 3m56 at the end of the Windows leg the Dev build of 2026-11-25 waited for,
+          # and the daily run's legs save the same keys.
+          save-if: ${{ github.ref == 'refs/heads/main' && !inputs.dev }}
       - name: ALSA and udev headers
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev

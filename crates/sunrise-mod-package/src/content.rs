@@ -78,7 +78,7 @@ pub(crate) fn check_namespace(name: &str, manifest: &Manifest) -> Result<(), Str
     let owned = own || manifest.namespaces.iter().any(|n| n == namespace);
     // Vanilla's own files stay vanilla's; a mod may only add to its
     // tags and atlases, and to the convention tags mods share.
-    let shared = matches!(namespace, "minecraft" | "c");
+    let shared = matches!(namespace, "minecraft" | "c" | "neoforge");
     let atlas = top == "assets" && namespace == "minecraft" && rest.starts_with("atlases/");
     let mut extension = false;
     if top == "data" && namespace == "sunrise" && rest.starts_with("tags/") {
@@ -113,7 +113,7 @@ pub(crate) fn check_namespace(name: &str, manifest: &Manifest) -> Result<(), Str
         || name == RECIPE_PRIORITIES_PATH;
     if !allowed {
         return Err(format!(
-            "{name}: a mod adds files in its own namespaces ({top}/{id}/ and those listed in namespaces), to vanilla and convention (c) tags, to vanilla's atlases, or to declared shared resource paths"
+            "{name}: a mod adds files in its own namespaces ({top}/{id}/ and those listed in namespaces), to vanilla and convention (c, neoforge) tags, to vanilla's atlases, or to declared shared resource paths"
         ));
     }
 
@@ -196,10 +196,22 @@ pub struct BlockProperties {
     /// Whether placement and features may replace this block; the held-own-item rule still applies.
     #[serde(default, deserialize_with = "deserialize_replaceable")]
     pub replaceable: Option<bool>,
-    /// Skip faces against any state of this same block; false disables the template's render rule.
-    /// Leaf and ice graphics culling still follows the template class.
-    #[serde(default, deserialize_with = "deserialize_skip_same_block_faces")]
-    pub skip_same_block_faces: Option<bool>,
+    /// Data rules replacing vanilla `BlockBehaviour.skipRendering` for this block.
+    /// `None` inherits the template's render rule; `Some(vec![])` disables it.
+    #[serde(default, deserialize_with = "face_rules::deserialize_skip_rendering")]
+    pub skip_rendering: Option<Vec<mod_vocab::FaceRule>>,
+    /// Data rules implementing NeoForge `IBlockExtension.hidesNeighborFace`.
+    #[serde(
+        default,
+        deserialize_with = "face_rules::deserialize_hides_neighbor_face"
+    )]
+    pub hides_neighbor_face: Vec<mod_vocab::FaceRule>,
+    /// NeoForge `IBlockExtension.supportsExternalFaceHiding` (default `true`).
+    #[serde(
+        default,
+        deserialize_with = "face_rules::deserialize_supports_external_face_hiding"
+    )]
+    pub supports_external_face_hiding: Option<bool>,
     /// Which mobs may spawn on the block (`BlockBehaviour.Properties.isValidSpawn`); unset keeps
     /// the template block's rule. Set on every state of the block, from the block alone: a
     /// `dynamic_light` block's cell light and an outline declared over the template's do not
@@ -294,11 +306,6 @@ fn deserialize_replaceable<'de, D: serde::Deserializer<'de>>(
     d: D,
 ) -> Result<Option<bool>, D::Error> {
     property_bool(d, "replaceable")
-}
-fn deserialize_skip_same_block_faces<'de, D: serde::Deserializer<'de>>(
-    d: D,
-) -> Result<Option<bool>, D::Error> {
-    property_bool(d, "skip_same_block_faces")
 }
 
 /// Vanilla's `PushReaction`, by its constant's name.
@@ -1006,8 +1013,9 @@ pub enum EffectCategory {
     Neutral,
 }
 
-/// A mob effect the mod adds: what `new MobEffect(category, color)` takes.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+/// A mob effect the mod adds: what `new MobEffect(category, color)` takes,
+/// and the attribute modifiers its constructor adds.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct MobEffect {
     /// `<mod id>:<path>`.
@@ -1021,6 +1029,70 @@ pub struct MobEffect {
     /// compares the colour, which it is when absent.
     #[serde(default)]
     pub sort_order: Option<i32>,
+    /// `MobEffect.addAttributeModifier`, one per attribute: on an entity while
+    /// the effect is, its amount times the amplifier plus one.
+    #[serde(default)]
+    pub attribute_modifiers: Vec<EffectAttributeModifier>,
+}
+
+/// One `MobEffect.addAttributeModifier(attribute, id, amount, operation)`.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct EffectAttributeModifier {
+    /// The attribute, vanilla's or a mod's, `namespace:path`.
+    pub attribute: String,
+    /// The modifier's id, `namespace:path`.
+    pub id: String,
+    /// The amount at amplifier 0.
+    pub amount: f64,
+    pub operation: ModifierOperation,
+}
+
+/// `AttributeModifier.Operation`, by its codec name.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ModifierOperation {
+    AddValue,
+    AddMultipliedBase,
+    AddMultipliedTotal,
+}
+
+impl MobEffect {
+    /// The checks a declaration's attribute modifiers pass at load: each
+    /// attribute and id a `namespace:path` (`Identifier`'s rules, which refuse
+    /// the namespace `..`), and one modifier per attribute
+    /// (vanilla keys its templates by attribute). JSON has no infinite or NaN
+    /// amount: one out of `f64`'s range fails to parse. Whether the attribute
+    /// exists is the game's check, which knows the mods' attributes.
+    fn check_attribute_modifiers(&self) -> Result<(), String> {
+        let identifier =
+            |id: &str| sunrise_core::identifier::Identifier::parse_namespaced(id).is_some();
+        for (i, modifier) in self.attribute_modifiers.iter().enumerate() {
+            let entry = format!("attribute_modifiers[{i}]");
+            if !identifier(&modifier.attribute) {
+                return Err(format!(
+                    "{entry}: attribute {:?} is an attribute id (namespace:path)",
+                    modifier.attribute
+                ));
+            }
+            if !identifier(&modifier.id) {
+                return Err(format!(
+                    "{entry}: id {:?} is a modifier id (namespace:path)",
+                    modifier.id
+                ));
+            }
+            if let Some(first) = self.attribute_modifiers[..i]
+                .iter()
+                .position(|m| m.attribute == modifier.attribute)
+            {
+                return Err(format!(
+                    "attribute_modifiers[{first}] ({}) and {entry} ({}) both modify {}: one modifier per attribute",
+                    self.attribute_modifiers[first].id, modifier.id, modifier.attribute
+                ));
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Vanilla's `DyeColor` names, by id.
@@ -1083,6 +1155,8 @@ pub const LIVING_TEMPLATES: [&str; 8] = [
 pub mod entity_sounds;
 mod entity_type;
 pub use entity_type::EntityType;
+mod face_rules;
+pub use face_rules::{check_face_rule_properties, parse_face_rules};
 pub mod fluid_interaction;
 pub use fluid_interaction::FluidInteraction;
 mod lenient;
@@ -1873,6 +1947,8 @@ impl Content {
             if file.color > 0xFF_FFFF {
                 return Err(format!("{name}: color is RGB, 0 to 16777215 (0xFFFFFF)"));
             }
+            file.check_attribute_modifiers()
+                .map_err(|e| format!("{name}: {e}"))?;
             self.effects.push(MobEffect { id: effect, ..file });
         }
         for (tab, name) in tabs {
@@ -2382,6 +2458,12 @@ fn check_block(file: &Block) -> Result<(), String> {
     }
     if p.sounds.as_deref().is_some_and(|s| !vanilla_id(s)) {
         return Err("sounds names a vanilla block (minecraft:...)".into());
+    }
+    if let Some(rules) = &p.skip_rendering {
+        face_rules::check_face_rules("skip_rendering", rules)?;
+    }
+    if !p.hides_neighbor_face.is_empty() {
+        face_rules::check_face_rules("hides_neighbor_face", &p.hides_neighbor_face)?;
     }
     if !file.item && !file.components.is_empty() {
         return Err("item is false, so the block has no item to take components".into());
@@ -3373,6 +3455,102 @@ capabilities = ["registries"]
         }
     }
 
+    /// #4473: `attribute_modifiers` is `MobEffect.addAttributeModifier`'s
+    /// arguments, one entry per attribute; without it there are none.
+    #[test]
+    fn mob_effects_take_attribute_modifiers_one_per_attribute() {
+        let stun = br#"{"category": "harmful", "color": 1, "attribute_modifiers": [
+            {"attribute": "minecraft:movement_speed", "id": "ruby:effect/stun_speed",
+             "amount": -1.0, "operation": "add_multiplied_total"},
+            {"attribute": "ruby:mana", "id": "ruby:effect/stun_mana",
+             "amount": 2.5, "operation": "add_value"}]}"#;
+        let files: &[(&str, &[u8])] = &[
+            ("data/ruby/sunrise/mob_effect/stun.json", stun),
+            (
+                "data/ruby/sunrise/mob_effect/plain.json",
+                br#"{"category": "neutral", "color": 1}"#,
+            ),
+        ];
+        let content = smod("effect-modifiers", MANIFEST_TEXT, files).unwrap();
+        assert!(content.effects[0].attribute_modifiers.is_empty());
+        assert_eq!(
+            content.effects[1].attribute_modifiers,
+            [
+                EffectAttributeModifier {
+                    attribute: "minecraft:movement_speed".into(),
+                    id: "ruby:effect/stun_speed".into(),
+                    amount: -1.0,
+                    operation: ModifierOperation::AddMultipliedTotal,
+                },
+                EffectAttributeModifier {
+                    attribute: "ruby:mana".into(),
+                    id: "ruby:effect/stun_mana".into(),
+                    amount: 2.5,
+                    operation: ModifierOperation::AddValue,
+                },
+            ]
+        );
+        let entry = |attribute: &str, id: &str, amount: &str, operation: &str| {
+            format!(
+                r#"{{"attribute": "{attribute}", "id": "{id}", "amount": {amount}, "operation": "{operation}"}}"#
+            )
+        };
+        let speed = entry("minecraft:movement_speed", "ruby:a", "1", "add_value");
+        for (case, modifiers, why) in [
+            (
+                "modifier-attribute",
+                entry("movement_speed", "ruby:a", "1", "add_value"),
+                "attribute_modifiers[0]: attribute \"movement_speed\" is an attribute id",
+            ),
+            (
+                "modifier-id",
+                entry("minecraft:movement_speed", "Ruby:A", "1", "add_value"),
+                "attribute_modifiers[0]: id \"Ruby:A\" is a modifier id",
+            ),
+            (
+                "modifier-id-dot-dot",
+                entry("minecraft:movement_speed", "..:stun", "1", "add_value"),
+                "attribute_modifiers[0]: id \"..:stun\" is a modifier id",
+            ),
+            (
+                "modifier-attribute-dot-dot",
+                entry("..:speed", "ruby:a", "1", "add_value"),
+                "attribute_modifiers[0]: attribute \"..:speed\" is an attribute id",
+            ),
+            (
+                "modifier-amount",
+                entry("minecraft:movement_speed", "ruby:a", "1e999", "add_value"),
+                "number out of range",
+            ),
+            (
+                "modifier-operation",
+                entry("minecraft:movement_speed", "ruby:a", "1", "multiply"),
+                "unknown variant `multiply`",
+            ),
+            (
+                "modifier-twice",
+                format!(
+                    "{speed}, {}",
+                    entry("minecraft:movement_speed", "ruby:b", "2", "add_value")
+                ),
+                "attribute_modifiers[0] (ruby:a) and attribute_modifiers[1] (ruby:b) both modify minecraft:movement_speed",
+            ),
+            (
+                "modifier-key",
+                speed.replace('}', r#", "slot": "any"}"#),
+                "unknown field `slot`",
+            ),
+        ] {
+            let file = format!(
+                r#"{{"category": "neutral", "color": 1, "attribute_modifiers": [{modifiers}]}}"#
+            );
+            let files: &[(&str, &[u8])] =
+                &[("data/ruby/sunrise/mob_effect/a.json", file.as_bytes())];
+            let e = smod(case, MANIFEST_TEXT, files).unwrap_err();
+            assert!(e.contains(why), "{case}: {e}");
+        }
+    }
+
     #[test]
     fn menu_owned_slots_require_one_valid_stack_limit_per_slot() {
         let path = "data/ruby/sunrise/menu/filter.json";
@@ -3910,6 +4088,105 @@ capabilities = ["registries"]
             let error =
                 smod("offset-refusal", MANIFEST_TEXT, &[(file, json.as_bytes())]).unwrap_err();
             assert!(error.contains(file) && error.contains(key), "{error}");
+        }
+    }
+
+    #[test]
+    fn block_face_rules_parse_and_refuse_unknown_facts_and_directions() {
+        let json = r##"{
+            "skip_rendering": [
+                {"neighbor": "self", "same": ["axis"], "faces": "horizontal"},
+                {"neighbor": "#minecraft:slabs", "faces": ["north", "up"], "facts": {"can_occlude": false, "is_air": false}},
+                {"neighbor": {"block": "minecraft:glass", "state": {"facing": "east"}}, "state": {"half": "bottom"}, "faces": "vertical"}
+            ],
+            "hides_neighbor_face": [
+                {"neighbor": {"tag": "test:targets", "state": {"lit": "true"}}, "facts": {"is_solid_render": false, "liquid": false}}
+            ],
+            "supports_external_face_hiding": false
+        }"##;
+        let props: BlockProperties = serde_json::from_str(json).unwrap();
+        let skip = props.skip_rendering.as_ref().unwrap();
+        assert_eq!(skip.len(), 3);
+        assert_eq!(props.hides_neighbor_face.len(), 1);
+        assert_eq!(props.supports_external_face_hiding, Some(false));
+        assert!(face_rules::check_face_rules("skip_rendering", skip).is_ok());
+        assert!(
+            face_rules::check_face_rules("hides_neighbor_face", &props.hides_neighbor_face).is_ok()
+        );
+
+        assert!(
+            serde_json::from_str::<BlockProperties>(
+                r#"{"skip_rendering":[{"facts":{"blocks_motion":false}}]}"#
+            )
+            .is_err()
+        );
+        assert!(
+            serde_json::from_str::<BlockProperties>(
+                r#"{"hides_neighbor_face":[{"faces":["north","sideways"]}]}"#
+            )
+            .is_err()
+        );
+
+        use mod_vocab::{FaceNeighbor, FaceRule};
+        let bad_typed = vec![FaceRule {
+            neighbor: FaceNeighbor::Block {
+                id: "not_namespaced".into(),
+                state: BTreeMap::new(),
+            },
+            ..FaceRule::default()
+        }];
+        assert!(face_rules::check_face_rules("skip_rendering", &bad_typed).is_err());
+
+        let file = "data/ruby/sunrise/block/bad_rules.json";
+        assert!(
+            smod(
+                "bad-face-rule",
+                MANIFEST_TEXT,
+                &[(
+                    file,
+                    br#"{"template":"minecraft:stone","properties":{"skip_rendering":[{"facts":{"unknown_fact":true}}]}}"#,
+                )],
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn face_rules_refuse_properties_the_block_does_not_declare() {
+        use mod_vocab::{FaceNeighbor, FaceRule};
+        let known = BTreeMap::from([(
+            "axis".to_owned(),
+            std::collections::BTreeSet::from(["x".to_owned(), "y".to_owned()]),
+        )]);
+        let rule = |state: &[(&str, &str)], same: &[&str]| FaceRule {
+            state: state
+                .iter()
+                .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+                .collect(),
+            same: same.iter().map(|k| (*k).to_owned()).collect(),
+            ..FaceRule::default()
+        };
+        let accepted = [
+            rule(&[("axis", "x")], &["axis"]),
+            FaceRule {
+                neighbor: FaceNeighbor::Tag {
+                    id: "optional:empty".into(),
+                    state: BTreeMap::from([("elsewhere".to_owned(), "1".to_owned())]),
+                },
+                ..FaceRule::default()
+            },
+        ];
+        assert!(
+            face_rules::check_face_rule_properties("skip_rendering", &accepted, &known).is_ok()
+        );
+        for bad in [
+            rule(&[("axs", "x")], &[]),
+            rule(&[("axis", "z")], &[]),
+            rule(&[], &["axs"]),
+        ] {
+            assert!(
+                face_rules::check_face_rule_properties("skip_rendering", &[bad], &known).is_err()
+            );
         }
     }
 

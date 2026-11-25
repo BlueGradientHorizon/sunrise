@@ -199,6 +199,7 @@ impl Game<'_> {
             causing: 0,
             direct: 0,
             position: None,
+            direct_type: None,
         };
         let knock = Knock { strength, x, z };
         let id = living.id();

@@ -275,7 +275,7 @@ impl Game<'_> {
             }),
         };
         let tilt = self.settings.file.double("damageTiltStrength");
-        glam::Mat4::from_cols_array(&bob_matrix(&state, tilt, self.settings.view_bobbing).m)
+        glam::Mat4::from_cols_array(&bob_matrix(&state, tilt, self.effective_view_bobbing()).m)
     }
     /// `AbstractClientPlayer.tick` and `aiStep` (`ClientAvatarState.tick`,
     /// `updateBob`), `rideTick`'s `resetBob` and `LocalPlayer.move`'s walked

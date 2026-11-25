@@ -22,9 +22,22 @@ pub const DIMENSION_TYPES: &str = "dimension_types";
 /// The bundle of `worldgen/noise_settings/<id>.json` noise generator settings.
 pub const NOISE_SETTINGS: &str = "settings";
 
+/// The bundle of `worldgen/flat_level_generator_preset/<id>.json` flat presets.
+/// Nothing prepared has it: the vanilla ones are files of the resource root.
+pub const FLAT_PRESETS: &str = "flat_presets";
+/// The bundle of `worldgen/multi_noise_biome_source_parameter_list/<id>.json`
+/// parameter lists: each file is `{"preset": <built-in preset>}`, not a table.
+/// Nothing prepared has it: the built-in presets' tables are the `presets` bundle.
+pub const PARAMETER_LISTS: &str = "parameter_lists";
+/// The tag bundle of `tags/worldgen/world_preset/` (`WorldPresetTags`).
+pub const WORLD_PRESET_TAGS: &str = "world_preset_tags";
+/// The tag bundle of `tags/worldgen/flat_level_generator_preset/`
+/// (`FlatLevelGeneratorPresetTags`).
+pub const FLAT_PRESET_TAGS: &str = "flat_preset_tags";
+
 /// Pack folders (`data/<ns>/<kind>/`) the chunk generator reads, and the
 /// bundle each joins.
-const KINDS: [(&str, &str); 16] = [
+const KINDS: [(&str, &str); 19] = [
     ("dimension", DIMENSIONS),
     ("dimension_type", DIMENSION_TYPES),
     ("worldgen/biome", "biomes"),
@@ -42,14 +55,25 @@ const KINDS: [(&str, &str); 16] = [
     ("worldgen/structure", "structures"),
     ("worldgen/structure_set", "structure_sets"),
     ("worldgen/template_pool", "template_pools"),
+    ("worldgen/world_preset", "world_presets"),
+    ("worldgen/flat_level_generator_preset", FLAT_PRESETS),
+    (
+        "worldgen/multi_noise_biome_source_parameter_list",
+        PARAMETER_LISTS,
+    ),
 ];
 /// Tag folders the chunk generator reads, and the tag bundle each joins.
-const TAG_KINDS: [(&str, &str); 5] = [
+const TAG_KINDS: [(&str, &str); 7] = [
     ("tags/block", "block_tags"),
     ("tags/fluid", "fluid_tags"),
     ("tags/worldgen/biome", "biome_tags"),
     ("tags/worldgen/carver", "carver_tags"),
     ("tags/worldgen/placed_feature", "placed_feature_tags"),
+    ("tags/worldgen/world_preset", WORLD_PRESET_TAGS),
+    (
+        "tags/worldgen/flat_level_generator_preset",
+        FLAT_PRESET_TAGS,
+    ),
 ];
 /// The pack folders the worldgen resolver reads, in walk order.
 pub const PACK_KINDS: [&str; 5] = [
@@ -379,66 +403,6 @@ impl WorldgenOverrides {
             PackFile::Other
         }
     }
-    /// After the last pack: leaves out the packs' new biomes (`known` says
-    /// which the game has), and what names them names the rest without
-    /// them: their biome tags' other biomes, and the climate points of the
-    /// other biomes in a level stem's multi-noise list (the left-out
-    /// biome's climate goes to its nearest neighbours). Returns what it
-    /// left out, for the log.
-    pub fn finish(&mut self, known: impl Fn(&str) -> bool) -> Vec<String> {
-        let left_out = self.retain("biomes", &known);
-        let mut warnings: Vec<String> = left_out
-            .iter()
-            .map(|id| {
-                format!("biome {id} is new: Sunrise cannot add biomes yet, so it is left out")
-            })
-            .collect();
-        if left_out.is_empty() {
-            return warnings;
-        }
-        let gone = |v: &Value| {
-            let id = v.as_str().or_else(|| v["id"].as_str()).unwrap_or_default();
-            let id = if id.contains(':') {
-                id.to_owned()
-            } else {
-                format!("minecraft:{id}")
-            };
-            left_out.contains(&id)
-        };
-        for (_, _, json) in self.tags.get_mut("biome_tags").into_iter().flatten() {
-            if let Ok(mut v) = serde_json::from_str::<Value>(json)
-                && let Some(values) = v["values"].as_array_mut()
-            {
-                let before = values.len();
-                values.retain(|e| !gone(e));
-                if values.len() != before {
-                    *json = v.to_string();
-                }
-            }
-        }
-        for (id, stem) in &mut self.level_stems {
-            let Some(json) = stem else {
-                continue;
-            };
-            let Ok(mut v) = serde_json::from_str::<Value>(json) else {
-                continue;
-            };
-            let Some(points) = v["generator"]["biome_source"]["biomes"].as_array_mut() else {
-                continue;
-            };
-            let before = points.len();
-            points.retain(|p| !gone(&p["biome"]));
-            if points.len() != before {
-                warnings.push(format!(
-                    "dimension {id}: {} of its {before} biome climate points name left-out \
-                     biomes and are removed",
-                    before - points.len()
-                ));
-                *json = v.to_string();
-            }
-        }
-        warnings
-    }
     /// The build range of the vanilla level `level` (`minecraft:overworld`,
     /// `minecraft:the_nether`, `minecraft:the_end`) with these packs: the
     /// dimension type its level stem names (a pack's stem, else the
@@ -600,32 +564,6 @@ impl WorldgenOverrides {
             .flatten()
             .map(|(id, pack, json)| (id.as_str(), pack.as_str(), json.as_str()))
     }
-    /// Removes the entries of `bundle` that `keep` refuses, returning their ids.
-    pub fn retain(&mut self, bundle: &str, mut keep: impl FnMut(&str) -> bool) -> Vec<String> {
-        if bundle == DIMENSIONS {
-            let mut dropped = Vec::new();
-            self.level_stems.retain(|id, stem| {
-                if stem.is_none() || keep(id) {
-                    true
-                } else {
-                    dropped.push(id.clone());
-                    false
-                }
-            });
-            return dropped;
-        }
-        let Some(entries) = self.entries.get_mut(bundle) else {
-            return Vec::new();
-        };
-        let dropped: Vec<String> = entries.keys().filter(|id| !keep(id)).cloned().collect();
-        for id in &dropped {
-            entries.remove(id);
-        }
-        if entries.is_empty() {
-            self.entries.remove(bundle);
-        }
-        dropped
-    }
     /// `bundle` with the packs' entries over it.
     pub fn apply(
         &self,
@@ -768,8 +706,33 @@ mod tests {
             PackFile::NotRead("worldgen/configured_carver".into())
         );
         assert_eq!(
-            add("data/minecraft/worldgen/world_preset/normal.json", "{}"),
-            PackFile::NotRead("worldgen/world_preset".into())
+            add("data/minecraft/worldgen/world_preset/normal.json", "9"),
+            PackFile::Read
+        );
+        assert_eq!(
+            add(
+                "data/p/worldgen/flat_level_generator_preset/islands.json",
+                "10"
+            ),
+            PackFile::Read
+        );
+        assert_eq!(
+            add(
+                "data/p/worldgen/multi_noise_biome_source_parameter_list/mine.json",
+                "11"
+            ),
+            PackFile::Read
+        );
+        assert_eq!(
+            add(
+                "data/p/tags/worldgen/flat_level_generator_preset/visible.json",
+                "{}"
+            ),
+            PackFile::Read
+        );
+        assert_eq!(
+            add("data/minecraft/tags/worldgen/structure/village.json", "{}"),
+            PackFile::NotRead("tags/worldgen/structure".into())
         );
         assert_eq!(add("data/p/function/f.mcfunction", ""), PackFile::Other);
         assert_eq!(
@@ -785,6 +748,9 @@ mod tests {
         assert_eq!(get("carvers"), [("minecraft:cave", "6")]);
         assert_eq!(get("features"), [("minecraft:water_delta", "7")]);
         assert_eq!(get("state_providers"), [("p:stony_cliffs", "8")]);
+        assert_eq!(get("world_presets"), [("minecraft:normal", "9")]);
+        assert_eq!(get(FLAT_PRESETS), [("p:islands", "10")]);
+        assert_eq!(get(PARAMETER_LISTS), [("p:mine", "11")]);
         assert_eq!(get("structures"), []);
         assert_eq!(o.tags("biome_tags").count(), 1);
     }
@@ -855,31 +821,6 @@ mod tests {
         );
         let open = o.level_height("minecraft:overworld").unwrap();
         assert!((open.height, open.has_skylight, open.has_ceiling) == (384, true, false));
-    }
-
-    #[test]
-    fn new_biomes_are_left_out_of_tags_and_climate_points() {
-        let mut o = WorldgenOverrides::default();
-        o.set("biomes", "minecraft:plains", "{}".into());
-        o.set("biomes", "minecraft:molten_peaks", "{}".into());
-        o.add_tag(
-            "biome_tags",
-            "minecraft:is_hill",
-            "file/p",
-            r#"{"values":["minecraft:plains","molten_peaks",{"id":"minecraft:molten_peaks","required":false}]}"#.into(),
-        );
-        o.set(
-            DIMENSIONS,
-            "minecraft:overworld",
-            r#"{"generator":{"biome_source":{"biomes":[{"biome":"minecraft:plains"},{"biome":"minecraft:molten_peaks"}]}}}"#.into(),
-        );
-        let warnings = o.finish(|id| id == "minecraft:plains");
-        assert_eq!(warnings.len(), 2, "{warnings:?}");
-        assert_eq!(o.entries("biomes").count(), 1);
-        let (_, _, tag) = o.tags("biome_tags").next().unwrap();
-        assert_eq!(tag, r#"{"values":["minecraft:plains"]}"#);
-        let (_, stem) = o.entries(DIMENSIONS).next().unwrap();
-        assert!(!stem.contains("molten_peaks") && stem.contains("minecraft:plains"));
     }
 
     #[test]

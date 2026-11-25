@@ -286,3 +286,14 @@ shader (`PackOverrideState::UnboundPack`), or no pack is active (`PackOverrideSt
 `ctx.pack_override_state(pipeline)`. To check generally whether a shader pack is currently loaded
 and rendering the world (always `false` on the title screen, matching `IrisApi.isShaderPackInUse()`),
 call `host.shader_pack_active()`.
+
+`host.render_assets().shader_pack_block_id(state)` gives the active `shaders/` pack's `block.properties`
+integer id (`mc_Entity`) for a block state, as Sunrise's shader-pack loader maps it: the id the
+engine's own terrain carries for it, which a mod writes into its vertices so waving, emissive, water
+or translucent blocks shade like terrain. It is `None` unless a `shaders/` pack is loaded and
+rendering (the title screen and a pack still loading included), under a native pack, when the pack
+gives the state no id and for a state the live block-state index lacks. The answer changes when the
+active pack is loaded, switched or turned off, and no pack-reload signal exists yet:
+`shader_pack_active()` stays `true` when one pack replaces another, and nothing else tells a mod. Ask
+again when you need the id instead of caching it across frames. Item and entity ids
+(`item.properties`, `entity.properties`) are not part of it.

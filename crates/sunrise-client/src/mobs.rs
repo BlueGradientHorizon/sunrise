@@ -110,6 +110,7 @@ pub mod transport_items;
 pub mod trial_spawner;
 pub mod turtle;
 pub mod undead;
+pub mod variants;
 pub mod vex;
 pub mod villager;
 pub mod villager_brain;
@@ -360,7 +361,7 @@ impl MobTypes {
     pub fn load_with_defaults(
         root: &Path,
         defaults: &sunrise_world::item_defaults::Defaults,
-        attributes: &sunrise_world::attributes::entity::Catalog,
+        attributes: &Arc<sunrise_world::attributes::entity::Catalog>,
     ) -> crate::Result<Self> {
         Self::load_with_models(root, true, None, Some(defaults), attributes)
     }
@@ -370,7 +371,7 @@ impl MobTypes {
     /// rather than parsing and retaining every entity-model layer.
     pub fn load_for_server(
         root: &Path,
-        attributes: &sunrise_world::attributes::entity::Catalog,
+        attributes: &Arc<sunrise_world::attributes::entity::Catalog>,
     ) -> crate::Result<Self> {
         Self::load_with_models(root, false, None, None, attributes)
     }
@@ -392,16 +393,16 @@ impl MobTypes {
         root: &Path,
         document: &EntityModelDocument,
         defaults: &sunrise_world::item_defaults::Defaults,
-        attributes: &sunrise_world::attributes::entity::Catalog,
+        attributes: &Arc<sunrise_world::attributes::entity::Catalog>,
     ) -> crate::Result<Self> {
         Self::load_with_models(root, true, Some(document), Some(defaults), attributes)
     }
 
-    fn root_catalog(root: &Path) -> crate::Result<sunrise_world::attributes::entity::Catalog> {
+    fn root_catalog(root: &Path) -> crate::Result<Arc<sunrise_world::attributes::entity::Catalog>> {
         let json = sunrise_world::json_file::read(&root.join("attributes.json"))?;
-        Ok(sunrise_world::attributes::entity::Catalog::from_json(
-            &json,
-        )?)
+        Ok(Arc::new(
+            sunrise_world::attributes::entity::Catalog::from_json(&json)?,
+        ))
     }
 
     /// `attributes`: the catalog whose bounds the types' mobs clamp to.
@@ -410,7 +411,7 @@ impl MobTypes {
         models_needed: bool,
         document: Option<&EntityModelDocument>,
         item_defaults: Option<&sunrise_world::item_defaults::Defaults>,
-        attributes: &sunrise_world::attributes::entity::Catalog,
+        attributes: &Arc<sunrise_world::attributes::entity::Catalog>,
     ) -> crate::Result<Self> {
         let attribute_bounds = finalize::AttrBounds::of(attributes);
         let bytes = fs::read(root.join("entity-types.json"))?;
@@ -429,7 +430,6 @@ impl MobTypes {
         let item_tags =
             crate::items::load_tags(root, "item", &sunrise_world::loot::PackOverlay::NONE)
                 .unwrap_or_default();
-        sulfur_cube::load_archetype_items(&item_tags);
         let tag = |name: &str| -> Arc<[String]> {
             let mut v: Vec<String> = item_tags
                 .get(&format!("minecraft:{name}"))
@@ -537,7 +537,7 @@ impl MobTypes {
                     shadow: crate::shadows::content_shadow(t),
                     species: def.species,
                     item_stack_limits: item_stack_limits.clone(),
-                    attribute_bounds,
+                    attribute_bounds: attribute_bounds.clone(),
                     width: t["width"].as_f64().unwrap_or(0.6),
                     height: t["height"].as_f64().unwrap_or(1.8),
                     eye_height: t["eye_height"].as_f64().unwrap_or(1.6),
@@ -789,6 +789,13 @@ pub enum DamageKind {
     WitherSkull,
 }
 impl DamageKind {
+    /// `DamageSource.is(DamageTypes.X)`: the registered damage type's identity,
+    /// whatever variant carries it, so a contact `minecraft:thorns` reacts as
+    /// `DamageKind::Thorns` does. Tags stay the level's (`has`).
+    pub fn is(self, registry_id: &str) -> bool {
+        crate::health::damage_type(self, false) == registry_id
+    }
+
     /// DamageTypeTags.IS_EXPLOSION.
     fn is_explosion(self) -> bool {
         match self {
@@ -1104,8 +1111,10 @@ pub struct Extra {
     /// `UnspawnedMobEditor`): the level keeps a joined entity's tags with its
     /// saved data, so they move there when the mob joins.
     pub spawn_tags: Vec<String>,
-    /// Command-created armor instances, shared by commands and runtime damage.
-    pub armor_attributes: Option<Box<sunrise_world::attributes::entity::EntityAttributes>>,
+    /// The instances of the attributes outside `finalize`'s store (armor,
+    /// toughness, a sulfur cube's archetype, every other attribute): what
+    /// `/attribute` and the effects' modifiers write, shared with runtime damage.
+    pub generic_attributes: Option<Box<sunrise_world::attributes::entity::EntityAttributes>>,
     /// `Mob.lootTable`: the table its death rolls instead of its type's
     /// (saved as `DeathLootTable`).
     pub death_loot_table: Option<String>,
@@ -1393,9 +1402,49 @@ pub struct Extra {
     pub drop_chances: Option<Box<[f32; 8]>>,
     /// `Mob.leftHanded`.
     pub left_handed: bool,
-    /// The sound variant: index in the species' `*_sound_variant` registry
-    /// (`finalize::sound_variants`); None is the default, `classic`.
-    pub sound_variant: Option<u8>,
+    /// `Wolf.DATA_VARIANT_ID`: the world's `minecraft:wolf_variant` holder
+    /// (network id in the world's sync order); `None` before initialization
+    /// resolves to `minecraft:pale` (or the registry's first entry).
+    pub wolf_variant: Option<crate::lan::data::RegistryRef<variants::WolfVariant>>,
+    /// `Wolf.DATA_SOUND_VARIANT_ID`: the world's `minecraft:wolf_sound_variant`
+    /// holder; `None` before initialization resolves to `minecraft:classic`
+    /// (or the registry's first entry).
+    pub wolf_sound_variant: Option<crate::lan::data::RegistryRef<variants::WolfSoundVariant>>,
+    /// `Cat.DATA_VARIANT_ID`: the world's `minecraft:cat_variant` holder
+    /// (network id in the world's sync order); `None` before initialization
+    /// resolves to `minecraft:black` (or the registry's first entry).
+    pub cat_variant: Option<crate::lan::data::RegistryRef<variants::CatVariant>>,
+    /// `Cat.DATA_SOUND_VARIANT_ID`: the world's `minecraft:cat_sound_variant`
+    /// holder; `None` before initialization resolves to `minecraft:classic`
+    /// (or the registry's first entry).
+    pub cat_sound_variant: Option<crate::lan::data::RegistryRef<variants::CatSoundVariant>>,
+    /// `Pig.DATA_VARIANT_ID`: the world's `minecraft:pig_variant` holder;
+    /// `None` resolves to `minecraft:temperate` (or the registry's first entry).
+    pub pig_variant: Option<crate::lan::data::RegistryRef<variants::PigVariant>>,
+    /// `Pig.DATA_SOUND_VARIANT_ID`: the world's `minecraft:pig_sound_variant`
+    /// holder; `None` resolves to `minecraft:classic` (or the first entry).
+    pub pig_sound_variant: Option<crate::lan::data::RegistryRef<variants::PigSoundVariant>>,
+    /// `Cow.DATA_VARIANT_ID`: the world's `minecraft:cow_variant` holder;
+    /// `None` resolves to `minecraft:temperate` (or the registry's first entry).
+    pub cow_variant: Option<crate::lan::data::RegistryRef<variants::CowVariant>>,
+    /// `Cow.DATA_SOUND_VARIANT_ID`: the world's `minecraft:cow_sound_variant`
+    /// holder; `None` resolves to `minecraft:classic` (or the first entry).
+    pub cow_sound_variant: Option<crate::lan::data::RegistryRef<variants::CowSoundVariant>>,
+    /// `Chicken.DATA_VARIANT_ID`: the world's `minecraft:chicken_variant` holder;
+    /// `None` resolves to `minecraft:temperate` (or the registry's first entry).
+    pub chicken_variant: Option<crate::lan::data::RegistryRef<variants::ChickenVariant>>,
+    /// `Chicken.DATA_SOUND_VARIANT_ID`: the world's `minecraft:chicken_sound_variant`
+    /// holder; `None` resolves to `minecraft:classic` (or the first entry).
+    pub chicken_sound_variant: Option<crate::lan::data::RegistryRef<variants::ChickenSoundVariant>>,
+    /// `Frog.DATA_VARIANT_ID`: the world's `minecraft:frog_variant` holder
+    /// (network id in the world's sync order); `None` before initialization
+    /// resolves to `minecraft:temperate` (or the registry's first entry).
+    pub frog_variant: Option<crate::lan::data::RegistryRef<variants::FrogVariant>>,
+    /// `ZombieNautilus.DATA_VARIANT_ID`: the world's `minecraft:zombie_nautilus_variant`
+    /// holder; `None` before initialization resolves to `minecraft:temperate`
+    /// (or the registry's first entry).
+    pub zombie_nautilus_variant:
+        Option<crate::lan::data::RegistryRef<variants::ZombieNautilusVariant>>,
     /// `Zombie.canBreakDoors`.
     pub can_break_doors: bool,
     /// A goat's `IsScreamingGoat` and the horns it lost (left, right).
@@ -2213,6 +2262,15 @@ pub enum MobEvent {
         amount: f32,
         source: Damage,
     },
+    /// `SulfurCube.applyContactDamage` on a mob: the archetype's damage type
+    /// (resolved against the world's registry) and the cube as the source only
+    /// when `attribute_to_source`, with its id and position.
+    ContactDamageMob {
+        target: u32,
+        amount: f32,
+        kind: &'static str,
+        attacker: Option<(u32, [f64; 3])>,
+    },
     /// An attack that runs post-attack effects when the hit lands.
     AttackMob {
         target: u32,
@@ -2575,7 +2633,7 @@ pub enum MobEvent {
         /// Whether the parent supplies the variant, if already drawn.
         parent_variant: Option<bool>,
         /// Wolf voice drawn before experience, unless baby-spawn approval defers inheritance.
-        wolf_voice: Option<u8>,
+        wolf_voice: Option<crate::lan::data::RegistryRef<variants::WolfSoundVariant>>,
         /// The parent-RNG experience decision, if already made.
         experience: BreedExperience,
     },
@@ -3264,8 +3322,8 @@ struct HurtTail {
 }
 
 impl ProtectedHurt {
-    pub fn before_post(&self, mob: &mut Mob) {
-        mob.finish_hurt_before_post(self.tail);
+    pub fn before_post(&self, mob: &mut Mob, variants: Option<&variants::VariantTables>) {
+        mob.finish_hurt_before_post(self.tail, variants);
     }
 
     pub fn after_post(&self, mob: &mut Mob) {
@@ -4799,10 +4857,17 @@ impl Mob {
             && self.species() == Species::Horse
             && self.extra.body_id().is_some()
         {
+            let hurt = crate::health::mob_source(&source, level.attack());
             self.outbox.push(MobEvent::ArmorHurt {
                 mob: self.id,
                 amount: damage,
-                source: crate::health::mob_source(&source, level.attack()),
+                source: crate::health::HurtSource {
+                    damage_type: crate::health::source_damage_type(source),
+                    causing: hurt.causing,
+                    direct: hurt.direct,
+                    direct_type: None,
+                    position: hurt.position,
+                },
             });
         }
         // Animal.actuallyHurt: damage taken ends love mode (`resetLove`);
@@ -4868,7 +4933,7 @@ impl Mob {
                 post,
             }));
         } else {
-            self.finish_hurt_before_post(tail);
+            self.finish_hurt_before_post(tail, level.variants());
             // The last of `LivingEntity.hurtServer`: Post also runs for a hit taking no health.
             // A killing hit's owner runs it after die, including when death is vetoed.
             self.damage_completion = level.finish_damage(
@@ -4887,7 +4952,11 @@ impl Mob {
                 || self.ai.last_hurt_by.is_some())
     }
 
-    fn finish_hurt_before_post(&mut self, tail: HurtTail) {
+    fn finish_hurt_before_post(
+        &mut self,
+        tail: HurtTail,
+        variants: Option<&variants::VariantTables>,
+    ) {
         let HurtTail {
             knock,
             absorbed,
@@ -4899,9 +4968,37 @@ impl Mob {
             // playHurtSound (Mob: also resets the ambient sound clock) or the
             // death sound: makeSound draws the voice pitch whenever there is a sound.
             let dead = !self.alive();
-            // Wolf.getHurtSound: the armor's own sound when it takes the hit.
+            let sound_kind = if dead { "death" } else { "hurt" };
+            // Wolf.getHurtSound: the armor's own sound when it takes the hit;
+            // otherwise Wolf.getHurtSound/getDeathSound and Cat.getHurtSound/getDeathSound
+            // read the world's sound variant table, as do Pig, Cow and Chicken's
+            // (their variant always resolves, so there is no sound of their own).
+            // A content type's declared hurt or death slot replaces the template's
+            // `getHurtSound`/`getDeathSound`, variant sets included.
+            let declared = matches!(
+                if dead {
+                    self.kind.sound_overrides.death
+                } else {
+                    self.kind.sound_overrides.hurt
+                },
+                entity_sounds::Selection::Id(_) | entity_sounds::Selection::Mute
+            );
+            let variant_sound = if absorbed || declared {
+                None
+            } else {
+                match self.species() {
+                    Species::Wolf => ai::wolf_sound(self, variants, sound_kind),
+                    Species::Cat => ai::cat_sound(self, variants, sound_kind),
+                    Species::Pig | Species::Cow | Species::Chicken => {
+                        Some(ai::farm_sound(self, variants, sound_kind).unwrap_or(""))
+                    }
+                    _ => None,
+                }
+            };
             let sound = if absorbed {
                 "item.wolf_armor.damage"
+            } else if variant_sound.is_some() {
+                ""
             } else {
                 entity_sounds::voices(self)[if dead { 2 } else { 1 }]
             };
@@ -4909,27 +5006,47 @@ impl Mob {
                 self.ambient_timer = self.ambient_interval().wrapping_neg();
             }
             let at = self.position.components();
-            let voice = if sound.is_empty() {
+            let voice = if let Some(id) = variant_sound {
+                if id.is_empty() {
+                    None
+                } else {
+                    let pitch = self.voice_pitch();
+                    (!self.silent).then(|| {
+                        MobEvent::SoundId(
+                            entity_sounds::full_id(id).into_owned(),
+                            at,
+                            ai::sound_volume(self),
+                            pitch,
+                        )
+                    })
+                }
+            } else if sound.is_empty() {
                 None
             } else {
                 let pitch = self.voice_pitch();
-                (!self.silent)
-                    .then(|| villager::HurtSound(sound, at, ai::sound_volume(self), pitch))
+                (!self.silent).then(|| MobEvent::Sound(sound, at, ai::sound_volume(self), pitch))
             };
             // playSecondaryHurtSound: a thorns hit sounds where the mob
             // stands, silent or not.
-            let thorns = (kind == DamageKind::Thorns).then_some(villager::HurtSound(
+            let thorns = kind.is("minecraft:thorns").then_some(villager::HurtSound(
                 "enchant.thorns.hit",
                 at,
                 1.0,
                 1.0,
             ));
             if self.species() == Species::Villager {
+                let voice = match voice {
+                    Some(MobEvent::Sound(name, at, volume, pitch)) => {
+                        Some(villager::HurtSound(name, at, volume, pitch))
+                    }
+                    _ => None,
+                };
                 villager::ext_mut(self).pending_hurt_sounds = [voice, thorns];
             } else {
-                for villager::HurtSound(name, at, volume, pitch) in
-                    [voice, thorns].into_iter().flatten()
-                {
+                if let Some(event) = voice {
+                    self.outbox.push(event);
+                }
+                if let Some(villager::HurtSound(name, at, volume, pitch)) = thorns {
                     self.outbox.push(MobEvent::Sound(name, at, volume, pitch));
                 }
             }
@@ -5181,30 +5298,24 @@ impl Mob {
         let before = self.extra.effects.len();
         // Empty, so no allocation, on the ticks nothing is removed.
         let mut removed = Vec::new();
-        let mut absorption_removed = false;
         self.extra.effects.retain(|e| {
             let keep = keep(e);
             if !keep {
-                removed.push(e.id);
+                removed.push((e.id, e.registry_index));
             }
-            absorption_removed |= !keep && e.id == "minecraft:absorption";
             keep
         });
-        // `removeModifier` dirties `max_absorption` only when the modifier
-        // is there, permanent or a mod's transient one with its id: a loaded
-        // Absorption, which added none, clamps nothing.
-        let (cap, absorption_id) = (finalize::Attr::MaxAbsorption, "minecraft:effect.absorption");
-        let cap_removed = absorption_removed
-            && (finalize::modifier_amount(self, cap, absorption_id).is_some()
-                || finalize::has_transient_modifier(self, cap, absorption_id));
-        for effect in removed {
-            self.set_effect_modifiers(effect, None);
+        // One `onEffectsRemoved` for all of them: each effect's modifiers
+        // come off, then `refreshDirtyAttributes` runs once, so the
+        // absorption is clamped to the maximum the whole batch leaves
+        // (`onAttributeUpdated`); removing Absorption does not subtract the
+        // hearts it granted.
+        let mut dirty = finalize::DirtyAttributes::default();
+        for (effect, index) in removed {
+            let def = index.and_then(sunrise_client_core::potions::effect_by_index);
+            dirty.merge(self.write_effect_modifiers(effect, def, None));
         }
-        if cap_removed {
-            // LivingEntity.onAttributeUpdated clamps to the remaining maximum;
-            // removing Absorption does not subtract the hearts it granted.
-            self.absorption = self.absorption.min(armor::max_absorption(self));
-        }
+        self.refresh_dirty_attributes(dirty);
         let changed = self.extra.effects.len() != before;
         if changed {
             self.extra.effects_revision += 1;
@@ -5309,7 +5420,10 @@ impl Mob {
         // `onEffectAdded` for a new effect, `onEffectUpdated(_, true, _)` for a
         // changed one: the modifiers follow the active amplifier.
         if changed {
-            self.set_effect_modifiers(effect, Some(active.amplifier));
+            let def = active
+                .registry_index
+                .and_then(sunrise_client_core::potions::effect_by_index);
+            self.set_effect_modifiers(effect, def, Some(active.amplifier));
         }
         // Then `MobEffectInstance.onEffectStarted`, for every `addEffect`:
         // `AbsorptionMobEffect` raises the amount within the maximum the
@@ -5366,23 +5480,29 @@ impl Mob {
         if source.kind.bypasses_invulnerability() {
             return None;
         }
-        let (slot, protector, effects) =
-            crate::health::PROTECTION_HANDS
-                .into_iter()
-                .find_map(|(hand, slot)| {
-                    let stack = self.extra.slot_stack(slot)?;
-                    let effects = level.death_protection(stack)?;
-                    if level.totem_canceled(crate::health::Hurting::Mob(self, source), hand, stack)
-                    {
-                        return None;
-                    }
-                    Some((slot, stack.clone(), effects.to_vec()))
-                })?;
-        let cell = &mut self.extra.equipment[slot];
-        *cell = cell.take().and_then(|mut remaining| {
-            remaining.count -= 1;
-            (remaining.count > 0).then_some(remaining)
-        });
+        let in_hand = crate::health::PROTECTION_HANDS
+            .into_iter()
+            .find_map(|(hand, slot)| {
+                let stack = self.extra.slot_stack(slot)?;
+                let effects = level.death_protection(stack)?;
+                if level.totem_canceled(crate::health::Hurting::Mob(self, source), hand, stack) {
+                    return None;
+                }
+                Some((Some(slot), stack.clone(), effects.to_vec()))
+            });
+        // Then a mod's protector from outside the hands, which nothing here uses up.
+        let (slot, protector, effects) = in_hand.or_else(|| {
+            let stack = level.mod_protector(crate::health::Hurting::Mob(self, source))?;
+            let effects = level.death_protection(&stack)?.to_vec();
+            Some((None, stack, effects))
+        })?;
+        if let Some(slot) = slot {
+            let cell = &mut self.extra.equipment[slot];
+            *cell = cell.take().and_then(|mut remaining| {
+                remaining.count -= 1;
+                (remaining.count > 0).then_some(remaining)
+            });
+        }
         self.health = 1.0;
         if level.defers_death_protection_effects() {
             return Some((protector, effects));
@@ -5410,13 +5530,12 @@ impl Mob {
                 self.retain_effects(|_| false);
             }
             // `RemoveStatusEffectsConsumeEffect.apply`: `removeEffect` for each,
-            // `onEffectsRemoved` for what the mob had.
+            // in the component's order, each its own `onEffectsRemoved`.
             ConsumeEffect::RemoveEffects(ids) => {
-                self.retain_effects(|e| {
-                    let held = e.id.trim_start_matches("minecraft:");
-                    !ids.iter()
-                        .any(|id| id.trim_start_matches("minecraft:") == held)
-                });
+                for id in ids {
+                    let id = id.trim_start_matches("minecraft:");
+                    self.retain_effects(|e| e.id.trim_start_matches("minecraft:") != id);
+                }
             }
             // `ApplyStatusEffectsConsumeEffect.apply`: one random draw, even at
             // probability 1.
@@ -5628,6 +5747,141 @@ impl Mob {
         // Entity.playSound: at the entity's feet.
         let at = [self.position.x, self.position.y, self.position.z];
         events.push(MobEvent::Sound(event, at, ai::sound_volume(self), pitch));
+    }
+    /// Mob.playSound with LivingEntity.getVoicePitch for a dynamic sound id
+    /// (such as a data-pack sound variant).
+    pub fn voice_id(&mut self, event: &str, events: &mut Vec<MobEvent>) {
+        let pitch = self.voice_pitch();
+        if self.silent || event.is_empty() {
+            return;
+        }
+        let at = [self.position.x, self.position.y, self.position.z];
+        events.push(MobEvent::SoundId(
+            entity_sounds::full_id(event).into_owned(),
+            at,
+            ai::sound_volume(self),
+            pitch,
+        ));
+    }
+    /// `Wolf.getVariant` resolved against `table`: the stored holder, or
+    /// `VariantUtils.getDefaultOrAny(..., WolfVariants.DEFAULT)` when unset.
+    pub fn wolf_variant(
+        &self,
+        table: &variants::VariantTable<variants::WolfVariant>,
+    ) -> Option<crate::lan::data::RegistryRef<variants::WolfVariant>> {
+        self.extra
+            .wolf_variant
+            .or_else(|| table.default_or_any("minecraft:pale"))
+    }
+    /// `Wolf.getSoundVariant` resolved against `table`: the stored holder, or
+    /// `WolfSoundVariants.CLASSIC` (else any entry) when unset.
+    pub fn wolf_sound_variant(
+        &self,
+        table: &variants::VariantTable<variants::WolfSoundVariant>,
+    ) -> Option<crate::lan::data::RegistryRef<variants::WolfSoundVariant>> {
+        self.extra
+            .wolf_sound_variant
+            .or_else(|| table.default_or_any("minecraft:classic"))
+    }
+    /// `Cat.getVariant` resolved against `table`: the stored holder, or
+    /// `VariantUtils.getDefaultOrAny(..., CatVariants.BLACK)` when unset.
+    pub fn cat_variant(
+        &self,
+        table: &variants::VariantTable<variants::CatVariant>,
+    ) -> Option<crate::lan::data::RegistryRef<variants::CatVariant>> {
+        self.extra
+            .cat_variant
+            .or_else(|| table.default_or_any("minecraft:black"))
+    }
+    /// `Cat.getSoundVariant` resolved against `table`: the stored holder, or
+    /// `CatSoundVariants.CLASSIC` (else any entry) when unset.
+    pub fn cat_sound_variant(
+        &self,
+        table: &variants::VariantTable<variants::CatSoundVariant>,
+    ) -> Option<crate::lan::data::RegistryRef<variants::CatSoundVariant>> {
+        self.extra
+            .cat_sound_variant
+            .or_else(|| table.default_or_any("minecraft:classic"))
+    }
+    /// `Pig.getVariant` resolved against `table`: the stored holder, or
+    /// `VariantUtils.getDefaultOrAny(..., PigVariants.DEFAULT)` when unset.
+    pub fn pig_variant(
+        &self,
+        table: &variants::VariantTable<variants::PigVariant>,
+    ) -> Option<crate::lan::data::RegistryRef<variants::PigVariant>> {
+        self.extra
+            .pig_variant
+            .or_else(|| table.default_or_any("minecraft:temperate"))
+    }
+    /// `Pig.getSoundVariant` resolved against `table`: the stored holder, or
+    /// `PigSoundVariants.CLASSIC` (else any entry) when unset.
+    pub fn pig_sound_variant(
+        &self,
+        table: &variants::VariantTable<variants::PigSoundVariant>,
+    ) -> Option<crate::lan::data::RegistryRef<variants::PigSoundVariant>> {
+        self.extra
+            .pig_sound_variant
+            .or_else(|| table.default_or_any("minecraft:classic"))
+    }
+    /// `Cow.getVariant` resolved against `table`: the stored holder, or
+    /// `VariantUtils.getDefaultOrAny(..., CowVariants.DEFAULT)` when unset.
+    pub fn cow_variant(
+        &self,
+        table: &variants::VariantTable<variants::CowVariant>,
+    ) -> Option<crate::lan::data::RegistryRef<variants::CowVariant>> {
+        self.extra
+            .cow_variant
+            .or_else(|| table.default_or_any("minecraft:temperate"))
+    }
+    /// `Cow.getSoundVariant` resolved against `table`: the stored holder, or
+    /// `CowSoundVariants.CLASSIC` (else any entry) when unset.
+    pub fn cow_sound_variant(
+        &self,
+        table: &variants::VariantTable<variants::CowSoundVariant>,
+    ) -> Option<crate::lan::data::RegistryRef<variants::CowSoundVariant>> {
+        self.extra
+            .cow_sound_variant
+            .or_else(|| table.default_or_any("minecraft:classic"))
+    }
+    /// `Chicken.getVariant` resolved against `table`: the stored holder, or
+    /// `VariantUtils.getDefaultOrAny(..., ChickenVariants.DEFAULT)` when unset.
+    pub fn chicken_variant(
+        &self,
+        table: &variants::VariantTable<variants::ChickenVariant>,
+    ) -> Option<crate::lan::data::RegistryRef<variants::ChickenVariant>> {
+        self.extra
+            .chicken_variant
+            .or_else(|| table.default_or_any("minecraft:temperate"))
+    }
+    /// `Chicken.getSoundVariant` resolved against `table`: the stored holder, or
+    /// `ChickenSoundVariants.CLASSIC` (else any entry) when unset.
+    pub fn chicken_sound_variant(
+        &self,
+        table: &variants::VariantTable<variants::ChickenSoundVariant>,
+    ) -> Option<crate::lan::data::RegistryRef<variants::ChickenSoundVariant>> {
+        self.extra
+            .chicken_sound_variant
+            .or_else(|| table.default_or_any("minecraft:classic"))
+    }
+    /// `Frog.getVariant` resolved against `table`: the stored holder, or
+    /// `VariantUtils.getDefaultOrAny(..., FrogVariants.TEMPERATE)` when unset.
+    pub fn frog_variant(
+        &self,
+        table: &variants::VariantTable<variants::FrogVariant>,
+    ) -> Option<crate::lan::data::RegistryRef<variants::FrogVariant>> {
+        self.extra
+            .frog_variant
+            .or_else(|| table.default_or_any("minecraft:temperate"))
+    }
+    /// `ZombieNautilus.getVariant` resolved against `table`: the stored holder, or
+    /// `VariantUtils.getDefaultOrAny(..., ZombieNautilusVariants.TEMPERATE)` when unset.
+    pub fn zombie_nautilus_variant(
+        &self,
+        table: &variants::VariantTable<variants::ZombieNautilusVariant>,
+    ) -> Option<crate::lan::data::RegistryRef<variants::ZombieNautilusVariant>> {
+        self.extra
+            .zombie_nautilus_variant
+            .or_else(|| table.default_or_any("minecraft:temperate"))
     }
 }
 /// Model geometry for a mob, posed for its animation state, as camera-relative
@@ -6980,6 +7234,19 @@ mod magic_absorb_tests {
         m.damage(level, 8.0, thorns);
         assert!(sounds(&m).is_empty(), "inside the hurt cooldown");
 
+        // A contact hit carries the registered type; the identity is
+        // `minecraft:thorns` whatever variant carries it.
+        let mut contact = witch();
+        contact.position = Vec3::new(1.0, 2.0, 3.0);
+        contact.silent = true;
+        let typed = Damage::of(DamageKind::Named(NamedDamage::new("minecraft:thorns", 0)));
+        assert!(contact.damage(level, 4.0, typed));
+        assert_eq!(
+            sounds(&contact),
+            vec![("enchant.thorns.hit", [1.0, 2.0, 3.0], 1.0, 1.0)]
+        );
+        contact.outbox.clear();
+
         let mut loud = witch();
         assert!(loud.damage(level, 4.0, thorns));
         let heard = sounds(&loud);
@@ -7768,7 +8035,7 @@ fn content_mob_tag_slot_uses_the_entity_registry_index() {
         "attributes": [], "entities": {},
     }))
     .unwrap();
-    let types = MobTypes::load_for_server(root, &attributes).unwrap();
+    let types = MobTypes::load_for_server(root, &Arc::new(attributes)).unwrap();
     let defaults = sunrise_world::item_defaults::read(root).unwrap();
     let items = Items::tags_only(root, &PackOverlay::NONE, &defaults).unwrap();
     let ids = items.component_registry.ids(EntityTypeTags::REGISTRY);
@@ -7981,11 +8248,20 @@ mod silent_voice_tests {
     use super::*;
     use crate::mobs::world::with_test_world;
 
-    /// The sounds `Mob::voice` plays for `ambient_sound` of one mob, with
-    /// `silent` set on it, and the random state it leaves behind.
-    fn ambient(silent: bool) -> Option<(Vec<(&'static str, f32, f32)>, f32)> {
+    /// The sounds `Mob::voice_id` plays for the ambient sound of one cow, resolved
+    /// from the prepared vanilla sound variants, with `silent` set on it, and the
+    /// random state it leaves behind.
+    fn ambient(silent: bool) -> Option<(Vec<(String, f32, f32)>, f32)> {
         let mut out = None;
-        let ran = with_test_world(&[], |w, types| {
+        let ran = with_test_world(&[], |_, types| {
+            let root = std::env::var_os("SUNRISE_TEST_RESOURCES")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| {
+                    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                        .join("../../.local/sunrise-client")
+                        .join(sunrise_core::VANILLA_VERSION)
+                });
+            let tables = variants::VariantTables::load_prepared(&root);
             let mut m = Mob::new(
                 1,
                 Arc::new(types.types["minecraft:cow"].clone()),
@@ -7994,11 +8270,11 @@ mod silent_voice_tests {
             );
             m.silent = silent;
             let mut events = Vec::new();
-            crate::mobs::ai::ambient_sound(&mut m, w, &mut events);
+            crate::mobs::ai::play_farm_ambient(&mut m, Some(&tables), &mut events);
             let heard = events
                 .iter()
                 .filter_map(|e| match e {
-                    MobEvent::Sound(s, _, volume, pitch) => Some((*s, *volume, *pitch)),
+                    MobEvent::SoundId(s, _, volume, pitch) => Some((s.clone(), *volume, *pitch)),
                     _ => None,
                 })
                 .collect();
@@ -8023,7 +8299,7 @@ mod silent_voice_tests {
         let (quiet, quiet_next) = ambient(true).expect("same data");
         // Cow.getSoundVolume is 0.4 and the pitch is the voice pitch.
         assert_eq!(loud.len(), 1);
-        assert_eq!(loud[0].0, "entity.cow.ambient");
+        assert_eq!(loud[0].0, "minecraft:entity.cow.ambient");
         assert_eq!(loud[0].1, 0.4);
         assert!((0.8..=1.2).contains(&loud[0].2), "{}", loud[0].2);
         assert!(quiet.is_empty(), "{quiet:?}");

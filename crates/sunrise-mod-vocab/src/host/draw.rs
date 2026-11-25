@@ -275,6 +275,14 @@ pub trait BlockEntityDrawContext {
     fn keep(&mut self) {
         unimplemented!("BlockEntityDrawContext::draw_keep")
     }
+    /// Read-only frame state for the world view this draw belongs to.
+    ///
+    /// [`Self::partial`], [`Self::game_time`] and [`Self::animation_time`] are shorthands
+    /// returning the same values as this view. In [`DrawContext::draw_scene`], the view carries
+    /// the scene's camera and clock with `camera_entity_eye: None`.
+    fn view(&self) -> &WorldRenderView<'_> {
+        unimplemented!("BlockEntityDrawContext::view")
+    }
     /// The frame's partial tick, 0 to 1 (`BlockEntityRenderState`).
     fn partial(&self) -> f32 {
         unimplemented!("BlockEntityDrawContext::draw_partial")
@@ -476,6 +484,20 @@ pub trait BlockEntityDrawContext {
     fn model_part(&mut self, part: &ModelPart, sprite: &str, tint: u32) -> bool {
         unimplemented!("BlockEntityDrawContext::draw_model_part")
     }
+    /// Draws a retained [`InstanceGroupRef`] under `draw`'s current pose: each live copy in the
+    /// group is transformed by the group transform and then by `draw`'s pose stack. Works in
+    /// entity renderers, entity layers, block entities, and screen scenes. Stale, destroyed, or
+    /// disabled-owner groups return [`GroupError::Stale`] without appending geometry.
+    fn instance_group(&mut self, group: InstanceGroupRef) -> Result<(), GroupError> {
+        unimplemented!("BlockEntityDrawContext::instance_group")
+    }
+    /// Draws a [`PreparedItemRef`] resolved by
+    /// [`ClientRenderClientHost::prepare_item`](crate::prelude::ClientRenderClientHost::prepare_item)
+    /// under `draw`'s current pose, matching [`Self::item`] without resolving the stack's model
+    /// again. A stale or destroyed handle draws nothing and returns [`ModelError::StaleModel`].
+    fn prepared_item(&mut self, item: PreparedItemRef) -> Result<(), ModelError> {
+        unimplemented!("BlockEntityDrawContext::prepared_item")
+    }
     /// Draws `stack` as a still fluid filling `bounds` (`[x0, y0, z0, x1, y1, z1]` in blocks
     /// under `draw`'s pose), as a tank's contents: `minecraft:water`, `minecraft:lava` or any
     /// fluid with a look (`data/<mod>/sunrise/fluid/<name>.json`; a registered fluid without a
@@ -582,7 +604,12 @@ pub trait WorldDrawContext {
     /// with a translucent face, is drawn in the sorted translucent material vanilla uses for a
     /// translucent block outside the terrain (`translucent_moving_block`: alpha blended, depth
     /// tested, depth written, back faces culled), their quads sorted far to near each frame as
-    /// vanilla's `sortOnUpload` does.
+    /// vanilla's `sortOnUpload` does. The special renderer's part of a block state model
+    /// (`RenderAssets::block_state_model`) follows its copy's faces in the entity materials,
+    /// multiplied by [`ModelInstance::color`], and blends as `entity_translucent` when that
+    /// colour's alpha is below `0xFF`; the end portal's and gateway's starfield ignores the
+    /// colour, as vanilla's `end_portal` render type does. Quads of that part whose pose throws
+    /// them past the finite range are skipped individually.
     /// Tint is `0xAARRGGBB` and light is [`LightCoords`]: both stay in
     /// vanilla's space, and the engine converts them to the frame. A tint's alpha
     /// multiplies only faces that have a tint index, the same as vanilla's model

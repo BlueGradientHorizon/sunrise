@@ -235,6 +235,15 @@ impl crate::RenderAssets for EmptyClientReloadServices {
     ) -> Result<crate::BakedModelView<'_>, crate::ModelError> {
         Err(crate::ModelError::UnknownModel)
     }
+    fn atlas_sprite_pixels(
+        &self,
+        _: crate::SpriteRef,
+    ) -> Result<crate::AtlasSpritePixels, crate::AtlasSpriteError> {
+        Err(crate::AtlasSpriteError::NotReady)
+    }
+    fn shader_pack_block_id(&self, _: crate::BlockState) -> Option<i32> {
+        None
+    }
 }
 
 impl crate::InstanceGroups for EmptyClientReloadServices {
@@ -274,6 +283,16 @@ pub trait ClientReloadHost:
         _context: crate::ItemDisplayContext,
     ) -> bool {
         false
+    }
+    /// Resolve `stack`'s item model once for `display` and `seed`, returning a retained
+    /// [`crate::PreparedItemRef`] for [`crate::BlockEntityDrawContext::prepared_item`].
+    fn prepare_item(
+        &self,
+        _stack: &crate::ItemStack,
+        _display: crate::ItemDisplayContext,
+        _seed: i32,
+    ) -> Result<crate::PreparedItemRef, crate::ModelError> {
+        Err(crate::ModelError::UnknownModel)
     }
     /// Resolved block sprites for each requested block state.
     fn block_sprites(&self, blocks: &[crate::BlockState]) -> Vec<Option<crate::BlockSprites>> {
@@ -1198,14 +1217,14 @@ pub trait LoopContext {
     /// snapshot is unavailable or a member of this tag could not be bound. Absent
     /// or empty tags in a loaded snapshot answer `Some(false)`. Reads allocate
     /// nothing and perform no file I/O.
-    fn is_in_tag(&self, item: crate::ItemKey, tag: crate::TagKey) -> Option<bool>;
+    fn is_in_tag(&self, item: crate::ItemKey, tag: crate::TagKey<crate::ItemKey>) -> Option<bool>;
 
     /// Borrow the bound item members in authoritative order for this generation.
     /// `None` means the snapshot was unavailable or a member of this tag could not
     /// be bound at publication; no partial list is returned. A missing or empty tag
     /// in a loaded snapshot returns `Some(&[])`. On clients these are the server's
     /// synced tags, never the local pack's. Reads allocate nothing.
-    fn items_in_tag(&self, tag: crate::TagKey) -> Option<&[crate::ItemKey]>;
+    fn items_in_tag(&self, tag: crate::TagKey<crate::ItemKey>) -> Option<&[crate::ItemKey]>;
 
     /// Whether a mod-created recipe property set accepts an item ID. Unknown
     /// sets/items and vanilla set keys return false. Use this in
@@ -1276,10 +1295,10 @@ impl<'a> OwningLoop<'a> {
 }
 
 impl LoopContext for OwningLoop<'_> {
-    fn is_in_tag(&self, item: crate::ItemKey, tag: crate::TagKey) -> Option<bool> {
+    fn is_in_tag(&self, item: crate::ItemKey, tag: crate::TagKey<crate::ItemKey>) -> Option<bool> {
         self.item_tags?.contains(tag, item)
     }
-    fn items_in_tag(&self, tag: crate::TagKey) -> Option<&[crate::ItemKey]> {
+    fn items_in_tag(&self, tag: crate::TagKey<crate::ItemKey>) -> Option<&[crate::ItemKey]> {
         self.item_tags?.items(tag)
     }
     fn mod_recipe_property_contains(&self, set: &str, item: crate::ItemKey) -> bool {
@@ -1338,6 +1357,12 @@ pub trait WorldgenHost {
         key: &str,
         value: &str,
     ) -> Option<crate::BlockState>;
+
+    /// `BlockState.getValue`: the value of `state`'s property `key` as its block's state
+    /// definition spells it (`north`, `true`, `3`), so a `rotate` part can read the property it
+    /// turns. None when its block has no such property, for a state this game does not have, and
+    /// in a context with no block states at hand.
+    fn state_property(&self, state: crate::BlockState, key: &str) -> Option<String>;
 }
 
 // no wire: a process-local borrow of frozen worldgen metadata.
@@ -1359,6 +1384,7 @@ pub trait WorldgenReader: Sync {
 pub struct OwningWorldgen<'a> {
     source: &'a dyn WorldgenReader,
     state_with_property: &'a StateWithProperty<'a>,
+    state_property: &'a StateProperty<'a>,
     mods: LoadedMods,
 }
 
@@ -1366,15 +1392,22 @@ pub struct OwningWorldgen<'a> {
 type StateWithProperty<'a> =
     dyn Fn(crate::BlockState, &str, &str) -> Option<crate::BlockState> + 'a;
 
+/// `BlockState.getValue` as the game answers it for [`OwningWorldgen`].
+type StateProperty<'a> = dyn Fn(crate::BlockState, &str) -> Option<String> + 'a;
+
 impl<'a> OwningWorldgen<'a> {
-    /// Borrow the owning engine's frozen metadata reader and block-state query.
+    /// Borrow the owning engine's frozen metadata reader and its block-state build and read
+    /// (`BlockState.setValue`, `getValue`). A context with no block index to answer from passes
+    /// closures that answer None.
     pub fn new(
         source: &'a dyn WorldgenReader,
         state_with_property: &'a StateWithProperty<'a>,
+        state_property: &'a StateProperty<'a>,
     ) -> Self {
         Self {
             source,
             state_with_property,
+            state_property,
             mods: LoadedMods::enabled_at_startup(),
         }
     }
@@ -1397,6 +1430,9 @@ impl WorldgenHost for OwningWorldgen<'_> {
         value: &str,
     ) -> Option<crate::BlockState> {
         (self.state_with_property)(state, key, value)
+    }
+    fn state_property(&self, state: crate::BlockState, key: &str) -> Option<String> {
+        (self.state_property)(state, key)
     }
 }
 

@@ -216,7 +216,8 @@ fn reload_command_prepares_world_before_applying_listeners_and_preserves_tables_
                 game.load_world(request(&root)).unwrap();
                 let class =
                     mod_api::__private::tag_key(&Identifier::parse("sunrise:class/fence").unwrap())
-                        .unwrap();
+                        .unwrap()
+                        .typed();
                 let fence = mod_api::__private::block_key("minecraft:oak_fence").unwrap();
                 assert!(matches!(mod_api::Tags::blocks(game, class),
                     mod_api::TagMembers::Members(blocks) if blocks.contains(&fence)));
@@ -453,7 +454,8 @@ fn dedicated_world_open_publishes_crafting_item_tags() {
             let tag = mod_api::__private::tag_key(
                 &mod_api::Identifier::parse("test:crafting_inputs").unwrap(),
             )
-            .unwrap();
+            .unwrap()
+            .typed();
             let stick = mod_api::__private::item_key("minecraft:stick").unwrap();
             let dirt = mod_api::__private::item_key("minecraft:dirt").unwrap();
             let reader = LoopReader(&game.loop_context);
@@ -1165,7 +1167,8 @@ fn server_completion_reads_published_data_without_world_access_on_first_open() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
-            let root = std::env::current_dir().unwrap().join("published-world");
+            let scratch = tempfile::tempdir().unwrap();
+            let root = scratch.path().join("published-world");
             game.load_world(request(&root)).unwrap();
             game.native_tags_updated(TagsUpdateCause::ServerDataLoad { reload: true });
             assert_eq!(
@@ -1342,3 +1345,5 @@ mod villager_secondary_reload_tests;
 
 #[path = "datapack_publication_tests.rs"]
 mod datapack_publication_tests;
+#[path = "refused_entry_tests.rs"]
+mod refused_entry_tests;

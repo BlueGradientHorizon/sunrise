@@ -76,6 +76,7 @@ const SPEAR_SOURCE: HurtSource<'static> = HurtSource {
     causing: 0,
     direct: 0,
     position: None,
+    direct_type: None,
 };
 
 impl Game<'_> {

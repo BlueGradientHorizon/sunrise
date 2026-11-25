@@ -47,7 +47,7 @@ impl Game<'_> {
             None,
             self.settings.sunrise.api,
             self.settings.sunrise.translucent_batching,
-            self.settings.vsync,
+            self.effective_vsync(),
             &self.settings.sunrise,
             shader_packs::picked_pack_shape(&self.settings),
             self.renderer
@@ -56,8 +56,8 @@ impl Game<'_> {
                 .unwrap_or_default(),
             self.settings.texture_atlas_settings(),
         )
-        .and_then(|(renderer, clouds)| {
-            clouds?;
+        .and_then(|(renderer, required)| {
+            required?;
             Ok(renderer)
         })
     }

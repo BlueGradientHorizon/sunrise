@@ -897,9 +897,13 @@ pub fn load_post(
         if let Some(name) = e.key.strip_prefix("image.") {
             // `Properties::parse` expanded the file's own macros at the line; the options again
             // here, for a file read without them.
-            match CustomImage::parse(name, &options.expand(&e.value)) {
-                Some(i) => post.images.push(i),
-                None => post.notes.push(format!("`{}`: not an image", e.key)),
+            match options
+                .try_expand(&e.value)
+                .map(|v| CustomImage::parse(name, &v))
+            {
+                Ok(Some(i)) => post.images.push(i),
+                Ok(None) => post.notes.push(format!("`{}`: not an image", e.key)),
+                Err(why) => post.notes.push(format!("`{}`: {why}", e.key)),
             }
             continue;
         }
@@ -907,10 +911,14 @@ pub fn load_post(
             continue;
         };
         // As for `image.*`: the options again, for a file read without them.
-        match (
-            crate::buffer_index(name),
-            BufferSize::parse(&options.expand(&e.value)),
-        ) {
+        let value = match options.try_expand(&e.value) {
+            Ok(value) => value,
+            Err(why) => {
+                post.notes.push(format!("`{}`: {why}", e.key));
+                continue;
+            }
+        };
+        match (crate::buffer_index(name), BufferSize::parse(&value)) {
             (Some(b), Some(size)) => post.sizes[b] = Some(size),
             _ => post
                 .notes
@@ -3560,6 +3568,97 @@ blend.composite1.colortex3 = ONE ONE ONE ONE
         assert_eq!(
             terrain_names(&[terrain, solid], on, true),
             [some(solid), some(terrain)]
+        );
+    }
+
+    /// A `program.<name>.enabled` expression nested past `MAX_CONDITION_DEPTH` is read on a
+    /// thread of half the 2 MiB Rust gives a spawned thread, as one nested to it is; like any
+    /// expression that can't be evaluated, it leaves the program on.
+    #[test]
+    fn an_enabled_expression_nested_past_the_bound_leaves_the_program_on() {
+        use sunrise_glsl::condition::MAX_CONDITION_DEPTH;
+        let key = |depth: usize| {
+            let value = format!("{}false{}", "(".repeat(depth), ")".repeat(depth));
+            format!("program.final.enabled = {value}\n")
+        };
+        let read = |text: String| {
+            std::thread::Builder::new()
+                .stack_size(1 << 20)
+                .spawn(move || {
+                    let properties = Properties::parse(&text, &Macros::standard());
+                    enabled(
+                        &properties,
+                        "",
+                        "final",
+                        &Macros::standard(),
+                        &BTreeSet::new(),
+                    )
+                })
+                .unwrap()
+                .join()
+                .unwrap()
+        };
+        assert!(!read(key(MAX_CONDITION_DEPTH)));
+        assert!(read(key(MAX_CONDITION_DEPTH + 1)));
+        // Names read as `defined(name)`: 400 calls are 400 parentheses, refused the same way.
+        let calls = format!("{}false{}", "F(".repeat(400), ")".repeat(400));
+        assert!(read(format!("program.final.enabled = {calls}\n")));
+    }
+
+    /// The options' second expansion of an `image.*` or `size.buffer.*` value stops at
+    /// `MAX_ARGUMENT_DEPTH` on a thread of half the 2 MiB Rust gives a spawned thread: 400 nested
+    /// calls of a macro are noted by key and dropped, the other entries read.
+    #[test]
+    fn sizes_nested_past_the_depth_are_noted_by_key() {
+        use sunrise_glsl::macros::{MAX_ARGUMENT_DEPTH, calls_too_deep};
+        let nested = |depth: usize, value: &str| {
+            format!("{}{value}{}", "F(".repeat(depth), ")".repeat(depth))
+        };
+        let entry = |key: &str, value: String, line: u32| crate::properties::Entry {
+            key: key.into(),
+            value,
+            line,
+        };
+        let properties = Properties {
+            entries: vec![
+                entry(
+                    "size.buffer.colortex4",
+                    format!("{} 4", nested(MAX_ARGUMENT_DEPTH, "8")),
+                    1,
+                ),
+                entry(
+                    "size.buffer.colortex5",
+                    format!("{} 4", nested(400, "8")),
+                    2,
+                ),
+                entry(
+                    "image.deep",
+                    format!("deep_sampler {} RGBA8 BYTE false false 4", nested(400, "R")),
+                    3,
+                ),
+            ],
+            notes: Vec::new(),
+        };
+        let post = std::thread::Builder::new()
+            .stack_size(1 << 20)
+            .spawn(move || {
+                let pack = Pack::from_zip_bytes("deep.zip", zip(&[("shaders/x.txt", "")])).unwrap();
+                let mut macros = Macros::standard();
+                macros.define_line("F(x) x").unwrap();
+                load_post(&pack, "", &properties, &macros, &GameInputs::default())
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+        assert_eq!(post.sizes[4], Some(BufferSize::Absolute([8, 4])));
+        assert_eq!(post.sizes[5], None);
+        assert!(post.images.is_empty());
+        let notes: Vec<&str> = post.notes.iter().map(String::as_str).collect();
+        let size = format!("`size.buffer.colortex5`: {}", calls_too_deep());
+        let image = format!("`image.deep`: {}", calls_too_deep());
+        assert!(
+            notes.contains(&size.as_str()) && notes.contains(&image.as_str()),
+            "{notes:?}"
         );
     }
 

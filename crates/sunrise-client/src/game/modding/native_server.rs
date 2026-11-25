@@ -16,6 +16,9 @@ mod command_failure_tests;
 #[path = "native_server/command_shape_tests.rs"]
 mod command_shape_tests;
 #[cfg(test)]
+#[path = "native_server/profile_tests.rs"]
+mod profile_tests;
+#[cfg(test)]
 #[path = "native_server/provider_tests.rs"]
 mod provider_tests;
 #[path = "native_server/registered_commands.rs"]
@@ -113,6 +116,11 @@ fn usage_nodes(
         if optional_seen && !optional {
             return Err(format!("`{usage}`: `{word}` follows an optional argument"));
         }
+        if client && kind == "game_profile" {
+            return Err(format!(
+                "`{usage}`: `game_profile` requires a server command"
+            ));
+        }
         let resource = kind
             .strip_prefix("resource:")
             .map(|registry| resource_parser(registry).map_err(|e| format!("`{usage}`: {e}")))
@@ -147,12 +155,12 @@ fn usage_nodes(
         if !properties.is_null() {
             node["properties"] = properties;
         }
-        if kind == "vec3_uncentered" {
+        if matches!(kind, "vec3_uncentered" | "vec2_uncentered") {
             node[UNCENTERED] = true.into();
         }
-        // A registered type goes out as the Brigadier type its kind names, which an unmodded
-        // client can read; it and the free `id`, which has no list of its own, ask the server
-        // (the mods' `tab_complete`).
+        // A registered type goes out as the Brigadier or vanilla parser its kind names, which an
+        // unmodded client can read; it and the free `id`, which has no list of its own, ask the
+        // server (the mods' `tab_complete`).
         if custom.is_some() || kind == "id" {
             if let Some(id) = custom {
                 node["custom_argument"] = id.into();
@@ -2788,6 +2796,9 @@ impl Game<'_> {
         for argument in context.args {
             let ty = parsed_type(&self.ui.dispatcher.0, &context.nodes, argument.range);
             let value = match argument.value {
+                value if matches!(ty, Some(ArgType::GameProfile)) => {
+                    Value::GameProfiles(self.mod_game_profiles(&value)?)
+                }
                 Arg::Entity(selector) => {
                     // The parsed node, not its name, determines cardinality: usages may
                     // repeat an argument name or use different kinds on separate branches.
@@ -3729,8 +3740,8 @@ mod tests {
         }
     }
 
-    const POSITIONED: &str = "kinds <at:vec3> <by:vec3_uncentered> <column:column_pos> \
-         <look:rotation> <level:dimension> <tag:nbt>";
+    const POSITIONED: &str = "kinds <at:vec3> <by:vec3_uncentered> <flat:vec2> \
+         <flat_raw:vec2_uncentered> <column:column_pos> <look:rotation> <level:dimension> <tag:nbt>";
 
     #[test]
     fn position_rotation_dimension_and_nbt_kinds_are_vanillas_parsers() {
@@ -3740,6 +3751,8 @@ mod tests {
         for (name, parser) in [
             ("at", "minecraft:vec3"),
             ("by", "minecraft:vec3"),
+            ("flat", "minecraft:vec2"),
+            ("flat_raw", "minecraft:vec2"),
             ("column", "minecraft:column_pos"),
             ("look", "minecraft:rotation"),
             ("level", "minecraft:dimension"),
@@ -3747,7 +3760,11 @@ mod tests {
         ] {
             node = &node["children"][name];
             assert_eq!(node["parser"], parser, "{name}");
-            assert_eq!(node["uncentered"] == true, name == "by", "{name}");
+            assert_eq!(
+                node["uncentered"] == true,
+                matches!(name, "by" | "flat_raw"),
+                "{name}"
+            );
         }
     }
 
@@ -3756,6 +3773,16 @@ mod tests {
         let (_, _, problems) = tree(&[
             mod_api::Command::new("go <to:vec3>"),
             mod_api::Command::new("go <to:vec3_uncentered>"),
+        ]);
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(problems[0].contains("another kind"), "{problems:?}");
+    }
+
+    #[test]
+    fn vec2_and_vec2_uncentered_do_not_share_a_node() {
+        let (_, _, problems) = tree(&[
+            mod_api::Command::new("go <to:vec2>"),
+            mod_api::Command::new("go <to:vec2_uncentered>"),
         ]);
         assert_eq!(problems.len(), 1, "{problems:?}");
         assert!(problems[0].contains("another kind"), "{problems:?}");
@@ -3794,10 +3821,19 @@ mod tests {
                 rotation,
             )
         };
-        let relative = "kinds ~1 ~ ~-1 ~1 ~ ~-1 ~3 ~-4 ~10 ~-5 minecraft:the_nether {}";
+        let relative =
+            "kinds ~1 ~ ~-1 ~1 ~ ~-1 ~1 ~-2 ~1 ~-2 ~3 ~-4 ~10 ~-5 minecraft:the_nether {}";
         assert_eq!(
             value(relative, "at", "vec3"),
             mod_api::CommandArgumentValue::Vec3([11.0, 70.0, -3.0])
+        );
+        assert_eq!(
+            value(relative, "flat", "vec2"),
+            mod_api::CommandArgumentValue::Vec2([11.0, -4.0])
+        );
+        assert_eq!(
+            value(relative, "flat_raw", "vec2_uncentered"),
+            mod_api::CommandArgumentValue::Vec2([11.0, -4.0])
         );
         assert_eq!(
             value(relative, "column", "column_pos"),
@@ -3807,8 +3843,8 @@ mod tests {
             value(relative, "look", "rotation"),
             mod_api::CommandArgumentValue::Rotation([55.0, 25.0])
         );
-        // A whole `x` and `z` is centred by `vec3` and kept by `vec3_uncentered`.
-        let absolute = "kinds 5 64 -7 5 64 -7 0 0 0 0 minecraft:overworld {}";
+        // A whole `x` and `z` is centred by `vec3`/`vec2` and kept by `*_uncentered`.
+        let absolute = "kinds 5 64 -7 5 64 -7 5 7 5 7 0 0 0 0 minecraft:overworld {}";
         assert_eq!(
             value(absolute, "at", "vec3"),
             mod_api::CommandArgumentValue::Vec3([5.5, 64.0, -6.5])
@@ -3817,6 +3853,17 @@ mod tests {
             value(absolute, "by", "vec3_uncentered"),
             mod_api::CommandArgumentValue::Vec3([5.0, 64.0, -7.0])
         );
+        assert_eq!(
+            value(absolute, "flat", "vec2"),
+            mod_api::CommandArgumentValue::Vec2([5.5, 7.5])
+        );
+        assert_eq!(
+            value(absolute, "flat_raw", "vec2_uncentered"),
+            mod_api::CommandArgumentValue::Vec2([5.0, 7.0])
+        );
+        // `vec2` refuses local `^` coordinates, matching `Vec2Argument.parse`.
+        let local = "kinds 0 0 0 0 0 0 ^1 ^2 0 0 0 0 0 0 minecraft:overworld {}";
+        assert!(dispatcher.parse(local, &registries).executable().is_err());
     }
 
     #[test]
@@ -6029,6 +6076,8 @@ mod tests {
             mod_api::Command::new("c_bpos <p:block_pos>"),
             mod_api::Command::new("c_vec <v:vec3>"),
             mod_api::Command::new("c_vecu <v:vec3_uncentered>"),
+            mod_api::Command::new("c_vec2 <v:vec2>"),
+            mod_api::Command::new("c_vec2u <v:vec2_uncentered>"),
             mod_api::Command::new("c_col <c:column_pos>"),
             mod_api::Command::new("c_rot <r:rotation>"),
             mod_api::Command::new("c_nbt <n:nbt>"),
@@ -7710,6 +7759,11 @@ pub(super) mod fake_action_tests {
         with_game(|game| {
             let (player, conn, _) = fake(game, None, 0);
             game.as_guest(conn, |g| g.attack_ticks = 2).unwrap();
+            // The base attack speed, 4: a full charge takes 5 ticks.
+            assert_eq!(
+                game.player_current_item_attack_strength_delay(player),
+                Some(5.0)
+            );
             for partial in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
                 assert_eq!(game.player_attack_strength_scale(player, partial), None);
                 game.as_guest(conn, |g| {

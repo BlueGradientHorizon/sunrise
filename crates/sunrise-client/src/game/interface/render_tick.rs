@@ -189,7 +189,7 @@ impl Game<'_> {
         title: bool,
         sky: &sunrise_client::environment::Sky,
     ) -> Option<[f32; 2]> {
-        if title || !sunrise_client::clouds::visible(&self.settings.clouds, sky.cloud_color[3]) {
+        if title || !sunrise_client::clouds::visible(self.effective_clouds(), sky.cloud_color[3]) {
             return None;
         }
         let white = self.gui.atlas.sprites.get("sunrise/white")?;
@@ -835,8 +835,12 @@ impl Game<'_> {
             let world = &self.world;
             let facts = self.res.facts();
             let biomes = world_biomes!(self);
-            let environment =
-                Self::level_environment(self.remote.as_ref(), &self.res, &self.dimension_type().id);
+            let environment = Self::level_environment(
+                self.remote.as_ref(),
+                &self.res,
+                self.dim.id(),
+                &self.dimension_type().id,
+            );
             let ui = &self.ui;
             let remote = self.remote.as_ref();
             let clock = |name: &str| {
@@ -1107,8 +1111,13 @@ impl Game<'_> {
                 self.res.facts(),
                 self.collision,
             );
-            self.particles
-                .add_admitted_with_level(Some(&level), &options, at, [0.0; 3]);
+            self.particles.add_admitted_with_level(
+                Some(&level),
+                &options,
+                at,
+                [0.0; 3],
+                override_limiter,
+            );
         }
     }
 

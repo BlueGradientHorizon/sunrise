@@ -390,6 +390,9 @@ pub struct HurtSource<'a> {
     /// dealt during a projectile's impact (an ownerless wither skull, a tipped arrow's
     /// instant harm).
     pub direct: i32,
+    /// The direct entity's type (`minecraft:splash_potion`, `minecraft:area_effect_cloud`),
+    /// when the source names one, independently of its class family.
+    pub direct_type: Option<&'a str>,
     pub position: Option<[f64; 3]>,
 }
 /// Where the entity a hit lands on stands and looks (`getViewVector`), for

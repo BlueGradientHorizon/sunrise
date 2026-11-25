@@ -37,13 +37,21 @@ impl<'a, 'g> GameWorldStageDriver<'a, 'g> {
     }
 
     fn view<'v>(
+        game: &Game<'_>,
         camera: &'v mod_api::Camera,
         alpha: f64,
-        game_time: i64,
         sections: &'v [mod_api::RenderableSection],
         oit_on: bool,
     ) -> mod_api::WorldRenderView<'v> {
-        mod_api::WorldRenderView::new(camera, alpha as f32, game_time, oit_on, sections)
+        mod_api::WorldRenderView::new(
+            camera,
+            game.world_camera_entity_eye(),
+            alpha as f32,
+            game.world.game_time,
+            game.animation_time(),
+            oit_on,
+            sections,
+        )
     }
 }
 
@@ -59,26 +67,14 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
     }
 
     fn on_custom_geometry(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool) {
-        let view = Self::view(
-            self.frame_camera,
-            self.alpha,
-            self.game.world.game_time,
-            sections,
-            oit_on,
-        );
+        let view = Self::view(self.game, self.frame_camera, self.alpha, sections, oit_on);
         self.draw.begin_custom_geometry();
         self.game.native_submit_custom_geometry(&view, self.draw);
         self.game.submit_debug_geometry(&view, self.draw);
     }
 
     fn on_after_sky(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool) {
-        let view = Self::view(
-            self.frame_camera,
-            self.alpha,
-            self.game.world.game_time,
-            sections,
-            oit_on,
-        );
+        let view = Self::view(self.game, self.frame_camera, self.alpha, sections, oit_on);
         let mut surface = self.draw.stage_surface(RenderLevelStage::AfterSky);
         self.game
             .native_render_level_stage(RenderLevelStage::AfterSky, &view, &mut surface);
@@ -90,13 +86,7 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
         oit_on: bool,
         out: &mut sunrise_client::gfx::world_primitives::PreparedHookGeometry,
     ) {
-        let view = Self::view(
-            self.frame_camera,
-            self.alpha,
-            self.game.world.game_time,
-            sections,
-            oit_on,
-        );
+        let view = Self::view(self.game, self.frame_camera, self.alpha, sections, oit_on);
         self.game.native_prepare_render_buffers(&view, self.draw);
         self.draw.finalize();
         self.game.resolve_submitted_groups(self.draw);
@@ -126,13 +116,7 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
         sections: &[mod_api::RenderableSection],
         oit_on: bool,
     ) -> &[sunrise_client::gfx::world_primitives::DrawRanges] {
-        let view = Self::view(
-            self.frame_camera,
-            self.alpha,
-            self.game.world.game_time,
-            sections,
-            oit_on,
-        );
+        let view = Self::view(self.game, self.frame_camera, self.alpha, sections, oit_on);
         let mut surface = self.draw.stage_surface(stage);
         self.game
             .native_render_level_stage(stage, &view, &mut surface);
@@ -144,13 +128,7 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
     }
 
     fn on_after_level(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool) {
-        let view = Self::view(
-            self.frame_camera,
-            self.alpha,
-            self.game.world.game_time,
-            sections,
-            oit_on,
-        );
+        let view = Self::view(self.game, self.frame_camera, self.alpha, sections, oit_on);
         let mut surface = self.draw.stage_surface(RenderLevelStage::AfterLevel);
         self.game
             .native_render_level_stage(RenderLevelStage::AfterLevel, &view, &mut surface);
@@ -268,8 +246,10 @@ impl Game<'_> {
         draw.set_time(((self.world.game_time.rem_euclid(72_000) as f64 + alpha) / 20.0) as f32);
         let view = mod_api::WorldRenderView::new(
             frame_camera,
+            self.world_camera_entity_eye(),
             alpha as f32,
             self.world.game_time,
+            self.animation_time(),
             oit_on,
             sections,
         );
@@ -579,20 +559,20 @@ impl Game<'_> {
         if !materials.is_empty() {
             mark_span(entities.len());
             let layers = &self.pack.render.sprite_layers;
-            let mut scope =
-                sunrise_client::gfx::EntityQuadScope::new(entities, capacity, reserved_quads);
             for &index in materials.iter() {
-                if !scope.has_room() {
+                if !sunrise_client::gfx::EntityQuadScope::new(entities, capacity, reserved_quads)
+                    .has_room()
+                {
                     break;
                 }
                 let copy = draw.copy(index as usize);
                 let Some(faces) = self.model_faces(copy.slot) else {
                     continue;
                 };
-                let state = self
+                let (state, special) = self
                     .standalone_geometry
                     .instance_slot(copy.slot)
-                    .is_some_and(|slot| slot.state);
+                    .map_or((false, None), |slot| (slot.state, slot.special));
                 let shift = (DVec3::from(copy.origin) - camera).as_vec3();
                 let pose =
                     Mat4::from_translation(shift) * world_geometry::row_major_3x4(copy.transform);
@@ -608,12 +588,37 @@ impl Game<'_> {
                     hidden_faces: copy.hidden_faces,
                     ..Default::default()
                 };
-                submit_material_model_copy(&mut scope, faces, pose, copy.light, options, |name| {
-                    layers
-                        .get(name)
-                        .or_else(|| layers.get(name.strip_prefix("minecraft:")?))
-                        .copied()
-                });
+                {
+                    let mut scope = sunrise_client::gfx::EntityQuadScope::new(
+                        entities,
+                        capacity,
+                        reserved_quads,
+                    );
+                    submit_material_model_copy(
+                        &mut scope,
+                        faces,
+                        pose,
+                        copy.light,
+                        options,
+                        |name| {
+                            layers
+                                .get(name)
+                                .or_else(|| layers.get(name.strip_prefix("minecraft:")?))
+                                .copied()
+                        },
+                    );
+                }
+                if let Some(state) = special {
+                    self.special_model_part(
+                        state,
+                        pose,
+                        copy.light,
+                        copy.color,
+                        entities,
+                        capacity,
+                        reserved_quads,
+                    );
+                }
             }
         }
         draw.clear_copies();
@@ -864,6 +869,107 @@ mod tests {
                 .find_map(|state| slot(state).ok().map(|slot| (state, slot)))
                 .expect("some block state has a model");
             assert_eq!(slot(state), Ok(first));
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_special_block_state_draws_its_renderer_and_a_faded_copy_blends() {
+        let _fixture = sunrise_client::models::standalone_fixture(Vec::new());
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            let _restore = Restore;
+            let chest = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:chest")
+                .unwrap();
+            // `BuiltInBlockModels`: a chest is its block-state model plus its special renderer.
+            let model = game
+                .native_block_state_model(chest)
+                .expect("a chest resolves to its composite model");
+            let slot = mod_api::__private::game::Fields::fields(&model).slot;
+            let instance = game.standalone_geometry.instance_slot(slot).unwrap();
+            assert_eq!(instance.special, Some(chest));
+            // The chest's box reaches 14/16 up, so copies cull by the renderer's geometry.
+            assert!(instance.bounds[1][1] > 0.8, "{:?}", instance.bounds);
+            let camera = DVec3::new(0.0, 70.0, 0.0);
+            let mut draw = WorldGeometry::default();
+            draw.reset(camera.to_array(), Mat4::IDENTITY, [0.0, 0.0]);
+            context(game, &mut draw)
+                .draw_model_instances(
+                    model,
+                    &[
+                        ModelInstance::at([3.0, 70.0, 0.0], u32::MAX),
+                        ModelInstance::at([6.0, 70.0, 0.0], u32::MAX).with_color(0x80FF_FFFF),
+                    ],
+                )
+                .unwrap();
+            let mut entities = Vec::new();
+            game.commit_model_instances(&mut draw, camera, &mut entities);
+            let (opaque, faded): (Vec<&Vertex>, Vec<&Vertex>) =
+                entities.iter().partition(|vertex| vertex.pos[0] < 5.0);
+            assert!(!opaque.is_empty() && opaque.len() == faded.len());
+            assert!(
+                opaque.iter().all(
+                    |v| v.layer & sunrise_client::gfx::OIT_ENTITY == 0 && v.color >> 24 == 0xFF
+                )
+            );
+            assert!(
+                faded
+                    .iter()
+                    .all(|v| v.layer & sunrise_client::gfx::OIT_ENTITY != 0 && v.color >> 24 < 0xFF)
+            );
+            let registry = &game.pack.assets.registry;
+            let parse = |text| sunrise_client::block_sprites::parse_state(registry, text).unwrap();
+            let (left, gateway, table) = (
+                parse("chest[type=left]"),
+                parse("end_gateway"),
+                parse("enchanting_table"),
+            );
+            let special = |state, pose, color| {
+                let mut out = Vec::new();
+                game.special_model_part(
+                    state,
+                    pose,
+                    0xF0F0,
+                    color,
+                    &mut out,
+                    sunrise_client::gfx::EntityQuadCapacity::default_device(),
+                    0,
+                );
+                out
+            };
+            // The left half of a double chest draws alone, with no neighbour to pair with.
+            let out = special(left, Mat4::IDENTITY, u32::MAX);
+            assert!(!out.is_empty());
+            // Non-finite quads from a pose past the finite range are skipped.
+            let out = special(
+                chest,
+                Mat4::from_scale(Vec3::splat(f32::INFINITY)),
+                u32::MAX,
+            );
+            assert!(out.is_empty());
+            // EndCubeSpecialRenderer: all six faces, and the starfield stays opaque when faded.
+            let out = special(gateway, Mat4::IDENTITY, 0x80FF_FFFF);
+            assert_eq!(out.len(), 24);
+            assert!(
+                out.iter()
+                    .all(|v| v.layer & sunrise_client::gfx::OIT_ENTITY == 0)
+            );
+            // The enchanting table: its block-state faces, then the book.
+            let out = special(table, Mat4::IDENTITY, u32::MAX);
+            assert!(!out.is_empty());
+            let model = game.native_block_state_model(table).unwrap();
+            let slot = mod_api::__private::game::Fields::fields(&model).slot;
+            assert!(!game.model_faces(slot).unwrap().is_empty());
+            assert_eq!(
+                game.standalone_geometry
+                    .instance_slot(slot)
+                    .unwrap()
+                    .special,
+                Some(table)
+            );
         });
     }
 
@@ -2431,6 +2537,7 @@ mod tests {
             &[make_baked()],
             |_| Some(7),
             TerrainModelOptions::default(),
+            |_, _, _, _, _| {},
         );
         let mut entities = draw.into_vertices();
         assert_eq!(entities.len(), 4, "1 terrain model quad admitted");

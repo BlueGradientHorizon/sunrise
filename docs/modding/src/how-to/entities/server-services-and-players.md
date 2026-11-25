@@ -17,7 +17,9 @@ opening the world to LAN. The owner joins the integrated server through memory
 and has an ordinary `PlayerRef`. Sending a payload to that ref reaches the client
 half through the same registration and negotiation as any other player; no
 separate local-player send path is needed.
-Fake players are not included in the connected-player list.
+Fake players are not included in the connected-player list. To look up an
+identity or its permission level without a live handle, use the players
+service's [profile reads](server-commands.md#game-profiles-including-offline-players).
 
 Player and level lookup services accept `&dyn ServerHost` and do not mutate the
 world. These services are unavailable on `Host`, `ClientHost` and restricted
@@ -344,7 +346,7 @@ fires when a world is opened to LAN.
 
 `host.tick_rate_is_frozen()` is `TickRateManager.isFrozen` (`/tick freeze`): `Some(true)` while the server's
 ticking is frozen, `None` on a client. A frozen server still runs the ticks `/tick step` asks for, so
-`server_tick_start`'s `world_running` can be true while it is frozen; read this to tell a frozen server from a
+`server_tick`'s `ServerTickPhase::ServerTickStart { world_running }` can be true while it is frozen; read this to tell a frozen server from a
 paused level.
 
 ## Weather
@@ -551,6 +553,7 @@ For mods that inspect or edit an online player's state (a player-data sync, `/in
 | `persistent_data(host)` | Borrows the player's `NeoForgeData` compound (NeoForge's `Entity.getPersistentData`) for the lifetime of the shared Host borrow. `None` for an absent compound, an unavailable player or a client; `Some` can hold an empty compound. Clone deliberately if you need an owned snapshot. |
 | `set_persistent_data_key(host, &key, value)` | Edits one literal `JavaString` key. `Some(&tag)` inserts or replaces it, creating the compound if needed; `None` removes just that key. Removing the last key leaves a present empty compound; removing a missing key does nothing. Returns `Result<(), PlayerPersistentDataError>`. |
 | `host.item_from_snbt(snbt)` | Reads one complete SNBT compound as a saved `ItemStack.CODEC` item: `{id:"minecraft:stone",count:3,components:{...}}`. `count` defaults to 1 and must be in 1 to 99. Trailing whitespace is allowed. The SNBT parser's structural rules apply, not the binary NBT byte quota. On bad syntax, an invalid item or component patch, or an unknown item, returns `None` and logs the failure reason. |
+| `host.item_to_json(stack)` / `host.item_from_json(json)` | Encodes and decodes an `Option<ItemStack>` as JSON with `ItemStack.OPTIONAL_CODEC` (`ItemStack.CODEC` wrapped in `ExtraCodecs.optionalEmptyMap`) over `JsonOps`: `None` maps to `{}`, non-empty stacks to `{"id","count","components":{...}}` with `"!id":{}` for removals, and typed JSON values per component codec. Errors return `ItemJsonError` naming the failing field. |
 
 Both scoped reads return `Some` of the callback's result even when the inventory is empty,
 or `None` without calling it when the player or inventory is unavailable. Inside the callback,

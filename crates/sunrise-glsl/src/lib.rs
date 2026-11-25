@@ -8,6 +8,9 @@
 //! - GLSL a GL compiler takes and naga doesn't is rewritten first ([`glsl_fixups`]: a helper
 //!   taking the `sampler2D` it reads, an array sized by its initializer only);
 //! - includes are inlined ([`Includes`]), under the defines the program is compiled with;
+//! - after the rewrites below, the directives run ([`run_directives`]): conditions and macros
+//!   are Sunrise's own preprocessor's ([`condition`], [`macros`]), and naga reads code with no
+//!   directive or define left but `#version`, `#extension` and `#pragma`;
 //! - the uniform blocks get the bindings of [`Inputs::blocks`], and each sampler of
 //!   [`Inputs::samplers`] is split into a texture and a sampler object, combined again where the
 //!   sampler is named;
@@ -33,12 +36,17 @@ use naga::ShaderStage;
 use naga::front::glsl::{Frontend, InterfaceLimits, Options};
 use naga::valid::{Capabilities, ValidationFlags, Validator};
 
+pub mod condition;
+mod directives;
 mod glsl_fixups;
 mod located;
+pub mod macros;
 mod stage;
 
+pub use directives::run_directives;
 pub use located::{Error, Expanded, Location, describe};
 use located::{Lines, Origin};
+pub use macros::Macros;
 pub use stage::{BindingMap, Source, compile_stage};
 
 /// What a program's pipeline gives it, beyond its [`Glue`].
@@ -254,6 +262,27 @@ impl Translated {
         self.other_base + 2 * index as u32
     }
 
+    /// The size the stages declare the uniform block at `binding` of set 0 with, the larger of
+    /// the two; 0 when neither declares one there.
+    pub fn declared_size(&self, binding: u32) -> u64 {
+        [&self.vertex, &self.fragment]
+            .into_iter()
+            .flat_map(|module| {
+                module
+                    .global_variables
+                    .iter()
+                    .filter_map(move |(_, global)| {
+                        let bound = global.binding.as_ref()?;
+                        (bound.group == 0
+                            && bound.binding == binding
+                            && global.space == naga::AddressSpace::Uniform)
+                            .then(|| u64::from(module.types[global.ty].inner.size(module.to_ctx())))
+                    })
+            })
+            .max()
+            .unwrap_or(0)
+    }
+
     /// The stages whose entry points read the resource at `binding` of set 0, through any
     /// function they call: what a pipeline layout must make that binding visible to. Empty
     /// for one a stage only declares (or the preprocessor kept but nothing reads).
@@ -425,52 +454,361 @@ pub fn translate(
     };
     let vertex_code = rewritten(&vertex_text, ShaderStage::Vertex, &mut names)?;
     let fragment_code = rewritten(&fragment_text, ShaderStage::Fragment, &mut names)?;
+    // The directives run where naga's preprocessor ran them: on the rewritten stage, the
+    // program's defines first.
+    let directives = |code: &Expanded, stage| {
+        run_directives(code, inputs.defines).map_err(|e| vec![in_stage(stage, e)])
+    };
+    let vertex_parsed = directives(&vertex_code, ShaderStage::Vertex)?;
+    let fragment_parsed = directives(&fragment_code, ShaderStage::Fragment)?;
     let compiled = |code: &Expanded, stage| {
-        compile(
-            stage,
-            code,
-            inputs.defines,
-            &names,
-            provided,
-            glue.interface,
-        )
-        .map_err(|errors: Vec<Error>| {
+        compile(stage, code, &names, provided, glue.interface).map_err(|errors: Vec<Error>| {
             errors
                 .into_iter()
                 .map(|e| in_stage(stage, e))
                 .collect::<Vec<_>>()
         })
     };
-    let vertex = compiled(&vertex_code, ShaderStage::Vertex)?;
+    let mut vertex = compiled(&vertex_parsed, ShaderStage::Vertex)?;
     let fragment: (naga::Module, naga::valid::ModuleInfo) =
-        compiled(&fragment_code, ShaderStage::Fragment)?;
-    let given = locations(&vertex.0, false);
-    if let Some(missing) = locations(&fragment.0, true)
-        .into_iter()
-        .find(|l| !given.contains(l))
-    {
+        compiled(&fragment_parsed, ShaderStage::Fragment)?;
+    if let Err(refusal) = link(&vertex.0, &fragment.0) {
         // At the fragment shader's input of that location.
-        let at = names.inputs.iter().find(|(l, _)| *l == missing);
-        return Err(vec![fragment_code.error_at(
-            at.map(|(_, at)| *at),
-            format!(
-                "the fragment shader reads location {missing}, which the vertex shader doesn't write"
-            ),
-        )]);
+        let at = (names.inputs.iter()).find(|(l, _)| *l == refusal.location());
+        return Err(vec![
+            fragment_code.error_at(at.map(|(_, at)| *at), refusal.to_string()),
+        ]);
     }
+    follow_fragment_interpolation(&mut vertex.0, &fragment.0);
     let mut program = Translated::new(vertex, fragment, names.other, names.other_base);
+    // Each output's declaration, at the start of its line in the code that was parsed: the
+    // directives keep every line where it was.
+    let outputs = (names.outputs.into_iter())
+        .map(|(location, at)| {
+            let line = fragment_code.lines.line_of(at);
+            (location, fragment_parsed.lines.line_start(line))
+        })
+        .collect();
     program.sources = Some(Box::new(Sources {
-        code: [vertex_code, fragment_code],
-        outputs: names.outputs,
+        code: [vertex_parsed, fragment_parsed],
+        outputs,
     }));
     Ok(program)
+}
+
+/// Why the two stages don't meet, by vanilla's check when it builds a pipeline
+/// (`PipelineBuilder`), at the location the fragment stage reads.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LinkRefusal {
+    /// The vertex stage doesn't write it.
+    Missing(u32),
+    /// Float, int or uint in one stage, another in the other.
+    BaseType(u32),
+    /// Another number of components.
+    Components(u32),
+    /// Flat in one stage only.
+    Flat(u32),
+}
+
+impl LinkRefusal {
+    /// The location the fragment stage reads, where the stages don't meet.
+    pub fn location(self) -> u32 {
+        match self {
+            Self::Missing(l) | Self::BaseType(l) | Self::Components(l) | Self::Flat(l) => l,
+        }
+    }
+}
+
+impl std::fmt::Display for LinkRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Missing(l) => write!(
+                f,
+                "the fragment shader reads location {l}, which the vertex shader doesn't write"
+            ),
+            Self::BaseType(l) => write!(f, "the stages' base types differ at location {l}"),
+            Self::Components(l) => write!(f, "the stages' vector lengths differ at location {l}"),
+            Self::Flat(l) => write!(
+                f,
+                "the stages' interpolation differs at location {l}: flat in one only"
+            ),
+        }
+    }
+}
+
+/// Vanilla's check of the two stages' interface when it builds a pipeline (`PipelineBuilder`):
+/// each location the fragment stage reads is written by the vertex stage, with the same base type
+/// (float, int or uint), the same number of components, and flat in both or in neither. It
+/// compares no other interpolation or sampling ([`follow_fragment_interpolation`]).
+fn link(vertex: &naga::Module, fragment: &naga::Module) -> Result<(), LinkRefusal> {
+    let given = varyings(vertex, false);
+    for (location, read) in varyings(fragment, true) {
+        let Some((_, written)) = given.iter().find(|(l, _)| *l == location) else {
+            return Err(LinkRefusal::Missing(location));
+        };
+        if read.kind != written.kind {
+            return Err(LinkRefusal::BaseType(location));
+        }
+        if read.components != written.components {
+            return Err(LinkRefusal::Components(location));
+        }
+        if read.flat() != written.flat() {
+            return Err(LinkRefusal::Flat(location));
+        }
+    }
+    Ok(())
+}
+
+/// The vertex stage's outputs given the interpolation and sampling the fragment stage reads each
+/// with (`noperspective`, `centroid`, `sample`): vanilla's check compares only flat-ness
+/// ([`link`]) and the fragment stage's qualifiers decide, while the device refuses any other
+/// difference. An output the fragment stage doesn't read keeps its own.
+fn follow_fragment_interpolation(vertex: &mut naga::Module, fragment: &naga::Module) {
+    let read = varyings(fragment, true);
+    let follow = |binding: &mut naga::Binding| {
+        if let naga::Binding::Location {
+            location,
+            interpolation,
+            sampling,
+            ..
+        } = binding
+            && let Some((_, wanted)) = read.iter().find(|(l, _)| l == location)
+        {
+            *interpolation = wanted.interpolation;
+            *sampling = wanted.sampling;
+        }
+    };
+    for entry in &mut vertex.entry_points {
+        let Some(result) = &mut entry.function.result else {
+            continue;
+        };
+        if let Some(binding) = &mut result.binding {
+            follow(binding);
+            continue;
+        }
+        let ty = &vertex.types[result.ty];
+        let naga::TypeInner::Struct { members, span } = &ty.inner else {
+            continue;
+        };
+        let mut members = members.clone();
+        for member in &mut members {
+            if let Some(binding) = &mut member.binding {
+                follow(binding);
+            }
+        }
+        let followed = naga::Type {
+            name: ty.name.clone(),
+            inner: naga::TypeInner::Struct {
+                members,
+                span: *span,
+            },
+        };
+        // The arena keeps one of each type: the same struct twice (nothing changed, or one
+        // already declared alike) stays as it is.
+        if vertex.types.get(&followed).is_none() {
+            vertex.types.replace(result.ty, followed);
+        }
+    }
+}
+
+/// What a stage passes at one location, as [`link`] compares it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Varying {
+    kind: Option<naga::ScalarKind>,
+    components: u8,
+    interpolation: Option<naga::Interpolation>,
+    sampling: Option<naga::Sampling>,
+}
+
+impl Varying {
+    fn flat(&self) -> bool {
+        self.interpolation == Some(naga::Interpolation::Flat)
+    }
+}
+
+/// The locations the entry point reads (`inputs`) or writes, each with what passes there.
+fn varyings(module: &naga::Module, inputs: bool) -> Vec<(u32, Varying)> {
+    let mut out = Vec::new();
+    let mut add = |ty: naga::Handle<naga::Type>, binding: Option<&naga::Binding>| {
+        let varying = |ty: naga::Handle<naga::Type>, binding: &naga::Binding| {
+            let (kind, components) = match module.types[ty].inner {
+                naga::TypeInner::Scalar(s) => (Some(s.kind), 1),
+                naga::TypeInner::Vector { size, scalar } => (Some(scalar.kind), size as u8),
+                _ => (None, 0),
+            };
+            let naga::Binding::Location {
+                location,
+                interpolation,
+                sampling,
+                ..
+            } = *binding
+            else {
+                return None;
+            };
+            Some((
+                location,
+                Varying {
+                    kind,
+                    components,
+                    interpolation,
+                    sampling,
+                },
+            ))
+        };
+        if let Some(binding) = binding {
+            out.extend(varying(ty, binding));
+        } else if let naga::TypeInner::Struct { members, .. } = &module.types[ty].inner {
+            for m in members {
+                out.extend(m.binding.as_ref().and_then(|b| varying(m.ty, b)));
+            }
+        }
+    };
+    for entry in &module.entry_points {
+        if inputs {
+            for arg in &entry.function.arguments {
+                add(arg.ty, arg.binding.as_ref());
+            }
+        } else if let Some(result) = &entry.function.result {
+            add(result.ty, result.binding.as_ref());
+        }
+    }
+    out
+}
+
+/// A limit of wgpu's default device a program is past, where vanilla's device takes more: the
+/// program draws natively and the pack stays, as before such a program failed the load (asking
+/// the adapter for its own limits would fit it).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PastDeviceLimit {
+    /// More uniform blocks read by `stage` than `max_uniform_buffers_per_shader_stage`.
+    UniformBlocks {
+        stage: wgpu_types::ShaderStages,
+        blocks: u32,
+        limit: u32,
+    },
+    /// More varyings, or a varying at a higher location, than
+    /// `max_inter_stage_shader_variables` allows.
+    Varyings {
+        count: u32,
+        highest: u32,
+        limit: u32,
+    },
+    /// The fragment stage writes the colour target at `location` (of `target`'s format) with
+    /// another base type, or fewer components than the format has, than the device takes:
+    /// vanilla's builder doesn't check a stage's outputs.
+    ColourOutput {
+        location: u32,
+        kind: Option<naga::ScalarKind>,
+        components: u8,
+        target: wgpu_types::TextureFormat,
+    },
+}
+
+impl std::fmt::Display for PastDeviceLimit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UniformBlocks {
+                stage,
+                blocks,
+                limit,
+            } => write!(
+                f,
+                "its {stage:?} stage reads {blocks} uniform blocks, past the device's {limit}"
+            ),
+            Self::Varyings {
+                count,
+                highest,
+                limit,
+            } => write!(
+                f,
+                "its stages pass {count} varyings up to location {highest}, past the device's {limit}"
+            ),
+            Self::ColourOutput {
+                location,
+                kind,
+                components,
+                target,
+            } => write!(
+                f,
+                "its fragment stage writes colour target {location} ({target:?}) with {components} \
+                 {kind:?} components, which the device doesn't take there"
+            ),
+        }
+    }
+}
+
+impl Translated {
+    /// The first of `limits` (the device's) the program is past, as the device would refuse its
+    /// pipeline: the uniform blocks each stage reads (each bound only to the stages reading it),
+    /// the varyings either stage passes, and the colour it writes into each of `targets` (their
+    /// formats): the base type of the format, with at least as many components.
+    pub fn past_device_limit(
+        &self,
+        limits: &wgpu_types::Limits,
+        targets: &[wgpu_types::TextureFormat],
+    ) -> Option<PastDeviceLimit> {
+        for (location, written) in varyings(&self.fragment, false) {
+            let Some(&target) = targets.get(location as usize) else {
+                continue;
+            };
+            let kind = match target.sample_type(None, None) {
+                Some(wgpu_types::TextureSampleType::Sint) => naga::ScalarKind::Sint,
+                Some(wgpu_types::TextureSampleType::Uint) => naga::ScalarKind::Uint,
+                _ => naga::ScalarKind::Float,
+            };
+            if written.kind != Some(kind) || written.components < target.components() {
+                return Some(PastDeviceLimit::ColourOutput {
+                    location,
+                    kind: written.kind,
+                    components: written.components,
+                    target,
+                });
+            }
+        }
+        let stages = [
+            (&self.vertex, wgpu_types::ShaderStages::VERTEX),
+            (&self.fragment, wgpu_types::ShaderStages::FRAGMENT),
+        ];
+        for (module, stage) in stages {
+            let blocks = (module.global_variables.iter())
+                .filter(|(_, g)| g.space == naga::AddressSpace::Uniform)
+                .filter_map(|(_, g)| g.binding.as_ref())
+                .filter(|b| b.group == 0 && self.stages_reading(b.binding).contains(stage))
+                .count() as u32;
+            let limit = limits.max_uniform_buffers_per_shader_stage;
+            if blocks > limit {
+                return Some(PastDeviceLimit::UniformBlocks {
+                    stage,
+                    blocks,
+                    limit,
+                });
+            }
+        }
+        let limit = limits.max_inter_stage_shader_variables;
+        [(&self.vertex, false), (&self.fragment, true)]
+            .into_iter()
+            .find_map(|(module, inputs)| {
+                let locations = locations(module, inputs);
+                let count = locations.len() as u32;
+                let highest = locations.iter().copied().max()?;
+                (count > limit || highest >= limit).then_some(PastDeviceLimit::Varyings {
+                    count,
+                    highest,
+                    limit,
+                })
+            })
+    }
 }
 
 /// A bound on a program's includes, which are pasted every time.
 const MAX_PASTES: u32 = 1024;
 pub const MAX_EXPANDED: usize = 1 << 20;
 /// A bound on the bytes the expansion scans (each pasted file, every time), however little of
-/// them it keeps: lines of imports already pasted add nothing to the shader.
+/// them it keeps: lines of imports already pasted add nothing to the shader. The directives'
+/// macro expansion takes it as a count of tokens ([`run_directives`], [`Macros::checked`]): a
+/// token is at least a byte, so that bound is no looser than the bytes'. Each token the expansion
+/// holds is a small allocation of its own (its text and the macros hidden from it), so a stage
+/// that reaches the bound holds a few GiB at its peak (3.3 GiB measured).
 const MAX_SCANNED: usize = 8 * MAX_EXPANDED;
 
 /// Why a shader's includes refuse it ([`expand_includes`]).
@@ -554,27 +892,16 @@ pub fn expand_includes(
     includes: &Includes,
     defines: Option<&[&str]>,
 ) -> Result<Expanded, ImportError> {
-    expand_with(
-        text,
-        file,
-        dir,
-        includes,
-        defines.map(import_conditions::Conditions::new),
-    )
+    expand_with(text, file, dir, includes, defines)
 }
 
-/// naga's options for one `stage` of a program with its `defines` (`NAME` or `NAME value`, in
-/// order) and the device's stage interface `limits`.
-pub fn glsl_options(stage: ShaderStage, defines: &[&str], limits: InterfaceLimits) -> Options {
-    let mut options = Options {
+/// naga's options for one `stage` of code whose directives have run ([`run_directives`]),
+/// under the device's stage interface `limits`: no defines, as no macro is left.
+pub fn glsl_options(stage: ShaderStage, limits: InterfaceLimits) -> Options {
+    Options {
         interface_limits: limits,
         ..Options::from(stage)
-    };
-    for define in defines {
-        let (name, value) = define.split_once(' ').unwrap_or((define, ""));
-        options.defines.insert(name.to_owned(), value.to_owned());
     }
-    options
 }
 
 mod import_conditions;
@@ -584,7 +911,7 @@ fn expand_with(
     file: &str,
     dir: &str,
     includes: &Includes,
-    conditions: Option<import_conditions::Conditions>,
+    defines: Option<&[&str]>,
 ) -> Result<Expanded, ImportError> {
     struct Walk<'a> {
         includes: &'a Includes<'a>,
@@ -692,12 +1019,6 @@ fn expand_with(
                         match word {
                             "define" => state.define(rest),
                             "undef" => state.undef(rest),
-                            "version" if depth == 0 => {
-                                state.define(&format!(
-                                    "__VERSION__ {}",
-                                    rest.split_whitespace().next().unwrap_or("110")
-                                ));
-                            }
                             "line" => {
                                 let next = match state.line(rest, location) {
                                     Ok(next) => next,
@@ -790,7 +1111,7 @@ fn expand_with(
     }
     let mut walk = Walk {
         includes,
-        conditions,
+        conditions: None,
         seen: HashSet::new(),
         pastes: 0,
         scanned: 0,
@@ -801,10 +1122,13 @@ fn expand_with(
     let top = walk.file(file);
     walk.scan(text)
         .map_err(|refusal| walk.refused(top, 0, refusal))?;
+    let version = stage_version(text);
+    walk.conditions = defines.map(|defines| import_conditions::Conditions::new(defines, version));
     walk.walk(text, top, dir, 0)?;
     Ok(Expanded {
         lines: walk.out,
         files: walk.files,
+        version,
     })
 }
 
@@ -828,6 +1152,30 @@ fn include_id(target: &str, dir: &str, includes: &Includes) -> Option<String> {
         }
     }
     Some(format!("{ns}:{}", parts.join("/")))
+}
+
+/// The GLSL version a stage file declares (GLSL 4.60 §3.3), what its `__VERSION__` reads in
+/// every condition and in its code: the number of its first `#version` line, comments and
+/// continued lines read as the preprocessor reads them. As the GLSL spec allows nothing but
+/// comments and white space before `#version`, the first one counts whatever branch it sits in,
+/// and one in an include is not the stage's. A stage without `#version` targets 1.10 (§3.3), and
+/// a `#version` without a decimal number (or one past `u32`) reads as that too.
+pub(crate) fn stage_version(text: &str) -> u32 {
+    let mut joined = String::with_capacity(text.len());
+    for line in text.split_inclusive('\n') {
+        let part = line
+            .strip_suffix("\\\r\n")
+            .or_else(|| line.strip_suffix("\\\n"));
+        joined.push_str(part.unwrap_or(line));
+    }
+    let clean = strip_comments(&joined);
+    (clean.lines())
+        .filter_map(directives::directive)
+        .find(|(word, _)| *word == "version")
+        .and_then(|(_, rest)| rest.split_whitespace().next())
+        .filter(|number| number.bytes().all(|b| b.is_ascii_digit()))
+        .and_then(|number| number.parse().ok())
+        .unwrap_or(110)
 }
 
 /// Comments as spaces, line breaks kept.
@@ -871,25 +1219,6 @@ fn strip_comments(text: &str) -> String {
 
 fn is_ident(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
-}
-
-/// `text` with each whole identifier `from` written as `to`.
-fn replace_ident(text: &str, from: &str, to: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    while let Some(at) = rest.find(from) {
-        let before = rest[..at].chars().next_back();
-        let after = rest[at + from.len()..].chars().next();
-        out.push_str(&rest[..at]);
-        if before.is_some_and(is_ident) || after.is_some_and(is_ident) {
-            out.push_str(from);
-        } else {
-            out.push_str(to);
-        }
-        rest = &rest[at + from.len()..];
-    }
-    out.push_str(rest);
-    out
 }
 
 /// A global declaration on one line: `layout(...) qualifiers storage type name;`.
@@ -1264,6 +1593,7 @@ fn rewrite(
     Ok(Expanded {
         lines: out,
         files: source.files.clone(),
+        version: source.version,
     })
 }
 
@@ -1291,12 +1621,11 @@ fn main_at(text: &str) -> impl Iterator<Item = usize> + '_ {
 fn compile(
     stage: ShaderStage,
     code: &Expanded,
-    defines: &[&str],
     names: &Names,
     provided: &dyn Fn(&str) -> bool,
     limits: InterfaceLimits,
 ) -> Result<(naga::Module, naga::valid::ModuleInfo), Vec<Error>> {
-    let options = glsl_options(stage, defines, limits);
+    let options = glsl_options(stage, limits);
     let text = code.text();
     let module = Frontend::default().parse(&options, text).map_err(|e| {
         // The line naga read, as the translator wrote it, each found among the line breaks.
@@ -1348,28 +1677,10 @@ fn compile(
 
 /// The locations the entry point reads (`inputs`) or writes.
 fn locations(module: &naga::Module, inputs: bool) -> Vec<u32> {
-    let mut out = Vec::new();
-    let mut add = |ty: naga::Handle<naga::Type>, binding: Option<&naga::Binding>| {
-        if let Some(naga::Binding::Location { location, .. }) = binding {
-            out.push(*location);
-        } else if let naga::TypeInner::Struct { members, .. } = &module.types[ty].inner {
-            for m in members {
-                if let Some(naga::Binding::Location { location, .. }) = &m.binding {
-                    out.push(*location);
-                }
-            }
-        }
-    };
-    for entry in &module.entry_points {
-        if inputs {
-            for arg in &entry.function.arguments {
-                add(arg.ty, arg.binding.as_ref());
-            }
-        } else if let Some(result) = &entry.function.result {
-            add(result.ty, result.binding.as_ref());
-        }
-    }
-    out
+    varyings(module, inputs)
+        .into_iter()
+        .map(|(l, _)| l)
+        .collect()
 }
 
 #[cfg(test)]
@@ -1692,6 +2003,231 @@ mod tests {
         let mut read = locations(&program.fragment, true);
         read.sort_unstable();
         assert_eq!(read, [0, 4, 13]);
+    }
+
+    /// A vertex stage writing `written` (a qualified `out` declaration) at location 1, and a
+    /// fragment stage reading `read` there through `value`, each translated with a stage that
+    /// meets it: the two modules [`link`] is given.
+    fn stages(written: &str, read: &str, value: &str) -> (naga::Module, naga::Module) {
+        let ty = |declaration: &str| declaration.rsplit(' ').next().unwrap().to_owned();
+        let vsh = |written: &str| {
+            format!(
+                "#version 330\nin vec3 Position;\nlayout(location = 1) {written} tag;\n\
+                 layout(location = 2) out vec3 unread;\nvoid main() {{ gl_Position = vec4(Position, 1.0); \
+                 tag = {}(1); unread = vec3(1.0); }}\n",
+                ty(written)
+            )
+        };
+        let fsh = |read: &str, value: &str| {
+            format!(
+                "#version 330\nlayout(location = 1) {read} tag;\nout vec4 fragColor;\n\
+                 void main() {{ fragColor = vec4({value}); }}\n"
+            )
+        };
+        let plain = "#version 330\nout vec4 fragColor;\nvoid main() { fragColor = vec4(1.0); }\n";
+        let vertex = translate_core(&vsh(written), plain, &[], &include, &GLUE).unwrap();
+        let meeting = read
+            .replacen("in ", "out ", 1)
+            .replace("noperspective ", "");
+        let meeting = meeting.replace("centroid ", "").replace("sample ", "");
+        let fragment =
+            translate_core(&vsh(&meeting), &fsh(read, value), &[], &include, &GLUE).unwrap();
+        (vertex.vertex, fragment.fragment)
+    }
+
+    /// Vanilla's link check (`PipelineBuilder`): a varying the fragment stage reads with another
+    /// base type, another number of components, or flat in one stage only, than the vertex stage
+    /// writes at its location is refused, named; nothing else about interpolation or sampling is
+    /// compared, and a vertex output the fragment stage doesn't read is fine.
+    #[test]
+    fn the_stages_meet_as_vanillas_link_check_requires() {
+        for (written, read, value, refused) in [
+            ("out vec2", "in vec2", "tag.x", None),
+            ("flat out ivec2", "flat in ivec2", "float(tag.x)", None),
+            ("out vec2", "noperspective in vec2", "tag.x", None),
+            ("centroid out vec2", "in vec2", "tag.x", None),
+            ("out vec2", "sample in vec2", "tag.x", None),
+            (
+                "flat out ivec2",
+                "flat in vec2",
+                "tag.x",
+                Some(LinkRefusal::BaseType(1)),
+            ),
+            (
+                "flat out uvec2",
+                "flat in ivec2",
+                "float(tag.x)",
+                Some(LinkRefusal::BaseType(1)),
+            ),
+            (
+                "out vec3",
+                "in vec2",
+                "tag.x",
+                Some(LinkRefusal::Components(1)),
+            ),
+            (
+                "out vec2",
+                "in float",
+                "tag",
+                Some(LinkRefusal::Components(1)),
+            ),
+            (
+                "flat out vec2",
+                "in vec2",
+                "tag.x",
+                Some(LinkRefusal::Flat(1)),
+            ),
+            (
+                "out vec2",
+                "flat in vec2",
+                "tag.x",
+                Some(LinkRefusal::Flat(1)),
+            ),
+        ] {
+            let (vertex, fragment) = stages(written, read, value);
+            assert_eq!(
+                link(&vertex, &fragment).err(),
+                refused,
+                "{written} / {read}"
+            );
+        }
+        let (vertex, _) = stages("out vec2", "in vec2", "tag.x");
+        let (_, fragment) = stages("out vec2", "in vec4", "tag.x");
+        assert_eq!(link(&vertex, &fragment), Err(LinkRefusal::Components(1)));
+        let fsh = "#version 330\nlayout(location = 3) in vec2 tag;\nout vec4 fragColor;\n\
+                   void main() { fragColor = vec4(tag.x); }\n";
+        let vsh = "#version 330\nin vec3 Position;\nlayout(location = 3) out vec2 tag;\n\
+                   void main() { gl_Position = vec4(Position, 1.0); tag = vec2(1.0); }\n";
+        let missing = translate_core(vsh, fsh, &[], &include, &GLUE)
+            .unwrap()
+            .fragment;
+        assert_eq!(link(&vertex, &missing), Err(LinkRefusal::Missing(3)));
+    }
+
+    /// The vertex stage's output takes the interpolation and sampling the fragment stage reads
+    /// it with, as the device needs them equal: a program whose stages differ only there
+    /// translates, its vertex output `noperspective`, `centroid` or `sample` as its fragment
+    /// input is, and an output the fragment stage doesn't read keeps its own.
+    #[test]
+    fn the_vertex_output_takes_the_fragment_inputs_interpolation() {
+        let qualifiers = |module: &naga::Module, inputs: bool, location: u32| {
+            varyings(module, inputs)
+                .into_iter()
+                .find(|(l, _)| *l == location)
+                .map(|(_, v)| (v.interpolation, v.sampling))
+                .unwrap()
+        };
+        for (written, read) in [
+            ("out vec2", "noperspective in vec2"),
+            ("centroid out vec2", "in vec2"),
+            ("out vec2", "sample in vec2"),
+            ("noperspective out vec2", "centroid in vec2"),
+        ] {
+            let vsh = format!(
+                "#version 330\nin vec3 Position;\nlayout(location = 1) {written} tag;\n\
+                 layout(location = 2) flat out ivec3 unread;\nvoid main() {{ gl_Position = vec4(Position, 1.0); \
+                 tag = vec2(1.0); unread = ivec3(1); }}\n"
+            );
+            let fsh = format!(
+                "#version 330\nlayout(location = 1) {read} tag;\nout vec4 fragColor;\n\
+                 void main() {{ fragColor = vec4(tag.x); }}\n"
+            );
+            let program = translate_core(&vsh, &fsh, &[], &include, &GLUE).unwrap();
+            assert_eq!(
+                qualifiers(&program.vertex, false, 1),
+                qualifiers(&program.fragment, true, 1),
+                "{written} / {read}"
+            );
+            assert_eq!(
+                qualifiers(&program.vertex, false, 2).0,
+                Some(naga::Interpolation::Flat),
+                "{written} / {read}: the unread output"
+            );
+        }
+    }
+
+    /// wgpu's default device takes 16 varyings at locations 0 to 15 and 12 uniform blocks a
+    /// stage, where vanilla's device takes more: a program past either is told by the typed note
+    /// the pipelines draw natively with (`within_device_limits`).
+    #[test]
+    fn a_program_past_the_default_device_limits_is_told() {
+        let limits = wgpu_types::Limits::default();
+        let program = |location: u32, blocks: usize| {
+            let declared: String = (0..blocks)
+                .map(|i| format!("layout(std140) uniform B{i} {{\n    float v{i};\n}};\n"))
+                .collect();
+            let sum: String = (0..blocks).map(|i| format!(" + v{i}")).collect();
+            let vsh = format!(
+                "#version 330\nin vec3 Position;\nlayout(location = {location}) out float tag;\n\
+                 void main() {{ gl_Position = vec4(Position, 1.0); tag = 1.0; }}\n"
+            );
+            let fsh = format!(
+                "#version 330\n{declared}layout(location = {location}) in float tag;\nout vec4 fragColor;\n\
+                 void main() {{ fragColor = vec4(tag{sum}); }}\n"
+            );
+            translate_core_with(&vsh, &fsh, &[], &include, &GLUE, &|_| true).unwrap()
+        };
+        assert_eq!(
+            program(15, 12).past_device_limit(&limits, &[wgpu_types::TextureFormat::Rgba8Unorm]),
+            None
+        );
+        assert_eq!(
+            program(16, 0).past_device_limit(&limits, &[wgpu_types::TextureFormat::Rgba8Unorm]),
+            Some(PastDeviceLimit::Varyings {
+                count: 1,
+                highest: 16,
+                limit: 16
+            })
+        );
+        assert_eq!(
+            program(0, 13).past_device_limit(&limits, &[wgpu_types::TextureFormat::Rgba8Unorm]),
+            Some(PastDeviceLimit::UniformBlocks {
+                stage: wgpu_types::ShaderStages::FRAGMENT,
+                blocks: 13,
+                limit: 12
+            })
+        );
+    }
+
+    /// The device takes a colour target written with the format's base type and at least as many
+    /// components; vanilla's builder checks no output, so a program writing a 4-channel float
+    /// target with a `vec3` or a `uvec4` is told by the note it draws natively with, while a
+    /// single-channel target takes a `float`.
+    #[test]
+    fn a_colour_output_the_device_doesnt_take_is_told() {
+        let limits = wgpu_types::Limits::default();
+        let program = |output: &str, value: &str| {
+            let fsh = format!(
+                "#version 330\nlayout(location = 0) out {output} fragColor;\nvoid main() {{ fragColor = {value}; }}\n"
+            );
+            let vsh = "#version 330\nin vec3 Position;\nvoid main() { gl_Position = vec4(Position, 1.0); }\n";
+            translate_core(vsh, &fsh, &[], &include, &GLUE).unwrap()
+        };
+        let rgba = [wgpu_types::TextureFormat::Rgba8Unorm];
+        assert_eq!(
+            program("vec4", "vec4(1.0)").past_device_limit(&limits, &rgba),
+            None
+        );
+        for (output, value, kind, components) in [
+            ("vec3", "vec3(1.0)", naga::ScalarKind::Float, 3),
+            ("uvec4", "uvec4(1u)", naga::ScalarKind::Uint, 4),
+        ] {
+            assert_eq!(
+                program(output, value).past_device_limit(&limits, &rgba),
+                Some(PastDeviceLimit::ColourOutput {
+                    location: 0,
+                    kind: Some(kind),
+                    components,
+                    target: wgpu_types::TextureFormat::Rgba8Unorm
+                }),
+                "{output}"
+            );
+        }
+        let single = [wgpu_types::TextureFormat::R16Float];
+        assert_eq!(
+            program("float", "1.0").past_device_limit(&limits, &single),
+            None
+        );
     }
 
     #[test]
@@ -2224,3 +2760,6 @@ mod texel_buffer_tests;
 #[cfg(test)]
 #[path = "located_tests.rs"]
 mod located_program_tests;
+
+#[cfg(test)]
+mod directives_tests;

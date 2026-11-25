@@ -23,7 +23,7 @@ use sunrise_client::{
     items::ItemStack,
     motion::PlayerMotion,
     text::{self, Style, Text},
-    toasts::Slide,
+    toasts::{Slide, ToastClock},
 };
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::RandomSource;
@@ -94,9 +94,9 @@ impl Toast {
     pub(super) fn is_challenge(&self) -> bool {
         !self.is_recipe() && self.frame == Frame::Challenge
     }
-    pub(super) fn update(&mut self, multiplier: f64) -> (Option<bool>, bool) {
+    pub(super) fn update(&mut self, clock: ToastClock, multiplier: f64) -> (Option<bool>, bool) {
         let mut slide = std::mem::take(&mut self.slide);
-        let result = slide.update_now(|fully| self.wants_show(fully, multiplier));
+        let result = slide.update_on(clock, |fully| self.wants_show(fully, multiplier));
         self.slide = slide;
         result
     }
@@ -365,8 +365,12 @@ impl adv::World for View<'_, '_> {
     fn smokey(&self, p: [i32; 3]) -> bool {
         sunrise_client::beehive::smokey(&self.0.mob_world_base(&[]), p)
     }
+    /// The same `saveWithFullMetadata` a loot roll's `match_block` reads: the live block
+    /// entity over the NBT it was loaded from, else its saved row.
     fn block_entity_nbt(&self, p: [i32; 3]) -> Option<sunrise_core::nbt::Tag> {
-        self.0.block_entity_nbt(p)
+        self.0
+            .block_entity_nbt(p)
+            .or_else(|| crate::game::spill::saved_full_metadata(&self.0.world, p))
     }
     fn in_tag(&self, registry: &str, tag: &str, id: &str) -> bool {
         let tags = TagSources {
@@ -561,15 +565,6 @@ impl Game<'_> {
         let tree = self.adv.tree.clone();
         self.adv.progress = progress;
         self.ui.registries.advancements = tree.list.iter().map(|a| a.id.clone()).collect();
-        // `PlayerAdvancements.checkForAutomaticTriggers`: an advancement with no
-        // criteria is never done (`AdvancementRequirements.test` is false), but
-        // its rewards are granted as the progress loads. Vanilla's `award(holder, "")` finds no `""`
-        // criterion to grant and so returns without a toast or an announcement;
-        // the reward grant is the whole effect, and it happens again on the next
-        // load because there is no criterion to record it.
-        for index in tree.automatic() {
-            self.grant_rewards(&tree.list[index]);
-        }
     }
     pub(super) fn save_advancements(&self) {
         if !self.adv.loaded
@@ -1054,10 +1049,13 @@ impl Game<'_> {
                     (id.to_owned(), amplifier, duration)
                 })
                 .collect(),
-            components: sunrise_client::mobs::finalize::variant_component(m)
-                .map(|(id, value)| (id.to_owned(), value))
-                .into_iter()
-                .collect(),
+            components: sunrise_client::mobs::finalize::variant_component_in(
+                m,
+                self.world_variants(),
+            )
+            .map(|(id, value)| (id.to_owned(), value))
+            .into_iter()
+            .collect(),
             custom_name: m.custom_name_text.as_ref().map(Text::component),
             passengers,
             nbt,
@@ -1262,11 +1260,19 @@ impl Game<'_> {
                 hub.finish_native_first_tick(&task, &fresh, owners);
             });
         }
-        self.with_advancement_hub(|hub, owners| {
-            if hub.native_reload_pending {
-                hub.finish_reload_resources(owners);
-            }
-        });
+        let finished_reload = self
+            .with_advancement_hub(|hub, owners| {
+                if hub.native_reload_pending {
+                    hub.finish_reload_resources(owners);
+                    true
+                } else {
+                    false
+                }
+            })
+            .unwrap_or(false);
+        if finished_reload {
+            self.send_datapack_snapshots();
+        }
     }
     /// `PlayerAdvancements.progressChanged`, kept for a network player's client.
     fn progress_changed(&mut self, index: usize) {
@@ -1323,10 +1329,8 @@ impl Game<'_> {
         let tree = self.adv.tree.clone();
         for r in &allowed {
             let list = tree.recipe_criteria(r);
-            self.trigger_criteria(&tree, &list, |c, _| {
-                c["recipes"]
-                    .as_str()
-                    .is_some_and(|id| adv::full(id) == r.as_str())
+            self.trigger_criteria(&tree, &list, |c, w| {
+                adv::id_matches(&c["recipes"], "recipe", r, w)
             });
         }
         taken_back
@@ -1490,7 +1494,25 @@ impl Game<'_> {
             .level
             .recipe_book
             .add_recipes(&world_stations!(self).recipe_index, &rewards);
-        for table in &a.rewards.loot {
+        // `AdvancementRewards.loot` is a `HolderSet<LootTable>`: ids, or a tag's members in order
+        // (a tag that is not bound refused the advancement when the tree loaded).
+        let loot = self.server_loot.get();
+        let tables: Vec<String> = a
+            .rewards
+            .loot
+            .iter()
+            .flat_map(|entry| match entry.strip_prefix('#') {
+                Some(tag) => loot
+                    .as_ref()
+                    .and_then(|loot| loot.registry_tags("loot_table")?.get(&*adv::full(tag)))
+                    .into_iter()
+                    .flatten()
+                    .cloned()
+                    .collect::<Vec<String>>(),
+                None => vec![entry.clone()],
+            })
+            .collect();
+        for table in &tables {
             // `LootContextParamSets.ADVANCEMENT_REWARD`: the rewarded player is
             // THIS_ENTITY and their position the ORIGIN.
             let player = self.killer_loot_entity(None);
@@ -2724,9 +2746,9 @@ impl Game<'_> {
             mod_api::ToastKind::Advancement
         };
         if self.admit_toast(kind, &mut toast.title, &mut toast.description) {
+            let clock = ToastClock::of(self.clock.still());
             self.toast_manager
-                .queued
-                .push_back(super::toast_manager::Toast::Advancement(toast));
+                .post(clock, super::toast_manager::Toast::Advancement(toast));
         }
     }
 
@@ -3247,12 +3269,17 @@ mod tests {
                             ));
                         }
                         assert_eq!(
-                            game.toast_manager.update(1.0),
+                            game.toast_manager
+                                .update(sunrise_client::toasts::ToastClock::Real, 1.0),
                             (None, true),
                             "both challenges share a promotion sound"
                         );
                         assert_eq!(game.toast_manager.visible.len(), 5);
-                        assert_eq!(game.toast_manager.update(1.0), (Some(true), false));
+                        assert_eq!(
+                            game.toast_manager
+                                .update(sunrise_client::toasts::ToastClock::Real, 1.0),
+                            (Some(true), false)
+                        );
 
                         game.add_toast(mod_api::ModToast::new(mod_api::Text::literal(
                             "Older mod toast",
@@ -3266,7 +3293,11 @@ mod tests {
                             .unwrap();
                         fading.slide.origin = Some(Instant::now() - Duration::from_secs(1));
                         fading.force_hide();
-                        assert_eq!(game.toast_manager.update(1.0), (Some(false), false));
+                        assert_eq!(
+                            game.toast_manager
+                                .update(sunrise_client::toasts::ToastClock::Real, 1.0),
+                            (Some(false), false)
+                        );
                         assert_eq!(
                             game.toast_manager.queued.len(),
                             2,
@@ -3277,7 +3308,11 @@ mod tests {
                             .unwrap()
                             .slide
                             .origin = Some(Instant::now() - Duration::from_secs(2));
-                        assert_eq!(game.toast_manager.update(1.0), (None, false));
+                        assert_eq!(
+                            game.toast_manager
+                                .update(sunrise_client::toasts::ToastClock::Real, 1.0),
+                            (None, false)
+                        );
                         assert!(matches!(
                             game.toast_manager.visible.last().map(|entry| &entry.toast),
                             Some(QueuedToast::Mod(_))
@@ -3294,7 +3329,8 @@ mod tests {
                         narrator.slide.origin = Some(Instant::now() - Duration::from_secs(1));
                         narrator.force_hide();
                         assert_eq!(
-                            game.toast_manager.update(1.0),
+                            game.toast_manager
+                                .update(sunrise_client::toasts::ToastClock::Real, 1.0),
                             (Some(false), false),
                             "the first visibility change wins, even while another family slides in"
                         );
@@ -4179,7 +4215,8 @@ mod movement_predicate_tests {
         assert!(game.run_command("forceload add 0 0"));
         assert!(game.run_command("fill 0 199 0 15 199 15 stone"));
         assert!(game.world.loaded(4, 4));
-        let root = std::env::current_dir().unwrap().join("movement-world");
+        let scratch = tempfile::tempdir().unwrap();
+        let root = scratch.path().join("movement-world");
         let pack = root.join("datapacks/movement");
         let folder = pack.join("data/motion/predicate");
         std::fs::create_dir_all(&folder).unwrap();
