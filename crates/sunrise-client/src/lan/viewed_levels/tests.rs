@@ -10,11 +10,12 @@ use crate::lan::{
 };
 use crate::world::World;
 use std::sync::mpsc::Receiver;
+use sunrise_core::vanilla_bytes::Writer;
 use sunrise_protocol::{
-    buf::{Reader, Writer},
+    buf::Reader,
     ids::play::clientbound as ids,
     packets::play::Clientbound as C,
-    viewed_levels::{self, Answer, CHANNEL, Level, Message},
+    viewed_levels::{self, Answer, CHANNEL, Level, Message, ScopedPacket},
 };
 
 const NETHER: &str = "minecraft:the_nether";
@@ -161,6 +162,7 @@ fn in_ctx<R>(world: &mut World, f: impl FnOnce(&mut TickCtx) -> R) -> R {
         next_entity: &mut next_entity,
         spawn: [0.5, 64.0, 0.5],
         spawn_angle: [0.0; 2],
+        spawn_dimension: "minecraft:overworld",
         difficulty: 2,
         difficulty_locked: false,
         clock_rate: 1.0,
@@ -177,7 +179,7 @@ fn in_ctx<R>(world: &mut World, f: impl FnOnce(&mut TickCtx) -> R) -> R {
 /// One level pass of the level in place.
 fn run_level(hub: &mut Hub, world: &mut World) {
     in_ctx(world, |ctx| {
-        let _ = hub.tick_level(ctx);
+        let _ = hub.tick_level(ctx, None);
     });
 }
 
@@ -210,14 +212,18 @@ fn got(rx: &Receiver<Out>) -> Vec<Got> {
         match Message::decode_in(&payload.data, viewed_levels::REVISION_3).unwrap() {
             Message::Open { level, .. } => out.push(Got::Open(level.number())),
             Message::Close { level } => out.push(Got::Close(level.number())),
-            Message::Run { level, packets } => {
-                out.extend(packets.into_iter().map(|(id, body)| Got::Wrapped {
+            Message::Run { level, packets } => out.extend(packets.into_iter().map(|packet| {
+                let ScopedPacket::Play(id, body) = packet else {
+                    panic!("expected a vanilla packet");
+                };
+                Got::Wrapped {
                     level: level.number(),
                     id,
                     body: body.to_vec(),
-                }))
-            }
+                }
+            })),
             Message::Swap { .. } => unreachable!("no swap below revision 4"),
+            Message::Far { .. } => unreachable!("no far below revision 5"),
         }
     }
     out
@@ -610,14 +616,34 @@ fn a_column_too_large_to_wrap_is_not_counted_as_sent() {
     use super::send::batch_runs;
     let (hub, _rx) = hub_with(&[1], 2);
     let world = lit_columns(1);
-    let body = |key| hub.encoder.body_in(&world.chunks[&key], &world);
+    let body = |key| hub.encoder.body_in(&world.chunks[&key], &world).unwrap();
     // A LevelChunkWithLight id and 2 MiB after it: past a frame's limit once wrapped.
     let mut oversized = Writer::new();
     oversized.varint(ids::LEVEL_CHUNK_WITH_LIGHT);
     oversized.bytes(&vec![0; 1 << 21]);
-    let taken = [(3, ()), (5, ()), (8, ())];
+    // The rejected column has a valid section payload. It must not escape
+    // into the next accepted column's run.
+    use sunrise_protocol::connection_groups::{self, Cell, Entry, Section};
+    let group = || {
+        C::CustomPayload(sunrise_protocol::packets::custom_payload::CustomPayload {
+            channel: connection_groups::CHANNEL.into(),
+            data: Section {
+                pos: [9, 4, 1],
+                entries: vec![Entry {
+                    cell: Cell::of([0, 0, 0]),
+                    group: Some(30),
+                }],
+            }
+            .encode()
+            .unwrap(),
+        })
+        .encode()
+    };
+    let taken = [(3, false), (5, true), (8, false)];
     let bodies = [body((0, 0)), oversized.data.clone(), body((1, 0))];
-    let (payloads, sent) = batch_runs(Level::Index(NETHER_INDEX), &taken, &bodies);
+    let (payloads, sent) = batch_runs(Level::Index(NETHER_INDEX), &taken, &bodies, |grouped| {
+        if *grouped { vec![group()] } else { Vec::new() }
+    });
     assert_eq!(sent, vec![3, 8], "the queue places of the columns sent");
     let mut columns = Vec::new();
     for payload in &payloads {
@@ -632,7 +658,10 @@ fn a_column_too_large_to_wrap_is_not_counted_as_sent() {
             panic!("not a run");
         };
         assert_eq!(level, Level::Index(NETHER_INDEX));
-        for (id, body) in packets {
+        for packet in packets {
+            let ScopedPacket::Play(id, body) = packet else {
+                panic!("expected a vanilla packet");
+            };
             let Ok(C::LevelChunkWithLight(c)) = C::decode(id, body) else {
                 panic!("not a chunk");
             };
@@ -640,7 +669,12 @@ fn a_column_too_large_to_wrap_is_not_counted_as_sent() {
         }
     }
     assert_eq!(columns, vec![(0, 0), (1, 0)]);
-    let (payloads, sent) = batch_runs(Level::Index(NETHER_INDEX), &[(0, ())], &[oversized.data]);
+    let (payloads, sent) = batch_runs(
+        Level::Index(NETHER_INDEX),
+        &[(0, ())],
+        &[oversized.data],
+        |_| vec![group()],
+    );
     assert!(payloads.is_empty() && sent.is_empty(), "no empty batch");
 }
 
@@ -679,7 +713,9 @@ fn a_travel_into_a_viewed_level_swaps_it_with_the_level_left() {
         9
     );
     in_ctx(&mut nether_world, |ctx| {
-        hub.change_level(0, [8.5, 64.0, 8.5], 0.0, None, false, 0, ctx);
+        let change = hub.begin_level_change(0, [8.5, 64.0, 8.5], 0.0, None, 0, ctx);
+        hub.send_commands(0, hub.commands_packet(hub.guests[0].permission));
+        hub.finish_level_change(0, change, false, ctx);
     });
     let g = &hub.guests[0];
     assert_eq!(g.dimension, NETHER);
@@ -741,7 +777,9 @@ fn a_travel_into_a_viewed_level_swaps_it_with_the_level_left() {
     hub.set_dimension("minecraft:the_end");
     let mut end_world = lit_columns(1);
     in_ctx(&mut end_world, |ctx| {
-        hub.change_level(0, [8.5, 64.0, 8.5], 0.0, None, false, 0, ctx);
+        let change = hub.begin_level_change(0, [8.5, 64.0, 8.5], 0.0, None, 0, ctx);
+        hub.send_commands(0, hub.commands_packet(hub.guests[0].permission));
+        hub.finish_level_change(0, change, false, ctx);
     });
     let g = &hub.guests[0];
     assert!(g.viewed.views.is_empty(), "the Nether left is not kept");
@@ -772,7 +810,9 @@ fn a_revision_1_client_is_not_switched() {
         "a revision-1 client still views levels"
     );
     in_ctx(&mut nether_world, |ctx| {
-        hub.change_level(0, [8.5, 64.0, 8.5], 0.0, None, false, 0, ctx);
+        let change = hub.begin_level_change(0, [8.5, 64.0, 8.5], 0.0, None, 0, ctx);
+        hub.send_commands(0, hub.commands_packet(hub.guests[0].permission));
+        hub.finish_level_change(0, change, false, ctx);
     });
     let g = &hub.guests[0];
     assert!(g.viewed.views.is_empty(), "no view kept, none taken over");
@@ -938,6 +978,8 @@ fn a_viewed_sound_reaches_a_viewer_holding_its_chunk_within_its_distance() {
             source: 5,
             entity: Some(40),
             except_entity: None,
+            seed: 0,
+            particles_before: 0,
         },
         None,
     );
@@ -975,7 +1017,7 @@ fn open_levels(hub: &mut Hub, ids: &[&'static str]) {
             shape: crate::chunk::LevelShape::OVERWORLD,
         })
         .collect();
-    hub.config.levels.extra = extra.leak();
+    hub.config.levels.extra = crate::chunk::ExtraLevels::new(extra);
 }
 
 /// Guest `i`'s client logged in now: it was told the levels open now.
@@ -1101,7 +1143,9 @@ fn a_travel_out_of_a_level_opened_after_login_does_not_swap_an_older_client() {
         9
     );
     in_ctx(&mut nether_world, |ctx| {
-        hub.change_level(0, [8.5, 64.0, 8.5], 0.0, None, false, 0, ctx);
+        let change = hub.begin_level_change(0, [8.5, 64.0, 8.5], 0.0, None, 0, ctx);
+        hub.send_commands(0, hub.commands_packet(hub.guests[0].permission));
+        hub.finish_level_change(0, change, false, ctx);
     });
     let g = &hub.guests[0];
     assert_eq!(g.dimension, NETHER);
@@ -1187,7 +1231,15 @@ fn got_bound(rx: &Receiver<Out>) -> Vec<Bound> {
                 }
                 Message::Run { level, packets } => {
                     let (slot, epoch) = binding(level);
-                    let ids = packets.iter().map(|(id, _)| *id).collect();
+                    let ids = packets
+                        .iter()
+                        .map(|packet| match packet {
+                            ScopedPacket::Play(id, _) => *id,
+                            ScopedPacket::ConnectionGroups(_) => {
+                                panic!("expected a vanilla packet")
+                            }
+                        })
+                        .collect();
                     Bound::Run { slot, epoch, ids }
                 }
                 Message::Close { level } => {
@@ -1198,6 +1250,7 @@ fn got_bound(rx: &Receiver<Out>) -> Vec<Bound> {
                     let (slot, epoch) = binding(level);
                     Bound::Swap { slot, epoch }
                 }
+                Message::Far { .. } => unreachable!("no far below revision 5"),
             },
         );
     }
@@ -1320,7 +1373,9 @@ fn a_travel_is_followed_by_a_swap_from_revision_4() {
     let sent = got_bound(&rx[0]);
     assert_eq!(bound_opens(&sent), vec![(0, 0, 2048, NETHER)]);
     in_ctx(&mut nether_world, |ctx| {
-        hub.change_level(0, [8.5, 64.0, 8.5], 0.0, None, false, 0, ctx);
+        let change = hub.begin_level_change(0, [8.5, 64.0, 8.5], 0.0, None, 0, ctx);
+        hub.send_commands(0, hub.commands_packet(hub.guests[0].permission));
+        hub.finish_level_change(0, change, false, ctx);
     });
     let sent = got_bound(&rx[0]);
     let respawn = sent.iter().position(|g| *g == Bound::Plain(ids::RESPAWN));
@@ -1359,7 +1414,9 @@ fn a_travel_with_the_epochs_spent_closes_the_view_first() {
     hub.guests
         .update(0, |g| g.viewed.epochs = i64::from(i32::MAX) + 1);
     in_ctx(&mut nether_world, |ctx| {
-        hub.change_level(0, [8.5, 64.0, 8.5], 0.0, None, false, 0, ctx);
+        let change = hub.begin_level_change(0, [8.5, 64.0, 8.5], 0.0, None, 0, ctx);
+        hub.send_commands(0, hub.commands_packet(hub.guests[0].permission));
+        hub.finish_level_change(0, change, false, ctx);
     });
     let sent = got_bound(&rx[0]);
     let close = sent
@@ -1374,4 +1431,154 @@ fn a_travel_with_the_epochs_spent_closes_the_view_first() {
         g.sent_chunks.is_empty(),
         "the Nether is sent again as its own"
     );
+}
+
+/// What a client was sent of its own level, in order: `far`s (kept, released) and the plain
+/// chunks, forgets and block updates.
+#[derive(Debug, PartialEq)]
+enum OwnGot {
+    Far(Vec<(i32, i32)>, Vec<(i32, i32)>),
+    Chunk((i32, i32)),
+    Forget((i32, i32)),
+    Block([i32; 3]),
+}
+
+fn got_own(rx: &Receiver<Out>) -> Vec<OwnGot> {
+    let bodies = rx.try_iter().flat_map(|o| match o {
+        Out::Packet(body) => vec![body],
+        Out::Packets(bodies) => bodies,
+        Out::Disconnect(_) => Vec::new(),
+    });
+    let mut out = Vec::new();
+    for body in bodies {
+        let mut r = Reader::new(&body);
+        let id = r.varint().unwrap();
+        match C::decode(id, r.rest()) {
+            Ok(C::CustomPayload(p)) if p.channel == CHANNEL => match Message::decode(&p.data) {
+                Ok(Message::Far { kept, released }) => out.push(OwnGot::Far(kept, released)),
+                other => panic!("not a far: {other:?}"),
+            },
+            Ok(C::LevelChunkWithLight(p)) => out.push(OwnGot::Chunk((p.x, p.z))),
+            Ok(C::ForgetLevelChunk(p)) => out.push(OwnGot::Forget((p.pos[0], p.pos[1]))),
+            Ok(C::BlockUpdate(p)) => out.push(OwnGot::Block(p.pos)),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// From revision 5, an area in the player's own level 300 chunks away: `far` keeps its columns
+/// before any of them goes, then they go in plain batches after the view's, stay through a move
+/// of the view, and are tracked: a block change there reaches the client. A client of revision 4
+/// in the same place holds the ticket and is sent nothing past its view. Withdrawn by every
+/// player, the columns are forgotten 52 ticks later, then released.
+#[test]
+#[ignore = "daily"]
+fn an_own_level_area_past_the_view_reaches_a_revision_5_client() {
+    const OVERWORLD: &str = "minecraft:overworld";
+    let answer = |revision| Answer {
+        revision,
+        max_levels: 2,
+    };
+    let (mut hub, rx) = hub_answered(&[1, 2], answer(viewed_levels::REVISION_5));
+    hub.guests.update(1, |g| {
+        g.sender.viewed_levels = answer(viewed_levels::REVISION_4)
+    });
+    for i in 0..2 {
+        hub.guests.update(i, |g| {
+            g.view_distance = 2;
+            g.chunks_per_tick = 400.0;
+            g.max_unacknowledged = 100;
+        });
+    }
+    let portal = vec![area(OVERWORLD, (300, 0), 1, ChunkAreaMode::Loaded)];
+    for uuid in [1, 2] {
+        hub.set_viewed_areas(uuid, "test:portal", portal.clone())
+            .unwrap();
+    }
+    assert_eq!(hub.viewed_tickets(OVERWORLD).len(), 2);
+    let mut world = lit_columns(4);
+    let square: Vec<(i32, i32)> = (299..=301)
+        .flat_map(|x| (-1..=1).map(move |z| (x, z)))
+        .collect();
+    for &(x, z) in &square {
+        let mut chunk = crate::chunk::Chunk::empty(x, z);
+        chunk.lit = true;
+        world.chunks.insert((x, z), std::sync::Arc::new(chunk));
+    }
+    let far = |got: &[OwnGot]| -> Vec<(i32, i32)> {
+        let mut far: Vec<_> = (got.iter())
+            .filter_map(|g| match g {
+                OwnGot::Chunk(key) if key.0 >= 299 => Some(*key),
+                _ => None,
+            })
+            .collect();
+        far.sort_unstable();
+        far
+    };
+    run_level(&mut hub, &mut world);
+    let sent = got_own(&rx[0]);
+    let OwnGot::Far(kept, released) = &sent[0] else {
+        panic!("far first: {sent:?}");
+    };
+    assert_eq!(kept[0], (300, 0), "the centre first");
+    let mut kept = kept.clone();
+    kept.sort_unstable();
+    assert_eq!((kept, released.len()), (square.clone(), 0));
+    assert_eq!(far(&sent), square);
+    let first_far = sent
+        .iter()
+        .position(|g| matches!(g, OwnGot::Chunk((x, _)) if *x >= 299));
+    let last_near = sent
+        .iter()
+        .rposition(|g| matches!(g, OwnGot::Chunk((x, _)) if *x < 299));
+    assert!(first_far > last_near, "after the view's: {sent:?}");
+    assert!(hub.guests[0].tracks_chunk(OVERWORLD, (300, 0)));
+    let older = got_own(&rx[1]);
+    assert!(!older.iter().any(|g| matches!(g, OwnGot::Far(..))));
+    assert!(far(&older).is_empty(), "nothing past its view: {older:?}");
+    assert!(!hub.guests[1].tracks_chunk(OVERWORLD, (300, 0)));
+
+    // The view moves two chunks east: what left it is forgotten, the area's columns are not.
+    hub.guests.update(0, |g| g.position = [40.5, 64.0, 0.5]);
+    hub.ticks = 11;
+    run_level(&mut hub, &mut world);
+    let moved = got_own(&rx[0]);
+    assert!(moved.contains(&OwnGot::Forget((-3, 0))), "{moved:?}");
+    assert!(
+        !moved
+            .iter()
+            .any(|g| matches!(g, OwnGot::Forget((x, _)) if *x >= 299))
+    );
+
+    world.block_log = Some(vec![(300 * 16 + 3, 64, 3)]);
+    hub.ticks = 12;
+    run_level(&mut hub, &mut world);
+    assert!(got_own(&rx[0]).contains(&OwnGot::Block([4803, 64, 3])));
+    assert!(!got_own(&rx[1]).contains(&OwnGot::Block([4803, 64, 3])));
+
+    // Every player withdraws: the columns still linger and go.
+    for uuid in [1, 2] {
+        hub.set_viewed_areas(uuid, "test:portal", Vec::new())
+            .unwrap();
+    }
+    hub.ticks = 20;
+    run_level(&mut hub, &mut world);
+    hub.ticks = 20 + LINGER - 1;
+    run_level(&mut hub, &mut world);
+    assert!(got_own(&rx[0]).is_empty(), "not before 52 ticks");
+    hub.ticks = 20 + LINGER;
+    run_level(&mut hub, &mut world);
+    let last = got_own(&rx[0]);
+    let mut forgotten: Vec<_> = (last.iter())
+        .filter_map(|g| match g {
+            OwnGot::Forget(key) => Some(*key),
+            _ => None,
+        })
+        .collect();
+    forgotten.sort_unstable();
+    assert_eq!(forgotten, square);
+    assert_eq!(last.last(), Some(&OwnGot::Far(Vec::new(), square)));
+    assert!(!hub.guests[0].tracks_chunk(OVERWORLD, (300, 0)));
+    assert!(!hub.viewed.active(), "nothing left on the server");
 }

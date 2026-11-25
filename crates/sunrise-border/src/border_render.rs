@@ -4,6 +4,7 @@
 //! and which walls are drawn. Kept free of GPU types so the parity fixture
 //! can compare every value with vanilla's renderer.
 use crate::worldborder::{WorldBorder, jclamp, jmax, jmin, status_color};
+use sunrise_core::mth::{ceil, floor};
 
 /// `WorldBorderRenderer.RENDERING_OFFSET`.
 const OFFSET: f64 = 0.01;
@@ -122,16 +123,6 @@ impl Default for BorderRenderer {
             vertices: [[0.0; 5]; 16],
         }
     }
-}
-/// `Mth.floor(double)`.
-fn floor(v: f64) -> i32 {
-    let i = v as i32;
-    if v < f64::from(i) { i - 1 } else { i }
-}
-/// `Mth.ceil(double)`.
-fn ceil(v: f64) -> i32 {
-    let i = v as i32;
-    if v > f64::from(i) { i + 1 } else { i }
 }
 /// `Mth.frac(double)`.
 fn frac(v: f64) -> f64 {
@@ -265,7 +256,7 @@ mod tests {
     #[test]
     fn near_wall_is_drawn_and_tinted() {
         let mut border = WorldBorder::default();
-        border.set_size(100.0);
+        border.set_size(100.0).unwrap();
         let mut state = BorderRenderState::default();
         let camera = [40.0, 64.0, 0.0];
         extract(&border, 0.0, camera, 128.0, &mut state);
@@ -281,7 +272,7 @@ mod tests {
         let t = r.transforms(&state, camera, 4500);
         assert_eq!(t.texture_offset, 0.5);
         // Far inside a huge border, nothing is drawn.
-        border.set_size(10_000.0);
+        border.set_size(10_000.0).unwrap();
         extract(&border, 0.0, camera, 128.0, &mut state);
         assert_eq!(state.alpha, 0.0);
         assert!(!r.prepare(&state, camera, 128.0, 512.0));

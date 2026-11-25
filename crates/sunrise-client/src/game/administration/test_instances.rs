@@ -41,36 +41,83 @@ const SAVE: i32 = 4;
 const EXPORT: i32 = 5;
 const RUN: i32 = 6;
 
-/// The `GameTestInstance` a registry entry describes: `TestData` and what
-/// `describe()` prints.
-#[derive(Clone)]
-pub(super) struct TestDef {
-    pub(super) structure: String,
-    pub(super) rotation: Rotation,
-    pub(super) padding: i32,
-    pub(super) required: bool,
-    pub(super) sky_access: bool,
-    /// `BlockBasedTestInstance` (else a `FunctionGameTestInstance`).
-    pub(super) block_based: bool,
-    /// The function a function test runs.
-    pub(super) function: Option<String>,
-    pub(super) callback: Option<std::sync::Arc<dyn mod_api::GameTestFunction>>,
-    /// The test environment's id (`batch()`).
-    pub(super) environment: String,
-    pub(super) max_ticks: i32,
-    pub(super) setup_ticks: i32,
-    /// `TestData.maxAttempts` and `requiredSuccesses`.
-    pub(super) max_attempts: i32,
-    pub(super) required_successes: i32,
-    /// The dimension the test runs in (`TestData.dimension`).
-    pub(super) dimension: String,
-    description: Text,
+pub(super) use sunrise_gameplay::test_instances::{
+    TestDef, parse_test_def, parse_test_def_with_env,
+};
+
+/// Build the world's `Registries.TEST_ENVIRONMENT` and `Registries.TEST_INSTANCE` tables
+/// from the validated `PackRegistryDefinitions` and native `register_game_tests` functions.
+pub(super) fn build_game_test_tables(
+    packed: &sunrise_client::lan::data::PackRegistryDefinitions,
+    functions: &mod_api::GameTestFunctions,
+) -> (
+    std::sync::Arc<std::collections::HashMap<String, super::test_environments::Environment>>,
+    std::sync::Arc<std::collections::HashMap<String, TestDef>>,
+) {
+    let env_jsons: std::collections::HashMap<String, serde_json::Value> = packed
+        .validated("minecraft:test_environment")
+        .into_iter()
+        .map(|(id, value)| (id, value.clone()))
+        .collect();
+    let rules = sunrise_client_core::gamerules::GameRules::default();
+    let load_env = |id: &str| {
+        if id.contains(':') {
+            env_jsons.get(id).cloned()
+        } else {
+            env_jsons.get(&format!("minecraft:{id}")).cloned()
+        }
+    };
+    let mut test_environments = std::collections::HashMap::with_capacity(env_jsons.len());
+    for (id, json) in &env_jsons {
+        if let Some(env) = sunrise_gameplay::test_environments::parse(json, &load_env, 0, &rules) {
+            test_environments.insert(id.clone(), env);
+        }
+    }
+    let mut test_instances = std::collections::HashMap::new();
+    for (id, json) in packed.validated("minecraft:test_instance") {
+        if let Some(mut def) = parse_test_def_with_env(json, &load_env, &rules) {
+            def.callback = def
+                .function
+                .as_deref()
+                .and_then(|fn_id| functions.resolve(fn_id));
+            test_instances.insert(id, def);
+        }
+    }
+    for (id, definition) in functions.definitions() {
+        let mut def = parse_test_def(&serde_json::json!({
+            "type": "minecraft:function",
+            "structure": definition.structure,
+            "function": definition.function,
+            "environment": definition.environment,
+            "dimension": definition.dimension,
+            "max_ticks": definition.max_ticks,
+            "setup_ticks": definition.setup_ticks,
+            "max_attempts": definition.max_attempts,
+            "required_successes": definition.required_successes,
+            "required": definition.required,
+        }))
+        .expect("validated registered test definition");
+        def.callback = def
+            .function
+            .as_deref()
+            .and_then(|fn_id| functions.resolve(fn_id));
+        test_instances.entry(id.to_owned()).or_insert(def);
+    }
+    (
+        std::sync::Arc::new(test_environments),
+        std::sync::Arc::new(test_instances),
+    )
 }
 
 #[cfg(test)]
-impl TestDef {
+pub(super) trait TestDefSample {
+    fn sample(block_based: bool, max_ticks: i32, setup_ticks: i32) -> Self;
+}
+
+#[cfg(test)]
+impl TestDefSample for TestDef {
     /// A test with the timing and type a runner test needs.
-    pub(super) fn sample(block_based: bool, max_ticks: i32, setup_ticks: i32) -> Self {
+    fn sample(block_based: bool, max_ticks: i32, setup_ticks: i32) -> Self {
         Self {
             structure: "minecraft:empty".into(),
             rotation: Rotation::None,
@@ -81,6 +128,7 @@ impl TestDef {
             function: None,
             callback: None,
             environment: "minecraft:default".into(),
+            inline_environment: None,
             dimension: "minecraft:overworld".into(),
             max_ticks,
             setup_ticks,
@@ -91,186 +139,47 @@ impl TestDef {
     }
 }
 
-/// `GameTestInstance`'s codec, as the game reads a `test_instance` file.
-fn parse_test_def(json: &serde_json::Value) -> Option<TestDef> {
-    let string = |key: &str| json.get(key).and_then(|v| v.as_str());
-    let structure = string("structure")?.to_owned();
-    let environment = string("environment")?.to_owned();
-    let dimension = string("dimension").unwrap_or("minecraft:overworld");
-    let function = string("function");
-    // `ExtraCodecs.POSITIVE_INT`, 1 when absent.
-    let positive = |key: &str| {
-        json.get(key)
-            .and_then(|v| v.as_i64())
-            .unwrap_or(1)
-            .clamp(1, i64::from(i32::MAX)) as i32
-    };
-    // GameTestInstance.describe: the type, the function (function tests
-    // only), then the structure, batch and dimension.
-    let block_based = string("type") == Some("minecraft:block_based");
-    let mut description = Text::translate(
-        "test_instance.description.type",
-        &[Text::translate(
-            if block_based {
-                "test_instance.type.block_based"
-            } else {
-                "test_instance.type.function"
-            },
-            &[],
-        )
-        .with_color(0x5555FF)],
-    )
-    .append(Text::literal("\n"));
-    if !block_based && let Some(function) = function {
-        description = description.append(row("test_instance.description.function", function));
-    }
-    description = description
-        .append(row("test_instance.description.structure", &structure))
-        .append(row("test_instance.description.batch", &environment))
-        .append(row("test_instance.description.dimension", dimension));
-    Some(TestDef {
-        structure,
-        rotation: string("rotation")
-            .and_then(Rotation::from_name)
-            .unwrap_or(Rotation::None),
-        padding: json
-            .get("padding")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0)
-            .clamp(0, 128) as i32,
-        required: json
-            .get("required")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true),
-        sky_access: json
-            .get("sky_access")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false),
-        block_based,
-        function: function.map(|id| {
-            if id.contains(':') {
-                id.to_owned()
-            } else {
-                format!("minecraft:{id}")
-            }
-        }),
-        callback: None,
-        environment: environment.clone(),
-        dimension: dimension.to_owned(),
-        max_ticks: json
-            .get("max_ticks")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(1)
-            .clamp(1, i64::from(i32::MAX)) as i32,
-        setup_ticks: json
-            .get("setup_ticks")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0)
-            .clamp(0, i64::from(i32::MAX)) as i32,
-        max_attempts: positive("max_attempts"),
-        required_successes: positive("required_successes"),
-        description,
-    })
-}
-/// `GameTestInstance.descriptionRow`: the row's value in blue, then a line break.
-fn row(key: &str, value: &str) -> Text {
-    Text::translate(key, &[Text::literal(value).with_color(0x5555FF)]).append(Text::literal("\n"))
-}
-
 fn red(key: &str, args: &[Text]) -> Text {
     Text::translate(key, args).with_color(text::RED)
 }
 
 impl Game<'_> {
-    /// `registryAccess().get(testKey)`: the test instance from the game's
-    /// data (`data/<namespace>/test_instance/<path>.json`).
+    /// `registryAccess().get(testKey)`: the test instance from the world's
+    /// frozen `Registries.TEST_INSTANCE` table.
     pub(super) fn test_def(&self, id: &str) -> Option<TestDef> {
-        if let Some(known) = self.test_defs.borrow().get(id) {
-            return known.clone();
+        let table = match &self.world_tables {
+            Some(tables) => &tables.test_instances,
+            None => self.res.test_instances(),
+        };
+        if id.contains(':') {
+            table.get(id).cloned()
+        } else {
+            table.get(&format!("minecraft:{id}")).cloned()
         }
-        // A world's test instances are the ones it opened with.
-        if self.test_defs_snapshot {
-            return None;
-        }
-        let def = self.read_test_def(id);
-        self.test_defs
-            .borrow_mut()
-            .insert(id.to_owned(), def.clone());
-        def
     }
 
-    /// `Registries.TEST_INSTANCE` as a world loads it: the built-in pack's
-    /// `test_instance` files, then those of the packs the world starts with
-    /// enabled, later packs overriding earlier ones. The set stays as it is
-    /// until the next world opens; `/reload` and `/datapack` do not change it.
-    /// It replaces the previous world's definitions and selector ids.
-    pub(super) fn snapshot_test_defs(&mut self) {
-        let stack = super::functions::pack_stack(
-            &self.world_root,
-            &self.options.resources,
-            &self.pack.data_source,
-            &self.pack.data_changes,
-            self.cmds.vanilla_disabled,
-            &self.level.enabled_features,
-            &super::pack_finders::data_packs(&self.mods),
-        );
-        let mut functions = mod_api::GameTestFunctions::default();
-        self.native_register_game_tests(&mut functions);
-        let mut defs = std::collections::HashMap::new();
-        for pack in stack.builtin.iter().chain(stack.enabled_packs()) {
-            for file in pack.list_folder("test_instance") {
-                let Some(id) = file
-                    .strip_prefix("data/")
-                    .and_then(|r| r.split_once("/test_instance/"))
-                    .and_then(|(ns, path)| Some(format!("{ns}:{}", path.strip_suffix(".json")?)))
-                else {
-                    continue;
-                };
-                let Some(json) = pack
-                    .read(&file)
-                    .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
-                else {
-                    continue;
-                };
-                if let Some(mut def) = parse_test_def(&json) {
-                    def.callback = def.function.as_deref().and_then(|id| functions.resolve(id));
-                    defs.insert(id, Some(def));
-                }
-            }
-        }
-        for (id, definition) in functions.definitions() {
-            let mut def = parse_test_def(&serde_json::json!({
-                "type": "minecraft:function", "structure": definition.structure,
-                "function": definition.function, "environment": definition.environment,
-                "dimension": definition.dimension, "max_ticks": definition.max_ticks,
-                "setup_ticks": definition.setup_ticks, "max_attempts": definition.max_attempts,
-                "required_successes": definition.required_successes, "required": definition.required,
-            })).expect("validated registered test definition");
-            def.callback = def.function.as_deref().and_then(|id| functions.resolve(id));
-            defs.entry(id.to_owned()).or_insert(Some(def));
-        }
-        let mut ids: Vec<String> = defs.keys().cloned().collect();
-        ids.sort();
+    /// Publish the world's `test_instance` and `test_environment` ids into the
+    /// command registry for `/test` selectors and completions.
+    pub(super) fn sync_test_registry_ids(&mut self) {
+        let Some(tables) = self.world_tables.as_ref() else {
+            return;
+        };
+        let mut instance_ids: Vec<String> = tables.test_instances.keys().cloned().collect();
+        instance_ids.sort();
         self.ui
             .registries
             .by_registry
             .entry("minecraft:test_instance".into())
             .or_default()
-            .ids = ids;
-        *self.test_defs.borrow_mut() = defs;
-        self.test_defs_snapshot = true;
-    }
-    fn read_test_def(&self, id: &str) -> Option<TestDef> {
-        let (ns, path) = id.split_once(':').unwrap_or(("minecraft", id));
-        let file = self
-            .options
-            .resources
-            .join("data")
-            .join(ns)
-            .join("test_instance")
-            .join(format!("{path}.json"));
-        let json: serde_json::Value = serde_json::from_slice(&std::fs::read(file).ok()?).ok()?;
-        parse_test_def(&json)
+            .ids = instance_ids;
+        let mut env_ids: Vec<String> = tables.test_environments.keys().cloned().collect();
+        env_ids.sort();
+        self.ui
+            .registries
+            .by_registry
+            .entry("minecraft:test_environment".into())
+            .or_default()
+            .ids = env_ids;
     }
 
     pub(super) fn test_instance_at(&self, pos: Pos) -> Option<&TestInstanceBlock> {
@@ -316,7 +225,7 @@ impl Game<'_> {
         &mut self,
         camera: glam::DVec3,
         out: &mut Vec<Vertex>,
-        see_through: &mut Vec<Vertex>,
+        see_through: &mut super::text_displays::SeeThroughCollector,
     ) {
         use sunrise_client::gizmos as g;
         // `GameTestBlockHighlightRenderer.emitGizmos`: expired highlights go,
@@ -329,7 +238,8 @@ impl Game<'_> {
             .map(|(&pos, (text, _))| ([pos.0, pos.1, pos.2], text.clone(), HIGHLIGHT_FILL))
             .collect();
         let render_distance = self.effective_render_distance();
-        for (pos, entity) in &self.world.block_entities {
+        // Test instance blocks show a box: `boxes` lists them without a scan of every block entity.
+        for (pos, entity) in self.world.block_entities.boxes() {
             let BlockEntity::TestInstanceBlock(b) = entity else {
                 continue;
             };
@@ -375,16 +285,21 @@ impl Game<'_> {
             }
             // `Gizmos.billboardText(..).setAlwaysOnTop()`: white, centred,
             // without a background.
+            let o = glam::DVec3::from_array(text_at) - camera;
+            let st_start = see_through.start();
             patches.extend(self.name_tag_quads(
-                glam::DVec3::from_array(text_at) - camera,
+                o,
                 &[(Text::literal(text), 0.0)],
                 0xFF,
                 false,
                 2,
                 0,
                 g::billboard_text_unit(g::ERROR_MARKER_TEXT_SCALE),
-                see_through,
+                see_through.buffer_mut(),
             ));
+            let dist_sq =
+                super::text_displays::submit_distance_sq(o.x as f32, o.y as f32, o.z as f32);
+            see_through.finish(st_start, dist_sq);
         }
         self.map_patches.extend(patches);
     }
@@ -728,16 +643,5 @@ impl Game<'_> {
         let id = self.game_tests.next_id();
         let info = Info::new(id, key, def, Some(pos), self.dim, rotation);
         self.track_and_start_runner(vec![info], false, None, false);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rows_print_the_value_in_blue_then_a_line_break() {
-        let text = row("test_instance.description.structure", "minecraft:empty");
-        assert!(text.plain().ends_with('\n'));
     }
 }

@@ -25,12 +25,20 @@ pub(super) struct TagLayers<'a> {
 pub(super) fn merge_tag(
     text: Option<&str>,
     layers: &[TagLayers<'_>],
+    replaced: bool,
     what: &str,
     _conditions: &sunrise_world::conditions::LoadConditions,
 ) -> Result<String> {
     let mut doc = match text {
         Some(t) => serde_json::from_str(t).map_err(|e| format!("{what}: {e}"))?,
-        None => J::Obj(vec![("values".into(), J::Arr(Vec::new()))]),
+        None => {
+            let mut fields = Vec::new();
+            if replaced {
+                fields.push(("replace".into(), J::Bool(true)));
+            }
+            fields.push(("values".into(), J::Arr(Vec::new())));
+            J::Obj(fields)
+        }
     };
     // Tags do not evaluate load conditions.
     doc.remove("neoforge:conditions");
@@ -187,6 +195,11 @@ pub fn build_with_conditions(
     let mut warnings = Vec::new();
     let mut worldgen: BTreeMap<&str, Vec<(String, String)>> = BTreeMap::new();
     let mut additions: BTreeMap<&str, Vec<Addition>> = BTreeMap::new();
+    #[derive(PartialEq, Eq, PartialOrd, Ord)]
+    enum ModifierKey {
+        Structure(String),
+        Biome(String, String),
+    }
     let mut modifier_files = BTreeMap::new();
     let mut modifier_order = 0;
     let mut namespaces: std::collections::BTreeSet<String> = mods
@@ -220,10 +233,19 @@ pub fn build_with_conditions(
                     if file.starts_with(&declarations) {
                         continue;
                     }
-                    let structure = structures::is_modifier(&file);
-                    if structure || biomes::is_modifier(&file) {
+                    let key = if structures::is_modifier(&file) {
+                        Some((ModifierKey::Structure(file.clone()), true))
+                    } else {
+                        biomes::modifier_key(&file).map(|(namespace, path)| {
+                            (
+                                ModifierKey::Biome(namespace.to_owned(), path.to_owned()),
+                                false,
+                            )
+                        })
+                    };
+                    if let Some((key, structure)) = key {
                         // Registry JSON has one winning source; don't even read a loser.
-                        modifier_files.insert(file, (modifier_order, &m.id, layer, structure));
+                        modifier_files.insert(key, (modifier_order, file, &m.id, layer, structure));
                         modifier_order += 1;
                         continue;
                     }
@@ -262,10 +284,10 @@ pub fn build_with_conditions(
             }
         }
     }
-    let mut winners: Vec<_> = modifier_files.into_iter().collect();
-    winners.sort_by_key(|(_, (order, ..))| *order);
+    let mut winners: Vec<_> = modifier_files.into_values().collect();
+    winners.sort_by_key(|(order, ..)| *order);
     let mut accepted = Vec::new();
-    for (file, (_, owner, layer, structure)) in winners {
+    for (_, file, owner, layer, structure) in winners {
         let bytes = layer
             .data
             .read(&file)
@@ -277,7 +299,29 @@ pub fn build_with_conditions(
         }
     }
     conditions.check_errors()?;
+    let native = mod_api::__private::biome_modifier_declarations()
+        .iter()
+        .map(|decl| (&decl.mod_id, decl.file()))
+        .collect::<Vec<_>>();
+    biomes::check_registry(
+        accepted
+            .iter()
+            .filter(|(_, _, _, structure)| !*structure)
+            .map(|(file, owner, _, _)| (owner.as_str(), file.as_str()))
+            .chain(
+                native
+                    .iter()
+                    .map(|(owner, file)| (owner.as_str(), file.as_str())),
+            ),
+    )?;
+    let builtin_sounds = biomes::load_sound_events(base);
+    let registered_sound = |name: &str| {
+        builtin_sounds
+            .as_ref()
+            .is_some_and(|b| crate::music::registered_sound(b, name))
+    };
     let mut modifiers = Vec::new();
+    let mut modifier_sources = Vec::new();
     let mut structure_modifiers = Vec::new();
     for (file, owner, text, structure) in accepted {
         if structure {
@@ -288,7 +332,15 @@ pub fn build_with_conditions(
                 &mut warnings,
             )?);
         } else {
-            modifiers.extend(biomes::Modifier::read(owner, &file, &text, &mut warnings)?);
+            modifiers.extend(biomes::Modifier::read(
+                owner,
+                &file,
+                &text,
+                &registered_sound,
+                &mut warnings,
+            )?);
+            // No-op and unsupported serializers still occupy their accepted registry keys.
+            modifier_sources.push([owner.clone(), file, text]);
         }
     }
     // A tag naming an id nobody registers fails as a whole in vanilla, and
@@ -317,7 +369,14 @@ pub fn build_with_conditions(
             .filter(|_| !merge.replaced);
         overlay.write(
             file,
-            merge_tag(vanilla.as_deref(), &merge.layers(), file, conditions)?.as_bytes(),
+            merge_tag(
+                vanilla.as_deref(),
+                &merge.layers(),
+                merge.replaced,
+                file,
+                conditions,
+            )?
+            .as_bytes(),
         )?;
         // data/<ns>/tags/block/<path>.json is the block tag <ns>:<path>.
         let Some((ns, path)) = file
@@ -333,7 +392,13 @@ pub fn build_with_conditions(
                 Some(J::Str(t)) if !merge.replaced => Some(t.clone()),
                 _ => None,
             };
-            let merged = merge_tag(text.as_deref(), &merge.layers(), name, conditions)?;
+            let merged = merge_tag(
+                text.as_deref(),
+                &merge.layers(),
+                merge.replaced,
+                name,
+                conditions,
+            )?;
             doc.set(&id, J::Str(merged));
         }
     }
@@ -358,7 +423,13 @@ pub fn build_with_conditions(
                 Some(J::Str(t)) if !merge.replaced => Some(t.clone()),
                 _ => None,
             };
-            let merged = merge_tag(text.as_deref(), &merge.layers(), BIOME_TAGS, conditions)?;
+            let merged = merge_tag(
+                text.as_deref(),
+                &merge.layers(),
+                merge.replaced,
+                BIOME_TAGS,
+                conditions,
+            )?;
             doc.set(&id, J::Str(merged));
         }
         overlay.write(BIOME_TAGS, &serde_json::to_vec(&doc)?)?;
@@ -396,6 +467,7 @@ pub fn build_with_conditions(
             base,
             &overlay,
             &modifiers,
+            modifier_sources,
             inventory.server_ids().map(str::to_owned).collect(),
             biome_tag_doc,
             placed_doc,

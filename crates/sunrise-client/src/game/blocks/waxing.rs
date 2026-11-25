@@ -1,23 +1,12 @@
 //! `HoneycombItem.getWaxed` for the player's and the dispenser's honeycomb, and the axe's scrape
 //! and wax-off from the world's NeoForge block maps.
-use super::Game;
+use super::{Game, TransformKind, native_block_tables::BlockTables};
 use sunrise_world::registry::BlockStateId;
 
 impl Game<'_> {
-    /// The waxed twin of `state`, its properties kept: the world's
-    /// `neoforge:waxables` value first (`DataMapHooks.getBlockWaxed`), else
-    /// vanilla's `WAXABLES`, read from the axe's wax-off transforms. None where
-    /// the block doesn't wax.
+    /// The waxed twin of `state`; see [`BlockTables::honeycomb_waxed`].
     pub(in crate::game) fn honeycomb_waxed(&self, state: BlockStateId) -> Option<BlockStateId> {
-        if let Some(waxed) = self.res.behaviours().mapped_waxed(state) {
-            return Some(waxed);
-        }
-        let registry = self.pack.assets.registry;
-        let waxed = self
-            .res
-            .transformers()
-            .waxed(registry, registry.state(state)?)?;
-        registry.resolve(&waxed).ok()
+        BlockTables::of(self).honeycomb_waxed(state)
     }
 
     /// The axe's scrape or wax-off of `block` from the world's NeoForge block maps, asked
@@ -47,7 +36,14 @@ impl Game<'_> {
     pub(in crate::game) fn tool_ability_result(
         new: BlockStateId,
         ability: mod_api::ToolAbility,
-    ) -> (BlockStateId, String, Option<String>, u32, String, String) {
+    ) -> (
+        BlockStateId,
+        String,
+        Option<String>,
+        u32,
+        String,
+        TransformKind,
+    ) {
         use mod_api::ToolAbility::*;
         let (sound, particle) = match ability {
             AxeStrip => ("minecraft:item.axe.strip", "none"),
@@ -64,7 +60,7 @@ impl Game<'_> {
             None,
             1,
             particle.to_owned(),
-            String::new(),
+            TransformKind::default(),
         )
     }
 }

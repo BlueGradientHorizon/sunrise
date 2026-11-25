@@ -16,8 +16,8 @@ use super::{
     nav::NavKind,
     path::PathType,
 };
-use crate::beehive::BeehiveExt;
-use std::collections::HashMap;
+use crate::{beehive::BeehiveExt, health::DamageLevel};
+use std::{collections::HashMap, ops::ControlFlow};
 use sunrise_core::random::{LegacyRandom, RandomSource};
 
 const FLAG_ROLL: u8 = 2;
@@ -94,7 +94,7 @@ impl Default for Bee {
     }
 }
 
-fn st(m: &mut Mob) -> &mut Bee {
+pub(crate) fn st(m: &mut Mob) -> &mut Bee {
     m.extra.bee.get_or_insert_with(Default::default)
 }
 pub fn get(m: &Mob) -> Option<&Bee> {
@@ -214,7 +214,7 @@ pub fn draw_cooldowns(m: &mut Mob) {
 
 /// `NeutralMob.isAngry`.
 pub fn angry(m: &Mob, w: &MobWorld) -> bool {
-    get(m).is_some_and(|b| b.anger_end > 0 && b.anger_end - w.game_time > 0)
+    get(m).is_some_and(|b| b.anger_end > 0 && b.anger_end > w.game_time)
 }
 /// `NeutralMob.stopBeingAngry`.
 pub fn stop_being_angry(m: &mut Mob) {
@@ -327,34 +327,68 @@ pub fn ai_step(m: &mut Mob, w: &MobWorld) {
         st(m).hive = None;
     }
 }
-/// `Bee.customServerAiStep`: drowning, the sting's slow death, the time
-/// without nectar and the anger.
-pub fn server_ai_step(m: &mut Mob, cx: &mut Cx) {
-    let stung = has_stung(m);
-    let in_water = m.fluids.in_water;
-    let b = st(m);
-    b.under_water = if in_water { b.under_water + 1 } else { 0 };
-    if b.under_water > 20 {
-        m.damage(cx.level, 1.0, Damage::of(DamageKind::Drown));
+/// The remaining work in `Bee.customServerAiStep` after an owning-level hurt.
+#[derive(Debug)]
+pub(super) enum ServerAiStage {
+    Start,
+    AfterDrowning { stung: bool },
+    AfterStingerExpiry,
+}
+
+/// Finish each hurt before the next part of `Bee.customServerAiStep` runs.
+pub(super) fn server_ai_step(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    mut stage: ServerAiStage,
+) -> ControlFlow<ServerAiStage> {
+    loop {
+        stage = match stage {
+            ServerAiStage::Start => {
+                // Vanilla reads hasStung before drowning, not again after the hurt.
+                let next = ServerAiStage::AfterDrowning {
+                    stung: has_stung(m),
+                };
+                let in_water = m.fluids.in_water;
+                let b = st(m);
+                b.under_water = if in_water { b.under_water + 1 } else { 0 };
+                if b.under_water > 20 {
+                    m.damage(level, 1.0, Damage::of(DamageKind::Drown));
+                    if m.damage_completion.is_some() {
+                        return ControlFlow::Break(next);
+                    }
+                }
+                next
+            }
+            ServerAiStage::AfterDrowning { stung } => {
+                if stung {
+                    let b = st(m);
+                    b.time_since_sting += 1;
+                    let t = b.time_since_sting;
+                    if t % 5 == 0
+                        && m.random
+                            .next_int_bound((1200 - t).clamp(1, 1200))
+                            .unwrap_or(1)
+                            == 0
+                    {
+                        let health = m.health;
+                        m.damage(level, health, Damage::of(DamageKind::Generic));
+                        if m.damage_completion.is_some() {
+                            return ControlFlow::Break(ServerAiStage::AfterStingerExpiry);
+                        }
+                    }
+                }
+                ServerAiStage::AfterStingerExpiry
+            }
+            ServerAiStage::AfterStingerExpiry => {
+                if !has_nectar(m) {
+                    st(m).ticks_without_nectar += 1;
+                }
+                update_persistent_anger(m, w);
+                return ControlFlow::Continue(());
+            }
+        };
     }
-    if stung {
-        let b = st(m);
-        b.time_since_sting += 1;
-        let t = b.time_since_sting;
-        if t % 5 == 0
-            && m.random
-                .next_int_bound((1200 - t).clamp(1, 1200))
-                .unwrap_or(1)
-                == 0
-        {
-            let health = m.health;
-            m.damage(cx.level, health, Damage::of(DamageKind::Generic));
-        }
-    }
-    if !has_nectar(m) {
-        st(m).ticks_without_nectar += 1;
-    }
-    update_persistent_anger(m, cx.w);
 }
 /// `Bee.hurtServer`: a hit ends pollinating.
 pub fn hurt(m: &mut Mob) {
@@ -437,7 +471,7 @@ fn block_pos(m: &Mob) -> [i32; 3] {
 /// `Bee.closerThan`: `Vec3i.closerThan` from the bee's block.
 fn closer_than(m: &Mob, p: [i32; 3], dist: i32) -> bool {
     let b = block_pos(m);
-    let d = |i: usize| f64::from(p[i] - b[i]);
+    let d = |i: usize| f64::from(p[i]) - f64::from(b[i]);
     d(0) * d(0) + d(1) * d(1) + d(2) * d(2) < f64::from(dist * dist)
 }
 fn too_far(m: &Mob, p: [i32; 3]) -> bool {
@@ -587,27 +621,35 @@ fn calm(m: &Mob, w: &MobWorld) -> bool {
 struct BeeAttack(MeleeAttack);
 impl Goal for BeeAttack {
     goal_clone!();
+    #[inline]
     fn name(&self) -> &'static str {
         "BeeAttackGoal"
     }
+    #[inline]
     fn flags(&self) -> u8 {
         self.0.flags()
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         self.0.can_use(m, cx) && can_target(m, cx.w)
     }
+    #[inline]
     fn can_continue(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         self.0.can_continue(m, cx) && can_target(m, cx.w)
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
         self.0.start(m, cx);
     }
+    #[inline]
     fn stop(&mut self, m: &mut Mob, cx: &mut Cx) {
         self.0.stop(m, cx);
     }
+    #[inline]
     fn every_tick(&self) -> bool {
         self.0.every_tick()
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         self.0.tick(m, cx);
     }
@@ -635,21 +677,27 @@ impl BecomeAngryTarget {
 }
 impl Goal for BecomeAngryTarget {
     goal_clone!();
+    #[inline]
     fn name(&self) -> &'static str {
         "BeeBecomeAngryTargetGoal"
     }
+    #[inline]
     fn flags(&self) -> u8 {
         self.0.flags()
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         self.0.can_use(m, cx)
     }
+    #[inline]
     fn can_continue(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         can_target(m, cx.w) && m.ai.target.is_some() && self.0.can_continue(m, cx)
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
         self.0.start(m, cx);
     }
+    #[inline]
     fn stop(&mut self, m: &mut Mob, cx: &mut Cx) {
         self.0.stop(m, cx);
     }
@@ -660,12 +708,15 @@ impl Goal for BecomeAngryTarget {
 struct EnterHive;
 impl Goal for EnterHive {
     goal_clone!();
+    #[inline]
     fn name(&self) -> &'static str {
         "BeeEnterHiveGoal"
     }
+    #[inline]
     fn flags(&self) -> u8 {
         0
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         let close = get(m).and_then(|b| b.hive).is_some_and(|h| {
             let d = |i: usize, v: f64| f64::from(h[i]) + 0.5 - v;
@@ -682,9 +733,11 @@ impl Goal for EnterHive {
         }
         enter && calm(m, cx.w)
     }
+    #[inline]
     fn can_continue(&mut self, _m: &mut Mob, _cx: &mut Cx) -> bool {
         false
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
         if let Some(hive) = get(m).and_then(|b| b.hive).filter(|_| hive_valid(m, cx.w)) {
             cx.events.push(MobEvent::EnterHive { mob: m.id, hive });
@@ -699,19 +752,24 @@ struct ValidateHive {
 }
 impl Goal for ValidateHive {
     goal_clone!();
+    #[inline]
     fn name(&self) -> &'static str {
         "ValidateHiveGoal"
     }
+    #[inline]
     fn flags(&self) -> u8 {
         0
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         let cooldown = get(m).map_or(0, |b| b.validate_hive_cooldown);
         cx.w.game_time > self.last + i64::from(cooldown) && calm(m, cx.w)
     }
+    #[inline]
     fn can_continue(&mut self, _m: &mut Mob, _cx: &mut Cx) -> bool {
         false
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
         if let Some(h) = get(m).and_then(|b| b.hive)
             && cx.w.world.loaded(h[0], h[2])
@@ -730,19 +788,24 @@ struct ValidateFlower {
 }
 impl Goal for ValidateFlower {
     goal_clone!();
+    #[inline]
     fn name(&self) -> &'static str {
         "ValidateFlowerGoal"
     }
+    #[inline]
     fn flags(&self) -> u8 {
         0
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         let cooldown = get(m).map_or(0, |b| b.validate_flower_cooldown);
         cx.w.game_time > self.last + i64::from(cooldown) && calm(m, cx.w)
     }
+    #[inline]
     fn can_continue(&mut self, _m: &mut Mob, _cx: &mut Cx) -> bool {
         false
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
         if let Some(f) = get(m).and_then(|b| b.flower)
             && cx.w.world.loaded(f[0], f[2])
@@ -803,12 +866,15 @@ impl Pollinate {
 }
 impl Goal for Pollinate {
     goal_clone!();
+    #[inline]
     fn name(&self) -> &'static str {
         "BeePollinateGoal"
     }
+    #[inline]
     fn flags(&self) -> u8 {
         MOVE
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         let usable =
             if get(m).is_some_and(|b| b.flower_cooldown > 0) || has_nectar(m) || cx.w.raining {
@@ -829,6 +895,7 @@ impl Goal for Pollinate {
             };
         usable && calm(m, cx.w)
     }
+    #[inline]
     fn can_continue(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         let go = if !pollinating(m) || get(m).is_none_or(|b| b.flower.is_none()) || cx.w.raining {
             false
@@ -839,6 +906,7 @@ impl Goal for Pollinate {
         };
         go && calm(m, cx.w)
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, _cx: &mut Cx) {
         self.successful = 0;
         self.ticks = 0;
@@ -846,6 +914,7 @@ impl Goal for Pollinate {
         set_pollinating(m, true);
         st(m).ticks_without_nectar = 0;
     }
+    #[inline]
     fn stop(&mut self, m: &mut Mob, _cx: &mut Cx) {
         if self.long_enough() {
             set_has_nectar(m, true);
@@ -854,9 +923,11 @@ impl Goal for Pollinate {
         m.nav_stop();
         st(m).flower_cooldown = 200;
     }
+    #[inline]
     fn every_tick(&self) -> bool {
         true
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, _cx: &mut Cx) {
         let Some(f) = get(m).and_then(|b| b.flower) else {
             return;
@@ -917,21 +988,26 @@ impl Goal for Pollinate {
 struct LocateHive;
 impl Goal for LocateHive {
     goal_clone!();
+    #[inline]
     fn name(&self) -> &'static str {
         "BeeLocateHiveGoal"
     }
+    #[inline]
     fn flags(&self) -> u8 {
         0
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         let b = get(m);
         let usable = b.is_some_and(|b| b.hive_cooldown == 0 && b.hive.is_none())
             && wants_to_enter_hive(m, cx.w);
         usable && calm(m, cx.w)
     }
+    #[inline]
     fn can_continue(&mut self, _m: &mut Mob, _cx: &mut Cx) -> bool {
         false
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
         st(m).hive_cooldown = 200;
         let hives = hives_with_space(m, cx.w);
@@ -945,6 +1021,17 @@ impl Goal for LocateHive {
         }
         b.hive = pick.or_else(|| hives.first().copied()).or(b.hive);
     }
+}
+
+/// `PoiTypeTags.BEE_HOME`: whether the block at `p` is a point of interest of that tag.
+fn is_bee_home(w: &MobWorld, p: [i32; 3]) -> bool {
+    w.registry
+        .state(w.world.block(p[0], p[1], p[2]))
+        .and_then(sunrise_world::poi::saved_poi)
+        .is_some_and(|poi| {
+            w.professions
+                .poi_in_tag(super::villager::professions::BEE_HOME, poi.into())
+        })
 }
 
 /// `findNearbyHivesWithSpace`: the bee homes (`PoiTypeTags.BEE_HOME`)
@@ -963,9 +1050,7 @@ fn hives_with_space(m: &Mob, w: &MobWorld) -> Vec<[i32; 3]> {
             crate::containers::BlockEntity::Beehive(h) if !h.full() => Some([x, y, z]),
             _ => None,
         })
-        .filter(|p| {
-            dist(p) <= 20 * 20 && w.has_tag("minecraft:beehives", w.block_name(p[0], p[1], p[2]))
-        })
+        .filter(|p| dist(p) <= 20 * 20 && is_bee_home(w, *p))
         .collect();
     hives.sort_by_key(|p| (dist(p), *p));
     hives
@@ -1007,12 +1092,15 @@ impl GoToHive {
 }
 impl Goal for GoToHive {
     goal_clone!();
+    #[inline]
     fn name(&self) -> &'static str {
         "BeeGoToHiveGoal"
     }
+    #[inline]
     fn flags(&self) -> u8 {
         MOVE
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         let usable = get(m).and_then(|b| b.hive).is_some_and(|h| {
             !too_far(m, h)
@@ -1025,16 +1113,19 @@ impl Goal for GoToHive {
         });
         usable && calm(m, cx.w)
     }
+    #[inline]
     fn start(&mut self, _m: &mut Mob, _cx: &mut Cx) {
         self.travelling = 0;
         self.stuck = 0;
     }
+    #[inline]
     fn stop(&mut self, m: &mut Mob, _cx: &mut Cx) {
         self.travelling = 0;
         self.stuck = 0;
         m.nav_stop();
         m.ai.nav.max_visited_multiplier = 1.0;
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         let Some(h) = get(m).and_then(|b| b.hive) else {
             return;
@@ -1078,12 +1169,15 @@ struct GoToKnownFlower {
 }
 impl Goal for GoToKnownFlower {
     goal_clone!();
+    #[inline]
     fn name(&self) -> &'static str {
         "BeeGoToKnownFlowerGoal"
     }
+    #[inline]
     fn flags(&self) -> u8 {
         MOVE
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         let usable = get(m).is_some_and(|b| {
             b.flower.is_some_and(|f| {
@@ -1092,14 +1186,17 @@ impl Goal for GoToKnownFlower {
         });
         usable && calm(m, cx.w)
     }
+    #[inline]
     fn start(&mut self, _m: &mut Mob, _cx: &mut Cx) {
         self.travelling = 0;
     }
+    #[inline]
     fn stop(&mut self, m: &mut Mob, _cx: &mut Cx) {
         self.travelling = 0;
         m.nav_stop();
         m.ai.nav.max_visited_multiplier = 1.0;
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         let Some(f) = get(m).and_then(|b| b.flower) else {
             return;
@@ -1122,12 +1219,15 @@ impl Goal for GoToKnownFlower {
 struct GrowCrop;
 impl Goal for GrowCrop {
     goal_clone!();
+    #[inline]
     fn name(&self) -> &'static str {
         "BeeGrowCropGoal"
     }
+    #[inline]
     fn flags(&self) -> u8 {
         0
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
         // The 0.3 roll comes only after the crop count: it draws randomness.
         let usable = get(m).is_none_or(|b| b.crops_grown < 10)
@@ -1136,6 +1236,7 @@ impl Goal for GrowCrop {
             && hive_valid(m, cx.w);
         usable && calm(m, cx.w)
     }
+    #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         if m.random.next_int_bound(reduced(30)).unwrap_or(1) != 0 {
             return;
@@ -1204,18 +1305,23 @@ fn grown(w: &MobWorld, p: [i32; 3]) -> Option<sunrise_world::registry::BlockStat
 struct Wander;
 impl Goal for Wander {
     goal_clone!();
+    #[inline]
     fn name(&self) -> &'static str {
         "BeeWanderGoal"
     }
+    #[inline]
     fn flags(&self) -> u8 {
         MOVE
     }
+    #[inline]
     fn can_use(&mut self, m: &mut Mob, _cx: &mut Cx) -> bool {
         m.ai.nav.is_done() && m.random.next_int_bound(10).unwrap_or(1) == 0
     }
+    #[inline]
     fn can_continue(&mut self, m: &mut Mob, _cx: &mut Cx) -> bool {
         m.ai.nav.is_in_progress()
     }
+    #[inline]
     fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
         // Back towards a valid hive farther than 24 blocks, else ahead.
         let far_hive = get(m)
@@ -1262,7 +1368,7 @@ pub fn stable_destination(w: &MobWorld, p: [i32; 3]) -> bool {
 /// `Bee.addAdditionalSaveData` (and NeutralMob's `anger_end_time`).
 pub fn to_nbt(
     m: &Mob,
-    map: &mut sunrise_core::nbt::Compound,
+    map: &mut crate::entity_nbt::EntityTagWriter,
     uuid_of: &mut impl FnMut(u32) -> Option<[i32; 4]>,
 ) {
     use sunrise_core::nbt::Tag;

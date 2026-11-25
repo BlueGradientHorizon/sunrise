@@ -63,6 +63,12 @@ pub mod pages {
     pub use sunrise_hooks::pages::{Act, Label, Page, Place, Row, connect, register};
 }
 
+/// The volume of the audio mods make themselves (`sunrise_hooks::sound`): a crate's setting can turn
+/// it down or off.
+pub mod sound {
+    pub use sunrise_hooks::sound::set_mod_stream_gain;
+}
+
 /// The lang files with a crate's text, loaded with the game's own (docs/layers.md, "Platform
 /// registries").
 pub mod lang {
@@ -78,6 +84,10 @@ pub mod mod_rows {
 pub mod items {
     pub use sunrise_hooks::items::creative_order;
 }
+
+/// Proxy selection and connection pooling for HTTP requests to caller-supplied URLs.
+#[cfg(feature = "http-proxy")]
+pub use sunrise_proxy as proxy;
 
 /// The game's own release: [`release::VERSION`] is what its Mods screen row shows.
 pub use sunrise_core::release;
@@ -116,15 +126,6 @@ pub mod title {
     pub use sunrise_hooks::title::{Button, Opens, Refused, Title, register};
 }
 
-/// The multiplayer server list as vanilla stores it (`servers.dat`): read, write, add, remove,
-/// and the lock held while it is read and written back.
-#[cfg(feature = "protocol")]
-pub mod servers {
-    pub use sunrise_protocol::servers::{
-        ServerEntry, load, lock, parse_address, prepend, remove_where, save,
-    };
-}
-
 /// Drawing on the HUD (docs/layers.md, "Platform registries").
 pub mod hud {
     pub use sunrise_hooks::hud::{Canvas, Corner, Layer, Stage, register};
@@ -135,14 +136,9 @@ pub mod look {
     pub use sunrise_hooks::look::{Chat, Look, update};
 }
 
-/// Build-time mod source generation and point signature inspection.
+/// Build-time mod source generation.
 #[cfg(feature = "mod-build")]
 pub mod mod_build {
-    /// Parsing and validation of injection point signatures.
-    pub use point_shape;
     /// The shared mod API and source generator.
     pub use sunrise_mod_api_gen as api_gen;
 }
-
-/// Establish the executable stack policy before starting the game or supervisor.
-pub use sunrise_guest_stack::prepare_main as prepare_main_stack;

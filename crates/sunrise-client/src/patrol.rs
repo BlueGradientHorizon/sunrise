@@ -4,7 +4,7 @@
 //! are made by the caller, so the game and the differential test
 //! (`tools/test_raid_parity.py`) run the same decisions and random draws.
 use crate::mobs::{
-    Species,
+    MobType,
     spawn_rules::{self, Reason, SpawnLevel},
 };
 use sunrise_core::random::RandomSource;
@@ -63,6 +63,7 @@ impl PatrolSpawner {
         &mut self,
         level: &L,
         spawn_enemies: bool,
+        pillager: &MobType,
         random: &mut R,
         spawn: &mut dyn FnMut(&L, Member, &mut R) -> bool,
     ) {
@@ -100,7 +101,7 @@ impl PatrolSpawner {
         for i in 0..group {
             pos[1] = level.motion_blocking_no_leaves(pos[0], pos[2]);
             let leader = i == 0;
-            if !spawn_member(level, pos, leader, random, spawn) && leader {
+            if !spawn_member(level, pillager, pos, leader, random, spawn) && leader {
                 break;
             }
             pos[0] += random.next_int_bound(5).unwrap_or(0) - random.next_int_bound(5).unwrap_or(0);
@@ -113,23 +114,21 @@ impl PatrolSpawner {
 /// whose `checkPatrollingMonsterSpawnRules` pass.
 fn spawn_member<L: PatrolLevel, R: RandomSource>(
     level: &L,
+    pillager: &MobType,
     pos: [i32; 3],
     leader: bool,
     random: &mut R,
     spawn: &mut dyn FnMut(&L, Member, &mut R) -> bool,
 ) -> bool {
     let [x, y, z] = pos;
-    if !spawn_rules::is_valid_empty_spawn(Species::Pillager, level, x, y, z) {
+    if !spawn_rules::is_valid_empty_spawn(pillager.species, level, x, y, z) {
         return false;
     }
-    if !spawn_rules::check_spawn_rules(
-        "minecraft:pillager",
-        Species::Pillager,
-        level,
-        Reason::Patrol,
-        random,
-        pos,
-    ) {
+    if !spawn_rules::patrolling_monster_rules(pillager.species, level, Reason::Patrol, x, y, z) {
+        return false;
+    }
+    // EntityType.create checks canSpawn after the patrol's placement predicate.
+    if level.peaceful() && !pillager.allowed_in_peaceful() {
         return false;
     }
     spawn(level, Member { pos, leader }, random)
@@ -193,8 +192,12 @@ impl BoolTrack {
 pub const CAN_PILLAGER_PATROL_SPAWN: &str = "minecraft:gameplay/can_pillager_patrol_spawn";
 pub const CAN_START_RAID: &str = "minecraft:gameplay/can_start_raid";
 impl GameplayAttributes {
-    /// Reads the dimension types, biomes and timelines under `root/data`.
-    pub fn load(root: &std::path::Path) -> Self {
+    /// Reads the dimension types, biomes and timelines under `root/data`, and the timeline
+    /// tags from `root` and the world's packs (`overlay`).
+    pub fn load(
+        root: &std::path::Path,
+        overlay: &sunrise_world::loot::PackOverlay,
+    ) -> std::io::Result<Self> {
         use serde_json::Value;
         let data = root.join("data/minecraft");
         let read = |p: std::path::PathBuf| -> Option<Value> {
@@ -219,37 +222,9 @@ impl GameplayAttributes {
         let mut out = Self::default();
         let timelines: std::collections::HashMap<String, Value> =
             list("timeline").into_iter().collect();
-        // Tag values with nested tags and removals resolved.
-        fn tag(data: &std::path::Path, name: &str, out: &mut Vec<String>) {
-            fn resolve(
-                data: &std::path::Path,
-                name: &str,
-                active: &mut std::collections::HashSet<String>,
-            ) -> Vec<String> {
-                let name = name
-                    .trim_start_matches('#')
-                    .trim_start_matches("minecraft:");
-                if !active.insert(name.to_owned()) {
-                    return Vec::new();
-                }
-                let file = data.join(format!("tags/timeline/{name}.json"));
-                let members = std::fs::read(file)
-                    .ok()
-                    .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
-                    .map(|v| {
-                        sunrise_world::tag_layers::TagLayers::from_file(&v)
-                            .build(|child| resolve(data, child, active))
-                    })
-                    .unwrap_or_default();
-                active.remove(name);
-                members
-            }
-            for id in resolve(data, name, &mut Default::default()) {
-                if !out.contains(&id) {
-                    out.push(id);
-                }
-            }
-        }
+        let tags = sunrise_world::tag_layers::load(root, "timeline", overlay, |id| {
+            timelines.contains_key(id)
+        })?;
         for (dim, v) in list("dimension_type") {
             for key in keys {
                 if let Some(b) = v["attributes"][key].as_bool() {
@@ -260,13 +235,23 @@ impl GameplayAttributes {
                 }
             }
             let mut names = Vec::new();
-            match &v["timelines"] {
-                Value::String(s) if s.starts_with('#') => tag(&data, s, &mut names),
-                Value::String(s) => names.push(s.clone()),
-                Value::Array(a) => {
-                    names.extend(a.iter().filter_map(|x| x.as_str()).map(str::to_owned))
+            let entries = match &v["timelines"] {
+                Value::Array(list) => list.as_slice(),
+                value => std::slice::from_ref(value),
+            };
+            for id in entries.iter().filter_map(Value::as_str) {
+                if let Some(tag) = id.strip_prefix('#') {
+                    if let Ok(tag) = sunrise_core::identifier::Identifier::parse(tag) {
+                        names.extend(
+                            tags.get(tag.to_string().as_str())
+                                .into_iter()
+                                .flatten()
+                                .cloned(),
+                        );
+                    }
+                } else {
+                    names.push(id.to_owned());
                 }
-                _ => {}
             }
             for name in names {
                 let Some(t) = timelines.get(&name) else {
@@ -307,7 +292,7 @@ impl GameplayAttributes {
                 }
             }
         }
-        out
+        Ok(out)
     }
     /// The attribute in a dimension type and biome at an overworld clock time.
     pub fn value(&self, key: &str, dimension: &str, biome: &str, clock: i64) -> bool {
@@ -337,7 +322,7 @@ impl GameplayAttributes {
 mod tag_cycle_tests {
     use super::*;
     #[test]
-    fn mutual_timeline_tags_terminate_from_either_dimension() {
+    fn an_optional_timeline_cycle_does_not_block_a_required_reference() {
         let root = tempfile::tempdir().unwrap();
         let write = |path: &str, value: serde_json::Value| {
             let path = root.path().join(format!("data/minecraft/{path}.json"));
@@ -350,7 +335,7 @@ mod tag_cycle_tests {
         );
         write(
             "tags/timeline/b",
-            serde_json::json!({"values":["#minecraft:a", "minecraft:blocked"]}),
+            serde_json::json!({"values":[{"id":"#minecraft:a", "required":false}, "minecraft:blocked"]}),
         );
         write(
             "timeline/blocked",
@@ -362,9 +347,51 @@ mod tag_cycle_tests {
                 serde_json::json!({"timelines":format!("#minecraft:{tag}")}),
             );
         }
-        let attributes = GameplayAttributes::load(root.path());
+        let attributes =
+            GameplayAttributes::load(root.path(), &sunrise_world::loot::PackOverlay::NONE).unwrap();
         for dimension in ["minecraft:one", "minecraft:two"] {
             assert!(!attributes.value(CAN_PILLAGER_PATROL_SPAWN, dimension, "minecraft:plains", 0));
         }
+    }
+
+    /// A data pack's timeline tag file binds like the game's own: the raid code's attribute for a
+    /// dimension type that names the tag follows the pack's entry (`TagLoader.load`).
+    #[test]
+    fn a_pack_timeline_tag_reaches_the_raid_attributes() {
+        let root = tempfile::tempdir().unwrap();
+        let write = |path: &str, value: serde_json::Value| {
+            let path = root.path().join(format!("data/minecraft/{path}.json"));
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, value.to_string()).unwrap();
+        };
+        write(
+            "timeline/blocked",
+            serde_json::json!({"tracks":{(CAN_PILLAGER_PATROL_SPAWN):{"keyframes":[{"ticks":0,"value":false}]}}}),
+        );
+        write(
+            "dimension_type/one",
+            serde_json::json!({"timelines":"#minecraft:from_pack"}),
+        );
+        let attributes = |files: &[(String, Vec<Vec<u8>>)]| {
+            GameplayAttributes::load(root.path(), &sunrise_world::loot::PackOverlay::new(files))
+                .unwrap()
+        };
+        let value = |attributes: &GameplayAttributes| {
+            attributes.value(
+                CAN_PILLAGER_PATROL_SPAWN,
+                "minecraft:one",
+                "minecraft:plains",
+                0,
+            )
+        };
+        assert!(value(&attributes(&[])));
+        let files = [(
+            "tags/minecraft:timeline/from_pack".to_owned(),
+            vec![
+                br#"{"values":["minecraft:blocked",{"id":"minecraft:absent","required":false}]}"#
+                    .to_vec(),
+            ],
+        )];
+        assert!(!value(&attributes(&files)));
     }
 }

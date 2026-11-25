@@ -48,12 +48,11 @@ impl Game<'_> {
         }
     }
     /// A look from any device, in `Entity.turn` units: the tutorial's "look
-    /// around" step hears it and Sunrise's zoom slows it, for the mouse and a
-    /// controller alike.
+    /// around" step hears it before `Entity.turn` applies it, for the mouse
+    /// and a controller alike.
     pub(super) fn look_turn(&mut self, x: f64, y: f64) {
         self.tutorial.mouse(x, y);
-        let zoom = self.zoom_turn_scale();
-        self.turn_player(x * zoom, y * zoom);
+        self.turn_player(x, y);
     }
     /// `Minecraft.pause`: a single-player game with a pausing screen open.
     pub(super) fn pauses_game(&self) -> bool {
@@ -113,19 +112,26 @@ impl Game<'_> {
     /// toggles keeps its toggle state (`shouldSetOnIngameFocus`).
     pub(super) fn restore_held_keys(&mut self) {
         let held: Vec<KeyCode> = self.physical_keys.iter().copied().collect();
-        let toggles = [self.settings.toggle_crouch, self.settings.toggle_sprint];
+        let options = self.toggle_options();
         for key in held {
+            if let Some(name) = sunrise_client::keybinds::key_name(key) {
+                for slot in self.settings.keys.slots_for(name) {
+                    let option =
+                        sunrise_client::keymapping::toggle_index(slot).is_some_and(|i| options[i]);
+                    if self
+                        .vanilla_mappings
+                        .state(slot)
+                        .should_set_on_ingame_focus(option)
+                    {
+                        self.vanilla_mappings.set_down(slot, true, option);
+                    }
+                }
+            }
             for mapped in self.settings.keys.translate_all(key) {
                 match mapped {
-                    Ok(slot_key @ (KeyCode::ShiftLeft | KeyCode::ControlLeft)) => {
-                        let slot = usize::from(slot_key == KeyCode::ControlLeft);
-                        if !toggles[slot] {
-                            self.toggles.0[slot].set_down(true, false);
-                            self.sync_toggle(slot);
-                        }
-                    }
+                    Ok(KeyCode::ShiftLeft | KeyCode::ControlLeft) => {}
                     Ok(other) => {
-                        self.keys.insert(other);
+                        self.insert_device_key(other);
                     }
                     Err(_) => {}
                 }
@@ -170,7 +176,10 @@ impl Game<'_> {
         }
         // The real pointer takes over from an agent's.
         self.agent_pointer = false;
-        if capture && !self.captured && !cfg!(target_os = "macos") {
+        if !capture {
+            self.screen_grab = false;
+        }
+        if capture && !self.captured && !self.screen_grab && !cfg!(target_os = "macos") {
             // MouseHandler.grabMouse: KeyMapping.setAll unless
             // InputQuirks.RESTORE_KEY_STATE_AFTER_MOUSE_GRAB is off (macOS).
             self.restore_held_keys();
@@ -254,6 +263,82 @@ impl Game<'_> {
             .center_after_grab_change(capture, was_grabbed)
         {
             self.set_window_cursor(projection.window.physical_sample(pos), projection);
+        }
+    }
+    /// The open mod screen holds the pointer (`ScreensClientHost::set_pointer_grab`) and the
+    /// window has it: the device's motion is the screen's.
+    pub(super) fn mod_screen_grabs_pointer(&self) -> bool {
+        self.screen_grab && self.captured && self.screen == Screen::Mod
+    }
+    /// The device's motion with the pointer grabbed (`MouseHandler.onMove`, applied once per
+    /// frame): a grabbing mod screen's `screen_pointer_motion`, otherwise the camera's.
+    pub(in crate::game) fn grabbed_pointer_motion(&mut self, [x, y]: [f64; 2]) {
+        self.note_input(
+            input_trace::InputOrigin::User,
+            input_trace::TraceKind::Motion { x, y },
+        );
+        if self.mod_screen_grabs_pointer() {
+            self.screen_pointer_motion([x, y]);
+        } else {
+            self.mouse.on_move(0.0, 0.0, x, y, true, true);
+        }
+        self.last_input = Instant::now();
+    }
+    /// Whether the open screen is the calling mod's own (`mod_api::content::crash::current_native_mod`).
+    fn calling_mod_owns_screen(&self) -> bool {
+        mod_api::content::crash::current_native_mod()
+            .is_some_and(|owner| self.mod_screen() == Some(owner))
+    }
+    /// `ScreensClientHost::set_pointer_grab`: the grab of the calling mod's own open screen,
+    /// taken at the next `apply_pointer_grab_request`. Refused (nothing changes) when the open
+    /// screen is another mod's or none, or, for a grab, when the window is not focused
+    /// (`MouseHandler.grabMouse` never grabs an inactive window; `capture` allows the same
+    /// unclaimed and scripted windows).
+    pub(in crate::game) fn set_pointer_grab(&self, grab: bool) -> bool {
+        if !self.calling_mod_owns_screen() {
+            return false;
+        }
+        if !grab {
+            if self.pointer_grabbed() {
+                self.pointer_grab_request.set(Some(false));
+            }
+            return true;
+        }
+        if !(self.focused || self.unclaimed_window || self.scripted_run()) {
+            return false;
+        }
+        self.pointer_grab_request.set(Some(true));
+        true
+    }
+    /// `ScreensClientHost::pointer_grabbed`: the calling mod's open screen holds the grab, as
+    /// asked for if the request is still waiting.
+    pub(in crate::game) fn pointer_grabbed(&self) -> bool {
+        self.calling_mod_owns_screen()
+            && self
+                .pointer_grab_request
+                .get()
+                .unwrap_or_else(|| self.mod_screen_grabs_pointer())
+    }
+    /// Applies what `set_pointer_grab` asked for, and ends a grab whose screen's mod is off.
+    /// The screen's own `capture(true)` skips vanilla's `KeyMapping.setAll` (the screen, not
+    /// the game, has the keyboard) and is not refused by an earlier `screen_opening` answer,
+    /// which only meant that caller's grab after that change. Released by `capture(false)`,
+    /// which every screen change and focus loss run.
+    pub(in crate::game) fn apply_pointer_grab_request(&mut self) {
+        let request = self.pointer_grab_request.take();
+        let owner_off = self.native_mod_screen.as_deref().is_some_and(|owner| {
+            mod_api::__private::mod_index(owner)
+                .is_some_and(|i| !mod_api::__private::mod_index_on(i))
+        });
+        if self.screen_grab && (owner_off || request == Some(false)) {
+            self.capture(false);
+        } else if request == Some(true) && !owner_off && self.screen == Screen::Mod {
+            self.screen_grab = true;
+            self.screen_state.answered.set(false);
+            self.capture(true);
+            if !self.captured {
+                self.screen_grab = false;
+            }
         }
     }
     /// The game's pointer grab leaves the system pointer where the person at the computer has

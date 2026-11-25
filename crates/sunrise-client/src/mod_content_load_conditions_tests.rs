@@ -96,6 +96,7 @@ fn conditional_base_tag_does_not_gate_later_accepted_layers() {
                     values: more.as_slice(),
                     remove: &[],
                 }],
+                false,
                 "conditional",
                 &sunrise_world::conditions::LoadConditions::new(if enabled {
                     vec!["code_only"]
@@ -128,6 +129,7 @@ fn tags_merge_without_repeats() {
                 values: more.as_slice(),
                 remove: &[],
             }],
+            false,
             "t",
             &sunrise_world::conditions::LoadConditions::vanilla(),
         )
@@ -192,6 +194,7 @@ fn removals_follow_the_tag_file_and_a_replace_drops_them() {
                 values: &ids(&["test:ruby"]),
                 remove: &ids(&["minecraft:dirt"]),
             }],
+            false,
             "t",
             &LoadConditions::vanilla(),
         )
@@ -244,6 +247,7 @@ fn a_higher_mod_adds_back_what_a_lower_one_removed() {
         &merge_tag(
             Some(r#"{"values": ["minecraft:stone", "minecraft:sand"]}"#),
             &merge.layers(),
+            false,
             "t",
             &LoadConditions::vanilla(),
         )
@@ -252,9 +256,9 @@ fn a_higher_mod_adds_back_what_a_lower_one_removed() {
     .unwrap();
     // The fold (TagLayers::build) reads the entries in order: x, sand out,
     // sand back in, y.
-    let layers = sunrise_world::tag_layers::TagLayers::from_file(&merged);
+    let layers = sunrise_world::tag_layers::TagLayers::from_file(merged).unwrap();
     assert_eq!(
-        layers.build(|_| Vec::new()),
+        layers.build(|_| true, |_| None).unwrap(),
         ["a:x", "minecraft:sand", "b:y"]
     );
 }

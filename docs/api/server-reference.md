@@ -14,7 +14,9 @@ Usage: sunrise-server [--dir DIR] <command>
 
   init        Set up a server here: the EULA, the world, the port, who may join (asks, or takes flags:
               --eula --world NAME --seed SEED --port N --whitelist/--no-whitelist --player NAME... --op NAME
-              --offline --yes)
+              --offline --yes); prepares game files when none are found, or takes --server-jar PATH
+              for an offline prepare or --resources DIR to use an existing preparation.
+              On an existing server, `init --yes` only prepares its managed game files.
   run         Run the server in the foreground; type console commands, Ctrl-C stops it cleanly. It
               restarts the game if it crashes.
   start       Run the server in the background, or resume a stopped supervisor (output goes to logs/supervisor.log)
@@ -122,6 +124,8 @@ Any other server.properties key, spelled as vanilla spells it, for example: spaw
 | `restart_on_crash` | `true` |  | start the game again when it crashes |
 | `low_memory` | `false` |  | true: no transparent huge pages, ~60 MB less idle for ~1 % more tick time |
 | `parallel_tick` | `false` |  | reserved: parallel phases are currently disabled in this fork |
+| `droppable_clientbound` | `262144` |  | bytes a second of droppable mod payloads (voice) sent to each player; 0 turns them off |
+| `droppable_serverbound` | `16384` |  | the same, accepted from each player |
 
 ### `[backups]`
 

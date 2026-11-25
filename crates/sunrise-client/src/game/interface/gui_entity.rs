@@ -14,7 +14,11 @@ use super::{Game, commands::Target};
 use glam::{DVec3, Mat4, Vec3};
 use mod_api::{GuiEntity, GuiEntityError, GuiEntityLook, GuiEntityView};
 use std::{cell::RefCell, sync::Arc};
-use sunrise_client::{hud::HudBatch, mesher::Vertex, mobs::Mob};
+use sunrise_client::{
+    hud::HudBatch,
+    mesher::Vertex,
+    mobs::{Mob, render::FrameDraw},
+};
 use sunrise_core::{
     geometry::Vec3 as Position,
     nbt::{Compound, JavaString, Tag},
@@ -241,7 +245,31 @@ impl Game<'_> {
     /// mods' layers. Full bright, seen from its own position.
     pub(in crate::game) fn gui_entity_geometry(&self, mob: &Mob, out: &mut Vec<Vertex>) {
         let p = mob.position;
-        self.gui_entity_geometry_at(mob, 1.0, DVec3::new(p.x, p.y, p.z), out);
+        let origin = DVec3::new(p.x, p.y, p.z);
+        let camera = mod_api::Camera {
+            position: origin.to_array(),
+            eye_height: 0.0,
+            partial_tick: 1.0,
+            yaw: 0.0,
+            pitch: 0.0,
+            roll: 0.0,
+            fov_degrees: 0.0,
+            near: 0.0,
+            far: 0.0,
+            view: Mat4::IDENTITY.to_cols_array(),
+            projection: Mat4::IDENTITY.to_cols_array(),
+            dimension: String::new(),
+        };
+        let view = mod_api::WorldRenderView::new(
+            &camera,
+            None,
+            1.0,
+            self.world.game_time,
+            self.animation_time(),
+            false,
+            &[],
+        );
+        self.gui_entity_geometry_at(mob, 1.0, origin, Some(&view), out);
     }
 
     /// `gui_entity_geometry` at `partial` into the tick, around `camera`: what a screen
@@ -251,13 +279,22 @@ impl Game<'_> {
         mob: &Mob,
         partial: f32,
         camera: DVec3,
+        explicit_view: Option<&mod_api::WorldRenderView<'_>>,
         out: &mut Vec<Vertex>,
     ) {
         let added = self.mod_layers(mob);
-        let mut parts = None;
         // A mod's renderer for the type draws in place of the model only: the mods' layers
         // still follow, as in the world.
-        let modded = self.mod_living_renderer_geometry(mob, partial, camera, FULL_BRIGHT, out);
+        let modded = self.mod_living_renderer_geometry_with_view(
+            mob,
+            partial,
+            camera,
+            explicit_view,
+            FULL_BRIGHT,
+            false,
+            out,
+        );
+        let mut frame_draw = FrameDraw::new(!modded && added.is_some());
         let atlas = &self.gui.atlas;
         let lookup = |name: &str| atlas.sprites.get(name).map(|r| [r.u0, r.v0, r.u1, r.v1]);
         // A screen's entity: custom entity model animations see is_in_gui = 1.
@@ -265,7 +302,7 @@ impl Game<'_> {
             if modded {
                 return;
             }
-            sunrise_client::mobs::render::render_with_hidden(
+            sunrise_client::mobs::render::render_with_frame(
                 mob,
                 partial,
                 camera,
@@ -273,12 +310,21 @@ impl Game<'_> {
                 FULL_BRIGHT,
                 self,
                 &[],
-                Default::default(),
-                added.is_some().then_some(&mut parts),
+                &mut frame_draw,
                 out,
             );
         });
-        self.mod_layer_geometry(mob, None, parts, added, partial, camera, FULL_BRIGHT, out);
+        self.mod_layer_geometry_with_view(
+            mob,
+            None,
+            frame_draw.model(),
+            added,
+            partial,
+            camera,
+            explicit_view,
+            FULL_BRIGHT,
+            out,
+        );
     }
 }
 

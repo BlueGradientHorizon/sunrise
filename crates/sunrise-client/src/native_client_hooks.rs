@@ -1,20 +1,20 @@
 //! Callbacks into the executable for native trait mods' client-library hooks.
-use crate::items::ItemStack;
-use mod_api::{BlockSoundCause, BlockSoundType};
+use crate::{items::ItemStack, motion::FrictionLevel};
+use mod_api::{BlockSoundCause, BlockSoundType, MenuOpeningItem};
 use std::sync::OnceLock;
 use sunrise_core::position::BlockPos;
 use sunrise_world::native_load_context::LoopContext;
 use sunrise_world::registry::BlockStateId;
 
-type MenuValidity = fn(&LoopContext, u128, &str, Option<[i32; 3]>, [f64; 3], &mut bool);
+type MenuValidity =
+    fn(&LoopContext, u128, &str, Option<[i32; 3]>, [f64; 3], Option<MenuOpeningItem>, &mut bool);
 
 /// Client-library hooks, installed before any menu, entity or recipe is used.
 pub struct NativeClientHooks {
     pub menu_still_valid: MenuValidity,
     pub menu_still_valid_listens: fn(&str) -> bool,
     pub living_heal: fn(&LoopContext, u32, &mut f32, &mut bool),
-    pub living_breathe: fn(&LoopContext, u32, &str, &mut bool, &mut i32, &mut i32),
-    pub farmland_trample: fn(&LoopContext, u32, [i32; 3], u32, f64, &mut bool),
+    pub living_breathe_heard: fn() -> bool,
     pub has_mods: fn() -> bool,
     pub player_name_format: fn(&LoopContext, &crate::text::Text, &mut crate::text::Text),
     pub player_tab_list_name_format: fn(&LoopContext, u128, &str, &mut Option<crate::text::Text>),
@@ -29,7 +29,8 @@ pub struct NativeClientHooks {
     pub is_ladder: fn(&LoopContext, u32, BlockPos, BlockStateId, &mut bool),
     pub makes_open_trapdoor_above_climbable:
         fn(&LoopContext, BlockStateId, BlockPos, BlockStateId, &mut bool),
-    pub friction: fn(&LoopContext, u32, &str, BlockPos, BlockStateId, &mut f32),
+    pub friction:
+        fn(FrictionLevel<'_>, Option<(u32, &str)>, BlockPos, BlockStateId, &mut f32) -> bool,
     /// `BlockPart::collision_shape` of the state's block, for one collision query; `shape`
     /// arrives `None` and leaves checked.
     pub collision_shape: fn(
@@ -37,22 +38,19 @@ pub struct NativeClientHooks {
         BlockPos,
         BlockStateId,
         &mod_api::CollisionQuery,
-        &mut Option<Vec<[f64; 6]>>,
+        &mut Option<sunrise_core::geometry::VoxelShape>,
     ),
-    /// A part's answer to `collision_shape` was refused by the bounds: the game switches that
-    /// block's part off for the session and logs it once.
-    pub collision_shape_refused: fn(BlockStateId, &str),
     pub player_stays_on_ground_surface: fn(&LoopContext, u32, &mut bool),
     pub ender_entity_teleport: fn(&LoopContext, u32, &str, [f64; 3], &mut [f64; 3], &mut bool),
     pub fluid_flow: fn(&LoopContext, &str, BlockPos, &mut [f64; 3]),
     pub sound_type: fn(
-        &LoopContext,
+        FrictionLevel<'_>,
         BlockPos,
         BlockStateId,
         Option<(u32, &str)>,
         BlockSoundCause,
-        &mut BlockSoundType,
-    ),
+        &BlockSoundType,
+    ) -> Option<BlockSoundType>,
     /// `ItemPart::can_grindstone_repair` of the stack's item; `can_repair` arrives with
     /// vanilla's.
     pub can_grindstone_repair: fn(&LoopContext, &ItemStack, &mut bool),
@@ -61,6 +59,8 @@ pub struct NativeClientHooks {
     /// `ItemPart::can_fit_inside_container_items` of the stack's item; `fits` arrives with
     /// vanilla's.
     pub can_fit_inside_container_items: fn(&LoopContext, &ItemStack, &mut bool),
+    /// `ItemPart::item_name` of the stack's item; `name` arrives as `None`, the default.
+    pub item_name: fn(&LoopContext, &ItemStack, &mut Option<crate::text::Text>),
 }
 
 static HOOKS: OnceLock<NativeClientHooks> = OnceLock::new();
@@ -107,15 +107,16 @@ pub(crate) fn menu_still_valid(
     menu: &str,
     pos: Option<[i32; 3]>,
     eye: [f64; 3],
+    opening_item: Option<MenuOpeningItem>,
     valid: &mut bool,
 ) {
     #[cfg(feature = "test-menu-validity")]
     if let Some((ask, _)) = menu_validity_fixture::HOOKS.get() {
-        ask(context, player, menu, pos, eye, valid);
+        ask(context, player, menu, pos, eye, opening_item, valid);
         return;
     }
     if let Some(hooks) = HOOKS.get() {
-        (hooks.menu_still_valid)(context, player, menu, pos, eye, valid);
+        (hooks.menu_still_valid)(context, player, menu, pos, eye, opening_item, valid);
     }
 }
 
@@ -136,30 +137,10 @@ pub(crate) fn living_heal(context: &LoopContext, entity: u32, amount: &mut f32, 
     }
 }
 
-pub(crate) fn living_breathe(
-    context: &LoopContext,
-    entity: u32,
-    kind: &str,
-    can_breathe: &mut bool,
-    consume: &mut i32,
-    refill: &mut i32,
-) {
-    if let Some(hooks) = HOOKS.get() {
-        (hooks.living_breathe)(context, entity, kind, can_breathe, consume, refill);
-    }
-}
-
-pub(crate) fn farmland_trample(
-    context: &LoopContext,
-    entity: u32,
-    pos: [i32; 3],
-    state: u32,
-    distance: f64,
-    cancel: &mut bool,
-) {
-    if let Some(hooks) = HOOKS.get() {
-        (hooks.farmland_trample)(context, entity, pos, state, distance, cancel);
-    }
+pub(crate) fn living_breathe_heard() -> bool {
+    HOOKS
+        .get()
+        .is_some_and(|hooks| (hooks.living_breathe_heard)())
 }
 
 pub(crate) fn has_mods() -> bool {
@@ -283,16 +264,15 @@ pub(crate) fn makes_open_trapdoor_above_climbable(
 }
 
 pub(crate) fn friction(
-    context: &LoopContext,
-    entity: u32,
-    kind: &str,
+    level: FrictionLevel<'_>,
+    entity: Option<(u32, &str)>,
     pos: BlockPos,
     state: BlockStateId,
     friction: &mut f32,
-) {
-    if let Some(hooks) = HOOKS.get() {
-        (hooks.friction)(context, entity, kind, pos, state, friction);
-    }
+) -> bool {
+    HOOKS
+        .get()
+        .is_none_or(|hooks| (hooks.friction)(level, entity, pos, state, friction))
 }
 
 pub(crate) fn collision_shape(
@@ -300,16 +280,10 @@ pub(crate) fn collision_shape(
     pos: BlockPos,
     state: BlockStateId,
     query: &mod_api::CollisionQuery,
-    shape: &mut Option<Vec<[f64; 6]>>,
+    shape: &mut Option<sunrise_core::geometry::VoxelShape>,
 ) {
     if let Some(hooks) = HOOKS.get() {
         (hooks.collision_shape)(context, pos, state, query, shape);
-    }
-}
-
-pub(crate) fn collision_shape_refused(state: BlockStateId, error: &str) {
-    if let Some(hooks) = HOOKS.get() {
-        (hooks.collision_shape_refused)(state, error);
     }
 }
 
@@ -343,15 +317,26 @@ pub(crate) fn fluid_flow(context: &LoopContext, fluid: &str, pos: BlockPos, flow
 }
 
 pub(crate) fn sound_type(
-    context: &LoopContext,
+    level: FrictionLevel<'_>,
     pos: BlockPos,
     state: BlockStateId,
     entity: Option<(u32, &str)>,
     cause: BlockSoundCause,
-    sound: &mut BlockSoundType,
+    own: &BlockSoundType,
+) -> Option<BlockSoundType> {
+    let hooks = HOOKS.get()?;
+    (hooks.sound_type)(level, pos, state, entity, cause, own)
+}
+
+/// Ask the installed adapter for the name the parts of `stack`'s item give it (`item_name`); with
+/// none installed, `name` stays the default.
+pub(crate) fn item_name(
+    context: &LoopContext,
+    stack: &ItemStack,
+    name: &mut Option<crate::text::Text>,
 ) {
     if let Some(hooks) = HOOKS.get() {
-        (hooks.sound_type)(context, pos, state, entity, cause, sound);
+        (hooks.item_name)(context, stack, name);
     }
 }
 

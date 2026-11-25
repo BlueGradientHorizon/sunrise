@@ -14,7 +14,10 @@ use super::{
     spawner::{self, SpawnData, SpawnDataExt, SpawnerLevel, SpawnerSpawn},
 };
 pub use crate::chunk::block_entity::{ConfigSlot, TrialConfig, TrialSpawner};
-use std::{collections::HashMap, path::Path, sync::OnceLock};
+use std::{
+    collections::HashMap,
+    sync::{Arc, PoisonError, RwLock},
+};
 use sunrise_core::nbt::{Compound, JavaString, Tag};
 use sunrise_core::{
     java_hash_set::{JavaHashSet, JavaUuid},
@@ -171,62 +174,106 @@ impl TrialConfigExt for TrialConfig {
     }
 }
 
-static REGISTRY: OnceLock<HashMap<String, TrialConfig>> = OnceLock::new();
+/// The `trial_spawner` registry of the open world: the snapshot [`install`] last published.
+static REGISTRY: RwLock<Option<Arc<HashMap<String, TrialConfig>>>> = RwLock::new(None);
 
-/// `Registries.TRIAL_SPAWNER_CONFIG`: the configs under the resources'
-/// `data/<namespace>/trial_spawner`, read once per process.
-pub fn load_registry(root: &Path) {
-    REGISTRY.get_or_init(|| {
-        let mut out = HashMap::new();
-        let Ok(namespaces) = std::fs::read_dir(root.join("data")) else {
-            return out;
-        };
-        for ns in namespaces.flatten() {
-            let base = ns.path().join("trial_spawner");
-            let mut stack = vec![base.clone()];
-            while let Some(dir) = stack.pop() {
-                for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
-                    let path = entry.path();
-                    if path.is_dir() {
-                        stack.push(path);
-                        continue;
-                    }
-                    let (Ok(rel), Some(ns)) = (
-                        path.with_extension("")
-                            .strip_prefix(&base)
-                            .map(Path::to_path_buf),
-                        ns.file_name().to_str().map(str::to_owned),
-                    ) else {
-                        continue;
-                    };
-                    let config = std::fs::read(&path)
-                        .ok()
-                        .and_then(|b| serde_json::from_slice(&b).ok())
-                        .and_then(|v| TrialConfig::decode(&crate::scoreboard::json_to_tag(&v)));
-                    match config {
-                        Some(c) => {
-                            let id = rel.to_string_lossy().replace('\\', "/");
-                            out.insert(format!("{ns}:{id}"), c);
-                        }
-                        None => log::warn!("Sunrise: bad trial spawner config {}", path.display()),
-                    }
-                }
+/// `TrialSpawnerConfig.DIRECT_CODEC` over a world's `trial_spawner` file, strictly: a field of the
+/// wrong type or outside its range, or a malformed list entry, refuses the whole load
+/// (`RegistryDataLoader` reports it and the world does not open), where saves keep
+/// [`TrialConfigExt::decode`]'s partial result.
+pub fn validate_config(value: &serde_json::Value) -> Result<(), String> {
+    let fields = value.as_object().ok_or("not a map")?;
+    let float = |field: &str| -> Result<(), String> {
+        match fields.get(field) {
+            None => Ok(()),
+            Some(v)
+                if v.as_f64()
+                    .is_some_and(|v| (0.0..=f64::from(f32::MAX)).contains(&v)) =>
+            {
+                Ok(())
             }
+            Some(v) => Err(format!(
+                "{field}: expected a float in 0..=f32::MAX, got {v}"
+            )),
         }
-        out
-    });
+    };
+    let int = |field: &str, lo: i64, hi: i64| -> Result<(), String> {
+        match fields.get(field) {
+            None => Ok(()),
+            Some(v) if v.as_i64().is_some_and(|v| (lo..=hi).contains(&v)) => Ok(()),
+            Some(v) => Err(format!("{field}: expected an int in {lo}..={hi}, got {v}")),
+        }
+    };
+    int("spawn_range", 1, 128)?;
+    for field in [
+        "total_mobs",
+        "simultaneous_mobs",
+        "total_mobs_added_per_player",
+        "simultaneous_mobs_added_per_player",
+    ] {
+        float(field)?;
+    }
+    int("ticks_between_spawn", 0, i64::from(i32::MAX))?;
+    let list = |field: &str| -> Result<Vec<&serde_json::Value>, String> {
+        match fields.get(field) {
+            None => Ok(Vec::new()),
+            Some(v) => v
+                .as_array()
+                .map(|list| list.iter().collect())
+                .ok_or_else(|| format!("{field}: not a list")),
+        }
+    };
+    let tag = crate::scoreboard::json_to_tag(value);
+    for (index, entry) in list("spawn_potentials")?.into_iter().enumerate() {
+        let entry = crate::scoreboard::json_to_tag(entry);
+        let ok = weight(entry.get("weight")).is_some()
+            && entry.get("data").and_then(SpawnData::decode).is_some();
+        if !ok {
+            return Err(format!(
+                "spawn_potentials[{index}]: invalid weighted spawn data"
+            ));
+        }
+    }
+    for (index, entry) in list("loot_tables_to_eject")?.into_iter().enumerate() {
+        let entry = crate::scoreboard::json_to_tag(entry);
+        if weight(entry.get("weight")).is_none() || identifier(entry.get("data")).is_none() {
+            return Err(format!(
+                "loot_tables_to_eject[{index}]: invalid weighted loot table"
+            ));
+        }
+    }
+    if fields.contains_key("items_to_drop_when_ominous")
+        && identifier(tag.get("items_to_drop_when_ominous")).is_none()
+    {
+        return Err("items_to_drop_when_ominous: not a loot table key".into());
+    }
+    Ok(())
 }
+
+/// Publish the open world's decoded `trial_spawner` entries (`Registries.TRIAL_SPAWNER_CONFIG`,
+/// not synchronized to clients), replacing the last world's.
+pub fn install(configs: HashMap<String, TrialConfig>) {
+    *REGISTRY.write().unwrap_or_else(PoisonError::into_inner) = Some(Arc::new(configs));
+}
+
+fn installed() -> Option<Arc<HashMap<String, TrialConfig>>> {
+    REGISTRY
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone()
+}
+
 /// A config of the registry by id.
 pub fn registry_config(id: &str) -> Option<TrialConfig> {
-    REGISTRY.get()?.get(id).cloned()
+    installed()?.get(id).cloned()
 }
 /// The accepted, decoded trial-spawner registry identities, without cloning configurations.
 pub fn registry_contains(id: &str) -> Option<bool> {
-    Some(REGISTRY.get()?.contains_key(id))
+    Some(installed()?.contains_key(id))
 }
-/// The identities of the same immutable registry gameplay reads.
-pub fn registry_ids() -> Option<Vec<&'static str>> {
-    Some(REGISTRY.get()?.keys().map(String::as_str).collect())
+/// The identities of the same registry gameplay reads.
+pub fn registry_ids() -> Option<Vec<String>> {
+    Some(installed()?.keys().cloned().collect())
 }
 
 fn float(t: &Tag) -> Option<f32> {
@@ -399,7 +446,7 @@ fn encode_uuids(list: &JavaHashSet<JavaUuid>) -> Tag {
 
 /// `TrialSpawner`'s behaviour, over the data in `chunk::block_entity`.
 pub trait TrialSpawnerExt: Sized {
-    /// `TrialSpawner.load`, with the configs of [`load_registry`]. Preserve
+    /// `TrialSpawner.load`, with the configs of [`install`]. Preserve
     /// UUID table capacity when replacing the state of an existing spawner.
     fn load(tag: &Tag, previous: Option<&Self>) -> Self;
     /// `TrialSpawner.load`. `registry` resolves a config id.
@@ -482,7 +529,7 @@ pub trait TrialSpawnerExt: Sized {
     ) -> Option<[f64; 3]>;
     /// `TrialSpawner.tickServer`: the next state of the block.
     #[allow(clippy::too_many_arguments)]
-    fn server_tick<L: TrialSpawnerLevel, R: RandomSource>(
+    fn server_tick<L: TrialSpawnerLevel, R: RandomSource + Clone>(
         &mut self,
         l: &L,
         random: &mut R,
@@ -495,7 +542,7 @@ pub trait TrialSpawnerExt: Sized {
     ) -> TrialState;
     /// `TrialSpawnerState.tickAndGetNext`.
     #[allow(clippy::too_many_arguments)]
-    fn tick_and_get_next<L: TrialSpawnerLevel, R: RandomSource>(
+    fn tick_and_get_next<L: TrialSpawnerLevel, R: RandomSource + Clone>(
         &mut self,
         l: &L,
         random: &mut R,
@@ -506,7 +553,7 @@ pub trait TrialSpawnerExt: Sized {
         events: &mut Vec<TrialEvent>,
     ) -> TrialState;
     /// `TrialSpawner.spawnMob`: the UUID of the mob added, if one was.
-    fn spawn_mob<L: TrialSpawnerLevel, R: RandomSource>(
+    fn spawn_mob<L: TrialSpawnerLevel, R: RandomSource + Clone>(
         &mut self,
         l: &L,
         random: &mut R,
@@ -907,7 +954,7 @@ impl TrialSpawnerExt for TrialSpawner {
             .then_some(down)
     }
     #[allow(clippy::too_many_arguments)]
-    fn server_tick<L: TrialSpawnerLevel, R: RandomSource>(
+    fn server_tick<L: TrialSpawnerLevel, R: RandomSource + Clone>(
         &mut self,
         l: &L,
         random: &mut R,
@@ -934,7 +981,7 @@ impl TrialSpawnerExt for TrialSpawner {
         self.tick_and_get_next(l, random, pos, state, spawn, eject, events)
     }
     #[allow(clippy::too_many_arguments)]
-    fn tick_and_get_next<L: TrialSpawnerLevel, R: RandomSource>(
+    fn tick_and_get_next<L: TrialSpawnerLevel, R: RandomSource + Clone>(
         &mut self,
         l: &L,
         random: &mut R,
@@ -951,7 +998,7 @@ impl TrialSpawnerExt for TrialSpawner {
                 // getOrCreateDisplayEntity: made once, from the next data's id.
                 if !self.has_display {
                     let id = self.next_or_create(random, events).id();
-                    self.has_display = id.is_some_and(|id| l.entity_exists(&id));
+                    self.has_display = id.is_some_and(|id| l.spawner_type(&id).is_some());
                 }
                 if self.has_display {
                     S::WaitingForPlayers
@@ -1067,7 +1114,7 @@ impl TrialSpawnerExt for TrialSpawner {
             }
         }
     }
-    fn spawn_mob<L: TrialSpawnerLevel, R: RandomSource>(
+    fn spawn_mob<L: TrialSpawnerLevel, R: RandomSource + Clone>(
         &mut self,
         l: &L,
         random: &mut R,
@@ -1077,7 +1124,8 @@ impl TrialSpawnerExt for TrialSpawner {
     ) -> Option<Uuid> {
         let data = self.next_or_create(random, events).clone();
         // EntityType.by: an unknown type spawns nothing.
-        let id = data.id().filter(|id| l.entity_exists(id))?;
+        let id = data.id()?;
+        let kind = l.spawner_type(&id)?;
         let at = match spawner::read_pos(data.entity.get(&JavaString::from("Pos"))) {
             Some(p) => p,
             None => {
@@ -1090,14 +1138,17 @@ impl TrialSpawnerExt for TrialSpawner {
                 [x, y, z]
             }
         };
-        // Entity types Sunrise cannot create spawn nothing.
-        let (species, width, height, _) = l.mob_type(&id)?;
-        let spawn_box = spawn_selection::spawn_aabb(species, at[0], at[1], at[2], width, height);
-        if !l.no_collision(spawn_box) || !in_line_of_sight(l, center(pos), at) {
+        if !l.no_collision(kind.spawn_aabb(at)) || !in_line_of_sight(l, center(pos), at) {
             return None;
         }
         let block = at.map(|v| v.floor() as i32);
-        if !spawn_rules::check_spawn_rules(&id, species, l, Reason::TrialSpawner, random, block) {
+        if !spawn_rules::check_spawn_rules(
+            kind.placement_type(&id),
+            l,
+            Reason::TrialSpawner,
+            random,
+            block,
+        ) {
             return None;
         }
         if let Some(rules) = data.custom_spawn_rules
@@ -1105,6 +1156,9 @@ impl TrialSpawnerExt for TrialSpawner {
         {
             return None;
         }
+        // loadEntityRecursive: entity types Sunrise cannot create spawn nothing.
+        let mob = l.mob_type(&id)?;
+        let species = mob.species;
         let yaw = random.next_float() * 360.0;
         let placed = spawner::entity_position(species, at);
         let own = placed.map(|v| v.floor() as i32);
@@ -1113,24 +1167,10 @@ impl TrialSpawnerExt for TrialSpawner {
             placed[0],
             placed[1],
             placed[2],
-            width * scale,
-            height * scale,
+            mob.width as f32 * scale,
+            mob.height as f32 * scale,
         );
-        let pending = spawn_selection::Pending {
-            yaw,
-            fresh: data.unconfigured(),
-        };
-        if !spawn_selection::position_ok(l, &id, Reason::TrialSpawner, placed, pending, || {
-            spawn_selection::spawn_obstruction(
-                species,
-                l,
-                bounds,
-                Some(&[]),
-                own[0],
-                own[1],
-                own[2],
-            )
-        }) {
+        if !spawn_selection::spawn_obstruction(species, l, bounds, true, own[0], own[1], own[2]) {
             return None;
         }
         let request = SpawnerSpawn {
@@ -1181,16 +1221,16 @@ mod tests {
         let tag = tag("{registered_players:[[I;0,0,0,1],[I;0,0,0,16]]}");
         let previous = TrialSpawner::load_with(&tag, &|_| None, Some(&previous));
         let fresh = TrialSpawner::load_with(&tag, &|_| None, None);
-        let order = |s: &TrialSpawner| {
-            s.detected_players
-                .iter()
-                .map(|u| u.0[3])
-                .collect::<Vec<_>>()
-        };
         // Temurin 25.0.5: clear a 40-member set and addAll the two UUIDs
         // from a HashSet(Collection), versus adding into a new default set.
-        assert_eq!(order(&previous), [1, 16]);
-        assert_eq!(order(&fresh), [16, 1]);
+        for (spawner, order) in [(previous, [1, 16]), (fresh, [16, 1])] {
+            let saved = Tag::compound(spawner.save());
+            let uuids = order.into_iter().map(|i| Tag::IntArray(vec![0, 0, 0, i]));
+            assert_eq!(
+                saved.get("registered_players"),
+                Some(&Tag::List(uuids.collect()))
+            );
+        }
     }
 
     #[test]

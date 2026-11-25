@@ -655,7 +655,7 @@ fn map_read<T>(
 pub(super) struct Maps {
     pub data: HashMap<i32, MapData>,
     /// The highest map id handed out (`maps/last_id.dat`), loaded on first use.
-    last_id: Option<i32>,
+    pub(super) last_id: Option<i32>,
     /// The atlas slots holding map textures.
     pub slots: super::atlas_slots::AtlasSlots<i32>,
     missing: std::collections::HashSet<i32>,
@@ -1298,8 +1298,7 @@ impl Game<'_> {
         }
         let at = [x, y, z].map(|v| f64::from(v) + 0.5);
         self.trigger_block("minecraft:item_used_on_block", hit.pos, before);
-        self.audio
-            .play("minecraft:item.lodestone_compass.lock", Some(at), 1.0, 1.0);
+        self.play_audio("minecraft:item.lodestone_compass.lock", Some(at), 1.0, 1.0);
         let target = Tag::compound([
             (
                 "target",
@@ -1974,7 +1973,7 @@ mod live_frame_tests;
 #[cfg(test)]
 mod native_read_tests;
 #[cfg(test)]
-mod save_tests;
+pub(in crate::game) mod save_tests;
 
 #[cfg(test)]
 mod tests {

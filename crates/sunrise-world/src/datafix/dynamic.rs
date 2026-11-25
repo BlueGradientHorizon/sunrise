@@ -15,7 +15,7 @@ pub fn empty_map() -> Tag {
 pub fn boolean(b: bool) -> Tag {
     Tag::Byte(i8::from(b))
 }
-pub fn int_list(values: &[i32]) -> Tag {
+pub(crate) fn int_list(values: &[i32]) -> Tag {
     Tag::IntArray(values.to_vec())
 }
 
@@ -104,10 +104,10 @@ pub fn as_number(tag: &Tag) -> Option<Number> {
 pub fn as_int(tag: Option<&Tag>, default: i32) -> i32 {
     tag.and_then(as_number).map_or(default, Number::int_value)
 }
-pub fn as_long(tag: Option<&Tag>, default: i64) -> i64 {
+pub(crate) fn as_long(tag: Option<&Tag>, default: i64) -> i64 {
     tag.and_then(as_number).map_or(default, Number::long_value)
 }
-pub fn as_double(tag: Option<&Tag>, default: f64) -> f64 {
+pub(crate) fn as_double(tag: Option<&Tag>, default: f64) -> f64 {
     tag.and_then(as_number)
         .map_or(default, Number::double_value)
 }
@@ -141,7 +141,7 @@ pub fn stream(tag: Option<&Tag>) -> Vec<Tag> {
         _ => Vec::new(),
     }
 }
-pub fn is_list(tag: Option<&Tag>) -> bool {
+pub(crate) fn is_list(tag: Option<&Tag>) -> bool {
     matches!(
         tag,
         Some(Tag::List(_) | Tag::ByteArray(_) | Tag::IntArray(_) | Tag::LongArray(_))
@@ -157,16 +157,37 @@ pub fn map(tag: &Tag) -> Option<&Compound> {
         _ => None,
     }
 }
-/// `Dynamic.set`: only maps change.
+/// `Dynamic.set` with a string key: `NbtOps.mergeToMap` shallow-copies the
+/// input compound before putting the value. End starts a fresh compound.
 pub fn set(tag: &mut Tag, field: &str, value: Tag) {
-    if let Tag::End = tag {
-        *tag = empty_map();
-    }
-    if let Tag::Compound(c) = tag {
-        c.insert(key(field), value);
+    match tag {
+        Tag::End => *tag = Tag::compound([(field, value)]),
+        Tag::Compound(c) => {
+            *c = std::mem::take(c).into_shallow_copy();
+            c.insert(key(field), value);
+        }
+        _ => {}
     }
 }
+/// `NbtOps.remove`: size the shallow copy before removing the entry, even if
+/// the field is absent. Move the removed value out for the Rust fix's caller.
 pub fn remove(tag: &mut Tag, field: &str) -> Option<Tag> {
+    let Tag::Compound(c) = tag else { return None };
+    *c = std::mem::take(c).into_shallow_copy();
+    c.remove(&key(field))
+}
+/// Put a field directly, for NBT writers and translators outside DynamicOps.
+pub fn put(tag: &mut Tag, field: &str, value: Tag) {
+    match tag {
+        Tag::End => *tag = Tag::compound([(field, value)]),
+        Tag::Compound(c) => {
+            c.insert(key(field), value);
+        }
+        _ => {}
+    }
+}
+/// Take a field directly, keeping the compound's table history.
+pub fn take(tag: &mut Tag, field: &str) -> Option<Tag> {
     match tag {
         Tag::Compound(c) => c.remove(&key(field)),
         _ => None,
@@ -181,15 +202,24 @@ pub fn rename(tag: &mut Tag, from: &str, to: &str) {
         set(tag, to, v);
     }
 }
-/// `Dynamic.update`: apply `f` to a field that is present.
+/// `Dynamic.update`: replace a present field in a shallow copy, retaining
+/// the key's position in the copy. A missing field leaves the map untouched.
 pub fn update(tag: &mut Tag, field: &str, f: impl FnOnce(Tag) -> Tag) {
-    if let Some(v) = remove(tag, field) {
-        set(tag, field, f(v));
+    if let Tag::Compound(c) = tag
+        && let Some(value) = c.get_mut(&key(field))
+    {
+        *value = f(std::mem::replace(value, Tag::End));
+        *c = std::mem::take(c).into_shallow_copy();
     }
 }
 /// `Dynamic.renameAndFixField`: the fixed value under the new name, removed when
 /// the fix gives nothing.
-pub fn rename_and_fix(tag: &mut Tag, from: &str, to: &str, f: impl FnOnce(Tag) -> Option<Tag>) {
+pub(crate) fn rename_and_fix(
+    tag: &mut Tag,
+    from: &str,
+    to: &str,
+    f: impl FnOnce(Tag) -> Option<Tag>,
+) {
     if let Some(v) = remove(tag, from)
         && let Some(v) = f(v)
     {
@@ -197,18 +227,18 @@ pub fn rename_and_fix(tag: &mut Tag, from: &str, to: &str, f: impl FnOnce(Tag) -
     }
 }
 /// `Dynamic.copyField`.
-pub fn copy_field(from: &Tag, field: &str, to: &mut Tag, to_field: &str) {
+pub(crate) fn copy_field(from: &Tag, field: &str, to: &mut Tag, to_field: &str) {
     if let Some(v) = from.get(field) {
         set(to, to_field, v.clone());
     }
 }
 /// `Dynamic.equals(emptyMap())`: the map a record remembers it was read from
 /// (see `datafix::mark_read`) is not part of the value.
-pub fn is_empty_map(tag: &Tag) -> bool {
+pub(crate) fn is_empty_map(tag: &Tag) -> bool {
     matches!(tag, Tag::Compound(c) if c.keys().all(|k| *k == key(super::LAST_READ)))
 }
 /// `Dynamic.orElseEmptyMap` of an optional field.
-pub fn or_empty_map(tag: Option<&Tag>) -> Tag {
+pub(crate) fn or_empty_map(tag: Option<&Tag>) -> Tag {
     tag.cloned().unwrap_or_else(empty_map)
 }
 /// `NamespacedSchema.ensureNamespaced`.
@@ -221,7 +251,7 @@ pub fn namespaced(id: &str) -> String {
 
 /// `Dynamic.asLongStreamOpt` over `NbtOps`: a long array, or a list or array
 /// whose elements are all numbers.
-pub fn as_long_stream(tag: Option<&Tag>) -> Option<Vec<i64>> {
+pub(crate) fn as_long_stream(tag: Option<&Tag>) -> Option<Vec<i64>> {
     match tag? {
         Tag::LongArray(v) => Some(v.clone()),
         t if is_list(Some(t)) => stream(Some(t))
@@ -243,7 +273,7 @@ pub fn as_int_stream(tag: Option<&Tag>) -> Option<Vec<i32>> {
     }
 }
 /// `Dynamic.asByteBufferOpt` over `NbtOps`.
-pub fn as_byte_buffer(tag: Option<&Tag>) -> Option<Vec<u8>> {
+pub(crate) fn as_byte_buffer(tag: Option<&Tag>) -> Option<Vec<u8>> {
     match tag? {
         Tag::ByteArray(v) => Some(v.clone()),
         t if is_list(Some(t)) => stream(Some(t))
@@ -260,5 +290,62 @@ pub fn ceillog2(n: usize) -> u32 {
         0
     } else {
         usize::BITS - (n - 1).leading_zeros()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn keys(tag: &Tag) -> Vec<String> {
+        map(tag)
+            .unwrap()
+            .keys()
+            .map(JavaString::to_string_lossy)
+            .collect()
+    }
+
+    #[test]
+    fn merge_and_update_size_the_copy_from_the_input_and_only_reorder_the_outer_table() {
+        let initial = Tag::compound([
+            ("zeta", Tag::Int(0)),
+            ("alpha", Tag::Int(1)),
+            (
+                "mid",
+                Tag::compound([
+                    ("zeta", Tag::Int(2)),
+                    ("alpha", Tag::Int(3)),
+                    ("mid", Tag::Int(4)),
+                ]),
+            ),
+        ]);
+        let mut merged = initial.clone();
+        set(&mut merged, "new", Tag::Int(5));
+        // Size 3 gives 4 buckets. The new key grows it to 8, where `mid`
+        // and `new` share a bucket. The nested map still has 16 buckets.
+        assert_eq!(keys(&merged), ["zeta", "mid", "new", "alpha"]);
+        assert_eq!(keys(merged.get("mid").unwrap()), ["zeta", "alpha", "mid"]);
+
+        let mut updated = initial;
+        update(&mut updated, "alpha", |_| Tag::Int(6));
+        assert_eq!(keys(&updated), ["zeta", "mid", "alpha"]);
+        assert_eq!(updated.get("alpha"), Some(&Tag::Int(6)));
+    }
+
+    #[test]
+    fn remove_sizes_the_copy_before_removal_even_for_a_missing_key() {
+        let initial = Tag::compound([
+            ("zeta", Tag::Int(0)),
+            ("alpha", Tag::Int(1)),
+            ("mid", Tag::Int(2)),
+            ("d", Tag::Int(3)),
+        ]);
+        let mut unchanged = initial.clone();
+        assert_eq!(remove(&mut unchanged, "missing"), None);
+        assert_eq!(keys(&unchanged), ["zeta", "mid", "d", "alpha"]);
+        // Removing first and sizing for 3 keys would place `d` before `mid`.
+        let mut pruned = initial;
+        assert_eq!(remove(&mut pruned, "zeta"), Some(Tag::Int(0)));
+        assert_eq!(keys(&pruned), ["mid", "d", "alpha"]);
     }
 }
