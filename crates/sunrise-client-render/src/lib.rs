@@ -205,6 +205,8 @@ pub mod render_slots;
 pub mod render_views;
 
 #[cfg(test)]
+mod glsl_spirv_dump_tests;
+#[cfg(test)]
 mod test_log;
 #[cfg(test)]
 mod test_process;

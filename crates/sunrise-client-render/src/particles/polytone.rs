@@ -309,7 +309,7 @@ impl Registry {
     }
 
     /// The GPU particle type `id`'s own shader, when it has one that translated.
-    pub(super) fn gpu_shader(&self, id: &str) -> Option<Arc<super::polytone_gpu::GpuShader>> {
+    pub(crate) fn gpu_shader(&self, id: &str) -> Option<Arc<super::polytone_gpu::GpuShader>> {
         self.gpu_shaders.get(id).cloned()
     }
 
