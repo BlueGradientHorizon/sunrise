@@ -401,6 +401,8 @@ mod folder_tests {
             ("src/lib.rs", ""),
             ("src/ffi/add.c", "int add(int a, int b) { return a + b; }"),
             ("src/ffi/add.h", "int add(int, int);"),
+            // A data file the code embeds with `include_str!`, judged by no extension.
+            ("src/catalog.json", "{}"),
             ("build.rs", ""),
             ("vendor/zlib/inflate.c", ""),
             // The package's own names are never source.
@@ -415,6 +417,7 @@ mod folder_tests {
             [
                 "Cargo.toml",
                 "build.rs",
+                "src/catalog.json",
                 "src/ffi/add.c",
                 "src/ffi/add.h",
                 "src/lib.rs",
