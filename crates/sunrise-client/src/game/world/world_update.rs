@@ -12,6 +12,10 @@ impl Game<'_> {
         if let Err(e) = self.advance_studio_replay() {
             log::warn!("Sunrise Studio replay: {e}");
         }
+        // A disconnect during poll_remote ends the client session; stop before world work runs.
+        if !self.is_logical_server() && (self.title.0.is_some() || self.remote.is_none()) {
+            return;
+        }
         self.poll_remote_light();
         // The renderer laid translucent quads out again (a shader pack's flat terrain came
         // or went) and dropped every section and far tile: meshed again, as for a new one.

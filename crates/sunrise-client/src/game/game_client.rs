@@ -1815,8 +1815,16 @@ impl Game<'_> {
                         }
                     }
                     if self.title.0.is_none() {
+                        if !self.is_logical_server() && self.remote.is_none() {
+                            return Err(
+                                "client frame has neither title screen nor remote connection"
+                                    .into(),
+                            );
+                        }
                         sunrise_client::spans::time("update_world", || self.update_world());
-                        sunrise_client::spans::time("spawn_player", || self.spawn_player())?;
+                        if self.title.0.is_none() && self.is_logical_server() {
+                            sunrise_client::spans::time("spawn_player", || self.spawn_player())?;
+                        }
                     } else if let Err(e) =
                         sunrise_client::spans::time("poll_remote", || self.poll_remote())
                     {
