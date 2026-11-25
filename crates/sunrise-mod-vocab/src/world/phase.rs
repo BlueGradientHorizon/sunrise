@@ -235,6 +235,9 @@ impl crate::RenderAssets for EmptyClientReloadServices {
     ) -> Result<crate::BakedModelView<'_>, crate::ModelError> {
         Err(crate::ModelError::UnknownModel)
     }
+    fn shader_pack_block_id(&self, _: crate::BlockState) -> Option<i32> {
+        None
+    }
 }
 
 impl crate::InstanceGroups for EmptyClientReloadServices {

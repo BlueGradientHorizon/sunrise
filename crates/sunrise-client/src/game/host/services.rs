@@ -136,4 +136,8 @@ impl RenderAssets for Game<'_> {
     fn animation(&self, id: &Identifier) -> Option<AnimationHolder> {
         CallbackOwner::call_host(|| self.pack.render.animation(id))
     }
+    fn shader_pack_block_id(&self, state: BlockState) -> Option<i32> {
+        let state = state.try_into_engine(&()).ok()?;
+        CallbackOwner::call_host(|| self.active_block_state_id(state.0 as usize))
+    }
 }
