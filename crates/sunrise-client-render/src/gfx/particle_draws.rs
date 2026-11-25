@@ -36,8 +36,7 @@ impl ParticlePipelines {
                 ..options
             }),
             // Drawn after the translucent particle layer: depth test on, depth write off,
-            // src-alpha / one additive colour blend (matching BlendFunction.LIGHTNING),
-            // leaving destination alpha untouched.
+            // src-alpha / one on colour and alpha (BlendFunction.LIGHTNING).
             additive: build(EntityPipelineOptions {
                 label: "Additive provider particles",
                 depth_write: false,
@@ -48,7 +47,7 @@ impl ParticlePipelines {
                         operation: wgpu::BlendOperation::Add,
                     },
                     alpha: wgpu::BlendComponent {
-                        src_factor: wgpu::BlendFactor::Zero,
+                        src_factor: wgpu::BlendFactor::SrcAlpha,
                         dst_factor: wgpu::BlendFactor::One,
                         operation: wgpu::BlendOperation::Add,
                     },
