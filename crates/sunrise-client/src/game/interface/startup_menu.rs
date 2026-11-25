@@ -150,7 +150,19 @@ impl StartupMenu {
                 let title = title.with_user(|| game.options.player_name());
                 game.show_title_with_registry(title);
             }
-            None => game.title.0 = None,
+            None if game.remote.is_some() => game.title.0 = None,
+            None => {
+                // Never leave a client game with neither a title screen nor a remote session.
+                log::warn!(
+                    "Sunrise: startup menu handoff had no title; opening a fresh title screen"
+                );
+                let mut title = game
+                    .new_title(std::env::current_dir().unwrap_or_default().join("saves"))
+                    .with_user(|| game.options.player_name());
+                title.last_server = game.settings.file.string("lastServer");
+                title.skip_multiplayer_warning = game.settings.file.bool("skipMultiplayerWarning");
+                game.show_title(title);
+            }
         }
         game.pending_entry.0 = self.pending.take();
         game.perf = std::mem::take(&mut self.perf);

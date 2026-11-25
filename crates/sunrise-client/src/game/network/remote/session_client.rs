@@ -82,14 +82,14 @@ impl Game<'_> {
         // The shared world is closing: its invite code ends with it.
         self.friends_lan_closed();
         // Minecraft.disconnect waits for the integrated server before showing the title.
-        let stopped = self
+        let had_integrated = self.integrated.is_some();
+        let stop_result = self
             .integrated
             .take()
             .map(|server| server.stop())
             .transpose();
         // Keep the server's registry snapshot until the thread has joined, even on error.
         super::super::lan::sync::forget_sync_data();
-        let single_player = stopped?.is_some();
         mod_api::content::crash::clear_detail("Server");
         self.clock = Default::default();
         self.adv = Default::default();
@@ -118,13 +118,20 @@ impl Game<'_> {
         if let Some(r) = self.renderer.0.as_mut() {
             r.clear_sections(self.world.layout());
         }
-        let saves = std::env::current_dir()?.join("saves");
+        let saves = std::env::current_dir().unwrap_or_default().join("saves");
         let mut title = self
             .new_title(saves.clone())
             .with_user(|| self.options.player_name());
         title.last_server = self.settings.file.string("lastServer");
         title.skip_multiplayer_warning = self.settings.file.bool("skipMultiplayerWarning");
-        if single_player && reason.is_none() {
+        if let Err(err) = stop_result {
+            // Always restore the title screen before reporting an integrated-server stop failure.
+            title.failed(err.to_string());
+            self.show_title(title);
+            self.capture(false);
+            return Err(err);
+        }
+        if had_integrated && reason.is_none() {
             self.show_title(title);
             self.capture(false);
             return Ok(());
@@ -378,6 +385,10 @@ impl Game<'_> {
     /// A replayed or viewed world checks its players' signed properties as a joined
     /// client does.
     pub(in crate::game) fn init_remote_for_replay(&mut self) -> Result<()> {
+        // Resolve fallible resources before mutating state or clearing the title screen.
+        let root = self.options.resources.clone();
+        let builtin = builtin_registries(&root).ok_or("Resources are incomplete")?;
+        let professions = self.client_professions()?;
         // Minecraft builds its `Services` once per client: a replay that opens a new
         // session on every seek keeps the keys the session it replaces is fetching or
         // has fetched.
@@ -392,8 +403,6 @@ impl Game<'_> {
         self.perf.world_opening();
         self.world_biomes = None;
         self.world_biomes_base = None;
-        let root = self.options.resources.clone();
-        let builtin = builtin_registries(&root).ok_or("Resources are incomplete")?;
         let lang = Arc::new(sunrise_client::net::load_language(&root));
         let info = self
             .settings
@@ -475,7 +484,7 @@ impl Game<'_> {
         self.ui.registries.selector_tokens.clear();
         self.remote = Some(Remote {
             selector_metadata_supported: true,
-            professions: self.client_professions()?,
+            professions,
             display_address: Remote::display_address_for(&session.address),
             session,
             brand: "sunrise-studio".into(),
@@ -657,6 +666,8 @@ impl Game<'_> {
         lan: bool,
         realm: bool,
     ) -> Result<()> {
+        // Resolve fallible resources before mutating state or hiding the title screen.
+        let professions = self.client_professions()?;
         let RemoteOpening {
             session,
             builtin,
@@ -755,7 +766,7 @@ impl Game<'_> {
         self.ui.registries.selector_tokens.clear();
         self.remote = Some(Remote {
             selector_metadata_supported: true,
-            professions: self.client_professions()?,
+            professions,
             display_address: Remote::display_address_for(&session.address),
             session,
             brand: "unknown".into(),

@@ -758,7 +758,9 @@ impl Game<'_> {
                 title.activate_mode(sunrise_client::title::Mode::Main);
             }
         } else if self.integrated.is_none() && self.lan.is_none() {
-            let _ = self.close_world();
+            if let Err(error) = self.close_world() {
+                log::error!("Failed to close Studio replay world cleanly: {error}");
+            }
             if let Some(title) = self.title.0.as_mut() {
                 title.activate_mode(sunrise_client::title::Mode::Main);
             }

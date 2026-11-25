@@ -1226,7 +1226,7 @@ impl Game<'_> {
         lan::sync::forget_sync_data();
         lan::sync::forget_server_sources();
         let mut title = self
-            .new_title(std::env::current_dir()?.join("saves"))
+            .new_title(std::env::current_dir().unwrap_or_default().join("saves"))
             .with_user(|| self.options.player_name());
         title.last_server = self.settings.file.string("lastServer");
         title.skip_multiplayer_warning = self.settings.file.bool("skipMultiplayerWarning");
