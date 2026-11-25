@@ -4855,10 +4855,17 @@ impl Mob {
             && self.species() == Species::Horse
             && self.extra.body_id().is_some()
         {
+            let hurt = crate::health::mob_source(&source, level.attack());
             self.outbox.push(MobEvent::ArmorHurt {
                 mob: self.id,
                 amount: damage,
-                source: crate::health::mob_source(&source, level.attack()),
+                source: crate::health::HurtSource {
+                    damage_type: crate::health::source_damage_type(source),
+                    causing: hurt.causing,
+                    direct: hurt.direct,
+                    direct_type: None,
+                    position: hurt.position,
+                },
             });
         }
         // Animal.actuallyHurt: damage taken ends love mode (`resetLove`);
