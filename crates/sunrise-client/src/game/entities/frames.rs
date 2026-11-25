@@ -688,10 +688,25 @@ impl Game<'_> {
         let mut round = self.native_tick_round();
         // The frame whose tick just ended: it hears its Post before the next one's Pre.
         let mut told = None;
+        // EntityTickList copy-on-iterate: while a listener may remove frames, the round visits
+        // the frames that were there when it began, each found again by its join.
+        let joins: Option<Vec<_>> = round
+            .told_listening()
+            .then(|| self.item_frames.iter().map(|f| f.join).collect());
+        let mut turns = joins.iter().flatten();
         let mut i = 0;
-        while i < self.item_frames.len() {
+        loop {
             if let Some((id, kind)) = told.take() {
                 self.native_tick_post_one(&round, id, kind);
+            }
+            if joins.is_some() {
+                let Some(&join) = turns.next() else { break };
+                let Some(at) = self.item_frames.locate(join) else {
+                    continue;
+                };
+                i = at;
+            } else if i >= self.item_frames.len() {
+                break;
             }
             let at = center(&self.item_frames[i]);
             if !ticking(at[0].floor() as i32, at[2].floor() as i32) {

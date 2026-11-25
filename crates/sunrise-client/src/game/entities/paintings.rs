@@ -335,10 +335,25 @@ impl Game<'_> {
         let mut round = self.native_tick_round();
         // The painting whose tick just ended: it hears its Post before the next one's Pre.
         let mut told = None;
+        // EntityTickList copy-on-iterate: while a listener may remove paintings, the round visits
+        // the paintings that were there when it began, each found again by its join.
+        let joins: Option<Vec<_>> = round
+            .told_listening()
+            .then(|| self.paintings.iter().map(|p| p.join).collect());
+        let mut turns = joins.iter().flatten();
         let mut i = 0;
-        while i < self.paintings.len() {
+        loop {
             if let Some(id) = told.take() {
                 self.native_tick_post_one(&round, id, "minecraft:painting");
+            }
+            if joins.is_some() {
+                let Some(&join) = turns.next() else { break };
+                let Some(at) = self.paintings.locate(join) else {
+                    continue;
+                };
+                i = at;
+            } else if i >= self.paintings.len() {
+                break;
             }
             let (lo, hi) = self.paintings[i].bounds();
             let centre = [0, 2].map(|k| ((lo[k] + hi[k]) / 2.0).floor() as i32);
