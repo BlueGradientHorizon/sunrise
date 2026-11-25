@@ -74,6 +74,9 @@ trait ServerHost: Host {
     ) -> Option<item::transaction::TransactionError<core::convert::Infallible>> {
         None
     }
+    fn transaction_matches(&self, tx: Option<&()>) -> bool {
+        tx.is_none()
+    }
 }
 trait ClientHost: Host {}
 

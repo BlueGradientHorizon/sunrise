@@ -1690,16 +1690,22 @@ impl Behaviours {
     }
 
     /// Finish the paused write. If the host ran block-entity removal, pass its number of
-    /// jukebox neighbor updates; otherwise the ordinary removal runs here.
+    /// jukebox neighbor updates; otherwise the ordinary removal runs here. `ensure_entity`
+    /// runs at the end of `LevelChunk.setBlockState`, after `onPlace`, before notifications.
     pub fn finish_block_write<L: LevelAccess + ?Sized>(
         &self,
         level: &mut L,
         ticks: &mut Ticks,
         write: BlockWrite,
         removal_updates: Option<u8>,
+        ensure_entity: impl FnOnce(&mut L, BlockPos, BlockStateId),
     ) -> bool {
-        self.sim(level, ticks)
-            .finish_block_write(write, removal_updates, flags::UPDATE_LIMIT)
+        self.sim(level, ticks).finish_block_write(
+            write,
+            removal_updates,
+            flags::UPDATE_LIMIT,
+            ensure_entity,
+        )
     }
     /// `CopperChestBlock.getFromCopperBlock(copperBlock, facing, level, pos)`.
     pub fn copper_chest_from_block<L: LevelAccess + ?Sized>(

@@ -74,6 +74,15 @@ impl<'g, 'a> JournalLevelWrite<'g, 'a> {
         {
             self.game.journal_block_replacement((x, y, z));
         }
+        if self.game.captures_placement()
+            && !self.game.world.block_entities.contains_key(&(x, y, z))
+        {
+            self.game.ensure_stateful_entity_table();
+            let entity = self.game.with_placement_preview_level(|_, level, _| {
+                level.new_block_entity_for_state(state)
+            });
+            self.game.journal_stage_placement_entity((x, y, z), entity);
+        }
         true
     }
 
