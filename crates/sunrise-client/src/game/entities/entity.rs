@@ -1531,6 +1531,152 @@ pub(super) fn apply_contact_writes(
     }
 }
 
+/// Split a contact batch's typed hurt writes from the writes
+/// [`apply_contact_writes`] handles. The hurt names the registered damage type
+/// and is applied by [`Game::vehicle_contact_hurt`] on the vehicle's own tick.
+pub(super) fn split_contact_hurts(
+    writes: Vec<mod_api::EntityWrite>,
+) -> (Vec<mod_api::EntityWrite>, Vec<(&'static str, f32)>) {
+    let mut rest = Vec::with_capacity(writes.len());
+    let mut hurts = Vec::new();
+    for write in writes {
+        match write {
+            mod_api::EntityWrite::Hurt {
+                damage_type,
+                amount,
+            } => {
+                if let Some(name) =
+                    mod_api::__private::parts_installation::damage_type_name(damage_type)
+                {
+                    hurts.push((name, amount));
+                }
+            }
+            other => rest.push(other),
+        }
+    }
+    (rest, hurts)
+}
+
+/// A typed contact hurt a vehicle tick queued for the stored row.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct ContactHurt {
+    pub(super) target: Target,
+    pub(super) damage_type: &'static str,
+    pub(super) amount: f32,
+}
+
+impl Game<'_> {
+    /// A contact hurt queued by a vehicle tick: [`Game::apply_vehicle_contact_hurts`]
+    /// runs it on the stored row once the ticked copy is back.
+    pub(super) fn queue_vehicle_contact_hurts(
+        &mut self,
+        target: Target,
+        hurts: impl IntoIterator<Item = (&'static str, f32)>,
+    ) {
+        self.vehicle_contact_hurts
+            .extend(hurts.into_iter().map(|(damage_type, amount)| ContactHurt {
+                target,
+                damage_type,
+                amount,
+            }));
+    }
+
+    /// Run the contact hurts a vehicle tick queued for `target`, after
+    /// `store_*_back`. Returns true when a hit took the vehicle out of the
+    /// level, so its tick must stop.
+    pub(super) fn apply_vehicle_contact_hurts(&mut self, target: Target) -> bool {
+        let mut queued = std::mem::take(&mut self.vehicle_contact_hurts);
+        let mut gone = false;
+        for hurt in queued.drain(..) {
+            if hurt.target != target {
+                self.vehicle_contact_hurts.push(hurt);
+                continue;
+            }
+            if !gone && self.vehicle_contact_hurt(target, hurt.damage_type, hurt.amount) {
+                gone = true;
+            }
+        }
+        gone
+    }
+
+    /// `VehicleEntity.hurtServer` from a block contact's
+    /// `EntityWrite::Hurt`: the registered type with no causing or direct
+    /// entity, through the same invulnerability observation as `/damage`.
+    /// A refused hit changes no health and plays no sound. Returns true when
+    /// the vehicle is no longer in the level.
+    pub(super) fn vehicle_contact_hurt(
+        &mut self,
+        target: Target,
+        damage_type: &str,
+        amount: f32,
+    ) -> bool {
+        let present = |game: &Game<'_>| match target {
+            Target::Boat(id) => game.boats.iter().any(|b| b.id == id),
+            Target::Cart(id) => game.carts.iter().any(|c| c.id == id),
+            _ => false,
+        };
+        let id = match target {
+            Target::Boat(id) | Target::Cart(id) => id,
+            _ => return false,
+        };
+        let registry = &self.health_resources.damage;
+        let Some(kind) = registry.id(damage_type) else {
+            return !present(self);
+        };
+        let ignites = registry.in_tag(kind, "minecraft:is_fire")
+            || registry.in_tag(kind, "minecraft:is_explosion");
+        let entity_kind = match target {
+            Target::Boat(_) => self
+                .boats
+                .iter()
+                .find(|b| b.id == id)
+                .map(|b| b.entity_type()),
+            Target::Cart(_) => self
+                .carts
+                .iter()
+                .find(|c| c.id == id)
+                .map(|c| c.kind.id().to_owned()),
+            _ => None,
+        };
+        let Some(entity_kind) = entity_kind else {
+            return !present(self);
+        };
+        let vanilla = self.saved_refuses_damage(id, damage_type, false);
+        let source = sunrise_client::health::HurtSource {
+            damage_type,
+            causing: 0,
+            direct: 0,
+            position: None,
+        };
+        if damage_level_of!(self, self.combat.attack(), no_push, None).invulnerability_check(
+            sunrise_client::health::Hurting::Entity(id as i32, &entity_kind, source),
+            vanilla,
+        ) {
+            return !present(self);
+        }
+        match target {
+            Target::Boat(_) => {
+                if let Some(i) = self.boats.iter().position(|b| b.id == id) {
+                    self.hurt_boat_result(i, amount, false);
+                }
+            }
+            Target::Cart(_) => {
+                if let Some(i) = self.carts.iter().position(|c| c.id == id) {
+                    self.hurt_cart_result(
+                        i,
+                        amount,
+                        false,
+                        ignites,
+                        super::minecarts::CartHit::default(),
+                    );
+                }
+            }
+            _ => {}
+        }
+        !present(self)
+    }
+}
+
 impl Game<'_> {
     /// `Block.fallOn` effects for bodies whose `causeFallDamage` does nothing.
     pub(super) fn nonliving_fall_on(
@@ -4857,3 +5003,189 @@ mod scoped_edit_tests {
 #[cfg(test)]
 #[path = "entity/taken_pass_tests.rs"]
 pub(in crate::game) mod taken_pass_tests;
+
+#[cfg(test)]
+mod vehicle_contact_hurt_tests {
+    use super::*;
+    use crate::game::native_entity_refs::tests::with_game;
+    use mod_api::{self, BlockPart, Hooks, ModEntry, Registrar, RegistrationContext};
+    use std::sync::Arc;
+    use sunrise_client::chunk::Chunk;
+    use sunrise_core::geometry::Vec3;
+    use sunrise_core::nbt::{Compound, Tag};
+
+    fn boat(id: u32) -> Boat {
+        Boat::new(id, Arc::from("oak"), Vec3::new(8.5, 64.0, 8.5), 0.0)
+    }
+
+    fn cart(id: u32) -> super::super::minecarts::Minecart {
+        super::super::minecarts::Minecart::new(
+            id,
+            super::super::minecarts::CartKind::Rideable,
+            Vec3::new(8.5, 64.0, 8.5),
+        )
+    }
+
+    #[derive(Clone)]
+    struct HullHeat {
+        damage_type: mod_api::DamageTypeKey,
+        amount: f32,
+    }
+
+    #[mod_api::sunrise_part]
+    impl BlockPart for HullHeat {
+        fn step_on(&self, _: mod_api::LevelRandomSide<'_>, event: &mut mod_api::StepOnEvent<'_>) {
+            event.write_entity(mod_api::EntityWrite::Hurt {
+                damage_type: self.damage_type,
+                amount: self.amount,
+            });
+        }
+    }
+
+    #[derive(Clone)]
+    struct HullHeatBlocks {
+        amount: f32,
+    }
+
+    #[mod_api::__subscriptions]
+    impl Hooks for HullHeatBlocks {
+        fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+            let stone = r.block_key("minecraft:stone");
+            let damage_type = r.damage_type_key("minecraft:cactus");
+            r.block_part(
+                stone,
+                HullHeat {
+                    damage_type,
+                    amount: self.amount,
+                },
+            );
+        }
+    }
+
+    /// A stone floor with a `step_on` Part that hurts the stepping body by
+    /// `amount` (ten times the hull wear, as `VehicleEntity.hurtServer` does).
+    fn with_hull_heat(amount: f32, test: impl FnOnce(&mut Game<'_>)) {
+        let mods: mod_api::Mods = vec![ModEntry::new(
+            "hull_heat",
+            Box::new(HullHeatBlocks { amount }),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods.clone(), || {
+            crate::game::api_values::install_parts(&mods).unwrap();
+            crate::game::native_hooks::install_block_contact_hooks();
+            with_game(|game| {
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                let stone = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:stone")
+                    .unwrap();
+                game.world.set(8, 63, 8, stone).unwrap();
+                test(game);
+            });
+        });
+    }
+
+    /// A boat's `step_on` contact reaches the stored hull through its real
+    /// tick: the wear and hurt wobble survive the ticked copy's store-back.
+    #[test]
+    #[ignore = "daily"]
+    fn a_surviving_contact_hurt_reaches_a_boat_through_its_tick() {
+        with_hull_heat(1.0, |game| {
+            let mut b = boat(1);
+            b.ground.on_ground = true;
+            game.boats.push(b);
+            game.tick_boats();
+            assert_eq!(game.boats.len(), 1);
+            assert!(
+                game.boats[0].damage > 0.0,
+                "the contact wears the stored hull"
+            );
+            assert_eq!(game.boats[0].hurt_time, 10);
+        });
+    }
+
+    /// A cart's `step_on` contact reaches the stored cart through its real tick.
+    #[test]
+    #[ignore = "daily"]
+    fn a_surviving_contact_hurt_reaches_a_cart_through_its_tick() {
+        with_hull_heat(1.0, |game| {
+            let mut c = cart(2);
+            c.ground.on_ground = true;
+            game.carts.push(c);
+            game.tick_carts();
+            assert_eq!(game.carts.len(), 1);
+            assert!(
+                game.carts[0].damage > 0.0,
+                "the contact wears the stored cart"
+            );
+            assert_eq!(game.carts[0].hurt_time, 10);
+        });
+    }
+
+    /// A breaking contact hurt removes the boat and stops the rest of its
+    /// tick: no later pass indexes the removed row.
+    #[test]
+    #[ignore = "daily"]
+    fn a_breaking_contact_hurt_removes_a_boat_through_its_tick() {
+        with_hull_heat(5.0, |game| {
+            let mut b = boat(1);
+            b.ground.on_ground = true;
+            game.boats.push(b);
+            game.tick_boats();
+            assert!(game.boats.is_empty());
+        });
+    }
+
+    /// A hit that survives the first `step_on` and breaks the boat on the
+    /// second pass must stop the tick before the contacts pass indexes the
+    /// removed row (the breaking-boat test above stops on the first pass).
+    #[test]
+    #[ignore = "daily"]
+    fn a_second_pass_breaking_hurt_removes_a_boat_without_a_later_pass() {
+        with_hull_heat(2.5, |game| {
+            let mut b = boat(1);
+            b.ground.on_ground = true;
+            game.boats.push(b);
+            game.tick_boats();
+            assert!(game.boats.is_empty());
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_breaking_contact_hurt_removes_a_cart_through_its_tick() {
+        with_hull_heat(5.0, |game| {
+            let mut c = cart(2);
+            c.ground.on_ground = true;
+            game.carts.push(c);
+            game.tick_carts();
+            assert!(game.carts.is_empty());
+        });
+    }
+
+    /// The same contact on an `Invulnerable` hull is refused before
+    /// `hurtServer`: no wear, no hurt wobble, nothing to sound.
+    #[test]
+    #[ignore = "daily"]
+    fn an_invulnerable_vehicle_refuses_a_contact_hurt() {
+        with_game(|game| {
+            game.boats.push(boat(1));
+            game.carts.push(cart(2));
+            for id in [1, 2] {
+                let mut compound = Compound::new();
+                compound.insert("Invulnerable".into(), Tag::Byte(1));
+                game.persist.raw.insert(id, Tag::Compound(compound));
+            }
+            assert!(!game.vehicle_contact_hurt(Target::Boat(1), "minecraft:cactus", 2.0));
+            assert!(!game.vehicle_contact_hurt(Target::Cart(2), "minecraft:cactus", 2.0));
+            assert_eq!(game.boats[0].damage, 0.0);
+            assert_eq!(game.carts[0].damage, 0.0);
+            assert_eq!(game.boats[0].hurt_time, 0);
+            assert_eq!(game.carts[0].hurt_time, 0);
+        });
+    }
+}
