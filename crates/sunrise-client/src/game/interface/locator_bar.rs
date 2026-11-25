@@ -71,6 +71,14 @@ impl Game<'_> {
     pub(in crate::game) fn jumpable_vehicle(&self) -> Option<mod_api::EntityRef> {
         self.entity(self.jumpable_mount()?)
     }
+    /// `LocalPlayer.getJumpRidingScale`, the field the jump bar draws; 0.0 without a mount
+    /// the player controls that can jump.
+    pub(in crate::game) fn jump_riding_scale(&self) -> f32 {
+        if self.jumpable_mount().is_none() {
+            return 0.0;
+        }
+        self.mount.jump_scale
+    }
     /// `ClientWaypointManager.hasWaypoints`: what `contextual_bar` reads for the locator bar.
     pub(in crate::game) fn has_waypoints(&self) -> bool {
         self.waypoints.has_waypoints()
