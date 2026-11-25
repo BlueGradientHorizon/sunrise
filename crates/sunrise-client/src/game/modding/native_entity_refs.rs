@@ -1252,7 +1252,7 @@ impl Game<'_> {
     /// in the resident world `native_level_view_world` reads, with no traversal cell cap.
     /// Out-of-height cells and missing columns read as air without loading chunks. Collider mode
     /// uses `SceneCollisions`'s full registry/context shapes; outline mode returns None when dynamic
-    /// outline geometry has no implementation. Fluid modes report no fluid until the tag
+    /// outline geometry has no implementation. Fluid modes return None until the tag
     /// tables mods read are installed (`native_tag_items`). Also None for unavailable levels,
     /// non-finite endpoints or shape query errors.
     pub(super) fn level_clip(
@@ -1296,11 +1296,10 @@ impl Game<'_> {
             ClipFluid::Water => RayFluidMode::Water,
             _ => unreachable!("ClipFluid: unhandled variant"),
         };
-        let tags = self.native_tag_items();
-        let fluid = if tags.is_some() {
-            fluid
+        let tags = if fluid == RayFluidMode::None {
+            None
         } else {
-            RayFluidMode::None
+            Some(self.native_tag_items()?)
         };
         let result = clip_world_with_fluids(
             rays,
@@ -1314,7 +1313,7 @@ impl Game<'_> {
                 let fluid_resources = &self.res.motion().fluids;
                 sunrise_client::motion::FluidClip {
                     states: fluid_resources.states(),
-                    items: tags.expect("fluid modes are cleared until tags are installed"),
+                    items: tags.expect("fluid clip closure only runs for non-None fluid mode"),
                     shapes: &fluid_resources.shapes,
                 }
             },
