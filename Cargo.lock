@@ -5622,6 +5622,7 @@ dependencies = [
  "naga",
  "png",
  "sunrise-core",
+ "sunrise-glsl",
  "zip",
 ]
 
