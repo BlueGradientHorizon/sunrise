@@ -457,8 +457,6 @@ impl Game<'_> {
                 lines: edit.lines,
                 front: edit.front,
             }));
-        } else {
-            self.mark_block_entity_updated(edit.pos);
         }
         // `SignBlockEntity.updateSignText`'s `setAllowedPlayerEditor(null)`:
         // the editor that closes gives the sign up.

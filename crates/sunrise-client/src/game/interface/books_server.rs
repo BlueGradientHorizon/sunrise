@@ -204,7 +204,7 @@ impl Game<'_> {
                 page: 0,
             }),
         );
-        self.set_lectern_has_book(key, true, self.remote.is_none().then_some(Who::Player));
+        self.set_lectern_has_book(key, true, self.is_logical_server().then_some(Who::Player));
         if !self.creative {
             self.consume_held();
         }

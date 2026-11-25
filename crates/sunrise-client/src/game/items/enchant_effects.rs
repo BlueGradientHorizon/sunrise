@@ -184,7 +184,7 @@ impl Game<'_> {
         wearer: Wearer,
     ) -> u32 {
         let loss = self.unbreaking_loss(stack, amount);
-        if loss == 0 || self.remote.is_some() {
+        if loss == 0 || !self.is_logical_server() {
             return loss;
         }
         // One table lookup tells whether any part of this item listens; with none,
@@ -314,8 +314,7 @@ impl Game<'_> {
         };
         // Read effective levels once: get_enchantment_level may itself be mod-provided.
         let levels = held.all_enchantments();
-        let custom = self.remote.is_none()
-            && self.is_logical_server()
+        let custom = self.is_logical_server()
             && world_stations!(self)
                 .enchantments
                 .has_custom_damage(&levels);
@@ -1346,7 +1345,7 @@ impl Game<'_> {
             })
             .collect();
         stand.enchantment_equipment.clone_from(&stand.equipment);
-        if self.remote.is_none() && !self.options.execution_role.is_client() {
+        if self.is_logical_server() {
             for (slot, from, to) in told {
                 self.native_living_equipment_change(
                     id,

@@ -190,7 +190,7 @@ impl Game<'_> {
                 pos[2].floor() as i32
             )
         });
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return;
         }
         let ctx = if mod_api::__private::listened(mod_api::HookId::VanillaGameEvent) {

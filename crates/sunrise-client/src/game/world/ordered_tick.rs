@@ -288,7 +288,7 @@ impl Game<'_> {
                     // ExperienceOrb.tick runs scanForMerges before it moves.
                     // An orb absorbed here is gone before its own turn's
                     // find_join finds it.
-                    if self.remote.is_none() {
+                    if self.is_logical_server() {
                         self.merge_orb(i);
                     }
                     let Some(i) = self.orbs.locate(join) else {
@@ -312,7 +312,7 @@ impl Game<'_> {
                         .near(area.inflate(Vec3::new(1.0, 1.0, 1.0)), &mut nearby);
                     let orb_id = self.orbs[i].id;
                     let vanilla = self.saved_refuses_damage(orb_id, "minecraft:lava", false);
-                    let server = self.remote.is_none();
+                    let server = self.is_logical_server();
                     let lava_random = &mut self.server.ordered.lava_random;
                     // ExperienceOrb's lava section uses the orb tick's own random, not level random.
                     let mut next_float = || {

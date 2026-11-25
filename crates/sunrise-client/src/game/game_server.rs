@@ -596,7 +596,7 @@ impl Game<'_> {
         self.load_bossbars();
         // ServerLevel's constructor reads its Raids saved data before any
         // server event; their randoms are seeded on the first raid tick.
-        if self.remote.is_none() {
+        if self.is_logical_server() {
             self.read_raids();
         }
         self.announce_data_bound(mod_api::TagsUpdateCause::ServerDataLoad { reload: false });
@@ -1900,8 +1900,7 @@ impl Game<'_> {
             .map(|h| self.ridden_by_others(&h.hub.guests, self.dim.id(), None, false))
             .unwrap_or_default();
         let vehicle = self.parent_vehicle_tag(self.riding, &others);
-        // Only the local player's file is this one's to rewrite.
-        let local = self.serving.is_none() && self.options.dedicated.is_none();
+        // In-frame singleplayer is gone; server players save through guest records.
         let level = &mut self.level;
         level.creative = self.creative;
         level.game_mode = mode;
@@ -1927,11 +1926,6 @@ impl Game<'_> {
                     .get_or_insert_with(|| sunrise_core::nbt::Tag::Compound(Default::default()));
                 if let sunrise_core::nbt::Tag::Compound(map) = extra {
                     map.insert("RootVehicle".into(), tag);
-                }
-            }
-            None if local && self.server.pending_vehicle.is_none() => {
-                if let Some(sunrise_core::nbt::Tag::Compound(map)) = &mut level.player_extra {
-                    map.remove(&"RootVehicle".into());
                 }
             }
             None => {}
@@ -2697,7 +2691,7 @@ impl Game<'_> {
     }
     /// `Player.stopSleepInBed`: preserve the flags of the owning wake caller.
     pub(in crate::game) fn wake_up(&mut self, wake_immediately: bool, update_level: bool) {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             // InBedChatScreen.sendWakeUp: the server wakes the player.
             self.remote_stop_sleeping();
             return;

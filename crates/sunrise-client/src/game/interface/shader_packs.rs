@@ -722,10 +722,7 @@ impl Game<'_> {
             .remote_glowing(id)
             .unwrap_or_else(|| self.potions.effects.get("glowing").is_some());
         // `Entity.isVehicle`: the server's passenger list, else the passengers here.
-        let ridden = match &self.remote {
-            Some(r) => r.has_passengers(id),
-            None => self.has_seated_passengers(id),
-        };
+        let ridden = self.remote.as_ref().is_some_and(|r| r.has_passengers(id));
         // `Entity.isInWaterOrRain`: `isInWater`, else `isInRain`.
         let wet = self.player.as_ref().is_some_and(|p| {
             p.fluids.was_touching_water

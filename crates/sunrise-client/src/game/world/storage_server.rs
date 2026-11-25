@@ -106,7 +106,7 @@ impl Game<'_> {
     /// the player's eyes are out of reach of any of its blocks (a 4-block buffer).
     pub(in crate::game) fn tick_container_reach(&mut self) {
         // A server's menu ends when the server closes it.
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return;
         }
         let Some(eye) = self.eye_position() else {
@@ -145,7 +145,7 @@ impl Game<'_> {
     /// reach (a 4-block buffer).
     pub(in crate::game) fn tick_craft_table(&mut self) {
         // A server's menu ends when the server closes it.
-        if self.remote.is_some() || self.craft_size != 3 {
+        if !self.is_logical_server() || self.craft_size != 3 {
             return;
         }
         let (Some(pos), Some(eye)) = (self.server.craft_table, self.eye_position()) else {

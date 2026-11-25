@@ -243,13 +243,13 @@ impl Game<'_> {
             .as_ref()
             .map(|p| [p.position.x, p.position.y, p.position.z]);
         // Counted (on the server) before the throw or the spin.
-        if self.remote.is_none() {
+        if self.is_logical_server() {
             self.award_stat("used", "minecraft:trident", 1);
         }
         if riptide > 0 {
             // `hurtWithoutBreaking` and the sound belong to the server; a server's
             // client only launches.
-            let server_client = self.remote.is_some();
+            let server_client = !self.is_logical_server();
             if !server_client {
                 self.hurt_held_without_breaking(1);
             }
@@ -335,7 +335,7 @@ impl Game<'_> {
             return;
         }
         // The server throws the trident.
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return;
         }
         // hurtWithoutBreaking (Unbreaking applies), then the thrown copy.

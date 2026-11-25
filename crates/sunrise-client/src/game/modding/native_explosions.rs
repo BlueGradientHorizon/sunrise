@@ -74,7 +74,7 @@ impl Game<'_> {
         interaction: ExplosionInteraction,
         settings: ExplosionSettings,
     ) -> Result<(), ExplodeError> {
-        if self.serving.is_none() && self.options.dedicated.is_none() {
+        if !self.is_logical_server() {
             return Err(ExplodeError::Unavailable);
         }
         if !blast_ok(center, radius) {

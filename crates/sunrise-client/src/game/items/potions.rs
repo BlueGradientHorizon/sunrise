@@ -1035,7 +1035,7 @@ impl Game<'_> {
         // zero ticks and the ones reaching it in this pass (the last tick of
         // their countdown); a canceled expiry keeps the effect at no ticks,
         // asking again next tick. Only on the server, where the effects tick.
-        let keep_expired: Vec<&'static str> = if self.remote.is_none() {
+        let keep_expired: Vec<&'static str> = if self.is_logical_server() {
             let player = self.effect_living_ref(None);
             effects
                 .list
@@ -1322,7 +1322,7 @@ impl Game<'_> {
         amplifier: i32,
         new: bool,
     ) {
-        if self.remote.is_none()
+        if self.is_logical_server()
             && mod_api::__private::effect_index(effect)
                 .and_then(sunrise_client_core::potions::effect_by_index)
                 .is_some_and(|def| def.index >= brewing::EFFECTS.len())

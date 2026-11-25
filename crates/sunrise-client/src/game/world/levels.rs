@@ -2110,7 +2110,7 @@ impl Game<'_> {
             return;
         }
         let requested = std::mem::take(&mut self.levels.0.requested_saves);
-        if requested.is_empty() || self.remote.is_some() {
+        if requested.is_empty() || !self.is_logical_server() {
             return;
         }
         let back = self.dim;

@@ -98,7 +98,7 @@ impl Game<'_> {
             });
             self.ordered_before(ordered_tick::Batch::Items)?;
             sunrise_client::spans::time("tick_items", || self.tick_items());
-            if self.remote.is_none() {
+            if self.is_logical_server() {
                 span("hoppers_catch_items", || self.hoppers_catch_items());
             }
             // Merged, burnt, despawned or picked up.

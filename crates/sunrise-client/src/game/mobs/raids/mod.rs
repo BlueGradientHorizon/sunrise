@@ -326,7 +326,7 @@ impl Game<'_> {
         let Some(dim) = self.raiding.0.loaded else {
             return;
         };
-        if !self.raiding.0.raids.dirty || self.remote.is_some() {
+        if !self.raiding.0.raids.dirty || !self.is_logical_server() {
             return;
         }
         let tag = sunrise_core::nbt::Tag::compound([
@@ -642,7 +642,7 @@ impl Game<'_> {
     }
     /// `ServerLevel.tick` for the raids and their raiders.
     pub(in crate::game::server_side) fn tick_raids(&mut self) {
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return;
         }
         self.load_raids();

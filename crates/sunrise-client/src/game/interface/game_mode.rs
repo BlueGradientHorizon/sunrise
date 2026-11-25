@@ -121,7 +121,7 @@ impl Game<'_> {
     /// `ServerPlayer.setGameMode` on a local/server world.
     pub(in crate::game) fn set_mode(&mut self, mode: GameMode) {
         debug_assert!(
-            self.remote.is_none(),
+            self.is_logical_server(),
             "set_mode is server-only; remote clients use set_local_mode"
         );
         let changed = mode != self.mode;

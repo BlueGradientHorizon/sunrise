@@ -1041,13 +1041,7 @@ impl Game<'_> {
             gpu_ms,
             detail,
             || WorldCounts {
-                players: self.lan.as_ref().map_or(0, |h| {
-                    h.hub
-                        .guests
-                        .iter()
-                        .filter(|g| g.participates_online())
-                        .count() as u32
-                }),
+                players: self.remote.as_ref().map_or(0, |r| r.listed_player_count() as u32),
                 chunks: self.world.chunks.len() as u32,
                 entities,
             },

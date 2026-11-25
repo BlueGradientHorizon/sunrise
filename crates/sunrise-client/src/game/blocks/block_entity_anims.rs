@@ -77,7 +77,7 @@ impl Game<'_> {
                         .or_default()
                         .trigger_event(a, b, time, || gathered);
                 // The server's copy tells the living entities within 32 blocks.
-                if rung && self.remote.is_none() {
+                if rung && self.is_logical_server() {
                     self.bell_heard(pos, time);
                 }
             }
@@ -527,7 +527,7 @@ impl Game<'_> {
     pub(in crate::game) fn in_rain(&mut self, at: Vec3, top: f64) -> bool {
         // A server's client has no live biome features to ask: it answers from
         // the chunks and the weather it was sent.
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return self.rain_falls_on(at, top);
         }
         let (p, up) = rain_positions(at, top);
@@ -539,7 +539,7 @@ impl Game<'_> {
     pub(in crate::game) fn rain_falls_on(&self, at: Vec3, top: f64) -> bool {
         use sunrise_client::motion::SideLevel;
         let (p, up) = rain_positions(at, top);
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return self.raining_at(p) || self.raining_at(up);
         }
         self.is_raining_at(&self.world, p) || self.is_raining_at(&self.world, up)

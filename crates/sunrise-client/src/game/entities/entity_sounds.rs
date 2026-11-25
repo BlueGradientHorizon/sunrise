@@ -59,8 +59,12 @@ impl Game<'_> {
         &mut self,
         id: u32,
     ) -> Option<SoundEntityState> {
-        if self.remote.is_some() {
-            return self.remote_sound_entity_state(id as i32);
+        if !self.is_logical_server() {
+            return if self.remote.is_some() {
+                self.remote_sound_entity_state(id as i32)
+            } else {
+                None
+            };
         }
         if id == self.sound_player_id()
             && let Some(player) = self.player.as_ref()

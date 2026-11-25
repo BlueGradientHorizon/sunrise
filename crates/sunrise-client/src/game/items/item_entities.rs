@@ -46,7 +46,7 @@ impl Game<'_> {
         let mut removed = vec![false; items.len()];
         let mut cells = sunrise_client::entities::ItemCells::new(&items);
         // A LAN or server guest only shows the host's items.
-        let merging = self.remote.is_none();
+        let merging = self.is_logical_server();
         // `Entity.checkBelowWorld`: below `Level.getMinY() - 64`.
         let void = f64::from(self.level_min_y() - 64);
         let mut obstacles =
@@ -515,7 +515,7 @@ impl Game<'_> {
         let half = Vec3::new(0.5, 0.5, 0.5);
         let area = Aabb::new(centre.subtract(half), centre.add_vector(half));
         // A server's orbs are its own; a LAN or server guest only shows them.
-        if self.remote.is_none() {
+        if self.is_logical_server() {
             for i in 0..self.orbs.len() {
                 let o = &self.orbs[i];
                 if !o.bounds().intersects(area) {

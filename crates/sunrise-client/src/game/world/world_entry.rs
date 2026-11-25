@@ -14,12 +14,13 @@ pub(in crate::game::server_side) fn next_biome_keys_session() -> u64 {
 impl Game<'_> {
     /// The server's data-pack enchantments, or the local world's registry.
     pub(in crate::game) fn item_enchantments(&self) -> &Arc<sunrise_client::enchant::Enchantments> {
-        match self.remote.as_ref() {
-            Some(remote) => remote
-                .enchantments
+        if self.is_logical_server() {
+            &self.stations().enchantments
+        } else {
+            self.remote
                 .as_ref()
-                .unwrap_or(&self.items().enchantments),
-            None => &self.stations().enchantments,
+                .and_then(|remote| remote.enchantments.as_ref())
+                .unwrap_or(&self.items().enchantments)
         }
     }
 

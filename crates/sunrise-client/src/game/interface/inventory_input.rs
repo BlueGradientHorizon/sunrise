@@ -355,17 +355,7 @@ impl Game<'_> {
             }
             return true;
         }
-        // mouseClicked: an empty hand's PICKUP is the menu's click at once
-        // (a right click on a bundle takes its first stack out).
-        if let (Some(input), Some(_)) = (input, slot)
-            && self.remote.is_none()
-            && self.click_open_inventory(slot, i32::from(right), input)
-        {
-            if let Some(key) = self.container {
-                self.container_changed(key);
-            }
-            return true;
-        }
+        // Remote clients route inventory clicks through click_inventory -> remote_click.
         self.click_inventory(right)
     }
     /// Mouse movement while a quick craft drag is running.

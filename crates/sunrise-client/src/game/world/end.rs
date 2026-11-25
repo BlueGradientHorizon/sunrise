@@ -1381,7 +1381,7 @@ impl Game<'_> {
     /// entities in entity-ticking chunks: one past the simulation distance
     /// enters none (and costs nothing here, however many lie there).
     pub(in crate::game::server_side) fn find_end_gateway_portals(&mut self) {
-        if self.remote.is_some() || self.dim != Dim::End {
+        if !self.is_logical_server() || self.dim != Dim::End {
             return;
         }
         let is_gateway = |game: &Self, p: BlockPos| {
@@ -1508,7 +1508,7 @@ impl Game<'_> {
         after_move: bool,
     ) {
         // Nobody in a gateway: nothing to look up.
-        if self.remote.is_some() || self.dim != Dim::End || self.end.gateways.is_empty() {
+        if !self.is_logical_server() || self.dim != Dim::End || self.end.gateways.is_empty() {
             return;
         }
         // `handlePortal` runs in the entity's tick: one past the simulation
@@ -1631,7 +1631,7 @@ impl Game<'_> {
     /// The entities that reached a gateway's exit: they land where the
     /// gateway leads, once its chunks have loaded.
     pub(in crate::game::server_side) fn resolve_end_gateway_arrivals(&mut self) -> Result<()> {
-        if self.remote.is_some() || self.dim != Dim::End {
+        if !self.is_logical_server() || self.dim != Dim::End {
             return Ok(());
         }
         for arrival in std::mem::take(&mut self.end.arrivals) {

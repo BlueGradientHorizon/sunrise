@@ -57,7 +57,7 @@ impl Game<'_> {
             return Ok(None);
         };
         // A client of a server predicts the placing; the server decides.
-        if self.remote.is_some() {
+        if !self.is_logical_server() {
             return Ok(Some(true));
         }
         let key = (pos[0], pos[1], pos[2]);

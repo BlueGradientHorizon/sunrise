@@ -218,7 +218,7 @@ pub(in crate::game::server_side) fn write_random_sequences(
 impl Game<'_> {
     /// `RandomSequences` as `random_sequences.dat` (not on a server's guest).
     pub(in crate::game::server_side) fn save_random_sequences(&mut self) {
-        if self.remote.is_none() {
+        if self.is_logical_server() {
             write_random_sequences(&self.server.world_root, &mut self.server.rand_sequences);
         }
     }

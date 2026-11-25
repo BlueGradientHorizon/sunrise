@@ -103,7 +103,7 @@ impl Game<'_> {
         self.show_mount_menu();
     }
     pub(in crate::game) fn show_mount_menu(&mut self) {
-        if self.remote.is_none() {
+        if self.is_logical_server() {
             self.carried = None;
         }
         self.station = None;
