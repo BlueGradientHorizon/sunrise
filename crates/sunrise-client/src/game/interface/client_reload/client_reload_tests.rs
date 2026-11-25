@@ -376,7 +376,7 @@ fn a_converted_file_outside_the_pack_is_absent_not_empty() {
 fn initial_load_stages_and_applies_client_reload_listeners() {
     use crate::game::{
         Audio, Game, Options, Progress, Settings, load_resources_for_mods,
-        native_entity_refs::tests::fixture_root, start_game,
+        native_entity_refs::tests::fixture_root, start_client_game,
     };
     use mod_api::{
         __private::game::RegistrationContextNew, AddClientReloadListenersEvent, ClientHost,
@@ -586,7 +586,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                     );
                     assert!(loaded.pack_error.is_none());
                     options.resources = loaded.root;
-                    let mut game = start_game(
+                    let mut game = start_client_game(
                         &loaded.resources,
                         loaded.pack,
                         loaded.gui.unwrap(),
@@ -1332,7 +1332,7 @@ fn client_startup_finishes_configs_before_the_first_runtime_callback() {
         .stack_size(32 * 1024 * 1024)
         .spawn(|| {
             use crate::game::{
-                Audio, UiResources, native_entity_refs::tests::with_client_game, start_game,
+                Audio, UiResources, native_entity_refs::tests::with_client_game, start_client_game,
             };
             use mod_api::{
                 ClientHost, ClientSetupContext, ClientSetupEvent, ClientTickPreEvent,
@@ -1408,7 +1408,7 @@ fn client_startup_finishes_configs_before_the_first_runtime_callback() {
                             ),
                         )
                         .unwrap();
-                        let mut started = start_game(
+                        let mut started = start_client_game(
                             &resources,
                             game.pack.clone(),
                             gui,

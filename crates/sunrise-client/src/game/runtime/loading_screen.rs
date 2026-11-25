@@ -373,7 +373,7 @@ impl Loading {
         let res: &'static Arc<Resources> = Box::leak(Box::new(loaded.resources));
         let game_at = Instant::now();
         let game_step = startup::step("handoff.start_game");
-        let Some(mut game) = start_game(
+        let Some(mut game) = start_client_game(
             res,
             loaded.pack,
             gui,

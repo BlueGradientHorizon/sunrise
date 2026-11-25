@@ -278,12 +278,90 @@ pub(in crate::game) fn loading_frame(hud: &HudBatch) -> Frame<'_> {
     }
 }
 
-/// The post-load setup once the resources are ready: `Game::new` and the
-/// options, packs, mods, control socket, benchmark and world selection the
-/// old `run` did after loading. The launching path hands over its live
-/// settings. `None` means a harness or dedicated run finished here instead.
+/// The post-load setup for a dedicated server run: builds `ServerGame` with no window,
+/// renderer, client reload, or audio device, runs `run_dedicated`, and shuts down.
 #[allow(clippy::too_many_arguments)]
-pub(in crate::game) fn start_game<'a>(
+pub(in crate::game) fn start_dedicated_game(
+    res: &Arc<Resources>,
+    pack: PackResources,
+    gui: UiResources,
+    options: Options,
+    mut settings: Settings,
+    started: Instant,
+    prepared: Option<GameCpuResources>,
+) -> Result<()> {
+    if let Some(d) = options.distance_override {
+        settings.render_distance = d;
+    }
+    let prepared = match prepared {
+        Some(prepared) => Some(prepared),
+        None => Some(GameCpuResources::load(
+            &sunrise_assets::resource_source::ResourceRoot::new(
+                options.resources.clone(),
+                packs::cache_dir(),
+                pack.source.clone(),
+            ),
+            None,
+            pack.render.model_library.as_deref().ok(),
+            false,
+        )?),
+    };
+    let mut game = Game::new(
+        res,
+        pack,
+        gui,
+        options,
+        settings,
+        Audio::for_server(),
+        prepared,
+    )?;
+    if game.options.benchmark.is_some() {
+        game.settings.vsync = false;
+        game.settings.max_fps = 260;
+        game.settings.inactivity_fps_limit = "minimized".into();
+        game.options.no_pause = true;
+    }
+    if game.options.benchmark.is_none() {
+        game.start_mods();
+    }
+    game.refresh_loop_context()?;
+    game.preload_registries();
+    game.start_agent_control()?;
+    if let Some(scenario) = game.options.benchmark.clone() {
+        let control = game
+            .control
+            .get_or_insert_with(sunrise_client::control::Server::local);
+        sunrise_client::benchmark::start(
+            control.sender(),
+            sunrise_client::benchmark::Setup {
+                scenario,
+                started,
+                app: sunrise_bench::App {
+                    name: "sunrise-client".into(),
+                    version: sunrise_client::crash::version(),
+                    commit: option_env!("SUNRISE_COMMIT").map(str::to_owned),
+                    mods: Vec::new(),
+                },
+                simulation_distance: game.settings.simulation_distance as u32,
+                vsync: false,
+                fps_cap: None,
+                offscreen: game.options.offscreen,
+                game_dir: std::env::current_dir()?,
+                set: game.options.benchmark_set.clone(),
+                profile: game.options.benchmark_profile,
+            },
+        );
+    }
+    let result = game.run_dedicated();
+    game.native_game_shutting_down();
+    result
+}
+
+/// The post-load setup once the resources are ready for a client run: `ClientGame::construct`
+/// and the options, packs, mods, control socket, benchmark and world selection the old `run`
+/// did after loading. `None` means a startup fixture finished here instead.
+#[allow(clippy::too_many_arguments)]
+pub(in crate::game) fn start_client_game<'a>(
     res: &'a Arc<Resources>,
     pack: PackResources,
     gui: UiResources,
@@ -298,7 +376,7 @@ pub(in crate::game) fn start_game<'a>(
     client_applies: Vec<client_reload::PreparedClientReload>,
     entity_models: Option<Arc<sunrise_client::mobs::EntityModelDocument>>,
     window: Option<(Arc<Window>, Renderer)>,
-) -> Result<Option<Game<'a>>> {
+) -> Result<Option<super::ClientGame<'a>>> {
     let handoff = prepared.is_some();
     if let Some(d) = options.distance_override {
         settings.render_distance = d;
@@ -315,12 +393,13 @@ pub(in crate::game) fn start_game<'a>(
             ),
             entity_models.as_deref(),
             pack.render.model_library.as_deref().ok(),
-            !options.execution_role.is_dedicated_server(),
+            true,
         )?),
     };
     let mut initial = None;
     let stage = options.is_client_start().then_some(&mut initial);
-    let mut game = Game::construct(res, pack, gui, options, settings, audio, prepared, stage)?;
+    let mut game =
+        super::ClientGame::construct(res, pack, gui, options, settings, audio, prepared, stage)?;
     // `new DebugRenderer()` refreshes its list.
     game.refresh_debug_renderers();
     game.rest_loader.0 = rest_loader;
@@ -366,12 +445,6 @@ pub(in crate::game) fn start_game<'a>(
                 profile: game.options.benchmark_profile,
             },
         );
-    }
-    if game.options.execution_role == execution_role::ExecutionRole::DedicatedServer {
-        let result = game.run_dedicated();
-        game.native_game_shutting_down();
-        result?;
-        return Ok(None);
     }
     let pending = initial.map(|models| initial_client_models::PendingClientStart {
         models,

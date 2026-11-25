@@ -2509,7 +2509,8 @@ use hand::interact_location;
 pub(crate) use hit::Hit;
 #[allow(unused_imports)]
 use loading_window::{
-    build_renderer, loading_frame, loading_renderer, prepare_renderer_textures, start_game,
+    build_renderer, loading_frame, loading_renderer, prepare_renderer_textures, start_client_game,
+    start_dedicated_game,
 };
 #[allow(unused_imports)]
 use resource_loader::{
@@ -6911,15 +6912,24 @@ pub(crate) fn run_with(
     )?;
     let gui = loaded.gui.ok_or("missing menu bundle")?;
     options.resources = loaded.root.clone();
-    let audio = if options.execution_role.is_dedicated_server() {
-        Audio::for_server()
-    } else if !options.execution_role.is_client() || options.headless {
+    let resources = loaded.resources;
+    if options.execution_role.is_dedicated_server() {
+        return start_dedicated_game(
+            &resources,
+            loaded.pack,
+            gui,
+            options,
+            early_settings,
+            started,
+            None,
+        );
+    }
+    let audio = if !options.execution_role.is_client() || options.headless {
         Audio::silent(&loaded.pack.source)
     } else {
         Audio::with_device(&loaded.pack.source, &early_settings.sound_device)
     };
-    let resources = loaded.resources;
-    let game = start_game(
+    let game = start_client_game(
         &resources,
         loaded.pack,
         gui,

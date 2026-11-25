@@ -32,7 +32,8 @@ pub(in crate::game::server_side) use crate::game::loading_screen::{
 };
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::loading_window::{
-    build_renderer, loading_frame, loading_renderer, prepare_renderer_textures, start_game,
+    build_renderer, loading_frame, loading_renderer, prepare_renderer_textures, start_client_game,
+    start_dedicated_game,
 };
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::motion_ids::{motion_at, motion_block_entity};
