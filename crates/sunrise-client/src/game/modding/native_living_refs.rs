@@ -63,7 +63,7 @@ pub(in crate::game) fn lend_equipment(
 }
 
 /// Use checked slot metadata to lend the same lazy view to readers and component editors.
-pub(in crate::game::server_side) fn with_equipment_view<R>(
+pub(in crate::game) fn with_equipment_view<R>(
     stack: &EquipmentRead<'_>,
     metadata: StackReadMetadata,
     read: impl for<'a> FnOnce(ItemStackView<'a>) -> R,

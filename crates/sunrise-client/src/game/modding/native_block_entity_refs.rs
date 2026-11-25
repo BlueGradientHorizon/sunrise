@@ -778,7 +778,7 @@ fn save_with_metadata(
     Some(data)
 }
 
-pub(in crate::game::server_side) fn save_without_metadata(
+pub(in crate::game) fn save_without_metadata(
     world: &World,
     pos: (i32, i32, i32),
     entity: &BlockEntity,

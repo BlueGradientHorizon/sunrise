@@ -332,7 +332,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `Leashable.setLeashedTo` on the mob or boat `target`: its lead goes to `holder` whatever
     /// held it, or was still waiting for a saved holder. `player` is a player holder's UUID.
     /// Taking the lead over is no removal, so no unleash hook hears it. False for anything else.
-    pub(in crate::game::server_side) fn set_leash(
+    pub(in crate::game) fn set_leash(
         &mut self,
         target: Target,
         holder: Holder,

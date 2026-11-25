@@ -1909,9 +1909,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
 
     /// The ids of the entities that are not on the walk of `entity_lists!`.
-    pub(in crate::game::server_side) fn entity_ids_off_walk(
-        &self,
-    ) -> impl Iterator<Item = u32> + '_ {
+    pub(in crate::game) fn entity_ids_off_walk(&self) -> impl Iterator<Item = u32> + '_ {
         self.cushions
             .iter()
             .map(|e| e.id)

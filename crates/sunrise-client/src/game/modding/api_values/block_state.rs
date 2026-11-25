@@ -33,7 +33,7 @@ pub(crate) fn block_listens(hook: mod_api::HookId, state: BlockStateId) -> bool 
 }
 
 /// Whether every part on `state` that answers `explosion_resistance` declares the answer pure.
-pub(in crate::game::server_side) fn explosion_resistance_pure(state: BlockStateId) -> bool {
+pub(in crate::game) fn explosion_resistance_pure(state: BlockStateId) -> bool {
     if let Some(pure) = mod_api::__private::scoped_explosion_resistance_pure(state.0) {
         return pure;
     }
@@ -63,7 +63,7 @@ pub(in crate::game) fn bind(registry: &BlockRegistry) -> Result<(), String> {
     Ok(())
 }
 
-pub(in crate::game::server_side) fn install(prepared: Arc<Index>) {
+pub(in crate::game) fn install(prepared: Arc<Index>) {
     INDEX.with_borrow_mut(|index| *index = Some(prepared));
 }
 
@@ -333,7 +333,7 @@ pub(crate) fn current() -> Result<Arc<Index>, BlockStateError> {
 impl Index {
     /// Each state's block key, by state number.
     #[cfg(test)]
-    pub(in crate::game::server_side) fn blocks(&self) -> Arc<[mod_api::BlockKey]> {
+    pub(in crate::game) fn blocks(&self) -> Arc<[mod_api::BlockKey]> {
         self.blocks.clone()
     }
     /// Route on workers using the feature-pinned published Parts table, without conversion.

@@ -64,13 +64,7 @@ impl FangState {
     }
 }
 impl Game<'_, crate::game::server_side::ServerState> {
-    pub(in crate::game::server_side) fn add_fangs(
-        &mut self,
-        at: [f64; 3],
-        yaw: f32,
-        delay: i32,
-        owner: u32,
-    ) {
+    pub(in crate::game) fn add_fangs(&mut self, at: [f64; 3], yaw: f32, delay: i32, owner: u32) {
         self.side.next_entity += 1;
         self.insert_fangs(self.side.next_entity, at, yaw, delay, owner);
     }

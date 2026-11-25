@@ -184,7 +184,7 @@ impl DropState {
         }
     }
     /// `drop` with this state.
-    pub(in crate::game::server_side) fn to_api(self, drop: mod_api::ItemDrop) -> mod_api::ItemDrop {
+    pub(in crate::game) fn to_api(self, drop: mod_api::ItemDrop) -> mod_api::ItemDrop {
         drop.with_thrower(self.thrower)
             .with_target(self.target)
             .with_no_gravity(self.no_gravity)
@@ -285,10 +285,7 @@ pub(crate) struct BlockItemDrop {
 
 impl BlockItemDrop {
     /// The drop as the mods hear and edit it.
-    pub(in crate::game::server_side) fn from_api(
-        drop: &mod_api::ItemDrop,
-        stack: ItemStack,
-    ) -> Self {
+    pub(in crate::game) fn from_api(drop: &mod_api::ItemDrop, stack: ItemStack) -> Self {
         Self {
             random: None,
             stack,

@@ -67,7 +67,7 @@ pub(in crate::game::server_side) fn block(p: [f64; 3]) -> [i32; 3] {
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `OminousItemSpawner.create` added at `position`.
-    pub(in crate::game::server_side) fn add_ominous_item_spawner(
+    pub(in crate::game) fn add_ominous_item_spawner(
         &mut self,
         item: ItemStack,
         position: [f64; 3],

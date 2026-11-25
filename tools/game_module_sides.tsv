@@ -11,8 +11,9 @@ allay_jukebox_source_tests	game	touches neither ClientState nor ServerState fiel
 allay_pickup_cooldown_tests	game	touches neither ClientState nor ServerState fields	game/mobs/allay_pickup_cooldown_tests.rs
 allays	server	re-homed server module	game/mobs/allays.rs
 allays_client	client	re-homed client module	game/mobs/allays_client.rs
-api_values	server	touches only server-owned fields	game/modding/api_values.rs
+api_values	game	common dual-role module (server-only impls moved to api_values_server)	game/modding/api_values.rs
 api_values_common	game	common dual-role module	game/modding/api_values_common.rs
+api_values_server	server	server-only impls split from api_values	game/modding/api_values_server.rs
 armor_stand_refind_tests	server	touches only ServerState fields	game/entities/armor_stand_refind_tests.rs
 armor_stands	server	touches only server-owned fields (opposite-side functions moved to armor_stands_client)	game/entities/armor_stands.rs
 armor_stands_client	client	hand-authored client role-split module	game/entities/armor_stands_client.rs
@@ -481,8 +482,9 @@ mob_level	server	touches only ServerState fields	game/mobs/mob_level.rs
 mob_light	client	role-reachability:client	game/mobs/mob_light.rs
 mob_looting	server	touches only server-owned fields	game/mobs/mob_looting.rs
 mob_sounds	client	touches only ClientState fields	game/mobs/mob_sounds.rs
-mod_api_host	server	touches only ServerState fields	game/modding/mod_api_host.rs
+mod_api_host	game	common dual-role module (server-only impls moved to mod_api_host_server)	game/modding/mod_api_host.rs
 mod_api_host_common	game	common dual-role module	game/modding/mod_api_host_common.rs
+mod_api_host_server	server	server-only impls split from mod_api_host	game/modding/mod_api_host_server.rs
 mod_browser	client	touches only client-owned fields	game/interface/mod_browser.rs
 mod_container_openers	server	touches only ServerState fields	game/modding/mod_container_openers.rs
 mod_container_openers_tests	server	touches only ServerState fields	game/modding/mod_container_openers_tests.rs

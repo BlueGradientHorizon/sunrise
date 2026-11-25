@@ -68,7 +68,7 @@ impl super::Containers<'_> {
         }
     }
 
-    pub(in crate::game::server_side) fn capability_site(
+    pub(in crate::game) fn capability_site(
         &self,
         at: BlockSide,
         state: BlockStateId,
@@ -122,10 +122,10 @@ impl super::Containers<'_> {
             ItemTarget::Container => self.view(pos, false),
         }
     }
-    pub(in crate::game::server_side) fn capability_size(&self, at: BlockSide) -> Option<usize> {
+    pub(in crate::game) fn capability_size(&self, at: BlockSide) -> Option<usize> {
         Some(self.capability_view(at)?.capability_slots(at.side).count())
     }
-    pub(in crate::game::server_side) fn capability_stack(
+    pub(in crate::game) fn capability_stack(
         &self,
         at: BlockSide,
         slot: usize,

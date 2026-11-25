@@ -36,7 +36,7 @@ sunrise-client game::allay_jukebox_source_tests::stopping_the_first_jukebox_stop
 sunrise-client game::allay_pickup_cooldown_tests::an_allay_keeps_its_item_pickup_cooldown_memory lib daily resources
 sunrise-client game::allay_pickup_cooldown_tests::pickup_cooldown_saves_the_full_integer_value lib daily resources
 sunrise-client game::allay_pickup_cooldown_tests::the_saved_pickup_cooldown_follows_the_model lib daily resources
-sunrise-client game::server_side::api_values::small_values::recipe_tests::recipe_json_text_fields lib daily resources
+sunrise-client game::api_values::small_values::recipe_tests::recipe_json_text_fields lib daily resources
 sunrise-client game::server_side::armor_stands::postbaseline_lodestone_controls::postbaseline_six_slots_noncompass_guard_and_dimension_preservation lib daily resources
 sunrise-client game::server_side::armor_stands::pumpkin_equippable_use_tests::h207_connected_use_item_adopts_actual_pumpkin_equippable_and_preserves_controls lib daily resources
 sunrise-client game::server_side::armor_stands::stand_lodestone_inventory_tick_tests::actual_stand_equipment_compasses_tick_after_loaded_lodestone_removal lib daily resources
@@ -1026,9 +1026,9 @@ sunrise-client game::mob_landing_support_tests::a_pig_landing_fully_on_honey_tak
 sunrise-client game::mob_landing_support_tests::a_pig_landing_on_the_stone_beside_honey_takes_the_stones_fall lib daily resources
 sunrise-client game::server_side::mob_looting::tests::a_can_equip_part_decides_which_mob_wears_a_picked_up_item lib daily resources
 sunrise-client game::server_side::mob_looting::tests::a_mob_reads_the_picked_up_stacks_own_equippable lib daily resources
-sunrise-client game::server_side::mod_api_host::attachment_membership_tests::attachment_guest_hook_membership_matches_old_walk lib daily resources
-sunrise-client game::server_side::mod_api_host::attachment_membership_tests::attachment_membership_matches_old_walk lib daily resources
-sunrise-client game::server_side::mod_api_host::attachment_membership_tests::attachment_off_walk_membership_matches_old_walk lib daily resources
+sunrise-client game::mod_api_host::attachment_membership_tests::attachment_guest_hook_membership_matches_old_walk lib daily resources
+sunrise-client game::mod_api_host::attachment_membership_tests::attachment_membership_matches_old_walk lib daily resources
+sunrise-client game::mod_api_host::attachment_membership_tests::attachment_off_walk_membership_matches_old_walk lib daily resources
 sunrise-client game::client_side::mod_recipe_property_tests::tests::host_and_slot_prediction_use_replacement_property_generation lib daily resources
 sunrise-client game::client_side::model_baking_completed_tests::a_client_mod_hears_model_baking_completed_once_per_load_and_keeps_its_handles lib daily resources
 sunrise-client game::client_side::model_baking_completed_tests::a_failed_reload_fires_no_model_baking_completed lib daily resources

@@ -780,7 +780,7 @@ impl Containers<'_> {
             .or_else(|| self.saved_pot_view(pos))
     }
     /// Comparator signal of stored slots, without materializing deferred loot.
-    pub(in crate::game::server_side) fn stored_container_signal(&self, pos: Pos) -> i32 {
+    pub(in crate::game) fn stored_container_signal(&self, pos: Pos) -> i32 {
         self.comparator_view(pos)
             .map_or(0, |view| self.signal(&view))
     }
@@ -855,7 +855,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             mobs: &self.mobs,
         }
     }
-    pub(in crate::game::server_side) fn stored_container_signal(&self, pos: Pos) -> i32 {
+    pub(in crate::game) fn stored_container_signal(&self, pos: Pos) -> i32 {
         // Match a GameLevel view; the level's block entities own the slots.
         Containers {
             brewing: None,

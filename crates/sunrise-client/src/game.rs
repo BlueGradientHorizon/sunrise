@@ -241,8 +241,10 @@ mod allay_jukebox_source_tests;
 mod allay_pickup_cooldown_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::allays;
+#[path = "game/modding/api_values.rs"]
+pub(crate) mod api_values;
 #[allow(unused_imports)]
-pub(crate) use server_side::api_values;
+pub(in crate::game) use server_side::api_values_server;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::armor_stand_refind_tests;
@@ -1211,8 +1213,10 @@ pub(in crate::game) use client_side::mod_browser;
 pub(in crate::game) use server_side::mob_level;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::mob_looting;
+#[path = "game/modding/mod_api_host.rs"]
+pub(in crate::game) mod mod_api_host;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::mod_api_host;
+pub(in crate::game) use server_side::mod_api_host_server;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::mod_container_openers;
 #[cfg(test)]
@@ -2995,12 +2999,12 @@ pub(crate) use hit::Hit;
 use loading_window::{
     build_renderer, loading_frame, loading_renderer, prepare_renderer_textures, start_client_game,
 };
-#[allow(unused_imports)]
-#[cfg(feature = "client")]
-use resource_loader::{run_loading, write_report};
 use resource_loader::{
     EntityModels, GameCpuResources, Loaded, LoaderMsg, PendingWorldEntry, WorldRestLoader,
 };
+#[allow(unused_imports)]
+#[cfg(feature = "client")]
+use resource_loader::{run_loading, write_report};
 #[allow(unused_imports)]
 use server_side::loading_server::start_dedicated_game;
 #[allow(unused_imports)]
@@ -6957,7 +6961,14 @@ pub(crate) fn run_with(
     }
     #[cfg(not(feature = "client"))]
     {
-        let _ = (resources, gui, options, early_settings, vanilla_root, started);
+        let _ = (
+            resources,
+            gui,
+            options,
+            early_settings,
+            vanilla_root,
+            started,
+        );
         Err("this binary was built without the `client` feature; pass --dedicated".into())
     }
     #[cfg(feature = "client")]

@@ -114,7 +114,7 @@
   {
     "package": "sunrise-client",
     "target": "lib",
-    "test": "game::server_side::mod_api_host::attachment_membership_tests::attachment_entity_read_bench",
+    "test": "game::mod_api_host::attachment_membership_tests::attachment_entity_read_bench",
     "path": "crates/sunrise-client/src/game/modding/mod_api_host.rs",
     "reason": "manual attachment scaling benchmark; needs SUNRISE_TEST_RESOURCES",
     "rationale": "Opt-in measurement, not an ordinary daily correctness check: manual attachment scaling benchmark; needs SUNRISE_TEST_RESOURCES. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."

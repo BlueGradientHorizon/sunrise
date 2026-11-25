@@ -81,7 +81,7 @@ fn loot_types_read_current_membership_and_order_after_tag_reload() {
     use sunrise_items::items::{Items, TagRegistry};
 
     if run_fresh_cases(
-        "game::server_side::api_values::loot_values::tests::loot_types_read_current_membership_and_order_after_tag_reload",
+        "game::api_values::loot_values::tests::loot_types_read_current_membership_and_order_after_tag_reload",
         "SUNRISE_LOOT_TAG_LIST_FIXTURE",
         &["reload"],
     ) {
@@ -237,7 +237,7 @@ fn a_loot_function_reads_the_bound_damage_type_tags() {
     use sunrise_core::random::LegacyRandom;
     use sunrise_world::loot::{LootData, PackOverlay};
     if run_fresh_cases(
-        "game::server_side::api_values::loot_values::tests::a_loot_function_reads_the_bound_damage_type_tags",
+        "game::api_values::loot_values::tests::a_loot_function_reads_the_bound_damage_type_tags",
         "SUNRISE_TEST_LOOT_DAMAGE_TYPE_TAGS",
         &["loot"],
     ) {
@@ -345,7 +345,7 @@ fn a_loot_function_lists_the_loot_datas_item_tags() {
     use sunrise_core::random::LegacyRandom;
     use sunrise_world::loot::{LootData, PackOverlay};
     if run_fresh_cases(
-        "game::server_side::api_values::loot_values::tests::a_loot_function_lists_the_loot_datas_item_tags",
+        "game::api_values::loot_values::tests::a_loot_function_lists_the_loot_datas_item_tags",
         "SUNRISE_TEST_LOOT_ITEM_TAG_LISTS",
         &["loot"],
     ) {

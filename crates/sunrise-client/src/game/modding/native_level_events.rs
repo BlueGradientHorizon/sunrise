@@ -34,7 +34,7 @@ impl GameLevel<'_> {
     /// the behaviour raises. False off an authoritative server, or for an
     /// event that carries a block state (see `level_level_event`)
     /// when `data` isn't one.
-    pub(in crate::game::server_side) fn native_level_event(
+    pub(in crate::game) fn native_level_event(
         &mut self,
         id: i32,
         pos: [i32; 3],

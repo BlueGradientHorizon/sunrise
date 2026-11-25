@@ -9,8 +9,8 @@ pub(in crate::game) mod advancements;
 pub(in crate::game) mod ahead;
 #[path = "mobs/allays.rs"]
 pub(in crate::game) mod allays;
-#[path = "modding/api_values.rs"]
-pub(crate) mod api_values;
+#[path = "modding/api_values_server.rs"]
+pub(in crate::game) mod api_values_server;
 #[cfg(test)]
 #[path = "entities/armor_stand_refind_tests.rs"]
 pub(in crate::game) mod armor_stand_refind_tests;
@@ -357,8 +357,8 @@ pub(in crate::game) mod mob_gear;
 pub(in crate::game) mod mob_level;
 #[path = "mobs/mob_looting.rs"]
 pub(in crate::game) mod mob_looting;
-#[path = "modding/mod_api_host.rs"]
-pub(in crate::game) mod mod_api_host;
+#[path = "modding/mod_api_host_server.rs"]
+pub(in crate::game) mod mod_api_host_server;
 #[path = "modding/mod_container_openers.rs"]
 pub(in crate::game) mod mod_container_openers;
 #[cfg(test)]

@@ -1,6 +1,6 @@
-use crate::game::server_side::api_values::TryIntoApi;
-use crate::game::server_side::api_values::TryIntoEngine;
-use crate::game::server_side::api_values::engine_display_context;
+use crate::game::api_values::TryIntoApi;
+use crate::game::api_values::TryIntoEngine;
+use crate::game::api_values::engine_display_context;
 use sunrise_items::items::Items;
 
 impl TryIntoApi for (sunrise_client::text::Text, u32) {
