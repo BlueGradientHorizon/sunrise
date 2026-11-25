@@ -625,10 +625,14 @@ impl Game<'_> {
     }
     /// Before a level's tick pass on either logical side.
     pub(in crate::game) fn native_level_tick_pre(&mut self, level: LevelRef) {
+        let _listeners =
+            crate::game::native_server::LevelTickListeners::mark(!self.has_open_transaction());
         self.fire_level_tick_pre(level);
     }
     /// After a successful level tick pass on either logical side.
     pub(in crate::game) fn native_level_tick_post(&mut self, level: LevelRef) {
+        let _listeners =
+            crate::game::native_server::LevelTickListeners::mark(!self.has_open_transaction());
         self.fire_level_tick_post(level);
     }
     /// Before a vanilla or registered HUD slot runs (`RenderGuiLayerEvent.Pre`), even under F1.
