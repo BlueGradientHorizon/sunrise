@@ -493,11 +493,10 @@ impl Game<'_> {
                 Some(player.uuid),
                 TradeFeedback::AtHurt(player.trade_pitch),
             );
-            if player.angry {
-                if let Some(host) = &self.lan {
-                    host.hub.entity_event(id as i32, 13);
-                }
-                self.entity_event_particles(id, 13);
+            if player.angry
+                && let Some(host) = &self.lan
+            {
+                host.hub.entity_event(id as i32, 13);
             }
         }
         if let Some((source, cause)) = damage

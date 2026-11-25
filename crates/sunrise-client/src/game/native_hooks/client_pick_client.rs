@@ -54,7 +54,9 @@ impl Game<'_> {
         self.client.client_pick.entity_metadata = match result {
             Some(CrosshairTarget::Entity { entity, .. }) => (
                 !self.client.interactions.contains_key(&(entity.id() as i32))
-                    && Self::has_pick_result(self.native_client_entity_target(entity)),
+                    && crate::game::pick_entity_common::has_pick_result(
+                        self.native_client_entity_target(entity),
+                    ),
                 self.dragon.as_ref().is_none_or(|d| {
                     crate::game::server_side::dragon::dragon_part_index(d.id, entity.id()).is_none()
                 }),

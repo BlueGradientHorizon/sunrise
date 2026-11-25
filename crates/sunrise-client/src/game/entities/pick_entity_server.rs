@@ -122,7 +122,8 @@ impl Game<'_> {
         let is_synthetic_dragon_part =
             (super::dragon::SPECIAL..super::dragon::SPECIAL + 8).contains(&hit.id);
         let id = hit.id as i32;
-        let pickable = !is_synthetic_dragon_part && Self::has_pick_result(self.level_entity(id));
+        let pickable = !is_synthetic_dragon_part
+            && crate::game::pick_entity_common::has_pick_result(self.level_entity(id));
         let suggest_uuid = !is_synthetic_dragon_part && self.resident_dragon_part(hit.id).is_none();
         Some(CrosshairEntityHit {
             id,

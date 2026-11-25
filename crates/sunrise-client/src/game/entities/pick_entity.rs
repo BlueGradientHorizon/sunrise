@@ -281,11 +281,12 @@ pub(in crate::game) mod tests {
 
     #[test]
     fn tnt_and_falling_blocks_have_no_entity_pick_result() {
-        assert!(!Game::has_pick_result(Some(Target::Tnt(10))));
-        assert!(!Game::has_pick_result(Some(Target::Falling(20))));
-        assert!(!Game::has_pick_result(Some(Target::Projectile(30))));
-        assert!(!Game::has_pick_result(Some(Target::DragonPart(40))));
-        assert!(Game::has_pick_result(Some(Target::Boat(50))));
-        assert!(Game::has_pick_result(Some(Target::Mob(60))));
+        use crate::game::pick_entity_common::has_pick_result;
+        assert!(!has_pick_result(Some(Target::Tnt(10))));
+        assert!(!has_pick_result(Some(Target::Falling(20))));
+        assert!(!has_pick_result(Some(Target::Projectile(30))));
+        assert!(!has_pick_result(Some(Target::DragonPart(40))));
+        assert!(has_pick_result(Some(Target::Boat(50))));
+        assert!(has_pick_result(Some(Target::Mob(60))));
     }
 }

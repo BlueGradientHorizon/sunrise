@@ -54,22 +54,6 @@ impl Game<'_> {
         }
     }
 
-    /// Whether Pick Block can name an item for the entity (`Entity.getPickResult`).
-    pub(in crate::game) fn has_pick_result(target: Option<crate::game::commands::Target>) -> bool {
-        use crate::game::commands::Target;
-        !matches!(
-            target,
-            Some(
-                Target::Projectile(_)
-                    | Target::DragonPart(_)
-                    | Target::Other(_)
-                    | Target::General(_)
-                    | Target::Tnt(_)
-                    | Target::Falling(_)
-            )
-        )
-    }
-
     pub(in crate::game) fn ask_can_rider_interact(
         &mut self,
         subject: mod_api::EntityRef,
