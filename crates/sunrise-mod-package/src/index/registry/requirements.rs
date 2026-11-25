@@ -113,7 +113,7 @@ fn manifest_conflicts<R: Read + Seek>(
     let mut conflicts = BTreeSet::new();
     while let Some(dir) = todo.pop() {
         let name = dir.join("Cargo.toml").to_string_lossy().replace('\\', "/");
-        if !crate::manifest::source_file(&name) || !seen.insert(name.clone()) {
+        if crate::manifest::reserved(&name) || !seen.insert(name.clone()) {
             continue;
         }
         let Ok(file) = zip.by_name(&name) else {

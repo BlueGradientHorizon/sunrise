@@ -27,8 +27,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// The manifest's file name in a `.smod` or a mod folder.
-pub const MANIFEST: &str = "sunrise-mod.toml";
 /// The largest uses table ([`USES_FILE`]) a package may carry: what the surface crate reads.
 pub const MAX_USES: u64 = mod_surface::uses::MAX_USES_BYTES as u64;
 /// The content manifest API this build loads.
@@ -59,8 +57,8 @@ pub const STORAGE_DIR: &str = ".sunrise-mod-data";
 /// Maximum bytes in the complete manifest, including properties and dependency explanations.
 pub const MAX_MANIFEST: u64 = 32 << 20;
 
-/// The most source files (`Cargo.toml`, `Cargo.lock`, `build.rs`, `src/**`, the root notices) a
-/// package selects: as many as its content files, so a port laid out one file per class fits.
+/// The most source files a package selects (every file of a native package that is not one of its
+/// [`reserved`] names): as many as its content files, so a port laid out one file per class fits.
 pub const MAX_SOURCE_FILES: usize = crate::content::MAX_FILES;
 /// The most bytes those source files take, unpacked.
 pub const MAX_SOURCE_BYTES: u64 = 64 << 20;
@@ -948,7 +946,7 @@ impl Manifest {
                 if !rust_ident(&module.name) {
                     return Err(format!("{MANIFEST}: module name must be an identifier"));
                 }
-                if !plain_path(&module.source) || !source_file(&module.source) {
+                if !plain_path(&module.source) || !module.source.starts_with("src/") {
                     return Err(format!(
                         "{MANIFEST}: module source must be a file under src/"
                     ));
@@ -1099,7 +1097,7 @@ impl std::fmt::Display for ServerOnlyDeclaration {
 
 impl std::error::Error for ServerOnlyDeclaration {}
 
-pub use mod_source::package::{NOT_PACKAGED, source_file};
+pub use mod_source::package::{MANIFEST, NOT_PACKAGED, reserved};
 
 pub(crate) fn plain_path(name: &str) -> bool {
     !name.starts_with('/')
@@ -1276,17 +1274,7 @@ impl Package {
                     return Err(format!("invalid or duplicate package path: {name}").into());
                 }
                 if !directory {
-                    if name != MANIFEST
-                        && name != USES_FILE
-                        && name != "icon.png"
-                        && !name.starts_with("runtime/")
-                        && !name.starts_with("assets/")
-                        && !name.starts_with("data/")
-                        && !source_file(&name)
-                    {
-                        return Err(format!("unexpected package path: {name}").into());
-                    }
-                    if source_file(&name) {
+                    if !reserved(&name) {
                         source_count += 1;
                         source_bytes = source_bytes
                             .checked_add(size)
@@ -1381,9 +1369,10 @@ impl Package {
         }
         Ok(Package { manifest, icon })
     }
-    /// Select and validate a flat project's source and resource files deterministically. Any
-    /// other file in the folder (a `module.toml`, `tools/generate.rs`, `.cargo/config.toml`,
-    /// `rust-toolchain.toml`) is left out, and no folder but `src/` is read for source.
+    /// Select and validate a flat project's source and resource files deterministically. The
+    /// source is what `cargo package` would put in the crate ([`mod_source::package::source_files`]):
+    /// a file outside it (one under `.cargo/`, one `[package] exclude` or `.gitignore` names) is
+    /// left out unread.
     pub fn directory_files(
         &self,
         root: &Path,
@@ -1492,7 +1481,7 @@ impl Package {
         put(MANIFEST, manifest_text.as_bytes())?;
         let code = manifest.native.is_some();
         for (name, bytes) in files {
-            let source = code && source_file(name) && plain_path(name);
+            let source = code && !reserved(name) && plain_path(name);
             if let Some(below) = name.strip_prefix("runtime/") {
                 let table = manifest
                     .runtime
@@ -1683,10 +1672,10 @@ mod runtime_files_tests;
 
 #[cfg(test)]
 mod tests {
-    /// A project folder packs its source set and leaves every other file out, so the archive
-    /// reads back as a valid package.
+    /// A project folder packs the files `cargo package` would carry, whatever their kind or
+    /// folder, and not what Cargo leaves out, so the archive reads back as a valid package.
     #[test]
-    fn a_native_project_folder_packs_its_source_set_and_leaves_other_files_out() {
+    fn a_native_project_folder_packs_the_files_cargo_package_would_carry() {
         let folder = tempfile::tempdir().unwrap();
         let write = |name: &str, text: &str| {
             let path = folder.path().join(name);
@@ -1715,7 +1704,7 @@ mod tests {
             "[source.crates-io]\nreplace-with='local'\n",
         );
         write("rust-toolchain.toml", "[toolchain]\nchannel='nightly'\n");
-        // A folder beside the crate is never read, so a name packing could not encode is no bar.
+        // A name packing could not encode is left out, and is no bar.
         #[cfg(unix)]
         {
             use std::os::unix::ffi::OsStrExt;
@@ -1750,7 +1739,18 @@ mod tests {
             .map(|name| name.unwrap().into_owned())
             .collect();
         names.sort();
-        assert_eq!(names, ["Cargo.toml", "src/lib.rs", MANIFEST]);
+        assert_eq!(
+            names,
+            [
+                "Cargo.toml",
+                "module.toml",
+                "rust-toolchain.toml",
+                "sources/wings.toml",
+                "src/lib.rs",
+                "sunrise-mod.toml",
+                "tools/generate.rs",
+            ]
+        );
         assert!(Package::read(&archive).unwrap().is_native());
     }
 
@@ -2268,9 +2268,6 @@ capabilities = ["registries"]
                 .map(String::from_utf8_lossy)
                 .collect::<Vec<_>>()
         );
-        assert!(!source_file(
-            ".sunrise/sdk/api/crates/sunrise-mod-api/src/lib.rs"
-        ));
         std::fs::write(root.join("src/lib.rs"), b"MZ executable").unwrap();
         assert!(
             Package::pack_directory(&root)

@@ -109,13 +109,13 @@ pub fn copy(bundle: &Bundle, to: &Path) -> Result<(), String> {
     copy_files(to, files)
 }
 
-/// Only code enters the tool; runtime resource packs stay with the package.
+/// Only code enters the tool: every source file, with the package's own files and runtime
+/// resource packs staying with the package.
 pub fn copy_tool_input(bundle: &Bundle, to: &Path) -> Result<(), String> {
     copy_files(
         to,
         checked_files(bundle)?.into_iter().filter(|(name, _)| {
-            manifest::source_file(name)
-                || bundle.native().mixin.iter().any(|row| row.helper == *name)
+            !manifest::reserved(name) || bundle.native().mixin.iter().any(|row| row.helper == *name)
         }),
     )
 }
