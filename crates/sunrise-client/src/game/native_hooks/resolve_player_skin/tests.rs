@@ -34,6 +34,16 @@ impl Hooks for SkinPicker {
     }
 }
 
+/// The atlas sprite a selected dynamic texture is copied into: its skin slot (placing it is
+/// idempotent).
+fn skin_slot_name(game: &mut crate::game::Game<'_>, texture: &Identifier) -> String {
+    let (slot, _) = game
+        .skin_slots
+        .place(format!("dynamic:{texture}"))
+        .expect("a skin slot");
+    format!("sunrise/skin{slot}")
+}
+
 #[test]
 #[ignore = "daily"]
 fn live_skin_selection_reaches_the_hand_body_and_preview_and_restores_vanilla() {
@@ -109,11 +119,11 @@ fn live_skin_selection_reaches_the_hand_body_and_preview_and_restores_vanilla() 
                 assert!(!vanilla_hand.is_empty(), "the vanilla arm draws");
                 choice.lock().unwrap().selection =
                     Some(PlayerSkinOverride::new(wide.clone(), PlayerModel::Wide));
-                assert_eq!(draw(game, &wide.to_string()).0, vanilla_hand);
+                assert_eq!(draw(game, &skin_slot_name(game, &wide)).0, vanilla_hand);
 
                 choice.lock().unwrap().selection =
                     Some(PlayerSkinOverride::new(slim.clone(), PlayerModel::Slim));
-                let slim_hand = draw(game, &slim.to_string()).0;
+                let slim_hand = draw(game, &skin_slot_name(game, &slim)).0;
                 assert!(!slim_hand.is_empty(), "the new texture draws on the arm");
                 assert_ne!(
                     slim_hand, vanilla_hand,
@@ -122,7 +132,7 @@ fn live_skin_selection_reaches_the_hand_body_and_preview_and_restores_vanilla() 
 
                 game.apply_camera_type(CameraType::ThirdPersonBack);
                 game.screen = Screen::Inventory;
-                let (_, body, preview) = draw(game, &slim.to_string());
+                let (_, body, preview) = draw(game, &skin_slot_name(game, &slim));
                 assert!(body, "the world avatar uses the selection");
                 assert!(preview, "the inventory avatar uses that same selection");
 
@@ -145,7 +155,7 @@ fn live_skin_selection_reaches_the_hand_body_and_preview_and_restores_vanilla() 
                     Some(PlayerSkinOverride::new(slim.clone(), PlayerModel::Slim));
                 {
                     let _call = edit_texture();
-                    game.free_dynamic_texture(&slim).unwrap();
+                    game.release_dynamic_texture(&slim).unwrap();
                 }
                 assert_eq!(
                     draw(game, vanilla).0,

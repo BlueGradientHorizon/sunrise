@@ -11,7 +11,7 @@ renderers use their CPU routes; groups are a world-drawing facility, not another
 
 Implement `Hooks::resolve_player_skin` to change the local player's appearance
 without changing their profile. Upload the skin with
-[`create_dynamic_texture`](dynamic-textures.md) as a 64×64 RGBA image once per
+[`create_dynamic_texture`](dynamic-textures.md) as a 64×64 texture once per
 skin file. Normalize legacy 64×32 skins before uploading. Keep the texture id
 and its model width, then select them in the hook:
 
@@ -26,7 +26,8 @@ fn resolve_player_skin(&self, _: &dyn ClientHost, event: &mut ResolvePlayerSkinE
 Use `PlayerModel::Wide` for four-pixel arms and `PlayerModel::Slim` for
 three-pixel arms. The selection starts at `None` each frame; listeners can leave
 an earlier answer alone or clear it with `*event.selection = None`. A missing,
-freed or wrongly sized texture keeps the original texture **and** model.
+released or wrongly sized texture keeps the original texture **and** model. A selected
+texture is copied on the GPU into the player's skin slot each frame it is selected.
 The selection affects the third-person avatar and its skin layers, first-person
 arms, and inventory and creative previews. It does not change the cape, tab
 list, or anyone else's view.

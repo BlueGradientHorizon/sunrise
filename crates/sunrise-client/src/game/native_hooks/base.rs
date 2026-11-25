@@ -3960,9 +3960,7 @@ impl Game<'_> {
         batch.fill(&self.gui.atlas, x, y, w, h, rgba(r, g, b, a));
     }
     /// Part `src` (`[x, y, w, h]` in the sprite's own pixels) of sprite
-    /// `name` (vanilla's `gui/...`, a content mod's GUI texture `mymod:gui/...`,
-    /// or a client mod's dynamic texture bound to an atlas slot,
-    /// `create_dynamic_texture`), drawn stretched into `dst` (`[x, y, w, h]` in GUI
+    /// `name` (vanilla's `gui/...` or a content mod's GUI texture `mymod:gui/...`), drawn stretched into `dst` (`[x, y, w, h]` in GUI
     /// pixels), every texel multiplied by `tint` (`0xAARRGGBB`, a fluid's colour)
     /// when there is one. False when there is no such sprite.
     pub(in crate::game) fn native_sprite(

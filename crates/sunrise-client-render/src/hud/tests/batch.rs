@@ -168,11 +168,6 @@ fn draw_scope_rollback_restores_the_prior_batch_tail() {
                 height: 1,
                 rgba: vec![255; 4],
             });
-            batch.image_patches.push(dynamic_textures::ImagePatch {
-                origin: [0, 4],
-                size: [1, 1],
-                rgba: Arc::new([255; 4]),
-            });
             batch
                 .inline_profiles
                 .push(Arc::new(serde_json::json!({"name":"scoped"})));
@@ -207,6 +202,5 @@ fn draw_scope_rollback_restores_the_prior_batch_tail() {
     );
     assert!(batch.pictures.is_empty());
     assert!(batch.patches.is_empty());
-    assert!(batch.image_patches.is_empty());
     assert_eq!(batch.inline_profiles, [profile]);
 }

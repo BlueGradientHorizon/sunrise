@@ -173,6 +173,31 @@ impl HudBatch {
         self.picture_quad(picture, at, uvs, tint);
     }
 
+    /// `GuiGraphicsExtractor.blit` of the dynamic texture `handle`, `size` pixels, as
+    /// [`Self::texture`] draws a standalone one.
+    pub fn dynamic_texture(
+        &mut self,
+        handle: u64,
+        size: [u32; 2],
+        [x, y, w, h]: [f32; 4],
+        uv: [f32; 2],
+        [src, tex]: [[i32; 2]; 2],
+        tint: u32,
+    ) {
+        let (tw, th) = (tex[0] as f32, tex[1] as f32);
+        let rect = Rect {
+            u0: uv[0] / tw,
+            v0: uv[1] / th,
+            u1: (uv[0] + src[0] as f32) / tw,
+            v1: (uv[1] + src[1] as f32) / th,
+            w: size[0],
+            h: size[1],
+        };
+        let start = self.vertices.len();
+        self.rect_uv(x, y, w, h, rect, tint);
+        self.blend_since(start, Blend::Dynamic(handle));
+    }
+
     fn picture_quad(
         &mut self,
         picture: Arc<Picture>,
@@ -233,6 +258,132 @@ impl HudRenderer {
         }
     }
 
+    /// The bind group `picture_pipeline` draws a standalone texture `view` with, sampled by
+    /// `sampler`.
+    fn picture_group(
+        &self,
+        device: &wgpu::Device,
+        view: &wgpu::TextureView,
+        sampler: &wgpu::Sampler,
+    ) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("GUI picture"),
+            layout: &self.layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: self.uniform.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(&self.atlas_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::Sampler(sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::Sampler(sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: wgpu::BindingResource::TextureView(&self.atlas_view),
+                },
+            ],
+        })
+    }
+
+    pub(super) fn draw_dynamic(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        handle: u64,
+        range: std::ops::Range<u32>,
+        coverage: bool,
+    ) {
+        if let Some(group) = self
+            .dynamic_groups
+            .get(&handle)
+            .map(|(_, group)| group)
+            .or(self.dynamic_missing.as_ref())
+        {
+            pass.set_bind_group(0, group, &[]);
+            pass.set_pipeline(self.picture_pipeline.get(coverage));
+            pass.draw(range, 0..1);
+            pass.set_bind_group(0, &self.group, &[]);
+        }
+    }
+
+    /// Bind groups for the dynamic textures `batch` draws, made again for a texture that was
+    /// made again; those no run of this frame draws are dropped (the textures stay in the
+    /// store). Sampled nearest with repeat, one mip level: `DynamicTexture`'s constructor.
+    pub(super) fn prepare_dynamic(
+        &mut self,
+        device: &wgpu::Device,
+        uploads: &mut crate::gfx::upload::Uploads,
+        encoder: &mut wgpu::CommandEncoder,
+        batch: &HudBatch,
+    ) {
+        let drawn: HashSet<u64> = batch
+            .blends
+            .iter()
+            .filter_map(|(_, blend)| match blend {
+                Blend::Dynamic(handle) => Some(*handle),
+                _ => None,
+            })
+            .collect();
+        self.dynamic_groups
+            .retain(|handle, _| drawn.contains(handle));
+        let mut shared = None;
+        for handle in drawn {
+            let Some((view, revision)) = self.dynamic.view(handle) else {
+                // Released since the draw was submitted: vanilla's missing texture.
+                self.dynamic_groups.remove(&handle);
+                if self.dynamic_missing.is_none() {
+                    let (width, height, pixels) = missing_image();
+                    let texture = device.create_texture(&wgpu::TextureDescriptor {
+                        label: Some("Missing dynamic texture"),
+                        size: wgpu::Extent3d {
+                            width,
+                            height,
+                            depth_or_array_layers: 1,
+                        },
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: wgpu::TextureDimension::D2,
+                        format: wgpu::TextureFormat::Rgba8Unorm,
+                        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                        view_formats: &[],
+                    });
+                    uploads.texture(encoder, texture.as_image_copy(), width, height, &pixels);
+                    let view = texture.create_view(&Default::default());
+                    let sampler = device.create_sampler(&sampler(TextureFlags::default()));
+                    self.dynamic_missing = Some(self.picture_group(device, &view, &sampler));
+                }
+                continue;
+            };
+            if self
+                .dynamic_groups
+                .get(&handle)
+                .is_some_and(|(held, _)| *held == revision)
+            {
+                continue;
+            }
+            let shared = shared
+                .get_or_insert_with(|| device.create_sampler(&sampler(TextureFlags::default())));
+            let group = self.picture_group(device, &view, shared);
+            self.dynamic_groups.insert(handle, (revision, group));
+        }
+    }
+
     pub(super) fn prepare_pictures(
         &mut self,
         device: &wgpu::Device,
@@ -277,40 +428,7 @@ impl HudRenderer {
                 );
                 let view = texture.create_view(&Default::default());
                 let sampler = device.create_sampler(&sampler(picture.flags));
-                let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("GUI picture"),
-                    layout: &self.layout,
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: self.uniform.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: wgpu::BindingResource::TextureView(&view),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 2,
-                            resource: wgpu::BindingResource::Sampler(&sampler),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 3,
-                            resource: wgpu::BindingResource::TextureView(&self.atlas_view),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 4,
-                            resource: wgpu::BindingResource::Sampler(&sampler),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 5,
-                            resource: wgpu::BindingResource::Sampler(&sampler),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 6,
-                            resource: wgpu::BindingResource::TextureView(&self.atlas_view),
-                        },
-                    ],
-                });
+                let group = self.picture_group(device, &view, &sampler);
                 (picture.clone(), group)
             });
         }

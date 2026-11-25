@@ -1827,6 +1827,18 @@ pub fn render_hud(
     atlas: &crate::hud::HudAtlas,
     size: [u32; 2],
 ) -> std::result::Result<Vec<u8>, String> {
+    let mut frames = render_hud_frames(&[batch], atlas, size)?;
+    Ok(frames.remove(0))
+}
+
+/// [`render_hud`] for successive frames of one renderer, each batch drawn after the one before
+/// and read back on its own: what a batch's dynamic texture commands made in an earlier frame is
+/// still there in the next.
+pub fn render_hud_frames(
+    batches: &[&HudBatch],
+    atlas: &crate::hud::HudAtlas,
+    size: [u32; 2],
+) -> std::result::Result<Vec<Vec<u8>>, String> {
     let _gpu = crate::gfx::test_gpu::lock();
     let frame = software_frame(
         [atlas.width, atlas.height],
@@ -1851,27 +1863,31 @@ pub fn render_hud(
     // image, upload before the draw.
     hud.atlas_texture = Some(frame.atlas_texture.clone());
     let mut uploads = super::upload::Uploads::new(&frame.device);
-    let mut encoder = frame.device.create_command_encoder(&Default::default());
     let color = frame.color.create_view(&Default::default());
     let depth = frame.depth.create_view(&Default::default());
-    {
-        let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &color,
-                resolve_target: None,
-                depth_slice: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            ..Default::default()
-        });
+    let mut out = Vec::new();
+    for batch in batches {
+        let mut encoder = frame.device.create_command_encoder(&Default::default());
+        {
+            let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &color,
+                    resolve_target: None,
+                    depth_slice: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                ..Default::default()
+            });
+        }
+        hud.prepare(&frame.device, &mut uploads, &mut encoder, batch, size);
+        uploads.finish(&encoder);
+        hud.draw(&mut encoder, &color, &depth, batch, size);
+        out.push(readback(&frame, encoder)?);
     }
-    hud.prepare(&frame.device, &mut uploads, &mut encoder, batch, size);
-    uploads.finish(&encoder);
-    hud.draw(&mut encoder, &color, &depth, batch, size);
-    readback(&frame, encoder)
+    Ok(out)
 }
 
 /// Exposed reversed-Z world projection for cross-crate entity and OIT pixel tests.
