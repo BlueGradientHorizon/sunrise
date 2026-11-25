@@ -30,9 +30,13 @@ fn crack(breaker: i32, pos: [i32; 3], progress: i32) -> Heard {
     ("minecraft:overworld".to_owned(), breaker, pos, progress)
 }
 
+/// The block the server cracks, and the two dirt blocks the player digs.
 const STONE_AT: [i32; 3] = [0, 64, 0];
+const DIRT_A: [i32; 3] = [1, 64, 0];
+const DIRT_B: [i32; 3] = [2, 64, 0];
 
-/// A survival client of a test server in the overworld, with stone at `STONE_AT`.
+/// A survival client of a test server in the overworld, holding a diamond shovel, with stone at
+/// `STONE_AT` and dirt at `DIRT_A` and `DIRT_B`.
 fn with_client(name: &str, test: impl FnOnce(&mut Game<'_>)) {
     let selector = format!("game::remote::tests::client_break_progress_tests::{name}");
     if run_fresh_cases(
@@ -73,22 +77,41 @@ fn with_client(name: &str, test: impl FnOnce(&mut Game<'_>)) {
             .unwrap();
             player.ground.on_ground = true;
             game.player = Some(player);
+            game.inventory[0] = Some(ItemStack::new("minecraft:diamond_shovel", 1));
+            game.selected = 0;
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            let stone = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:stone")
-                .unwrap();
-            game.world
-                .set(STONE_AT[0], STONE_AT[1], STONE_AT[2], stone)
-                .unwrap();
+            let state = |game: &Game<'_>, name: &str| {
+                game.pack.assets.registry.default_state(name).unwrap()
+            };
+            let (stone, dirt) = (
+                state(game, "minecraft:stone"),
+                state(game, "minecraft:dirt"),
+            );
+            for (at, block) in [(STONE_AT, stone), (DIRT_A, dirt), (DIRT_B, dirt)] {
+                game.world.set(at[0], at[1], at[2], block).unwrap();
+            }
             heard();
             test(game);
         });
     });
+}
+
+/// Points the player's pick at the top face of `pos`.
+fn look_at(game: &mut Game<'_>, pos: [i32; 3]) {
+    game.forced_hit = Some(crate::game::Hit {
+        pos,
+        face: [0, 1, 0],
+        point: [
+            f64::from(pos[0]) + 0.5,
+            f64::from(pos[1]) + 1.0,
+            f64::from(pos[2]) + 0.5,
+        ],
+        inside: false,
+    });
+    game.refresh_client_pick(1.0);
+    game.forced_hit = None;
 }
 
 /// Each crack packet is told as the server sent it, a repeated stage and the removal included.
@@ -118,46 +141,35 @@ fn server_cracks_are_told_as_sent() {
     });
 }
 
-/// The local dig tells -1 when it starts with no progress, its stage on every tick after, and
-/// -1 when it stops, all as the player's own entity id.
+/// A diamond shovel digs dirt by 8 / 0.5 / 30 = 0.53 a tick: each dig tells -1 at its start and
+/// stage 5 on the tick after. The first dig stops there (-1); the second's next tick reaches
+/// 1.07 and breaks the block (-1). All of it is told as the player's own entity id.
 #[test]
 #[ignore = "daily"]
 fn the_local_dig_tells_its_stage_every_tick_and_its_stop() {
     with_client(
         "the_local_dig_tells_its_stage_every_tick_and_its_stop",
         |game| {
-            game.forced_hit = Some(crate::game::Hit {
-                pos: STONE_AT,
-                face: [0, 1, 0],
-                point: [0.5, 65.0, 0.5],
-                inside: false,
-            });
-            game.refresh_client_pick(1.0);
-            game.forced_hit = None;
             let own = game.own_entity_id();
+            look_at(game, DIRT_A);
+            game.remote_continue_attack(true);
+            game.remote_continue_attack(true);
+            game.remote_continue_attack(false);
+            look_at(game, DIRT_B);
             for _ in 0..3 {
                 game.remote_continue_attack(true);
             }
-            let told = heard();
-            assert_eq!(told.first(), Some(&crack(own, STONE_AT, -1)), "the start");
-            assert!(
-                told.len() >= 2,
-                "the ticks after the start are told: {told:?}"
-            );
-            let progress = game.mining.as_ref().unwrap().progress;
-            let stage = if progress > 0.0 {
-                (progress * 10.0) as i32
-            } else {
-                -1
-            };
             assert_eq!(
-                told.last(),
-                Some(&crack(own, STONE_AT, stage)),
-                "the latest tick"
+                heard(),
+                [
+                    crack(own, DIRT_A, -1),
+                    crack(own, DIRT_A, 5),
+                    crack(own, DIRT_A, -1),
+                    crack(own, DIRT_B, -1),
+                    crack(own, DIRT_B, 5),
+                    crack(own, DIRT_B, -1),
+                ]
             );
-
-            game.remote_continue_attack(false);
-            assert_eq!(heard(), [crack(own, STONE_AT, -1)], "the stop");
         },
     );
 }

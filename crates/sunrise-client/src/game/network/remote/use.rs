@@ -163,6 +163,8 @@ impl Game<'_> {
                 (r.destroying, r.destroying_item) = (Some((hit.pos, face, 0.0)), held);
                 r.is_destroying = true;
             }
+            // startDestroyBlock tells its level the new dig before the first hit's effects.
+            self.native_local_break_progress(hit.pos, 0.0);
             // startDestroyBlock plays the first hit and crack itself; the
             // server's level events 2019 and 2020 do the rest.
             self.breaking_block_effects(hit.pos, hit.face, true);
@@ -173,7 +175,6 @@ impl Game<'_> {
                 ticks: 0,
                 crack: None,
             }));
-            self.native_local_break_progress(hit.pos, 0.0);
             return true;
         }
         let Some((pos, last_face, done)) = self.remote.as_ref().and_then(|r| r.destroying) else {
