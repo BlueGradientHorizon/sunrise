@@ -6,7 +6,7 @@ pub(in crate::game::client_side) use crate::game::remote::status::*;
 pub(in crate::game::client_side) use sunrise_client::skins;
 
 impl Game<'_> {
-    pub(in crate::game) fn remote_status(&self) -> Option<serde_json::Value> {
+    pub(in crate::game::client_side) fn remote_status(&self) -> Option<serde_json::Value> {
         let r = self.remote.as_ref()?;
         Some(serde_json::json!({
             "address": sunrise_client::net::shown_address(&r.session.address),

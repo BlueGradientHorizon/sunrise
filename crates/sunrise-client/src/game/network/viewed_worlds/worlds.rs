@@ -60,7 +60,7 @@ pub(in crate::game) struct ViewedWorld {
 }
 
 impl ViewedWorld {
-    pub(in crate::game) fn new(
+    pub(in crate::game::client_side) fn new(
         level: String,
         format: Arc<ChunkFormat>,
         default_clock: Option<i32>,
@@ -302,7 +302,7 @@ pub(in crate::game) enum Binding {
 
 impl ViewedWorlds {
     /// Where a `run` or `close` of `slot` at `epoch` goes.
-    pub(in crate::game) fn binding(&self, slot: i32, epoch: i32) -> Binding {
+    pub(in crate::game::client_side) fn binding(&self, slot: i32, epoch: i32) -> Binding {
         if self.latest.is_none_or(|latest| epoch > latest) {
             return Binding::Unknown;
         }
@@ -312,20 +312,23 @@ impl ViewedWorlds {
         }
     }
     /// Whether an `open` at `epoch` is newer than every epoch given before, as each must be.
-    pub(in crate::game) fn is_new(&self, epoch: i32) -> bool {
+    pub(in crate::game::client_side) fn is_new(&self, epoch: i32) -> bool {
         self.latest.is_none_or(|latest| epoch > latest)
     }
     /// How many levels it views.
     #[cfg(test)]
-    pub(in crate::game) fn len(&self) -> usize {
+    pub(in crate::game::client_side) fn len(&self) -> usize {
         self.worlds.len()
     }
-    pub(in crate::game) fn get_mut(&mut self, level: i32) -> Option<&mut ViewedWorld> {
+    pub(in crate::game::client_side) fn get_mut(&mut self, level: i32) -> Option<&mut ViewedWorld> {
         self.worlds.get_mut(&level).map(|(_, world)| world)
     }
     /// The key of the level named `level`, while the server keeps it open: what `host.level`
     /// hands a client mod for it.
-    pub(in crate::game) fn key_of(&self, level: &str) -> Option<mod_api::DimensionKey> {
+    pub(in crate::game::client_side) fn key_of(
+        &self,
+        level: &str,
+    ) -> Option<mod_api::DimensionKey> {
         self.worlds
             .values()
             .find(|(_, w)| w.level == level)
@@ -333,25 +336,33 @@ impl ViewedWorlds {
     }
     /// The world of the level `key` names, while the server keeps it open: what a client mod's
     /// reads through its handle read.
-    pub(in crate::game) fn world_of(&self, key: mod_api::DimensionKey) -> Option<&World> {
+    pub(in crate::game::client_side) fn world_of(
+        &self,
+        key: mod_api::DimensionKey,
+    ) -> Option<&World> {
         self.worlds
             .values()
             .find(|(_, w)| w.key == key)
             .map(|(_, w)| &w.world)
     }
     /// The slot of the level named `level`, if the client views it.
-    pub(in crate::game) fn slot_of(&self, level: &str) -> Option<i32> {
+    pub(in crate::game::client_side) fn slot_of(&self, level: &str) -> Option<i32> {
         self.worlds
             .iter()
             .find(|(_, (_, w))| w.level == level)
             .map(|(&slot, _)| slot)
     }
     /// The world of `slot`, if one is bound to it.
-    pub(in crate::game) fn get(&self, slot: i32) -> Option<&ViewedWorld> {
+    pub(in crate::game::client_side) fn get(&self, slot: i32) -> Option<&ViewedWorld> {
         self.worlds.get(&slot).map(|(_, world)| world)
     }
     /// Binds `slot` to `world` at `epoch`, replacing any world it held: an `open` starts afresh.
-    pub(in crate::game) fn insert(&mut self, slot: i32, epoch: i32, world: ViewedWorld) {
+    pub(in crate::game::client_side) fn insert(
+        &mut self,
+        slot: i32,
+        epoch: i32,
+        world: ViewedWorld,
+    ) {
         self.latest = Some(self.latest.map_or(epoch, |latest| latest.max(epoch)));
         if let Some((_, old)) = self.worlds.insert(slot, (epoch, world)) {
             self.forget_sections(&old);
@@ -359,13 +370,13 @@ impl ViewedWorlds {
         }
     }
     /// Takes `slot`'s world out, whole: a travel into it (`switch`).
-    pub(in crate::game) fn take(&mut self, slot: i32) -> Option<ViewedWorld> {
+    pub(in crate::game::client_side) fn take(&mut self, slot: i32) -> Option<ViewedWorld> {
         let (_, world) = self.worlds.remove(&slot)?;
         self.forget_sections(&world);
         Some(world)
     }
     /// Drops `slot`'s world (`close`), releasing the slot; false when it held none.
-    pub(in crate::game) fn remove(&mut self, slot: i32) -> bool {
+    pub(in crate::game::client_side) fn remove(&mut self, slot: i32) -> bool {
         let Some((_, world)) = self.worlds.remove(&slot) else {
             return false;
         };
@@ -374,7 +385,7 @@ impl ViewedWorlds {
         true
     }
     /// Drops every world: a Login, a Respawn or a new configuration phase. The epochs go on.
-    pub(in crate::game) fn clear(&mut self) {
+    pub(in crate::game::client_side) fn clear(&mut self) {
         self.meshing = None;
         for (_, (_, world)) in self.worlds.drain() {
             free(world);
@@ -385,7 +396,7 @@ impl ViewedWorlds {
     }
     /// Keeps `world`, the level a travel left, until the `swap` that binds it to `slot`, the slot
     /// of the level entered.
-    pub(in crate::game) fn hold_left(&mut self, slot: i32, world: ViewedWorld) {
+    pub(in crate::game::client_side) fn hold_left(&mut self, slot: i32, world: ViewedWorld) {
         if let Some((_, old)) = self.left.replace((slot, world)) {
             self.forget_sections(&old);
             free(old);
@@ -393,7 +404,7 @@ impl ViewedWorlds {
     }
     /// The server's `swap`: binds the level a travel left to `slot` at `epoch`. False when the
     /// client made no travel swap to `slot`, which it refuses.
-    pub(in crate::game) fn bind_left(&mut self, slot: i32, epoch: i32) -> bool {
+    pub(in crate::game::client_side) fn bind_left(&mut self, slot: i32, epoch: i32) -> bool {
         match self.left.take() {
             Some((held, world)) if held == slot => {
                 self.insert(slot, epoch, world);

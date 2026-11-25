@@ -166,7 +166,7 @@ pub(crate) use resident_lifetime_slot;
 
 macro_rules! define_resident_access {
     (($this:ident, $($projectiles:ident).+) $($kind:ident => $target:ident: $($field:tt).+,)*) => {
-        pub(in crate::game) fn bind_resident_owners(&mut $this, journal: &Journal, dimension: DimensionKey, track_saved_uuids: bool) {
+        pub(in crate::game::server_side) fn bind_resident_owners(&mut $this, journal: &Journal, dimension: DimensionKey, track_saved_uuids: bool) {
             if track_saved_uuids {
                 $this.persist.uuids.bind(journal, dimension);
             }
@@ -174,7 +174,7 @@ macro_rules! define_resident_access {
             $this$(.$projectiles)+.bind_residency(journal, Owner { dimension, kind: Kind::Projectile }, |entity| (entity.id, entity.join_seq()));
             $this.dragon.bind_residency_specialized(journal, Owner { dimension, kind: Kind::Dragon }, |entity| (entity.id, entity.join_seq()), sunrise_client::join_seq::residency::Source::Ordinary, Some((Kind::DragonPart, 8, |dragon, offset| dragon.parts.get(usize::from(offset)).map(|part| part.3))), None);
         }
-        pub(in crate::game) fn with_resident_owner_slot<R>(
+        pub(in crate::game::server_side) fn with_resident_owner_slot<R>(
             &mut $this,
             at: Location,
             visit: impl FnOnce(&mut sunrise_mod_runtime::attachments::AttachmentLifetime) -> R,
@@ -200,7 +200,7 @@ macro_rules! define_resident_access {
                 Kind::Player | Kind::Hook => SlotAccess::UnsupportedKind(at.owner.kind),
             }
         }
-        pub(in crate::game) fn locate_resident_attachment_owner(&$this, at: Location) -> Option<SourceEntity<(Target, bool)>> {
+        pub(in crate::game::server_side) fn locate_resident_attachment_owner(&$this, at: Location) -> Option<SourceEntity<(Target, bool)>> {
             let source = match at.owner.kind {
                 $(Kind::$kind => {
                     let index = $this$(.$field)+.locate(at.join)?;
@@ -233,7 +233,7 @@ macro_rules! define_resident_access {
             };
             source
         }
-        pub(in crate::game) fn locate_resident_owner(&$this, at: Location) -> Option<SourceEntity<(Target, bool)>> {
+        pub(in crate::game::server_side) fn locate_resident_owner(&$this, at: Location) -> Option<SourceEntity<(Target, bool)>> {
             let source = $this.locate_resident_attachment_owner(at).map(|mut source| {
                 if let Target::DragonPart(_) = source.value.0 {
                     source.value.1 &= $this.dragon.as_ref().is_some_and(|dragon| !$this.persist.removals.contains(&Target::Dragon(dragon.id)));

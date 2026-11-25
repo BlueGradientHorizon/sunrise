@@ -24,7 +24,7 @@ pub(in crate::game) enum PadCapture {
 
 impl Game<'_> {
     /// The overlay that owns the pad now, if one does.
-    pub(in crate::game) fn pad_capture(&self) -> Option<PadCapture> {
+    pub(in crate::game::client_side) fn pad_capture(&self) -> Option<PadCapture> {
         if self.pad.0.menu.osk.is_some() {
             Some(PadCapture::Keyboard)
         } else if self.prompt_open() {
@@ -37,14 +37,14 @@ impl Game<'_> {
     }
 
     /// The on-screen keyboard owns the pad.
-    pub(in crate::game) fn pad_keyboard_captures(&self) -> bool {
+    pub(in crate::game::client_side) fn pad_keyboard_captures(&self) -> bool {
         self.pad_capture() == Some(PadCapture::Keyboard)
     }
 
     /// The radial menu owns the pad: its stick doesn't walk or turn the view, its buttons are its
     /// own, and a bumped mouse does nothing. What is drawn gives way only once it shows
     /// (`pad_radial_shown`): a quick tap draws nothing.
-    pub(in crate::game) fn pad_radial_captures(&self) -> bool {
+    pub(in crate::game::client_side) fn pad_radial_captures(&self) -> bool {
         self.pad_capture() == Some(PadCapture::Radial)
     }
 }

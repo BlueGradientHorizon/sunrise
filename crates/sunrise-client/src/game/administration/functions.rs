@@ -171,7 +171,7 @@ pub(in crate::game) fn overlay_files(
 impl FnState {
     /// The enabled world packs in resource priority order, highest first: a
     /// later selected pack overrides an earlier one (`PackRepository` order).
-    pub(in crate::game) fn pack_sources(
+    pub(in crate::game::server_side) fn pack_sources(
         &self,
     ) -> impl DoubleEndedIterator<Item = &sunrise_assets::resource_source::ResourceSource> {
         self.enabled
@@ -182,7 +182,7 @@ impl FnState {
     }
 
     /// The highest enabled world pack providing this data resource.
-    pub(in crate::game) fn data_resource(
+    pub(in crate::game::server_side) fn data_resource(
         &self,
         name: &str,
     ) -> Option<sunrise_assets::resource_source::Resource> {
@@ -214,7 +214,7 @@ impl Game<'_> {
         self.server.world_root.join("datapacks.json")
     }
     /// Discover and load the data packs of the world (once, or on `/reload`).
-    pub(in crate::game) fn ensure_datapacks(&mut self) {
+    pub(in crate::game::server_side) fn ensure_datapacks(&mut self) {
         if self.fns.0.loaded || self.server.world_root.as_os_str().is_empty() {
             return;
         }
@@ -222,7 +222,7 @@ impl Game<'_> {
             log::warn!("Sunrise: {}", error.diagnostic());
         }
     }
-    pub(in crate::game) fn open_world_datapacks(
+    pub(in crate::game::server_side) fn open_world_datapacks(
         &mut self,
         enabled_features: &[String],
     ) -> Result<PackStack, ReloadStageError> {
@@ -356,7 +356,11 @@ impl Game<'_> {
     /// Macro lines are parsed
     /// only after substitution, but ordinary lines in a macro file still
     /// have to compile (`CommandFunction.fromLines`).
-    pub(in crate::game) fn admit_store(&mut self, mut store: DataStore, stack: &PackStack) {
+    pub(in crate::game::server_side) fn admit_store(
+        &mut self,
+        mut store: DataStore,
+        stack: &PackStack,
+    ) {
         // The installed candidate already selected and checked the same winners
         // gameplay uses, including the native contributions.
         if let Some(tables) = &self.world_tables.0 {
@@ -468,7 +472,7 @@ impl Game<'_> {
         let json = serde_json::json!({"enabled": self.fns.0.enabled, "disabled": disabled});
         let _ = std::fs::write(self.datapack_settings_path(), json.to_string());
     }
-    pub(in crate::game) fn sync_function_registries(&mut self, stack: &PackStack) {
+    pub(in crate::game::server_side) fn sync_function_registries(&mut self, stack: &PackStack) {
         self.sync_schedule_registry();
         self.sync_enchantment_registries();
         let reg = &mut self.ui.registries;
@@ -579,7 +583,7 @@ impl Game<'_> {
             });
         }
     }
-    pub(in crate::game) fn save_schedule(&self) {
+    pub(in crate::game::server_side) fn save_schedule(&self) {
         if !self.fns.0.loaded || self.remote.is_some() {
             return;
         }
@@ -622,7 +626,7 @@ impl Game<'_> {
     /// `ServerFunctionManager.tick`: the `#minecraft:load` functions after a
     /// reload, then the `#minecraft:tick` ones, before the levels tick (and
     /// before the game time moves on).
-    pub(in crate::game) fn tick_functions(&mut self) {
+    pub(in crate::game::server_side) fn tick_functions(&mut self) {
         if self.remote.is_some() {
             return;
         }
@@ -640,7 +644,7 @@ impl Game<'_> {
     }
     /// `ServerLevel.tickTime`'s `getScheduledEvents().tick`: the scheduled
     /// functions due at the game time this tick has just reached.
-    pub(in crate::game) fn run_scheduled_functions(&mut self) {
+    pub(in crate::game::server_side) fn run_scheduled_functions(&mut self) {
         self.ensure_datapacks();
         if self.remote.is_some() {
             return;
@@ -686,7 +690,7 @@ impl Game<'_> {
 
     /// The function branch of advancement rewards: resolve the optional function
     /// and execute it as the rewarded player, with suppressed output and GAMEMASTER permission.
-    pub(in crate::game) fn run_advancement_reward_function(&mut self, id: &str) {
+    pub(in crate::game::server_side) fn run_advancement_reward_function(&mut self, id: &str) {
         self.ensure_datapacks();
         let Some(function) = self.fns.0.store.functions.get(id).cloned() else {
             return;
@@ -723,7 +727,7 @@ impl Game<'_> {
     // ---- running -----------------------------------------------------------------
 
     /// Run one function with `source`: its commands in order, until a `return`.
-    pub(in crate::game) fn run_function(
+    pub(in crate::game::server_side) fn run_function(
         &mut self,
         f: &Function,
         args: Option<&Tag>,
@@ -818,7 +822,7 @@ impl Game<'_> {
         self.ui.dispatcher.0.clone()
     }
     /// The functions a `FunctionArgument` names: a function or a tag.
-    pub(in crate::game) fn functions_named(&mut self, name: &str) -> R<Vec<Function>> {
+    pub(in crate::game::server_side) fn functions_named(&mut self, name: &str) -> R<Vec<Function>> {
         match name.strip_prefix('#') {
             // ServerFunctionLibrary.getTag: an unknown tag is empty.
             Some(tag) => {
@@ -871,7 +875,7 @@ impl Game<'_> {
 
     /// `FunctionCommand.decorateOutputIfNeeded`: consume only this invocation's
     /// prepared call before its body can invoke another function.
-    pub(in crate::game) fn cmd_function(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_function(&mut self, ctx: &Context) -> R<i32> {
         let source = self
             .server
             .command_source
@@ -1000,7 +1004,7 @@ impl Game<'_> {
     }
     /// `FunctionCommand.queueFunctionsNoReturn`: starts are emitted while the
     /// eligible direct plain-function calls are prepared, before their bodies.
-    pub(in crate::game) fn prepare_function_batch(
+    pub(in crate::game::server_side) fn prepare_function_batch(
         &mut self,
         ctx: &Context,
         sources: &[Source],
@@ -1048,7 +1052,7 @@ impl Game<'_> {
         Some(tasks)
     }
     /// `return <value>` and `return fail` (`return run` is a chain).
-    pub(in crate::game) fn cmd_return(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_return(&mut self, id: &str, ctx: &Context) -> R<i32> {
         if id == "return.fail" {
             self.finish_return(None);
             self.exec.0.callback = Some(Some((false, 0)));
@@ -1061,7 +1065,7 @@ impl Game<'_> {
         self.finish_return(Some(value));
         Ok(value)
     }
-    pub(in crate::game) fn cmd_schedule(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_schedule(&mut self, id: &str, ctx: &Context) -> R<i32> {
         if id == "schedule.clear" {
             let Some(Arg::Resource(name)) = ctx.get("function").cloned() else {
                 return Ok(0);
@@ -1290,7 +1294,7 @@ impl Game<'_> {
             })
             .unwrap_or_default()
     }
-    pub(in crate::game) fn cmd_datapack(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_datapack(&mut self, id: &str, ctx: &Context) -> R<i32> {
         let name = match ctx.get("name") {
             Some(Arg::Str(n)) => Some(n.clone()),
             _ => None,
@@ -1535,7 +1539,7 @@ impl Game<'_> {
 
     /// `ResourceOrIdArgument.getLootPredicate`: accept the inline or named
     /// predicate, then test it with the existing source entity and origin.
-    pub(in crate::game) fn check_predicate(&mut self, id: &str) -> R<bool> {
+    pub(in crate::game::server_side) fn check_predicate(&mut self, id: &str) -> R<bool> {
         self.ensure_datapacks();
         // ResourceOrIdArgument retains either an inline value or a named id.
         // Both use the same evaluator and command-source context below.

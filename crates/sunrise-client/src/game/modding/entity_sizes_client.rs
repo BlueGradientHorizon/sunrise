@@ -3,8 +3,6 @@ pub(in crate::game::client_side) use super::Game;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::entity::{Entity as _, with_entity, with_entity_mut};
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::entity_sizes::synced_pose;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::entity_sizes::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use mod_api::{EntityRef, Pose};
@@ -57,25 +55,13 @@ pub(in crate::game) mod tests {
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::entity_sizes::tests::add_entity;
     #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::entity_sizes::tests::corners;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::entity_sizes::tests::deliver;
-    #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::entity_sizes::tests::doubled;
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::entity_sizes::tests::entity_data;
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::entity_sizes::tests::in_fresh_process;
     #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::entity_sizes::tests::m_pose;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::entity_sizes::tests::made_box;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::entity_sizes::tests::scale;
-    #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::entity_sizes::tests::with_loopback_client;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::entity_sizes::tests::with_server;
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::entity_sizes::tests::*;
     #[allow(unused_imports)]

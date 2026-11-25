@@ -443,7 +443,7 @@ impl Game<'_> {
         ran
     }
     /// Finish a lethal or totem-protected hit only once the owning level has settled it.
-    pub(in crate::game) fn finish_damage_post(
+    pub(in crate::game::server_side) fn finish_damage_post(
         &mut self,
         entity: i32,
         kind: &str,

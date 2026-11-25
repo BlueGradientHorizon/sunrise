@@ -2,7 +2,7 @@
 use super::*;
 use mod_api::__private::game::RegistrationContextNew;
 impl Game<'_> {
-    pub(in crate::game) fn prepare_professions(
+    pub(in crate::game::server_side) fn prepare_professions(
         &self,
         root: &std::path::Path,
         items: &Items,
@@ -109,7 +109,7 @@ impl Game<'_> {
 mod tests;
 
 impl Game<'_> {
-    pub(in crate::game) fn resolve_loaded_profession(
+    pub(in crate::game::server_side) fn resolve_loaded_profession(
         &mut self,
         mob: &mut sunrise_client::mobs::Mob,
     ) {
@@ -127,7 +127,7 @@ impl Game<'_> {
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn install_profession_save_snapshots(&self) {
+    pub(in crate::game::server_side) fn install_profession_save_snapshots(&self) {
         let table = self.stations().professions.clone();
         self.save.0.install_profession_snapshot(table.clone());
         self.levels.0.install_profession_save_snapshots(table);
@@ -135,7 +135,7 @@ impl Game<'_> {
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn with_profession_save_snapshot(
+    pub(in crate::game::server_side) fn with_profession_save_snapshot(
         &self,
         save: Arc<SaveDir>,
     ) -> Arc<SaveDir> {

@@ -9,8 +9,6 @@ pub(in crate::game::server_side) use crate::game::client_side::native_components
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::native_components::stack_attack_bonus_preview;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::native_components::stack_can_be_hurt_by;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::native_components::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_client::items::ItemStack;
@@ -113,8 +111,6 @@ pub(in crate::game::server_side) use serde_json::Value;
 pub(in crate::game::server_side) use crate::game::client_side::native_components::item_resource_property_tests::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::native_components::item_resource_property_tests::engine;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::native_components::item_resource_property_tests::run_item_resource_changed_defaults_and_consumption;
 
     pub(in crate::game) fn run_effective_resource_properties_match_vanilla() {
         let inputs = std::env::var("SUNRISE_ITEM_PROPERTIES_CASES")

@@ -49,7 +49,7 @@ pub(in crate::game) fn describe_burst(
     line
 }
 
-pub(in crate::game) fn describe_event(
+pub(in crate::game::server_side) fn describe_event(
     host: &LanHost,
     (kind, conn, name): &EventKind,
     detail: Option<&UseDetail>,

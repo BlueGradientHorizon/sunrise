@@ -29,7 +29,7 @@ pub(in crate::game) enum TravelCause {
 
 impl TravelCause {
     /// The name a mod is told.
-    pub(in crate::game) fn id(self) -> &'static str {
+    pub(in crate::game::server_side) fn id(self) -> &'static str {
         match self {
             Self::NetherPortal => "nether_portal",
             Self::EndPortal => "end_portal",
@@ -39,7 +39,7 @@ impl TravelCause {
     }
 
     /// The portal a plan goes through.
-    pub(in crate::game) fn of_plan(plan: &Plan) -> Self {
+    pub(in crate::game::server_side) fn of_plan(plan: &Plan) -> Self {
         if plan.end {
             Self::EndPortal
         } else {
@@ -256,11 +256,11 @@ const WIDTH: f64 = 0.6;
 const HEIGHT: f64 = 1.8;
 
 impl Trip {
-    pub(in crate::game) fn is(&self, conn: u32) -> bool {
+    pub(in crate::game::server_side) fn is(&self, conn: u32) -> bool {
         self.conn == conn
     }
 
-    pub(in crate::game) fn spawn_destination_areas(
+    pub(in crate::game::server_side) fn spawn_destination_areas(
         &self,
         dim: Dim,
     ) -> impl Iterator<Item = ((i32, i32), i32)> {
@@ -288,7 +288,7 @@ impl Trip {
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn gateway_source_chunks(&self) -> Vec<(i32, i32)> {
+    pub(in crate::game::server_side) fn gateway_source_chunks(&self) -> Vec<(i32, i32)> {
         self.server
             .server_trips
             .iter()
@@ -401,7 +401,7 @@ impl Game<'_> {
 
     /// Whether a vehicle waits in `dim` for its rider to arrive elsewhere:
     /// that level stays open until it has moved.
-    pub(in crate::game) fn vehicle_waits_in(&self, dim: Dim) -> bool {
+    pub(in crate::game::server_side) fn vehicle_waits_in(&self, dim: Dim) -> bool {
         self.server
             .server_trips
             .iter()
@@ -455,7 +455,7 @@ impl Game<'_> {
     /// destination (`getPortalDestination`, `Entity.teleportToPortalDestination`)
     /// after the camera goes back to the player, or says `spectator.cannot_teleport`
     /// when it has none. Returns whether the block was a portal (`CONSUME`).
-    pub(in crate::game) fn spectator_use_portal(
+    pub(in crate::game::server_side) fn spectator_use_portal(
         &mut self,
         conn: u32,
         gi: usize,
@@ -579,7 +579,7 @@ impl Game<'_> {
     /// `EntityTravelToDimensionEvent`: whether the entity `id` (the network
     /// id its handle names) may travel to the level `to`, asked before
     /// anything of it moves. Only a server asks, and only when a mod listens.
-    pub(in crate::game) fn entity_may_travel(
+    pub(in crate::game::server_side) fn entity_may_travel(
         &mut self,
         id: u32,
         to: Dim,
@@ -793,7 +793,7 @@ impl Game<'_> {
     /// a portal (a vehicle's transition time is 0): the riders travel with
     /// it and ride it again on arrival (`Entity.teleportCrossDimension`), so
     /// a rider never waits for its own portal delay.
-    pub(in crate::game) fn carry_riders_through_portals(&mut self) {
+    pub(in crate::game::server_side) fn carry_riders_through_portals(&mut self) {
         for (vehicle, entry) in self.take_carrying(self.dim) {
             let Some(plan) = self.vehicle_plan(vehicle, entry) else {
                 continue;
@@ -1403,7 +1403,13 @@ impl Game<'_> {
     /// arrives: it keeps its entity id, so the ride is never broken
     /// (`Entity.teleportCrossDimension` recreates the vehicle in the other
     /// dimension, and its passengers ride it again).
-    pub(in crate::game) fn arrive_vehicle(&mut self, source: Dim, id: u32, at: Vec3, yaw: f32) {
+    pub(in crate::game::server_side) fn arrive_vehicle(
+        &mut self,
+        source: Dim,
+        id: u32,
+        at: Vec3,
+        yaw: f32,
+    ) {
         let Some(id) = self.parked_vehicle_root(source, id) else {
             return;
         };
@@ -1479,7 +1485,7 @@ impl Game<'_> {
 
     /// Tells the mods of the teleports a command made inside a level, with
     /// each player's state swapped in: where the move has reached the hub.
-    pub(in crate::game) fn flush_teleport_notes(&mut self) {
+    pub(in crate::game::server_side) fn flush_teleport_notes(&mut self) {
         for note in std::mem::take(&mut self.server.teleport_notes) {
             let TeleportNote {
                 conn,
@@ -1504,7 +1510,7 @@ impl Game<'_> {
     /// (`ServerPlayer.teleport` from TeleportCommand): a Respawn packet
     /// keeping all data and the teleport, with no portal sound. The server
     /// leaves the body alone until the level has loaded around it.
-    pub(in crate::game) fn run_level_teleports(&mut self) {
+    pub(in crate::game::server_side) fn run_level_teleports(&mut self) {
         if self.lan.is_none() {
             return;
         }
@@ -1655,7 +1661,7 @@ impl Game<'_> {
     /// from the level `left` to the one in place, `to`, with their state
     /// swapped in so that the helpers reach them. Nothing is heard when they
     /// did not leave a level, or ended where they started.
-    pub(in crate::game) fn tell_mods_changed_dimension(
+    pub(in crate::game::server_side) fn tell_mods_changed_dimension(
         &mut self,
         conn: u32,
         left: Option<Dim>,
@@ -1679,7 +1685,7 @@ impl Game<'_> {
 
     /// The hub's view of the server for packets sent outside its own tick.
     #[cfg(test)]
-    pub(in crate::game) fn server_ctx(&mut self) -> TickCtx<'_> {
+    pub(in crate::game::server_side) fn server_ctx(&mut self) -> TickCtx<'_> {
         let spawn = self.world_spawn_position();
         let clock_rate = self.network_clock_rate();
         TickCtx {

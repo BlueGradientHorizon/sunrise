@@ -130,7 +130,7 @@ impl WorldRequest {
     /// The account this world opens under (`IntegratedServer.getSingleplayerProfile`):
     /// a world older builds made under the offline profile moves its owner to it at
     /// open. A dedicated server has no single-player owner and leaves it unset.
-    pub fn owned_by(mut self, player: &str, owner: u128) -> Self {
+    pub(in crate::game::server_side) fn owned_by(mut self, player: &str, owner: u128) -> Self {
         self.owner = Some((player.to_owned(), owner));
         self
     }
@@ -969,7 +969,7 @@ fn mod_terrain(
 
 /// The file beside the world that keeps the structure references of the level `id`. An id with a
 /// `/` puts it in a folder of `data/`.
-pub(in crate::game) fn structure_references_file(
+pub(in crate::game::server_side) fn structure_references_file(
     world_root: &std::path::Path,
     id: &str,
 ) -> std::path::PathBuf {
@@ -994,7 +994,7 @@ fn keep_structure_references(
     }));
 }
 
-pub(in crate::game) fn make_streaming(
+pub(in crate::game::server_side) fn make_streaming(
     res: &Resources,
     pack: &PackResources,
     options: &Options,

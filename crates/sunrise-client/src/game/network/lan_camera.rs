@@ -39,7 +39,7 @@ impl Game<'_> {
     /// blocks (`isPickable` is `!isRemoved`) and `EnderDragonPart`s
     /// (`ServerLevel.getEntityOrPart`; `isPickable` is `true`, and a part
     /// never turns).
-    pub(in crate::game) fn camera_extra(&self, id: i32) -> Option<CameraExtra> {
+    pub(in crate::game::server_side) fn camera_extra(&self, id: i32) -> Option<CameraExtra> {
         let id = u32::try_from(id).ok().filter(|&id| id != 0)?;
         let at = |v: Vec3| [v.x, v.y, v.z];
         if let Some(t) = self.tnts.iter().find(|t| t.id == id) {
@@ -104,7 +104,11 @@ impl Game<'_> {
     }
 
     /// `ServerGamePacketListenerImpl.handleSpectatorAction`.
-    pub(in crate::game) fn guest_spectator_action(&mut self, gi: usize, target: Option<i32>) {
+    pub(in crate::game::server_side) fn guest_spectator_action(
+        &mut self,
+        gi: usize,
+        target: Option<i32>,
+    ) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -223,7 +227,7 @@ impl Game<'_> {
 
     /// The camera part of `ServerPlayer.tick` for every guest, after the
     /// `/spectate` requests commands queued.
-    pub(in crate::game) fn tick_guest_cameras(&mut self) {
+    pub(in crate::game::server_side) fn tick_guest_cameras(&mut self) {
         for (conn, id) in std::mem::take(&mut self.cmds.0.camera_requests) {
             if let Some(gi) = self
                 .lan

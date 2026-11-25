@@ -10,7 +10,7 @@ impl Game<'_> {
     /// and pad at this computer don't reach the game (`locks_out`, `poll_pads`), the window's
     /// focus stays as the run found it (`held_focus`) and its pointer grab stays inside the game
     /// (`internal_grab`).
-    pub(in crate::game) fn scripted_run(&self) -> bool {
+    pub(in crate::game::client_side) fn scripted_run(&self) -> bool {
         self.screenshot_sequence.0.is_some()
             || self.client.tick_script.playing()
             || self.repro.0.replaying()
@@ -120,7 +120,7 @@ impl Game<'_> {
         self.handle_window_event_with_sample(event_loop, id, event, origin, None);
     }
 
-    pub(in crate::game) fn handle_window_event_with_sample(
+    pub(in crate::game::client_side) fn handle_window_event_with_sample(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         id: WindowId,
@@ -140,7 +140,7 @@ impl Game<'_> {
         });
     }
 
-    pub(in crate::game) fn handle_window_event_as(
+    pub(in crate::game::client_side) fn handle_window_event_as(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         id: WindowId,

@@ -69,7 +69,7 @@ impl Game<'_> {
     }
 
     /// Publish saved contents only when an authoritative entity owns their lifetime.
-    pub(in crate::game) fn bind_saved_entity_attachments(
+    pub(in crate::game::server_side) fn bind_saved_entity_attachments(
         &mut self,
         id: u32,
         slot: &mut AttachmentLifetime,

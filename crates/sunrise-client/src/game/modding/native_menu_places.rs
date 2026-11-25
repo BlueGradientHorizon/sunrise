@@ -57,7 +57,7 @@ impl Game<'_> {
     /// The inventory slot holding `hand`'s stack (the selected hotbar slot, or the offhand's 40) and
     /// that stack, of `guest`: read from the game in their own turn, when their record holds the
     /// outer player's.
-    pub(in crate::game) fn held_by<'a>(
+    pub(in crate::game::server_side) fn held_by<'a>(
         &'a self,
         guest: &'a Guest,
         hand: Hand,
@@ -301,7 +301,7 @@ impl Game<'_> {
     /// menu's slots), queues one look at that menu's places for after the write
     /// (`NativeMenuEvent::PlacesChanged`). Any other write, and every write while no menu is
     /// backed, returns at the first checks.
-    pub(in crate::game) fn notice_menu_place_write(&mut self, place: &ItemPlace) {
+    pub(in crate::game::server_side) fn notice_menu_place_write(&mut self, place: &ItemPlace) {
         let mut root = place;
         while let ItemPlace::Nested { parent, .. } = root {
             root = &**parent;
@@ -349,7 +349,7 @@ impl Game<'_> {
 
     /// A change notice taken (`NativeMenuEvent::PlacesChanged`): the backed menu's places looked
     /// at again, or forgotten once that menu is no longer open.
-    pub(in crate::game) fn menu_places_changed(&mut self, uuid: u128, window: i32) {
+    pub(in crate::game::server_side) fn menu_places_changed(&mut self, uuid: u128, window: i32) {
         let Some(conn) = self.native_conn(uuid) else {
             return;
         };
@@ -372,7 +372,7 @@ impl Game<'_> {
 
     /// The menu `window` closed (`NativeMenuEvent::Closed`): its places end with it. Its
     /// mirrored slots went with the menu (`native_menu` is cleared on close).
-    pub(in crate::game) fn menu_places_closed(&mut self, uuid: u128, window: i32) {
+    pub(in crate::game::server_side) fn menu_places_closed(&mut self, uuid: u128, window: i32) {
         if let Some(conn) = self.native_conn(uuid)
             && self
                 .lan

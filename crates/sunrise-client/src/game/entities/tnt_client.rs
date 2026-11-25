@@ -3,12 +3,6 @@ pub(in crate::game::client_side) use super::{Game, entity::Entity};
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::tnt::PrimedTnt;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::tnt::tnt_blast_owner;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::tnt::tnt_general_seat;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::tnt::tnt_seat;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::tnt::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::entity_rules::EntityRules;
@@ -69,12 +63,6 @@ pub(in crate::game) mod tests {
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::tnt::tests::on_big_stack;
     #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::tnt::tests::run_portal_transfer_ordinary_nbt_cannot_supply_runtime_immunity;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::tnt::tests::run_portal_transfer_tnt_state_follows_memory_but_not_saved_nbt;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::tnt::tests::run_silent_bottles_preserve_xp_and_the_server_random_stream;
-    #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::tnt::tests::server_game;
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::tnt::tests::set_silent;
@@ -83,7 +71,7 @@ pub(in crate::game) mod tests {
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::tnt::tests::*;
 
-    pub(in crate::game) fn particle_count(game: &Game<'_>) -> usize {
+    pub(in crate::game::client_side) fn particle_count(game: &Game<'_>) -> usize {
         game.particles.0.requested.as_ref().unwrap().len()
     }
 
@@ -358,7 +346,7 @@ pub(in crate::game) mod tests {
         });
     }
 
-    pub(in crate::game) fn sound_count(game: &Game<'_>, event: &str) -> u32 {
+    pub(in crate::game::client_side) fn sound_count(game: &Game<'_>, event: &str) -> u32 {
         game.audio.0.heard.get(event).copied().unwrap_or(0)
     }
 

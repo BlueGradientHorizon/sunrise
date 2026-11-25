@@ -21,7 +21,7 @@ pub(in crate::game) struct Callback {
     pub(in crate::game) guard: Option<RetainedCallback>,
 }
 impl Callback {
-    pub(in crate::game) fn new(handler: Arc<dyn mod_api::Interaction>) -> Self {
+    pub(in crate::game::server_side) fn new(handler: Arc<dyn mod_api::Interaction>) -> Self {
         let owner = mod_api::__private::cauldron_owner();
         let guard = mod_api::__private::mod_index(owner)
             .map(|index| RetainedCallback::new(owner, index, "cauldron_interaction", ""));
@@ -42,11 +42,11 @@ pub(in crate::game) fn snapshot() -> Arc<Table> {
 pub(in crate::game) fn clear() {
     install(Arc::new(Table::default()));
 }
-pub(in crate::game) fn install(table: Arc<Table>) {
+pub(in crate::game::server_side) fn install(table: Arc<Table>) {
     TABLE.with_borrow_mut(|old| *old = table);
 }
 
-pub(in crate::game) fn discard_callback(callback: Callback) {
+pub(in crate::game::server_side) fn discard_callback(callback: Callback) {
     discard_registration(
         (
             HookId::RegisterCauldronInteraction,
@@ -79,7 +79,7 @@ pub(in crate::game) enum Edit {
     },
 }
 impl Edit {
-    pub(in crate::game) fn into_callback(self) -> Callback {
+    pub(in crate::game::server_side) fn into_callback(self) -> Callback {
         match self {
             Self::Item { callback, .. }
             | Self::AllItem { callback, .. }
@@ -95,14 +95,14 @@ pub(in crate::game) struct Registrar<'a> {
     pub(in crate::game) error: Option<mod_api::CauldronRegistrationError>,
 }
 /// A tag as entries keep it: its resource location, without `#`.
-pub(in crate::game) fn tag_id(tag: &str) -> Option<String> {
+pub(in crate::game::server_side) fn tag_id(tag: &str) -> Option<String> {
     let tag = tag.strip_prefix('#').unwrap_or(tag);
     mod_api::Identifier::parse(tag)
         .ok()
         .map(|id| id.to_string())
 }
 impl<'a> Registrar<'a> {
-    pub(in crate::game) fn new(
+    pub(in crate::game::server_side) fn new(
         items: &'a Items,
         registry: &'a sunrise_world::registry::BlockRegistry,
     ) -> Self {
@@ -133,14 +133,14 @@ impl<'a> Registrar<'a> {
     }
 
     /// Record an admission error, which fails the whole preparation when it finishes.
-    pub(in crate::game) fn refuse(
+    pub(in crate::game::server_side) fn refuse(
         &mut self,
         error: mod_api::CauldronRegistrationError,
     ) -> std::result::Result<(), mod_api::CauldronRegistrationError> {
         self.error = Some(error);
         Err(error)
     }
-    pub(in crate::game) fn finish(self) -> Result<Arc<Table>> {
+    pub(in crate::game::server_side) fn finish(self) -> Result<Arc<Table>> {
         let Self { edits, error, .. } = self;
         if let Some(error) = error {
             for edit in edits {
@@ -283,7 +283,7 @@ impl mod_api::CauldronInteractions for Registrar<'_> {
     }
 }
 impl Game<'_> {
-    pub(in crate::game) fn prepare_cauldron_interactions(
+    pub(in crate::game::server_side) fn prepare_cauldron_interactions(
         &self,
         items: &Items,
     ) -> Result<Arc<Table>> {

@@ -51,29 +51,7 @@ pub(in crate::game::client_side) use crate::game::server_side::memory::TOP;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::memory::TOP_PLAYERS;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::memory::biggest;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::memory::census;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::memory::chunk_send_census;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::memory::flatten;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::memory::flatten_report;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::memory::mb;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::memory::mb_signed;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::memory::player_census;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::memory::shared;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::memory::string_bytes;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::memory::unattributed;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::memory::vec_bytes;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::memory::*;
 #[allow(unused_imports)]

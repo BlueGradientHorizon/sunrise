@@ -77,7 +77,7 @@ impl Game<'_> {
         Some((point, distance))
     }
     /// The optional batch is resolved once for this click, then each hit uses vanilla's send path.
-    pub(in crate::game) fn mod_attack_targets(&mut self) -> bool {
+    pub(in crate::game::client_side) fn mod_attack_targets(&mut self) -> bool {
         if !mod_api::__private::listened(mod_api::HookId::ClientAttackTarget) {
             return false;
         }

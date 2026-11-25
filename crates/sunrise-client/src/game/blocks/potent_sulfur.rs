@@ -39,7 +39,7 @@ pub(in crate::game) const GEYSER_CONTINUOUS_ACTIVE: &str =
 
 /// `PotentSulfurBlockEntity.applyNauseaEffect` on a mob that passed the
 /// `canBeAffected` ask.
-pub(in crate::game) fn apply_nausea_effect_to_mob(mob: &mut Mob) {
+pub(in crate::game::server_side) fn apply_nausea_effect_to_mob(mob: &mut Mob) {
     if let Some(nausea) = mob_effect_id("nausea") {
         mob.add_effect(nausea, EFFECT_DURATION_IN_TICKS, 0);
     }
@@ -107,7 +107,7 @@ impl Game<'_> {
     /// `PotentSulfurBlockEntity.SERVER_NAUSEA_EFFECT_TICKER`: every 10 ticks,
     /// the living entities near the source block that its gas reaches (at
     /// their eyes) get nausea for 4 seconds.
-    pub(in crate::game) fn server_nausea_effect_ticker(&mut self, pos: Pos) {
+    pub(in crate::game::server_side) fn server_nausea_effect_ticker(&mut self, pos: Pos) {
         if self.world.game_time % EFFECT_APPLICATION_FREQUENCY_TICKS != 0 {
             return;
         }
@@ -171,7 +171,11 @@ impl Game<'_> {
 
     /// The slots of the mobs whose box may meet `area`, from a grid kept for
     /// the block entity pass; false outside the pass: scan them all.
-    pub(in crate::game) fn mobs_in_pass(&mut self, area: Aabb, out: &mut Vec<u32>) -> bool {
+    pub(in crate::game::server_side) fn mobs_in_pass(
+        &mut self,
+        area: Aabb,
+        out: &mut Vec<u32>,
+    ) -> bool {
         let Some(pass) = self.server.pass_mobs.as_mut() else {
             return false;
         };
@@ -181,7 +185,7 @@ impl Game<'_> {
     /// `PotentSulfurBlockEntity.applyNauseaEffect` on the player acting (a
     /// guest is swapped in as the player) when the gas reaches their eyes;
     /// spectators are not affected.
-    pub(in crate::game) fn apply_nausea_effect_to_player(&mut self, source: [i32; 3]) {
+    pub(in crate::game::server_side) fn apply_nausea_effect_to_player(&mut self, source: [i32; 3]) {
         if self.spectator() {
             return;
         }
@@ -216,7 +220,7 @@ impl Game<'_> {
     /// 15 to 30, an erupting one `water - 1` plus 1 or 2, and at zero the
     /// block turns erupting (dormant) or dormant (erupting). `state` is the
     /// block state the tick began with.
-    pub(in crate::game) fn server_waiting_countdown_ticker(
+    pub(in crate::game::server_side) fn server_waiting_countdown_ticker(
         &mut self,
         pos: Pos,
         state: BlockStateId,
@@ -282,7 +286,7 @@ impl Game<'_> {
     /// `0.3 + 0.1 * water` upward speed get 0.2 more, unless they ride
     /// something or are of a type geysers do not move. Players are moved by
     /// their own client.
-    pub(in crate::game) fn launch_entity_ticker(&mut self, pos: Pos) {
+    pub(in crate::game::server_side) fn launch_entity_ticker(&mut self, pos: Pos) {
         let Some(source) = self.potent_sulfur_source(pos) else {
             return;
         };
@@ -401,7 +405,7 @@ impl Game<'_> {
     /// `PotentSulfurBlock.triggerEvent`: the eruption block event stamps the
     /// game time the plume counts from; false when `pos` holds no potent
     /// sulfur block entity.
-    pub(in crate::game) fn potent_sulfur_eruption_event(&mut self, pos: Pos) -> bool {
+    pub(in crate::game::server_side) fn potent_sulfur_eruption_event(&mut self, pos: Pos) -> bool {
         let time = self.world.game_time;
         match self.world.block_entities.get_mut(&pos) {
             Some(BlockEntity::PotentSulfur(sulfur)) => {

@@ -44,7 +44,7 @@ impl Game<'_> {
     /// range gate), and a parked level never reaches here at all. A type
     /// slot resolved without subscribers costs its bookkeeping and nothing
     /// else: no per-row type lookup, call, or event allocation.
-    pub(in crate::game) fn tick_general(&mut self) -> sunrise_client::Result<()> {
+    pub(in crate::game::server_side) fn tick_general(&mut self) -> sunrise_client::Result<()> {
         if self.resident_entities.general.rows.is_empty() {
             return Ok(());
         }

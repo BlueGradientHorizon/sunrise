@@ -204,20 +204,20 @@ pub(in crate::game) struct PickSectionStorage {
 }
 
 impl PickSectionStorage {
-    pub(in crate::game) fn clear(&mut self) {
+    pub(in crate::game::client_side) fn clear(&mut self) {
         self.sections.clear();
         self.by_id.clear();
         self.initialized = false;
     }
 
     /// `ClientLevel.tickEntities` starts: crossings from here take the movers' admission order.
-    pub(in crate::game) fn begin_entity_ticks(&mut self) {
+    pub(in crate::game::client_side) fn begin_entity_ticks(&mut self) {
         self.tick += 1;
         self.in_entity_ticks = true;
     }
 
     /// The entity ticks are over: later arrivals follow every crossing of this tick.
-    pub(in crate::game) fn end_entity_ticks(&mut self) {
+    pub(in crate::game::client_side) fn end_entity_ticks(&mut self) {
         self.in_entity_ticks = false;
     }
 
@@ -262,12 +262,17 @@ impl PickSectionStorage {
         }
     }
 
-    pub(in crate::game) fn place(&mut self, member: PickMember, at: [f64; 3], seq: u64) {
+    pub(in crate::game::client_side) fn place(
+        &mut self,
+        member: PickMember,
+        at: [f64; 3],
+        seq: u64,
+    ) {
         self.remove(member.id);
         self.insert(SectionKey::at(at), member, seq);
     }
 
-    pub(in crate::game) fn move_id(&mut self, id: u32, to: [f64; 3]) {
+    pub(in crate::game::client_side) fn move_id(&mut self, id: u32, to: [f64; 3]) {
         let Some(&(kind, old_key, seq)) = self.by_id.get(&id) else {
             return;
         };
@@ -280,14 +285,14 @@ impl PickSectionStorage {
         self.insert(new_key, member, seq);
     }
 
-    pub(in crate::game) fn remove(&mut self, id: u32) {
+    pub(in crate::game::client_side) fn remove(&mut self, id: u32) {
         let Some((kind, old_key, _)) = self.by_id.remove(&id) else {
             return;
         };
         self.take_out(PickMember { kind, id }, old_key);
     }
 
-    pub(in crate::game) fn kind_of(&self, id: u32) -> Option<PickKind> {
+    pub(in crate::game::client_side) fn kind_of(&self, id: u32) -> Option<PickKind> {
         self.by_id.get(&id).map(|&(kind, _, _)| kind)
     }
 
@@ -652,12 +657,12 @@ impl Game<'_> {
     }
 
     /// Clears section storage when changing or resetting a level.
-    pub(in crate::game) fn pick_section_clear(&mut self) {
+    pub(in crate::game::client_side) fn pick_section_clear(&mut self) {
         self.client.client_pick.sections.borrow_mut().clear();
     }
 
     /// Updates sections for seated passengers after `position_riders` moves them.
-    pub(in crate::game) fn sync_seated_pick_sections(&mut self) {
+    pub(in crate::game::client_side) fn sync_seated_pick_sections(&mut self) {
         let mut storage = self.client.client_pick.sections.borrow_mut();
         if !storage.initialized && storage.by_id.is_empty() {
             return;
@@ -1211,7 +1216,7 @@ impl Game<'_> {
     }
 
     /// `cameraEntity.getBoundingBox()` at the camera entity's current position.
-    pub(in crate::game) fn pick_camera_bounds(&self) -> Option<Aabb> {
+    pub(in crate::game::client_side) fn pick_camera_bounds(&self) -> Option<Aabb> {
         if let Some(r) = self.remote.as_ref()
             && let Some(cam_id) = r.camera
         {
@@ -1235,7 +1240,7 @@ impl Game<'_> {
     /// `Level.getEntities(cameraEntity, search_box, EntitySelector.CAN_BE_PICKED)`:
     /// visits ordinary entities in `EntitySectionStorage` order (filtered by raw box),
     /// then appends live dragon parts (unless spectating that dragon).
-    pub(in crate::game) fn for_each_pickable_in_bounds(
+    pub(in crate::game::client_side) fn for_each_pickable_in_bounds(
         &self,
         search_box: Aabb,
         mut visit: impl FnMut(u32, Aabb, f64),

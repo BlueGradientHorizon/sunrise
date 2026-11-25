@@ -11,7 +11,7 @@ impl Game<'_> {
     /// whose block between it and the table is in `#minecraft:enchantment_power_transmitter`, of
     /// each block's `getEnchantPowerBonus`, truncated as NeoForge's `(int) power`. The offers cap
     /// it at 15.
-    pub(in crate::game) fn count_bookshelves(&self, pos: [i32; 3]) -> i32 {
+    pub(in crate::game::client_side) fn count_bookshelves(&self, pos: [i32; 3]) -> i32 {
         let table = BlockPos::new(pos[0], pos[1], pos[2]);
         let level = self.native_current_level();
         let power: f32 = bookshelf_offsets()

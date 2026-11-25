@@ -73,7 +73,7 @@ impl Game<'_> {
     /// One stroke on the block aimed at: dust (this window only), the brush
     /// sound, and the block entity's count. The brush wears when the block
     /// changed state.
-    pub(in crate::game) fn brush_stroke(&mut self, hit: &Hit, slot: usize) {
+    pub(in crate::game::server_side) fn brush_stroke(&mut self, hit: &Hit, slot: usize) {
         let state = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
         let name = self.res.facts().get(state).name.clone();
         let (sound, brushable) = match &*name {
@@ -92,7 +92,7 @@ impl Game<'_> {
     }
 
     /// `BrushableBlockEntity.brush`: whether the block changed (the brush wears).
-    pub(in crate::game) fn brush_block(
+    pub(in crate::game::server_side) fn brush_block(
         &mut self,
         pos: [i32; 3],
         face: [i32; 3],
@@ -141,7 +141,7 @@ impl Game<'_> {
     /// block entity's item. `LootContextParamSets.ARCHAEOLOGY`: the brusher is
     /// THIS_ENTITY, the brush in `slot` the TOOL and the block's centre the
     /// ORIGIN, with the brusher's luck.
-    pub(in crate::game) fn unpack_brush_loot(&mut self, pos: [i32; 3], slot: usize) {
+    pub(in crate::game::server_side) fn unpack_brush_loot(&mut self, pos: [i32; 3], slot: usize) {
         let key = (pos[0], pos[1], pos[2]);
         let Some(BlockEntity::Brushable(b)) = self.world.block_entities.get(&key) else {
             return;
@@ -187,7 +187,7 @@ impl Game<'_> {
 
     /// `BrushableBlockEntity.brushingCompleted`: the item drops out of the
     /// brushed face and the block turns into its sand or gravel.
-    pub(in crate::game) fn brushing_completed(
+    pub(in crate::game::server_side) fn brushing_completed(
         &mut self,
         pos: [i32; 3],
         face: Option<[i32; 3]>,
@@ -237,7 +237,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn set_dusted(&mut self, pos: [i32; 3], dusted: i32) {
+    pub(in crate::game::server_side) fn set_dusted(&mut self, pos: [i32; 3], dusted: i32) {
         let registry = self.pack.assets.registry;
         let Some(mut state) = registry
             .state(self.world.block(pos[0], pos[1], pos[2]))
@@ -251,14 +251,14 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn schedule_brushable_tick(&mut self, pos: [i32; 3]) {
+    pub(in crate::game::server_side) fn schedule_brushable_tick(&mut self, pos: [i32; 3]) {
         let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
         self.with_level(|b, level, ticks| b.schedule_tick(level, ticks, at, 2));
     }
 
     /// `BrushableBlockEntity.checkReset`, from `BrushableBlock.tick`: a block
     /// left alone loses two counts, again every four ticks.
-    pub(in crate::game) fn brushable_tick(&mut self, pos: [i32; 3]) {
+    pub(in crate::game::server_side) fn brushable_tick(&mut self, pos: [i32; 3]) {
         let time = self.world.game_time;
         let Some(mut brush) = self.server.brushing.remove(&pos) else {
             return;
@@ -290,7 +290,7 @@ impl Game<'_> {
     }
 
     /// The items [`Self::brushable_geometry`] draws.
-    pub(in crate::game) fn brushable_items(
+    pub(in crate::game::server_side) fn brushable_items(
         &self,
         camera: glam::DVec3,
         mut draw: impl FnMut(BlockItemDraw),

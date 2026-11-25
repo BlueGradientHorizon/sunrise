@@ -50,7 +50,11 @@ impl Game<'_> {
     /// `LivingEntity.handleEntityEvent` 47 to 52, 65 and 68 from a server:
     /// the entity's item in `slot` broke, so `breakItem` the stack this
     /// client still has there (the slot is emptied by a later update).
-    pub(in crate::game) fn remote_equipment_break(&mut self, id: i32, slot: EquipmentSlot) {
+    pub(in crate::game::client_side) fn remote_equipment_break(
+        &mut self,
+        id: i32,
+        slot: EquipmentSlot,
+    ) {
         if self.remote.as_ref().is_some_and(|r| r.entity_id == id) {
             let stack = match slot {
                 EquipmentSlot::MainHand => self.held().cloned(),

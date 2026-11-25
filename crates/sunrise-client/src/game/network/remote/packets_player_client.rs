@@ -5,14 +5,17 @@ pub(in crate::game::client_side) use crate::game::remote::packets_player::*;
 
 impl Game<'_> {
     /// `C::ClearTitles`: its arms of `apply_packet`, guard and order kept.
-    pub(in crate::game) fn apply_clear_titles_packet(&mut self, p: play::Bool1) {
+    pub(in crate::game::client_side) fn apply_clear_titles_packet(&mut self, p: play::Bool1) {
         self.client.titles.clear();
         if p.value {
             self.client.titles.reset_times();
         }
     }
     /// `C::ContainerSetSlot`: its arms of `apply_packet`, guard and order kept.
-    pub(in crate::game) fn apply_container_set_slot_packet(&mut self, p: play::ContainerSetSlot) {
+    pub(in crate::game::client_side) fn apply_container_set_slot_packet(
+        &mut self,
+        p: play::ContainerSetSlot,
+    ) {
         self.remote_menu_state(p.container, p.state);
         let stack = self.to_stack(&p.item);
         self.tutorial_get_item(stack.as_ref());
@@ -35,7 +38,7 @@ impl Game<'_> {
         self.remote_synced_since(&before);
     }
     /// `C::Login`: its arms of `apply_packet`, guard and order kept.
-    pub(in crate::game) fn apply_login_packet(&mut self, p: play::Login) {
+    pub(in crate::game::client_side) fn apply_login_packet(&mut self, p: play::Login) {
         // A client's parts, from the tags it plays with.
         if let Err(e) = self.resolve_parts() {
             log::warn!("Sunrise: {e}");
@@ -124,7 +127,7 @@ impl Game<'_> {
         }
     }
     /// `C::PlayerCombatKill`: its arms of `apply_packet`, guard and order kept.
-    pub(in crate::game) fn apply_player_combat_kill_packet(
+    pub(in crate::game::client_side) fn apply_player_combat_kill_packet(
         &mut self,
         p: play::PlayerCombatKill,
     ) -> Result<()> {
@@ -156,7 +159,7 @@ impl Game<'_> {
         Ok(())
     }
     /// `C::Respawn`: its arms of `apply_packet`, guard and order kept.
-    pub(in crate::game) fn apply_respawn_packet(&mut self, p: play::Respawn) {
+    pub(in crate::game::client_side) fn apply_respawn_packet(&mut self, p: play::Respawn) {
         self.reset_client_item_use();
         // The new LocalPlayer copies reduced debug info through its setter.
         self.debug_entries.0.invalidate();
@@ -280,7 +283,7 @@ impl Game<'_> {
         }
     }
     /// `C::SetHealth`: its arms of `apply_packet`, guard and order kept.
-    pub(in crate::game) fn apply_set_health_packet(&mut self, p: play::SetHealth) {
+    pub(in crate::game::client_side) fn apply_set_health_packet(&mut self, p: play::SetHealth) {
         // ClientPacketListener.handleSetHealth: LocalPlayer.hurtTo.
         let flash = self.remote.as_mut().is_some_and(|r| {
             r.health = (p.health, p.food, p.saturation);
@@ -305,7 +308,10 @@ impl Game<'_> {
         }
     }
     /// `C::SystemChat`: its arms of `apply_packet`, guard and order kept.
-    pub(in crate::game) fn apply_system_chat_packet(&mut self, p: play::SystemChat) -> Result<()> {
+    pub(in crate::game::client_side) fn apply_system_chat_packet(
+        &mut self,
+        p: play::SystemChat,
+    ) -> Result<()> {
         // The component as sent, translated in the client's own
         // language; mods may change or cancel it. ChatListener.handleOverlay
         // for the action bar.
@@ -323,7 +329,7 @@ impl Game<'_> {
         Ok(())
     }
     /// `C::TabList`: its arms of `apply_packet`, guard and order kept.
-    pub(in crate::game) fn apply_tab_list_packet(&mut self, p: play::TabList) {
+    pub(in crate::game::client_side) fn apply_tab_list_packet(&mut self, p: play::TabList) {
         // handleTabListCustomisation: empty text clears it.
         let text = |t: &Tag| {
             let json = sunrise_client::scoreboard::tag_to_json(t);

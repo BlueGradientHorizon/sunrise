@@ -5,7 +5,7 @@ pub(in crate::game::client_side) use crate::game::remote::ui::*;
 
 impl Game<'_> {
     /// Connecting / loading screens; true when it covered the frame.
-    pub(in crate::game) fn remote_overlay(&mut self, batch: &mut HudBatch) -> bool {
+    pub(in crate::game::client_side) fn remote_overlay(&mut self, batch: &mut HudBatch) -> bool {
         if !self.remote_screen_up() {
             return false;
         }

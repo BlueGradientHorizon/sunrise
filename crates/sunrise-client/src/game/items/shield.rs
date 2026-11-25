@@ -27,7 +27,7 @@ pub(in crate::game) fn block_delay_passed(
 impl Game<'_> {
     /// `AbstractArrow.onHitEntity` on the player: a piercing arrow passes item blocking, whoever
     /// shot it, because `applyItemBlocking` reads the direct entity's pierce level.
-    pub(in crate::game) fn arrow_hits_player(
+    pub(in crate::game::server_side) fn arrow_hits_player(
         &mut self,
         amount: f32,
         p: &sunrise_client::projectiles::Projectile,

@@ -31,7 +31,10 @@ impl Game<'_> {
     /// whether or not there was room. A client of a server leaves the placing
     /// to the server. Whether the food went in; None when this isn't a
     /// campfire use, so the item's own use runs.
-    pub(in crate::game) fn use_on_campfire(&mut self, pos: [i32; 3]) -> Result<Option<bool>> {
+    pub(in crate::game::server_side) fn use_on_campfire(
+        &mut self,
+        pos: [i32; 3],
+    ) -> Result<Option<bool>> {
         // `ServerPlayerGameMode.useItemOn`'s `suppressUsingBlock`: sneaking
         // with a stack in either hand never reaches the block's `useItemOn`,
         // so the food stays in the hand and the item's own use (eating)
@@ -158,7 +161,7 @@ impl Game<'_> {
     }
 
     /// The items [`Self::campfire_geometry`] draws, in `CampfireRenderer.submit`'s order.
-    pub(in crate::game) fn campfire_items(
+    pub(in crate::game::server_side) fn campfire_items(
         &self,
         camera: glam::DVec3,
         mut draw: impl FnMut(BlockItemDraw),

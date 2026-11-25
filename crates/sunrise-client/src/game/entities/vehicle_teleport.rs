@@ -18,7 +18,7 @@ pub(in crate::game) use sunrise_gameplay::teleport_transition::{
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 /// `Entity.teleportCrossDimension`'s transitions for the general rows of one tree that left their level: the root takes `transition`, each rider its own vehicle's.
-pub(in crate::game) fn transfer_general_tree(
+pub(in crate::game::server_side) fn transfer_general_tree(
     rows: &mut [super::general::GeneralRow],
     root: u32,
     transition: Transition,
@@ -80,7 +80,7 @@ impl Game<'_> {
         self.cart_dismount_point_from(self.cart_object(vehicle)?, self.mob_object(rider)?)
     }
 
-    pub(in crate::game) fn cart_dismount_mob(
+    pub(in crate::game::server_side) fn cart_dismount_mob(
         &self,
         vehicle: u32,
         rider: &sunrise_client::mobs::Mob,
@@ -148,7 +148,7 @@ impl Game<'_> {
     }
 
     /// The horse search for a mount and rider currently lent out of the mob list.
-    pub(in crate::game) fn horse_dismount_mobs(
+    pub(in crate::game::server_side) fn horse_dismount_mobs(
         &self,
         mount: &sunrise_client::mobs::Mob,
         rider: &sunrise_client::mobs::Mob,
@@ -257,7 +257,7 @@ impl Game<'_> {
     /// transition that keeps it (`TeleportMotion::Keep`) carries over, a
     /// minecart's clamped (`cart_known_movement`). None for a player, whose
     /// client holds its motion, and an entity no level holds.
-    pub(in crate::game) fn transition_motion(&mut self, t: Target) -> Option<Vec3> {
+    pub(in crate::game::server_side) fn transition_motion(&mut self, t: Target) -> Option<Vec3> {
         let id = super::native_entities::target_id(t)?;
         let motion = self
             .in_target_level(t, |g| {
@@ -273,7 +273,11 @@ impl Game<'_> {
     }
     /// After a teleport placed `t` in its level: `motion` is its motion again
     /// (`Entity.teleportSetPosition` with `Relative.DELTA`).
-    pub(in crate::game) fn restore_transition_motion(&mut self, t: Target, motion: Vec3) {
+    pub(in crate::game::server_side) fn restore_transition_motion(
+        &mut self,
+        t: Target,
+        motion: Vec3,
+    ) {
         let Some(id) = super::native_entities::target_id(t) else {
             return;
         };
@@ -289,7 +293,7 @@ impl Game<'_> {
     /// and always answers; an entity that changes level alone answers; a
     /// vehicle tree answers only when it moved. `None` leaves the target to
     /// the caller's player path.
-    pub(in crate::game) fn teleport_target_across(
+    pub(in crate::game::server_side) fn teleport_target_across(
         &mut self,
         target: Target,
         destination: super::Dim,
@@ -442,7 +446,7 @@ impl Game<'_> {
     /// `Entity.teleportCrossDimension`: carry a command's entire vehicle tree
     /// into the destination level, retaining UUIDs and the passengers' mounts,
     /// the root's motion as `motion` says.
-    pub(in crate::game) fn teleport_vehicle_across(
+    pub(in crate::game::server_side) fn teleport_vehicle_across(
         &mut self,
         target: Target,
         destination: super::Dim,
@@ -668,7 +672,7 @@ impl Game<'_> {
     }
 
     /// `Entity.teleportSameDimension`'s walk of `vehicle`'s riders, deepest first; returns the players' connections.
-    pub(in crate::game) fn teleport_passengers(
+    pub(in crate::game::server_side) fn teleport_passengers(
         &mut self,
         vehicle: u32,
         from: Pose,
@@ -886,7 +890,7 @@ impl Game<'_> {
 
     /// `Entity.forceSetRotation`: yaw, head yaw, pitch and their old values
     /// only. Position, motion, the vehicle and the riders stay.
-    pub(in crate::game) fn set_rotation(&mut self, t: Target, rotation: [f32; 2]) {
+    pub(in crate::game::server_side) fn set_rotation(&mut self, t: Target, rotation: [f32; 2]) {
         let _ = self.in_target_level(t, |g| g.set_rotation_in_level(t, rotation));
     }
     fn set_rotation_in_level(&mut self, t: Target, [yaw, pitch]: [f32; 2]) {

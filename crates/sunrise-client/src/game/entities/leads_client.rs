@@ -132,7 +132,7 @@ impl Game<'_> {
             .play(&format!("minecraft:item.lead.{sound}"), Some(at), 1.0, 1.0);
     }
     /// `LeashFeatureRenderer` for every lead and `LeashKnotRenderer` for the knots.
-    pub(in crate::game) fn leash_geometry(
+    pub(in crate::game::client_side) fn leash_geometry(
         &self,
         camera: glam::DVec3,
         alpha: f64,
@@ -377,7 +377,7 @@ impl Game<'_> {
         }
     }
     /// `Player.getRopeHoldPosition` (and `LocalPlayer`'s in first person).
-    pub(in crate::game) fn player_rope_hold(
+    pub(in crate::game::client_side) fn player_rope_hold(
         &self,
         p: &sunrise_client::motion::PlayerMotion,
         alpha: f64,

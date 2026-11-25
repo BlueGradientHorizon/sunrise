@@ -101,7 +101,7 @@ impl Game<'_> {
         self.previous_mode = previous;
         self.finish_local_mode_update(mode);
     }
-    pub(in crate::game) fn finish_local_mode_update(&mut self, mode: GameMode) {
+    pub(in crate::game::server_side) fn finish_local_mode_update(&mut self, mode: GameMode) {
         let r = self
             .remote
             .as_mut()
@@ -185,7 +185,11 @@ impl Game<'_> {
     /// tests it: the state, then `nbt` against the block entity's
     /// `saveWithFullMetadata` (no block entity fails). `components` is not
     /// looked at on this path.
-    pub(in crate::game) fn adventure_predicate(&self, component: &str, pos: [i32; 3]) -> bool {
+    pub(in crate::game::server_side) fn adventure_predicate(
+        &self,
+        component: &str,
+        pos: [i32; 3],
+    ) -> bool {
         self.held()
             .is_some_and(|stack| self.stack_adventure_predicate(stack, component, pos))
     }
@@ -281,7 +285,11 @@ impl Game<'_> {
         }
     }
     /// A `HolderSet<Block>` entry: a block id or a `#tag`.
-    pub(in crate::game) fn block_in_holder_set(&self, entry: &str, block: &str) -> bool {
+    pub(in crate::game::server_side) fn block_in_holder_set(
+        &self,
+        entry: &str,
+        block: &str,
+    ) -> bool {
         let namespaced = |id: &str| {
             if id.contains(':') {
                 id.to_owned()
@@ -305,7 +313,7 @@ impl Game<'_> {
     }
     /// `ItemStack.canBreakBlockInAdventureMode`: an adventure player may break,
     /// or prime TNT at, only a block their held stack's `can_break` matches.
-    pub(in crate::game) fn can_break_in_adventure(&self, pos: [i32; 3]) -> bool {
+    pub(in crate::game::server_side) fn can_break_in_adventure(&self, pos: [i32; 3]) -> bool {
         self.adventure_predicate("minecraft:can_break", pos)
     }
     /// `ItemStack.useOn` in adventure mode: the used item's `can_place_on`
@@ -316,7 +324,7 @@ impl Game<'_> {
     /// `Player.mayUseItemAt(pos, face, stack)` for a player who `may_build`
     /// or not: builders always may, anyone else only when `stack`'s
     /// `can_place_on` matches the block clicked, the one `pos` lies against.
-    pub(in crate::game) fn may_use_item_at(
+    pub(in crate::game::server_side) fn may_use_item_at(
         &self,
         may_build: bool,
         pos: [i32; 3],
@@ -341,11 +349,11 @@ impl Game<'_> {
     /// `ItemStack.useOn`'s gate before any item's own `useOn`: a player who
     /// may build, or an adventure player whose held item's `can_place_on`
     /// matches the clicked block.
-    pub(in crate::game) fn may_use_on(&self, clicked: [i32; 3]) -> bool {
+    pub(in crate::game::server_side) fn may_use_on(&self, clicked: [i32; 3]) -> bool {
         self.may_build() || self.can_place_on_in_adventure(clicked)
     }
     /// `ServerPlayer.setGameMode(SPECTATOR)`: `stopRiding`.
-    pub(in crate::game) fn dismount_for_spectator(&mut self) {
+    pub(in crate::game::server_side) fn dismount_for_spectator(&mut self) {
         let Some(id) = self.riding else {
             return;
         };
@@ -360,7 +368,7 @@ impl Game<'_> {
 }
 
 // BlockPos.relative uses Java's wrapping integer arithmetic, including for mod input.
-pub(in crate::game) fn relative(
+pub(in crate::game::server_side) fn relative(
     pos: [i32; 3],
     face: sunrise_core::geometry::Direction,
 ) -> [i32; 3] {

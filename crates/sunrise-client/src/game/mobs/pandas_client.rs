@@ -17,7 +17,7 @@ pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
 impl Game<'_> {
     /// What a window draws of its pandas: the crumbs of a bite
     /// (`addEatingParticles`) and the sneeze's particle.
-    pub(in crate::game) fn panda_effects(&mut self) {
+    pub(in crate::game::client_side) fn panda_effects(&mut self) {
         let mut bites = Vec::new();
         let mut sneezes = Vec::new();
         for m in self

@@ -79,7 +79,7 @@ impl TestDefSample for TestDef {
     }
 }
 
-pub(in crate::game) fn red(key: &str, args: &[Text]) -> Text {
+pub(in crate::game::server_side) fn red(key: &str, args: &[Text]) -> Text {
     Text::translate(key, args).with_color(text::RED)
 }
 
@@ -107,7 +107,7 @@ impl Game<'_> {
     /// enabled, later packs overriding earlier ones. The set stays as it is
     /// until the next world opens; `/reload` and `/datapack` do not change it.
     /// It replaces the previous world's definitions and selector ids.
-    pub(in crate::game) fn snapshot_test_defs(&mut self) {
+    pub(in crate::game::server_side) fn snapshot_test_defs(&mut self) {
         let stack = super::functions::pack_stack(
             &self.server.world_root,
             &self.options.resources,
@@ -163,7 +163,7 @@ impl Game<'_> {
         *self.test_defs.0.borrow_mut() = defs;
         self.server.test_defs_snapshot = true;
     }
-    pub(in crate::game) fn read_test_def(&self, id: &str) -> Option<TestDef> {
+    pub(in crate::game::server_side) fn read_test_def(&self, id: &str) -> Option<TestDef> {
         let (ns, path) = id.split_once(':').unwrap_or(("minecraft", id));
         let file = self
             .options
@@ -194,7 +194,7 @@ impl Game<'_> {
     }
 
     /// `getTestHolder`.
-    pub(in crate::game) fn test_holder(&self, pos: Pos) -> Option<TestDef> {
+    pub(in crate::game::server_side) fn test_holder(&self, pos: Pos) -> Option<TestDef> {
         let key = self.test_instance_at(pos)?.data.test.clone()?;
         self.test_def(&key)
     }
@@ -225,7 +225,7 @@ impl Game<'_> {
     /// `ServerGamePacketListenerImpl.handleTestInstanceBlockAction` for a
     /// guest: only a creative player with game master commands. A query or
     /// the screen's first look answers with a status packet.
-    pub(in crate::game) fn lan_test_instance_action(
+    pub(in crate::game::server_side) fn lan_test_instance_action(
         &mut self,
         conn: u32,
         p: play::TestInstanceBlockAction,
@@ -254,7 +254,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn apply_test_instance_action(
+    pub(in crate::game::server_side) fn apply_test_instance_action(
         &mut self,
         p: &play::TestInstanceBlockAction,
     ) -> Option<(Text, Option<[i32; 3]>)> {
@@ -319,7 +319,7 @@ impl Game<'_> {
 
     /// `processStructureBoundary`: the floor and walls (and the ceiling,
     /// unless the test has sky access) of the box around the structure.
-    pub(in crate::game) fn structure_boundary(&self, pos: Pos) -> Vec<Pos> {
+    pub(in crate::game::server_side) fn structure_boundary(&self, pos: Pos) -> Vec<Pos> {
         let Some(bounds) = self.test_structure_box(pos) else {
             return Vec::new();
         };
@@ -363,7 +363,7 @@ impl Game<'_> {
     }
 
     /// `clearErrorMarkers`.
-    pub(in crate::game) fn clear_error_markers(&mut self, pos: Pos) {
+    pub(in crate::game::server_side) fn clear_error_markers(&mut self, pos: Pos) {
         if let Some(b) = self.test_instance_mut(pos)
             && !b.error_markers.is_empty()
         {
@@ -390,7 +390,7 @@ impl Game<'_> {
     }
 
     /// `placeStructure()`: the test's structure, cleared space first.
-    pub(in crate::game) fn place_test_structure(&mut self, pos: Pos) -> bool {
+    pub(in crate::game::server_side) fn place_test_structure(&mut self, pos: Pos) -> bool {
         let Some(def) = self.test_holder(pos) else {
             return false;
         };
@@ -459,7 +459,7 @@ impl Game<'_> {
     }
 
     /// `getBlockTicks().clearArea(bounds)` and `clearBlockEvents(bounds)`.
-    pub(in crate::game) fn clear_test_ticks(&mut self, bounds: &BoundingBox) {
+    pub(in crate::game::server_side) fn clear_test_ticks(&mut self, bounds: &BoundingBox) {
         let area = TickArea::new(
             BlockPos::new(bounds.min[0], bounds.min[1], bounds.min[2]),
             BlockPos::new(bounds.max[0], bounds.max[1], bounds.max[2]),
@@ -473,7 +473,7 @@ impl Game<'_> {
     }
 
     /// `saveTest`: the test's structure id, saved from the world.
-    pub(in crate::game) fn save_test(&mut self, pos: Pos) -> Option<String> {
+    pub(in crate::game::server_side) fn save_test(&mut self, pos: Pos) -> Option<String> {
         let id = self
             .test_holder(pos)
             .map(|t| t.structure)
@@ -504,7 +504,7 @@ impl Game<'_> {
 
     /// `exportTest`: saves, then writes to the test template folder, which
     /// only a development build has.
-    pub(in crate::game) fn export_test(&mut self, pos: Pos) {
+    pub(in crate::game::server_side) fn export_test(&mut self, pos: Pos) {
         if self.save_test(pos).is_some() {
             self.system_message(
                 Text::literal("Test structure exporting is disabled").with_color(text::RED),
@@ -513,7 +513,7 @@ impl Game<'_> {
     }
 
     /// `runTest`: the checks, the structure's placement and the test.
-    pub(in crate::game) fn run_test(&mut self, pos: Pos) {
+    pub(in crate::game::server_side) fn run_test(&mut self, pos: Pos) {
         let coordinates = [pos.0, pos.1, pos.2].map(|v| Text::literal(v.to_string()));
         let Some(def) = self.test_holder(pos) else {
             self.system_message(red("test_instance_block.error.no_test", &coordinates));

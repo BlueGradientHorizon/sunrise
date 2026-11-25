@@ -17,8 +17,6 @@ pub(in crate::game::client_side) use crate::game::server_side::consume::Teleport
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::consume::USE_ITEM_COMPLETE_EVENT;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::consume::consumed_snapshot;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::consume::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use std::convert::Infallible;
@@ -196,7 +194,7 @@ impl Game<'_> {
     }
     /// `LivingEntity.handleEntityEvent(46)` for the entity the packet names:
     /// this player, or a mob the client is drawing.
-    pub(in crate::game) fn entity_teleport_particles(&mut self, id: i32) {
+    pub(in crate::game::client_side) fn entity_teleport_particles(&mut self, id: i32) {
         if self.remote.as_ref().is_some_and(|r| r.entity_id == id) {
             self.portal_particles();
             return;

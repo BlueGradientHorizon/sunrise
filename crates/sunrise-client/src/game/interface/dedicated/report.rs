@@ -37,7 +37,7 @@ pub(super) struct Plan {
 }
 
 /// Logs the captures whose files are done; with `wait`, every one still being finished.
-pub(in crate::game) fn log_saved(perf: &mut ServerPerf, wait: bool) -> Vec<Done> {
+pub(in crate::game::server_side) fn log_saved(perf: &mut ServerPerf, wait: bool) -> Vec<Done> {
     perf.take_saved(wait)
         .into_iter()
         .map(|saved| match saved {
@@ -163,7 +163,7 @@ impl Game<'_> {
     }
 
     /// Every block's name by the id the sampler's context holds.
-    pub(in crate::game) fn block_names(&self) -> Vec<String> {
+    pub(in crate::game::server_side) fn block_names(&self) -> Vec<String> {
         let table = &self.res.behaviours().table;
         (0..table.block_count() as u16)
             .map(|id| table.info(BlockId(id)).name.to_string())
@@ -235,7 +235,7 @@ impl Game<'_> {
     }
 
     /// Health samples count every typed family using lengths only.
-    pub(in crate::game) fn perf_world_counts(&self) -> WorldCounts {
+    pub(in crate::game::server_side) fn perf_world_counts(&self) -> WorldCounts {
         let (mut chunks, mut entities) = (self.world.chunks.len(), self.perf_entity_count());
         for (_, world, view) in self.levels.0.parked_perf_views() {
             chunks += world.chunks.len();
@@ -255,7 +255,7 @@ impl Game<'_> {
     }
 
     /// Capture snapshots resolve registry labels; gauges use the same view without labels.
-    pub(in crate::game) fn level_counts(&self) -> Vec<LevelCounts> {
+    pub(in crate::game::server_side) fn level_counts(&self) -> Vec<LevelCounts> {
         let level = |dim: Dim,
                      world: &sunrise_client::world::World,
                      view: super::super::levels::EntityCountView<'_>| {
@@ -281,7 +281,7 @@ impl Game<'_> {
     }
 
     /// Each player's connection: wire bytes (in, out), name, brand and view distance.
-    pub(in crate::game) fn wire_bytes(&self) -> Wire {
+    pub(in crate::game::server_side) fn wire_bytes(&self) -> Wire {
         self.lan.as_ref().map_or_else(Vec::new, |h| {
             h.hub
                 .guests
@@ -342,7 +342,7 @@ impl Game<'_> {
     }
 
     /// What a finished recording leaves for the capture: the world as it stands, the sampled mob costs and the workers' time.
-    pub(in crate::game) fn capture_end(&self, recording: &Recording) -> CaptureEnd {
+    pub(in crate::game::server_side) fn capture_end(&self, recording: &Recording) -> CaptureEnd {
         let span_ns = span_cost_nanos();
         let mob_ns = tick_profile::sample_cost_nanos();
         // Release this recording's span request; other recordings or SUNRISE_SPIKES may remain.

@@ -2,13 +2,13 @@
 use super::*;
 
 impl Game<'_> {
-    pub(in crate::game) fn unpack_inventory_slot(&mut self, view: &View, slot: usize) {
+    pub(in crate::game::server_side) fn unpack_inventory_slot(&mut self, view: &View, slot: usize) {
         if let Some((pos, _)) = view.locate(slot) {
             self.unpack_loot(super::super::container_loot::LootTarget::Block(pos), None);
         }
     }
     /// One pending lookup per visited half, without allocating a visited set.
-    pub(in crate::game) fn unpack_next_inventory_part(
+    pub(in crate::game::server_side) fn unpack_next_inventory_part(
         &mut self,
         view: &View,
         slot: usize,
@@ -21,7 +21,7 @@ impl Game<'_> {
         }
     }
     /// `CompoundContainer.isEmpty` visits the other half only if needed.
-    pub(in crate::game) fn inventory_is_empty(&mut self, view: &View) -> bool {
+    pub(in crate::game::server_side) fn inventory_is_empty(&mut self, view: &View) -> bool {
         let mut prepared = None;
         for slot in 0..view.len() {
             self.unpack_next_inventory_part(view, slot, &mut prepared);
@@ -32,7 +32,11 @@ impl Game<'_> {
         true
     }
     /// Hopper's full check stops at the first non-full slot.
-    pub(in crate::game) fn inventory_is_full(&mut self, view: &View, face: Direction) -> bool {
+    pub(in crate::game::server_side) fn inventory_is_full(
+        &mut self,
+        view: &View,
+        face: Direction,
+    ) -> bool {
         let mut prepared = None;
         for slot in view.slots_for_face_iter(Some(face)) {
             self.unpack_next_inventory_part(view, slot, &mut prepared);

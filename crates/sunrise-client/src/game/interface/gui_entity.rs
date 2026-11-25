@@ -187,7 +187,7 @@ impl Game<'_> {
     /// `entity` prepared for drawing, as `DrawContext::entity` prepares it (a screen scene's
     /// entities too): a new entity of a type made for drawing only, or a copy of the
     /// client's entity as it is this frame. Refused by the same named causes.
-    pub(in crate::game) fn prepare_gui_entity(
+    pub(in crate::game::client_side) fn prepare_gui_entity(
         &self,
         entity: &GuiEntity,
     ) -> Result<Mob, GuiEntityError> {
@@ -250,7 +250,7 @@ impl Game<'_> {
 
     /// `gui_entity_geometry` at `partial` into the tick, around `camera`: what a screen
     /// scene's entities submit, in the scene's own coordinates.
-    pub(in crate::game) fn gui_entity_geometry_at(
+    pub(in crate::game::client_side) fn gui_entity_geometry_at(
         &self,
         mob: &Mob,
         partial: f32,

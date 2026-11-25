@@ -1306,7 +1306,7 @@ fn canonical_permissions_preserve_owner_and_fake_player_reads() {
 }
 
 /// The UUIDs of the players in the level, checked against the full reader.
-pub(in crate::game) fn level_uuids(game: &super::Game<'_>) -> Vec<u128> {
+pub(in crate::game::server_side) fn level_uuids(game: &super::Game<'_>) -> Vec<u128> {
     let uuids: Vec<u128> = game.level_player_uuids(game.dim.id()).collect();
     let players: Vec<u128> = game.level_players().iter().map(|p| p.uuid).collect();
     assert_eq!(uuids, players, "both enumerations select the same players");
@@ -1314,7 +1314,7 @@ pub(in crate::game) fn level_uuids(game: &super::Game<'_>) -> Vec<u128> {
 }
 
 /// The host in place, with a body and UUID 99.
-pub(in crate::game) fn place_host(game: &mut super::Game<'_>) {
+pub(in crate::game::server_side) fn place_host(game: &mut super::Game<'_>) {
     let mut body =
         sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(0.0, 64.0, 0.0)).unwrap();
     body.entity_id = 99;
@@ -1560,7 +1560,10 @@ impl mod_api::Hooks for PanicOnDamage {
 }
 
 /// Put the follow-up blow outside the victim's damage cooldown.
-pub(in crate::game) fn expire_guest_damage_cooldown(game: &mut super::Game<'_>, conn: u32) {
+pub(in crate::game::server_side) fn expire_guest_damage_cooldown(
+    game: &mut super::Game<'_>,
+    conn: u32,
+) {
     game.as_guest(conn, |game| {
         let health = &mut game.player.as_mut().unwrap().health;
         while health.hurt.cooldown > 0 {
@@ -1825,7 +1828,7 @@ fn a_panic_in_a_turn_end_callback_still_restores_the_guest() {
 
 /// An armor stand summoned at (1.5, 70, 1.5) in the level in place, which `with_guests` puts
 /// its two players beside, at (3, 64, 5).
-pub(in crate::game) fn summon_stand(game: &mut super::Game<'_>) -> mod_api::EntityRef {
+pub(in crate::game::server_side) fn summon_stand(game: &mut super::Game<'_>) -> mod_api::EntityRef {
     game.options.dedicated = Some(Vec::new());
     game.world
         .chunks
@@ -1847,14 +1850,17 @@ pub(in crate::game) fn summon_stand(game: &mut super::Game<'_>) -> mod_api::Enti
 }
 
 /// Whether anything the server sent the acting player since `before` is a chat line.
-pub(in crate::game) fn told_since(game: &super::Game<'_>, before: usize) -> bool {
+pub(in crate::game::server_side) fn told_since(game: &super::Game<'_>, before: usize) -> bool {
     use sunrise_protocol::packets::play::Clientbound as C;
     game.server.guest_packets[before..]
         .iter()
         .any(|p| matches!(p, C::SystemChat(_)))
 }
 
-pub(in crate::game) fn with_command_guests(name: &str, body: impl FnOnce(&mut super::Game<'_>)) {
+pub(in crate::game::server_side) fn with_command_guests(
+    name: &str,
+    body: impl FnOnce(&mut super::Game<'_>),
+) {
     crate::game::in_own_process(
         &format!("game::server_side::native_guest_turn_tests::{name}"),
         || {

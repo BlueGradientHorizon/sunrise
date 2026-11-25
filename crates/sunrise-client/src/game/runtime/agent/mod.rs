@@ -103,7 +103,7 @@ pub(in crate::game) struct Args<'a> {
 pub(in crate::game) const VALUE_FLAGS: &[&str] =
     &["timeout", "near", "item", "radius", "hold", "face", "over"];
 
-pub(in crate::game) fn parse_args<'a>(words: &[&'a str]) -> Args<'a> {
+pub(in crate::game::client_side) fn parse_args<'a>(words: &[&'a str]) -> Args<'a> {
     let mut args = Args::default();
     let mut i = 0;
     while i < words.len() {
@@ -125,30 +125,30 @@ pub(in crate::game) fn parse_args<'a>(words: &[&'a str]) -> Args<'a> {
     args
 }
 impl Args<'_> {
-    pub(in crate::game) fn has(&self, flag: &str) -> bool {
+    pub(in crate::game::client_side) fn has(&self, flag: &str) -> bool {
         self.flags.contains_key(flag)
     }
-    pub(in crate::game) fn num(&self, flag: &str, default: f64) -> Result<f64> {
+    pub(in crate::game::client_side) fn num(&self, flag: &str, default: f64) -> Result<f64> {
         match self.flags.get(flag) {
             Some(Some(v)) => Ok(v.parse()?),
             Some(None) => Err(format!("--{flag} needs a value").into()),
             None => Ok(default),
         }
     }
-    pub(in crate::game) fn get(&self, i: usize, what: &str) -> Result<&str> {
+    pub(in crate::game::client_side) fn get(&self, i: usize, what: &str) -> Result<&str> {
         self.pos
             .get(i)
             .copied()
             .ok_or_else(|| format!("missing {what}").into())
     }
-    pub(in crate::game) fn f64(&self, i: usize, what: &str) -> Result<f64> {
+    pub(in crate::game::client_side) fn f64(&self, i: usize, what: &str) -> Result<f64> {
         let v = self.get(i, what)?;
         v.parse()
             .map_err(|_| format!("{what} must be a number, not {v}").into())
     }
     /// X or Z of a goto target: a whole number names a block, so aim at its
     /// center the way the player stands in it; a decimal is an exact position.
-    pub(in crate::game) fn column(&self, i: usize, what: &str) -> Result<f64> {
+    pub(in crate::game::client_side) fn column(&self, i: usize, what: &str) -> Result<f64> {
         let v = self.f64(i, what)?;
         Ok(if whole(self.get(i, what)?) {
             v + 0.5
@@ -156,12 +156,12 @@ impl Args<'_> {
             v
         })
     }
-    pub(in crate::game) fn i32(&self, i: usize, what: &str) -> Result<i32> {
+    pub(in crate::game::client_side) fn i32(&self, i: usize, what: &str) -> Result<i32> {
         let v = self.get(i, what)?;
         v.parse()
             .map_err(|_| format!("{what} must be an integer, not {v}").into())
     }
-    pub(in crate::game) fn block_pos(&self, from: usize) -> Result<[i32; 3]> {
+    pub(in crate::game::client_side) fn block_pos(&self, from: usize) -> Result<[i32; 3]> {
         Ok([
             self.i32(from, "X")?,
             self.i32(from + 1, "Y")?,
@@ -170,7 +170,7 @@ impl Args<'_> {
     }
 }
 
-pub(in crate::game) fn namespaced(name: &str) -> String {
+pub(in crate::game::client_side) fn namespaced(name: &str) -> String {
     if name.contains(':') {
         name.to_owned()
     } else {
@@ -186,31 +186,31 @@ pub(in crate::game) const FACES: [(&str, [i32; 3]); 6] = [
     ("west", [-1, 0, 0]),
     ("east", [1, 0, 0]),
 ];
-pub(in crate::game) fn face_name(face: [i32; 3]) -> &'static str {
+pub(in crate::game::client_side) fn face_name(face: [i32; 3]) -> &'static str {
     FACES
         .iter()
         .find(|(_, d)| *d == face)
         .map_or("?", |(n, _)| n)
 }
-pub(in crate::game) fn face_dir(name: &str) -> Result<[i32; 3]> {
+pub(in crate::game::client_side) fn face_dir(name: &str) -> Result<[i32; 3]> {
     FACES
         .iter()
         .find(|(n, _)| *n == name)
         .map(|(_, d)| *d)
         .ok_or_else(|| format!("unknown face {name} (down up north south west east)").into())
 }
-pub(in crate::game) fn add(a: [i32; 3], b: [i32; 3]) -> [i32; 3] {
+pub(in crate::game::client_side) fn add(a: [i32; 3], b: [i32; 3]) -> [i32; 3] {
     [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 }
-pub(in crate::game) fn whole(v: &str) -> bool {
+pub(in crate::game::client_side) fn whole(v: &str) -> bool {
     !v.contains(['.', 'e', 'E'])
 }
-pub(in crate::game) fn dist(a: [f64; 3], b: [f64; 3]) -> f64 {
+pub(in crate::game::client_side) fn dist(a: [f64; 3], b: [f64; 3]) -> f64 {
     ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
 }
 /// Minecraft's yaw and pitch facing from `eye` towards `at` (yaw 0 faces +Z,
 /// 90 faces -X; positive pitch looks down).
-pub(in crate::game) fn yaw_pitch(eye: [f64; 3], at: [f64; 3]) -> (f32, f32) {
+pub(in crate::game::client_side) fn yaw_pitch(eye: [f64; 3], at: [f64; 3]) -> (f32, f32) {
     let d = [at[0] - eye[0], at[1] - eye[1], at[2] - eye[2]];
     let horizontal = (d[0] * d[0] + d[2] * d[2]).sqrt();
     (
@@ -225,11 +225,16 @@ pub(in crate::game) fn yaw_pitch(eye: [f64; 3], at: [f64; 3]) -> (f32, f32) {
 /// (the last fork's). None when no callback ran (a syntax error, an unknown
 /// command, nothing served, a line refused before it ran): `success` is false
 /// and `result` null.
-pub(in crate::game) fn command_reply(chat: Vec<String>, outcome: Option<(bool, i32)>) -> Value {
+pub(in crate::game::client_side) fn command_reply(
+    chat: Vec<String>,
+    outcome: Option<(bool, i32)>,
+) -> Value {
     let (success, result) = outcome.map_or((false, None), |(s, r)| (s, Some(r)));
     json!({ "ok": true, "chat": chat, "success": success, "result": result })
 }
-pub(in crate::game) fn counts(items: impl Iterator<Item = ItemStack>) -> BTreeMap<String, i64> {
+pub(in crate::game::client_side) fn counts(
+    items: impl Iterator<Item = ItemStack>,
+) -> BTreeMap<String, i64> {
     let mut map = BTreeMap::new();
     for s in items {
         *map.entry(s.item.to_string()).or_insert(0) += i64::from(s.count);
@@ -237,7 +242,7 @@ pub(in crate::game) fn counts(items: impl Iterator<Item = ItemStack>) -> BTreeMa
     map
 }
 /// Item counts that changed between two inventories (positive: gained).
-pub(in crate::game) fn delta(
+pub(in crate::game::client_side) fn delta(
     before: &BTreeMap<String, i64>,
     after: &BTreeMap<String, i64>,
 ) -> BTreeMap<String, i64> {
@@ -305,7 +310,7 @@ pub(in crate::game) enum AttackAim {
 impl TaskKind {
     /// Whether the keys and buttons are released when the task ends. A wait
     /// holds nothing, so what `key w down` pressed stays down through it.
-    pub(in crate::game) fn releases_input(&self) -> bool {
+    pub(in crate::game::client_side) fn releases_input(&self) -> bool {
         !matches!(self, TaskKind::Wait { .. })
     }
 }
@@ -411,7 +416,7 @@ impl Game<'_> {
     pub(in crate::game) fn state_string(&self, state: BlockStateId) -> String {
         self.block_state_string(state).unwrap_or_else(|| "?".into())
     }
-    pub(in crate::game) fn block_json(&self, pos: [i32; 3]) -> Value {
+    pub(in crate::game::client_side) fn block_json(&self, pos: [i32; 3]) -> Value {
         let state = self.world.block(pos[0], pos[1], pos[2]);
         let mut v = json!({
             "pos": pos,
@@ -438,7 +443,7 @@ impl Game<'_> {
         }
         v
     }
-    pub(in crate::game) fn stack_value(&self, s: &ItemStack) -> Value {
+    pub(in crate::game::client_side) fn stack_value(&self, s: &ItemStack) -> Value {
         let mut v = json!({ "item": &*s.item, "count": s.count });
         if s.damage > 0 {
             v["damage"] = json!(s.damage);
@@ -455,7 +460,11 @@ impl Game<'_> {
         }
         v
     }
-    pub(in crate::game) fn slot_value(&self, slot: usize, s: &Option<ItemStack>) -> Value {
+    pub(in crate::game::client_side) fn slot_value(
+        &self,
+        slot: usize,
+        s: &Option<ItemStack>,
+    ) -> Value {
         match s {
             Some(s) => {
                 let mut v = self.stack_value(s);
@@ -465,13 +474,13 @@ impl Game<'_> {
             None => json!({ "slot": slot, "item": null }),
         }
     }
-    pub(in crate::game) fn need_world(&self) -> Result<()> {
+    pub(in crate::game::client_side) fn need_world(&self) -> Result<()> {
         if self.title.0.is_some() {
             return Err("no world open (title screen); use: open WORLD [SEED] [creative]".into());
         }
         Ok(())
     }
-    pub(in crate::game) fn require_playing_screen(&self) -> Result<()> {
+    pub(in crate::game::client_side) fn require_playing_screen(&self) -> Result<()> {
         if self.title.0.is_some() {
             return Err("no world open (title screen); use: open WORLD [SEED] [creative]".into());
         }
@@ -490,7 +499,7 @@ impl Game<'_> {
         }
         Ok(())
     }
-    pub(in crate::game) fn screen_label(&self) -> &'static str {
+    pub(in crate::game::client_side) fn screen_label(&self) -> &'static str {
         if self.dialog_open() {
             return "dialog";
         }
@@ -531,7 +540,7 @@ impl Game<'_> {
             Screen::HudEditor => "hud-editor",
         }
     }
-    pub(in crate::game) fn inventory_counts(&self) -> BTreeMap<String, i64> {
+    pub(in crate::game::client_side) fn inventory_counts(&self) -> BTreeMap<String, i64> {
         counts(
             self.inventory
                 .iter()
@@ -544,7 +553,7 @@ impl Game<'_> {
     }
 
     /// The block or entity under the crosshair.
-    pub(in crate::game) fn looking_at(&self) -> Value {
+    pub(in crate::game::client_side) fn looking_at(&self) -> Value {
         let Some(eye) = self.eye_position() else {
             return Value::Null;
         };
@@ -569,7 +578,7 @@ impl Game<'_> {
         json!({ "kind": kind, "block": block, "entity": entity })
     }
 
-    pub(in crate::game) fn state_value(&self) -> Value {
+    pub(in crate::game::client_side) fn state_value(&self) -> Value {
         let player = self.player.as_ref().map(|p| {
             json!({
                 "position": [p.position.x, p.position.y, p.position.z],
@@ -643,7 +652,7 @@ impl Game<'_> {
         state
     }
 
-    pub(in crate::game) fn title_value(&self) -> Value {
+    pub(in crate::game::client_side) fn title_value(&self) -> Value {
         use sunrise_client::title::Mode;
         let Some(title) = &self.title.0 else {
             return Value::Null;
@@ -776,7 +785,11 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn entities_value(&self, radius: f64, kind: Option<&str>) -> Value {
+    pub(in crate::game::client_side) fn entities_value(
+        &self,
+        radius: f64,
+        kind: Option<&str>,
+    ) -> Value {
         let Some(p) = &self.player else {
             return json!({ "entities": [] });
         };
@@ -843,7 +856,7 @@ impl Game<'_> {
         })
     }
 
-    pub(in crate::game) fn inventory_value(&self) -> Value {
+    pub(in crate::game::client_side) fn inventory_value(&self) -> Value {
         let armor = ["head", "chest", "legs", "feet"];
         json!({
             "selected": self.selected + 1,
@@ -861,7 +874,7 @@ impl Game<'_> {
         })
     }
 
-    pub(in crate::game) fn screen_value(&mut self) -> Value {
+    pub(in crate::game::client_side) fn screen_value(&mut self) -> Value {
         let buttons: Vec<Value> = widgets::last()
             .iter()
             .map(|w| json!({ "label": w.label, "enabled": w.enabled, "x": w.x, "y": w.y, "w": w.w, "h": w.h }))
@@ -923,7 +936,7 @@ impl Game<'_> {
         v
     }
 
-    pub(in crate::game) fn messages_value(&self, n: usize) -> Value {
+    pub(in crate::game::client_side) fn messages_value(&self, n: usize) -> Value {
         let titles = &self.client.titles;
         json!({
             "chat": self.remote_chat(n).unwrap_or_else(|| self.ui.chat.recent_lines(n)),
@@ -936,7 +949,7 @@ impl Game<'_> {
         })
     }
 
-    pub(in crate::game) fn find_path(
+    pub(in crate::game::client_side) fn find_path(
         &self,
         from: Node,
         goal: [f64; 3],
@@ -957,7 +970,7 @@ impl Game<'_> {
     }
 
     /// Point the view at `at` from the eye.
-    pub(in crate::game) fn face_point(&mut self, at: [f64; 3]) -> Result<()> {
+    pub(in crate::game::client_side) fn face_point(&mut self, at: [f64; 3]) -> Result<()> {
         let eye = self.eye_position().ok_or("no player")?;
         let (yaw, pitch) = yaw_pitch(eye, at);
         self.yaw = yaw;
@@ -965,7 +978,7 @@ impl Game<'_> {
         Ok(())
     }
     /// Aim at a face of `pos` the crosshair can reach; the face hit.
-    pub(in crate::game) fn aim_block(
+    pub(in crate::game::client_side) fn aim_block(
         &mut self,
         pos: [i32; 3],
         face: Option<[i32; 3]>,
@@ -1028,7 +1041,7 @@ impl Game<'_> {
 
     /// `--sneak` on place or interact: hold the sneak key now and click a
     /// couple of ticks later, from the lowered eye (see [`SneakClick`]).
-    pub(in crate::game) fn sneak_click(
+    pub(in crate::game::client_side) fn sneak_click(
         &mut self,
         a: &Args<'_>,
         aim: Option<([i32; 3], Option<[i32; 3]>)>,
@@ -1046,7 +1059,7 @@ impl Game<'_> {
     }
 
     /// A left or right click, as the mouse would.
-    pub(in crate::game) fn agent_mouse(
+    pub(in crate::game::client_side) fn agent_mouse(
         &mut self,
         button: MouseButton,
         pressed: bool,
@@ -1056,7 +1069,7 @@ impl Game<'_> {
     /// Ends the running agent command (and a turn) with `why`, so the agent
     /// hears why rather than the socket just closing (the window closing
     /// while it waits, say).
-    pub(in crate::game) fn agent_cancel(&mut self, why: &str) {
+    pub(in crate::game::client_side) fn agent_cancel(&mut self, why: &str) {
         let reply = json!({ "error": why, "cancelled": true }).to_string();
         if let Some(t) = self.agent.task.take() {
             let _ = t.reply.send(reply.clone());
@@ -1066,7 +1079,7 @@ impl Game<'_> {
         }
         self.release_agent_keys();
     }
-    pub(in crate::game) fn release_agent_keys(&mut self) {
+    pub(in crate::game::client_side) fn release_agent_keys(&mut self) {
         for k in MOVE_KEYS {
             self.release_device_key(&k, Source::Agent);
         }
@@ -1079,7 +1092,7 @@ impl Game<'_> {
     }
 
     /// Synthesize the pointer moving to GUI pixel (x, y) and a click there.
-    pub(in crate::game) fn synth_click(
+    pub(in crate::game::client_side) fn synth_click(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         x: f32,
@@ -1090,7 +1103,7 @@ impl Game<'_> {
     }
     /// The window events of a press at the first GUI point, moves through
     /// the others and a release at the last (one point is a click).
-    pub(in crate::game) fn synth_drag(
+    pub(in crate::game::client_side) fn synth_drag(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         points: &[(f32, f32)],
@@ -1138,7 +1151,7 @@ impl Game<'_> {
         Ok(())
     }
 
-    pub(in crate::game) fn start_task(
+    pub(in crate::game::client_side) fn start_task(
         &mut self,
         name: &'static str,
         kind: TaskKind,
@@ -1155,12 +1168,12 @@ impl Game<'_> {
     }
 
     /// A deferred agent action (goto, break, wait...) is still running.
-    pub(in crate::game) fn agent_busy(&self) -> bool {
+    pub(in crate::game::client_side) fn agent_busy(&self) -> bool {
         self.agent.task.is_some()
     }
 
     /// Agent commands; `Handled::No` when `words[0]` is not one of them.
-    pub(in crate::game) fn agent_command(
+    pub(in crate::game::client_side) fn agent_command(
         &mut self,
         words: &[&str],
         line: &str,
@@ -1915,7 +1928,7 @@ impl Game<'_> {
     }
 
     /// Select the hotbar slot holding `item`.
-    pub(in crate::game) fn select_item(&mut self, item: &str) -> Result<()> {
+    pub(in crate::game::client_side) fn select_item(&mut self, item: &str) -> Result<()> {
         if let Some(i) =
             (0..9).find(|&i| self.inventory[i].as_ref().is_some_and(|s| &*s.item == item))
         {
@@ -1933,7 +1946,7 @@ impl Game<'_> {
 
     /// Mouse motion turns the view only in the world with no screen open
     /// (`MouseHandler` turns the player while the mouse is grabbed).
-    pub(in crate::game) fn turning(&self) -> Result<()> {
+    pub(in crate::game::client_side) fn turning(&self) -> Result<()> {
         self.require_playing_screen()?;
         if self.agent.glide.is_some() {
             return Err("already turning; wait for it or send stop".into());
@@ -1941,7 +1954,7 @@ impl Game<'_> {
         Ok(())
     }
 
-    pub(in crate::game) fn start_glide(
+    pub(in crate::game::client_side) fn start_glide(
         &mut self,
         total: (f64, f64),
         over: f64,
@@ -1974,7 +1987,7 @@ impl Game<'_> {
     /// Feed the motion due by now (eased over the glide's time); reply once
     /// all of it has been turned by a frame, or with no motion once a pick
     /// (a tick's or a frame's) has been taken since the start.
-    pub(in crate::game) fn advance_glide(&mut self) {
+    pub(in crate::game::client_side) fn advance_glide(&mut self) {
         let Some(mut g) = self.agent.glide.take() else {
             return;
         };
@@ -2089,7 +2102,7 @@ impl Game<'_> {
     }
 
     /// Advance the running agent task; reply when it ends.
-    pub(in crate::game) fn advance_agent(&mut self) {
+    pub(in crate::game::client_side) fn advance_agent(&mut self) {
         self.advance_glide();
         let timed_out = self
             .agent
@@ -2114,14 +2127,14 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn position(&self) -> [f64; 3] {
+    pub(in crate::game::client_side) fn position(&self) -> [f64; 3] {
         self.player
             .as_ref()
             .map_or([0.0; 3], |p| [p.position.x, p.position.y, p.position.z])
     }
 
     /// One frame of a task: Some(reply) when it is over.
-    pub(in crate::game) fn step_task(
+    pub(in crate::game::client_side) fn step_task(
         &mut self,
         kind: &mut TaskKind,
         timed_out: bool,
@@ -2360,7 +2373,11 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn step_goto(&mut self, g: &mut Goto, timed_out: bool) -> Option<Value> {
+    pub(in crate::game::client_side) fn step_goto(
+        &mut self,
+        g: &mut Goto,
+        timed_out: bool,
+    ) -> Option<Value> {
         let p = self.position();
         let on_ground = self.player.as_ref().is_some_and(|p| p.ground.on_ground);
         let horizontal =
@@ -2461,13 +2478,13 @@ impl Game<'_> {
 
     /// Whether a mined block is gone: air, or the bare fluid a waterlogged
     /// block or ice leaves behind.
-    pub(in crate::game) fn block_gone(&self, state: BlockStateId) -> bool {
+    pub(in crate::game::client_side) fn block_gone(&self, state: BlockStateId) -> bool {
         let facts = self.res.facts();
         let f = facts.get(state);
         facts.is_air(state) || f.fluid != sunrise_client::blocks::Fluid::None && !f.waterlogged
     }
 
-    pub(in crate::game) fn step_break(
+    pub(in crate::game::client_side) fn step_break(
         &mut self,
         b: &mut Break,
         timed_out: bool,

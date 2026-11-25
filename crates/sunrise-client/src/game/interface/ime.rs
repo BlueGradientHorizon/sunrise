@@ -18,18 +18,22 @@ use sunrise_client::{
 pub(in crate::game) struct HeldKeyText(Option<(winit::keyboard::KeyCode, String)>);
 
 impl HeldKeyText {
-    pub(in crate::game) fn pressed(&mut self, key: winit::keyboard::KeyCode, text: Option<&str>) {
+    pub(in crate::game::client_side) fn pressed(
+        &mut self,
+        key: winit::keyboard::KeyCode,
+        text: Option<&str>,
+    ) {
         self.0 = text.map(|t| (key, t.to_owned()));
     }
 
-    pub(in crate::game) fn released(&mut self, key: winit::keyboard::KeyCode) {
+    pub(in crate::game::client_side) fn released(&mut self, key: winit::keyboard::KeyCode) {
         if self.0.as_ref().is_some_and(|(k, _)| *k == key) {
             self.0 = None;
         }
     }
 
     /// Whether `committed` is the held key's own character: dropped once.
-    pub(in crate::game) fn swallows(&mut self, committed: &str) -> bool {
+    pub(in crate::game::client_side) fn swallows(&mut self, committed: &str) -> bool {
         if self.0.as_ref().is_some_and(|(_, t)| t == committed) {
             self.0 = None;
             return true;
@@ -40,7 +44,7 @@ impl HeldKeyText {
 
 impl Game<'_> {
     /// Whether a vanilla (non-mounted) text box has focus right now.
-    pub(in crate::game) fn vanilla_text_field_focused(&mut self) -> bool {
+    pub(in crate::game::client_side) fn vanilla_text_field_focused(&mut self) -> bool {
         match self.observed_overlay_now() {
             Some("dialog") => return self.dialog_typing(),
             Some("sign_editor" | "book_edit" | "book_sign") => return true,
@@ -85,7 +89,7 @@ impl Game<'_> {
     /// Whether a text box or input-capturing mounted widget has focus right now
     /// (so OS IME commits and text typing are enabled). Note that `ime_preedit`
     /// separately checks `mounted_widget_preedit`, never `captures_input()`.
-    pub(in crate::game) fn text_field_focused(&mut self) -> bool {
+    pub(in crate::game::client_side) fn text_field_focused(&mut self) -> bool {
         if self.screen_state.0.widgets.has_focus() {
             return self.mounted_widget_captures_input();
         }
@@ -124,7 +128,7 @@ impl Game<'_> {
 
     /// Allow the input method only while a text box has focus, and reset
     /// composition whenever the focused text box itself changes.
-    pub(in crate::game) fn sync_ime(&mut self) {
+    pub(in crate::game::client_side) fn sync_ime(&mut self) {
         let focus = self.ime_focus_identity();
         let want = focus.is_some();
         if focus != self.screen_state.0.ime_focus {
@@ -145,14 +149,18 @@ impl Game<'_> {
     }
 
     /// The input method consumes composing key presses even if the editor has no built-in caret.
-    pub(in crate::game) fn ime_suppresses_key(&mut self) -> bool {
+    pub(in crate::game::client_side) fn ime_suppresses_key(&mut self) -> bool {
         (self.text_field_focused() || self.preset_editor_title().is_some())
             && preedit::should_suppress_key()
     }
 
     /// `WindowEvent::Ime(Preedit)`: `KeyboardHandler.textEditing`. The text
     /// still being composed is shown under the focused field's caret.
-    pub(in crate::game) fn ime_preedit(&mut self, text: &str, cursor: Option<(usize, usize)>) {
+    pub(in crate::game::client_side) fn ime_preedit(
+        &mut self,
+        text: &str,
+        cursor: Option<(usize, usize)>,
+    ) {
         self.sync_ime();
         let preedit_receiver = (mod_api::__private::listened(mod_api::HookId::ScreenPreeditPre)
             || mod_api::__private::listened(mod_api::HookId::ScreenPreeditPost))
@@ -232,7 +240,7 @@ impl Game<'_> {
     /// With the frame's GUI built: draw the composition over it and move the
     /// input method's candidate window to the caret
     /// (`TextInputManager.setTextInputArea`, in window pixels).
-    pub(in crate::game) fn flush_ime(&mut self, hud: &mut HudBatch) {
+    pub(in crate::game::client_side) fn flush_ime(&mut self, hud: &mut HudBatch) {
         preedit::draw_overlay(hud, &self.gui.atlas);
         let Some([x0, y0, x1, y1]) = preedit::take_text_input_area() else {
             return;
@@ -258,7 +266,7 @@ impl Game<'_> {
     }
 
     /// Text the input method committed (`WindowEvent::Ime(Commit)`).
-    pub(in crate::game) fn ime_commit(&mut self, text: &str) {
+    pub(in crate::game::client_side) fn ime_commit(&mut self, text: &str) {
         preedit::mark_committed();
         if text.is_empty() || self.client.held_key_text.swallows(text) {
             return;

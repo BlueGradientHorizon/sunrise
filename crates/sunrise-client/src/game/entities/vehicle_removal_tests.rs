@@ -23,7 +23,7 @@ pub(in crate::game) fn push_pig(game: &mut Game<'_>, id: u32) {
     game.mobs.push(Mob::new(id, kind, AT, 0.0));
 }
 
-pub(in crate::game) fn tick_area(game: &mut Game<'_>) {
+pub(in crate::game::server_side) fn tick_area(game: &mut Game<'_>) {
     super::native_entity_refs::tests::prepare_entity_ticking_neighborhood(
         game,
         ChunkPos::new(0, 0),
@@ -303,7 +303,7 @@ fn mob_removal_order_witness() {
     run_mob_removal_order_witness();
 }
 
-pub(in crate::game) fn run_mob_removal_order_witness() {
+pub(in crate::game::server_side) fn run_mob_removal_order_witness() {
     let observation = Arc::new(Observation::default());
     with_removal_test_hooks(Observe(observation.clone()), |game| {
         game.boats

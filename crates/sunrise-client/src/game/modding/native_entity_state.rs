@@ -37,7 +37,7 @@ pub(in crate::game) const POSES: [&str; 18] = [
 ];
 
 /// `Entity.getMaxAirSupply`: a dolphin's 4800, an axolotl's 6000, else 300.
-pub(in crate::game) fn max_air(species: Option<Species>) -> i32 {
+pub(in crate::game::server_side) fn max_air(species: Option<Species>) -> i32 {
     match species {
         Some(Species::Dolphin) => 4800,
         Some(Species::Axolotl) => sunrise_client::mobs::axolotl::MAX_AIR,

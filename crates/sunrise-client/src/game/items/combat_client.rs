@@ -11,14 +11,6 @@ pub(in crate::game::client_side) use crate::game::server_side::combat::PendingAt
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::combat::PlayerCredit;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::combat::damage_taken_award;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::combat::fall_location_of;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::combat::has_custom_name;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::combat::mob_name;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::combat::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::health::melee;

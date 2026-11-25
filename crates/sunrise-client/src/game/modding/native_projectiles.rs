@@ -157,7 +157,7 @@ impl Game<'_> {
 
     /// Guard just the dispatch: normal completion returns the still-owned pass
     /// to its caller, which restores explicitly at the established tick boundary.
-    pub(in crate::game) fn with_projectile_dispatch(
+    pub(in crate::game::server_side) fn with_projectile_dispatch(
         &mut self,
         pass: &mut JoinList<Projectile, false>,
         fire: impl FnOnce(&mut Self),
@@ -206,7 +206,7 @@ impl Game<'_> {
     }
 
     /// `ProjectileImpactEvent` for a player's trident, once its tick has exposed the owner.
-    pub(in crate::game) fn native_trident_impact(
+    pub(in crate::game::server_side) fn native_trident_impact(
         &mut self,
         trident: u32,
         guest: Option<u32>,
@@ -328,7 +328,7 @@ impl Game<'_> {
         self.removal_pending(&target) || self.persist.removals.contains(&target)
     }
 
-    pub(in crate::game) fn native_projectile_impact_canceled(
+    pub(in crate::game::server_side) fn native_projectile_impact_canceled(
         &mut self,
         p: &Projectile,
         hit: Hit,
@@ -363,7 +363,7 @@ impl Game<'_> {
     /// Hand back the owning rows (including terminal impacts) while mods run. A veto
     /// alone replays the flight; all other captured contacts keep their row until the
     /// apply boundary (or, for an explicit discard, the removal sweep).
-    pub(in crate::game) fn native_settle_impacts(
+    pub(in crate::game::server_side) fn native_settle_impacts(
         &mut self,
         projectiles: &mut JoinList<Projectile, false>,
         impacts: Vec<Impact>,

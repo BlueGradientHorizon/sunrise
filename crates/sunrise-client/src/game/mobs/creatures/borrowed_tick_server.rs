@@ -12,7 +12,7 @@ pub(in crate::game::server_side) use crate::game::creatures::borrowed_tick::*;
 impl Game<'_> {
     /// The killing blow of a mob as the death hooks name it: its damage
     /// type and the causing entity's id (0 for none).
-    pub(in crate::game) fn mob_damage_source(&self, m: &Mob) -> (&'static str, u32) {
+    pub(in crate::game::server_side) fn mob_damage_source(&self, m: &Mob) -> (&'static str, u32) {
         let (damage_type, attacker) = match m.last_damage {
             Some((d, _)) => (source_damage_type(d), d.attacker),
             None => ("minecraft:generic", None),
@@ -30,7 +30,7 @@ impl Game<'_> {
         };
         (damage_type, attacker)
     }
-    pub(in crate::game) fn tick_borrowed_creatures(
+    pub(in crate::game::server_side) fn tick_borrowed_creatures(
         &mut self,
         state: BorrowedMobTick<'_>,
     ) -> (

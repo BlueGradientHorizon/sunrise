@@ -29,11 +29,7 @@ pub(in crate::game::client_side) use crate::game::server_side::machines::Slots;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::machines::View;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::machines::bone_meal_stack;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::machines::container_signal;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::machines::wake_hoppers_reaching;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::machines::*;
 #[allow(unused_imports)]

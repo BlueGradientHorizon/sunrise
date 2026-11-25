@@ -33,7 +33,7 @@ impl Game<'_> {
     }
     /// Places every entity-following stream at its entity, or stops it where the client
     /// tracks no such entity. Once a frame, beside the listener's own update.
-    pub(in crate::game) fn follow_audio_stream_entities(&self) {
+    pub(in crate::game::client_side) fn follow_audio_stream_entities(&self) {
         self.audio
             .0
             .follow_stream_entities(|entity| self.entity_position(entity));

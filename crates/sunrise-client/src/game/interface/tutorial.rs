@@ -11,7 +11,7 @@ pub(in crate::game) use sunrise_client_gameplay::tutorial::{Hint, Previous, Step
 
 impl super::Game<'_> {
     /// `Tutorial.setStep` persists immediately so it survives leaving a world.
-    pub(in crate::game) fn persist_tutorial_step(&mut self) {
+    pub(in crate::game::client_side) fn persist_tutorial_step(&mut self) {
         self.settings.file.set(
             "tutorialStep",
             sunrise_client::options_file::V::Int(self.client.tutorial.step as i32),
@@ -91,7 +91,7 @@ impl super::Game<'_> {
     }
 
     /// Tick the current step and queue `Gui.addSocialInteractionsToast` on the first server.
-    pub(in crate::game) fn tick_tutorial(&mut self) {
+    pub(in crate::game::client_side) fn tick_tutorial(&mut self) {
         use sunrise_client::actions::Action;
         if self.title.0.is_some()
             || self.player.is_none()
@@ -203,7 +203,7 @@ pub(in crate::game) struct HintToast {
 }
 
 impl super::Game<'_> {
-    pub(in crate::game) fn hide_social_tutorial(&mut self) {
+    pub(in crate::game::client_side) fn hide_social_tutorial(&mut self) {
         if let Some(toast) = self.client.toast_manager.find_mut(|entry| match entry {
             Toast::Tutorial(t) if t.hint == Hint::SocialInteractions => Some(t),
             _ => None,
@@ -309,7 +309,7 @@ impl super::Game<'_> {
         })
     }
 
-    pub(in crate::game) fn update_tutorial_toasts(&mut self) {
+    pub(in crate::game::client_side) fn update_tutorial_toasts(&mut self) {
         let wanted = self.client.tutorial.hint();
         if wanted.map(|(hint, _)| hint) != self.client.tutorial.cancelled_hint() {
             self.client.tutorial.set_cancelled_hint(None);
@@ -347,11 +347,11 @@ impl super::Game<'_> {
 }
 
 impl HintToast {
-    pub(in crate::game) fn slots(&self) -> usize {
+    pub(in crate::game::client_side) fn slots(&self) -> usize {
         self.slots
     }
 
-    pub(in crate::game) fn update(&mut self) -> (Option<bool>, bool) {
+    pub(in crate::game::client_side) fn update(&mut self) -> (Option<bool>, bool) {
         let (sound, finished) = self.slide.update_now(|fully| {
             self.wanted && (self.hint != Hint::SocialInteractions || social_hint_progress(fully).0)
         });
@@ -367,7 +367,12 @@ impl HintToast {
         (sound, finished)
     }
 
-    pub(in crate::game) fn draw(&self, atlas: &HudAtlas, batch: &mut HudBatch, y: f32) {
+    pub(in crate::game::client_side) fn draw(
+        &self,
+        atlas: &HudAtlas,
+        batch: &mut HudBatch,
+        y: f32,
+    ) {
         let height = (10 + 11 * self.lines.len().max(2)) as f32;
         let x = batch.width - 160.0 * self.slide.portion;
         sunrise_client::ui::nine_slice(

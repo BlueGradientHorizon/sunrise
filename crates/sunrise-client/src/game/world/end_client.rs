@@ -27,18 +27,6 @@ pub(in crate::game::client_side) use crate::game::server_side::end::PORTAL_TICKE
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::end::SummonedEye;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::end::end_flash_quad;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::end::exact_teleport;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::end::exit_target;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::end::eye_quad;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::end::fallback_spawn;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::end::flash_pose;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::end::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use std::{collections::HashMap, sync::Arc};
@@ -64,7 +52,9 @@ pub(in crate::game::client_side) use sunrise_core::{
 };
 
 impl Game<'_> {
-    pub(in crate::game) fn begin_crystal_geometry(&self) -> Option<CrystalDrawFrame<'_>> {
+    pub(in crate::game::client_side) fn begin_crystal_geometry(
+        &self,
+    ) -> Option<CrystalDrawFrame<'_>> {
         if self.crystals.is_empty() {
             return None;
         }
@@ -83,7 +73,7 @@ impl Game<'_> {
     /// LightmapRenderStateExtractor: End flashes add to the sky light factor
     /// unless Hide Lightning Flashes is on (the sky sprite is not gated), a
     /// third of it under a boss bar's world fog.
-    pub(in crate::game) fn end_flash_sky(
+    pub(in crate::game::client_side) fn end_flash_sky(
         &self,
         sky: &mut sunrise_client::environment::Sky,
         partial: f64,
@@ -129,7 +119,7 @@ impl Game<'_> {
     }
     /// `EyeOfEnder.tick` on a client: behind each eye (a quarter of its last
     /// move back), four bubbles in water, else a portal particle.
-    pub(in crate::game) fn eye_particles(&mut self) {
+    pub(in crate::game::client_side) fn eye_particles(&mut self) {
         for i in 0..self.end.eyes.len() {
             let e = &self.end.eyes[i];
             let movement = (e.position - e.previous).to_array();
@@ -244,7 +234,7 @@ impl Game<'_> {
     /// `EndFlashState.tick`, and when a flash starts (not under the credits)
     /// its `DirectionalSoundInstance`, played 30 ticks later from the camera
     /// toward the flash.
-    pub(in crate::game) fn tick_end_flash(&mut self) {
+    pub(in crate::game::client_side) fn tick_end_flash(&mut self) {
         if self.dimension_type().skybox != sunrise_world::dimension_type::Skybox::End {
             return;
         }

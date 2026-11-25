@@ -9,7 +9,7 @@ pub(in crate::game::server_side) use sunrise_world::block_landing::FarmlandTramp
 impl Game<'_> {
     /// Apply the owning-host decision inside `FarmlandBlock.fallOn`, while the
     /// landing is paused. The caller resumes fall damage even when this refuses.
-    pub(in crate::game) fn trample_farmland(
+    pub(in crate::game::server_side) fn trample_farmland(
         &mut self,
         entity: u32,
         player: bool,

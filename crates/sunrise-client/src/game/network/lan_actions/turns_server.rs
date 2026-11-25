@@ -928,7 +928,7 @@ impl Game<'_> {
     }
     /// Record that a panic interrupted `conn`'s turn: the crash save keeps that player's last
     /// saved file. The record clears at the start of the next server tick.
-    pub(in crate::game) fn record_interrupted_turn(&mut self, conn: u32) {
+    pub(in crate::game::server_side) fn record_interrupted_turn(&mut self, conn: u32) {
         if !self.server.interrupted_turns.contains(&conn) {
             self.server.interrupted_turns.push(conn);
         }

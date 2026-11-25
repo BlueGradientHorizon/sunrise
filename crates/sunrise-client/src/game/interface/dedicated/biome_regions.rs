@@ -19,7 +19,7 @@ fn parse(text: &str) -> Result<Settings, String> {
 
 /// Records `server.toml`'s choices in `world`'s biome regions before it opens. A section that
 /// does not read stops the start.
-pub(in crate::game) fn choose(
+pub(in crate::game::server_side) fn choose(
     world: &std::path::Path,
     config: &std::path::Path,
 ) -> sunrise_client::Result<()> {

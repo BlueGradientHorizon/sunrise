@@ -26,7 +26,7 @@ impl Game<'_> {
     }
 
     /// `Minecraft.tick` -> `MusicManager.tick`, once per client tick.
-    pub(in crate::game) fn tick_music(&mut self) {
+    pub(in crate::game::client_side) fn tick_music(&mut self) {
         let (mut music, mut volume) = self.situational_music();
         // A native mod's own choice of track and volume, then its layers.
         self.native_music(&mut music, &mut volume);
@@ -76,11 +76,11 @@ impl Game<'_> {
     }
     /// The Music page's groups: every track the loaded `sounds.json` can play,
     /// by situation (see `music::track_groups`).
-    pub(in crate::game) fn music_groups(&self) -> Vec<MusicGroup> {
+    pub(in crate::game::client_side) fn music_groups(&self) -> Vec<MusicGroup> {
         sunrise_client::music::track_groups(&self.audio.0.engine.registry)
     }
     /// A Music page row: play this track of `event` now.
-    pub(in crate::game) fn play_music_track(&mut self, event: &str, track: &str) {
+    pub(in crate::game::client_side) fn play_music_track(&mut self, event: &str, track: &str) {
         self.client
             .music
             .play_track(event, track, &mut self.audio.0);
@@ -148,7 +148,7 @@ impl Game<'_> {
     /// name on the pause menu under the Pause and Pause and Toast settings
     /// while music is audible. `hidden` (F1) keeps the toast
     /// timing out without drawing it.
-    pub(in crate::game) fn draw_music_toast(
+    pub(in crate::game::client_side) fn draw_music_toast(
         &mut self,
         batch: &mut sunrise_client::hud::HudBatch,
         hidden: bool,
@@ -238,14 +238,14 @@ impl Game<'_> {
     /// `Minecraft.setLevel` -> `updateLevelInEngines`: `SoundManager.stop()`.
     /// The music manager keeps its stopped track and, on its next tick, waits
     /// the level's music delay before the next one.
-    pub(in crate::game) fn stop_sounds_for_new_level(&mut self) {
+    pub(in crate::game::client_side) fn stop_sounds_for_new_level(&mut self) {
         self.client.ambience.clear(&mut self.audio.0);
         self.audio.0.leave_level();
         // Mod plays still queued for the next audio update go too.
         self.client.mod_sounds.clear();
     }
     /// `getSituationalMusic` and `getMusicVolume`.
-    pub(in crate::game) fn situational_music(&self) -> (Option<Music>, f32) {
+    pub(in crate::game::client_side) fn situational_music(&self) -> (Option<Music>, f32) {
         // Login creates the client level before its first player teleport;
         // reconfiguration clears it again. Use the render camera's probe
         // while the level is present, not the local player's eyes.
@@ -277,7 +277,7 @@ impl Game<'_> {
         (situation.music(), situation.volume())
     }
     /// `BiomeManager.getNoiseBiomeAtPosition`: the quart cell holding a position.
-    pub(in crate::game) fn biome_at(&self, p: [f64; 3]) -> &str {
+    pub(in crate::game::client_side) fn biome_at(&self, p: [f64; 3]) -> &str {
         let (x, y, z) = (
             p[0].floor() as i32,
             p[1].floor() as i32,
@@ -291,7 +291,7 @@ impl Game<'_> {
             })
     }
     /// `isEyeInFluid(WATER)`: the eye inside the water of its block column.
-    pub(in crate::game) fn eye_in_water(&self, x: f64, eye_y: f64, z: f64) -> bool {
+    pub(in crate::game::client_side) fn eye_in_water(&self, x: f64, eye_y: f64, z: f64) -> bool {
         let (bx, by, bz) = (x.floor() as i32, eye_y.floor() as i32, z.floor() as i32);
         let f = self.res.facts().get(self.world.block(bx, by, bz));
         if f.fluid != Fluid::Water {
@@ -309,7 +309,7 @@ impl Game<'_> {
 
 impl Game<'_> {
     /// The local player's ambient sound handlers (LocalPlayer.tick).
-    pub(in crate::game) fn tick_ambience(&mut self) {
+    pub(in crate::game::client_side) fn tick_ambience(&mut self) {
         let Some(p) = self.player.as_ref() else {
             return;
         };

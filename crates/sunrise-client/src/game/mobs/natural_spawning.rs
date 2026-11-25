@@ -41,7 +41,7 @@ pub(in crate::game) struct SpawnPolicy {
 }
 
 /// `ServerLevel.canSpawnEntitiesInChunk` of `world`: the chunk is loaded.
-pub(in crate::game) fn can_spawn_entities_in_chunk(
+pub(in crate::game::server_side) fn can_spawn_entities_in_chunk(
     world: &sunrise_client::world::World,
     cx: i32,
     cz: i32,
@@ -204,7 +204,7 @@ fn close_enough_for_spawning(p: &LevelPlayer, (cx, cz): (i32, i32)) -> bool {
 /// says a ticket holds it for natural spawning. How many there are.
 /// `EntityGetter.getNearestPlayer(x, y, z, -1, false)`: the nearest
 /// non-spectator, alive or not.
-pub(in crate::game) fn nearest_player(
+pub(in crate::game::server_side) fn nearest_player(
     players: &[LevelPlayer],
     x: f64,
     y: f64,
@@ -236,7 +236,7 @@ impl<'p> NearestPlayers<'p> {
     const CELL: f64 = 64.0;
     /// Further out than any world border: such positions are answered by a scan.
     const FAR: f64 = 1.0e9;
-    pub(in crate::game) fn new(players: &'p [LevelPlayer]) -> Self {
+    pub(in crate::game::server_side) fn new(players: &'p [LevelPlayer]) -> Self {
         let mut cells = sunrise_client::fast_hash::FxHashMap::<(i64, i64), Vec<usize>>::default();
         let mut bounds = (i64::MAX, i64::MAX, i64::MIN, i64::MIN);
         let mut scan = players.len() <= 8;
@@ -270,7 +270,12 @@ impl<'p> NearestPlayers<'p> {
     }
     /// The same player [`nearest_player`] finds: the nearest, the first in
     /// the list among equals.
-    pub(in crate::game) fn nearest(&self, x: f64, y: f64, z: f64) -> Option<&'p LevelPlayer> {
+    pub(in crate::game::server_side) fn nearest(
+        &self,
+        x: f64,
+        y: f64,
+        z: f64,
+    ) -> Option<&'p LevelPlayer> {
         if self.scan || !(x.abs() < Self::FAR && z.abs() < Self::FAR) {
             return nearest_player(self.players, x, y, z);
         }
@@ -1054,7 +1059,7 @@ fn spawn_cost_types(biomes: &sunrise_client::biome::Biomes) -> Vec<&str> {
 impl<'a> Game<'a> {
     /// `CollisionGetter.noCollision(AABB)`: with no source there is no border
     /// shape. `EntityGetter.getEntityCollisions` queries the inflated area.
-    pub(in crate::game) fn no_spawn_collision(
+    pub(in crate::game::server_side) fn no_spawn_collision(
         &self,
         bounds: Aabb,
         mob_collision: impl FnOnce(Aabb) -> bool,
@@ -1082,7 +1087,7 @@ impl<'a> Game<'a> {
             && !mob_collision(query)
     }
 
-    pub(in crate::game) fn live_spawn_mob_collision(&self, query: Aabb) -> bool {
+    pub(in crate::game::server_side) fn live_spawn_mob_collision(&self, query: Aabb) -> bool {
         self.mobs.iter().any(|mob| {
             !mob.removed && mob_collidable_for_spawn(mob) && mob.bounds().intersects(query)
         })
@@ -1090,7 +1095,10 @@ impl<'a> Game<'a> {
 
     /// The natural spawning policy of the level `dimension`: vanilla's until a
     /// mod sets one.
-    pub(in crate::game) fn spawn_policy(&self, dimension: mod_api::DimensionKey) -> SpawnPolicy {
+    pub(in crate::game::server_side) fn spawn_policy(
+        &self,
+        dimension: mod_api::DimensionKey,
+    ) -> SpawnPolicy {
         self.server
             .spawn_policies
             .get(&dimension)
@@ -1170,7 +1178,7 @@ impl<'a> Game<'a> {
     /// (finalizeSpawn's mounts ride by id, and its chickens carry their
     /// zombie). Every mob arrives with a provisional id; real ones are
     /// assigned in spawn order and the links rewritten.
-    pub(in crate::game) fn add_spawned(
+    pub(in crate::game::server_side) fn add_spawned(
         &mut self,
         pending: Vec<Mob>,
         created: Vec<Mob>,
@@ -1228,7 +1236,7 @@ impl<'a> Game<'a> {
     /// names them: no `PlayerView`, so nothing is allocated per player. For the
     /// level in place they are `level_players`', in its order; a parked level
     /// has only its guests.
-    pub(in crate::game) fn level_player_uuids<'s>(
+    pub(in crate::game::server_side) fn level_player_uuids<'s>(
         &'s self,
         dimension: &'s str,
     ) -> impl Iterator<Item = u128> + 's {
@@ -1288,7 +1296,7 @@ impl<'a> Game<'a> {
     /// ticket that forces natural spawning (NeoForge's
     /// `shouldForceNaturalSpawning`). Also returns how many chunks the tracker
     /// holds (`getNaturalSpawnChunkCount`).
-    pub(in crate::game) fn spawning_chunks(
+    pub(in crate::game::server_side) fn spawning_chunks(
         &self,
         players: &[LevelPlayer],
         scratch: &mut SpawnScratch,
@@ -1303,7 +1311,7 @@ impl<'a> Game<'a> {
     }
     /// `NaturalSpawner.createState` for a pass over the level in place, under
     /// its spawn limits (`SpawnPolicy`).
-    pub(in crate::game) fn natural_spawn_state(
+    pub(in crate::game::server_side) fn natural_spawn_state(
         &self,
         level: &GameLevel<'_, '_>,
         spawnable: i32,
@@ -1320,7 +1328,10 @@ impl<'a> Game<'a> {
     /// `spawn_mobs` rule off, else `getFilteredSpawningCategories` with the
     /// `spawn_monsters` rule, the persistent ones every 400 ticks, and the
     /// level's spawn flags (`SpawnPolicy`) taking away.
-    pub(in crate::game) fn natural_categories(&self, state: &SpawnState) -> Vec<Category> {
+    pub(in crate::game::server_side) fn natural_categories(
+        &self,
+        state: &SpawnState,
+    ) -> Vec<Category> {
         let rules = &self.ui.rules;
         if !rules.bool_at(sunrise_client::gamerules::vanilla::SPAWN_MOBS) {
             return Vec::new();
@@ -1337,7 +1348,7 @@ impl<'a> Game<'a> {
     /// of `ServerChunkCache.tickChunks`. A wave that lands this tick therefore
     /// joins before that tick's spawns, with the lower entity ids. Nothing spawns once the
     /// entity ids are exhausted (`entity_ids_exhausted`).
-    pub(in crate::game) fn tick_spawners(&mut self) {
+    pub(in crate::game::server_side) fn tick_spawners(&mut self) {
         if self.entity_ids_exhausted() {
             return;
         }
@@ -1358,7 +1369,7 @@ impl<'a> Game<'a> {
     /// the categories under their global caps (creatures every 400 ticks),
     /// then `tickSpawningChunk` in the shuffled spawning chunks of every
     /// player: inhabited time, then `spawnForChunk`.
-    pub(in crate::game) fn spawn_natural(&mut self) {
+    pub(in crate::game::server_side) fn spawn_natural(&mut self) {
         // `tickChunks` does nothing in a Debug world.
         if self.server.world_debug {
             return;

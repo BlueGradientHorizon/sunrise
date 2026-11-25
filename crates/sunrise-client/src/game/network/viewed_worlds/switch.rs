@@ -34,7 +34,7 @@ impl Game<'_> {
     /// `handleRespawn`'s new level: a travel into a viewed level swaps the worlds; any other
     /// Respawn drops every viewed world (the server opens again what it still views) and enters
     /// the level with its loading screen.
-    pub(in crate::game) fn enter_respawn_level(
+    pub(in crate::game::client_side) fn enter_respawn_level(
         &mut self,
         p: &play::Respawn,
         entry: RemoteDimensionEntry,

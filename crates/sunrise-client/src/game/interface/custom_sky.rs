@@ -14,7 +14,7 @@ pub(in crate::game) struct CustomSkyView {
 impl Game<'_> {
     /// Fills the renderer's custom sky layers for this frame; `camera` is the eye's position.
     /// Nothing for the title screen, the Nether (it has no sky) or a sky a shader pack draws.
-    pub(in crate::game) fn custom_sky_frame(
+    pub(in crate::game::client_side) fn custom_sky_frame(
         &mut self,
         camera: [f64; 3],
         sky: &sunrise_client::environment::Sky,

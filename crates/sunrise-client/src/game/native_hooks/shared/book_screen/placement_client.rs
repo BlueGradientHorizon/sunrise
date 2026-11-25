@@ -4,7 +4,7 @@ pub(in crate::game::client_side) use super::*;
 pub(in crate::game::client_side) use crate::game::native_hooks::book_screen::placement::*;
 
 impl Game<'_> {
-    pub(in crate::game) fn apply_screen_with_mod_book(
+    pub(in crate::game::client_side) fn apply_screen_with_mod_book(
         &mut self,
         screen: Screen,
         owner: Option<&str>,

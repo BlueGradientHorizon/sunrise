@@ -23,7 +23,7 @@ impl DragonPartsTable {
         let h = key.wrapping_mul(0x9e3779b9);
         ((h ^ (h >> 16)) as usize) & mask
     }
-    pub(in crate::game) fn insert(&mut self, key: u32) {
+    pub(in crate::game::server_side) fn insert(&mut self, key: u32) {
         if key == 0 {
             if self.zero {
                 return;
@@ -54,7 +54,7 @@ impl DragonPartsTable {
             }
         }
     }
-    pub(in crate::game) fn remove(&mut self, key: u32) {
+    pub(in crate::game::server_side) fn remove(&mut self, key: u32) {
         if key == 0 {
             if self.zero {
                 self.zero = false;
@@ -220,21 +220,24 @@ impl DragonSlot {
         }
     }
     // Return a copy so the caller never runs a visitor under the table borrow.
-    pub(in crate::game) fn next_part(&self, cursor: &mut Option<usize>) -> Option<u32> {
+    pub(in crate::game::server_side) fn next_part(
+        &self,
+        cursor: &mut Option<usize>,
+    ) -> Option<u32> {
         self.table.borrow().next_part(cursor)
     }
     #[cfg(test)]
     fn part_ids(&self) -> Vec<u32> {
         self.table.borrow().iter().collect()
     }
-    pub(in crate::game) fn replace(&mut self, dragon: crate::game::dragon::Dragon) {
+    pub(in crate::game::server_side) fn replace(&mut self, dragon: crate::game::dragon::Dragon) {
         self.register(0);
         self.register(dragon.id);
         self.slot.replace(dragon);
     }
     // Preserve ResidentSlot's ownership-returning refusal contract without allocating.
     #[allow(clippy::result_large_err)]
-    pub(in crate::game) fn install(
+    pub(in crate::game::server_side) fn install(
         &mut self,
         dragon: crate::game::dragon::Dragon,
     ) -> Result<(), crate::game::dragon::Dragon> {
@@ -248,11 +251,11 @@ impl DragonSlot {
         self.register(0);
         self.slot.discard();
     }
-    pub(in crate::game) fn id_assigned(&self) {
+    pub(in crate::game::server_side) fn id_assigned(&self) {
         self.register(self.slot.as_ref().map_or(0, |d| d.id));
         self.slot.id_assigned();
     }
-    pub(in crate::game) fn retire_extracted(
+    pub(in crate::game::server_side) fn retire_extracted(
         &self,
         id: u32,
         join: sunrise_client::join_seq::JoinSeq,

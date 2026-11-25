@@ -6,7 +6,7 @@ pub(in crate::game::server_side) use crate::game::lan_actions::tick::*;
 impl Game<'_> {
     /// `handlePlayerPositionChange` jumps from the pre-move position and yaw.
     /// A later attack packet reads the resulting velocity even before travel.
-    pub(in crate::game) fn guest_jump(&mut self, conn: u32, from: [f64; 3], yaw: f32) {
+    pub(in crate::game::server_side) fn guest_jump(&mut self, conn: u32, from: [f64; 3], yaw: f32) {
         let identity = if !mod_api::__private::listened(mod_api::HookId::PlayerJump) {
             None
         } else {
@@ -251,7 +251,7 @@ impl Game<'_> {
     /// Tick each connection once, in hub order. Resolve its level at dispatch
     /// time: a preceding player tick can move a later player to another level.
     /// `across_levels` is false for standalone ticks of the level in place.
-    pub(in crate::game) fn tick_guest_connections(
+    pub(in crate::game::server_side) fn tick_guest_connections(
         &mut self,
         across_levels: bool,
     ) -> sunrise_client::Result<()> {
@@ -261,7 +261,7 @@ impl Game<'_> {
         self.server.pickup_columns = None;
         result
     }
-    pub(in crate::game) fn tick_guest_connections_inner(
+    pub(in crate::game::server_side) fn tick_guest_connections_inner(
         &mut self,
         across_levels: bool,
     ) -> sunrise_client::Result<()> {

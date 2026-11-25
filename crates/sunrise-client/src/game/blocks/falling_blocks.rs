@@ -8,7 +8,11 @@ impl Game<'_> {
     /// block `i` after a step of `moved`: `checkFallDamage` adds the drop and,
     /// on the ground, runs fallOn and posts HIT_GROUND after a fall, then
     /// forgets it, so its own next tick does not land again.
-    pub(in crate::game) fn finish_falling_piston_move(&mut self, i: usize, moved: Vec3) {
+    pub(in crate::game::server_side) fn finish_falling_piston_move(
+        &mut self,
+        i: usize,
+        moved: Vec3,
+    ) {
         let mut f = self.falling[i].clone();
         if moved.y < 0.0 {
             f.fall_distance -= f64::from(moved.y as f32);
@@ -103,7 +107,7 @@ impl Game<'_> {
     /// The landing work of a falling block's tick: nothing for one gone, its item for one
     /// that dropped, or the landing decision for one on the ground (returning the block when
     /// it stays).
-    pub(in crate::game) fn finish_falling_step(
+    pub(in crate::game::server_side) fn finish_falling_step(
         &mut self,
         step: FallStep,
         owner: FallingBlock,
@@ -381,7 +385,11 @@ impl Game<'_> {
         })
     }
     /// `Entity.spawnAtLocation`: an item entity where the block was.
-    pub(in crate::game) fn drop_falling_block(&mut self, state: BlockStateId, at: Vec3) {
+    pub(in crate::game::server_side) fn drop_falling_block(
+        &mut self,
+        state: BlockStateId,
+        at: Vec3,
+    ) {
         // Entity.spawnAtLocation: an item entity where the block was.
         let item = self.res.facts().get(state).item.clone();
         if &*item != "minecraft:air" {

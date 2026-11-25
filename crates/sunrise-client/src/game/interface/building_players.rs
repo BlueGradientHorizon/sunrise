@@ -34,7 +34,7 @@ pub(in crate::game) struct BuildingPlayers {
 impl BuildingPlayers {
     /// Refresh hub-owned bodies, preserve live ancestor bodies held outside
     /// the hub, and omit the actor (GameLevel.player_box supplies that body).
-    pub(in crate::game) fn for_turn(
+    pub(in crate::game::server_side) fn for_turn(
         &self,
         actor: u32,
         outer: Option<BuildingPlayer>,
@@ -67,7 +67,7 @@ impl BuildingPlayers {
         }
     }
 
-    pub(in crate::game) fn boxes(&self, dimension: Dim) -> Vec<([f64; 3], [f64; 3])> {
+    pub(in crate::game::server_side) fn boxes(&self, dimension: Dim) -> Vec<([f64; 3], [f64; 3])> {
         // Hub conns are unique, so only the ancestors can already hold one.
         let hub =
             self.hub.iter().map(Cell::get).filter(|p| {

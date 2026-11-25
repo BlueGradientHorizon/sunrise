@@ -17,7 +17,10 @@ impl Game<'_> {
     }
     /// The current entity position and dimensions used by `TrackingEmitter.tick`.
     /// Read body copies rather than the network position of an interpolated entity.
-    pub(in crate::game) fn remote_entity_tracking_body(&self, id: i32) -> Option<TrackingBody> {
+    pub(in crate::game::client_side) fn remote_entity_tracking_body(
+        &self,
+        id: i32,
+    ) -> Option<TrackingBody> {
         let remote = self.remote.as_ref()?;
         if let Some(row) = remote.general.rows.get(&id) {
             let (width, height) =

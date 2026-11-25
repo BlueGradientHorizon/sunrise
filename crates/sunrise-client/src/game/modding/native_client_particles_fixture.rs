@@ -34,7 +34,7 @@ impl Game<'_> {
         self.particles.0.tick(&level);
     }
 
-    pub(in crate::game) fn run_native_client_particles_fixture(
+    pub(in crate::game::client_side) fn run_native_client_particles_fixture(
         &mut self,
         directory: &Path,
     ) -> Result<()> {

@@ -38,7 +38,7 @@ pub(in crate::game) struct TakeReads {
 }
 
 impl TakeReads {
-    pub(in crate::game) fn fresh(&self, game: &Game<'_>) -> bool {
+    pub(in crate::game::server_side) fn fresh(&self, game: &Game<'_>) -> bool {
         let Some(host) = game.lan.as_ref() else {
             return false;
         };
@@ -84,7 +84,7 @@ pub(in crate::game) struct Journal {
     pub(in crate::game) refused_clicks: std::collections::BTreeSet<(u32, i32)>,
 }
 impl Journal {
-    pub(in crate::game) fn merge(&mut self, child: Self) {
+    pub(in crate::game::server_side) fn merge(&mut self, child: Self) {
         for (conn, kept) in child.guests {
             self.guests.entry(conn).or_insert(kept);
         }
@@ -99,7 +99,7 @@ impl Journal {
         }
         self.correct_on_abort.extend(child.correct_on_abort);
     }
-    pub(in crate::game) fn rollback(self, game: &mut Game<'_>) {
+    pub(in crate::game::server_side) fn rollback(self, game: &mut Game<'_>) {
         for restore in self.guests.into_values() {
             restore(game);
         }
@@ -207,7 +207,7 @@ impl Game<'_> {
             .any(|level| level.menu_click_active.is_some() || level.trades.active == Some(conn))
     }
 
-    pub(in crate::game) fn run_merchant_take(
+    pub(in crate::game::server_side) fn run_merchant_take(
         &mut self,
         conn: u32,
         p: &play::ContainerClick,
@@ -432,7 +432,11 @@ impl Game<'_> {
     }
 
     /// Install only the writes calculated by the plan.
-    pub(in crate::game) fn apply_merchant_take(&mut self, reads: &TakeReads, mut plan: TakePlan) {
+    pub(in crate::game::server_side) fn apply_merchant_take(
+        &mut self,
+        reads: &TakeReads,
+        mut plan: TakePlan,
+    ) {
         let conn = reads.conn;
         let mob = reads.identity.target.id();
         self.journal_guest_merchant(conn);
@@ -479,7 +483,7 @@ impl Game<'_> {
 
     /// Any write to an open merchant menu, including a MerchantRef edit to another guest,
     /// belongs to the transaction that first changed it.
-    pub(in crate::game) fn journal_guest_merchant(&mut self, conn: u32) {
+    pub(in crate::game::server_side) fn journal_guest_merchant(&mut self, conn: u32) {
         let Some(level) = self.transactions.last() else {
             return;
         };
@@ -535,7 +539,7 @@ impl Game<'_> {
     /// A replacement can close a funded window from a listener's transaction.
     /// Keep the player's wire window with the trade and hold any open/close
     /// packets until the frame commits.
-    pub(in crate::game) fn journal_merchant_replacement(&mut self, conn: u32) {
+    pub(in crate::game::server_side) fn journal_merchant_replacement(&mut self, conn: u32) {
         let Some(level) = self.transactions.last_mut() else {
             return;
         };
@@ -601,7 +605,7 @@ impl Game<'_> {
     }
 
     /// Keep trade-set sequence loans and draws at their first transactional write.
-    pub(in crate::game) fn journal_trade_sequences(&mut self) {
+    pub(in crate::game::server_side) fn journal_trade_sequences(&mut self) {
         if let Some(level) = self.transactions.last_mut() {
             level
                 .trades
@@ -610,11 +614,16 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn resend_merchant_take(&mut self, conn: u32, window: i32) {
+    pub(in crate::game::server_side) fn resend_merchant_take(&mut self, conn: u32, window: i32) {
         self.send_merchant_take(conn, window, true);
     }
 
-    pub(in crate::game) fn send_merchant_take(&mut self, conn: u32, window: i32, offers: bool) {
+    pub(in crate::game::server_side) fn send_merchant_take(
+        &mut self,
+        conn: u32,
+        window: i32,
+        offers: bool,
+    ) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -642,7 +651,7 @@ impl Game<'_> {
         self.transactions.iter().any(|l| l.packets.is_some())
     }
 
-    pub(in crate::game) fn merchant_drops(
+    pub(in crate::game::server_side) fn merchant_drops(
         &mut self,
         conn: u32,
         stacks: Vec<sunrise_client::items::ItemStack>,
@@ -660,7 +669,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn merchant_orb(&mut self, at: [f64; 3], value: u32) {
+    pub(in crate::game::server_side) fn merchant_orb(&mut self, at: [f64; 3], value: u32) {
         if self.merchant_take_active() {
             self.after_commit(After::Trade(Box::new(Effect::Orb(at, value))));
         } else {
@@ -670,7 +679,10 @@ impl Game<'_> {
 
     // The criterion and its listener run tentatively. Rewards can spawn entities and run
     // arbitrary functions, so their publication belongs to the successful root commit.
-    pub(in crate::game) fn defer_merchant_reward(&mut self, advancement: &Advancement) -> bool {
+    pub(in crate::game::server_side) fn defer_merchant_reward(
+        &mut self,
+        advancement: &Advancement,
+    ) -> bool {
         if !self.merchant_take_active() {
             return false;
         }

@@ -170,7 +170,7 @@ pub(super) fn default_clock(r: &Remote, dimension: &DimensionType) -> Option<i32
 
 impl Game<'_> {
     /// A `sunrise:levels` play payload's data: routed, or the connection closes with the reason.
-    pub(in crate::game) fn viewed_levels_payload(
+    pub(in crate::game::client_side) fn viewed_levels_payload(
         &mut self,
         data: &[u8],
     ) -> crate::game::Result<()> {
@@ -256,7 +256,10 @@ impl Game<'_> {
         Ok(())
     }
 
-    pub(in crate::game) fn route_viewed_levels(&mut self, data: &[u8]) -> Result<(), RouteError> {
+    pub(in crate::game::client_side) fn route_viewed_levels(
+        &mut self,
+        data: &[u8],
+    ) -> Result<(), RouteError> {
         // A run's sounds are kept only for a listener: without one they are skipped unread.
         self.route_viewed_message(Message::decode_with(
             data,

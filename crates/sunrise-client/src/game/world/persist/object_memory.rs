@@ -54,7 +54,7 @@ impl Game<'_> {
 
     /// A minecart object, resident or retained as the root of a passenger graph.
     /// Selectors, tracking and ticking keep iterating `carts` instead.
-    pub(in crate::game) fn cart_object(
+    pub(in crate::game::server_side) fn cart_object(
         &self,
         id: u32,
     ) -> Option<&crate::game::minecarts::Minecart> {
@@ -72,7 +72,7 @@ impl Game<'_> {
             .chain(self.persist.off_level.values().filter_map(OffLevel::as_mob))
     }
 
-    pub(in crate::game) fn load_item_transferred(
+    pub(in crate::game::server_side) fn load_item_transferred(
         &mut self,
         tag: Tag,
         uuid: Option<[i32; 4]>,
@@ -95,7 +95,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn load_orb_transferred(
+    pub(in crate::game::server_side) fn load_orb_transferred(
         &mut self,
         tag: Tag,
         uuid: Option<[i32; 4]>,
@@ -121,7 +121,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn load_arrow_transferred(
+    pub(in crate::game::server_side) fn load_arrow_transferred(
         &mut self,
         tag: Tag,
         uuid: Option<[i32; 4]>,
@@ -151,7 +151,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn load_spit_or_bullet_transferred(
+    pub(in crate::game::server_side) fn load_spit_or_bullet_transferred(
         &mut self,
         tag: Tag,
         uuid: Option<[i32; 4]>,
@@ -175,7 +175,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn load_fireball_transferred(
+    pub(in crate::game::server_side) fn load_fireball_transferred(
         &mut self,
         tag: Tag,
         uuid: Option<[i32; 4]>,
@@ -199,7 +199,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn load_throwable_transferred(
+    pub(in crate::game::server_side) fn load_throwable_transferred(
         &mut self,
         tag: Tag,
         uuid: Option<[i32; 4]>,
@@ -225,7 +225,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn load_falling_transferred(
+    pub(in crate::game::server_side) fn load_falling_transferred(
         &mut self,
         mut tag: Tag,
         uuid: Option<[i32; 4]>,
@@ -283,7 +283,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn load_trident_transferred(
+    pub(in crate::game::server_side) fn load_trident_transferred(
         &mut self,
         tag: Tag,
         uuid: Option<[i32; 4]>,
@@ -303,7 +303,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn load_rocket_transferred(
+    pub(in crate::game::server_side) fn load_rocket_transferred(
         &mut self,
         tag: Tag,
         uuid: Option<[i32; 4]>,
@@ -324,7 +324,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn load_tnt_transferred(
+    pub(in crate::game::server_side) fn load_tnt_transferred(
         &mut self,
         tag: Tag,
         uuid: Option<[i32; 4]>,
@@ -333,7 +333,7 @@ impl Game<'_> {
         self.load_tnt_with_portal(tag, uuid, transferred, false);
     }
 
-    pub(in crate::game) fn load_tnt_with_portal(
+    pub(in crate::game::server_side) fn load_tnt_with_portal(
         &mut self,
         tag: Tag,
         uuid: Option<[i32; 4]>,
@@ -388,7 +388,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn load_boat_transferred(
+    pub(in crate::game::server_side) fn load_boat_transferred(
         &mut self,
         tag: Tag,
         uuid: Option<[i32; 4]>,
@@ -443,7 +443,7 @@ impl Game<'_> {
         None
     }
 
-    pub(in crate::game) fn load_cart_transferred(
+    pub(in crate::game::server_side) fn load_cart_transferred(
         &mut self,
         tag: Tag,
         uuid: Option<[i32; 4]>,
@@ -482,14 +482,17 @@ impl Game<'_> {
 
     /// `PersistentEntitySectionManager.addEntityUuid`: another resident object
     /// already holds `uuid`, so this one is refused level residency.
-    pub(in crate::game) fn uuid_admission_refused(&self, uuid: Option<[i32; 4]>) -> bool {
+    pub(in crate::game::server_side) fn uuid_admission_refused(
+        &self,
+        uuid: Option<[i32; 4]>,
+    ) -> bool {
         uuid.is_some_and(|uuid| {
             self.target_with_uuid(uuid)
                 .is_some_and(|target| target != crate::game::commands::Target::Player)
         })
     }
 
-    pub(in crate::game) fn load_mob_transferred(
+    pub(in crate::game::server_side) fn load_mob_transferred(
         &mut self,
         tag: Tag,
         mount: Option<u32>,

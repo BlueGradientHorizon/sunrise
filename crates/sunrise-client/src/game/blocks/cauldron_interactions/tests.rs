@@ -273,7 +273,10 @@ fn a_panicking_cauldron_registrar_leaves_no_exact_tag_or_all_entries() {
     );
 }
 
-pub(in crate::game) fn fixture_mods(mods: mod_api::Mods, test: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game::server_side) fn fixture_mods(
+    mods: mod_api::Mods,
+    test: impl FnOnce(&mut Game<'_>),
+) {
     mod_platform::__private::install(mods.clone());
     crate::game::api_values::install_parts(&mods).unwrap();
     let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -336,7 +339,7 @@ pub(in crate::game) fn setup(
     game.audio.0.capture = Some(Vec::new());
     crate::game::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
 }
-pub(in crate::game) fn state(game: &Game<'_>) -> (String, Option<String>) {
+pub(in crate::game::server_side) fn state(game: &Game<'_>) -> (String, Option<String>) {
     let state = game
         .pack
         .assets
@@ -363,7 +366,7 @@ pub(in crate::game) fn unchanged(game: &Game<'_>, seen: &Seen) {
         0
     );
 }
-pub(in crate::game) fn bottles(game: &Game<'_>) -> u32 {
+pub(in crate::game::server_side) fn bottles(game: &Game<'_>) -> u32 {
     game.inventory
         .iter()
         .flatten()

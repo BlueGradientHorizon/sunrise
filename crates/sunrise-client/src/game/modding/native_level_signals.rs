@@ -189,7 +189,7 @@ impl SignalAccess for ReadLevel<'_, '_> {
 }
 
 impl ReadLevel<'_, '_> {
-    pub(in crate::game) fn capability_site(
+    pub(in crate::game::server_side) fn capability_site(
         &self,
         at: mod_api::BlockSide,
     ) -> Option<mod_api::BlockCapabilitySite> {

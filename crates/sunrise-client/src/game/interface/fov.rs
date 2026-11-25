@@ -6,11 +6,14 @@
 use super::Game;
 use sunrise_core::position::BlockPos;
 
-pub(in crate::game) fn camera_effects_enabled(title: bool, studio_freecam: bool) -> bool {
+pub(in crate::game::client_side) fn camera_effects_enabled(
+    title: bool,
+    studio_freecam: bool,
+) -> bool {
     !title && !studio_freecam
 }
 
-pub(in crate::game) fn studio_draws_hand(
+pub(in crate::game::client_side) fn studio_draws_hand(
     studio_freecam: bool,
     ordinary_hand_visible: bool,
 ) -> bool {
@@ -45,7 +48,7 @@ impl Game<'_> {
                 .is_some_and(|s| &*s.item == "minecraft:spyglass")
     }
     /// `options.fovEffectScale`.
-    pub(in crate::game) fn fov_effect_scale(&self) -> f32 {
+    pub(in crate::game::client_side) fn fov_effect_scale(&self) -> f32 {
         self.settings.file.double("fovEffectScale") as f32
     }
     /// `options.screenEffectScale` (Distortion Effects).
@@ -63,7 +66,7 @@ impl Game<'_> {
     /// The spin `GameRenderer.renderLevel` multiplies into the level's
     /// projection: the larger of the portal and Nausea intensities, scaled by
     /// Distortion Effects squared, turning by `LocalPlayer.getSpinningEffectAngle`.
-    pub(in crate::game) fn spinning_matrix(&self, partial: f32) -> glam::Mat4 {
+    pub(in crate::game::client_side) fn spinning_matrix(&self, partial: f32) -> glam::Mat4 {
         let fx = &self.client.screen_fx;
         let portal = fx.o_portal + partial * (fx.portal - fx.o_portal);
         let scale = self.screen_effect_scale();
@@ -71,7 +74,7 @@ impl Game<'_> {
         spinning_effect_matrix(intensity, fx.spinning_time + partial * fx.spinning_speed)
     }
     /// What `AbstractClientPlayer.getFieldOfViewModifier` reads.
-    pub(in crate::game) fn fov_player(&self) -> Option<FovPlayer> {
+    pub(in crate::game::client_side) fn fov_player(&self) -> Option<FovPlayer> {
         let p = self.player.as_ref()?;
         let using = self.using.and_then(|(_, ticks)| {
             let stack = self.use_start.item.as_ref()?;
@@ -122,7 +125,7 @@ impl Game<'_> {
     /// The player's `deathTime` while dead or dying: whole ticks counted by
     /// `LivingEntity.tickDeath`, so `deathTime + partialTicks` in
     /// `Camera.extractRenderState` rises smoothly across frames.
-    pub(in crate::game) fn death_time(&self) -> Option<i32> {
+    pub(in crate::game::client_side) fn death_time(&self) -> Option<i32> {
         let p = self.player.as_ref()?;
         p.health
             .dead_or_dying()
@@ -201,7 +204,7 @@ impl Game<'_> {
     /// the spyglass (`AbstractClientPlayer.getFieldOfViewModifier`'s tenth
     /// while `isScoping`), the zoom mod (`native_zoom`) and any mod that
     /// narrows the field of view through `native_compute_fov`.
-    pub(in crate::game) fn zoom_magnification(&self, camera: [f64; 3]) -> f32 {
+    pub(in crate::game::client_side) fn zoom_magnification(&self, camera: [f64; 3]) -> f32 {
         let now = self.fov_degrees(1.0, camera);
         let base = self.settings.fov.clamp(1.0, 179.0);
         if now.is_finite() && now > 0.5 {
@@ -212,7 +215,7 @@ impl Game<'_> {
     }
     /// What far terrain should plan for a zoomed view, or `None` when the
     /// `lodZoomDetail` extra is off or nothing is zooming (`lod::ZoomAim`).
-    pub(in crate::game) fn lod_aim(
+    pub(in crate::game::client_side) fn lod_aim(
         &self,
         camera: [f64; 3],
     ) -> Option<sunrise_client::lod::ZoomAim> {
@@ -227,7 +230,11 @@ impl Game<'_> {
         )
     }
     /// `Camera.calculateHudFov`: the first-person hand's field of view.
-    pub(in crate::game) fn hud_fov_degrees(&self, partial: f32, camera: [f64; 3]) -> f32 {
+    pub(in crate::game::client_side) fn hud_fov_degrees(
+        &self,
+        partial: f32,
+        camera: [f64; 3],
+    ) -> f32 {
         self.client.view.calculate_hud_fov(
             partial,
             self.fov_effect_scale(),
@@ -237,7 +244,7 @@ impl Game<'_> {
     }
     /// The pose `GameRenderer.renderLevel` multiplies into the projection:
     /// `bobHurt`, then `bobView` with the View Bobbing option.
-    pub(in crate::game) fn bob_matrix(&self, partial: f32) -> glam::Mat4 {
+    pub(in crate::game::client_side) fn bob_matrix(&self, partial: f32) -> glam::Mat4 {
         let Some(cam) = self.camera_subject() else {
             return glam::Mat4::IDENTITY;
         };
@@ -258,7 +265,7 @@ impl Game<'_> {
     /// `updateBob`), `rideTick`'s `resetBob` and `LocalPlayer.move`'s walked
     /// distance, after the player's movement this tick. `before` is the
     /// ground state, velocity and position at the start of the tick.
-    pub(in crate::game) fn tick_avatar(
+    pub(in crate::game::client_side) fn tick_avatar(
         &mut self,
         before: (bool, [f64; 3], [f64; 3]),
         riding: bool,
@@ -307,7 +314,7 @@ impl Game<'_> {
     /// `Hud.extractCameraOverlays`: the spyglass scope, its size easing
     /// towards 1.125 by half the frame's game ticks and reset to 0.5 while
     /// not scoping in first person.
-    pub(in crate::game) fn draw_spyglass(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_spyglass(&mut self, batch: &mut HudBatch) {
         self.client.scope_scale +=
             0.5 * self.client.frame_ticks * (1.125 - self.client.scope_scale);
         if !self.client.camera_type.is_first_person() {

@@ -78,10 +78,6 @@ pub(in crate::game::client_side) use crate::game::server_side::transactions::ent
     Announcement, ArrivalRollback,
 };
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::transactions::merge_block_update_flags;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::transactions::take_replay_row;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::transactions::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use mod_api::{
@@ -335,14 +331,6 @@ pub(in crate::game) mod tests {
     pub(in crate::game::client_side) use super::super::{
         Audio, BlockEntity, Game, Options, Progress, Settings, load_resources,
     };
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::transactions::tests::chest_items;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::transactions::tests::extract;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::transactions::tests::extract_fluid;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::transactions::tests::insert;
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::transactions::tests::*;
     #[allow(unused_imports)]

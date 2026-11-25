@@ -38,7 +38,7 @@ impl BossState {
     /// What a viewer was last sent for a bar: progress, color, overlay and
     /// the darken, music and fog flags.
     #[cfg(test)]
-    pub(in crate::game) fn sent_state(
+    pub(in crate::game::server_side) fn sent_state(
         &self,
         viewer: u128,
         bar: u128,
@@ -47,7 +47,7 @@ impl BossState {
         Some((o.progress, o.color, o.overlay, o.darken, o.music, o.fog))
     }
 
-    pub(in crate::game) fn add_bar(&mut self, id: &str, name: Comp) -> bool {
+    pub(in crate::game::server_side) fn add_bar(&mut self, id: &str, name: Comp) -> bool {
         if !self.bars.add(id, name) {
             return false;
         }
@@ -57,7 +57,7 @@ impl BossState {
         true
     }
 
-    pub(in crate::game) fn remove_bar(&mut self, id: &str) {
+    pub(in crate::game::server_side) fn remove_bar(&mut self, id: &str) {
         self.bars.remove(id);
         if let Ok(key) = Identifier::parse(id) {
             self.listing.remove(&key);
@@ -71,7 +71,7 @@ impl BossState {
         }
     }
 
-    pub(in crate::game) fn rebuild_listing(&mut self) {
+    pub(in crate::game::server_side) fn rebuild_listing(&mut self) {
         self.listing = JavaHashMap::default();
         for (index, bar) in self.bars.bars.iter().enumerate() {
             if let Ok(key) = Identifier::parse(&bar.id) {
@@ -80,7 +80,7 @@ impl BossState {
         }
     }
 
-    pub(in crate::game) fn listed_bars(&self) -> Vec<&bossbar::BossBar> {
+    pub(in crate::game::server_side) fn listed_bars(&self) -> Vec<&bossbar::BossBar> {
         let mut bars: Vec<_> = self
             .listing
             .entries()
@@ -99,17 +99,17 @@ impl BossState {
     }
 }
 
-pub(in crate::game) fn num(n: impl std::fmt::Display) -> Text {
+pub(in crate::game::server_side) fn num(n: impl std::fmt::Display) -> Text {
     Text::literal(n.to_string())
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn bossbar_path(&self) -> std::path::PathBuf {
+    pub(in crate::game::server_side) fn bossbar_path(&self) -> std::path::PathBuf {
         self.server
             .world_root
             .join("data/minecraft/custom_boss_events.dat")
     }
-    pub(in crate::game) fn load_bossbars(&mut self) {
+    pub(in crate::game::server_side) fn load_bossbars(&mut self) {
         if self.server.bosses.loaded || self.remote.is_some() {
             return;
         }
@@ -122,7 +122,7 @@ impl Game<'_> {
         self.server.bosses.rebuild_listing();
         self.ui.registries.bossbars = self.server.bosses.bars.ids();
     }
-    pub(in crate::game) fn save_bossbars(&self) {
+    pub(in crate::game::server_side) fn save_bossbars(&self) {
         if !self.server.bosses.loaded || self.remote.is_some() {
             return;
         }
@@ -139,7 +139,7 @@ impl Game<'_> {
             log::warn!("boss bars were not written: {e}");
         }
     }
-    pub(in crate::game) fn bossbar_exists(&self, id: &str) -> bool {
+    pub(in crate::game::server_side) fn bossbar_exists(&self, id: &str) -> bool {
         self.server.bosses.bars.get(id).is_some()
     }
     /// `CustomBossEvent.setValue` / `setMax`, as `execute store ... bossbar
@@ -157,33 +157,37 @@ impl Game<'_> {
         }
         self.publish_boss_bars();
     }
-    pub(in crate::game) fn bar_id(ctx: &Context) -> String {
+    pub(in crate::game::server_side) fn bar_id(ctx: &Context) -> String {
         match ctx.get("id") {
             Some(Arg::Resource(id)) => id.clone(),
             _ => String::new(),
         }
     }
-    pub(in crate::game) fn bar_checked(&self, ctx: &Context) -> R<String> {
+    pub(in crate::game::server_side) fn bar_checked(&self, ctx: &Context) -> R<String> {
         let id = Self::bar_id(ctx);
         if self.server.bosses.bars.get(&id).is_none() {
             return Err(err("commands.bossbar.unknown", &[&id]));
         }
         Ok(id)
     }
-    pub(in crate::game) fn cmd_bossbar(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_bossbar(&mut self, id: &str, ctx: &Context) -> R<i32> {
         self.load_bossbars();
         let result = self.bossbar_command(id, ctx);
         self.bossbars_changed();
         result
     }
     /// The bars changed: refresh the command suggestions and tell the viewers.
-    pub(in crate::game) fn bossbars_changed(&mut self) {
+    pub(in crate::game::server_side) fn bossbars_changed(&mut self) {
         self.ui.registries.bossbars = self.server.bosses.bars.ids();
         self.publish_boss_bars();
     }
     /// `CustomBossEvents.create`: a new bar with a UUID drawn from the level's
     /// random. None if the id is taken.
-    pub(in crate::game) fn add_custom_bossbar(&mut self, id: &str, name: Comp) -> Option<u128> {
+    pub(in crate::game::server_side) fn add_custom_bossbar(
+        &mut self,
+        id: &str,
+        name: Comp,
+    ) -> Option<u128> {
         if !self.server.bosses.add_bar(id, name) {
             return None;
         }
@@ -193,7 +197,11 @@ impl Game<'_> {
         self.server.bosses.bars.get_mut(id)?.uuid = uuid;
         Some(uuid)
     }
-    pub(in crate::game) fn bossbar_command(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn bossbar_command(
+        &mut self,
+        id: &str,
+        ctx: &Context,
+    ) -> R<i32> {
         match id {
             "bossbar.add" => {
                 let bar = Self::bar_id(ctx);
@@ -306,7 +314,7 @@ impl Game<'_> {
             _ => self.bossbar_set(id, ctx, &bar, &last),
         }
     }
-    pub(in crate::game) fn bossbar_set(
+    pub(in crate::game::server_side) fn bossbar_set(
         &mut self,
         id: &str,
         ctx: &Context,
@@ -461,7 +469,11 @@ impl Game<'_> {
         }
     }
     /// A component argument as JSON with its selectors resolved.
-    pub(in crate::game) fn component_json(&mut self, ctx: &Context, name: &str) -> R<Comp> {
+    pub(in crate::game::server_side) fn component_json(
+        &mut self,
+        ctx: &Context,
+        name: &str,
+    ) -> R<Comp> {
         let Some(Arg::Str(json)) = ctx.get(name) else {
             return Ok(sb::literal(""));
         };
@@ -471,7 +483,10 @@ impl Game<'_> {
     }
 
     /// Names of the online players in a boss bar's set, in join order.
-    pub(in crate::game) fn bossbar_player_names(&self, players: &[[i32; 4]]) -> Vec<Text> {
+    pub(in crate::game::server_side) fn bossbar_player_names(
+        &self,
+        players: &[[i32; 4]],
+    ) -> Vec<Text> {
         self.known_boss_players()
             .into_iter()
             .filter(|(uuid, _)| players.contains(uuid))
@@ -479,7 +494,7 @@ impl Game<'_> {
             .collect()
     }
     /// The players who can be told about a bar: the one in place, then guests.
-    pub(in crate::game) fn known_boss_players(&self) -> Vec<([i32; 4], Text)> {
+    pub(in crate::game::server_side) fn known_boss_players(&self) -> Vec<([i32; 4], Text)> {
         let mut out = Vec::new();
         if self.player.is_some() && !self.server.lan_acting_fake {
             out.push((self.acting_uuid(), self.target_name(Target::Player)));
@@ -502,7 +517,10 @@ impl Game<'_> {
         }
         out
     }
-    pub(in crate::game) fn player_target_uuid(&self, target: Target) -> Option<[i32; 4]> {
+    pub(in crate::game::server_side) fn player_target_uuid(
+        &self,
+        target: Target,
+    ) -> Option<[i32; 4]> {
         match target {
             Target::Player => Some(self.acting_uuid()),
             Target::Guest(conn) => self.lan.as_ref().and_then(|h| {
@@ -554,7 +572,7 @@ impl Game<'_> {
     }
     /// `EnderDragonFight.updateDragon`: the fight's dragon's custom name
     /// becomes the bar's, and stays after the name is removed.
-    pub(in crate::game) fn update_dragon_bar_name(&mut self) {
+    pub(in crate::game::server_side) fn update_dragon_bar_name(&mut self) {
         // `EnderDragon.aiStep` calls `updateDragon` only while it has AI (and
         // is alive); `kill`/`tickDeath` call it too, so a dead dragon updates.
         let ticks = self.dragon.as_ref().is_some_and(|d| !d.alive() || !d.no_ai);
@@ -574,7 +592,7 @@ impl Game<'_> {
             ));
         }
     }
-    pub(in crate::game) fn boss_viewers(&self) -> Vec<Viewer> {
+    pub(in crate::game::server_side) fn boss_viewers(&self) -> Vec<Viewer> {
         let mut out = Vec::new();
         // While `as_guest` has swapped a guest in, the host's own position
         // is not in place. Their overlay updates once the tick puts it back.
@@ -620,7 +638,7 @@ impl Game<'_> {
     }
     /// Custom bars (`CustomBossEvents.onPlayerConnect` sends them as a player
     /// joins), then the dragon, withers and the raid.
-    pub(in crate::game) fn boss_events_for(&self, viewer: &Viewer) -> Vec<Offer> {
+    pub(in crate::game::server_side) fn boss_events_for(&self, viewer: &Viewer) -> Vec<Offer> {
         let mut out = Vec::new();
         for b in &self.server.bosses.bars.bars {
             if !b.visible || !b.players.contains(&viewer.ints) {
@@ -713,7 +731,7 @@ impl Game<'_> {
     }
     /// The packets that take `viewer` from what it was last sent to `desired`
     /// (`ServerBossEvent`'s broadcasts).
-    pub(in crate::game) fn diff_boss_events(
+    pub(in crate::game::server_side) fn diff_boss_events(
         &mut self,
         viewer: &Viewer,
         desired: Vec<Offer>,
@@ -774,16 +792,16 @@ impl Game<'_> {
     }
 }
 
-pub(in crate::game) fn translate_tag(key: &str) -> Tag {
+pub(in crate::game::server_side) fn translate_tag(key: &str) -> Tag {
     Tag::compound([("translate", Tag::String(key.into()))])
 }
-pub(in crate::game) fn color_index(color: &str) -> i32 {
+pub(in crate::game::server_side) fn color_index(color: &str) -> i32 {
     bossbar::COLORS
         .iter()
         .position(|c| *c == color)
         .unwrap_or(6) as i32
 }
-pub(in crate::game) fn style_index(style: &str) -> i32 {
+pub(in crate::game::server_side) fn style_index(style: &str) -> i32 {
     bossbar::STYLES
         .iter()
         .position(|s| *s == style)

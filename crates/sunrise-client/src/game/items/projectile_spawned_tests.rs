@@ -103,9 +103,6 @@ pub(in crate::game) fn ignite(seconds: f32) -> Value {
     json!({"type": "minecraft:ignite", "duration": seconds})
 }
 
-#[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::projectile_spawned_tests_client::played;
-
 /// The mod host's owner launch applies the supplied stack's effects once,
 /// whatever its count, leaves the stack alone, and refuses a stack with an
 /// effect the engine does not apply yet before drawing anything.

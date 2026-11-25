@@ -34,7 +34,11 @@ fn calling_mod_owns(controller: TicketController) -> bool {
 }
 
 /// The stored light of `layer` at `pos` in `world`, as the game's own light query reads it.
-pub(in crate::game) fn world_brightness(world: &World, layer: LightLayer, pos: [i32; 3]) -> i32 {
+pub(in crate::game::server_side) fn world_brightness(
+    world: &World,
+    layer: LightLayer,
+    pos: [i32; 3],
+) -> i32 {
     let light = world.light(pos[0], pos[1], pos[2]);
     i32::from(match layer {
         LightLayer::Block => light & 15,
@@ -326,7 +330,10 @@ impl Game<'_> {
     /// The world a handle names for a read that works on both sides: the
     /// server's level, or on a client the one it shows (`Minecraft.level`, its
     /// copy of the server's). None for a stale handle or another dimension.
-    pub(in crate::game) fn native_level_read_world(&self, level: LevelRef) -> Option<&World> {
+    pub(in crate::game::server_side) fn native_level_read_world(
+        &self,
+        level: LevelRef,
+    ) -> Option<&World> {
         if self.is_logical_server() {
             return self.native_level_world(level);
         }
@@ -458,7 +465,7 @@ impl Game<'_> {
     /// `level_load`, say) are not candidates, and a controller registered
     /// without a validator keeps all of its tickets. Nothing is built while no
     /// mod listens.
-    pub(in crate::game) fn validate_mod_chunk_tickets(&mut self, dim: super::Dim) {
+    pub(in crate::game::server_side) fn validate_mod_chunk_tickets(&mut self, dim: super::Dim) {
         let Some(streaming) = self.mod_ticket_streaming_mut(dim) else {
             return;
         };
@@ -3356,7 +3363,7 @@ pub(in crate::game) mod environment_read_tests {
         run_biome_reads_follow_live_cells_parked_levels_and_client_login_without_loading();
     }
 
-    pub(in crate::game) fn run_biome_reads_follow_live_cells_parked_levels_and_client_login_without_loading()
+    pub(in crate::game::server_side) fn run_biome_reads_follow_live_cells_parked_levels_and_client_login_without_loading()
      {
         use crate::game::execution_role::ExecutionRole;
         use sunrise_protocol::connection::Pipe;
@@ -3425,7 +3432,8 @@ pub(in crate::game) mod environment_read_tests {
         run_floor_reads_real_collision_shapes_and_refuses_unloaded_positions();
     }
 
-    pub(in crate::game) fn run_floor_reads_real_collision_shapes_and_refuses_unloaded_positions() {
+    pub(in crate::game::server_side) fn run_floor_reads_real_collision_shapes_and_refuses_unloaded_positions()
+     {
         with_game(|game| {
             game.world
                 .chunks
@@ -3472,7 +3480,8 @@ pub(in crate::game) mod environment_read_tests {
         run_sky_and_logical_height_read_the_named_dimension_and_client_state();
     }
 
-    pub(in crate::game) fn run_sky_and_logical_height_read_the_named_dimension_and_client_state() {
+    pub(in crate::game::server_side) fn run_sky_and_logical_height_read_the_named_dimension_and_client_state()
+     {
         use crate::game::execution_role::ExecutionRole;
         use sunrise_client::chunk::LevelShape;
         use sunrise_protocol::connection::Pipe;
@@ -3559,7 +3568,7 @@ pub(in crate::game) mod environment_read_tests {
         run_closest_biome_uses_the_named_generator_without_loading_resident_chunks();
     }
 
-    pub(in crate::game) fn run_closest_biome_uses_the_named_generator_without_loading_resident_chunks()
+    pub(in crate::game::server_side) fn run_closest_biome_uses_the_named_generator_without_loading_resident_chunks()
      {
         use sunrise_client::vanillagen::{TerrainResources, VanillaTerrain};
 
@@ -3673,7 +3682,7 @@ pub(in crate::game) mod environment_read_tests {
         run_nearest_structure_uses_the_named_generator_without_loading_resident_chunks();
     }
 
-    pub(in crate::game) fn run_nearest_structure_uses_the_named_generator_without_loading_resident_chunks()
+    pub(in crate::game::server_side) fn run_nearest_structure_uses_the_named_generator_without_loading_resident_chunks()
      {
         use mod_api::StructureSearch;
         use sunrise_client::vanillagen::{TerrainResources, VanillaTerrain};
@@ -3775,7 +3784,7 @@ pub(in crate::game) mod environment_read_tests {
         run_level_environment_reads_match_vanilla_vectors();
     }
 
-    pub(in crate::game) fn run_level_environment_reads_match_vanilla_vectors() {
+    pub(in crate::game::server_side) fn run_level_environment_reads_match_vanilla_vectors() {
         use serde_json::{Value, json};
         use std::collections::HashMap;
         use sunrise_client::vanillagen::{TerrainResources, VanillaTerrain};

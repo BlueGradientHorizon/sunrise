@@ -43,7 +43,7 @@ impl Live {
         Arc::new(Self(AtomicU8::new(Phase::Asked as u8)))
     }
 
-    pub(in crate::game) fn get(&self) -> Phase {
+    pub(in crate::game::server_side) fn get(&self) -> Phase {
         match self.0.load(Ordering::Relaxed) {
             0 => Phase::Asked,
             1 => Phase::Running,
@@ -96,7 +96,7 @@ pub(in crate::game) struct ServerSide {
 }
 
 impl ServerSide {
-    pub(in crate::game) fn new(slow_ms: f32) -> Self {
+    pub(in crate::game::server_side) fn new(slow_ms: f32) -> Self {
         Self {
             perf: ServerPerf::with_role(Role::INTEGRATED, 0.0, slow_ms),
             epoch: Instant::now(),
@@ -308,7 +308,7 @@ impl Game<'_> {
     }
 
     /// Labels the moment in the running capture.
-    pub(in crate::game) fn mark_server_capture(&mut self, name: &str) {
+    pub(in crate::game::server_side) fn mark_server_capture(&mut self, name: &str) {
         if let Some(side) = &mut self.profile.server {
             let t = side.now();
             side.perf.mark(t, name);
@@ -324,7 +324,10 @@ impl Game<'_> {
     }
 
     /// One tick of the server thread, timed for the health history and the capture.
-    pub(in crate::game) fn tick_server_measured(&mut self, paused: bool) -> crate::Result<()> {
+    pub(in crate::game::server_side) fn tick_server_measured(
+        &mut self,
+        paused: bool,
+    ) -> crate::Result<()> {
         self.serve_perf_asked();
         let Some(mut side) = self.profile.server.take() else {
             return self.tick_server_timed(paused);
@@ -373,7 +376,7 @@ impl Game<'_> {
     }
 
     /// The server is closing: ends the capture, and waits for the file when it is this side's.
-    pub(in crate::game) fn finish_server_capture(&mut self) {
+    pub(in crate::game::server_side) fn finish_server_capture(&mut self) {
         let Some(mut side) = self.profile.server.take() else {
             return;
         };

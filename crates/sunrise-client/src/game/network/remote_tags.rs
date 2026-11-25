@@ -189,7 +189,10 @@ pub(in crate::game) mod tests {
         }
     }
 
-    pub(in crate::game) fn update(builtin: &Builtin, tags: &[(&str, &str, &[&str])]) -> UpdateTags {
+    pub(in crate::game::client_side) fn update(
+        builtin: &Builtin,
+        tags: &[(&str, &str, &[&str])],
+    ) -> UpdateTags {
         let mut registries = std::collections::BTreeMap::<_, Vec<_>>::new();
         for &(registry, tag, members) in tags {
             let names = builtin.get(registry).unwrap();
@@ -566,7 +569,10 @@ pub(in crate::game) mod tests {
         });
     }
 
-    pub(in crate::game) fn power_update(builtin: &Builtin, tags: &[(&str, &[&str])]) -> UpdateTags {
+    pub(in crate::game::client_side) fn power_update(
+        builtin: &Builtin,
+        tags: &[(&str, &[&str])],
+    ) -> UpdateTags {
         let blocks = builtin.get("minecraft:block").unwrap();
         UpdateTags {
             registries: vec![RegistryTags {

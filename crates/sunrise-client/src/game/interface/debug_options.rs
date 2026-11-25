@@ -38,7 +38,7 @@ pub(in crate::game) struct DebugOptionsUi {
 }
 
 impl DebugOptionsUi {
-    pub(in crate::game) fn search_focused(&self) -> bool {
+    pub(in crate::game::client_side) fn search_focused(&self) -> bool {
         self.search.focused
     }
 }
@@ -50,7 +50,7 @@ pub(in crate::game) enum Row<'a> {
 }
 
 /// `OptionList.updateSearch`: a category row before each category's entries.
-pub(in crate::game) fn rows<'a>(
+pub(in crate::game::client_side) fn rows<'a>(
     registered: &'a [RegisteredDebugEntry],
     value: &str,
 ) -> Vec<Row<'a>> {
@@ -102,7 +102,7 @@ impl Game<'_> {
     /// `KeyboardHandler`'s F3+F6: closes the screen if it is open, else opens
     /// it over whatever screen yields (`canInterruptScreen`), closing that
     /// screen first.
-    pub(in crate::game) fn toggle_debug_options(&mut self) {
+    pub(in crate::game::client_side) fn toggle_debug_options(&mut self) {
         if self.client.screen == Screen::DebugOptions {
             self.close_debug_options();
             return;
@@ -146,7 +146,7 @@ impl Game<'_> {
         }
     }
     /// `Screen.onClose`: back to the title when no level is open, otherwise the game.
-    pub(in crate::game) fn close_debug_options(&mut self) {
+    pub(in crate::game::client_side) fn close_debug_options(&mut self) {
         self.client.debug_options = None;
         self.set_screen(Screen::Playing);
         self.capture(self.title.0.is_none());
@@ -201,7 +201,7 @@ impl Game<'_> {
         self.settings.file.set("debugGuiScale", V::Int(next));
         self.settings.save(&Self::options_path());
     }
-    pub(in crate::game) fn draw_debug_options(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_debug_options(&mut self, batch: &mut HudBatch) {
         let Some(s) = self.client.debug_options.as_ref() else {
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
@@ -361,7 +361,7 @@ impl Game<'_> {
         }
     }
     /// A left click: a status button, the search box, a footer button.
-    pub(in crate::game) fn debug_options_click(&mut self) -> bool {
+    pub(in crate::game::client_side) fn debug_options_click(&mut self) -> bool {
         let Some(mut s) = self.client.debug_options.take() else {
             return false;
         };
@@ -445,7 +445,7 @@ impl Game<'_> {
         true
     }
     /// The mouse wheel over the list (`scrollRate`: half a row).
-    pub(in crate::game) fn debug_options_scroll(&mut self, delta: f32) -> bool {
+    pub(in crate::game::client_side) fn debug_options_scroll(&mut self, delta: f32) -> bool {
         let (_, h) = self.gui_size();
         let scroll = self.pad_stick_scroll()
             || self.pad_step_scroll()
@@ -460,7 +460,7 @@ impl Game<'_> {
         false
     }
     /// The pointer moved while the list's scrollbar is held.
-    pub(in crate::game) fn debug_options_drag(&mut self) -> bool {
+    pub(in crate::game::client_side) fn debug_options_drag(&mut self) -> bool {
         let (_, h) = self.gui_size();
         let y = self.client.cursor.1;
         if let Some(s) = &mut self.client.debug_options
@@ -474,7 +474,7 @@ impl Game<'_> {
         false
     }
     /// The button came up: the scrollbar lets go.
-    pub(in crate::game) fn debug_options_release(&mut self) -> bool {
+    pub(in crate::game::client_side) fn debug_options_release(&mut self) -> bool {
         self.client.debug_options.as_mut().is_some_and(|s| {
             let handled = s.scroll.held();
             s.scroll.release();
@@ -482,7 +482,7 @@ impl Game<'_> {
         })
     }
     /// A key the debug keys left: Escape closes, the rest edits the search.
-    pub(in crate::game) fn debug_options_key(
+    pub(in crate::game::client_side) fn debug_options_key(
         &mut self,
         key: KeyCode,
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
@@ -509,7 +509,7 @@ impl Game<'_> {
         }
     }
     /// One character off the search box, for the controller's on-screen keyboard.
-    pub(in crate::game) fn debug_options_backspace(&mut self) {
+    pub(in crate::game::client_side) fn debug_options_backspace(&mut self) {
         if let Some(s) = &mut self.client.debug_options
             && s.search.focused
         {
@@ -517,7 +517,7 @@ impl Game<'_> {
         }
     }
     /// Characters typed into the search box (`EditBox.charTyped`).
-    pub(in crate::game) fn debug_options_type(&mut self, typed: &str) {
+    pub(in crate::game::client_side) fn debug_options_type(&mut self, typed: &str) {
         let allowed: String = typed
             .chars()
             .filter(|&c| c != '\u{a7}' && c >= ' ' && c != '\u{7f}')
@@ -686,7 +686,7 @@ pub(in crate::game) mod tests {
         run_title_debug_overlay_draws_without_a_level();
     }
 
-    pub(in crate::game) fn run_title_debug_overlay_draws_without_a_level() {
+    pub(in crate::game::client_side) fn run_title_debug_overlay_draws_without_a_level() {
         use mod_api::prelude::ScreensClientHost;
         use sunrise_client::debug_keys::KeyAction;
         let mut resources = None;
@@ -731,7 +731,8 @@ pub(in crate::game) mod tests {
         run_title_debug_options_open_draw_and_return_without_a_level();
     }
 
-    pub(in crate::game) fn run_title_debug_options_open_draw_and_return_without_a_level() {
+    pub(in crate::game::client_side) fn run_title_debug_options_open_draw_and_return_without_a_level()
+     {
         use sunrise_client::debug_keys::KeyAction;
         let mut resources = None;
         let mut game = title_game(&mut resources);

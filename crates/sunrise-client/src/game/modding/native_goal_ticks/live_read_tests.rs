@@ -14,7 +14,7 @@ impl mobs::LiveMobs for OneMob<'_> {
 }
 
 /// Run the public target getter with the actor and the other mob outside `Game`.
-pub(in crate::game) fn read_borrowed_target(
+pub(in crate::game::server_side) fn read_borrowed_target(
     game: &mut Game<'_>,
     warden: MobRef,
     other: u32,

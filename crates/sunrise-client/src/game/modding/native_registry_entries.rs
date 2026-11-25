@@ -63,7 +63,7 @@ impl LocalRegistry<'_> {
 
 impl Game<'_> {
     /// The same published provider definitions that `/compute` evaluates.
-    pub(in crate::game) fn context_registry(
+    pub(in crate::game::server_side) fn context_registry(
         &self,
         registry: &str,
     ) -> Option<&std::collections::HashMap<String, serde_json::Value>> {
@@ -418,7 +418,7 @@ fn network_entries(
 
 /// TagLoader binds mod-registry tags against the already decoded candidate, before publication.
 /// No file's name can create an entry: required missing members invalidate that tag only.
-pub(in crate::game) fn bind_datapack_tags(
+pub(in crate::game::server_side) fn bind_datapack_tags(
     root: &std::path::Path,
     overlay: &sunrise_world::loot::PackOverlay<'_>,
     candidate: &mut mod_api::DatapackCandidate,

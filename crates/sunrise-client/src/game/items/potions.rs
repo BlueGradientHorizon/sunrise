@@ -89,7 +89,7 @@ pub(in crate::game) struct ThrownPotion {
 /// it has left them) whose box, grown by `margin` (`ProjectileUtil.computeMargin`),
 /// holds `p` (`Projectile.canHitEntity`).
 #[cfg(test)]
-pub(in crate::game) fn thrown_player_at<'a>(
+pub(in crate::game::client_side) fn thrown_player_at<'a>(
     players: &'a [(Who, Aabb)],
     skip: &[Who],
     p: Vec3,
@@ -101,7 +101,7 @@ pub(in crate::game) fn thrown_player_at<'a>(
 }
 /// `ProjectileUtil.computeMargin`: how far the pick box is grown at `age`.
 #[cfg(test)]
-pub(in crate::game) fn thrown_margin(age: u32) -> f64 {
+pub(in crate::game::client_side) fn thrown_margin(age: u32) -> f64 {
     ((f64::from(age) - 2.0) / 20.0).clamp(0.0, 0.3)
 }
 /// `Projectile.isOutsideOwnerCollisionRange` (`checkLeftOwner`): none of the
@@ -109,7 +109,11 @@ pub(in crate::game) fn thrown_margin(age: u32) -> f64 {
 /// here `ridden`) is within a block of the potion's (0.25 wide) grown by its
 /// motion; true too when there is no thrower (`ridden` empty).
 #[cfg(test)]
-pub(in crate::game) fn thrown_left_owner(ridden: &[Aabb], position: Vec3, velocity: Vec3) -> bool {
+pub(in crate::game::client_side) fn thrown_left_owner(
+    ridden: &[Aabb],
+    position: Vec3,
+    velocity: Vec3,
+) -> bool {
     let h = 0.125;
     let reach = Aabb::new(
         Vec3::new(position.x - h, position.y, position.z - h),
@@ -125,7 +129,7 @@ pub(in crate::game) const LINGERING_WAIT: i32 = 10;
 pub(in crate::game) const REAPPLICATION_DELAY: i32 = 20;
 /// `AreaEffectCloud.readAdditionalSaveData`: load the cloud's simulation state and decode
 /// its custom particle once. The entity id is the caller's (`load_potion_cloud`).
-pub(in crate::game) fn potion_cloud_from_nbt(tag: &Tag) -> Option<(Vec3, Breath)> {
+pub(in crate::game::client_side) fn potion_cloud_from_nbt(tag: &Tag) -> Option<(Vec3, Breath)> {
     use sunrise_client::save::{float, number, text};
     let at = sunrise_client::entity_nbt::position(tag)?;
     let motion = sunrise_client::entity_nbt::loaded_motion(tag);
@@ -575,7 +579,7 @@ impl Game<'_> {
     /// `WeavingMobEffect.spawnCobwebsRandomlyAround`: two or three cobwebs in
     /// free spaces with a solid floor, picked among 15 random blocks within one
     /// block of `pos`.
-    pub(in crate::game) fn spawn_cobwebs_around(
+    pub(in crate::game::client_side) fn spawn_cobwebs_around(
         &mut self,
         pos: [i32; 3],
         mut random: Option<&mut LegacyRandom>,
@@ -759,14 +763,17 @@ impl PotionState {
         });
     }
     /// ThrowableItemProjectile.DATA_ITEM_STACK: the potion it shows.
-    pub(in crate::game) fn remote_thrown_item(&mut self, id: u32, stack: ItemStack) {
+    pub(in crate::game::client_side) fn remote_thrown_item(&mut self, id: u32, stack: ItemStack) {
         if let Some(t) = self.thrown.iter_mut().find(|t| t.id == id) {
             t.stack = stack;
         }
     }
     /// A server's move: thrown potions have no interpolation handler, so
     /// `moveOrInterpolateTo` puts them there at once. False when `id` isn't one.
-    pub(in crate::game) fn remote_thrown_pose(&self, id: u32) -> Option<([f64; 3], [f64; 3])> {
+    pub(in crate::game::client_side) fn remote_thrown_pose(
+        &self,
+        id: u32,
+    ) -> Option<([f64; 3], [f64; 3])> {
         let t = self.thrown.iter().find(|t| t.id == id)?;
         Some((
             [t.position.x, t.position.y, t.position.z],
@@ -788,16 +795,16 @@ impl PotionState {
         t.velocity = velocity;
         true
     }
-    pub(in crate::game) fn remove_remote_thrown(&mut self, id: u32) {
+    pub(in crate::game::client_side) fn remove_remote_thrown(&mut self, id: u32) {
         self.thrown.retain(|t| t.id != id);
     }
-    pub(in crate::game) fn has_thrown(&self, id: u32) -> bool {
+    pub(in crate::game::client_side) fn has_thrown(&self, id: u32) -> bool {
         self.thrown.iter().any(|t| t.id == id)
     }
 }
 
 /// The entity type of a thrown potion or bottle.
-pub(in crate::game) fn thrown_kind(stack: &ItemStack) -> &'static str {
+pub(in crate::game::client_side) fn thrown_kind(stack: &ItemStack) -> &'static str {
     match &*stack.item {
         "minecraft:lingering_potion" => "minecraft:lingering_potion",
         "minecraft:experience_bottle" => "minecraft:experience_bottle",
@@ -906,7 +913,7 @@ impl Game<'_> {
         }
     }
     /// Drinking a potion while right-click is held; true when handled.
-    pub(in crate::game) fn tick_drinking(
+    pub(in crate::game::client_side) fn tick_drinking(
         &mut self,
         slot: usize,
         ticks: u32,
@@ -1147,7 +1154,7 @@ impl Game<'_> {
     /// `Player.tick` -> `turtleHelmetTick`: with a turtle helmet on the head
     /// and the eyes out of the water, Water Breathing for 200 ticks (no
     /// particles, an icon).
-    pub(in crate::game) fn turtle_helmet_tick(&mut self) {
+    pub(in crate::game::client_side) fn turtle_helmet_tick(&mut self) {
         let Some(p) = self.player.as_ref() else {
             return;
         };
@@ -1340,7 +1347,7 @@ impl Game<'_> {
     /// `MobEffectInstance.tickServer` for a content mod's effect: its
     /// `shouldApplyEffectTickThisTick`, then its `applyEffectTick`, which
     /// may end it. Whether it stays.
-    pub(in crate::game) fn mod_effect_tick(
+    pub(in crate::game::client_side) fn mod_effect_tick(
         &self,
         index: Option<usize>,
         entity: Option<i32>,
@@ -1446,7 +1453,7 @@ impl Game<'_> {
         self.refresh_effect_attributes();
     }
 
-    pub(in crate::game) fn refresh_effect_attributes(&mut self) {
+    pub(in crate::game::client_side) fn refresh_effect_attributes(&mut self) {
         if let Some(player) = self.player.as_mut() {
             let _ = player.refresh_attributes();
         }
@@ -1501,7 +1508,7 @@ impl Game<'_> {
     /// `ThrowableProjectile.tick` for splash/lingering potions and experience bottles in flight:
     /// exact `ProjectileUtil.getHitResultOnMoveVector` block clip + entity sweep, live target
     /// visibility across bottles, vehicle-tree owner check after `setPos`, and Breeze deflection.
-    pub(in crate::game) fn tick_thrown_potions(&mut self) {
+    pub(in crate::game::client_side) fn tick_thrown_potions(&mut self) {
         if self.potions.thrown.is_empty() {
             return;
         }
@@ -1768,7 +1775,7 @@ impl Game<'_> {
         }
         c.first_tick = false;
     }
-    pub(in crate::game) fn tick_potion_cloud(
+    pub(in crate::game::client_side) fn tick_potion_cloud(
         &mut self,
         c: &mut Breath,
         players: &[FightPlayer],
@@ -1908,7 +1915,7 @@ impl Game<'_> {
     /// `ThrowableProjectile.tick`'s `applyGravity` and `applyInertia`, which
     /// come before the move: gravity 0.05 (0.07 for an experience bottle),
     /// then drag 0.99 (0.8 in water).
-    pub(in crate::game) fn thrown_potion_motion(&self, t: &mut ThrownPotion) {
+    pub(in crate::game::client_side) fn thrown_potion_motion(&self, t: &mut ThrownPotion) {
         let gravity = if &*t.stack.item == "minecraft:experience_bottle" {
             0.07
         } else {
@@ -1962,7 +1969,7 @@ impl Game<'_> {
     /// `ThrownItemRenderer` for thrown splash and lingering potions and
     /// experience bottles: the item (GROUND) facing the camera at scale 1,
     /// lit at the light probe (the eye, 0.85 of the 0.25 height).
-    pub(in crate::game) fn thrown_potion_geometry(
+    pub(in crate::game::client_side) fn thrown_potion_geometry(
         &self,
         camera: glam::DVec3,
         alpha: f64,
@@ -2086,7 +2093,10 @@ impl Game<'_> {
     /// `Screen.showsActiveEffects`: the survival and creative inventories
     /// draw their own effect list when `EffectsInInventory.canSeeEffects`
     /// (32 or more pixels right of the screen).
-    pub(in crate::game) fn screen_shows_active_effects(&self, batch: &HudBatch) -> bool {
+    pub(in crate::game::client_side) fn screen_shows_active_effects(
+        &self,
+        batch: &HudBatch,
+    ) -> bool {
         let (ox, image_width) = match self.client.screen {
             Screen::Inventory
                 if self.container.is_none() && self.craft_size == 2 && !self.mount_active() =>
@@ -2103,7 +2113,7 @@ impl Game<'_> {
     }
     /// `Hud.extractEffects`: icons top-right, beneficial row then harmful row;
     /// every screen but the inventories keeps them.
-    pub(in crate::game) fn draw_effect_icons(&self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_effect_icons(&self, batch: &mut HudBatch) {
         if self.potions.effects.list.is_empty() || self.screen_shows_active_effects(batch) {
             return;
         }
@@ -2121,7 +2131,7 @@ impl Game<'_> {
     /// The caller draws the returned tooltip after every other tooltip.
     /// `ScreenEvent.RenderInventoryMobEffects` fires when the build lays the
     /// panels out once a frame, and its answer is kept in the build.
-    pub(in crate::game) fn draw_inventory_effects(
+    pub(in crate::game::client_side) fn draw_inventory_effects(
         &self,
         batch: &mut HudBatch,
         origin: (f32, f32),
@@ -2143,7 +2153,7 @@ impl Game<'_> {
     }
     /// A hovered panel's tooltip lines, after `GatherEffectScreenTooltipsEvent`
     /// (fired only while a mod listens).
-    pub(in crate::game) fn effect_tooltip(
+    pub(in crate::game::client_side) fn effect_tooltip(
         &self,
         batch: &HudBatch,
         hovered: inventory_effects::HoveredEffectPanel<'_, '_>,
@@ -2159,7 +2169,7 @@ impl Game<'_> {
     }
     /// The rectangle `draw_inventory_effects` covers, none with no effects
     /// or too little room right of the window, laid out as `layout` says.
-    pub(in crate::game) fn inventory_effects_rect(
+    pub(in crate::game::client_side) fn inventory_effects_rect(
         &self,
         batch: &HudBatch,
         origin: [f32; 2],
@@ -2175,7 +2185,7 @@ impl Game<'_> {
     }
     /// The room the effect panels lay out in (`EffectsInInventory`'s space):
     /// the window's width, the container's origin and its image width.
-    pub(in crate::game) fn effects_space(
+    pub(in crate::game::client_side) fn effects_space(
         batch: &HudBatch,
         origin: [f32; 2],
         image_width: f32,
@@ -2186,7 +2196,7 @@ impl Game<'_> {
             image_width: image_width as i32,
         }
     }
-    pub(in crate::game) fn effect_panels(
+    pub(in crate::game::client_side) fn effect_panels(
         &self,
         space: &inventory_effects::EffectsSpace,
         layout: &inventory_effects::EffectsLayout,
@@ -2206,7 +2216,7 @@ impl Game<'_> {
     /// listening. The answer is taken once a frame: the display's change
     /// builds twice in one frame (`apply_ui_settings` then `observe_screen`),
     /// and the second build reuses the first one's answer.
-    pub(in crate::game) fn inventory_effects_layout(
+    pub(in crate::game::client_side) fn inventory_effects_layout(
         &self,
         space: &inventory_effects::EffectsSpace,
         rect: [f32; 4],
@@ -2252,7 +2262,7 @@ impl Game<'_> {
         self.potions = PotionState::default();
         self.potions.effects = PlayerEffects::from_saved(&self.level.active_effects);
     }
-    pub(in crate::game) fn effects_json(&self) -> serde_json::Value {
+    pub(in crate::game::client_side) fn effects_json(&self) -> serde_json::Value {
         serde_json::json!({
             "active": self.potions.effects.list.iter().map(|e| serde_json::json!({ "id": e.id, "duration": e.duration, "amplifier": e.amplifier })).collect::<Vec<_>>(),
             "thrown": self.potions.thrown.iter().map(|t| [t.position.x, t.position.y, t.position.z]).collect::<Vec<_>>(),
@@ -2319,7 +2329,10 @@ impl sunrise_client::mobs::ModEffectTicks for Game<'_> {
 /// counts its effect down, then ticks its `BlendState`. The darkness effect's
 /// is the fade `darkness_lighting` and `darkness_fog` draw; the integrated
 /// level's `tick_sculk_entities` is not run for a server's client (#3393).
-pub(in crate::game) fn client_tick_effects(effects: &mut PlayerEffects, darkness: &mut (f32, f32)) {
+pub(in crate::game::client_side) fn client_tick_effects(
+    effects: &mut PlayerEffects,
+    darkness: &mut (f32, f32),
+) {
     for e in &mut effects.list {
         e.tick_client();
     }
@@ -2335,7 +2348,7 @@ pub(in crate::game) mod tests {
     #[allow(unused_imports)]
     use sunrise_client::{motion::PlayerMotion, screen_effects::nausea_blend_added};
 
-    pub(in crate::game) fn flt(v: f32) -> Tag {
+    pub(in crate::game::client_side) fn flt(v: f32) -> Tag {
         Tag::Float(v.to_bits())
     }
 
@@ -3684,7 +3697,7 @@ pub(in crate::game) mod tests {
 
 /// `MobEffect.withSoundOnAdded`: the sound `onEffectAdded` plays when the
 /// effect is new on an entity (`MobEffects`: the three omens).
-pub(in crate::game) fn sound_on_added(effect: &str) -> Option<&'static str> {
+pub(in crate::game::client_side) fn sound_on_added(effect: &str) -> Option<&'static str> {
     match effect.strip_prefix("minecraft:").unwrap_or(effect) {
         "bad_omen" => Some("minecraft:event.mob_effect.bad_omen"),
         "trial_omen" => Some("minecraft:event.mob_effect.trial_omen"),
@@ -4554,7 +4567,7 @@ pub(in crate::game) mod arrow_contents {
         run_actual_arrow_contents_match_pinned_methods();
     }
 
-    pub(in crate::game) fn run_actual_arrow_contents_match_pinned_methods() {
+    pub(in crate::game::client_side) fn run_actual_arrow_contents_match_pinned_methods() {
         let root =
             PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").expect("explicit resources"));
         let input =

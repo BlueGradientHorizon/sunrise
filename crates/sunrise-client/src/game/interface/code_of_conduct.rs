@@ -130,7 +130,7 @@ impl Game<'_> {
 
     /// `handleCodeOfConduct`: text accepted before for this server is
     /// accepted at once; otherwise the screen opens over the connecting one.
-    pub(in crate::game) fn handle_code_of_conduct(&mut self, text: String) {
+    pub(in crate::game::client_side) fn handle_code_of_conduct(&mut self, text: String) {
         let Some(r) = &self.remote else {
             return;
         };
@@ -179,7 +179,7 @@ impl Game<'_> {
         self.leave_server(Some(reason))
     }
 
-    pub(in crate::game) fn draw_code_of_conduct(&self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_code_of_conduct(&self, batch: &mut HudBatch) {
         let Some(prompt) = &self.client.code_of_conduct else {
             return;
         };
@@ -264,7 +264,7 @@ impl Game<'_> {
     }
 
     /// A left click: the box toggles, a button answers.
-    pub(in crate::game) fn code_of_conduct_click(&mut self) -> Result<bool> {
+    pub(in crate::game::client_side) fn code_of_conduct_click(&mut self) -> Result<bool> {
         let size = self.gui_size();
         let cursor = self.client.cursor;
         let Some(prompt) = self.client.code_of_conduct.as_mut() else {
@@ -292,7 +292,7 @@ impl Game<'_> {
     }
 
     /// The mouse wheel over the screen: the text scrolls 10 a step.
-    pub(in crate::game) fn code_of_conduct_scroll(&mut self, delta: f32) -> bool {
+    pub(in crate::game::client_side) fn code_of_conduct_scroll(&mut self, delta: f32) -> bool {
         let size = self.gui_size();
         let stick_scroll = self.pad_stick_scroll() || self.pad_step_scroll();
         let Some(prompt) = self.client.code_of_conduct.as_mut() else {

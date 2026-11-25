@@ -20,7 +20,7 @@ pub(in crate::game) enum RidingRead<'a> {
 
 impl Game<'_> {
     /// The dismount search with a vehicle or passenger lent out of `self.mobs`.
-    pub(in crate::game) fn scoped_mob_dismount_location(
+    pub(in crate::game::server_side) fn scoped_mob_dismount_location(
         &self,
         vehicle: Option<&Mob>,
         vehicle_id: u32,
@@ -78,7 +78,10 @@ impl Game<'_> {
     }
     /// The side's own copy of the entity for a read. On a client only tracked
     /// entities and the local player have handles.
-    pub(in crate::game) fn riding_read(&self, entity: EntityRef) -> Option<RidingRead<'_>> {
+    pub(in crate::game::server_side) fn riding_read(
+        &self,
+        entity: EntityRef,
+    ) -> Option<RidingRead<'_>> {
         if self.is_logical_server() {
             return self.native_entity_target(entity).map(RidingRead::Server);
         }
@@ -139,7 +142,11 @@ impl Game<'_> {
     }
 
     /// A live portal root carries a direct or indirect mount through complete objects.
-    pub(in crate::game) fn vehicle_tree_contains_mount(&self, root: u32, mount: u32) -> bool {
+    pub(in crate::game::server_side) fn vehicle_tree_contains_mount(
+        &self,
+        root: u32,
+        mount: u32,
+    ) -> bool {
         // A retained mob has no handle: its own object is its target.
         let target = self
             .entity(mount)
@@ -218,7 +225,11 @@ impl Game<'_> {
         Some(all)
     }
     /// Whether the player `t` holds the stick that steers `species` in either hand.
-    pub(in crate::game) fn native_player_steers(&self, species: Species, t: Target) -> bool {
+    pub(in crate::game::server_side) fn native_player_steers(
+        &self,
+        species: Species,
+        t: Target,
+    ) -> bool {
         let (main, offhand) = match t {
             Target::Player => (self.held(), self.offhand.as_ref()),
             Target::Guest(conn) => {
@@ -240,7 +251,11 @@ impl Game<'_> {
     }
     /// The overrides of `getControllingPassenger` on `mob`: whether the player `rider`, its
     /// first passenger, steers it.
-    pub(in crate::game) fn native_player_controls(&self, mob: &Mob, rider: Target) -> bool {
+    pub(in crate::game::server_side) fn native_player_controls(
+        &self,
+        mob: &Mob,
+        rider: Target,
+    ) -> bool {
         let species = mob.species();
         match species {
             Species::Pig | Species::Strider => {
@@ -334,7 +349,7 @@ impl Game<'_> {
         Some([x, top, z])
     }
     /// A lead's live holder as a handle: `None` when it is out of reach.
-    pub(in crate::game) fn native_leash_holder(
+    pub(in crate::game::server_side) fn native_leash_holder(
         &self,
         holder: Option<Holder>,
         player: Option<[i32; 4]>,
@@ -432,7 +447,7 @@ impl Game<'_> {
         self.native_set_leash(entity, target, Holder::Knot(pos), None)
     }
     /// `Leashable.setLeashedTo` from a handle: the lead first, then off the vehicle.
-    pub(in crate::game) fn native_set_leash(
+    pub(in crate::game::server_side) fn native_set_leash(
         &mut self,
         entity: EntityRef,
         target: Target,
@@ -582,7 +597,7 @@ impl Game<'_> {
 
     /// The mount's last check: the rider sits on the vehicle, or a hook it
     /// dispatched took it off again.
-    pub(in crate::game) fn native_seated(
+    pub(in crate::game::server_side) fn native_seated(
         &self,
         rider: Target,
         vehicle_id: u32,
@@ -596,7 +611,7 @@ impl Game<'_> {
 
     /// Validate the captured relationship at each callback boundary, naming
     /// the first check that fails, in the order the checks have always run.
-    pub(in crate::game) fn native_riding_preconditions(
+    pub(in crate::game::server_side) fn native_riding_preconditions(
         &self,
         rider: Target,
         vehicle: Target,
@@ -789,7 +804,7 @@ impl Game<'_> {
         }
         stopped
     }
-    pub(in crate::game) fn dismount_general(&mut self, id: u32, vehicle: u32) {
+    pub(in crate::game::server_side) fn dismount_general(&mut self, id: u32, vehicle: u32) {
         if self.native_mob_may_ride(id, vehicle, false)
             && self.native_vehicle_id(Target::General(id)) == Some(vehicle)
         {
@@ -801,7 +816,11 @@ impl Game<'_> {
     /// `Entity.setRemoved`: stop each direct passenger in list order, not
     /// the reverse order of `ejectPassengers`. A callback can move a later
     /// passenger, so check each edge again before asking it to stop riding.
-    pub(in crate::game) fn dismount_removed_passengers(&mut self, vehicle: u32, y: f64) {
+    pub(in crate::game::server_side) fn dismount_removed_passengers(
+        &mut self,
+        vehicle: u32,
+        y: f64,
+    ) {
         let passengers = self.seated_passengers(vehicle);
         let own = self
             .player
@@ -837,7 +856,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn dismount_general_passengers(&mut self, vehicle: u32) {
+    pub(in crate::game::server_side) fn dismount_general_passengers(&mut self, vehicle: u32) {
         let mut passengers: Vec<_> = self
             .general_passengers(vehicle)
             .map(|row| (row.vehicle_order, row.id))
@@ -1287,14 +1306,14 @@ pub(in crate::game) mod tests {
         game.mobs.push(Mob::new(id, kind, at, 0.0));
         game.entity(id).unwrap()
     }
-    pub(in crate::game) fn stale(entity: EntityRef) -> EntityRef {
+    pub(in crate::game::server_side) fn stale(entity: EntityRef) -> EntityRef {
         EntityRef::new(
             mod_api::WorldEpoch::new(entity.epoch().get().wrapping_add(1)),
             entity.id(),
         )
     }
     /// A floor of stone at y 63 around the origin, with air above it.
-    pub(in crate::game) fn lay_floor(game: &mut Game<'_>) {
+    pub(in crate::game::server_side) fn lay_floor(game: &mut Game<'_>) {
         for (x, z) in [(-1, -1), (-1, 0), (0, -1), (0, 0)] {
             game.world
                 .chunks
@@ -1701,7 +1720,7 @@ pub(in crate::game) mod tests {
 
     /// Asks where `rider` gets off `vehicle`, on foot and riding, then has it really get off:
     /// all three must agree. Returns the spot.
-    pub(in crate::game) fn get_off(
+    pub(in crate::game::server_side) fn get_off(
         game: &mut Game<'_>,
         rider: EntityRef,
         vehicle: EntityRef,
@@ -1723,7 +1742,7 @@ pub(in crate::game) mod tests {
         assert_eq!(item.position, at);
         game.dropped.clear();
     }
-    pub(in crate::game) fn assert_near(at: [f64; 3], expected: [f64; 3]) {
+    pub(in crate::game::server_side) fn assert_near(at: [f64; 3], expected: [f64; 3]) {
         let near = at.iter().zip(expected).all(|(a, b)| (a - b).abs() < 1e-4);
         assert!(near, "{at:?} is not {expected:?}");
     }

@@ -154,7 +154,7 @@ fn a_silent_rocket_bursts_without_blast_or_twinkle() {
     });
 }
 
-pub(in crate::game) fn tick_particles(game: &mut Game<'_>) {
+pub(in crate::game::client_side) fn tick_particles(game: &mut Game<'_>) {
     let level = ParticleLevel {
         world: &game.world,
         facts: game.res.facts(),

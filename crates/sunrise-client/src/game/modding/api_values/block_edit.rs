@@ -10,7 +10,9 @@ pub(in crate::game) struct PreparedBlockEdit {
 }
 
 /// Resolve every palette state and compile every filter before a world mutation is possible.
-pub(in crate::game) fn prepare(edit: &mod_api::BlockEdit) -> Result<PreparedBlockEdit, String> {
+pub(in crate::game::server_side) fn prepare(
+    edit: &mod_api::BlockEdit,
+) -> Result<PreparedBlockEdit, String> {
     if edit.filters.len() > 65_536 {
         return Err("more than 65536 filters".into());
     }
@@ -69,7 +71,7 @@ fn compile_filter(predicate: &mod_api::StatePredicate) -> Result<BlockInput, Str
 }
 
 /// Convert only the distinct numeric palette entries, preserving complete property states.
-pub(in crate::game) fn column_palette(
+pub(in crate::game::server_side) fn column_palette(
     palette: Vec<BlockStateId>,
 ) -> Result<Vec<mod_api::BlockState>, String> {
     palette

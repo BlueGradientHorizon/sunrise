@@ -50,7 +50,7 @@ impl Game<'_> {
         }
     }
     /// `Entity.setRemoved` of `t`, which `entity` names and is no mob, player or dragon part.
-    pub(in crate::game) fn remove_target_now(&mut self, entity: EntityRef, t: Target) {
+    pub(in crate::game::server_side) fn remove_target_now(&mut self, entity: EntityRef, t: Target) {
         let id = entity.id();
         if matches!(t, Target::Boat(_) | Target::Cart(_)) {
             self.with_vehicle_removal_effects(
@@ -141,7 +141,7 @@ impl Game<'_> {
     }
 
     /// Run the caller's preparation and the killed effects while the mob still resolves.
-    pub(in crate::game) fn remove_mob_after(
+    pub(in crate::game::server_side) fn remove_mob_after(
         &mut self,
         id: u32,
         killed: bool,
@@ -166,7 +166,7 @@ impl Game<'_> {
 
     /// `Entity.setRemoved` for a mob, also reached by the tick and the root
     /// transaction commit. A departing rider gets off before its own passengers.
-    pub(in crate::game) fn finish_mob_removal(&mut self, id: u32) {
+    pub(in crate::game::server_side) fn finish_mob_removal(&mut self, id: u32) {
         let Some(mob) = self.mob_object_mut(id) else {
             return;
         };
@@ -188,7 +188,7 @@ impl Game<'_> {
     }
     /// What a killed mob's effects do on removal (Oozing's slimes, Weaving's cobwebs, Wind
     /// Charged's burst).
-    pub(in crate::game) fn mob_removal_effects(&mut self, id: u32) {
+    pub(in crate::game::server_side) fn mob_removal_effects(&mut self, id: u32) {
         let Some(i) = self.mobs.iter().position(|m| m.id == id) else {
             return;
         };

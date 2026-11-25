@@ -7,12 +7,6 @@ pub(in crate::game::client_side) use crate::game::server_side::raids::PatrolCx;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::raids::Raiding;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::raids::block_of;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::raids::members;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::raids::raid_name_tag;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::raids::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use std::collections::{HashMap, HashSet};
@@ -50,7 +44,7 @@ impl Game<'_> {
     /// patrol captain's ominous bottle (`entities/pillager`).
     /// `OminousBottleAmplifier.onConsume`: Bad Omen for 100 minutes at the
     /// bottle's amplifier. The consumable list owns the dispose sound.
-    pub(in crate::game) fn drink_ominous_bottle(
+    pub(in crate::game::client_side) fn drink_ominous_bottle(
         &mut self,
         stack: &sunrise_client::items::ItemStack,
     ) {
@@ -85,7 +79,7 @@ impl Game<'_> {
     }
     /// The Raid Omen sound when the effect is first added
     /// (`MobEffect.onEffectAdded`: at the player's feet).
-    pub(in crate::game) fn raid_omen_added(&mut self) {
+    pub(in crate::game::client_side) fn raid_omen_added(&mut self) {
         let Some(p) = self.player.as_ref() else {
             return;
         };

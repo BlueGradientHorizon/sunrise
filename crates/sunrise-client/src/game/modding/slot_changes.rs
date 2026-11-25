@@ -126,7 +126,7 @@ fn reportable(
 
 /// The non-result slots of `layout`'s own container that differ between the snapshots, as one
 /// batch in ascending menu slot order. Result, crafting-result and linked slots never count.
-pub(in crate::game) fn collect_slot_changes(
+pub(in crate::game::server_side) fn collect_slot_changes(
     layout: &ModMenuType,
     snapshots: SlotSnapshots<'_>,
 ) -> Result<Vec<MenuSlotChange>, UnreportableSlot> {
@@ -167,7 +167,10 @@ pub(in crate::game) struct SlotChangedSnapshot {
 }
 
 impl SlotChangedSnapshot {
-    pub(in crate::game) fn with_context<R>(&self, f: impl FnOnce(&MenuSlotContext<'_>) -> R) -> R {
+    pub(in crate::game::server_side) fn with_context<R>(
+        &self,
+        f: impl FnOnce(&MenuSlotContext<'_>) -> R,
+    ) -> R {
         let read = |container: MenuContainer, index: usize| match container {
             MenuContainer::Main => self.main.get(index).cloned().flatten(),
             MenuContainer::Grid => self.grid.get(index).cloned().flatten(),
@@ -182,7 +185,7 @@ impl SlotChangedSnapshot {
 
 /// Build a read-only [`SlotChangedSnapshot`] from a `Menu`'s own containers. A slot the API can't
 /// carry refuses the snapshot rather than reading as empty.
-pub(in crate::game) fn context_from_menu(
+pub(in crate::game::server_side) fn context_from_menu(
     menu: &Menu,
     player: u128,
     pos: Option<[i32; 3]>,
@@ -321,7 +324,7 @@ pub(in crate::game) mod probe {
         static CONTEXTS: Cell<usize> = const { Cell::new(0) };
     }
 
-    pub(in crate::game) fn snapshot() {
+    pub(in crate::game::server_side) fn snapshot() {
         SNAPSHOTS.set(SNAPSHOTS.get() + 1);
     }
 
@@ -330,7 +333,7 @@ pub(in crate::game) mod probe {
     }
 
     /// `(snapshots, contexts)` since the last call, which starts the count again.
-    pub(in crate::game) fn take() -> (usize, usize) {
+    pub(in crate::game::server_side) fn take() -> (usize, usize) {
         (SNAPSHOTS.replace(0), CONTEXTS.replace(0))
     }
 }
@@ -739,7 +742,7 @@ impl Game<'_> {
     /// `menu_slot_changed` for a blockless owned menu whose transient slots a committed
     /// transaction changed (`ItemPlace::MenuSlot`). The committed write stands: the listener's
     /// outputs share a transaction of their own, which a failure aborts.
-    pub(in crate::game) fn notify_owned_menu_slot_changed(
+    pub(in crate::game::server_side) fn notify_owned_menu_slot_changed(
         &mut self,
         generation: u64,
         fallback_before: &[Option<ItemStack>],
@@ -788,7 +791,7 @@ impl Game<'_> {
     /// nobody has a listening menu open on costs one lookup in the open-menu index: no container
     /// snapshot, no `fallback_before`, no menu context. `fallback_before` gives what the block
     /// held before a committed transaction, for viewers with nothing reported yet.
-    pub(in crate::game) fn notify_block_menu_slot_changed(
+    pub(in crate::game::server_side) fn notify_block_menu_slot_changed(
         &mut self,
         pos: Pos,
         fallback_before: impl FnOnce(&Self) -> Option<Vec<Option<ItemStack>>>,
@@ -905,7 +908,7 @@ fn listening_block_menu_viewers(
 
 /// Whether any guest has a block-backed mod menu open at `pos`: the one index lookup a write to
 /// an unviewed block costs before `notify_block_menu_slot_changed`.
-pub(in crate::game) fn block_menu_viewed(guests: &GuestList, pos: Pos) -> bool {
+pub(in crate::game::server_side) fn block_menu_viewed(guests: &GuestList, pos: Pos) -> bool {
     !guests.block_mod_menu_viewers(pos).is_empty()
 }
 

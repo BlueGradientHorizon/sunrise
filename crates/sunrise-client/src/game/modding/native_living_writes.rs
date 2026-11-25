@@ -21,7 +21,10 @@ use sunrise_client::mobs::{spear_use, stuck::Stuck};
 
 impl Game<'_> {
     /// The UUID of the player a living handle names.
-    pub(in crate::game) fn native_living_player(&mut self, living: LivingRef) -> Option<u128> {
+    pub(in crate::game::server_side) fn native_living_player(
+        &mut self,
+        living: LivingRef,
+    ) -> Option<u128> {
         match self.native_living_target(living)? {
             Target::Player => Some(self.native_acting_id()),
             Target::Guest(conn) => self.command_guest(conn).map(|g| g.uuid),
@@ -29,7 +32,7 @@ impl Game<'_> {
         }
     }
     /// Runs `f` with the player a handle names acting, None when it didn't run.
-    pub(in crate::game) fn native_living_as_player<T>(
+    pub(in crate::game::server_side) fn native_living_as_player<T>(
         &mut self,
         living: LivingRef,
         f: impl FnOnce(&mut Self) -> T,
@@ -40,7 +43,10 @@ impl Game<'_> {
         out
     }
     /// What is stuck in the player or the mob a handle names.
-    pub(in crate::game) fn native_living_stuck(&mut self, living: LivingRef) -> Option<&mut Stuck> {
+    pub(in crate::game::server_side) fn native_living_stuck(
+        &mut self,
+        living: LivingRef,
+    ) -> Option<&mut Stuck> {
         match self.native_living_target(living)? {
             Target::Player => Some(&mut self.combat.0.stuck),
             Target::Guest(conn) => Some(&mut self.guest_combat.0.entry(conn).or_default().stuck),
@@ -295,7 +301,7 @@ impl Game<'_> {
     /// `/waypoint modify <entity> style`: `edit` changes the icon of the
     /// waypoint a handle names, which is then tracked again. False for the
     /// dragon.
-    pub(in crate::game) fn native_edit_waypoint_icon(
+    pub(in crate::game::server_side) fn native_edit_waypoint_icon(
         &mut self,
         living: LivingRef,
         edit: impl FnOnce(&mut Icon),

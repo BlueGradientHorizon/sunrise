@@ -3,10 +3,6 @@ pub(in crate::game::client_side) use super::Game;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::deflect::PICK_RADIUS;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::deflect::aim_deflect;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::deflect::attack_deflect;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::deflect::attackable;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::deflect::redirectable;

@@ -46,7 +46,7 @@ pub(in crate::game) fn center(b: &Boat) -> Vec3 {
     )
 }
 /// A boat as a lead's holder (`HolderState`), with its id.
-pub(in crate::game) fn boat_state(b: &Boat) -> (u32, HolderState) {
+pub(in crate::game::server_side) fn boat_state(b: &Boat) -> (u32, HolderState) {
     (
         b.id,
         HolderState {
@@ -59,17 +59,21 @@ pub(in crate::game) fn boat_state(b: &Boat) -> (u32, HolderState) {
         },
     )
 }
-pub(in crate::game) fn distance(a: Vec3, b: Vec3) -> f64 {
+pub(in crate::game::server_side) fn distance(a: Vec3, b: Vec3) -> f64 {
     ((a.x - b.x).powi(2) + (a.y - b.y).powi(2) + (a.z - b.z).powi(2)).sqrt()
 }
 
 impl Game<'_> {
     /// The player whose lead this is: the lead's `leash_player`, else the
     /// local player.
-    pub(in crate::game) fn boat_leash_player(&self, b: &Boat) -> Option<[i32; 4]> {
+    pub(in crate::game::server_side) fn boat_leash_player(&self, b: &Boat) -> Option<[i32; 4]> {
         b.leash_player.or(self.level.player_uuid)
     }
-    pub(in crate::game) fn boat_holder(&self, holder: Holder, player: Option<[i32; 4]>) -> Held {
+    pub(in crate::game::server_side) fn boat_holder(
+        &self,
+        holder: Holder,
+        player: Option<[i32; 4]>,
+    ) -> Held {
         match holder {
             Holder::Player => {
                 let want = player.or(self.level.player_uuid);
@@ -178,13 +182,16 @@ impl Game<'_> {
 
     /// `Leashable.dropLeash` / `removeLeash` on a boat: the lead falls as an
     /// item (`drop`). The change reaches clients through the entity tracker.
-    pub(in crate::game) fn take_boat_leash(b: &mut Boat, drop: bool) -> Option<[f64; 3]> {
+    pub(in crate::game::server_side) fn take_boat_leash(
+        b: &mut Boat,
+        drop: bool,
+    ) -> Option<[f64; 3]> {
         b.leash.take()?;
         b.leash_player = None;
         drop.then_some([b.position.x, b.position.y, b.position.z])
     }
 
-    pub(in crate::game) fn release_boat_leash(&mut self, b: &mut Boat, drop: bool) {
+    pub(in crate::game::server_side) fn release_boat_leash(&mut self, b: &mut Boat, drop: bool) {
         let holder = b.leash;
         let at = Self::take_boat_leash(b, drop);
         self.notify_knot_leashee_removed(holder, b.id);
@@ -203,7 +210,7 @@ impl Game<'_> {
     }
 
     /// `AbstractBoat.remove`: a boat that is destroyed drops its lead.
-    pub(in crate::game) fn drop_removed_boat_lead(&mut self, i: usize) {
+    pub(in crate::game::server_side) fn drop_removed_boat_lead(&mut self, i: usize) {
         let (holder, id, at) = self.boats.update(i, |b| {
             let holder = b.leash;
             let had_pending = b.leash_pending.take().is_some();
@@ -218,7 +225,7 @@ impl Game<'_> {
     }
 
     /// Release a boat already extracted by a fixture.
-    pub(in crate::game) fn boat_removed(&mut self, b: &Boat) {
+    pub(in crate::game::server_side) fn boat_removed(&mut self, b: &Boat) {
         self.notify_knot_leashee_removed(b.leash, b.id);
         if b.leash.is_some() || b.leash_pending.is_some() {
             self.drop_lead_item(b.position.components());
@@ -226,7 +233,7 @@ impl Game<'_> {
     }
 
     /// `Leashable.tickLeash` for a boat, at the end of `Entity.baseTick`.
-    pub(in crate::game) fn tick_boat_leash(&mut self, b: &mut Boat) {
+    pub(in crate::game::server_side) fn tick_boat_leash(&mut self, b: &mut Boat) {
         b.age += 1;
         if let Some(pending) = b.leash_pending {
             self.restore_boat_leash(b, pending);
@@ -289,7 +296,7 @@ impl Game<'_> {
     }
 
     /// `Leashable.angularFriction`.
-    pub(in crate::game) fn boat_angular_friction(&self, b: &Boat) -> f32 {
+    pub(in crate::game::server_side) fn boat_angular_friction(&self, b: &Boat) -> f32 {
         if b.ground.on_ground {
             let (x, z) = (b.position.x.floor() as i32, b.position.z.floor() as i32);
             let y = (b.position.y - 0.500_001).floor() as i32;
@@ -306,7 +313,11 @@ impl Game<'_> {
     /// `Leashable.restoreLeashFromSave`: a holder read from a save becomes
     /// real once its entity is found; one that never shows up in 100 ticks
     /// drops the lead.
-    pub(in crate::game) fn restore_boat_leash(&mut self, b: &mut Boat, pending: Pending) {
+    pub(in crate::game::server_side) fn restore_boat_leash(
+        &mut self,
+        b: &mut Boat,
+        pending: Pending,
+    ) {
         let found = match pending {
             Pending::Knot(p) => Some((Holder::Knot(p), None)),
             Pending::Uuid(u) => {
@@ -345,7 +356,7 @@ impl Game<'_> {
     }
 
     /// The `leash` tag of a boat about to be saved.
-    pub(in crate::game) fn write_boat_leash(&mut self, tag: &mut Tag, index: usize) {
+    pub(in crate::game::server_side) fn write_boat_leash(&mut self, tag: &mut Tag, index: usize) {
         let Tag::Compound(map) = tag else { return };
         map.remove(&"leash".into());
         let b = &self.boats[index];
@@ -377,7 +388,7 @@ impl Game<'_> {
     }
 
     /// The boat with this UUID (`ServerLevel.getEntity`).
-    pub(in crate::game) fn boat_by_uuid(&self, uuid: [i32; 4]) -> Option<u32> {
+    pub(in crate::game::server_side) fn boat_by_uuid(&self, uuid: [i32; 4]) -> Option<u32> {
         self.persist
             .uuids
             .iter()
@@ -394,7 +405,7 @@ impl Game<'_> {
 
     /// The fence post of the leash knot with this UUID (`ServerLevel.getEntity`):
     /// a summoned or loaded `minecraft:leash_knot`, which sits on its block.
-    pub(in crate::game) fn knot_by_uuid(&self, uuid: [i32; 4]) -> Option<[i32; 3]> {
+    pub(in crate::game::server_side) fn knot_by_uuid(&self, uuid: [i32; 4]) -> Option<[i32; 3]> {
         self.others
             .0
             .iter()
@@ -488,7 +499,11 @@ impl Game<'_> {
 
     /// The leads on boats that hang on a player or a mob, for the entity
     /// tracker: the holder's entity id (`ClientboundSetEntityLinkPacket`).
-    pub(in crate::game) fn boat_leash_link(&self, b: &Boat, guests: &[(u128, i32)]) -> Option<i32> {
+    pub(in crate::game::server_side) fn boat_leash_link(
+        &self,
+        b: &Boat,
+        guests: &[(u128, i32)],
+    ) -> Option<i32> {
         match b.leash? {
             Holder::Player => {
                 let uuid = self.boat_leash_player(b);

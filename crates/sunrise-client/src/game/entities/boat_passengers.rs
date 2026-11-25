@@ -52,7 +52,7 @@ struct MobGrid {
 
 /// `Entity.canRide` for a mob species: `Warden` and `WitherBoss` override it
 /// to return false, so no vehicle ever takes them aboard.
-pub(in crate::game) fn species_can_ride(species: Species) -> bool {
+pub(in crate::game::server_side) fn species_can_ride(species: Species) -> bool {
     !matches!(species, Species::Warden | Species::Wither)
 }
 
@@ -141,7 +141,7 @@ impl Game<'_> {
     /// Resident mob riders in slot order, including those whose removal is pending.
     /// During an indexed vehicle pass, all lookups share the same slots until
     /// the mob list is next written.
-    pub(in crate::game) fn resident_mob_riders(
+    pub(in crate::game::server_side) fn resident_mob_riders(
         &self,
         id: u32,
     ) -> impl Iterator<Item = (usize, &Mob)> {
@@ -332,7 +332,7 @@ impl Game<'_> {
         out
     }
     /// What boat `b` may run into this tick.
-    pub(in crate::game) fn boat_move_obstacles(&self, b: &Boat) -> Vec<Aabb> {
+    pub(in crate::game::server_side) fn boat_move_obstacles(&self, b: &Boat) -> Vec<Aabb> {
         let reach = b.velocity.length() + 1.0;
         self.entity_collisions(Mover::Boat {
             id: b.id,
@@ -340,7 +340,7 @@ impl Game<'_> {
         })
     }
     /// `noEntityCollision(boat, box)` for a new boat (`BoatItem.use`).
-    pub(in crate::game) fn boat_entity_collision(&self, bb: Aabb) -> bool {
+    pub(in crate::game::server_side) fn boat_entity_collision(&self, bb: Aabb) -> bool {
         // EntityGetter.getEntityCollisions: the box grown by 1e-7.
         let area = bb.inflate(Vec3::new(1.0e-7, 1.0e-7, 1.0e-7));
         !self
@@ -649,7 +649,7 @@ impl Game<'_> {
     }
 
     /// The physical sweep of an already logically removed boat or cart.
-    pub(in crate::game) fn take_destroyed_vehicle_row(
+    pub(in crate::game::server_side) fn take_destroyed_vehicle_row(
         &mut self,
         target: super::commands::Target,
         id: u32,
@@ -675,7 +675,7 @@ impl Game<'_> {
 
     /// Container `remove` spills before `Entity.setRemoved`; `AbstractBoat.remove`
     /// then releases the lead. Keep the emptied owner in place for the dismount.
-    pub(in crate::game) fn prepare_vehicle_removal(
+    pub(in crate::game::server_side) fn prepare_vehicle_removal(
         &mut self,
         target: super::commands::Target,
         id: u32,
@@ -717,7 +717,7 @@ impl Game<'_> {
     }
 
     /// `ejectPassengers` when a submerged boat is no longer rideable.
-    pub(in crate::game) fn eject_boat_mobs(&mut self, i: usize) {
+    pub(in crate::game::server_side) fn eject_boat_mobs(&mut self, i: usize) {
         let b = &self.boats[i];
         let (id, y) = (b.id, b.position.y);
         for rider in self.mob_passenger_ids(id) {

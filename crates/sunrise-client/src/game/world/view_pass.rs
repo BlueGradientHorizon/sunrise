@@ -18,13 +18,13 @@ use sunrise_client::{Result, lan::hub::TickCtx};
 impl Game<'_> {
     /// What the players' viewed areas ask of level `dim`: None for nothing, else whether one of
     /// them ticks.
-    pub(in crate::game) fn viewed_level(&self, dim: Dim) -> Option<bool> {
+    pub(in crate::game::server_side) fn viewed_level(&self, dim: Dim) -> Option<bool> {
         self.lan.as_ref()?.hub.viewed_level(dim.id())
     }
 
     /// Whether level `dim` needs a view pass when it is not ticked: areas name it, or a client
     /// still holds chunks of it whose linger, forgets and `close` are not done.
-    pub(in crate::game) fn needs_view_pass(&self, dim: Dim) -> bool {
+    pub(in crate::game::server_side) fn needs_view_pass(&self, dim: Dim) -> bool {
         self.viewed_level(dim).is_some()
             || self
                 .lan
@@ -33,7 +33,11 @@ impl Game<'_> {
     }
 
     /// A chunk pass for each idle level held by a view or a spawn preparation ticket.
-    pub(in crate::game) fn run_view_passes(&mut self, ticked: &[Dim], running: bool) -> Result<()> {
+    pub(in crate::game::server_side) fn run_view_passes(
+        &mut self,
+        ticked: &[Dim],
+        running: bool,
+    ) -> Result<()> {
         let viewed: Vec<Dim> = Dim::all()
             .into_iter()
             .filter(|d| {

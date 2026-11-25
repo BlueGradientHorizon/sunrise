@@ -72,9 +72,6 @@ pub(in crate::game) fn twinkling() -> FireworkExplosion {
     }
 }
 
-#[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::fireworks_client::events_tests::tick_particles;
-
 /// Recording of `Game::post_game_event`, as the sculk tests read it.
 pub(in crate::game) fn start_events() {
     crate::game::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));

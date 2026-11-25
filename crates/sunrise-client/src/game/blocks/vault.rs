@@ -64,7 +64,7 @@ impl VaultLevel for Players<'_, '_> {
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn vault_players(&self) -> Vec<VaultPlayer> {
+    pub(in crate::game::server_side) fn vault_players(&self) -> Vec<VaultPlayer> {
         let host = self.player.as_ref().map(|p| VaultPlayer {
             uuid: self.acting_uuid(),
             block: [p.position.x, p.position.y, p.position.z].map(|v| v.floor() as i32),
@@ -117,7 +117,7 @@ impl Game<'_> {
     }
     /// Runs `f` on the vault at `key` with the level random and a loot roll,
     /// then applies its events.
-    pub(in crate::game) fn with_vault<T>(
+    pub(in crate::game::server_side) fn with_vault<T>(
         &mut self,
         key: Pos,
         eject: Option<&VaultEject>,
@@ -215,7 +215,7 @@ impl Game<'_> {
     }
     /// `VaultBlock.useItemOn` with `held` in the hand that acts: true when the
     /// vault took the click (an active vault, with anything in the hand).
-    pub(in crate::game) fn use_vault(
+    pub(in crate::game::server_side) fn use_vault(
         &mut self,
         pos: [i32; 3],
         held: Option<&ItemStack>,
@@ -289,7 +289,7 @@ impl Game<'_> {
 
     /// The items [`Self::vault_geometry`] draws: each copy of a display item's
     /// cluster (`ItemEntityRenderer.renderMultipleFromCount`).
-    pub(in crate::game) fn vault_items(
+    pub(in crate::game::server_side) fn vault_items(
         &self,
         camera: glam::DVec3,
         alpha: f64,

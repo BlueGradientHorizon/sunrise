@@ -76,7 +76,7 @@ pub(in crate::game) fn with_stick_part(body: impl FnOnce(&mut Game<'_>)) {
 
 /// Puts `main` in slot 0, selects it, and ticks until the attack strength is
 /// full and the hand is up.
-pub(in crate::game) fn settle(game: &mut Game<'_>, main: ItemStack) {
+pub(in crate::game::client_side) fn settle(game: &mut Game<'_>, main: ItemStack) {
     game.inventory[0] = Some(main);
     game.selected = 0;
     for _ in 0..20 {
@@ -88,7 +88,7 @@ pub(in crate::game) fn settle(game: &mut Game<'_>, main: ItemStack) {
 
 /// The main hand's height over the next six ticks, and the stick count it
 /// shows after each.
-pub(in crate::game) fn dip(game: &mut Game<'_>) -> Vec<(f32, u32)> {
+pub(in crate::game::client_side) fn dip(game: &mut Game<'_>) -> Vec<(f32, u32)> {
     (0..6)
         .map(|_| {
             game.tick_hand();
@@ -101,7 +101,7 @@ pub(in crate::game) fn dip(game: &mut Game<'_>) -> Vec<(f32, u32)> {
         .collect()
 }
 
-pub(in crate::game) fn close(got: &[(f32, u32)], want: &[(f32, u32)]) {
+pub(in crate::game::client_side) fn close(got: &[(f32, u32)], want: &[(f32, u32)]) {
     assert_eq!(got.len(), want.len(), "{got:?}");
     for (g, w) in got.iter().zip(want) {
         assert!(

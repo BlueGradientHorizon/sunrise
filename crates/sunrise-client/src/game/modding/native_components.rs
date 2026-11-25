@@ -365,7 +365,7 @@ impl Game<'_> {
 #[allow(dead_code)]
 impl Game<'_> {
     /// Read a native component, including the item's default when not patched.
-    pub(in crate::game) fn native_component<'a>(
+    pub(in crate::game::client_side) fn native_component<'a>(
         &'a self,
         stack: &'a ItemStack,
         id: &str,
@@ -388,7 +388,7 @@ impl Game<'_> {
     }
 
     /// Set a registered native component after checking the network NBT limits.
-    pub(in crate::game) fn native_set_component(
+    pub(in crate::game::client_side) fn native_set_component(
         &self,
         stack: &mut ItemStack,
         id: &str,
@@ -414,7 +414,7 @@ impl Game<'_> {
     }
 
     /// Remove a native component, including its item default.
-    pub(in crate::game) fn native_remove_component(
+    pub(in crate::game::client_side) fn native_remove_component(
         &self,
         stack: &mut ItemStack,
         id: &str,
@@ -566,7 +566,7 @@ pub(in crate::game) use crate::game::server_side::native_components_server::item
         run_item_resource_changed_defaults_and_consumption();
     }
 
-    pub(in crate::game) fn run_item_resource_changed_defaults_and_consumption() {
+    pub(in crate::game::client_side) fn run_item_resource_changed_defaults_and_consumption() {
         use mod_api::{ComponentId, ItemResource, Tag};
         use serde_json::json;
         use std::{fs, path::Path};
@@ -1114,7 +1114,7 @@ pub(in crate::game) mod combat_query_tests {
 }
 
 /// Supply the gameplay component snapshot to the shared stack rule.
-pub(in crate::game) fn stack_can_be_hurt_by(
+pub(in crate::game::client_side) fn stack_can_be_hurt_by(
     models: &sunrise_assets::item_model::ItemModels,
     catalog: &sunrise_world::damage_source::Catalog,
     stack: &ItemStack,

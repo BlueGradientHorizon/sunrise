@@ -21,29 +21,7 @@ pub(in crate::game::client_side) use crate::game::server_side::nether_portal::Tr
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::nether_portal::VEHICLE_DELAY;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::nether_portal::arrival_from_tag;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::nether_portal::arrival_tag;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::nether_portal::doubles;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::nether_portal::end_portal_rotation;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::nether_portal::is_arrow;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::nether_portal::is_portal_projectile;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::nether_portal::move_passengers;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::nether_portal::preserve_arrival_cooldown;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::nether_portal::projectile_box;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::nether_portal::rotate_y;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::nether_portal::set_arrival_pose;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::nether_portal::touches_end_portal;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::nether_portal::*;
 #[allow(unused_imports)]
@@ -78,7 +56,7 @@ impl Game<'_> {
     /// effect grows this tick. Entering a portal closes the screen only when
     /// it does not allow it (`Screen.isAllowedInPortal`), and plays
     /// `block.portal.trigger` when the effect starts from nothing.
-    pub(in crate::game) fn client_portal_effect(&mut self) -> bool {
+    pub(in crate::game::client_side) fn client_portal_effect(&mut self) -> bool {
         let inside = std::mem::take(&mut self.portals.client_inside);
         self.portals.client_was_inside = inside;
         if !inside {

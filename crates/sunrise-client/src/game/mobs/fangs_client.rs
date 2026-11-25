@@ -11,14 +11,6 @@ pub(in crate::game::client_side) use crate::game::server_side::fangs::fang_attac
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::fangs::fang_crit;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fangs::fangs_allied;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fangs::illager_considers;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fangs::is_illager;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fangs::p_zrot;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::fangs::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use std::sync::Arc;
@@ -63,7 +55,7 @@ impl Game<'_> {
     /// `EvokerFangs.handleEntityEvent`: only event 4 starts a client attack.
     /// `playLocalSound` at `nextFloat() * 0.2 + 0.85`. The fangs this client
     /// tracks carry no Silent flag, so the sound always plays.
-    pub(in crate::game) fn remote_fangs_event(&mut self, id: u32, event: i8) {
+    pub(in crate::game::client_side) fn remote_fangs_event(&mut self, id: u32, event: i8) {
         let sound = self
             .fangs
             .list
@@ -90,7 +82,7 @@ impl Game<'_> {
     }
     /// `EvokerFangs.tick`: clients only advance animation, never damage or discard.
     /// At life 14, twelve `crit` particles (`ATTACK_TRIGGER_TICKS`).
-    pub(in crate::game) fn tick_remote_fangs(&mut self) {
+    pub(in crate::game::client_side) fn tick_remote_fangs(&mut self) {
         let mut bursts = Vec::new();
         self.fangs.list.for_each_mut(|f| {
             if f.started {

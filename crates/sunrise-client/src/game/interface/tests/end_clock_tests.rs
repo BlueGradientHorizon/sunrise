@@ -48,6 +48,3 @@ pub(in crate::game) fn game<'a>(
     game.dim = Dim::End;
     game
 }
-
-#[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::chat_server::end_clock_tests::run;

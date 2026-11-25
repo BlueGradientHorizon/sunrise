@@ -37,39 +37,11 @@ pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisio
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::WORK_TICK;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::corrected;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::count;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::dirt;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::open;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::packets;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::prepare_work;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::record_packets;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::reloaded_trader;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::result;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::script;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::speed_modifier_ids;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::stat;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::tick_work;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::trade;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::unchanged;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::with_both;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::with_mod;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::lan_trade_decisions_tests::work_screen;
 #[allow(unused_imports)]

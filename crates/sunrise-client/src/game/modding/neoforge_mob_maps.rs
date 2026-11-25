@@ -99,7 +99,7 @@ impl Loader<'_, '_> {
         Ok(self.install_and_encode(values, applied, install, encode))
     }
 }
-pub(in crate::game) fn load<'a>(
+pub(in crate::game::server_side) fn load<'a>(
     overlay: &sunrise_world::loot::PackOverlay<'_>,
     tags: impl Fn(&str) -> Option<&'a Tags>,
     known: impl Fn(&str, &str) -> bool,
@@ -183,7 +183,7 @@ impl Game<'_> {
     }
     /// Generation workers pin one world-owned snapshot per finalization, not
     /// a process-global last-loaded world. In-flight work retains its snapshot.
-    pub(in crate::game) fn share_mob_maps(&self) {
+    pub(in crate::game::server_side) fn share_mob_maps(&self) {
         if !self.options.execution_role.is_logical_server() {
             return;
         }

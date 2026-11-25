@@ -24,13 +24,13 @@ pub(in crate::game) const TRAP_RANGE: f64 = 10.0;
 /// Ticks of invulnerability the trap's riders and horses start with.
 pub(in crate::game) const TRAP_INVULNERABLE: i32 = 60;
 
-pub(in crate::game) fn trap_horse_scatter(random: &mut LegacyRandom) -> (f64, f64) {
+pub(in crate::game::server_side) fn trap_horse_scatter(random: &mut LegacyRandom) -> (f64, f64) {
     (random.triangle(0.0, 1.1485), random.triangle(0.0, 1.1485))
 }
 
 impl Game<'_> {
     /// Keep the actual removed object only while a passenger still refers to it.
-    pub(in crate::game) fn retain_removed_vehicle(
+    pub(in crate::game::server_side) fn retain_removed_vehicle(
         &mut self,
         id: u32,
         vehicle: super::persist::RemovedVehicle,
@@ -90,7 +90,7 @@ impl Game<'_> {
     }
 
     /// `Entity.startRiding` for two mobs.
-    pub(in crate::game) fn mount_mob(&mut self, rider: u32, vehicle: u32) {
+    pub(in crate::game::server_side) fn mount_mob(&mut self, rider: u32, vehicle: u32) {
         self.try_mount_mob(rider, vehicle);
     }
     /// `Entity.startRiding` for two mobs: false when a mod canceled it.
@@ -176,7 +176,7 @@ impl Game<'_> {
         }
         self.position_riders();
     }
-    pub(in crate::game) fn sync_retained_riders(&mut self) {
+    pub(in crate::game::server_side) fn sync_retained_riders(&mut self) {
         let invalid: Vec<_> = self
             .mob_objects()
             .filter_map(|m| {
@@ -286,7 +286,7 @@ impl Game<'_> {
 
     /// The passengers of `vehicle` in `getPassengers` order, from the one source of each side: the
     /// server's own list, or the applied `SetPassengers` seats on a client.
-    pub(in crate::game) fn passenger_order(&self, vehicle: u32) -> Vec<u32> {
+    pub(in crate::game::server_side) fn passenger_order(&self, vehicle: u32) -> Vec<u32> {
         if let Some(remote) = &self.remote {
             let mut seats: Vec<_> = remote.passenger_seats(vehicle).collect();
             seats.sort_unstable_by_key(|&(_, index)| index);
@@ -350,7 +350,7 @@ impl Game<'_> {
     /// `SkeletonHorse.customServerAiStep` and `SkeletonTrapGoal`: a trap
     /// horse is a trap for fifteen minutes; a player within ten blocks springs
     /// it.
-    pub(in crate::game) fn tick_skeleton_traps(&mut self) {
+    pub(in crate::game::server_side) fn tick_skeleton_traps(&mut self) {
         // `Level.hasNearbyAlivePlayer`: alive, not a spectator, in the level.
         let players: Vec<_> = self
             .level_players()
@@ -385,7 +385,7 @@ impl Game<'_> {
             self.spring_skeleton_trap(id);
         }
     }
-    pub(in crate::game) fn spring_skeleton_trap(&mut self, id: u32) {
+    pub(in crate::game::server_side) fn spring_skeleton_trap(&mut self, id: u32) {
         let Some(horse) = self.mobs.iter_mut().find(|m| m.id == id) else {
             return;
         };
@@ -428,7 +428,7 @@ impl Game<'_> {
     }
     /// `SkeletonTrapGoal.createSkeleton`: an iron helmet unless it already
     /// has a helm.
-    pub(in crate::game) fn trap_skeleton(&mut self, at: [f64; 3]) -> Option<u32> {
+    pub(in crate::game::server_side) fn trap_skeleton(&mut self, at: [f64; 3]) -> Option<u32> {
         let id = self.spawn_mob(
             "minecraft:skeleton",
             at,

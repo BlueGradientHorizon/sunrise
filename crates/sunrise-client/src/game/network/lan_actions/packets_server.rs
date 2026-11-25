@@ -10,7 +10,7 @@ pub(in crate::game::server_side) use crate::game::lan_actions::packets::*;
 impl Game<'_> {
     /// Whether the mods let a creative player set `slot` to `stack`
     /// (`native_creative_slot`), heard with the guest's state swapped in.
-    pub(in crate::game) fn guest_may_set_creative_slot(
+    pub(in crate::game::server_side) fn guest_may_set_creative_slot(
         &mut self,
         conn: u32,
         slot: i32,

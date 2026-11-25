@@ -40,7 +40,7 @@ impl UiWait {
             })
     }
     /// The commands that can run now.
-    pub(in crate::game) fn ready(&mut self) -> Vec<Request> {
+    pub(in crate::game::client_side) fn ready(&mut self) -> Vec<Request> {
         if self.stale() {
             return Vec::new();
         }
@@ -48,7 +48,7 @@ impl UiWait {
         std::mem::take(&mut self.waiting)
     }
     /// The screen changed: widget commands wait for it to be drawn again.
-    pub(in crate::game) fn clicked(&mut self) {
+    pub(in crate::game::client_side) fn clicked(&mut self) {
         self.after = Some((widgets::generation(), Instant::now()));
     }
 }
@@ -56,7 +56,7 @@ impl UiWait {
 impl Game<'_> {
     /// The open screen's widgets: those the last frame drew, then the slots
     /// of an open inventory or menu (`slot-ID`, the ids of `click-slot`).
-    pub(in crate::game) fn ui_nodes(&self) -> Vec<Node> {
+    pub(in crate::game::client_side) fn ui_nodes(&self) -> Vec<Node> {
         let size = self.gui_batch().map(|b| [b.width, b.height]);
         let mut nodes = widgets::tree(&widgets::last_labelled(), &widgets::last_targets(), size);
         if matches!(self.client.screen, Screen::Inventory | Screen::Creative)
@@ -126,7 +126,7 @@ impl Game<'_> {
 
     /// `ui`, `click` and `set`, and `screen` and `click-button` held until the first frame;
     /// `Handled::No` for other commands.
-    pub(in crate::game) fn ui_command(
+    pub(in crate::game::client_side) fn ui_command(
         &mut self,
         words: &[&str],
         line: &str,

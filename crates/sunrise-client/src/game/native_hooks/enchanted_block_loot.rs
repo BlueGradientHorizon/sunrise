@@ -151,7 +151,4 @@ pub(in crate::game) mod tests {
 
     pub(in crate::game) const POS: [i32; 3] = [1, 64, 1];
     pub(in crate::game) const ROLLS: usize = 64;
-
-    #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::native_hooks_server::enchanted_block_loot::tests::break_gravel;
 }

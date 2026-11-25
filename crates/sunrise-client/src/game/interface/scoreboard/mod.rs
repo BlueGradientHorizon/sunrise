@@ -44,7 +44,7 @@ pub(in crate::game) struct Recorded {
 impl Recorded {
     /// The food, air, armor, xp and level criteria whose value differs from the last
     /// recorded one, recorded as they are returned (`ServerPlayer.doTick`).
-    pub(in crate::game) fn changed_scores(
+    pub(in crate::game::server_side) fn changed_scores(
         &mut self,
         food: i32,
         air: i32,
@@ -78,13 +78,13 @@ pub(in crate::game) struct ScoreState {
     pub(in crate::game) recorded: Recorded,
 }
 
-pub(in crate::game) fn in_range(v: i32, (lo, hi): IntRange) -> bool {
+pub(in crate::game::server_side) fn in_range(v: i32, (lo, hi): IntRange) -> bool {
     lo.is_none_or(|l| v >= l) && hi.is_none_or(|h| v <= h)
 }
 
 /// `TamableAnimal.getTeam`: a pet's own team, else, when it is tamed, its root
 /// owner's, else none. An untamed pet has no owner to take one from.
-pub(in crate::game) fn pet_team<'a>(
+pub(in crate::game::server_side) fn pet_team<'a>(
     board: &'a Scoreboard,
     own: &str,
     owner: Option<&str>,
@@ -94,13 +94,13 @@ pub(in crate::game) fn pet_team<'a>(
         .or_else(|| board.players_team(owner?))
 }
 /// A tamed pet's owner (`TamableAnimal.getOwnerReference` while `isTame`).
-pub(in crate::game) fn tame_owner(m: &sunrise_client::mobs::Mob) -> Option<[i32; 4]> {
+pub(in crate::game::server_side) fn tame_owner(m: &sunrise_client::mobs::Mob) -> Option<[i32; 4]> {
     m.extra.tame.then_some(m.extra.owner).flatten()
 }
 /// `TamableAnimal.getRootOwner`: the owner, or that owner's own root owner
 /// while it is a tamed pet itself. `pet_owner` is the owner of the tamed pet
 /// with a UUID, if it has one.
-pub(in crate::game) fn root_owner(
+pub(in crate::game::server_side) fn root_owner(
     mut owner: [i32; 4],
     pet_owner: impl Fn([i32; 4]) -> Option<[i32; 4]>,
 ) -> [i32; 4] {
@@ -116,7 +116,7 @@ pub(in crate::game) fn root_owner(
 
 /// The id of a target whose scoreboard name is a UUID it is given when first asked for (an
 /// orb's registered identity included).
-pub(in crate::game) fn gives_uuid(t: Target) -> Option<u32> {
+pub(in crate::game::server_side) fn gives_uuid(t: Target) -> Option<u32> {
     match t {
         Target::Mob(id)
         | Target::Item(id)
@@ -144,18 +144,18 @@ pub(in crate::game) fn gives_uuid(t: Target) -> Option<u32> {
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn scoreboard_path(&self) -> std::path::PathBuf {
+    pub(in crate::game::server_side) fn scoreboard_path(&self) -> std::path::PathBuf {
         self.server.world_root.join("data/minecraft/scoreboard.dat")
     }
     /// `ServerLevel.getWorldBorder`'s file: each dimension's own
     /// `data/minecraft/world_border.dat`.
-    pub(in crate::game) fn border_path(&self, dim: super::Dim) -> std::path::PathBuf {
+    pub(in crate::game::server_side) fn border_path(&self, dim: super::Dim) -> std::path::PathBuf {
         save::dimension_dir(&self.server.world_root, dim.id())
             .join("data/minecraft/world_border.dat")
     }
     /// The border `dim`'s level saved. The Overworld also reads the root file older Sunrise
     /// builds wrote for their one shared border; the other levels start from the default.
-    pub(in crate::game) fn load_border(
+    pub(in crate::game::server_side) fn load_border(
         &self,
         dim: super::Dim,
     ) -> sunrise_client::worldborder::WorldBorder {
@@ -174,7 +174,7 @@ impl Game<'_> {
             .unwrap_or_default()
     }
     /// Save the border of the level in place (`SavedData`, one per level).
-    pub(in crate::game) fn save_border(&self) {
+    pub(in crate::game::server_side) fn save_border(&self) {
         if !self.score.loaded || self.remote.is_some() {
             return;
         }
@@ -267,7 +267,7 @@ impl Game<'_> {
     }
     /// [`holder_name`](Self::holder_name) without giving a UUID to an entity that has none: its
     /// name on the board, if it could have a score yet.
-    pub(in crate::game) fn existing_holder_name(&self, t: Target) -> Option<String> {
+    pub(in crate::game::server_side) fn existing_holder_name(&self, t: Target) -> Option<String> {
         match t {
             Target::Player => Some(self.acting_player_name().to_owned()),
             Target::Guest(conn) => self.command_guest(conn).map(|g| g.name.clone()),
@@ -288,7 +288,7 @@ impl Game<'_> {
             }
         }
     }
-    pub(in crate::game) fn holder_for(&mut self, t: Target) -> Option<Holder> {
+    pub(in crate::game::server_side) fn holder_for(&mut self, t: Target) -> Option<Holder> {
         let name = self.holder_name(t)?;
         let shown = feedback_name(self.target_name(t), &name);
         Some(Holder {
@@ -298,7 +298,7 @@ impl Game<'_> {
         })
     }
     /// The entity with the given scoreboard name.
-    pub(in crate::game) fn target_of_holder(&self, name: &str) -> Option<Target> {
+    pub(in crate::game::server_side) fn target_of_holder(&self, name: &str) -> Option<Target> {
         // `PlayerList.getPlayerByName` (any case); a mod's nicknames are not scoreboard names.
         if self.player.is_some() && name.eq_ignore_ascii_case(self.acting_player_name()) {
             return Some(Target::Player);
@@ -313,7 +313,7 @@ impl Game<'_> {
         self.target_with_uuid(uuid)
     }
     /// The saved `Tags` list read by commands and native entity handles.
-    pub(in crate::game) fn saved_entity_tags(&self, t: Target) -> EntityTags<'_> {
+    pub(in crate::game::server_side) fn saved_entity_tags(&self, t: Target) -> EntityTags<'_> {
         let raw = match t {
             Target::Mob(id)
             | Target::Item(id)
@@ -464,7 +464,7 @@ impl Game<'_> {
     }
 
     /// `advancements=` of a selector, against the selected player's progress.
-    pub(in crate::game) fn advancements_match(
+    pub(in crate::game::server_side) fn advancements_match(
         &self,
         target: Target,
         wanted: &[(String, sunrise_client::command::args::AdvCondition)],
@@ -496,7 +496,7 @@ impl Game<'_> {
 
     /// `ServerPlayer.awardStat` and `ServerPlayer.resetStat`: the objectives of
     /// each changed statistic's criteria follow it for the player `name`.
-    pub(in crate::game) fn stat_criteria_changed(
+    pub(in crate::game::server_side) fn stat_criteria_changed(
         &mut self,
         name: &str,
         events: Vec<StatScoreChange>,
@@ -556,7 +556,7 @@ impl Game<'_> {
     /// `ServerPlayer.doTick`'s `updateScoreForCriteria` calls for the acting
     /// player (the host's own, or a guest swapped in): the health, food, air,
     /// armor, experience and level objectives follow what changed since `rec`.
-    pub(in crate::game) fn record_player_scores(&mut self, rec: &mut Recorded) {
+    pub(in crate::game::server_side) fn record_player_scores(&mut self, rec: &mut Recorded) {
         self.load_scoreboard();
         if self.score.board.objectives.is_empty() {
             return;
@@ -587,7 +587,7 @@ impl Game<'_> {
         }
     }
     /// `ServerPlayer.die`: the acting player's `deathCount` objectives go up by one.
-    pub(in crate::game) fn score_player_died(&mut self) {
+    pub(in crate::game::server_side) fn score_player_died(&mut self) {
         let display = self.player_display_comp();
         let me = self.acting_player_name().to_owned();
         self.score.board.for_all_objectives_with(
@@ -605,7 +605,7 @@ impl Game<'_> {
     }
     /// [`score_player_killed`](Self::score_player_killed) with the victim's
     /// scoreboard name at hand.
-    pub(in crate::game) fn score_player_killed_named(
+    pub(in crate::game::server_side) fn score_player_killed_named(
         &mut self,
         victim_name: Option<String>,
         player: bool,
@@ -616,7 +616,7 @@ impl Game<'_> {
 
     /// `ServerPlayer.awardKillScore` uses the killer as score holder, even
     /// when the body installed for `ServerPlayer.die` belongs to the victim.
-    pub(in crate::game) fn score_player_kill_for(
+    pub(in crate::game::server_side) fn score_player_kill_for(
         &mut self,
         killer: &str,
         victim: Option<&str>,
@@ -647,7 +647,7 @@ impl Game<'_> {
 
     /// `Entity.getScoreboardName`: another player's profile name
     /// (`Player.getScoreboardName`), any other entity's UUID.
-    pub(in crate::game) fn scoreboard_name(&self, id: u32, uuid: [i32; 4]) -> String {
+    pub(in crate::game::server_side) fn scoreboard_name(&self, id: u32, uuid: [i32; 4]) -> String {
         self.remote_player_name(id)
             .map_or_else(|| uuid_text(uuid), str::to_owned)
     }
@@ -682,7 +682,7 @@ impl Game<'_> {
     /// `mob_team_of` while the mob tick has lent its mobs out of `Game`.
     /// The active mob and the disjoint live loan replace `self.mobs` for
     /// resolving a tame owner's UUID; other live entities still use Game.
-    pub(in crate::game) fn mob_team_scoped(
+    pub(in crate::game::server_side) fn mob_team_scoped(
         &self,
         m: &sunrise_client::mobs::Mob,
         actor: &sunrise_client::mobs::Mob,
@@ -753,7 +753,7 @@ impl Game<'_> {
     }
     /// `TamableAnimal.getRootOwner().getScoreboardName`: a pet's owner, through
     /// owners that are tamed pets themselves.
-    pub(in crate::game) fn root_owner_name(&self, owner: [i32; 4]) -> Option<String> {
+    pub(in crate::game::server_side) fn root_owner_name(&self, owner: [i32; 4]) -> Option<String> {
         let pet_owner = |uuid: [i32; 4]| {
             let Target::Mob(pet) = self.target_by_uuid(ints_uuid(uuid))? else {
                 return None;
@@ -839,7 +839,7 @@ impl Game<'_> {
             .collect()
     }
     /// The mobs on the player's team (`isAlliedTo`).
-    pub(in crate::game) fn player_allies(&self) -> HashSet<u32> {
+    pub(in crate::game::server_side) fn player_allies(&self) -> HashSet<u32> {
         let Some(team) = self.player_team() else {
             return HashSet::new();
         };
@@ -851,17 +851,17 @@ impl Game<'_> {
             .collect()
     }
     /// `Player.getDisplayName`: the name with the team's prefix, suffix and colour.
-    pub(in crate::game) fn player_display_comp(&self) -> Comp {
+    pub(in crate::game::server_side) fn player_display_comp(&self) -> Comp {
         self.player_score_display(self.acting_player_name())
     }
-    pub(in crate::game) fn player_score_display(&self, name: &str) -> Comp {
+    pub(in crate::game::server_side) fn player_score_display(&self, name: &str) -> Comp {
         let display = literal(name);
         match self.score.board.players_team(name) {
             Some(t) => t.formatted_name_comp(&display),
             None => display,
         }
     }
-    pub(in crate::game) fn player_display_text(&self) -> Text {
+    pub(in crate::game::server_side) fn player_display_text(&self) -> Text {
         let name = Text::literal(self.acting_player_name());
         match self.player_team() {
             Some(t) => t.formatted_name(name),
@@ -886,7 +886,7 @@ impl Game<'_> {
                 .collect(),
         )
     }
-    pub(in crate::game) fn cmd_scoreboard(
+    pub(in crate::game::server_side) fn cmd_scoreboard(
         &mut self,
         id: &str,
         ctx: &Context,
@@ -903,7 +903,7 @@ impl Game<'_> {
     }
     /// ComponentUtils.updateForEntity for the pieces scoreboards store:
     /// `selector` and `score` components become their text.
-    pub(in crate::game) fn resolve_component(&mut self, c: Comp) -> Comp {
+    pub(in crate::game::server_side) fn resolve_component(&mut self, c: Comp) -> Comp {
         match c {
             Comp::Object(mut o) => {
                 if let Some(sel) = o.get("selector").and_then(Comp::as_str).map(str::to_owned) {
@@ -963,7 +963,7 @@ impl Game<'_> {
     // ---- the sidebar -----------------------------------------------------------
 
     /// The objective in the player's team's sidebar slot, else the sidebar's.
-    pub(in crate::game) fn sidebar_objective(&self) -> Option<&sb::Objective> {
+    pub(in crate::game::server_side) fn sidebar_objective(&self) -> Option<&sb::Objective> {
         let board = &self.score.board;
         if board.display.is_empty() {
             return None;
@@ -1047,7 +1047,7 @@ pub(in crate::game) fn local_tab_players(me: TabPlayer, guests: &[Guest]) -> Vec
 /// `ScoreHolder.getFeedbackDisplayName`: the holder's display name with its
 /// hover replaced by `HoverEvent.ShowText` of its scoreboard name (a player's
 /// name, an entity's UUID string); the insertion stays.
-pub(in crate::game) fn feedback_name(display: Text, scoreboard_name: &str) -> Text {
+pub(in crate::game::server_side) fn feedback_name(display: Text, scoreboard_name: &str) -> Text {
     let mut component = display.component();
     if let serde_json::Value::Object(o) = &mut component {
         o.insert(
@@ -1060,7 +1060,10 @@ pub(in crate::game) fn feedback_name(display: Text, scoreboard_name: &str) -> Te
 
 /// `TriggerCommand.suggestObjectives`: the trigger objectives `holder` has an
 /// unlocked score in.
-pub(in crate::game) fn trigger_objectives_for(board: &Scoreboard, holder: &str) -> Vec<String> {
+pub(in crate::game::server_side) fn trigger_objectives_for(
+    board: &Scoreboard,
+    holder: &str,
+) -> Vec<String> {
     let mut names: Vec<String> = board
         .objectives
         .iter()

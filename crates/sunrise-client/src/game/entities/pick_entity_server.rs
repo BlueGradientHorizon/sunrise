@@ -13,8 +13,6 @@ pub(in crate::game::server_side) use crate::game::client_side::pick_entity::Cros
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::pick_entity::aabb_extents;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::pick_entity::knot_bounds;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::pick_entity::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use mod_api::{BlockPos, CrosshairTarget, EntityRef};

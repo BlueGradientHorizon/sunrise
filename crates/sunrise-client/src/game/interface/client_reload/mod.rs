@@ -136,7 +136,7 @@ thread_local! {
 impl Game<'_> {
     /// Publish the models in order with the mod listener actions on the game-owning
     /// thread, before the resources-reloaded notice.
-    pub(in crate::game) fn apply_client_reload(
+    pub(in crate::game::client_side) fn apply_client_reload(
         &mut self,
         prepared: Vec<PreparedClientReload>,
         publish_models: impl FnOnce(&mut Self),

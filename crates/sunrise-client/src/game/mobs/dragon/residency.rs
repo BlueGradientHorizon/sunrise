@@ -36,14 +36,14 @@ impl sunrise_mod_runtime::attachments::HasAttachmentLifetime for Dragon {
 
 impl Game<'_> {
     /// Install a replacement only after retiring the previous parts' sidecars.
-    pub(in crate::game) fn replace_resident_dragon(&mut self, dragon: Dragon) {
+    pub(in crate::game::server_side) fn replace_resident_dragon(&mut self, dragon: Dragon) {
         self.discard_resident_dragon();
         self.dragon.replace(dragon);
     }
 
     /// Physical retirement must forget sidecar data before IDs can be reused,
     /// not merely unregister the attachment index when the parts are dropped.
-    pub(in crate::game) fn discard_resident_dragon(&mut self) {
+    pub(in crate::game::server_side) fn discard_resident_dragon(&mut self) {
         if let Some(id) = self
             .dragon
             .as_ref()
@@ -63,7 +63,10 @@ impl Game<'_> {
     /// The dragon the level holds and the index (`getSubEntities` order) of
     /// its part with that entity id, while the dragon is there, dying or
     /// not: a part is an entity for as long as its parent is.
-    pub(in crate::game) fn resident_dragon_part_source(&self, id: u32) -> Option<(&Dragon, usize)> {
+    pub(in crate::game::server_side) fn resident_dragon_part_source(
+        &self,
+        id: u32,
+    ) -> Option<(&Dragon, usize)> {
         if self.remote.is_some() {
             let dragon = self.dragon.as_ref()?;
             let part = dragon_part_index(dragon.id, id)?;
@@ -86,7 +89,7 @@ impl Game<'_> {
         Some((self.dragon.as_ref()?, usize::from(offset)))
     }
 
-    pub(in crate::game) fn assign_resident_crystal_ids(&mut self) {
+    pub(in crate::game::server_side) fn assign_resident_crystal_ids(&mut self) {
         crate::game::entity_residency::assign_resident_ids!(
             self.crystals,
             c,

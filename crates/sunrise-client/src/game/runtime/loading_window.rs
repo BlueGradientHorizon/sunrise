@@ -417,7 +417,7 @@ pub(in crate::game) fn start_game<'a>(
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn apply_pending_client_start(
+    pub(in crate::game::client_side) fn apply_pending_client_start(
         &mut self,
         pending: initial_client_models::PendingClientStart,
         renderer: Result<Option<Renderer>>,

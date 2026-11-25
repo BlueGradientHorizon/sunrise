@@ -46,7 +46,7 @@ pub(in crate::game) struct EntityModels {
 }
 
 impl EntityModels {
-    pub(in crate::game) fn load(
+    pub(in crate::game::client_side) fn load(
         document: Option<&sunrise_client::mobs::EntityModelDocument>,
     ) -> Self {
         let model = |key| document.and_then(|document| document.model(key));
@@ -211,7 +211,7 @@ pub(in crate::game) enum LoaderMsg {
 }
 
 impl LoaderMsg {
-    pub(in crate::game) fn done(result: Result<Loaded>) -> Self {
+    pub(in crate::game::client_side) fn done(result: Result<Loaded>) -> Self {
         Self::Done(result.map_err(
             |error| match error.downcast::<mods::DeclarationFailures>() {
                 Ok(refusals) => LoaderFailure::Declarations(*refusals),

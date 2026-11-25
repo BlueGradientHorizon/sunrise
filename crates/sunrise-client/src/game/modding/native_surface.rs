@@ -398,7 +398,7 @@ impl Game<'_> {
 
     /// The friction of `state` at `pos` under the boat `b` (`AbstractBoat.getGroundFriction`,
     /// `Leashable.angularFriction`), from `own`, the block's value.
-    pub(in crate::game) fn boat_friction(
+    pub(in crate::game::server_side) fn boat_friction(
         &self,
         b: &Boat,
         pos: BlockPos,

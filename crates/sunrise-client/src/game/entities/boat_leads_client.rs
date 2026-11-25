@@ -7,11 +7,7 @@ pub(in crate::game::client_side) use crate::game::server_side::boat_leads::Held;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::boat_leads::WIDTH;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::boat_leads::boat_state;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::boat_leads::center;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::boat_leads::distance;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::boat_leads::*;
 #[allow(unused_imports)]

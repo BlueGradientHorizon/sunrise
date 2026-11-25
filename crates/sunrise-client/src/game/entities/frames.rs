@@ -29,7 +29,7 @@ pub(in crate::game) fn bake_frames(library: Option<&ModelLibrary>) -> [FrameMode
 }
 
 /// Bake `block/<name>` (item_frame / glow_item_frame) from the resources.
-pub(in crate::game) fn bake_frame(library: &ModelLibrary, name: &str) -> FrameModel {
+pub(in crate::game::server_side) fn bake_frame(library: &ModelLibrary, name: &str) -> FrameModel {
     let Ok(resolved) = library.resolve(&format!("minecraft:block/{name}")) else {
         return Vec::new();
     };
@@ -59,7 +59,7 @@ pub(in crate::game) fn bake_frame(library: &ModelLibrary, name: &str) -> FrameMo
         })
         .collect()
 }
-pub(in crate::game) fn facing_of(face: [i32; 3]) -> u8 {
+pub(in crate::game::server_side) fn facing_of(face: [i32; 3]) -> u8 {
     match face {
         [0, -1, 0] => 0,
         [0, 1, 0] => 1,
@@ -108,7 +108,7 @@ pub(in crate::game) fn frame_owner(f: &ItemFrame) -> OwnerState {
 }
 /// `ItemFrame.getVisualRotationYInDegrees`: the frame's own yaw, as an item
 /// model's owner reads it (a framed compass's needle turns with it).
-pub(in crate::game) fn visual_rotation_y_degrees(f: &ItemFrame) -> f32 {
+pub(in crate::game::server_side) fn visual_rotation_y_degrees(f: &ItemFrame) -> f32 {
     // `Direction.get2DDataValue` of a wall frame, and the axis direction's
     // step for the two flat ones.
     let s = f.step();
@@ -191,7 +191,11 @@ impl Game<'_> {
         cancel
     }
     /// `ItemFrameItem.useOn`.
-    pub(in crate::game) fn place_item_frame(&mut self, hit: &Hit, stack: &ItemStack) -> bool {
+    pub(in crate::game::server_side) fn place_item_frame(
+        &mut self,
+        hit: &Hit,
+        stack: &ItemStack,
+    ) -> bool {
         let glow = match &*stack.item {
             "minecraft:item_frame" => false,
             "minecraft:glow_item_frame" => true,
@@ -292,7 +296,7 @@ impl Game<'_> {
         }
         best
     }
-    pub(in crate::game) fn block_distance(&self) -> Option<f64> {
+    pub(in crate::game::server_side) fn block_distance(&self) -> Option<f64> {
         if self.uses_stored_pick() {
             return match self.crosshair_target() {
                 Some(mod_api::CrosshairTarget::Block { hit, .. }) => {
@@ -315,7 +319,10 @@ impl Game<'_> {
     }
     /// `ItemFrame.interact` for the frame under the crosshair, or the one a
     /// guest's interact packet named.
-    pub(in crate::game) fn interact_frame(&mut self, target: Option<InteractTarget>) -> bool {
+    pub(in crate::game::server_side) fn interact_frame(
+        &mut self,
+        target: Option<InteractTarget>,
+    ) -> bool {
         let Some((i, d)) = (match target {
             Some(t) => Self::named_entity(&self.item_frames, t.id, |f| f.id).map(|i| (i, 0.0)),
             None => self.frame_hit(),
@@ -382,7 +389,7 @@ impl Game<'_> {
         true
     }
     /// `ItemFrame.hurtServer` from the player: the item comes out first.
-    pub(in crate::game) fn attack_frame(&mut self) -> bool {
+    pub(in crate::game::server_side) fn attack_frame(&mut self) -> bool {
         let Some((i, d)) = self.frame_hit() else {
             return false;
         };
@@ -413,7 +420,7 @@ impl Game<'_> {
         true
     }
     /// `ItemFrame.hurtServer` from a projectile with full source attribution.
-    pub(in crate::game) fn projectile_hurts_frame_by(
+    pub(in crate::game::server_side) fn projectile_hurts_frame_by(
         &mut self,
         id: u32,
         by_player: bool,
@@ -450,7 +457,7 @@ impl Game<'_> {
         true
     }
     /// Non-fixed part of `ItemFrame.hurtServer`: filled drops item, empty or fixed breaks.
-    pub(in crate::game) fn hit_frame_by(
+    pub(in crate::game::server_side) fn hit_frame_by(
         &mut self,
         mut i: usize,
         by_player: bool,
@@ -614,7 +621,7 @@ impl Game<'_> {
     /// is killed and dropped with its item (`BlockAttachedEntity.hurtServer`).
     /// A fixed frame is not hurt by an explosion, and `blast_spares_decorations`
     /// keeps every frame without `mobGriefing`.
-    pub(in crate::game) fn explosion_breaks_frames(
+    pub(in crate::game::server_side) fn explosion_breaks_frames(
         &mut self,
         blast: [f64; 3],
         diameter: f64,

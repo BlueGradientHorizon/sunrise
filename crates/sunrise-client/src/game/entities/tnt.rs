@@ -61,7 +61,7 @@ pub(in crate::game) struct PrimedTnt {
 }
 impl PrimedTnt {
     /// The live state encoded for each existing save view.
-    pub(in crate::game) fn block_state_nbt(
+    pub(in crate::game::server_side) fn block_state_nbt(
         &self,
         registry: &sunrise_world::registry::BlockRegistry,
     ) -> sunrise_core::nbt::Tag {
@@ -120,7 +120,7 @@ impl PrimedTnt {
     /// water, each step down is narrowed to a float before it adds to the
     /// fall; landing forgets it. Returns whether it landed after a fall, when
     /// the caller posts HIT_GROUND.
-    pub(in crate::game) fn check_fall_damage(&mut self, moved_y: f64) -> bool {
+    pub(in crate::game::server_side) fn check_fall_damage(&mut self, moved_y: f64) -> bool {
         if !self.in_water && moved_y < 0.0 {
             self.fall_distance -= f64::from(moved_y as f32);
         }
@@ -135,7 +135,7 @@ impl PrimedTnt {
     /// snow and cobwebs it went through make it stuck, a bubble column lifts or
     /// drags it, and slime it stands on slows it, first. Returns the columns it
     /// is at the top of, which send their surface particles.
-    pub(in crate::game) fn apply_effects_from_blocks(
+    pub(in crate::game::server_side) fn apply_effects_from_blocks(
         &mut self,
         motion: sunrise_client::motion::BodyMotion<'_>,
         registry: &sunrise_world::registry::BlockRegistry,
@@ -167,7 +167,7 @@ impl PrimedTnt {
         tops
     }
     #[cfg(test)]
-    pub(in crate::game) fn tick(
+    pub(in crate::game::server_side) fn tick(
         &mut self,
         world: &sunrise_client::world::World,
         collision: &sunrise_world::block_collision::BlockCollisionRegistry<'_>,
@@ -229,7 +229,7 @@ impl PrimedTnt {
         self.finish_tick(motion, assets, fluids, recorded.then_some(movement.wanted))
     }
 
-    pub(in crate::game) fn move_before_fall(
+    pub(in crate::game::server_side) fn move_before_fall(
         &mut self,
         motion: sunrise_client::motion::BodyMotion<'_>,
         border: Option<&sunrise_core::geometry::border::BorderGeometry>,
@@ -315,7 +315,7 @@ impl PrimedTnt {
         )
     }
 
-    pub(in crate::game) fn move_restitution(
+    pub(in crate::game::server_side) fn move_restitution(
         &self,
         motion: sunrise_client::motion::BodyMotion<'_>,
         movement: sunrise_client::motion::BodyMove,
@@ -330,7 +330,7 @@ impl PrimedTnt {
         )
     }
 
-    pub(in crate::game) fn finish_tick(
+    pub(in crate::game::server_side) fn finish_tick(
         &mut self,
         motion: sunrise_client::motion::BodyMotion<'_>,
         assets: &sunrise_client::assets::Assets,
@@ -381,7 +381,7 @@ impl Game<'_> {
     }
     /// Primes TNT a level event announced, or, when the mods refuse, puts
     /// back the block the fire or signal had already taken out.
-    pub(in crate::game) fn prime_tnt_event(&mut self, pos: BlockPos, rot: f64) {
+    pub(in crate::game::server_side) fn prime_tnt_event(&mut self, pos: BlockPos, rot: f64) {
         if self.tnt_prime_allowed(pos) {
             self.add_primed_tnt(pos, rot, 80, None, None);
             return;
@@ -495,7 +495,7 @@ impl Game<'_> {
             self.bubble_column_particles(pos);
         }
     }
-    pub(in crate::game) fn take_removed_tnt(&mut self, id: u32) -> Option<PrimedTnt> {
+    pub(in crate::game::server_side) fn take_removed_tnt(&mut self, id: u32) -> Option<PrimedTnt> {
         self.with_destroying_vehicle(super::commands::Target::Tnt(id), |game| {
             let i = game.tnts.iter().position(|t| t.id == id)?;
             Some(game.tnts.remove(i))
@@ -632,7 +632,7 @@ impl Game<'_> {
         Ok(())
     }
     /// The saved compound of primed TNT `i`: chunk saves, `/data get`, portals.
-    pub(in crate::game) fn tnt_nbt(&mut self, i: usize) -> sunrise_core::nbt::Tag {
+    pub(in crate::game::server_side) fn tnt_nbt(&mut self, i: usize) -> sunrise_core::nbt::Tag {
         let id = self.tnts[i].id;
         let uuid = self.uuid_for(id);
         let owner = self.tnt_owner_uuid(self.tnts[i].owner, self.tnts[i].guest);
@@ -652,7 +652,7 @@ impl Game<'_> {
         )
     }
     /// `EntityReference.of(owner)`: the UUID of the player or mob that lit it.
-    pub(in crate::game) fn tnt_owner_uuid(
+    pub(in crate::game::server_side) fn tnt_owner_uuid(
         &mut self,
         owner: Option<Who>,
         guest: Option<u32>,
@@ -673,7 +673,7 @@ impl Game<'_> {
     }
     /// `PrimedTnt.getOwner` for the TNT `id` whose own owner is `owner`: else
     /// the one it was loaded with.
-    pub(in crate::game) fn tnt_owner(
+    pub(in crate::game::server_side) fn tnt_owner(
         &self,
         id: u32,
         owner: Option<Who>,
@@ -688,7 +688,7 @@ impl Game<'_> {
     }
     /// `Explosion.getIndirectSourceEntity` of the primed TNT `id` that a
     /// blast names as its source: its owner, as `set_blast_owner` sets it.
-    pub(in crate::game) fn set_tnt_blast_owner(&mut self, id: u32) {
+    pub(in crate::game::server_side) fn set_tnt_blast_owner(&mut self, id: u32) {
         let (owner, guest) = self
             .tnts
             .iter()
@@ -701,7 +701,11 @@ impl Game<'_> {
     /// (a TNT's igniter, a player's projectile, a player) names it, which
     /// `blast_attacker`, the damage type and kill credit read. A player is the
     /// one on `guest`, the player in place without one.
-    pub(in crate::game) fn set_blast_owner(&mut self, owner: Option<Who>, guest: Option<u32>) {
+    pub(in crate::game::server_side) fn set_blast_owner(
+        &mut self,
+        owner: Option<Who>,
+        guest: Option<u32>,
+    ) {
         self.combat.0.blast_guest = guest;
         self.combat.0.blast_owner = tnt_blast_owner(
             owner,
@@ -719,7 +723,9 @@ impl Game<'_> {
     }
     /// The attack a player-owned blast's hits land in: its causing player's,
     /// so a mob it kills is that player's kill.
-    pub(in crate::game) fn blast_owner_attack(&self) -> sunrise_client::health::Attack {
+    pub(in crate::game::server_side) fn blast_owner_attack(
+        &self,
+    ) -> sunrise_client::health::Attack {
         let id = self
             .combat
             .0
@@ -732,7 +738,10 @@ impl Game<'_> {
     }
     /// `PrimedTnt.getOwner` for TNT loaded with an `owner`: looked up when
     /// asked, so a player who joined or a mob loaded since is found.
-    pub(in crate::game) fn loaded_tnt_owner(&self, id: u32) -> Option<(Who, Option<u32>)> {
+    pub(in crate::game::server_side) fn loaded_tnt_owner(
+        &self,
+        id: u32,
+    ) -> Option<(Who, Option<u32>)> {
         let uuid = sunrise_client::entity_nbt::tnt_owner(self.persist.raw.get(&id)?)?;
         let guest = self.lan.as_ref().and_then(|host| {
             let mut guests = host.hub.guests.iter();
@@ -747,7 +756,7 @@ impl Game<'_> {
         self.mob_by_uuid(uuid).map(|m| (Who::Mob(m), None))
     }
     /// `TntBlock.useItemOn`: flint and steel or a fire charge primes TNT.
-    pub(in crate::game) fn ignite_tnt(&mut self, stack: &ItemStack) -> Result<bool> {
+    pub(in crate::game::server_side) fn ignite_tnt(&mut self, stack: &ItemStack) -> Result<bool> {
         let item = &*stack.item;
         if item != "minecraft:flint_and_steel" && item != "minecraft:fire_charge" {
             return Ok(false);
@@ -1022,7 +1031,7 @@ impl Game<'_> {
 
 /// `PrimedTnt.getOwner` as the blast's causing entity: the player, or a mob
 /// that is still in the level (null once it is gone).
-pub(in crate::game) fn tnt_blast_owner(
+pub(in crate::game::server_side) fn tnt_blast_owner(
     owner: Option<Who>,
     player: impl FnOnce() -> Option<(u32, Text)>,
     mob_name: impl Fn(u32) -> Option<Text>,
@@ -1033,12 +1042,12 @@ pub(in crate::game) fn tnt_blast_owner(
     }
 }
 
-pub(in crate::game) fn tnt_seat(tnt: Vec3, rider_offset: f64) -> Vec3 {
+pub(in crate::game::server_side) fn tnt_seat(tnt: Vec3, rider_offset: f64) -> Vec3 {
     Vec3::new(tnt.x, tnt.y + PrimedTnt::SIZE - rider_offset, tnt.z)
 }
 
 /// A general rider's seat on primed TNT: no vehicle attachment of its own.
-pub(in crate::game) fn tnt_general_seat(tnt: Vec3) -> Vec3 {
+pub(in crate::game::server_side) fn tnt_general_seat(tnt: Vec3) -> Vec3 {
     tnt_seat(tnt, 0.0)
 }
 
@@ -1783,7 +1792,8 @@ pub(in crate::game) mod tests {
         run_portal_transfer_tnt_state_follows_memory_but_not_saved_nbt();
     }
 
-    pub(in crate::game) fn run_portal_transfer_tnt_state_follows_memory_but_not_saved_nbt() {
+    pub(in crate::game::server_side) fn run_portal_transfer_tnt_state_follows_memory_but_not_saved_nbt()
+     {
         use super::super::commands::Target;
         let mut resources = None;
         let mut game = server_game(&mut resources).expect("set SUNRISE_TEST_RESOURCES");
@@ -1816,7 +1826,8 @@ pub(in crate::game) mod tests {
         run_portal_transfer_ordinary_nbt_cannot_supply_runtime_immunity();
     }
 
-    pub(in crate::game) fn run_portal_transfer_ordinary_nbt_cannot_supply_runtime_immunity() {
+    pub(in crate::game::server_side) fn run_portal_transfer_ordinary_nbt_cannot_supply_runtime_immunity()
+     {
         use sunrise_core::nbt::Tag;
         let mut resources = None;
         let mut game = server_game(&mut resources).expect("set SUNRISE_TEST_RESOURCES");
@@ -2134,16 +2145,14 @@ pub(in crate::game) mod tests {
         );
     }
 
-    #[allow(unused_imports)]
-    pub(in crate::game) use crate::game::client_side::tnt_client::tests::sound_count;
-
     #[test]
     #[ignore = "daily"]
     fn silent_bottles_preserve_xp_and_the_server_random_stream() {
         run_silent_bottles_preserve_xp_and_the_server_random_stream();
     }
 
-    pub(in crate::game) fn run_silent_bottles_preserve_xp_and_the_server_random_stream() {
+    pub(in crate::game::server_side) fn run_silent_bottles_preserve_xp_and_the_server_random_stream()
+     {
         on_big_stack(|| {
             use sunrise_client::projectiles::{Hit, Projectile, ProjectileKind};
             let mut resources = None;
@@ -2210,9 +2219,6 @@ pub(in crate::game) mod tests {
 
     #[allow(unused_imports)]
     pub(in crate::game) use crate::game::client_side::tnt_client::tests::source_silence_game;
-
-    #[allow(unused_imports)]
-    pub(in crate::game) use crate::game::client_side::tnt_client::tests::particle_count;
 
     /// #10063: TNT lit between level ticks (flint and steel, a command) has its
     /// first tick in the next level tick, so its fuse reads 79 after it, and it

@@ -45,22 +45,6 @@ pub(in crate::game::server_side) use crate::game::client_side::block_screen_effe
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::block_screen_effect_draw_tests::ReceiveCancelled;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::block_screen_effect_draw_tests::asked;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::block_screen_effect_draw_tests::burning_player;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::block_screen_effect_draw_tests::close_to;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::block_screen_effect_draw_tests::drawn_frame;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::block_screen_effect_draw_tests::marker;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::block_screen_effect_draw_tests::names;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::block_screen_effect_draw_tests::observe_overlay;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::block_screen_effect_draw_tests::quads;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::block_screen_effect_draw_tests::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use BlockScreenEffect::{Block, Fire, Water};

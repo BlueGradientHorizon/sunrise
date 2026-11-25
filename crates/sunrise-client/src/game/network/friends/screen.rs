@@ -225,7 +225,7 @@ fn label(key: &str) -> Text {
         Text::literal(key)
     }
 }
-pub fn draw(
+pub(in crate::game::client_side) fn draw(
     batch: &mut HudBatch,
     atlas: &HudAtlas,
     cursor: (f32, f32),
@@ -268,7 +268,7 @@ pub fn draw(
     phases(sunrise_client::screen_draw::RenderPhase::Foreground, batch);
 }
 /// The button under a click, if it is active.
-pub fn click(
+pub(in crate::game::client_side) fn click(
     atlas: &HudAtlas,
     size: (f32, f32),
     cursor: (f32, f32),

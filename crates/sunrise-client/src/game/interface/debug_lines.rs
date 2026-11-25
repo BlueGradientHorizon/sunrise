@@ -46,7 +46,11 @@ pub(in crate::game) struct ServerDebug {
 
 impl Game<'_> {
     /// Every enabled entry's lines, by identifier.
-    pub(in crate::game) fn debug_entry_lines(&self, d: &mut Displayer, framebuffer: [i32; 2]) {
+    pub(in crate::game::client_side) fn debug_entry_lines(
+        &self,
+        d: &mut Displayer,
+        framebuffer: [i32; 2],
+    ) {
         let reduced = self.reduced_debug_info();
         let mut paths: Vec<&str> = ENTRIES
             .iter()
@@ -245,14 +249,14 @@ impl Game<'_> {
     }
 
     /// The camera's feet (`Entity.blockPosition`).
-    pub(in crate::game) fn debug_feet(&self) -> Option<[i32; 3]> {
+    pub(in crate::game::client_side) fn debug_feet(&self) -> Option<[i32; 3]> {
         let pos = self.camera_entity_position()?;
         Some(pos.map(|v| v.floor() as i32))
     }
 
     /// The integrated server's lines when an entry wants them; the request
     /// (the dimension and the feet) goes with it, for the next server tick.
-    pub(in crate::game) fn server_debug(&self, wanted: bool) -> Option<ServerDebug> {
+    pub(in crate::game::client_side) fn server_debug(&self, wanted: bool) -> Option<ServerDebug> {
         let server = self.integrated.as_ref()?;
         let at = self
             .debug_feet()
@@ -264,7 +268,7 @@ impl Game<'_> {
 
     /// `DebugEntryBiome`: the client level's biome at the feet, inside the
     /// build height.
-    pub(in crate::game) fn debug_biome_line(&self, d: &mut Displayer) {
+    pub(in crate::game::client_side) fn debug_biome_line(&self, d: &mut Displayer) {
         let Some([x, y, z]) = self.debug_feet() else {
             return;
         };
@@ -282,7 +286,7 @@ impl Game<'_> {
     /// area's (smart culling is always on), the render distance, and
     /// `SectionRenderDispatcher.getStats` (the meshes queued; Sunrise has
     /// no buffer pool, so no buffer is ever free).
-    pub(in crate::game) fn debug_chunk_render_line(&self, d: &mut Displayer) {
+    pub(in crate::game::client_side) fn debug_chunk_render_line(&self, d: &mut Displayer) {
         let Some(r) = self.renderer.0.as_ref() else {
             return;
         };
@@ -299,7 +303,7 @@ impl Game<'_> {
 
     /// `LevelExtractor.entityStatistics`: the mobs drawn last frame of the
     /// level's entities, and the server's simulation distance.
-    pub(in crate::game) fn debug_entity_render_line(&self, d: &mut Displayer) {
+    pub(in crate::game::client_side) fn debug_entity_render_line(&self, d: &mut Displayer) {
         if self.player.is_none() {
             return;
         }
@@ -355,7 +359,7 @@ impl Game<'_> {
     /// (the chunk storage's size and its loaded chunks, then the entities,
     /// the sections holding them and the chunks that tick them), and the
     /// server level's when this game runs it.
-    pub(in crate::game) fn debug_chunk_source_lines(
+    pub(in crate::game::client_side) fn debug_chunk_source_lines(
         &self,
         d: &mut Displayer,
         server: Option<&ServerDebug>,
@@ -382,7 +386,7 @@ impl Game<'_> {
 
     /// `DebugEntryHeightmap`: the client chunk's heightmaps at the feet,
     /// and the server chunk's.
-    pub(in crate::game) fn debug_heightmap_lines(
+    pub(in crate::game::client_side) fn debug_heightmap_lines(
         &self,
         d: &mut Displayer,
         server: Option<&ServerDebug>,
@@ -433,13 +437,13 @@ impl Game<'_> {
     }
 
     /// `Entity.pick(20, 0, false)` from the camera: the block outline hit.
-    pub(in crate::game) fn debug_block_hit(&self) -> Option<[i32; 3]> {
+    pub(in crate::game::client_side) fn debug_block_hit(&self) -> Option<[i32; 3]> {
         let (origin, dir) = self.aim()?;
         Some(self.clip_ray(origin, dir, LOOKING_AT_RANGE)?.pos)
     }
 
     /// `DebugEntryLookingAt.BlockStateInfo` or `BlockTagInfo`.
-    pub(in crate::game) fn debug_looking_at_block(&self, state: bool) -> Vec<String> {
+    pub(in crate::game::client_side) fn debug_looking_at_block(&self, state: bool) -> Vec<String> {
         let Some(pos) = self.debug_block_hit() else {
             return Vec::new();
         };
@@ -461,7 +465,7 @@ impl Game<'_> {
 
     /// `Entity.pick(20, 0, true)` (`ClipContext.Fluid.ANY`): the first fluid
     /// along the view, under its surface, before the block outline hit.
-    pub(in crate::game) fn debug_fluid_hit(&self) -> Option<[i32; 3]> {
+    pub(in crate::game::client_side) fn debug_fluid_hit(&self) -> Option<[i32; 3]> {
         let (origin, dir) = self.aim()?;
         let block = self.clip_ray(origin, dir, LOOKING_AT_RANGE);
         let reach = block.map_or(LOOKING_AT_RANGE, |h| {
@@ -486,7 +490,7 @@ impl Game<'_> {
 
     /// `FluidState`'s registered name and properties at `pos`: a source is
     /// `water`/`lava` with `falling`, a flowing one `flowing_*` with `level`.
-    pub(in crate::game) fn fluid_state(
+    pub(in crate::game::client_side) fn fluid_state(
         &self,
         pos: [i32; 3],
     ) -> (String, Vec<(&'static str, String)>) {
@@ -520,7 +524,7 @@ impl Game<'_> {
     }
 
     /// `DebugEntryLookingAt.FluidStateInfo` or `FluidTagInfo`.
-    pub(in crate::game) fn debug_looking_at_fluid(&self, state: bool) -> Vec<String> {
+    pub(in crate::game::client_side) fn debug_looking_at_fluid(&self, state: bool) -> Vec<String> {
         let Some(pos) = self.debug_fluid_hit() else {
             return Vec::new();
         };
@@ -539,7 +543,7 @@ impl Game<'_> {
 
     /// `Minecraft.crosshairPickEntity`'s type: the nearest entity under the
     /// crosshair before any block.
-    pub(in crate::game) fn crosshair_entity_type(&self) -> Option<String> {
+    pub(in crate::game::client_side) fn crosshair_entity_type(&self) -> Option<String> {
         let mut best: Option<(f64, String)> = None;
         let mut offer = |hit: Option<(f64, String)>| {
             if let Some((distance, kind)) = hit

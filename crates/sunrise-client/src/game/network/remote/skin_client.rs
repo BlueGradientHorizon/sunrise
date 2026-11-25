@@ -52,7 +52,7 @@ impl Game<'_> {
     }
     /// Resolve inline `object:player` profiles through the same skin cache as
     /// player heads on items. The next frame uses the uploaded atlas texture.
-    pub(in crate::game) fn resolve_inline_profiles(
+    pub(in crate::game::client_side) fn resolve_inline_profiles(
         &mut self,
         profiles: &[std::sync::Arc<serde_json::Value>],
     ) {
@@ -93,7 +93,7 @@ impl Game<'_> {
     }
     /// Puts a downloaded skin in an atlas skin slot (`SkinSlots::place`),
     /// unless every slot holds a skin drawn in the last frame.
-    pub(in crate::game) fn store_skin(&mut self, location: String, rgba: Vec<u8>) {
+    pub(in crate::game::client_side) fn store_skin(&mut self, location: String, rgba: Vec<u8>) {
         let Some((slot, evicted)) = self.client.skin_slots.place(location.clone()) else {
             return;
         };

@@ -9,8 +9,6 @@ pub(in crate::game::client_side) use crate::game::server_side::level_sounds::Hea
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::level_sounds::LevelSound;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::level_sounds::listened;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::level_sounds::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use mod_api::{HookId, Identifier, SoundSource};

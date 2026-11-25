@@ -11,7 +11,7 @@ impl Game<'_> {
     /// `ClientPacketListener.handleUpdateMobEffect` (`LivingEntity.forceAddEffect`): for the
     /// player itself, or another living entity the level holds (a mob, another player or an
     /// armor stand). Any other entity, or an effect the registry doesn't name, changes nothing.
-    pub(in crate::game) fn remote_effect(&mut self, p: &play::UpdateMobEffect) {
+    pub(in crate::game::client_side) fn remote_effect(&mut self, p: &play::UpdateMobEffect) {
         let Some(def) = self.remote_effect_def(p.effect) else {
             return;
         };

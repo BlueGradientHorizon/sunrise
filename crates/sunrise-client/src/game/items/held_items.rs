@@ -131,7 +131,11 @@ impl Game<'_> {
     }
 
     /// `insert_stack_into_inventory` with `max` the stack's own maximum.
-    pub(in crate::game) fn insert_stack_up_to(&mut self, stack: &mut ItemStack, max: u32) -> bool {
+    pub(in crate::game::client_side) fn insert_stack_up_to(
+        &mut self,
+        stack: &mut ItemStack,
+        max: u32,
+    ) -> bool {
         let tutorial_item = matches!(
             self.client.tutorial.step,
             tutorial::Step::FindTree | tutorial::Step::PunchTree | tutorial::Step::CraftPlanks

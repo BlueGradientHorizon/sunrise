@@ -13,7 +13,7 @@ pub(in crate::game::client_side) use crate::game::remote::raw_ingress::*;
 
 impl Game<'_> {
     /// `ClientCommonPacketListenerImpl.handlePostEffects`.
-    pub(in crate::game) fn apply_post_effects_packet(
+    pub(in crate::game::client_side) fn apply_post_effects_packet(
         &mut self,
         p: play::PostEffects,
     ) -> Result<()> {

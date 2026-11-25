@@ -23,31 +23,17 @@ pub(in crate::game::client_side) use crate::game::server_side::lan::baby_index;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::lan::client_info;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan::enforce_guest_game_mode;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan::entity_uuid;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::lan::event_timings::{
     EventTimings, UseDetail, describe_burst, event_kind, note_event,
 };
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::lan::living_flags;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan::main_hand;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan::mob_effects;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan::mob_equipment;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::lan::mob_freeze_meta;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::lan::mob_meta;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::lan::mob_raider_meta;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan::mob_variant_meta;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan::partition_lan_entity_events;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::lan::*;
 #[allow(unused_imports)]
@@ -88,7 +74,7 @@ pub(in crate::game::client_side) use sunrise_world::block_collision::BlockCollis
 
 impl Game<'_> {
     /// `sunrise-ctl lan ...`.
-    pub(in crate::game) fn lan_control(
+    pub(in crate::game::client_side) fn lan_control(
         &mut self,
         words: &[&str],
     ) -> Result<Option<serde_json::Value>> {

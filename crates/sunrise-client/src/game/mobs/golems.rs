@@ -16,7 +16,7 @@ impl Game<'_> {
         let state = self.world.block(p[0], p[1], p[2]);
         &self.res.facts().get(state).name
     }
-    pub(in crate::game) fn is_golem_head(&self, p: [i32; 3]) -> bool {
+    pub(in crate::game::server_side) fn is_golem_head(&self, p: [i32; 3]) -> bool {
         matches!(
             self.golem_block(p),
             "minecraft:carved_pumpkin" | "minecraft:jack_o_lantern"
@@ -29,7 +29,7 @@ impl Game<'_> {
     /// come column by column, top first, as `clearPatternBlocks` visits them.
     /// With `base`, `SNOW_GOLEM_BASE` and `IRON_GOLEM_BASE` take any block
     /// where the head will go, as `canSpawnGolem` checks before it is there.
-    pub(in crate::game) fn find_golem(
+    pub(in crate::game::server_side) fn find_golem(
         &self,
         head: [i32; 3],
         base: bool,
@@ -57,7 +57,7 @@ impl Game<'_> {
     }
     /// `CarvedPumpkinBlock.canSpawnGolem`: a snow or iron golem base, or a
     /// copper block (`#minecraft:copper`) below.
-    pub(in crate::game) fn can_spawn_golem(&self, head: [i32; 3]) -> bool {
+    pub(in crate::game::server_side) fn can_spawn_golem(&self, head: [i32; 3]) -> bool {
         self.find_golem(head, true).is_some() || self.copper_golem_base(head)
     }
     /// The copper golem pattern ("^", "#"): a block of `#minecraft:copper` under the head.
@@ -71,7 +71,7 @@ impl Game<'_> {
             .is_some_and(|t| t.contains(name))
     }
     /// `CarvedPumpkinBlock.trySpawnGolem`, after a pumpkin was placed.
-    pub(in crate::game) fn check_golem_spawn(&mut self, head: [i32; 3]) -> Result<()> {
+    pub(in crate::game::server_side) fn check_golem_spawn(&mut self, head: [i32; 3]) -> Result<()> {
         if !self.is_golem_head(head) {
             return Ok(());
         }
@@ -124,7 +124,7 @@ impl Game<'_> {
         }
     }
     /// Whether placing a golem head at `head` completes a golem.
-    pub(in crate::game) fn completes_golem(&self, head: [i32; 3]) -> bool {
+    pub(in crate::game::server_side) fn completes_golem(&self, head: [i32; 3]) -> bool {
         self.find_golem(head, true).is_some() || self.copper_golem_base(head)
     }
     /// `Level.setBlock` of the golem head `state` at `head`, then

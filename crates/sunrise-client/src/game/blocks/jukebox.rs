@@ -26,7 +26,7 @@ use sunrise_world::level::flags as level_flags;
 /// item's default one: `None` when it has none (a removed component,
 /// `!minecraft:jukebox_playable`, included), `Some(None)` for an inline song
 /// definition, which has no id in the song registry.
-pub(in crate::game) fn jukebox_playable(
+pub(in crate::game::client_side) fn jukebox_playable(
     record: &ItemStack,
     items: &sunrise_client::items::Items,
 ) -> Option<Option<String>> {
@@ -45,7 +45,7 @@ pub(in crate::game) fn jukebox_playable(
 }
 
 /// `JukeboxSong.fromStack`: the song the disc names, by its id.
-pub(in crate::game) fn song_of_record(
+pub(in crate::game::client_side) fn song_of_record(
     record: &ItemStack,
     items: &sunrise_client::items::Items,
 ) -> Option<String> {
@@ -53,19 +53,23 @@ pub(in crate::game) fn song_of_record(
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn jukebox(&self, pos: [i32; 3]) -> Option<&Jukebox> {
+    pub(in crate::game::client_side) fn jukebox(&self, pos: [i32; 3]) -> Option<&Jukebox> {
         match self.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
             Some(BlockEntity::Jukebox(j)) => Some(j),
             _ => None,
         }
     }
-    pub(in crate::game) fn set_has_record(&mut self, pos: [i32; 3], has: bool) -> bool {
+    pub(in crate::game::client_side) fn set_has_record(
+        &mut self,
+        pos: [i32; 3],
+        has: bool,
+    ) -> bool {
         self.set_has_record_notify(pos, has, true)
     }
     /// The state change alone (`level.setBlock` with flag 2); `notify` adds
     /// `notifyItemChangedInJukebox`'s `block_change`, which
     /// `JukeboxBlock.setPlacedBy` does not post.
-    pub(in crate::game) fn set_has_record_notify(
+    pub(in crate::game::client_side) fn set_has_record_notify(
         &mut self,
         pos: [i32; 3],
         has: bool,
@@ -94,7 +98,7 @@ impl Game<'_> {
         true
     }
     /// `JukeboxBlock.HAS_RECORD`, the state both clicks are decided by.
-    pub(in crate::game) fn jukebox_has_record(&self, pos: [i32; 3]) -> bool {
+    pub(in crate::game::client_side) fn jukebox_has_record(&self, pos: [i32; 3]) -> bool {
         let state = self.world.block(pos[0], pos[1], pos[2]);
         self.pack
             .assets
@@ -105,7 +109,11 @@ impl Game<'_> {
     }
     /// `JukeboxBlockEntity.notifyItemChangedInJukebox`: the block's
     /// `has_record`, then `BLOCK_CHANGE` with the state it now has.
-    pub(in crate::game) fn jukebox_record_changed(&mut self, pos: [i32; 3], has: bool) {
+    pub(in crate::game::client_side) fn jukebox_record_changed(
+        &mut self,
+        pos: [i32; 3],
+        has: bool,
+    ) {
         self.set_has_record(pos, has);
     }
     /// `JukeboxBlock.setPlacedBy`: a jukebox placed from an item whose
@@ -120,7 +128,7 @@ impl Game<'_> {
         }
     }
     /// `onSongChanged`: neighbours (the signal) and comparators.
-    pub(in crate::game) fn jukebox_changed(&mut self, pos: [i32; 3]) {
+    pub(in crate::game::client_side) fn jukebox_changed(&mut self, pos: [i32; 3]) {
         let p = BlockPos::new(pos[0], pos[1], pos[2]);
         let state = self.world.block(pos[0], pos[1], pos[2]);
         self.with_level(|b, level, ticks| {
@@ -296,7 +304,7 @@ impl Game<'_> {
             || held.is_some_and(|stack| jukebox_playable(stack, self.res.items()).is_some())
     }
     /// Level event 1010: the song from the jukebox, and the "Now Playing" overlay.
-    pub(in crate::game) fn start_song(&mut self, pos: [i32; 3], song: &str) {
+    pub(in crate::game::client_side) fn start_song(&mut self, pos: [i32; 3], song: &str) {
         self.stop_sound(pos);
         let Some(s) = self.items().songs.get(song).cloned() else {
             return;
@@ -338,7 +346,7 @@ impl Game<'_> {
     /// `JUKEBOX_STOP_PLAY` vibration goes to the listeners around it. A broken
     /// jukebox is not this path: its removal posts the same event from the
     /// world's spill, so it must not post it here as well.
-    pub(in crate::game) fn stop_song_heard(&mut self, pos: [i32; 3]) {
+    pub(in crate::game::client_side) fn stop_song_heard(&mut self, pos: [i32; 3]) {
         self.stop_song(pos);
         let state = self.world.block(pos[0], pos[1], pos[2]);
         self.post_block_game_event("minecraft:jukebox_stop_play", pos, None, Some(state));
@@ -361,7 +369,7 @@ impl Game<'_> {
     /// `popOutTheItem`: the disc above the jukebox, and the song stops. An
     /// empty slot pops nothing out (`if (!itemBeforePoppingOut.isEmpty())`),
     /// whatever the state says.
-    pub(in crate::game) fn eject_record(&mut self, pos: [i32; 3]) {
+    pub(in crate::game::client_side) fn eject_record(&mut self, pos: [i32; 3]) {
         let key = (pos[0], pos[1], pos[2]);
         let (record, was_playing) = match self.world.block_entities.get_mut(&key) {
             Some(BlockEntity::Jukebox(j)) => {
@@ -491,7 +499,7 @@ impl Game<'_> {
 /// The song a level event 1010's data names: its id in the `jukebox_song`
 /// registry the server sent (`Registry.get(int)`). Only a server's client
 /// has one; a level that plays its own jukeboxes starts their songs itself.
-pub(in crate::game) fn jukebox_song_name(
+pub(in crate::game::client_side) fn jukebox_song_name(
     registries: Option<&sunrise_protocol::registry::Dynamic>,
     id: i32,
 ) -> Option<String> {
@@ -502,7 +510,7 @@ pub(in crate::game) fn jukebox_song_name(
 /// Whether a jukebox song keeps playing: until it ends, and, in a level that
 /// plays its own jukeboxes, while that jukebox plays. A server's client
 /// stops it at level event 1011 (`LevelRenderer.playingJukeboxSongs`).
-pub(in crate::game) fn keeps_song(
+pub(in crate::game::client_side) fn keeps_song(
     active: bool,
     server_client: bool,
     jukebox_playing: bool,

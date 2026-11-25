@@ -11,7 +11,7 @@ impl Game<'_> {
     /// `ItemUtils.createFilledResult(itemStack, player,
     /// getEmptySuccessItem(itemStack, player))` — a survival bucket becomes an
     /// empty one, a creative one stays.
-    pub(in crate::game) fn bucket_emptied(&mut self, item: &str) {
+    pub(in crate::game::server_side) fn bucket_emptied(&mut self, item: &str) {
         self.award_stat("used", item, 1);
         if !self.creative {
             *self.held_mut() = Some(ItemStack::new("minecraft:bucket", 1));
@@ -73,7 +73,7 @@ impl Game<'_> {
     /// which on a dedicated server refuses a non-operator inside the spawn
     /// protection radius (at the block the bucket's own ray met), then
     /// `player.mayUseItemAt` (adventure mode's `can_place_on`).
-    pub(in crate::game) fn bucket_use_refused(&self, pos: [i32; 3]) -> bool {
+    pub(in crate::game::server_side) fn bucket_use_refused(&self, pos: [i32; 3]) -> bool {
         self.server
             .lan_acting_spawn_protection
             .is_some_and(|radius| self.spawn_protects(radius, self.dim.id(), pos))

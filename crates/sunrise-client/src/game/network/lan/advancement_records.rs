@@ -2,7 +2,7 @@ use super::*;
 
 impl Game<'_> {
     /// `PlayerAdvancements.save`: the existing network player's advancement file.
-    pub(in crate::game) fn save_guest_advancements(
+    pub(in crate::game::server_side) fn save_guest_advancements(
         &self,
         host: &LanHost,
         guest: &sunrise_client::lan::guest::Guest,
@@ -27,7 +27,7 @@ impl Game<'_> {
         }
     }
     /// `PlayerAdvancements.save` and `ServerStatsCounter.save` of a network player.
-    pub(in crate::game) fn save_guest_records(
+    pub(in crate::game::server_side) fn save_guest_records(
         &self,
         host: &LanHost,
         guest: &sunrise_client::lan::guest::Guest,

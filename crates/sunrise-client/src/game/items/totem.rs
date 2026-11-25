@@ -128,7 +128,7 @@ impl Game<'_> {
     /// `ClientPacketListener.findTotem`: the first hand's item with
     /// `death_protection`, else a new totem (a used single totem is gone by
     /// the time the event arrives).
-    pub(in crate::game) fn find_totem(&self) -> ItemStack {
+    pub(in crate::game::client_side) fn find_totem(&self) -> ItemStack {
         [self.held(), self.offhand.as_ref()]
             .into_iter()
             .flatten()
@@ -137,7 +137,7 @@ impl Game<'_> {
             .unwrap_or_else(|| ItemStack::new(TOTEM, 1))
     }
     /// `GameRenderer.tick`: the activated item counts down.
-    pub(in crate::game) fn tick_item_activation(&mut self) {
+    pub(in crate::game::client_side) fn tick_item_activation(&mut self) {
         if self.player.is_some() {
             self.client.item_activation.tick();
         }
@@ -147,7 +147,7 @@ impl Game<'_> {
     /// the camera's turn or bob (a fresh `PoseStack`), so those are undone
     /// here. `FIXED` display, no owner, seed 0 (`LevelExtractor`), full
     /// brightness and `Lighting.Entry.ITEMS_3D`. Only F1 hides it.
-    pub(in crate::game) fn item_activation_geometry(
+    pub(in crate::game::client_side) fn item_activation_geometry(
         &self,
         partial: f32,
         view: glam::Mat4,
@@ -182,7 +182,7 @@ impl Game<'_> {
 /// item's default. It runs for both of the player's hands and for every
 /// armed mob each tick, so the usual stack, which leaves the component alone,
 /// costs one map lookup instead of a component map built from its patch.
-pub(in crate::game) fn death_protection_of<'m>(
+pub(in crate::game::client_side) fn death_protection_of<'m>(
     models: &'m sunrise_assets::item_model::ItemModels,
     item: &str,
     stack: Option<&ItemStack>,

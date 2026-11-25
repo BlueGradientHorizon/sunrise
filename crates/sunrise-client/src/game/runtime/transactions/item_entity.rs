@@ -8,14 +8,17 @@ pub(in crate::game) struct KeptItemEntity {
 }
 
 impl KeptItemEntity {
-    pub(in crate::game) fn merge(&mut self, child: Self) {
+    pub(in crate::game::server_side) fn merge(&mut self, child: Self) {
         self.stack = self.stack.take().or(child.stack);
         self.pickup_delay = self.pickup_delay.or(child.pickup_delay);
         self.target = self.target.or(child.target);
         self.velocity = self.velocity.or(child.velocity);
     }
 
-    pub(in crate::game) fn restore(self, item: &mut sunrise_client::entities::ItemEntity) {
+    pub(in crate::game::server_side) fn restore(
+        self,
+        item: &mut sunrise_client::entities::ItemEntity,
+    ) {
         if let Some(stack) = self.stack {
             item.stack = stack;
         }
@@ -34,7 +37,11 @@ impl KeptItemEntity {
 impl Game<'_> {
     /// Sets the stack of `id` for an item place. A caller that already has a
     /// validated resident slot uses `journal_set_item_entity_at` instead.
-    pub(in crate::game) fn journal_set_item_entity(&mut self, id: u32, stack: ItemStack) -> bool {
+    pub(in crate::game::server_side) fn journal_set_item_entity(
+        &mut self,
+        id: u32,
+        stack: ItemStack,
+    ) -> bool {
         self.dropped
             .iter()
             .position(|item| item.id == id)

@@ -19,7 +19,7 @@ use sunrise_client::{
     ticket_levels::{PLAYER_SPAWN_RADIUS, SpawnTicketKind},
 };
 
-pub(in crate::game) fn start(sync: Arc<SyncData>, net: NetConfig) -> io::Result<Lan> {
+pub(in crate::game::server_side) fn start(sync: Arc<SyncData>, net: NetConfig) -> io::Result<Lan> {
     Lan::start_with_spawn_preparation(sync, net)
 }
 impl Game<'_> {
@@ -47,7 +47,7 @@ impl Game<'_> {
         }
         commit
     }
-    pub(in crate::game) fn tick_lan_configuration_tasks(
+    pub(in crate::game::server_side) fn tick_lan_configuration_tasks(
         &mut self,
         requests: Vec<ConfigurationRequest>,
     ) -> Option<()> {
@@ -202,7 +202,7 @@ impl Game<'_> {
 
     /// Revalidate on the game thread, even when the level was lost between
     /// sending FinishConfiguration and seeing its acknowledgement.
-    pub(in crate::game) fn acknowledged_spawn(
+    pub(in crate::game::server_side) fn acknowledged_spawn(
         &self,
         configured: &Configured,
     ) -> Option<Result<Option<PreparedSpawn>, String>> {
@@ -331,7 +331,7 @@ impl Game<'_> {
         Ok(task)
     }
 
-    pub(in crate::game) fn tick_spawn_tickets(&mut self, running: bool, notify: bool) {
+    pub(in crate::game::server_side) fn tick_spawn_tickets(&mut self, running: bool, notify: bool) {
         if self.tickets.0.spawn_areas().next().is_some() {
             // ServerChunkCache.tick doesn't purge in a frozen level, nor
             // does pause-when-empty tick the cache (it only polls chunk work).

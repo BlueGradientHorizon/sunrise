@@ -20,7 +20,7 @@ pub(in crate::game) fn client_started(options: &Options) {
 
 impl Game<'_> {
     /// Each frame: only a change reaches the hooks.
-    pub(in crate::game) fn report_activity(&self) {
+    pub(in crate::game::client_side) fn report_activity(&self) {
         sunrise_hooks::engine::activity(self.activity());
     }
     fn activity(&self) -> Activity {

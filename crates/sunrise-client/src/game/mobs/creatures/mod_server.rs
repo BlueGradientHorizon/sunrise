@@ -274,7 +274,7 @@ impl Game<'_> {
         id
     }
     /// Dispatch one arrow entity hit onto LAN guest `victim_conn` without aliasing `Who::Player`.
-    pub(in crate::game) fn arrow_hit_guest_victim(
+    pub(in crate::game::server_side) fn arrow_hit_guest_victim(
         &mut self,
         arrow: &mut Projectile,
         victim_conn: u32,
@@ -316,7 +316,7 @@ impl Game<'_> {
         result.unwrap_or(Ok(EntityHit::Refused))
     }
     /// Dispatch one arrow entity hit onto the host player with guest-shooter attribution.
-    pub(in crate::game) fn arrow_hit_host_victim(
+    pub(in crate::game::server_side) fn arrow_hit_host_victim(
         &mut self,
         arrow: &mut Projectile,
         amount: f32,
@@ -339,7 +339,7 @@ impl Game<'_> {
         outcome
     }
     /// Apply one arrow entity hit (`AbstractArrow.onHitEntity`), returning the hit outcome.
-    pub(in crate::game) fn arrow_hit_one_entity(
+    pub(in crate::game::server_side) fn arrow_hit_one_entity(
         &mut self,
         arrow: &mut Projectile,
         who: Who,
@@ -1080,7 +1080,7 @@ impl Game<'_> {
     /// sequence with the mob as `this` (a chicken's egg depends on its
     /// variant); the loot data of the game's resources decides, and without it
     /// the items' table engine (no entity) rolls it. Whether anything dropped.
-    pub(in crate::game) fn drop_gift_loot(
+    pub(in crate::game::server_side) fn drop_gift_loot(
         &mut self,
         mob: u32,
         table: &'static str,
@@ -1129,7 +1129,7 @@ impl Game<'_> {
     /// `MobEffectUtil.addEffectToPlayersAround` for an elder guardian:
     /// mining fatigue III for five minutes unless a stronger or longer one
     /// is on, with the curse sound and the elder's apparition.
-    pub(in crate::game) fn elder_curse(&mut self, at: [f64; 3], silent: bool) {
+    pub(in crate::game::server_side) fn elder_curse(&mut self, at: [f64; 3], silent: bool) {
         let mut cursed = Vec::new();
         self.for_each_player(|g| {
             if g.elder_curse_player(at, silent) {
@@ -1154,7 +1154,11 @@ impl Game<'_> {
         }
     }
     /// The curse on the player in place; whether it took.
-    pub(in crate::game) fn elder_curse_player(&mut self, at: [f64; 3], silent: bool) -> bool {
+    pub(in crate::game::server_side) fn elder_curse_player(
+        &mut self,
+        at: [f64; 3],
+        silent: bool,
+    ) -> bool {
         if self.creative || self.spectator() {
             return false;
         }
@@ -1186,7 +1190,9 @@ impl Game<'_> {
     /// Whether the chunk's own status is entity-ticking (block coordinates), whatever the
     /// simulation distance: the chunks whose entities are on `ServerLevel`'s entity tick list
     /// (`Visibility.fromFullChunkStatus`), so they check despawning.
-    pub(in crate::game) fn entity_tick_listed_area(&self) -> impl Fn(i32, i32) -> bool + use<> {
+    pub(in crate::game::server_side) fn entity_tick_listed_area(
+        &self,
+    ) -> impl Fn(i32, i32) -> bool + use<> {
         let levels = self.tickets.0.levels();
         move |x, z| levels.loaded_entity_ticking(x >> 4, z >> 4)
     }
@@ -1197,7 +1203,7 @@ impl Game<'_> {
         move |x, z| levels.entity_ticking_at(x, z)
     }
     /// Complete `AbstractArrow.stepMoveAndHit` for any non-trident arrow entity hit batch.
-    pub(in crate::game) fn finish_arrow_step(
+    pub(in crate::game::server_side) fn finish_arrow_step(
         &mut self,
         mut arrow: Projectile,
         first_who: Who,
@@ -1406,7 +1412,7 @@ impl Game<'_> {
         Ok(())
     }
     /// Settle a hit while its damage owner still has the level in place.
-    pub(in crate::game) fn finish_mob_damage_at(&mut self, index: usize) {
+    pub(in crate::game::server_side) fn finish_mob_damage_at(&mut self, index: usize) {
         let Some((index, _)) = self.complete_mob_hurt(index, false) else {
             return;
         };
@@ -4062,7 +4068,7 @@ impl Game<'_> {
         }
         Ok(true)
     }
-    pub(in crate::game) fn killer_uuid(&mut self, conn: Option<u32>) -> Option<u128> {
+    pub(in crate::game::server_side) fn killer_uuid(&mut self, conn: Option<u32>) -> Option<u128> {
         match conn {
             // During that guest's own turn, the player in place has their UUID.
             Some(conn) if self.server.lan_acting != Some(conn) => {
@@ -4341,7 +4347,7 @@ impl Game<'_> {
     /// [`Self::player_view`], so a tick that lends no guest's view names its
     /// player (#1077). None where the view stands for nobody: no player of
     /// the game's own, a fake one, or a guest's turn acting in its place.
-    pub(in crate::game) fn player_identity(&self) -> Option<([i32; 4], u32)> {
+    pub(in crate::game::server_side) fn player_identity(&self) -> Option<([i32; 4], u32)> {
         if self.server.lan_acting_fake
             || self.server.lan_acting_uuid.is_some()
             || self.player.is_none()
@@ -5225,7 +5231,7 @@ impl Game<'_> {
     }
     /// Resolve `EntityReference.getEntity` across levels. None inside means
     /// the player in place; Some is a guest connection.
-    pub(in crate::game) fn resolve_player_credit(
+    pub(in crate::game::server_side) fn resolve_player_credit(
         &self,
         credit: super::combat::PlayerCredit,
     ) -> Option<Option<u32>> {
@@ -5237,7 +5243,11 @@ impl Game<'_> {
     /// hit's credit loan (a tame wolf's hit is its owner's; an ownerless tame wolf clears it):
     /// what an accepted hit's site commits, for tests that set up the credit without a hit.
     #[cfg(test)]
-    pub(in crate::game) fn resolve_player_responsible(&mut self, victim: u32, source: Damage) {
+    pub(in crate::game::server_side) fn resolve_player_responsible(
+        &mut self,
+        victim: u32,
+        source: Damage,
+    ) {
         if !matches!(source.attacker, Some(Who::Mob(_))) {
             return;
         }
@@ -5249,7 +5259,7 @@ impl Game<'_> {
         }
     }
     /// Throwables and spawn eggs (SnowballItem/EggItem/EnderpearlItem/SpawnEggItem.use).
-    pub(in crate::game) fn throw_item(&mut self, stack: &ItemStack) -> Result<bool> {
+    pub(in crate::game::server_side) fn throw_item(&mut self, stack: &ItemStack) -> Result<bool> {
         let item = &*stack.item;
         let kind = match item {
             "minecraft:snowball" => ProjectileKind::Snowball,
@@ -5998,7 +6008,10 @@ impl Game<'_> {
         flushed
     }
     /// `SpawnEggItem.useOn` for a block, or `use` for a fluid source.
-    pub(in crate::game) fn use_spawn_egg(&mut self, stack: &ItemStack) -> Result<bool> {
+    pub(in crate::game::server_side) fn use_spawn_egg(
+        &mut self,
+        stack: &ItemStack,
+    ) -> Result<bool> {
         let fluid = matches!(self.server.guest_use, Some(super::GuestUse::Item(_)));
         let Some(hit) = (if fluid {
             self.spawn_egg_fluid_hit()

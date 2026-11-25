@@ -15,8 +15,6 @@ pub(in crate::game::client_side) use crate::game::server_side::dispenser::SUCCES
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::dispenser::Target;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dispenser::mod_dispensed;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::dispenser::optional_event;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::dispenser::set_success;
@@ -697,7 +695,7 @@ impl Game<'_> {
     /// `Entity.shearOffAllLeashConnections(null)`: the entity's own lead and
     /// every lead held by it (within a 32 block box around its centre) drop;
     /// a shear game event at the entity and a snip at its block follow.
-    pub(in crate::game) fn shear_off_leashes(&mut self, t: Target) -> bool {
+    pub(in crate::game::client_side) fn shear_off_leashes(&mut self, t: Target) -> bool {
         use sunrise_client::mobs::{Who, leash::Holder};
         let (holder, centre, own) = match t {
             Target::Mob(i) => {
@@ -818,16 +816,6 @@ pub(in crate::game) mod tests {
     pub(in crate::game::client_side) use crate::game::server_side::dispenser::tests::Probe;
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::dispenser::tests::Tailor;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::dispenser::tests::dispense_at_guest;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::dispenser::tests::dress;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::dispenser::tests::helmet_with;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::dispenser::tests::server_with_guest;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::dispenser::tests::stand_at;
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::dispenser::tests::*;
     #[allow(unused_imports)]

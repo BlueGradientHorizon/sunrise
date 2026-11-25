@@ -19,7 +19,7 @@ impl Game<'_> {
     /// Install one fixture record or explicitly owned live transfer through the same
     /// metadata and join boundary. The transfer token belongs only to this call.
     #[cfg(test)]
-    pub(in crate::game) fn spawn_loaded_entity(
+    pub(in crate::game::server_side) fn spawn_loaded_entity(
         &mut self,
         key: ChunkKey,
         tag: Tag,
@@ -33,7 +33,7 @@ impl Game<'_> {
         );
     }
 
-    pub(in crate::game) fn spawn_loaded_entity_reason(
+    pub(in crate::game::server_side) fn spawn_loaded_entity_reason(
         &mut self,
         key: ChunkKey,
         mut tag: Tag,
@@ -157,7 +157,7 @@ impl Game<'_> {
 impl EntityMemory {
     /// Puts back the raw record `kept` holds, or takes out the one a spawn added where none was:
     /// the abort of a transaction whose spawn wrote over it (`journal_anon`).
-    pub(in crate::game) fn put_back_anon(
+    pub(in crate::game::server_side) fn put_back_anon(
         &mut self,
         (key, was): ((String, [u64; 3]), Option<(Vec3, Tag)>),
     ) {

@@ -5,8 +5,6 @@ pub(in crate::game::client_side) use crate::game::server_side::native_mob_refs::
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::native_mob_refs::PlayerFacts;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_mob_refs::warden_mob_target_bounds;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::native_mob_refs::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use mod_api::{EntityRef, LivingRef, MobRef};
@@ -24,8 +22,6 @@ pub(in crate::game) mod tests {
     pub(in crate::game::client_side) use super::super::native_entity_refs::tests::with_game;
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use super::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_mob_refs::tests::add_mob;
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::native_mob_refs::tests::*;
     #[allow(unused_imports)]

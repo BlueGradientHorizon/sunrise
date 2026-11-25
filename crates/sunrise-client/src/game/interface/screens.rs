@@ -23,7 +23,7 @@ impl Screen {
     /// (`WinScreen`, `!poem`) and a dialog (`DialogScreen`, its `pause`)
     /// answer from their own state, so `Game::pauses_game` reads those where
     /// they live and `Win` is not decided here.
-    pub(in crate::game) fn is_pause_screen(self) -> bool {
+    pub(in crate::game::client_side) fn is_pause_screen(self) -> bool {
         match self {
             // AbstractContainerScreen.isPauseScreen.
             Self::Creative | Self::Inventory
@@ -63,12 +63,12 @@ impl Screen {
     /// leaves a screen that allows it open. The class default is
     /// `isPauseScreen`, and only `ChatScreen`, `DeathScreen` and `WinScreen`
     /// override it true (the win screen whatever its poem says).
-    pub(in crate::game) fn allowed_in_portal(self) -> bool {
+    pub(in crate::game::client_side) fn allowed_in_portal(self) -> bool {
         matches!(self, Self::Chat | Self::Dead | Self::Win) || self.is_pause_screen()
     }
     /// Screen.extractBackground for non-isInGameUi screens, and
     /// PauseScreen.extractBackground only when showPauseMenu is true.
-    pub(in crate::game) fn blurs_background(self, pause_menu: bool) -> bool {
+    pub(in crate::game::client_side) fn blurs_background(self, pause_menu: bool) -> bool {
         match self {
             Self::Paused => pause_menu,
             Self::Options
@@ -317,13 +317,13 @@ impl Game<'_> {
     }
 
     /// Singleplayer also has a connection, backed by the integrated server.
-    pub(in crate::game) fn external_server(&self) -> bool {
+    pub(in crate::game::client_side) fn external_server(&self) -> bool {
         self.remote.is_some() && self.integrated.is_none()
     }
     /// What `PauseScreen.init` reads and this screen can see change while it
     /// is open: the connection, a server's links, the custom-additions dialog
     /// and the rows the registered pages add.
-    pub(in crate::game) fn pause_inputs(&self) -> PauseInputs {
+    pub(in crate::game::client_side) fn pause_inputs(&self) -> PauseInputs {
         PauseInputs {
             remote: self.external_server(),
             links: !self.server_links().is_empty(),
@@ -331,7 +331,7 @@ impl Game<'_> {
             rows: self.pause_rows().collect(),
         }
     }
-    pub(in crate::game) fn pause_inputs_match(&self, old: &PauseInputs) -> bool {
+    pub(in crate::game::client_side) fn pause_inputs_match(&self, old: &PauseInputs) -> bool {
         old.remote == self.external_server()
             && old.links == !self.server_links().is_empty()
             && old.additions == self.pause_screen_additions().is_some()
@@ -340,11 +340,11 @@ impl Game<'_> {
     /// The pause menu's widgets for a `ScreenBuild` at `(w, h)`: the buttons
     /// and the icon row. The build makes it once per open, resize and input
     /// change; the drawing, the click hit test and the key focus list read it.
-    pub(in crate::game) fn pause_layout(&self, w: f32, h: f32) -> PauseLayout {
+    pub(in crate::game::client_side) fn pause_layout(&self, w: f32, h: f32) -> PauseLayout {
         self.pause_layout_for(&self.pause_inputs(), w, h)
     }
     /// `pause_layout` from inputs already read, as the build compares them.
-    pub(in crate::game) fn pause_layout_for(
+    pub(in crate::game::client_side) fn pause_layout_for(
         &self,
         inputs: &PauseInputs,
         w: f32,
@@ -364,7 +364,7 @@ impl Game<'_> {
         }
     }
     /// Native controls built by PauseScreen.init, in the grid's registration order.
-    pub(in crate::game) fn pause_init_children(
+    pub(in crate::game::client_side) fn pause_init_children(
         &self,
     ) -> Vec<(u8, [f32; 4], Option<mod_api::Text>)> {
         if self.client.screen != Screen::Paused || !self.client.pause_menu {
@@ -399,7 +399,7 @@ impl Game<'_> {
             .collect()
     }
 
-    pub(in crate::game) fn draw_pause_menu(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_pause_menu(&mut self, batch: &mut HudBatch) {
         let friends = self.friends_shown();
         let atlas = &self.gui.atlas;
         let (w, h) = (batch.width, batch.height);
@@ -521,7 +521,7 @@ impl Game<'_> {
             ui::tooltip(batch, atlas, &lines, self.client.cursor);
         }
     }
-    pub(in crate::game) fn execute_pause_action(&mut self, hit: u8) -> Result<()> {
+    pub(in crate::game::client_side) fn execute_pause_action(&mut self, hit: u8) -> Result<()> {
         match hit {
             0 => {
                 self.client.pause_focus = None;
@@ -573,7 +573,7 @@ impl Game<'_> {
             })
             .map(|(i, page)| (page.title(), ADDED_PAGES + i as u8))
     }
-    pub(in crate::game) fn pause_click(&mut self) -> Result<bool> {
+    pub(in crate::game::client_side) fn pause_click(&mut self) -> Result<bool> {
         let (w, h) = {
             let size = self
                 .renderer
@@ -631,7 +631,7 @@ impl Game<'_> {
         }
         Ok(hit.is_some())
     }
-    pub(in crate::game) fn pause_key(&mut self, key: KeyCode) -> Result<bool> {
+    pub(in crate::game::client_side) fn pause_key(&mut self, key: KeyCode) -> Result<bool> {
         let (w, h) = {
             let size = self
                 .renderer
@@ -762,7 +762,7 @@ impl Game<'_> {
         }
     }
     /// DeathScreen: gradient, the title at double size, the cause and score.
-    pub(in crate::game) fn draw_death_screen(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_death_screen(&mut self, batch: &mut HudBatch) {
         let atlas = &self.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         // fillGradient(0x60500000 -> 0xA0803030).
@@ -889,7 +889,7 @@ impl Game<'_> {
     }
     /// LocalPlayer.respawn: the player comes back (the death screen's
     /// button, or at once with `immediate_respawn`).
-    pub(in crate::game) fn respawn_player(&mut self) -> Result<()> {
+    pub(in crate::game::client_side) fn respawn_player(&mut self) -> Result<()> {
         self.client.death_focus = None;
         self.ui.death_text = None;
         // LocalPlayer.respawn: KeyMapping.resetToggleKeys.
@@ -898,7 +898,7 @@ impl Game<'_> {
         self.remote_respawn();
         Ok(())
     }
-    pub(in crate::game) fn death_click(&mut self) -> Result<bool> {
+    pub(in crate::game::client_side) fn death_click(&mut self) -> Result<bool> {
         if self
             .ui
             .died_at
@@ -965,7 +965,7 @@ impl Game<'_> {
         self.death_action(hit)?;
         Ok(hit.is_some())
     }
-    pub(in crate::game) fn death_key(&mut self, key: KeyCode) -> Result<bool> {
+    pub(in crate::game::client_side) fn death_key(&mut self, key: KeyCode) -> Result<bool> {
         if self
             .ui
             .died_at
@@ -1057,7 +1057,7 @@ impl Game<'_> {
     }
     /// The confirm screen's answer: yes leaves the world, no respawns
     /// (`DeathScreen.handleExitToTitleScreen`'s callback).
-    pub(in crate::game) fn death_confirm_answer(&mut self, yes: bool) -> Result<()> {
+    pub(in crate::game::client_side) fn death_confirm_answer(&mut self, yes: bool) -> Result<()> {
         self.ui.death_confirm = None;
         if yes {
             self.audio.0.play_button_click();

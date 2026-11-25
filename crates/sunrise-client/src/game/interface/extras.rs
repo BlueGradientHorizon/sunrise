@@ -29,7 +29,11 @@ impl Game<'_> {
         self.client.started.elapsed().as_secs_f64()
     }
     /// Mouse buttons while playing, for mods' clicks.
-    pub(in crate::game) fn extras_mouse(&mut self, button: MouseButton, pressed: bool) {
+    pub(in crate::game::client_side) fn extras_mouse(
+        &mut self,
+        button: MouseButton,
+        pressed: bool,
+    ) {
         let i = match button {
             MouseButton::Left => 0,
             MouseButton::Right => 1,
@@ -77,26 +81,30 @@ impl Game<'_> {
         })
     }
     /// The field-of-view modifier target, divided by a smooth zoom.
-    pub(in crate::game) fn zoomed_fov_target(&self, vanilla: f32) -> f32 {
+    pub(in crate::game::client_side) fn zoomed_fov_target(&self, vanilla: f32) -> f32 {
         match self.zoom_now() {
             (factor, true, _) => fov_target(vanilla, factor),
             _ => vanilla,
         }
     }
     /// The field of view in degrees, divided by an instant zoom.
-    pub(in crate::game) fn zoomed_fov_degrees(&self, fov: f32) -> f32 {
+    pub(in crate::game::client_side) fn zoomed_fov_degrees(&self, fov: f32) -> f32 {
         match self.zoom_now() {
             (factor, false, _) => fov / factor,
             _ => fov,
         }
     }
     /// Mouse turning while zoomed.
-    pub(in crate::game) fn zoom_turn_scale(&self) -> f64 {
+    pub(in crate::game::client_side) fn zoom_turn_scale(&self) -> f64 {
         self.zoom_now().2
     }
     /// The PvP HUD widgets and the engine's extra corner panels. The caller hides
     /// these with F1, and hands the remaining corner space to the whole-HUD Post hook.
-    pub(in crate::game) fn draw_extras(&mut self, batch: &mut HudBatch, corners: &mut Corners) {
+    pub(in crate::game::client_side) fn draw_extras(
+        &mut self,
+        batch: &mut HudBatch,
+        corners: &mut Corners,
+    ) {
         self.draw_pvp_hud(batch, corners);
         // The layers crates registered (`sunrise_hooks::hud`): none, no canvas.
         let layers = sunrise_hooks::hud::engine::all();
@@ -107,7 +115,7 @@ impl Game<'_> {
     }
     /// The height the status effect icons take at the top right
     /// (`Hud.extractEffects`: beneficial at y 1, harmful at y 26).
-    pub(in crate::game) fn effect_rows_height(&self) -> f32 {
+    pub(in crate::game::client_side) fn effect_rows_height(&self) -> f32 {
         let effects = &self.potions.effects.list;
         if effects.is_empty() || self.client.screen != Screen::Playing || self.pvp_effects_shown() {
             return 0.0;

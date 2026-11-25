@@ -22,7 +22,7 @@ fn in_bounds(at: [f64; 3]) -> bool {
 
 /// Whether level event `id` can play with `data`: the events that carry a
 /// block state (2001, 2014, 3008) need `data` to be one of the `states`.
-pub(in crate::game) fn level_event_data_ok(id: i32, data: i32, states: usize) -> bool {
+pub(in crate::game::server_side) fn level_event_data_ok(id: i32, data: i32, states: usize) -> bool {
     !matches!(id, 2001 | 2014 | 3008) || usize::try_from(data).is_ok_and(|d| d < states)
 }
 
@@ -34,7 +34,7 @@ impl GameLevel<'_> {
     /// the behaviour raises. False off an authoritative server, or for an
     /// event that carries a block state (see `level_level_event`)
     /// when `data` isn't one.
-    pub(in crate::game) fn native_level_event(
+    pub(in crate::game::server_side) fn native_level_event(
         &mut self,
         id: i32,
         pos: [i32; 3],

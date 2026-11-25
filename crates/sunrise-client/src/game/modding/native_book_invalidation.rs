@@ -25,7 +25,7 @@ impl Game<'_> {
         self.clear_mod_book_placement_screen();
         self.ensure_mod_book_catalog();
     }
-    pub(in crate::game) fn invalidate_mod_book_placement_knowledge(&mut self) {
+    pub(in crate::game::server_side) fn invalidate_mod_book_placement_knowledge(&mut self) {
         let Some(uuid) = self.server.lan_acting_uuid else {
             return;
         };

@@ -157,7 +157,7 @@ pub(in crate::game) struct DrivenLerp {
 /// `AbstractBoat.createInterpolationHandler` gives it.
 pub(in crate::game) const LERP_STEPS: u32 = 3;
 /// `Mth.wrapDegrees(double)`.
-pub(in crate::game) fn wrap_degrees_f64(angle: f64) -> f64 {
+pub(in crate::game::server_side) fn wrap_degrees_f64(angle: f64) -> f64 {
     let mut a = angle % 360.0;
     if a >= 180.0 {
         a -= 360.0;
@@ -177,12 +177,15 @@ pub(in crate::game) const BUBBLE_TIME: i32 = 60;
 pub(in crate::game) const BUBBLE_DOWN_EVENT: i8 = 71;
 pub(in crate::game) const BUBBLE_UP_EVENT: i8 = 72;
 /// What `PowderSnowBlock.entityInside` passes to `makeStuckInBlock`.
-pub(in crate::game) fn powder_snow_stuck() -> Vec3 {
+pub(in crate::game::server_side) fn powder_snow_stuck() -> Vec3 {
     Vec3::new(f64::from(0.9_f32), 1.5, f64::from(0.9_f32))
 }
 /// The cells a box reaches into (deflated by 1e-5, as `Entity.checkInsideBlocks` does),
 /// in x, y, z order.
-pub(in crate::game) fn reached_cells(bounds: Aabb, is: impl Fn([i32; 3]) -> bool) -> Vec<[i32; 3]> {
+pub(in crate::game::server_side) fn reached_cells(
+    bounds: Aabb,
+    is: impl Fn([i32; 3]) -> bool,
+) -> Vec<[i32; 3]> {
     let e = f64::from(1.0e-5_f32);
     let bounds = bounds.deflate(Vec3::new(e, e, e));
     let (lo, hi) = (bounds.min_position(), bounds.max_position());
@@ -201,7 +204,7 @@ pub(in crate::game) fn reached_cells(bounds: Aabb, is: impl Fn([i32; 3]) -> bool
 /// The snowflake `PowderSnowBlock.entityInside` sends for an entity whose known movement is
 /// `known`: none unless it moved horizontally and a coin falls so, then `Mth.randomBetween(-1, 1)`
 /// over 12 sideways and 0.05 up.
-pub(in crate::game) fn snowflake_velocity(
+pub(in crate::game::server_side) fn snowflake_velocity(
     known: Vec3,
     random: &mut impl RandomSource,
 ) -> Option<[f64; 3]> {
@@ -213,7 +216,7 @@ pub(in crate::game) fn snowflake_velocity(
     Some([f64::from(xa), f64::from(0.05_f32), f64::from(za)])
 }
 /// `Entity.load`'s `Fire` (a short; 0 when absent).
-pub(in crate::game) fn saved_fire(tag: &Tag) -> i32 {
+pub(in crate::game::server_side) fn saved_fire(tag: &Tag) -> i32 {
     i32::from(sunrise_client::save::number(tag.get("Fire")).unwrap_or(0) as i16)
 }
 /// `Entity.load`'s `TicksFrozen` (an int; 0 when absent).
@@ -231,7 +234,7 @@ pub(in crate::game) fn put_ticks_frozen(map: &mut sunrise_core::nbt::Compound, t
 pub(in crate::game) const WIDTH: f64 = 1.375;
 pub(in crate::game) const HEIGHT: f64 = 0.5625;
 impl Boat {
-    pub(in crate::game) fn apply_step_writes(
+    pub(in crate::game::server_side) fn apply_step_writes(
         &mut self,
         velocity: Vec3,
         writes: Vec<mod_api::EntityWrite>,
@@ -248,13 +251,13 @@ impl Boat {
 
     /// `AbstractBoat.tick`: the hurt wobble and the damage wear off, before
     /// `Entity.baseTick` can burn the boat.
-    pub(in crate::game) fn wear_off_hurt(&mut self) {
+    pub(in crate::game::server_side) fn wear_off_hurt(&mut self) {
         self.hurt_time = (self.hurt_time - 1).max(0);
         self.damage = (self.damage - 1.0).max(0.0);
     }
     /// `AbstractBoat.tick`: passengers lose control after 60 consecutive
     /// underwater ticks; any other status resets the counter.
-    pub(in crate::game) fn tick_submersion(&mut self) {
+    pub(in crate::game::server_side) fn tick_submersion(&mut self) {
         self.out_of_control =
             if matches!(self.status, Status::UnderWater | Status::UnderFlowingWater) {
                 self.out_of_control + 1.0
@@ -374,7 +377,7 @@ impl Boat {
         self.bounds_at(self.position)
     }
     /// The box of this boat were its position `p`.
-    pub(in crate::game) fn bounds_at(&self, p: Vec3) -> Aabb {
+    pub(in crate::game::server_side) fn bounds_at(&self, p: Vec3) -> Aabb {
         let w = WIDTH / 2.0;
         let vanilla = Aabb::new(
             Vec3::new(p.x - w, p.y, p.z - w),
@@ -384,7 +387,7 @@ impl Boat {
     }
     /// `Entity.saveWithoutId` with `AbstractChestBoat`'s items: the loaded
     /// compound `raw` under the live fields.
-    pub(in crate::game) fn to_nbt(
+    pub(in crate::game::server_side) fn to_nbt(
         &self,
         uuid: [i32; 4],
         raw: Option<&Tag>,
@@ -414,7 +417,7 @@ impl Boat {
     }
     /// The start of `Entity.move`: a boat made stuck since its last move goes its
     /// velocity times the multiplier, and its velocity and the multiplier are spent.
-    pub(in crate::game) fn take_movement(&mut self) -> Vec3 {
+    pub(in crate::game::server_side) fn take_movement(&mut self) -> Vec3 {
         if self.stuck.length_squared() <= 1.0e-7 {
             return self.velocity;
         }
@@ -429,18 +432,18 @@ impl Boat {
         matches!(self.status, Status::UnderWater | Status::UnderFlowingWater)
     }
     /// `Entity.isInLiquid`, for `Leashable.angularFriction`.
-    pub fn in_liquid(&self) -> bool {
+    pub(in crate::game::server_side) fn in_liquid(&self) -> bool {
         matches!(
             self.status,
             Status::InWater | Status::UnderWater | Status::UnderFlowingWater
         )
     }
     /// `getMaxPassengers`: two, one beside a chest.
-    pub fn max_passengers(&self) -> usize {
+    pub(in crate::game::server_side) fn max_passengers(&self) -> usize {
         if self.chest { 1 } else { 2 }
     }
     /// `rideHeight`: a third of a boat's height, 8/9 of a raft's.
-    pub(in crate::game) fn ride_height(&self) -> f64 {
+    pub(in crate::game::server_side) fn ride_height(&self) -> f64 {
         let height = HEIGHT as f32;
         f64::from(if &*self.wood == "bamboo" {
             height * 0.888_888_9
@@ -501,7 +504,7 @@ impl Boat {
     /// time drops while the boat stays over a column and resets when it leaves.
     /// `Some(down)` on the tick it runs out: the boat is thrown up (`false`) or
     /// pulled down (`true`).
-    pub(in crate::game) fn tick_bubble_countdown(&mut self) -> Option<bool> {
+    pub(in crate::game::server_side) fn tick_bubble_countdown(&mut self) -> Option<bool> {
         if !self.above_bubble_column {
             self.bubble_time = 0;
         }
@@ -515,7 +518,7 @@ impl Boat {
         fired
     }
     /// `getRowingTime`.
-    pub fn paddle_state(&self, side: usize) -> bool {
+    pub(in crate::game::server_side) fn paddle_state(&self, side: usize) -> bool {
         self.paddling[side] && self.paddle_controller
     }
     pub fn rowing_time(&self, side: usize, a: f32) -> f32 {
@@ -536,11 +539,11 @@ impl Boat {
         self.entity_type_name().to_owned()
     }
 
-    pub(in crate::game) fn entity_type_name(&self) -> &str {
+    pub(in crate::game::server_side) fn entity_type_name(&self) -> &str {
         &self.type_names[usize::from(self.chest)]
     }
 
-    pub(in crate::game) fn shared_type_name(&self) -> Arc<str> {
+    pub(in crate::game::server_side) fn shared_type_name(&self) -> Arc<str> {
         Arc::clone(&self.type_names[usize::from(self.chest)])
     }
 }
@@ -556,14 +559,14 @@ pub(in crate::game) fn any_boat_wood(item: &str) -> Option<(&str, bool)> {
     }
     boat_wood(item).map(|w| (w, false))
 }
-pub(in crate::game) fn boat_wood(item: &str) -> Option<&str> {
+pub(in crate::game::server_side) fn boat_wood(item: &str) -> Option<&str> {
     let name = item.strip_prefix("minecraft:")?;
     name.strip_suffix("_boat")
         .or_else(|| name.strip_suffix("_raft"))
         .filter(|w| !w.ends_with("_chest"))
 }
 /// `EntityType.by`: a boat-shaped id still needs a registered entity type.
-pub(in crate::game) fn registered_boat<'a>(
+pub(in crate::game::server_side) fn registered_boat<'a>(
     kind: &'a str,
     registry: &sunrise_client_core::registries::Registries,
 ) -> Option<(&'a str, bool)> {
@@ -576,7 +579,7 @@ pub(in crate::game) fn registered_boat<'a>(
 }
 
 /// The boat item and its matching vanilla entity type are both registered.
-pub(in crate::game) fn registered_boat_item<'a>(
+pub(in crate::game::server_side) fn registered_boat_item<'a>(
     id: &'a str,
     items: &sunrise_client::items::Items,
 ) -> Option<(&'a str, bool)> {
@@ -659,7 +662,7 @@ impl Game<'_> {
     }
     /// `getWaterLevelAbove`: the top of the water column the hull is in.
     /// A float, as vanilla's: the block's y plus its water height in float.
-    pub(in crate::game) fn water_level_above(&self, b: &Boat) -> f32 {
+    pub(in crate::game::server_side) fn water_level_above(&self, b: &Boat) -> f32 {
         let bb = b.bounds();
         let (lo, hi) = (bb.min_position(), bb.max_position());
         let (y0, y1) = (hi.y.floor() as i32, hi.y.ceil() as i32);
@@ -681,7 +684,7 @@ impl Game<'_> {
         }
         (i64::from(y1) + 1) as f32
     }
-    pub(in crate::game) fn boat_status(
+    pub(in crate::game::server_side) fn boat_status(
         &self,
         b: &Boat,
         water_level: &mut f64,
@@ -740,7 +743,7 @@ impl Game<'_> {
     }
     /// `AbstractBoat.getGroundFriction`: average friction of the blocks whose
     /// collision shape meets a thin slab just under the hull (lily pads skipped).
-    pub(in crate::game) fn boat_ground_friction(&self, b: &Boat, bb: Aabb) -> f32 {
+    pub(in crate::game::server_side) fn boat_ground_friction(&self, b: &Boat, bb: Aabb) -> f32 {
         let (lo, hi) = (bb.min_position(), bb.max_position());
         let ground = Aabb::new(
             Vec3::new(lo.x, lo.y - 0.001, lo.z),
@@ -864,7 +867,7 @@ impl Game<'_> {
     /// drives: its own moves since the last step carry the target along (where
     /// the boat fits there), then `LinearInterpolationHandler.doInterpolate`
     /// takes a `1 / steps` share of the way.
-    pub(in crate::game) fn interpolate_driven_boat(&self, b: &mut Boat) {
+    pub(in crate::game::server_side) fn interpolate_driven_boat(&self, b: &mut Boat) {
         let Some(mut l) = b.lerp.take() else {
             return;
         };
@@ -892,7 +895,11 @@ impl Game<'_> {
     }
     /// `AbstractInterpolationHandler.adjustInterpolationPosition`: check the
     /// shifted target against blocks, entities and the border at the boat's live pose.
-    pub(in crate::game) fn boat_lerp_target_fits(&self, boat: &Boat, target: Vec3) -> bool {
+    pub(in crate::game::server_side) fn boat_lerp_target_fits(
+        &self,
+        boat: &Boat,
+        target: Vec3,
+    ) -> bool {
         let bounds = boat.bounds_at(target);
         let scene = SceneCollisions {
             world: &self.world,
@@ -1221,7 +1228,7 @@ impl Game<'_> {
         self.tick_boats_now();
         self.vehicles_ticking(false);
     }
-    pub(in crate::game) fn tick_boats_now(&mut self) {
+    pub(in crate::game::server_side) fn tick_boats_now(&mut self) {
         // ServerLevel.tick: only entities in entity-ticking chunks tick.
         let ticking = self.entity_ticking_area();
         let mut round = self.native_tick_round();
@@ -1311,7 +1318,7 @@ impl Game<'_> {
     /// client-driven ones too: `applyEffectsFromBlocks` (lava breaks a boat
     /// at once), the passengers of one under water too long get out, and it
     /// picks up or pushes what it touches.
-    pub(in crate::game) fn boat_server_passes(
+    pub(in crate::game::server_side) fn boat_server_passes(
         &mut self,
         id: u32,
         driven: &[u32],
@@ -1434,7 +1441,11 @@ impl Game<'_> {
     /// simulates the boat) the column is remembered, the countdown starts and
     /// the splash's game event goes to the listeners (its sound and particle
     /// are the client's).
-    pub(in crate::game) fn boat_above_bubble_column(&mut self, i: usize, drag_down: bool) {
+    pub(in crate::game::server_side) fn boat_above_bubble_column(
+        &mut self,
+        i: usize,
+        drag_down: bool,
+    ) {
         self.boats.update(i, |b| {
             b.above_bubble_column = true;
             b.bubble_down = drag_down;
@@ -1477,7 +1488,7 @@ impl Game<'_> {
     /// `Entity.ejectPassengers`: the mobs get out here, this window's player
     /// gets out, and a server's player is asked to
     /// (`guest_vehicle_tick` lets it out through its client).
-    pub(in crate::game) fn eject_boat_riders(&mut self, i: usize) {
+    pub(in crate::game::server_side) fn eject_boat_riders(&mut self, i: usize) {
         self.eject_boat_mobs(i);
         let id = self.boats[i].id;
         if self.riding == Some(id) && self.player.is_some() {
@@ -1489,7 +1500,7 @@ impl Game<'_> {
     /// `AbstractBoat.tickBubbleColumn`: on the server, a boat that stays over
     /// a column for `BUBBLE_TIME` ticks is thrown up or pulled down (a down
     /// column lets the riders out first), and every client is told.
-    pub(in crate::game) fn tick_boat_bubble_column(&mut self, i: usize) {
+    pub(in crate::game::server_side) fn tick_boat_bubble_column(&mut self, i: usize) {
         if let Some(down) = self.boats.update(i, Boat::tick_bubble_countdown) {
             let (id, p) = (self.boats[i].id, self.boats[i].position);
             let event = if down {
@@ -1508,7 +1519,7 @@ impl Game<'_> {
     /// `applyEffectsFromBlocks` that reach bubble columns (the lava is
     /// `boat_lava_tick`'s), then `tickBubbleColumn`; and the wobble when this
     /// window is its own client.
-    pub(in crate::game) fn boat_bubble_tick(&mut self, i: usize) {
+    pub(in crate::game::server_side) fn boat_bubble_tick(&mut self, i: usize) {
         let id = self.boats[i].id;
         // An ejection nobody took (its player left the boat first) is void.
         if !self.guest_rides(id) {
@@ -1533,7 +1544,7 @@ impl Game<'_> {
             self.boats.update(i, Boat::tick_bubble_wobble);
         }
     }
-    pub(in crate::game) fn boat_step_on(&mut self, boat: &mut Boat) {
+    pub(in crate::game::server_side) fn boat_step_on(&mut self, boat: &mut Boat) {
         let mut velocity = boat.velocity;
         let writes = self.body_step_on(
             (boat.id, boat.entity_type_name()),
@@ -1561,12 +1572,12 @@ impl Game<'_> {
     }
     /// `PowderSnowBlock.entityInside` for a boat: the powder snow cells its box, and the box it
     /// had before its move, reach into (`Entity.checkInsideBlocks` along the move).
-    pub(in crate::game) fn boat_powder_snow_cells(&self, b: &Boat) -> Vec<[i32; 3]> {
+    pub(in crate::game::server_side) fn boat_powder_snow_cells(&self, b: &Boat) -> Vec<[i32; 3]> {
         self.boat_reached_cells(b, |p| self.is_powder_snow(p))
     }
     /// The cells a boat's box, and the box it had before its move, reach into
     /// (`Entity.checkInsideBlocks` along the move), in x, y, z order.
-    pub(in crate::game) fn boat_reached_cells(
+    pub(in crate::game::server_side) fn boat_reached_cells(
         &self,
         b: &Boat,
         is: impl Fn([i32; 3]) -> bool,
@@ -1584,7 +1595,7 @@ impl Game<'_> {
     /// `Entity.makeStuckInBlock` from the powder snow (`PowderSnowBlock.entityInside`) and
     /// cobweb (`WebBlock.entityInside`) cells a boat's box reaches into: each resets its fall
     /// and the last one reached leaves the multiplier its next move spends.
-    pub(in crate::game) fn boat_stuck_in_blocks(&self, b: &mut Boat) {
+    pub(in crate::game::server_side) fn boat_stuck_in_blocks(&self, b: &mut Boat) {
         // `forEachBlockIntersectedBetween` visits the box before the move first and the box
         // after it last, so a block the boat moves into wins over one it leaves.
         let mut cells = Vec::new();
@@ -1611,7 +1622,7 @@ impl Game<'_> {
         }
     }
     /// `BaseFireBlock.fireDamage` of a fire block at `p`.
-    pub(in crate::game) fn fire_damage_at(&self, p: [i32; 3]) -> Option<f32> {
+    pub(in crate::game::server_side) fn fire_damage_at(&self, p: [i32; 3]) -> Option<f32> {
         match &*self
             .res
             .facts()
@@ -1626,7 +1637,7 @@ impl Game<'_> {
     /// `Entity.baseTick` on the server: a burning boat takes 1 fire damage
     /// every 20 ticks (none in lava) and burns a tick down. True when the fire
     /// broke it.
-    pub(in crate::game) fn boat_fire_tick(&mut self, i: usize) -> bool {
+    pub(in crate::game::server_side) fn boat_fire_tick(&mut self, i: usize) -> bool {
         if self.remote.is_some() || self.boats[i].fire_ticks <= 0 {
             return false;
         }
@@ -1642,7 +1653,7 @@ impl Game<'_> {
     /// (with `mob_griefing`) and water and powder snow put it out. Rain puts
     /// it out too, and a boat neither burning nor lit has its cooldown
     /// cleared. True when the fire broke it.
-    pub(in crate::game) fn boat_fire_passes(&mut self, i: usize) -> bool {
+    pub(in crate::game::server_side) fn boat_fire_passes(&mut self, i: usize) -> bool {
         let b = &self.boats[i];
         let mut steps = vec![b.bounds_at(b.previous)];
         if b.previous != b.position {
@@ -1724,13 +1735,18 @@ impl Game<'_> {
     }
     /// Whether the water at cell `p` reaches a box whose bottom is `low`
     /// (`Entity.collidedWithFluid`).
-    pub(in crate::game) fn water_reaches(&self, p: [i32; 3], low: f64) -> bool {
+    pub(in crate::game::server_side) fn water_reaches(&self, p: [i32; 3], low: f64) -> bool {
         self.fluid_height_of(p[0], p[1], p[2], Some(Fluid::Water))
             .is_some_and(|(height, _)| low + 1.0e-5 < f64::from(p[1]) + f64::from(height))
     }
     /// `VehicleEntity.hurtServer` for fire (`inFire`, `onFire`), which an
     /// `Invulnerable` boat ignores. True when the boat broke.
-    pub(in crate::game) fn burn_boat(&mut self, i: usize, damage: f32, damage_type: &str) -> bool {
+    pub(in crate::game::server_side) fn burn_boat(
+        &mut self,
+        i: usize,
+        damage: f32,
+        damage_type: &str,
+    ) -> bool {
         let id = self.boats[i].id;
         let invulnerable = self.saved_refuses_damage(id, damage_type, false);
         let kind = self.boats[i].entity_type();
@@ -1746,7 +1762,7 @@ impl Game<'_> {
     /// `PowderSnowBlock.entityInside`'s `ServerLevel.sendParticles`: a boat that moved
     /// horizontally in powder snow throws snowflakes the players around see. `AbstractBoat.tick`
     /// calls `applyEffectsFromBlocks` twice.
-    pub(in crate::game) fn boat_powder_snow_snowflakes(&mut self, i: usize) {
+    pub(in crate::game::server_side) fn boat_powder_snow_snowflakes(&mut self, i: usize) {
         let b = &self.boats[i];
         let cells = self.boat_powder_snow_cells(b);
         if cells.is_empty() {
@@ -1766,7 +1782,7 @@ impl Game<'_> {
     /// `applyEffectsFromBlocks` calls in `AbstractBoat.tick`: twice 40
     /// damage, so lava breaks a boat on its first tick inside, and the fire
     /// `lavaIgnite` lights never gets to burn it. True when the boat broke.
-    pub(in crate::game) fn boat_lava_tick(&mut self, i: usize) -> bool {
+    pub(in crate::game::server_side) fn boat_lava_tick(&mut self, i: usize) -> bool {
         if !self.in_lava(self.boats[i].bounds()) {
             return false;
         }
@@ -1806,7 +1822,7 @@ impl Game<'_> {
     /// and whether it is underwater, for `Entity.getFluidInteractionBox`. A boat
     /// keeps only the part of the passenger's box above its own top, so a boat
     /// bobbing on water never sinks the passenger's eyes or body.
-    pub(in crate::game) fn riding_boat_fluid_box(&self) -> Option<RiddenBoat> {
+    pub(in crate::game::server_side) fn riding_boat_fluid_box(&self) -> Option<RiddenBoat> {
         self.boats
             .iter()
             .find(|b| Some(b.id) == self.riding)
@@ -1817,7 +1833,7 @@ impl Game<'_> {
     }
     /// `getDismountLocationForPassenger`: in front of the player if there is
     /// floor there, else on top of the boat.
-    pub(in crate::game) fn dismount(&mut self, i: usize) {
+    pub(in crate::game::server_side) fn dismount(&mut self, i: usize) {
         let id = self.boats[i].id;
         if self.riding == Some(id) && !self.native_may_leave(id) {
             return;
@@ -1840,7 +1856,11 @@ impl Game<'_> {
         }
     }
     /// Where the boat at `i` lets a player facing `yaw` off.
-    pub(in crate::game) fn boat_player_dismount_target(&self, i: usize, yaw: f32) -> Vec3 {
+    pub(in crate::game::server_side) fn boat_player_dismount_target(
+        &self,
+        i: usize,
+        yaw: f32,
+    ) -> Vec3 {
         // The player's bbWidth, a float.
         self.boat_dismount_target(&self.boats[i], f64::from(0.6_f32), yaw)
     }
@@ -1868,7 +1888,7 @@ impl Game<'_> {
         }
     }
     /// `Entity.setYRot` on a boat just made (its old rotation moves with it).
-    pub(in crate::game) fn set_boat_yaw(&mut self, id: u32, yaw: f32) {
+    pub(in crate::game::server_side) fn set_boat_yaw(&mut self, id: u32, yaw: f32) {
         if let Some(i) = self.boats.iter().position(|b| b.id == id) {
             self.boats.update(i, |b| {
                 b.yaw = yaw;
@@ -1877,7 +1897,7 @@ impl Game<'_> {
         }
     }
     /// `BoatItem.use`: aim at a block or the water surface.
-    pub(in crate::game) fn place_boat(&mut self, stack: &ItemStack) -> bool {
+    pub(in crate::game::server_side) fn place_boat(&mut self, stack: &ItemStack) -> bool {
         let Some(boat) = self.boat_to_place(stack) else {
             return false;
         };
@@ -1976,7 +1996,10 @@ impl Game<'_> {
     }
     /// `AbstractBoat.interact`: board the boat under the crosshair, or the one
     /// a guest's interact packet named.
-    pub(in crate::game) fn interact_boat(&mut self, target: Option<InteractTarget>) -> bool {
+    pub(in crate::game::server_side) fn interact_boat(
+        &mut self,
+        target: Option<InteractTarget>,
+    ) -> bool {
         let Some((i, d)) = (match target {
             Some(t) => Self::named_entity(&self.boats, t.id, |b| b.id).map(|i| (i, 0.0)),
             None => self.boat_hit(),
@@ -2020,7 +2043,7 @@ impl Game<'_> {
     /// server hands them to the player as a `ChestMenu` (`as_guest` ->
     /// `lan_open_container`). `AbstractChestBoat.interact` fires
     /// `CONTAINER_OPEN` and angers the piglins that see it.
-    pub(in crate::game) fn open_chest_boat_container(&mut self, i: usize) {
+    pub(in crate::game::server_side) fn open_chest_boat_container(&mut self, i: usize) {
         let b = &self.boats[i];
         let key = (i32::MAX - 15, super::minecarts::CART_KEY_Y, b.id as i32);
         let at = [b.position.x, b.position.y, b.position.z];
@@ -2043,7 +2066,7 @@ impl Game<'_> {
     /// `AbstractChestBoat.openCustomInventoryScreen` (`HasCustomInventoryScreen`),
     /// the inventory key while riding a chest boat: its chest opens, not the
     /// player's inventory.
-    pub(in crate::game) fn open_ridden_chest_boat(&mut self) -> bool {
+    pub(in crate::game::server_side) fn open_ridden_chest_boat(&mut self) -> bool {
         let Some(id) = self.riding else {
             return false;
         };
@@ -2065,7 +2088,7 @@ impl Game<'_> {
             .is_some_and(|b| b.chest)
     }
     /// `VehicleEntity.hurtServer` from the player's attack.
-    pub(in crate::game) fn attack_boat(&mut self) -> bool {
+    pub(in crate::game::server_side) fn attack_boat(&mut self) -> bool {
         let Some((i, d)) = self.boat_hit() else {
             return false;
         };

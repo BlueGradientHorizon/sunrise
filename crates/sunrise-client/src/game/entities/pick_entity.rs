@@ -43,7 +43,7 @@ pub(in crate::game) fn aabb_extents((lo, hi): ([f64; 3], [f64; 3])) -> Aabb {
     )
 }
 
-pub(in crate::game) fn knot_bounds(block: [i32; 3]) -> Aabb {
+pub(in crate::game::client_side) fn knot_bounds(block: [i32; 3]) -> Aabb {
     let knot = sunrise_client::mobs::leash::knot_state(block);
     let p = knot.position;
     let half = knot.width / 2.0;
@@ -82,7 +82,7 @@ impl Game<'_> {
         })
     }
 
-    pub(in crate::game) fn crosshair_block_target(
+    pub(in crate::game::client_side) fn crosshair_block_target(
         &self,
         hit: super::Hit,
     ) -> Option<CrosshairTarget> {
@@ -117,7 +117,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn pick_entity_candidate_within(
+    pub(in crate::game::client_side) fn pick_entity_candidate_within(
         &mut self,
         max_distance: f64,
         max_distance_sq: f64,
@@ -146,7 +146,7 @@ impl Game<'_> {
     }
 
     /// Runs the unified `LocalPlayer.raycastHitResult` entity result for unstored consumers.
-    pub(in crate::game) fn pick_entity_hit_unified(&self) -> Option<PickCandidate> {
+    pub(in crate::game::client_side) fn pick_entity_hit_unified(&self) -> Option<PickCandidate> {
         match self.compute_crosshair_decision() {
             CrosshairDecision::Entity(hit) => Some(hit),
             _ => None,
@@ -215,7 +215,7 @@ impl Game<'_> {
     /// Single pickable-entity query matching `LocalPlayer.pick` and `Level.getEntities`:
     /// sweeps the camera entity's current bounding box, visits accessible sections in
     /// `EntitySectionStorage` order (filtering by raw box), then appends dragon parts.
-    pub(in crate::game) fn collect_pick_candidates_within(
+    pub(in crate::game::client_side) fn collect_pick_candidates_within(
         &self,
         max_distance: f64,
         pick: &mut PickAccumulator,
@@ -244,11 +244,11 @@ impl Game<'_> {
     }
 
     /// Entity under the crosshair before any block (`Some(None)` when `getPickResult` is empty).
-    pub(in crate::game) fn pick_entity_hit_at(&self) -> Option<(f64, Option<i32>)> {
+    pub(in crate::game::client_side) fn pick_entity_hit_at(&self) -> Option<(f64, Option<i32>)> {
         self.crosshair_entity_hit()
             .map(|hit| (hit.distance, hit.pickable.then_some(hit.id)))
     }
-    pub(in crate::game) fn pick_entity_hit(&self) -> Option<Option<i32>> {
+    pub(in crate::game::client_side) fn pick_entity_hit(&self) -> Option<Option<i32>> {
         self.pick_entity_hit_at().map(|hit| hit.1)
     }
     /// Returns the wire entity id under the crosshair before any block.
@@ -258,7 +258,7 @@ impl Game<'_> {
     }
 
     /// `ClientSuggestionProvider.getSelectedEntities`: UUID of the crosshair entity hit.
-    pub(in crate::game) fn crosshair_entity_uuid(&self) -> Option<String> {
+    pub(in crate::game::client_side) fn crosshair_entity_uuid(&self) -> Option<String> {
         self.crosshair_entity_hit()
             .filter(|hit| hit.suggest_uuid)
             .and_then(|hit| self.persist.uuids.get(&(hit.id as u32)).copied())

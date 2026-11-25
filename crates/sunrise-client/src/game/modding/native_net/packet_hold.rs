@@ -40,7 +40,7 @@ pub(in crate::game) struct Holds<T = HeldPlay> {
     overflowed: HashSet<HoldId>,
 }
 impl Holds<HeldPlay> {
-    pub(in crate::game) fn clear_cauldron_continuations(&mut self) {
+    pub(in crate::game::client_side) fn clear_cauldron_continuations(&mut self) {
         if let Some((_, packets, _)) = &mut self.active {
             for packet in packets {
                 packet.cauldron = None;
@@ -49,7 +49,7 @@ impl Holds<HeldPlay> {
     }
 }
 impl<T: AsRef<[u8]> + Default> Holds<T> {
-    pub(in crate::game) fn clear(&mut self) {
+    pub(in crate::game::client_side) fn clear(&mut self) {
         *self = Self::default();
     }
     fn sync(&mut self, incarnation: Option<(u64, u64)>) {
@@ -192,7 +192,7 @@ impl Game<'_> {
             }
         }
     }
-    pub(in crate::game) fn publish_mod_held(
+    pub(in crate::game::client_side) fn publish_mod_held(
         &self,
         prepared: sunrise_client::net::PreparedPacket,
         packet: ServerboundPlayPacket,

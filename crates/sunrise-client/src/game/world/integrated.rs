@@ -68,7 +68,7 @@ pub(in crate::game) fn server_thread_stack() -> usize {
 }
 
 /// Interpret `min_stack` as a byte count, as std parses `RUST_MIN_STACK`.
-pub(in crate::game) fn stack_for(min_stack: Option<&str>) -> usize {
+pub(in crate::game::server_side) fn stack_for(min_stack: Option<&str>) -> usize {
     min_stack
         .and_then(|bytes| bytes.parse::<usize>().ok())
         .unwrap_or_default()
@@ -183,7 +183,7 @@ impl Integrated {
 
     /// Queue every change, even if the currently published tree still has the requested state:
     /// an earlier update may be waiting for a busy server thread.
-    pub(in crate::game) fn queue_pregen_option(&self, enabled: bool) {
+    pub(in crate::game::server_side) fn queue_pregen_option(&self, enabled: bool) {
         self.tell(OwnerRequest::SetPregen(enabled));
     }
     /// The generator of the server's level in `dimension`, once it has run.
@@ -324,7 +324,7 @@ impl Integrated {
             .as_ref()
             .is_none_or(|thread| thread.is_finished())
     }
-    pub(in crate::game) fn halt(&mut self) -> Result<()> {
+    pub(in crate::game::server_side) fn halt(&mut self) -> Result<()> {
         self.request_stop();
         self.emergency_save.take();
         if let Some(thread) = self.thread.take() {
@@ -402,7 +402,7 @@ impl Serving {
     }
 
     /// The window reads this as `MinecraftServer.isCurrentlySaving`.
-    pub(in crate::game) fn set_saving(&self, saving: bool) {
+    pub(in crate::game::server_side) fn set_saving(&self, saving: bool) {
         self.flags.saving.store(saving, Ordering::Relaxed);
     }
 }
@@ -483,7 +483,7 @@ impl Game<'_> {
     /// loading screen: the focus moves to the spawn chunk when the stage
     /// starts, the 7x7 chunks around it count as they are ready, and the
     /// status map around the focus follows (`ChunkLoadStatusView.get`).
-    pub(in crate::game) fn publish_load_view(&mut self) {
+    pub(in crate::game::server_side) fn publish_load_view(&mut self) {
         let Some(serving) = self.serving.as_mut() else {
             return;
         };
@@ -529,7 +529,7 @@ impl Game<'_> {
 
     /// The server thread's loop (`MinecraftServer.runServer`): 20 ticks a
     /// second, the world held while the window is paused.
-    pub(in crate::game) fn run_integrated(
+    pub(in crate::game::server_side) fn run_integrated(
         &mut self,
         launch: Launch,
         flags: Arc<Flags>,
@@ -552,7 +552,7 @@ impl Game<'_> {
         result
     }
 
-    pub(in crate::game) fn run_integrated_inner(
+    pub(in crate::game::server_side) fn run_integrated_inner(
         &mut self,
         launch: Launch,
         flags: Arc<Flags>,
@@ -581,7 +581,10 @@ impl Game<'_> {
         self.integrated_tick_loop(&flags)
     }
 
-    pub(in crate::game) fn integrated_tick_loop(&mut self, flags: &Flags) -> Result<()> {
+    pub(in crate::game::server_side) fn integrated_tick_loop(
+        &mut self,
+        flags: &Flags,
+    ) -> Result<()> {
         let mut next = Instant::now();
         let mut was_paused = false;
         let mut failure = None;
@@ -688,7 +691,7 @@ impl Game<'_> {
 
     /// After the level of `dim` ticked: the window's debug entries' server
     /// lines, when they want them from this level.
-    pub(in crate::game) fn publish_server_debug(&self, dim: Dim) {
+    pub(in crate::game::server_side) fn publish_server_debug(&self, dim: Dim) {
         let Some(serving) = &self.serving else {
             return;
         };
@@ -706,7 +709,7 @@ impl Game<'_> {
     /// The integrated server's world open: `run_integrated`'s segment
     /// from `load_world` through `settle_spawn`, whole so its failures are
     /// one open failure (`WorldOpenFailed`, the engine's own error text).
-    pub(in crate::game) fn integrated_open(
+    pub(in crate::game::server_side) fn integrated_open(
         &mut self,
         launch: &Launch,
         flags: &Arc<Flags>,
@@ -827,7 +830,7 @@ impl Game<'_> {
 
     /// `MinecraftServer.stopServer`: the players are saved and sent away,
     /// then the world is saved.
-    pub(in crate::game) fn stop_integrated(
+    pub(in crate::game::server_side) fn stop_integrated(
         &mut self,
         crashed: bool,
         run_error: Option<&str>,
@@ -884,7 +887,7 @@ pub(in crate::game) struct ServerOptions {
 impl Game<'_> {
     /// IntegratedServer.teardownPublishedState, also reached when a shutdown
     /// callback unwinds before the normal stop path can retire the server.
-    pub(in crate::game) fn stop_serving(&mut self) {
+    pub(in crate::game::server_side) fn stop_serving(&mut self) {
         if let Some(s) = self.serving.take() {
             s.flags.published.store(0, Ordering::Relaxed);
         }
@@ -899,7 +902,7 @@ impl Game<'_> {
     /// the owner's level, at the owner permission level. The feedback goes to
     /// the owner's chat and is returned, with the command's outcome
     /// (`recording_command_outcome`; None when nothing ran).
-    pub(in crate::game) fn owner_console_command(
+    pub(in crate::game::server_side) fn owner_console_command(
         &mut self,
         command: &str,
     ) -> (Vec<String>, Option<(bool, i32)>) {
@@ -972,7 +975,10 @@ impl Game<'_> {
 
     /// Run `f` with the owner's level in place (the server holds one per
     /// dimension), then put back the level that was.
-    pub(in crate::game) fn in_owner_level<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
+    pub(in crate::game::server_side) fn in_owner_level<T>(
+        &mut self,
+        f: impl FnOnce(&mut Self) -> T,
+    ) -> T {
         let owner = self.serving.as_ref().map(|s| s.owner);
         let dim = self.lan.as_ref().and_then(|h| {
             let g = h.hub.guests.iter().find(|g| Some(g.uuid) == owner)?;
@@ -987,7 +993,7 @@ impl Game<'_> {
     }
 
     /// The window's requests, between two ticks.
-    pub(in crate::game) fn run_tasks(&mut self) {
+    pub(in crate::game::server_side) fn run_tasks(&mut self) {
         let requests: Vec<OwnerRequest> = match &self.serving {
             Some(s) => s.tasks.try_iter().collect(),
             None => return,
@@ -999,7 +1005,7 @@ impl Game<'_> {
     }
     /// Whether anyone but a single-player owner can join this world: any hub of a client or
     /// a dedicated server, an integrated server's only once published to LAN.
-    pub(in crate::game) fn open_to_others(&self) -> bool {
+    pub(in crate::game::server_side) fn open_to_others(&self) -> bool {
         self.lan.is_some() && (!self.serving() || self.published_port().is_some())
     }
     /// `IntegratedServer.getPort` while published.
@@ -1048,7 +1054,7 @@ impl Game<'_> {
     }
     /// IntegratedServer.tickServer: the server follows the window's render
     /// and simulation distances when they change.
-    pub(in crate::game) fn follow_distances(&mut self, flags: &Flags) {
+    pub(in crate::game::server_side) fn follow_distances(&mut self, flags: &Flags) {
         // IntegratedServer.getScaledTrackingDistance reads the option each time.
         self.settings.entity_distance =
             f64::from_bits(flags.entity_distance.load(Ordering::Relaxed));
@@ -1071,7 +1077,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn apply_publish(&mut self) {
+    pub(in crate::game::server_side) fn apply_publish(&mut self) {
         if self.lan.is_none() {
             return;
         }
@@ -1119,7 +1125,7 @@ impl Game<'_> {
         }
     }
     /// The world options screen's state, read on the server.
-    pub(in crate::game) fn server_options(&self) -> ServerOptions {
+    pub(in crate::game::server_side) fn server_options(&self) -> ServerOptions {
         let owner = self.serving.as_ref().map(|s| s.owner);
         let host = self.lan.as_ref();
         let personal_mode = host
@@ -1269,7 +1275,7 @@ impl Game<'_> {
     }
 }
 
-pub(in crate::game) fn server_game(
+pub(in crate::game::server_side) fn server_game(
     res: &Arc<Resources>,
     pack: PackResources,
     options: Options,
@@ -1286,7 +1292,7 @@ pub(in crate::game) fn server_game(
 /// player's UUID comes from their name alone, so a LAN or friends player naming themselves after
 /// the host would otherwise get the host's UUID, kick the host and take their operator rights and
 /// player data (vanilla always authenticates LAN guests, so there it can't happen).
-pub(in crate::game) fn refused(owner: bool, published: bool, memory: bool) -> bool {
+pub(in crate::game::server_side) fn refused(owner: bool, published: bool, memory: bool) -> bool {
     if owner { !memory } else { !published }
 }
 

@@ -92,7 +92,7 @@ impl Game<'_> {
     /// Whether `now` is still the stack `before` was: the same item and the
     /// same count, or both empty. The check after a hook that may change the
     /// world is this shallow on purpose; components are not compared.
-    pub(in crate::game) fn same_item_and_count(
+    pub(in crate::game::server_side) fn same_item_and_count(
         now: Option<&ItemStack>,
         before: Option<&ItemStack>,
     ) -> bool {
@@ -188,7 +188,7 @@ impl Game<'_> {
     /// Asks the mods whether the acting guest may empty `stack` at `pos`
     /// (`native_bucket_empty`): true when one cancelled it. A game's own
     /// player is not asked.
-    pub(in crate::game) fn bucket_empty_cancelled(
+    pub(in crate::game::server_side) fn bucket_empty_cancelled(
         &mut self,
         stack: &ItemStack,
         pos: [i32; 3],

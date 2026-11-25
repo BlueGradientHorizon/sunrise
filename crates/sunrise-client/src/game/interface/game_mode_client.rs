@@ -3,8 +3,6 @@ pub(in crate::game::client_side) use super::{Game, Screen};
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::game_mode::inventory_after_infinite_materials;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::game_mode::relative;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::game_mode::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::{
@@ -32,7 +30,7 @@ impl Game<'_> {
     /// Reconcile an open player inventory on its screen tick (`InventoryScreen.containerTick`
     /// and `CreativeModeInventoryScreen.containerTick`) against live `instabuild`, keeping
     /// the shared cursor (`carried`) stack across the switch.
-    pub(in crate::game) fn tick_inventory_screen(&mut self) {
+    pub(in crate::game::client_side) fn tick_inventory_screen(&mut self) {
         if self.player.is_none() {
             return;
         }

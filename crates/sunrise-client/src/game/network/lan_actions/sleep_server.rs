@@ -8,7 +8,7 @@ impl Game<'_> {
     /// the players or the sleepers change, a published or dedicated world
     /// shows everyone "n/m players sleeping", or "Sleeping through this
     /// night" once enough are in bed, on the action bar.
-    pub(in crate::game) fn announce_sleep_status(&mut self) {
+    pub(in crate::game::server_side) fn announce_sleep_status(&mut self) {
         let (active, sleeping, _) = self.sleep_counts();
         let (old_active, old_sleeping) = self.server.sleep_seen;
         self.server.sleep_seen = (active, sleeping);

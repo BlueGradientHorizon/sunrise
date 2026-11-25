@@ -8,7 +8,7 @@ impl Game<'_> {
     /// are stored under `key`; `extra` was already matched to this opening.
     /// The packet handler checked for required factories before changing menus.
     /// False refuses the opening; an ordinary stock menu needs no mod screen.
-    pub(in crate::game) fn open_native_screen(
+    pub(in crate::game::client_side) fn open_native_screen(
         &mut self,
         key: Pos,
         target: Option<Pos>,

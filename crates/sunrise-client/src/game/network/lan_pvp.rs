@@ -89,7 +89,7 @@ const PVP_SOURCE: HurtSource<'static> = HurtSource {
 #[cfg(test)]
 impl Strike {
     /// A plain blow by guest `attacker`, for the tests that land one.
-    pub(in crate::game) fn test_blow(attacker: u32) -> Self {
+    pub(in crate::game::server_side) fn test_blow(attacker: u32) -> Self {
         Self {
             attacker: Some(attacker),
             creative: false,
@@ -181,7 +181,7 @@ impl Game<'_> {
 
     /// `Player.attack`'s `causeFoodExhaustion(0.1F)`, charged to the attacker
     /// (the host, or a guest swapped in) only once the hit hurt the victim.
-    pub(in crate::game) fn pvp_exhaustion(&mut self) {
+    pub(in crate::game::server_side) fn pvp_exhaustion(&mut self) {
         if let Some(p) = self.player.as_mut()
             && !self.creative
         {
@@ -230,7 +230,7 @@ impl Game<'_> {
 
     /// The held weapon's `minecraft:ignite` (Fire Aspect) seconds on a player
     /// victim (`EnchantmentHelper.doPostAttackEffects`).
-    pub(in crate::game) fn weapon_ignite_seconds(&mut self) -> f32 {
+    pub(in crate::game::server_side) fn weapon_ignite_seconds(&mut self) -> f32 {
         let Some(held) = self.held().cloned() else {
             return 0.0;
         };
@@ -251,7 +251,7 @@ impl Game<'_> {
     }
 
     /// The guests by connection, with their entity ids.
-    pub(in crate::game) fn lan_guest_entities(&self) -> Vec<(u32, u32)> {
+    pub(in crate::game::server_side) fn lan_guest_entities(&self) -> Vec<(u32, u32)> {
         self.lan.as_ref().map_or_else(Vec::new, |host| {
             host.hub
                 .guests
@@ -289,7 +289,7 @@ impl Game<'_> {
     /// `ServerPlayer.canHarmPlayer` of the players `attacker` and `victim` (entity ids) on
     /// their teams: the `pvp` game rule as it stands, handed to
     /// [`can_harm_player`](sunrise_client::health::can_harm_player), which decides.
-    pub(in crate::game) fn player_may_harm(
+    pub(in crate::game::server_side) fn player_may_harm(
         &self,
         attacker: i32,
         victim: i32,
@@ -315,7 +315,11 @@ impl Game<'_> {
     /// `attacker` (connections), or by the player in place when none: a player's projectile or
     /// trident, which the victim's hurt refuses when it answers false. A guest no longer here
     /// is entity -1, on no team.
-    pub(in crate::game) fn guest_may_harm(&self, attacker: Option<u32>, victim: u32) -> bool {
+    pub(in crate::game::server_side) fn guest_may_harm(
+        &self,
+        attacker: Option<u32>,
+        victim: u32,
+    ) -> bool {
         let board = &self.score.board;
         let guest = |conn: u32| {
             self.lan
@@ -379,7 +383,7 @@ impl Game<'_> {
 
     /// `AbstractArrow.onHitEntity`: an arrow that hurt a player tells its owner, a player other
     /// than the one hit, with `PLAY_ARROW_HIT_SOUND`, unless the arrow is silent.
-    pub(in crate::game) fn arrow_hit_sound_to_shooter(&self, p: &Projectile) {
+    pub(in crate::game::server_side) fn arrow_hit_sound_to_shooter(&self, p: &Projectile) {
         let (Some(host), Some(shooter)) = (self.lan.as_ref(), p.guest) else {
             return;
         };
@@ -397,7 +401,10 @@ impl Game<'_> {
         );
     }
 
-    pub(in crate::game) fn player_attacker(&self, conn: Option<u32>) -> Option<(u32, Text)> {
+    pub(in crate::game::server_side) fn player_attacker(
+        &self,
+        conn: Option<u32>,
+    ) -> Option<(u32, Text)> {
         match conn {
             Some(conn) => {
                 let g = self.lan.as_ref()?.hub.guest(conn)?;
@@ -560,7 +567,7 @@ impl Game<'_> {
     /// the victim's thorns dealt back to the attacker (`ServerPlayer.die`'s
     /// `awardKillScore` waits for the death itself, in
     /// [`guest_award_kill_score`](Self::guest_award_kill_score)).
-    pub(in crate::game) fn pvp_aftermath(
+    pub(in crate::game::server_side) fn pvp_aftermath(
         &mut self,
         victim: Victim,
         attacker: Option<u32>,
@@ -592,7 +599,11 @@ impl Game<'_> {
     /// `createWitherRose(killer)`: the killer's kill counts and `player_kills`,
     /// and the rose a wither's kill leaves where they fell. A mob credits no
     /// score.
-    pub(in crate::game) fn guest_award_kill_score(&mut self, victim: u32, at: [f64; 3]) {
+    pub(in crate::game::server_side) fn guest_award_kill_score(
+        &mut self,
+        victim: u32,
+        at: [f64; 3],
+    ) {
         let Some(id) = self
             .guest_combat_record(victim)
             .and_then(|c| c.kill_credit(self.world.game_time))
@@ -634,7 +645,7 @@ impl Game<'_> {
     /// damage (`1 + ratio * baseDamage`, plus the enchantments against a
     /// player, scaled by the attack strength) and who hits. The box is set
     /// by the caller.
-    pub(in crate::game) fn player_sweep(&mut self, base: f32, scale: f32) -> Sweep {
+    pub(in crate::game::server_side) fn player_sweep(&mut self, base: f32, scale: f32) -> Sweep {
         let from = self
             .player
             .as_ref()
@@ -678,7 +689,7 @@ impl Game<'_> {
     /// A sweep from a mob hit reaches the other players. Inside a guest's
     /// turn the host holds the other players (`as_guest`), so it waits for
     /// the turn to end.
-    pub(in crate::game) fn sweep_other_players(&mut self, sweep: Sweep) {
+    pub(in crate::game::server_side) fn sweep_other_players(&mut self, sweep: Sweep) {
         if let Some(collect) = self.combat.0.sweeps.as_mut() {
             collect.push(sweep);
         } else if self.server.lan_acting.is_some() {
@@ -689,7 +700,7 @@ impl Game<'_> {
     }
 
     /// The sweeps guests' turns put off.
-    pub(in crate::game) fn flush_sweeps(&mut self) {
+    pub(in crate::game::server_side) fn flush_sweeps(&mut self) {
         for sweep in std::mem::take(&mut self.creatures.sweeps) {
             self.sweep_other_players(sweep);
         }
@@ -699,7 +710,7 @@ impl Game<'_> {
     /// closer than 3 blocks (`distanceToSqr < 9`) and not an ally
     /// (`isAlliedTo`), is hurt (`ServerPlayer.canHarmPlayer`: the `pvp` rule)
     /// and pushed 0.4 along the attacker's yaw.
-    pub(in crate::game) fn sweep_players(&mut self, sweep: &Sweep) {
+    pub(in crate::game::server_side) fn sweep_players(&mut self, sweep: &Sweep) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -1014,7 +1025,7 @@ pub(in crate::game) mod arrow_hit_sound_tests {
         run_an_arrow_that_hurts_another_player_dings_its_shooter();
     }
 
-    pub(in crate::game) fn run_an_arrow_that_hurts_another_player_dings_its_shooter() {
+    pub(in crate::game::server_side) fn run_an_arrow_that_hurts_another_player_dings_its_shooter() {
         let witness = load_witness();
         assert_eq!(witness.minecraft_version, "26.3");
         assert!(!witness.cases.is_empty());

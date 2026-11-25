@@ -23,25 +23,9 @@ pub(in crate::game::client_side) use crate::game::server_side::advancements::Vie
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::advancements::adv_name;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::advancements::decorate_name;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::advancements::frame_color;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::advancements::inventory_slots;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::advancements::item_view;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::advancements::matches_sqr;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::advancements::now_text;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::advancements::progress_snapshot;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::advancements::text_of;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::advancements::toast_label;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::advancements::vanilla_structure_tags;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::advancements::*;
 #[allow(unused_imports)]
@@ -113,14 +97,6 @@ impl Game<'_> {
 pub(in crate::game) mod tests {
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use super::*;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::advancements::tests::announced;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::advancements::tests::hover;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::advancements::tests::recipes;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::advancements::tests::run;
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::advancements::tests::*;
 

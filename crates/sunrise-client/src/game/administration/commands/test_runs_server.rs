@@ -27,7 +27,10 @@ pub(in crate::game::server_side) use sunrise_world::worldgen::structure::Rotatio
 
 impl Game<'_> {
     /// The tests a finder gives (`findTests`), by id.
-    pub(in crate::game) fn finder_tests(&self, finder: &Finder) -> Vec<(String, TestDef)> {
+    pub(in crate::game::server_side) fn finder_tests(
+        &self,
+        finder: &Finder,
+    ) -> Vec<(String, TestDef)> {
         let keys: Vec<String> = match finder {
             Finder::Failed(only_required) => self
                 .game_tests
@@ -114,7 +117,7 @@ impl Game<'_> {
         Some(Info::new(id, key, def, Some(pos), self.dim, rotation).with_retry(retry))
     }
     /// `toGameTestInfo`: a test without a block, in the level in place.
-    pub(in crate::game) fn test_info_for(
+    pub(in crate::game::server_side) fn test_info_for(
         &mut self,
         key: String,
         def: TestDef,

@@ -68,7 +68,7 @@ fn a_loaded_sulfur_cube_fuse_matches_the_pinned_oracle() {
     run_a_loaded_sulfur_cube_fuse_matches_the_pinned_oracle();
 }
 
-pub(in crate::game) fn run_a_loaded_sulfur_cube_fuse_matches_the_pinned_oracle() {
+pub(in crate::game::server_side) fn run_a_loaded_sulfur_cube_fuse_matches_the_pinned_oracle() {
     use sunrise_client::mobs::{Mob, sulfur_cube};
     use sunrise_core::nbt::{Tag, parse_snbt};
     use sunrise_protocol::entity_data::Value;

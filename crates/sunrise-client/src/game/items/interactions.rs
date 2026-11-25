@@ -29,7 +29,11 @@ impl RemoteInteraction {
     pub fn new(position: [f64; 3]) -> Self {
         Self::new_with_rotation(position, 0.0, 0.0)
     }
-    pub fn new_with_rotation(position: [f64; 3], yaw: f32, pitch: f32) -> Self {
+    pub(in crate::game::client_side) fn new_with_rotation(
+        position: [f64; 3],
+        yaw: f32,
+        pitch: f32,
+    ) -> Self {
         let pos = Vec3::new(position[0], position[1], position[2]);
         let yaw = if yaw.is_finite() { yaw } else { 0.0 };
         let pitch = if pitch.is_finite() {
@@ -53,7 +57,7 @@ impl RemoteInteraction {
         }
     }
     /// Unsynced spawns keep EntityType's 0x0 eye height until DATA_POSE/WIDTH/HEIGHT triggers refreshDimensions.
-    pub fn eye_height(&self) -> f32 {
+    pub(in crate::game::client_side) fn eye_height(&self) -> f32 {
         if self.dimensions_refreshed {
             self.height * 0.85
         } else {
@@ -62,14 +66,14 @@ impl RemoteInteraction {
     }
     /// Unsynced spawns keep EntityType's 0x0 dimensions until refreshDimensions runs.
     #[cfg(test)]
-    pub fn seat_height(&self) -> f64 {
+    pub(in crate::game::client_side) fn seat_height(&self) -> f64 {
         if self.dimensions_refreshed {
             f64::from(self.height)
         } else {
             0.0
         }
     }
-    pub fn snapshot_previous(&mut self) {
+    pub(in crate::game::client_side) fn snapshot_previous(&mut self) {
         self.previous = self.position;
         self.previous_yaw = self.yaw;
         self.previous_pitch = self.pitch;
@@ -94,7 +98,7 @@ impl RemoteInteraction {
     }
     /// `Entity.positionRider`'s move: a passenger is placed on its vehicle's
     /// seat, not moved on its own.
-    pub fn ride_to(&mut self, at: glam::DVec3) {
+    pub(in crate::game::client_side) fn ride_to(&mut self, at: glam::DVec3) {
         self.position = Vec3::new(at.x, at.y, at.z);
     }
     /// `Interaction.refreshDimensions`: `width` square about the entity's
@@ -108,7 +112,7 @@ impl RemoteInteraction {
             Vec3::new(p.x + half, p.y + f64::from(self.height), p.z + half),
         )
     }
-    pub fn metadata(&mut self, values: &[(u8, i32, Value)]) {
+    pub(in crate::game::client_side) fn metadata(&mut self, values: &[(u8, i32, Value)]) {
         for (index, _, value) in values {
             match (index, value) {
                 (6, _) => self.dimensions_refreshed = true,
@@ -130,13 +134,17 @@ impl RemoteInteraction {
 impl Game<'_> {
     /// An `Interaction` keeps `Entity`'s no-op interpolation handler: the
     /// server's position replaces its own at once.
-    pub(in crate::game) fn move_remote_interaction(&mut self, id: i32, position: [f64; 3]) {
+    pub(in crate::game::client_side) fn move_remote_interaction(
+        &mut self,
+        id: i32,
+        position: [f64; 3],
+    ) {
         if let Some(i) = self.client.interactions.get_mut(&id) {
             i.position = Vec3::new(position[0], position[1], position[2]);
             self.pick_section_move(id as u32, position);
         }
     }
-    pub(in crate::game) fn remote_interaction_data(
+    pub(in crate::game::client_side) fn remote_interaction_data(
         &mut self,
         id: i32,
         values: &[(u8, i32, Value)],
@@ -212,7 +220,8 @@ pub(in crate::game) mod tests {
         run_interaction_unsynced_default_sync_and_pose_sync_seat_height_26_3();
     }
 
-    pub(in crate::game) fn run_interaction_unsynced_default_sync_and_pose_sync_seat_height_26_3() {
+    pub(in crate::game::client_side) fn run_interaction_unsynced_default_sync_and_pose_sync_seat_height_26_3()
+     {
         let witness = parity_witness();
         let life = &witness["interaction_lifecycle"];
 
@@ -247,7 +256,8 @@ pub(in crate::game) mod tests {
         run_interaction_negative_height_bounds_invert_downward_26_3();
     }
 
-    pub(in crate::game) fn run_interaction_negative_height_bounds_invert_downward_26_3() {
+    pub(in crate::game::client_side) fn run_interaction_negative_height_bounds_invert_downward_26_3()
+     {
         let witness = parity_witness();
         let life = &witness["interaction_lifecycle"];
         for (case_name, width, height) in [

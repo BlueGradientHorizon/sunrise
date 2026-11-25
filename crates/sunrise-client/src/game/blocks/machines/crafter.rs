@@ -20,7 +20,7 @@ use sunrise_protocol::packets::play::{self, Serverbound as S};
 pub(in crate::game) const CRAFTING_TICKS: i32 = 6;
 pub(in crate::game) const RESULT_SLOT: usize = 309;
 
-pub(in crate::game) fn center(pos: Pos) -> [f64; 3] {
+pub(in crate::game::server_side) fn center(pos: Pos) -> [f64; 3] {
     [
         f64::from(pos.0) + 0.5,
         f64::from(pos.1) + 0.5,
@@ -28,7 +28,7 @@ pub(in crate::game) fn center(pos: Pos) -> [f64; 3] {
     ]
 }
 /// Whether an advancement condition's `recipes` entry names the recipe.
-pub(in crate::game) fn recipe_matches(condition: &Value, id: &str) -> bool {
+pub(in crate::game::server_side) fn recipe_matches(condition: &Value, id: &str) -> bool {
     match condition {
         Value::String(s) => s == id,
         Value::Array(list) => list.iter().any(|v| v.as_str() == Some(id)),
@@ -38,7 +38,13 @@ pub(in crate::game) fn recipe_matches(condition: &Value, id: &str) -> bool {
 
 impl Game<'_> {
     /// `Level.setBlock` of one boolean property of the block at `pos`.
-    pub(crate) fn set_bool_prop(&mut self, pos: Pos, key: &str, value: bool, flags: i32) {
+    pub(in crate::game::server_side) fn set_bool_prop(
+        &mut self,
+        pos: Pos,
+        key: &str,
+        value: bool,
+        flags: i32,
+    ) {
         let registry = self.pack.assets.registry;
         let old = self.world.block(pos.0, pos.1, pos.2);
         let Some(mut state) = registry.state(old).cloned() else {
@@ -91,7 +97,7 @@ impl Game<'_> {
         }
     }
     /// `CrafterBlock.dispenseFrom` (the scheduled tick after a redstone pulse).
-    pub(in crate::game) fn crafter_dispense(
+    pub(in crate::game::server_side) fn crafter_dispense(
         &mut self,
         pos: BlockPos,
         state: BlockStateId,
@@ -167,7 +173,7 @@ impl Game<'_> {
         Ok(())
     }
     /// `CrafterBlock.dispenseItem`: into the container in front, else out as an item.
-    pub(in crate::game) fn crafter_eject(
+    pub(in crate::game::server_side) fn crafter_eject(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -208,7 +214,7 @@ impl Game<'_> {
         self.crafter_crafted_notice(pos, facing, recipe);
     }
     /// The trigger and the sound and particle events after an ejected result.
-    pub(in crate::game) fn crafter_crafted_notice(
+    pub(in crate::game::server_side) fn crafter_crafted_notice(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -247,7 +253,7 @@ impl Game<'_> {
     /// The two insert loops of `dispenseItem`: one item at a time when the
     /// container holds fewer than the stack (`Container.getMaxStackSize`) or is
     /// a crafter, else the whole stack; what is left stays in `rest`.
-    pub(in crate::game) fn crafter_insert(
+    pub(in crate::game::server_side) fn crafter_insert(
         &mut self,
         into: &View,
         rest: &mut ItemStack,
@@ -361,7 +367,12 @@ impl Game<'_> {
             .then(|| self.translate_with_fallback("gui.togglable_slot", "Click to disable slot"))
     }
     /// A click in the crafter menu: `CrafterMenu` on the verified menu engine.
-    pub(in crate::game) fn crafter_click(&mut self, slot: usize, shift: bool, right: bool) -> bool {
+    pub(in crate::game::server_side) fn crafter_click(
+        &mut self,
+        slot: usize,
+        shift: bool,
+        right: bool,
+    ) -> bool {
         if !self.crafter_open() {
             return false;
         }

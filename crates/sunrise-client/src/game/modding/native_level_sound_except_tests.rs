@@ -27,7 +27,7 @@ pub(in crate::game) fn decode_packets(rx: &mpsc::Receiver<Out>) -> Vec<C> {
         .collect()
 }
 
-pub(in crate::game) fn sound_packets(
+pub(in crate::game::server_side) fn sound_packets(
     rx: &mpsc::Receiver<Out>,
 ) -> Vec<sunrise_protocol::packets::play::Sound> {
     decode_packets(rx)

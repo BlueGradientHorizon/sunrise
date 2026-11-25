@@ -63,20 +63,20 @@ impl Hooks for Mod {
 
 impl Wear {
     /// The points asked about since the last call.
-    pub(in crate::game) fn take_asked(&self) -> Vec<i32> {
+    pub(in crate::game::server_side) fn take_asked(&self) -> Vec<i32> {
         std::mem::take(&mut *self.asked.lock().unwrap())
     }
     /// The entities the wears since the last call named.
-    pub(in crate::game) fn take_worn_by(&self) -> Vec<Option<u32>> {
+    pub(in crate::game::server_side) fn take_worn_by(&self) -> Vec<Option<u32>> {
         std::mem::take(&mut *self.worn_by.lock().unwrap())
     }
-    pub(in crate::game) fn set(&self, rule: Rule) {
+    pub(in crate::game::server_side) fn set(&self, rule: Rule) {
         *self.rule.lock().unwrap() = rule;
     }
 }
 
 /// Runs `test` on a serving game whose `item` has a part, starting with `rule`.
-pub(in crate::game) fn with_wear_part(
+pub(in crate::game::server_side) fn with_wear_part(
     item: &'static str,
     rule: Rule,
     test: impl FnOnce(&mut Game<'_>, &Wear),

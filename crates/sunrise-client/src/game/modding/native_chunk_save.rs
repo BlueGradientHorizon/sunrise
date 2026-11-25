@@ -5,7 +5,7 @@ use sunrise_client::streaming::{ProtoSave, ProtoSnapshot};
 
 impl Game<'_> {
     /// Bind the existing world's identity and immutable resources, before workers start.
-    pub(in crate::game) fn bind_chunk_disk_worker(
+    pub(in crate::game::server_side) fn bind_chunk_disk_worker(
         &self,
         save: &sunrise_client::save::SaveDir,
         dim: super::Dim,
@@ -90,7 +90,7 @@ impl Game<'_> {
 
     /// `ChunkMap.saveChunksEagerly`: snapshot only while the tick and writer
     /// have room. NBT encoding, compression and durable writes stay on workers.
-    pub(in crate::game) fn save_chunks_eagerly(&mut self) {
+    pub(in crate::game::server_side) fn save_chunks_eagerly(&mut self) {
         self.save_chunks_eagerly_at(Instant::now());
     }
 

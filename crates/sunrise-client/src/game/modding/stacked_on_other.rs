@@ -133,7 +133,7 @@ impl Game<'_> {
     /// Global `Hooks::item_stacked_on_other` runs on the authoritative server side only;
     /// `ItemPart::item_stacked_on_other` runs on both sides (including client prediction and
     /// creative inventory-tab/hotbar pickups).
-    pub(in crate::game) fn stacked_listened_for_side(server: bool) -> bool {
+    pub(in crate::game::client_side) fn stacked_listened_for_side(server: bool) -> bool {
         (server && mod_api::__private::listened(mod_api::HookId::ItemStackedOnOther))
             || mod_api::__private::has_part_hook(mod_api::HookId::ItemStackedOnOther)
     }
@@ -617,7 +617,7 @@ impl Game<'_> {
     /// or creative menu (a direct `Pickup` or a one-slot left/right `QuickCraft` drag) and a
     /// listener active on this side answers: `Some(whether it was handled)`. `None`: the plain
     /// clicks.
-    pub(in crate::game) fn stacked_menu_ops(
+    pub(in crate::game::client_side) fn stacked_menu_ops(
         &mut self,
         ops: &[(Option<usize>, i32, Input)],
     ) -> Option<bool> {

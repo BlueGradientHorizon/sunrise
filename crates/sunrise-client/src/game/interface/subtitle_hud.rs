@@ -33,13 +33,13 @@ impl Game<'_> {
         }
     }
     /// Consume a paint scheduled by the original subtitle layer, without dispatching it again.
-    pub(in crate::game) fn draw_deferred_subtitles(&self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_deferred_subtitles(&self, batch: &mut HudBatch) {
         if self.client.subtitles.deferred.take() {
             self.draw_subtitles(batch);
         }
     }
 
-    pub(in crate::game) fn draw_subtitles(&self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_subtitles(&self, batch: &mut HudBatch) {
         let v = &self.client.view;
         let frame = SubtitleFrame {
             show: self.settings.show_subtitles,

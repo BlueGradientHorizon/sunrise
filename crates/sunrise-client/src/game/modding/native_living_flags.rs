@@ -384,7 +384,10 @@ impl Game<'_> {
         Some(climbing::on_climbable(&mut world, &self.motion.climbing).unwrap_or(false))
     }
     /// The climbing decision for a mob currently lent out of the game's list.
-    pub(in crate::game) fn native_mob_is_climbing(&self, mob: &sunrise_client::mobs::Mob) -> bool {
+    pub(in crate::game::server_side) fn native_mob_is_climbing(
+        &self,
+        mob: &sunrise_client::mobs::Mob,
+    ) -> bool {
         let mut world = FlagClimbing {
             world: &self.world,
             context: &self.loop_context,

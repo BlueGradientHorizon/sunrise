@@ -90,6 +90,3 @@ pub(in crate::game) fn with_hearts(test: impl FnOnce(&mut Game<'_>, &Calls)) {
         })
     });
 }
-
-#[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::native_hooks_client::animate_tick_tests::level_random;

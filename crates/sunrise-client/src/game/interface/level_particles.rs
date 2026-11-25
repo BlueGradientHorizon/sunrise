@@ -21,7 +21,7 @@ impl Game<'_> {
     /// `BoneMealItem.addGrowthParticles` (event 1505, `count` the data):
     /// happy villager sparks over a spreading block's neighbourhood (grass,
     /// nylium, netherrack, moss) or water, or inside a growing block.
-    pub(in crate::game) fn growth_particles(&mut self, pos: BlockPos, count: i32) {
+    pub(in crate::game::server_side) fn growth_particles(&mut self, pos: BlockPos, count: i32) {
         let p = [pos.x, pos.y, pos.z];
         let state = self.world.block(p[0], p[1], p[2]);
         let facts = self.res.facts();
@@ -63,7 +63,7 @@ impl Game<'_> {
         self.spawn_particles(at, count, xz, height, floating, ParticleType::HappyVillager);
     }
     /// `BlockState.getShape(..).max(Y)` of the block at `at`, 1.0 for air.
-    pub(in crate::game) fn block_shape_top(&self, at: [i32; 3]) -> f64 {
+    pub(in crate::game::server_side) fn block_shape_top(&self, at: [i32; 3]) -> f64 {
         let facts = self.res.facts();
         let inside = self.world.block(at[0], at[1], at[2]);
         if facts.is_air(inside) {
@@ -80,7 +80,7 @@ impl Game<'_> {
     /// `LevelEventHandler` 2011 (a bee grew a crop) and 2012 (a turtle egg
     /// laid on sand): `ParticleUtils.spawnParticleInBlock` with happy villager
     /// sparks.
-    pub(in crate::game) fn turtle_egg_particles(&mut self, pos: BlockPos, count: i32) {
+    pub(in crate::game::server_side) fn turtle_egg_particles(&mut self, pos: BlockPos, count: i32) {
         let at = [pos.x, pos.y, pos.z];
         let height = self.block_shape_top(at);
         self.spawn_particles(at, count, 0.5, height, true, ParticleType::HappyVillager);
@@ -100,7 +100,12 @@ impl Game<'_> {
     /// (an end portal opening, the dragon's death roar): here, and sent to
     /// every guest whatever their dimension, each at their own position
     /// (`Hub::global_level_event`).
-    pub(in crate::game) fn global_level_event(&mut self, id: i32, pos: [i32; 3], data: i32) {
+    pub(in crate::game::server_side) fn global_level_event(
+        &mut self,
+        id: i32,
+        pos: [i32; 3],
+        data: i32,
+    ) {
         // ServerLevel.globalLevelEvent: without global_sound_events it is a
         // plain level event (`levelEvent(null, ...)`), sent to the players
         // near `pos`; the vanilla client has no plain sound for 1023, 1028
@@ -122,7 +127,7 @@ impl Game<'_> {
     }
     /// Deliver one committed global level event immediately without touching unrelated
     /// `lan_global_events` or `lan_events`, preserving packet order across effect kinds.
-    pub(in crate::game) fn deliver_global_level_event(
+    pub(in crate::game::server_side) fn deliver_global_level_event(
         &mut self,
         id: i32,
         pos: [i32; 3],
@@ -170,7 +175,12 @@ impl Game<'_> {
     /// Deliver one committed level event immediately without draining unrelated `level_events` or
     /// `lan_events`, sending its packet directly when a LAN host is active so packet order matches
     /// commit order across effect kinds.
-    pub(in crate::game) fn deliver_level_event(&mut self, id: i32, pos: [i32; 3], data: i32) {
+    pub(in crate::game::server_side) fn deliver_level_event(
+        &mut self,
+        id: i32,
+        pos: [i32; 3],
+        data: i32,
+    ) {
         let saved_level_events = std::mem::take(&mut self.level_events);
         let saved_lan_events = std::mem::take(&mut self.server.lan_events);
         self.level_events.push(LevelEvent::LevelEvent {
@@ -194,7 +204,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn level_event_from(
+    pub(in crate::game::server_side) fn level_event_from(
         &mut self,
         source: Option<sunrise_world::level::LevelEventPlayer>,
         id: i32,

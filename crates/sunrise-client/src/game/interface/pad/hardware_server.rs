@@ -10,28 +10,6 @@ pub(in crate::game::server_side) use crate::game::client_side::pad::hardware::EX
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::pad::hardware::TAKEOVER;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::pad::hardware::axis_takes_over;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::pad::hardware::controller_status;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::pad::hardware::device_of;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::pad::hardware::gilrs_builder;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::pad::hardware::gilrs_button;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::pad::hardware::is_dualsense;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::pad::hardware::keep_peaks;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::pad::hardware::play_pulse;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::pad::hardware::state_of;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::pad::hardware::sticks_of;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::pad::hardware::z_is_a_stick;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::pad::hardware::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use serde_json::{Value, json};

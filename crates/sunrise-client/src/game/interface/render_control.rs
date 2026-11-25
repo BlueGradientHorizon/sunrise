@@ -24,7 +24,10 @@ impl Game<'_> {
     fn parse_state(&self, text: &str) -> Result<BlockStateId> {
         parse_state(self.pack.assets.registry, text)
     }
-    pub(in crate::game) fn render_command(&mut self, words: &[&str]) -> Result<Option<Value>> {
+    pub(in crate::game::client_side) fn render_command(
+        &mut self,
+        words: &[&str],
+    ) -> Result<Option<Value>> {
         let int = |i: usize| -> Result<i32> {
             Ok(words
                 .get(i)
@@ -112,7 +115,7 @@ impl Game<'_> {
 }
 
 /// Parse `name[k=v,...]` into a registry state (defaults for missing properties).
-pub(in crate::game) fn parse_state(
+pub(in crate::game::client_side) fn parse_state(
     registry: &sunrise_world::registry::BlockRegistry,
     text: &str,
 ) -> Result<BlockStateId> {

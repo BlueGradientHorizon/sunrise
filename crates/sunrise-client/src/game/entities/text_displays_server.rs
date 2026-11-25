@@ -9,24 +9,6 @@ pub(in crate::game::server_side) use crate::game::client_side::text_displays::Sh
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::text_displays::TranslucentDisplayCollector;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::text_displays::clamp_pitch;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::text_displays::has_special_model;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::text_displays::lerp_dvec3;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::text_displays::renders;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::text_displays::rot_lerp;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::text_displays::rot_lerp_f64;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::text_displays::submit_distance_sq;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::text_displays::wrap_degrees;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::text_displays::wrap_degrees_f64;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::text_displays::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_assets::item_model::DisplayContext;

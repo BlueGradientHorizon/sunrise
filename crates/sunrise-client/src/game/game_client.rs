@@ -304,7 +304,7 @@ impl Game<'_> {
     /// Extract every particle group after the frame's entity, screen and hand callbacks.
     /// Item model callbacks can clear during extraction too: roll back only this tail of
     /// geometry (including GPU jobs and outlines), never the frame's ordinary entities.
-    pub(in crate::game) fn client_particle_geometry(
+    pub(in crate::game::client_side) fn client_particle_geometry(
         &mut self,
         camera: glam::DVec3,
         alpha: f64,
@@ -507,7 +507,7 @@ impl Game<'_> {
         true
     }
     /// ItemEntityRenderer: items bob and spin; blocks render as small cubes.
-    pub(in crate::game) fn entity_geometry(
+    pub(in crate::game::client_side) fn entity_geometry(
         &mut self,
         camera: glam::DVec3,
         alpha: f64,
@@ -1158,7 +1158,7 @@ impl Game<'_> {
     }
     /// Aligns `locator_camera` with this frame's render camera before HUD extraction
     /// (`GameRenderer.renderLevel` sets `mainCamera` before `Gui.render`).
-    pub(in crate::game) fn extract_frame_hud(
+    pub(in crate::game::client_side) fn extract_frame_hud(
         &mut self,
         size: [u32; 2],
         reload_overlay: Option<(f32, sunrise_client::level_loading::OverlayFade)>,
@@ -1172,7 +1172,7 @@ impl Game<'_> {
             (!title).then_some((camera, view_yaw, view_pitch, fov_degrees));
         self.hud_with_reload(size, reload_overlay)
     }
-    pub(in crate::game) fn falling_setup(&self) -> FallingSetup<'_> {
+    pub(in crate::game::client_side) fn falling_setup(&self) -> FallingSetup<'_> {
         FallingSetup {
             // Packs can move vertices or draw another view; otherwise only depth
             // planes are used, which TAA's X/Y projection jitter cannot change.
@@ -2718,7 +2718,7 @@ impl Game<'_> {
     }
     /// Window bookkeeping, shortcuts and overlays before dispatching to the screen. Returns
     /// `true` when an early handler consumed the event.
-    pub(in crate::game) fn prepare_window_event(
+    pub(in crate::game::client_side) fn prepare_window_event(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         event: &WindowEvent,
@@ -3046,7 +3046,7 @@ impl Game<'_> {
             self.audio.0.play(name, c, volume, pitch);
         }
     }
-    pub(in crate::game) fn project_window_cursor(
+    pub(in crate::game::client_side) fn project_window_cursor(
         &self,
         framebuffer: [u32; 2],
     ) -> Option<sunrise_client::window::GuiPointer> {
@@ -3056,7 +3056,7 @@ impl Game<'_> {
         })
     }
     /// Rebuild GPU-owned state after the backend reports device loss.
-    pub(in crate::game) fn recover_device(&mut self) -> Result<()> {
+    pub(in crate::game::client_side) fn recover_device(&mut self) -> Result<()> {
         if !self.renderer.0.as_ref().is_some_and(Renderer::device_lost) {
             return Ok(());
         }
@@ -3113,14 +3113,14 @@ impl Game<'_> {
         log::info!("Sunrise: graphics device recovered; rebuilding world meshes");
         Ok(())
     }
-    pub(in crate::game) fn refresh_window_cursor(&mut self) {
+    pub(in crate::game::client_side) fn refresh_window_cursor(&mut self) {
         if let Some(position) = self.client.window_cursor
             && let Some(projection) = self.renderer_pointer_projection()
         {
             self.client.cursor = projection.project_pointer(position).subpixel();
         }
     }
-    pub(in crate::game) fn render(&mut self) -> Result<bool> {
+    pub(in crate::game::client_side) fn render(&mut self) -> Result<bool> {
         if self.screenshot_sequence.0.is_some() {
             return self.render_sequence_frame();
         }
@@ -4144,14 +4144,14 @@ impl Game<'_> {
         self.client.see_through_vertices = see_through;
         result
     }
-    pub(in crate::game) fn renderer_pointer_projection(
+    pub(in crate::game::client_side) fn renderer_pointer_projection(
         &self,
     ) -> Option<sunrise_client::window::PointerProjection> {
         let r = self.renderer.0.as_ref()?;
         Some(self.pointer_projection([r.config.width, r.config.height]))
     }
     /// Dispatch the button to the top screen, not to the gameplay mappings underneath it.
-    pub(in crate::game) fn route_screen_button(
+    pub(in crate::game::client_side) fn route_screen_button(
         &mut self,
         button: MouseButton,
         code: i32,
@@ -4382,7 +4382,7 @@ impl Game<'_> {
         })
     }
     /// Dispatch to the topmost screen only, taking the receiver's own result.
-    pub(in crate::game) fn screen_drag_response(
+    pub(in crate::game::client_side) fn screen_drag_response(
         &mut self,
         overlay: Option<&str>,
         button: MouseButton,
@@ -4428,7 +4428,7 @@ impl Game<'_> {
             _ => false,
         })
     }
-    pub(in crate::game) fn screen_key_response(
+    pub(in crate::game::client_side) fn screen_key_response(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         key: KeyCode,
@@ -4570,7 +4570,7 @@ impl Game<'_> {
     pub(in crate::game) fn set_client_message(&mut self, text: String) {
         self.client.message = Some((text, Instant::now()));
     }
-    pub(in crate::game) fn set_window_cursor(
+    pub(in crate::game::client_side) fn set_window_cursor(
         &mut self,
         sample: sunrise_client::window::PointerSample,
         projection: sunrise_client::window::PointerProjection,
@@ -4581,10 +4581,10 @@ impl Game<'_> {
     /// The title remains the no-level sentinel while debug options or a mod's
     /// screen covers it. Only UI dispatch ignores it; world loading and
     /// simulation still see it.
-    pub(in crate::game) fn title_input_active(&self) -> bool {
+    pub(in crate::game::client_side) fn title_input_active(&self) -> bool {
         self.title.0.is_some() && !matches!(self.client.screen, Screen::DebugOptions | Screen::Mod)
     }
-    pub(in crate::game) fn title_screen_key(
+    pub(in crate::game::client_side) fn title_screen_key(
         &mut self,
         key: KeyCode,
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
@@ -4665,7 +4665,7 @@ impl Game<'_> {
         }
     }
     /// Sets up the same block-entity scene for both world draw paths.
-    pub(in crate::game) fn with_block_entity_scene(
+    pub(in crate::game::client_side) fn with_block_entity_scene(
         &self,
         camera: glam::DVec3,
         partial: f32,

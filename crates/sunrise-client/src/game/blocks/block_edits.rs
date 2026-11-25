@@ -152,7 +152,7 @@ impl Game<'_> {
         Ok(out.changed)
     }
 
-    pub(in crate::game) fn publish_bulk_edit(
+    pub(in crate::game::server_side) fn publish_bulk_edit(
         &mut self,
         publication: BulkPublication,
         tracked: Vec<Tracked>,

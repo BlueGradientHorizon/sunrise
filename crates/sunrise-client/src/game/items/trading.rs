@@ -177,13 +177,17 @@ impl merchant::MapMaker for GameMaps<'_> {
 }
 
 /// The world's `data/minecraft/random_sequences.dat`.
-pub(in crate::game) fn random_sequences_file(world_root: &std::path::Path) -> std::path::PathBuf {
+pub(in crate::game::server_side) fn random_sequences_file(
+    world_root: &std::path::Path,
+) -> std::path::PathBuf {
     world_root.join("data/minecraft/random_sequences.dat")
 }
 /// `RandomSequences` as opening the world reads it. A world with no file gets new data,
 /// which `MinecraftServer`'s `savedDataStorage.computeIfAbsent(RandomSequences.TYPE)` stores
 /// dirty (`SavedDataStorage.set`): its first save writes it.
-pub(in crate::game) fn read_random_sequences(world_root: &std::path::Path) -> RandomSequences {
+pub(in crate::game::server_side) fn read_random_sequences(
+    world_root: &std::path::Path,
+) -> RandomSequences {
     sunrise_client::save::read_dat(&random_sequences_file(world_root))
         .and_then(|t| t.get("data").cloned())
         .map(|d| RandomSequences::from_nbt(&d))
@@ -192,7 +196,7 @@ pub(in crate::game) fn read_random_sequences(world_root: &std::path::Path) -> Ra
 /// `SavedDataStorage.saveAndJoin` for `RandomSequences`: written only while dirty, with
 /// whatever it holds then, so the emptied map and the salt a `/random reset *` left reach
 /// the file after a draw, and not without one.
-pub(in crate::game) fn write_random_sequences(
+pub(in crate::game::server_side) fn write_random_sequences(
     world_root: &std::path::Path,
     data: &mut RandomSequences,
 ) {
@@ -213,14 +217,14 @@ pub(in crate::game) fn write_random_sequences(
 
 impl Game<'_> {
     /// `RandomSequences` as `random_sequences.dat` (not on a server's guest).
-    pub(in crate::game) fn save_random_sequences(&mut self) {
+    pub(in crate::game::server_side) fn save_random_sequences(&mut self) {
         if self.remote.is_none() {
             write_random_sequences(&self.server.world_root, &mut self.server.rand_sequences);
         }
     }
     /// `AbstractVillager.addOffersFromTradeSet` with the world's random
     /// sequence of the set, at the merchant's position.
-    pub(in crate::game) fn offers_from_set(
+    pub(in crate::game::server_side) fn offers_from_set(
         &mut self,
         set: &str,
         variant: &str,
@@ -488,7 +492,7 @@ impl Game<'_> {
             name,
         });
     }
-    pub(in crate::game) fn open_merchant_state(&mut self, state: MerchantState) {
+    pub(in crate::game::server_side) fn open_merchant_state(&mut self, state: MerchantState) {
         let mut s = Station::new_kind(Kind::Merchant, [0, 0, 0]);
         s.merchant = Some(Box::new(state));
         self.station = Some(s);
@@ -535,7 +539,7 @@ impl Game<'_> {
     }
     /// What a menu click's session did, applied to the world and its mob;
     /// with the index of the offer of each trade made, for `merchant_traded`.
-    pub(in crate::game) fn merchant_apply(
+    pub(in crate::game::server_side) fn merchant_apply(
         &mut self,
         session: Box<merchant::Session>,
         mob: Option<u32>,
@@ -595,7 +599,7 @@ impl Game<'_> {
 
     /// `AbstractVillager.notifyTradeUpdated`: a hurt-triggered voice must be
     /// broadcast before the hit continues to its offers and damage.
-    pub(in crate::game) fn merchant_trade_feedback(
+    pub(in crate::game::server_side) fn merchant_trade_feedback(
         &mut self,
         villager: bool,
         yes: bool,
@@ -625,7 +629,7 @@ impl Game<'_> {
     /// `villager_trade` trigger, then the mods' `native_trade_with_villager`
     /// for a server's player (when the trader is still in the level), which
     /// may change the live offer (Bukkit's `PlayerTradeEvent#getTrade`).
-    pub(in crate::game) fn merchant_traded(
+    pub(in crate::game::server_side) fn merchant_traded(
         &mut self,
         mob: Option<u32>,
         offers: &mut [MerchantOffer],
@@ -650,7 +654,7 @@ impl Game<'_> {
     }
 
     /// The completed trade's criterion and statistic, before its collect hook.
-    pub(in crate::game) fn record_merchant_trade(
+    pub(in crate::game::server_side) fn record_merchant_trade(
         &mut self,
         mob: Option<u32>,
         result: &sunrise_client::items::ItemStack,
@@ -759,7 +763,7 @@ pub(in crate::game) fn drag_scroll(y: f32, offers: usize) -> usize {
 
 /// `MerchantScreen.mouseScrolled`: `Mth.clamp((int)(scrollOff - scrollY), 0, max)`,
 /// so a fractional wheel step that truncates to zero does not move the list.
-pub(in crate::game) fn scrolled(scroll: usize, max: usize, d: f32) -> usize {
+pub(in crate::game::server_side) fn scrolled(scroll: usize, max: usize, d: f32) -> usize {
     ((scroll as f64 - f64::from(d)) as i32).clamp(0, max as i32) as usize
 }
 

@@ -26,7 +26,7 @@ pub(in crate::game::server_side) use sunrise_client::{
 pub(in crate::game::server_side) use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 impl Game<'_> {
-    pub(in crate::game) fn cmd_pregen(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_pregen(&mut self, id: &str, ctx: &Context) -> R<i32> {
         match id {
             "pregen.start" => {
                 if self.cmds.0.pregen.is_some() {
@@ -122,12 +122,12 @@ impl Game<'_> {
         }
     }
     /// The level a running task needs ticked, whoever is in it.
-    pub(in crate::game) fn pregen_level(&self) -> Option<Dim> {
+    pub(in crate::game::server_side) fn pregen_level(&self) -> Option<Dim> {
         self.cmds.0.pregen.as_ref().map(|t| t.dim)
     }
     /// Whether the level in place has a running task, which the server pumps
     /// between its ticks (`pump_chunks`).
-    pub(in crate::game) fn pregen_runs_here(&self) -> bool {
+    pub(in crate::game::server_side) fn pregen_runs_here(&self) -> bool {
         self.cmds
             .0
             .pregen
@@ -137,7 +137,11 @@ impl Game<'_> {
     /// Keep the workers fed until `until`: collect what they finished and
     /// hand them the next jobs as soon as each one is done, rather than once
     /// a tick. Return time spent waiting for workers, not running chunk tasks.
-    pub(in crate::game) fn pump_chunks(&mut self, until: Instant, paused: bool) -> Duration {
+    pub(in crate::game::server_side) fn pump_chunks(
+        &mut self,
+        until: Instant,
+        paused: bool,
+    ) -> Duration {
         // Force-loaded chunks too, a mod's held ones as `/forceload`'s: decorating in vanilla's order, a chunk
         // waits for its neighbours far more often than once a tick allows.
         // And the players' chunks while they load, as vanilla's server runs

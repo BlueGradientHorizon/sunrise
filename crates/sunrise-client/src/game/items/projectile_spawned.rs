@@ -48,7 +48,7 @@ pub(in crate::game) fn spawned_effect(effect: &Value) -> Option<SpawnedEffect> {
 }
 
 /// Whether this path applies `effect`, with everything an `all_of` holds.
-pub(in crate::game) fn applied(effect: &Value) -> bool {
+pub(in crate::game::server_side) fn applied(effect: &Value) -> bool {
     match spawned_effect(effect) {
         Some(SpawnedEffect::AllOf) => effect["effects"]
             .as_array()
@@ -101,7 +101,7 @@ impl Game<'_> {
     /// ammo, the mobs' other projectiles from fresh stacks with no
     /// enchantments. `Projectile.tick` posts on the first tick, through the
     /// shared arrow-state continuation for ordinary arrows and tridents.
-    pub(in crate::game) fn spawn_mob_projectile(&mut self, projectile: Projectile) {
+    pub(in crate::game::server_side) fn spawn_mob_projectile(&mut self, projectile: Projectile) {
         let ammo = projectile.arrow.as_ref().map(|a| a.pickup_item.clone());
         let id = self.add_projectile(projectile);
         if let Some(ammo) = ammo {
@@ -113,7 +113,11 @@ impl Game<'_> {
     /// in the level: `stack`'s effects, then for an arrow those of the weapon
     /// it was fired from (its own copy, `AbstractArrow.getWeaponItem`) when
     /// that is another item than `stack`.
-    pub(in crate::game) fn apply_on_projectile_spawned(&mut self, id: u32, stack: &ItemStack) {
+    pub(in crate::game::server_side) fn apply_on_projectile_spawned(
+        &mut self,
+        id: u32,
+        stack: &ItemStack,
+    ) {
         self.on_projectile_spawned(id, stack);
         let weapon = self
             .spawned_projectile(id)
@@ -128,7 +132,10 @@ impl Game<'_> {
 
     /// Whether every `projectile_spawned` effect of `stack`'s enchantments is
     /// one this path applies, so a spawn from it loses none.
-    pub(in crate::game) fn projectile_spawned_effects_applied(&self, stack: &ItemStack) -> bool {
+    pub(in crate::game::server_side) fn projectile_spawned_effects_applied(
+        &self,
+        stack: &ItemStack,
+    ) -> bool {
         stack.all_enchantments().iter().all(|(enchantment, _)| {
             world_stations!(self)
                 .enchantments
@@ -153,7 +160,11 @@ impl Game<'_> {
     /// tested just before it would apply, against the projectile as `this`
     /// with the level's random (the loot context has no seed of its own); an
     /// effect draws from the projectile's own random.
-    pub(in crate::game) fn on_projectile_spawned(&mut self, id: u32, stack: &ItemStack) {
+    pub(in crate::game::server_side) fn on_projectile_spawned(
+        &mut self,
+        id: u32,
+        stack: &ItemStack,
+    ) {
         for (enchantment, level) in stack.all_enchantments().iter() {
             // Copied out only when the enchantment has the component: an
             // effect may change what the next requirement reads.
@@ -200,7 +211,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn spawned_projectile(&self, id: u32) -> Option<&Projectile> {
+    pub(in crate::game::server_side) fn spawned_projectile(&self, id: u32) -> Option<&Projectile> {
         self.creatures.projectiles.iter().find(|p| p.id == id)
     }
 }

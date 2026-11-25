@@ -106,7 +106,7 @@ impl Game<'_> {
             })
     }
     /// The block above `key` is a redstone conductor.
-    pub(in crate::game) fn conductor_above(&self, key: (i32, i32, i32)) -> bool {
+    pub(in crate::game::client_side) fn conductor_above(&self, key: (i32, i32, i32)) -> bool {
         let above = self.world.block(key.0, key.1 + 1, key.2);
         self.res.behaviours().facts(above).flags
             & sunrise_world::level::data::state_flags::CONDUCTOR
@@ -114,7 +114,7 @@ impl Game<'_> {
     }
     /// `ChestBlock.isChestBlockedAt`: a redstone conductor above the chest or
     /// a cat sitting on it.
-    pub(in crate::game) fn chest_blocked_at(&self, key: (i32, i32, i32)) -> bool {
+    pub(in crate::game::client_side) fn chest_blocked_at(&self, key: (i32, i32, i32)) -> bool {
         self.conductor_above(key) || super::machines::cat_sitting_above(&self.mobs, key)
     }
     /// `ChestBlock.getMenuProvider` (`combine(.., false)`) and
@@ -272,7 +272,7 @@ impl Game<'_> {
     pub(in crate::game) fn open_container_size(&self) -> usize {
         self.container_parts().iter().map(|p| p.1).sum()
     }
-    pub(in crate::game) fn container_slot(&self, mut n: usize) -> &Option<ItemStack> {
+    pub(in crate::game::client_side) fn container_slot(&self, mut n: usize) -> &Option<ItemStack> {
         for (pos, size) in self.container_parts() {
             if n < size {
                 return self
@@ -287,7 +287,10 @@ impl Game<'_> {
         &self.scratch_slot
     }
     /// Container slot `n` (menu slot `300 + n`).
-    pub(in crate::game) fn container_slot_mut(&mut self, mut n: usize) -> &mut Option<ItemStack> {
+    pub(in crate::game::client_side) fn container_slot_mut(
+        &mut self,
+        mut n: usize,
+    ) -> &mut Option<ItemStack> {
         let mut target = None;
         for (pos, size) in self.container_parts() {
             if n < size {
@@ -311,7 +314,7 @@ impl Game<'_> {
             .as_deref()
             .is_some_and(is_shulker_box)
     }
-    pub(in crate::game) fn container_block(&self) -> Option<std::sync::Arc<str>> {
+    pub(in crate::game::client_side) fn container_block(&self) -> Option<std::sync::Arc<str>> {
         let k = self.container?;
         Some(
             self.res
@@ -338,7 +341,7 @@ impl Game<'_> {
         generic.then(|| self.open_container_size() / 9)
     }
     /// The title of the open chest-like menu.
-    pub(in crate::game) fn chest_title(&self, rows: usize) -> Text {
+    pub(in crate::game::client_side) fn chest_title(&self, rows: usize) -> Text {
         if let Some((_, title)) = self.remote_chest_menu() {
             return title;
         }
@@ -356,7 +359,7 @@ impl Game<'_> {
     }
     /// `ContainerScreen` / `ShulkerBoxScreen`: the background with its
     /// container rows, the title and the inventory label.
-    pub(in crate::game) fn draw_chest_screen(
+    pub(in crate::game::client_side) fn draw_chest_screen(
         &self,
         batch: &mut sunrise_client::hud::HudBatch,
         ox: f32,

@@ -10,7 +10,7 @@ pub(in crate::game::server_side) use crate::game::{
 pub(in crate::game::server_side) use crate::save::Level;
 
 /// `/time <line>`; the feedback it printed.
-pub(in crate::game) fn run(game: &mut Game<'_>, line: &str) -> String {
+pub(in crate::game::server_side) fn run(game: &mut Game<'_>, line: &str) -> String {
     game.server.chat_capture = Some(Vec::new());
     assert!(game.run_command(&format!("time {line}")), "/time {line}");
     let lines = game.server.chat_capture.take().unwrap();

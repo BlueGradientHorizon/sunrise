@@ -714,7 +714,11 @@ impl Game<'_> {
     }
     /// `ServerReconfigScreen` over the panorama; Disconnect wakes up after
     /// `DISCONNECT_TIME` (600 ticks).
-    pub(in crate::game) fn draw_reconfiguring(&self, batch: &mut HudBatch, since: u64) {
+    pub(in crate::game::client_side) fn draw_reconfiguring(
+        &self,
+        batch: &mut HudBatch,
+        since: u64,
+    ) {
         let atlas = &self.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         sunrise_client::ui::menu_background(batch, atlas, 0.0, 0.0, w, h, false);
@@ -737,7 +741,7 @@ impl Game<'_> {
         }
         polled
     }
-    pub(in crate::game) fn remote_player_uuid(&self, id: u32) -> Option<u128> {
+    pub(in crate::game::client_side) fn remote_player_uuid(&self, id: u32) -> Option<u128> {
         let remote = self.remote.as_ref()?;
         if self
             .client

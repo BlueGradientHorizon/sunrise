@@ -42,7 +42,7 @@ pub(in crate::game) struct SceneQuad {
 /// up the screen's up; `yaw` turns it counterclockwise seen from above, and
 /// `pitch` tilts its top towards the viewer. The GUI's y runs down and its z
 /// towards the viewer, so the point reflection keeps the picture unmirrored.
-pub(in crate::game) fn scene_matrix(rect: [f32; 4], view: SceneView) -> Mat4 {
+pub(in crate::game::client_side) fn scene_matrix(rect: [f32; 4], view: SceneView) -> Mat4 {
     let middle = Vec3::new((rect[0] + rect[2]) / 2.0, (rect[1] + rect[3]) / 2.0, 0.0);
     Mat4::from_translation(middle)
         * Mat4::from_scale(Vec3::splat(-view.scale))
@@ -60,13 +60,13 @@ fn step(direction: sunrise_assets::model::Direction) -> [i32; 3] {
 /// How bright a face is with `normal` (world space, unit), as blocks are
 /// shaded: 1 for the top, 0.5 underneath, 0.8 north and south, 0.6 east and
 /// west, in between for a slanted face.
-pub(in crate::game) fn face_shade(normal: Vec3) -> f32 {
+pub(in crate::game::client_side) fn face_shade(normal: Vec3) -> f32 {
     let up = if normal.y > 0.0 { 1.0 } else { 0.5 };
     (normal.x * normal.x * 0.6 + normal.y * normal.y * up + normal.z * normal.z * 0.8).min(1.0)
 }
 
 /// `color` (ABGR) with its red, green and blue times `shade`.
-pub(in crate::game) fn shaded(color: u32, shade: f32) -> u32 {
+pub(in crate::game::client_side) fn shaded(color: u32, shade: f32) -> u32 {
     let ch = |s: u32| (((color >> s & 255) as f32 * shade) as u32).min(255) << s;
     (color & 0xFF00_0000) | ch(0) | ch(8) | ch(16)
 }
@@ -85,7 +85,7 @@ impl Game<'_> {
     /// the scene is seen and sorted (a living scene's entities and particles,
     /// `native_scene_live`); a scene of blocks alone passes none. Nothing is
     /// drawn when a quad seen through the view isn't finite. API 422.
-    pub(in crate::game) fn draw_scene_quads(
+    pub(in crate::game::client_side) fn draw_scene_quads(
         &self,
         batch: &mut HudBatch,
         rect: [f32; 4],
@@ -223,7 +223,10 @@ impl Game<'_> {
 /// `quads` seen through `m`: the faces turned away dropped (those that cull), the rest far to
 /// near, for the faces that let others show through. None when a quad does not stay finite:
 /// a mod's view or position may overflow, and nothing may be drawn then.
-pub(in crate::game) fn project_quads(quads: Vec<SceneQuad>, m: Mat4) -> Option<Vec<ProjectedQuad>> {
+pub(in crate::game::client_side) fn project_quads(
+    quads: Vec<SceneQuad>,
+    m: Mat4,
+) -> Option<Vec<ProjectedQuad>> {
     let mut seen: Vec<ProjectedQuad> = quads
         .into_iter()
         .filter(|q| !q.cull || m.transform_vector3(q.normal).z > 0.0)

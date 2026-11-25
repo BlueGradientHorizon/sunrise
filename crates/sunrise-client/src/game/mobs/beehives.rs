@@ -26,7 +26,7 @@ pub(in crate::game) struct GameHive<'g, 'a> {
     pub(in crate::game) stay: std::cell::Cell<Option<bool>>,
 }
 impl<'g, 'a> GameHive<'g, 'a> {
-    pub(in crate::game) fn new(game: &'g mut Game<'a>) -> Self {
+    pub(in crate::game::server_side) fn new(game: &'g mut Game<'a>) -> Self {
         Self {
             game,
             stay: Default::default(),
@@ -184,7 +184,7 @@ impl Game<'_> {
     }
     /// `BeehiveBlockEntity.addOccupant` for a bee its `BeeEnterHiveGoal`
     /// sent in: off its lead, its tag stored, the bee gone.
-    pub(in crate::game) fn bee_enter_hive(&mut self, mob: u32, at: [i32; 3]) {
+    pub(in crate::game::server_side) fn bee_enter_hive(&mut self, mob: u32, at: [i32; 3]) {
         let key = (at[0], at[1], at[2]);
         if !self
             .mobs
@@ -237,7 +237,12 @@ impl Game<'_> {
         }
     }
     /// `BeehiveBlockEntity.emptyAllLivingFromHive` with no player about.
-    pub(in crate::game) fn empty_hive(&mut self, at: [i32; 3], facing: [i32; 2], status: Release) {
+    pub(in crate::game::server_side) fn empty_hive(
+        &mut self,
+        at: [i32; 3],
+        facing: [i32; 2],
+        status: Release,
+    ) {
         let key = (at[0], at[1], at[2]);
         let Some((lease, BlockEntity::Beehive(mut hive))) = self.world.block_entities.take(&key)
         else {
@@ -251,7 +256,7 @@ impl Game<'_> {
     /// `BeehiveBlock.playerDestroy` without silk touch: the bees come out
     /// angry at the player unless smoke calms them, then
     /// `angerNearbyBees`.
-    pub(in crate::game) fn hive_broken_by_player(
+    pub(in crate::game::server_side) fn hive_broken_by_player(
         &mut self,
         at: [i32; 3],
         mut hive: Beehive,
@@ -289,7 +294,7 @@ impl Game<'_> {
     /// the honeycombs and a glass bottle a honey bottle from a full hive
     /// (honey level 5), then the honey level resets and, unless a campfire
     /// smokes the hive, the bees come out angry. True when it took the click.
-    pub(in crate::game) fn use_beehive(
+    pub(in crate::game::server_side) fn use_beehive(
         &mut self,
         pos: [i32; 3],
         held: Option<&ItemStack>,
@@ -397,7 +402,7 @@ impl Game<'_> {
     /// `BeehiveBlock.angerNearbyBees`: bees within 8 blocks (6 up and down)
     /// without a target go for a random player in the same box, the window's
     /// own or a guest (`None` is the window's player).
-    pub(in crate::game) fn anger_nearby_bees(&mut self, at: [i32; 3]) {
+    pub(in crate::game::server_side) fn anger_nearby_bees(&mut self, at: [i32; 3]) {
         let min = Vec3::new(
             f64::from(at[0]) - 8.0,
             f64::from(at[1]) - 6.0,

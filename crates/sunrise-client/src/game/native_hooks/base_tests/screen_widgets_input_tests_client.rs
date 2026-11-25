@@ -195,7 +195,7 @@ fn native_and_mounted_press_tab_and_preedit_use_the_receiving_screen() {
     });
 }
 
-pub(in crate::game) fn publish_frame(game: &mut Game<'_>, frame: u64) {
+pub(in crate::game::client_side) fn publish_frame(game: &mut Game<'_>, frame: u64) {
     let renderer = game.renderer.0.as_ref().unwrap();
     let size = [renderer.config.width, renderer.config.height];
     game.hud(size);

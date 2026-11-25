@@ -7,7 +7,7 @@ impl Game<'_> {
     /// The visit of each entity of the client level whose kind is told no tick
     /// (`tick_remote_entities`): its `Entity.commonTick` counts it here. A frozen level visits
     /// only the players and what carries them.
-    pub(in crate::game) fn count_untold_client_ticks(
+    pub(in crate::game::client_side) fn count_untold_client_ticks(
         &mut self,
         running: bool,
         frozen_ticking: &[i32],
@@ -51,7 +51,7 @@ impl Game<'_> {
     /// lit, then the same fade); when the level is
     /// ready the loading screen closes and the server hears `PlayerLoaded`
     /// (`notifyPlayerLoaded`).
-    pub(in crate::game) fn tick_client_load(&mut self) {
+    pub(in crate::game::client_side) fn tick_client_load(&mut self) {
         let Some(player) = self.player.as_ref() else {
             return;
         };
@@ -550,7 +550,7 @@ impl Game<'_> {
     }
     /// `LocalPlayer.aiStep` (877-883): water vision reads the local body's `Entity.baseTick`
     /// `isEyeInFluid(FluidTags.WATER)` sample and `this.isSpectator()`.
-    pub(in crate::game) fn tick_local_water_vision(&mut self) {
+    pub(in crate::game::client_side) fn tick_local_water_vision(&mut self) {
         let in_water = self
             .player
             .as_ref()
@@ -573,7 +573,7 @@ impl Game<'_> {
             .get_mut()
             .end_entity_ticks();
     }
-    pub(in crate::game) fn tick_remote_entity_turns(&mut self, running: bool) {
+    pub(in crate::game::client_side) fn tick_remote_entity_turns(&mut self, running: bool) {
         use crate::game::native_ticks::{PLAYER, TickKind};
 
         let frozen_ticking: Vec<i32> = if running {
@@ -1441,7 +1441,7 @@ impl Game<'_> {
     /// (`TickRateManager.isEntityFrozen`).
     /// `GuardianRenderer.getEntityToLookAt`: a guardian's eye follows its
     /// synched attack target, else the camera.
-    pub(in crate::game) fn tick_remote_guardian_eyes(&mut self, running: bool) {
+    pub(in crate::game::client_side) fn tick_remote_guardian_eyes(&mut self, running: bool) {
         use sunrise_client::mobs::{Species, Who, guardian};
         if !running {
             return;
@@ -1475,7 +1475,7 @@ impl Game<'_> {
     }
     /// The local player's `LocalPlayer.tick`, once the client has loaded. The
     /// input `sendChanges` sends after the block entities ticked, if it runs.
-    pub(in crate::game) fn tick_remote_own_player(&mut self) -> Result<Option<u8>> {
+    pub(in crate::game::client_side) fn tick_remote_own_player(&mut self) -> Result<Option<u8>> {
         // ClientLevel.tickEntities skips a removed entity. Keep the last player state
         // for LevelExtractor.extractPlayerState, which still sees it on the death screen.
         let removed = self.local_player_removed_by_death();

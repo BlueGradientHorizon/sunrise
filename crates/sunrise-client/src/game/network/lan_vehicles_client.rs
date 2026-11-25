@@ -5,8 +5,6 @@ pub(in crate::game::client_side) use crate::game::server_side::lan_vehicles::Wat
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::lan_vehicles::corners;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_vehicles::input_keys;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::lan_vehicles::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::collisions::SceneCollisions;

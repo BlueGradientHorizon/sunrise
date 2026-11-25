@@ -124,7 +124,7 @@ pub(in crate::game) mod world_cmds;
 impl Game<'_> {
     /// `CommandSource.acceptsSuccess`: a player's source takes success feedback while
     /// `send_command_feedback` is on; the server console's and an RCON client's always do.
-    pub(in crate::game) fn accepts_success(&self) -> bool {
+    pub(in crate::game::server_side) fn accepts_success(&self) -> bool {
         self.server.console_broadcast.is_some()
             || self
                 .ui
@@ -143,7 +143,7 @@ impl Game<'_> {
     /// entity's name, read where `execute in` put the command (`source.dimension`,
     /// in place); a command-block minecart executing as itself, and a command
     /// block's own name, in the origin's level; the server's for the console.
-    pub(in crate::game) fn admin_display_name(&mut self) -> Text {
+    pub(in crate::game::server_side) fn admin_display_name(&mut self) -> Text {
         let Some(source) = self.server.command_source else {
             return if self.server.console_broadcast.is_some() {
                 self.server_name()
@@ -165,7 +165,7 @@ impl Game<'_> {
     /// `send_admin_feedback` sends it). Under `log_admin_commands` the server's
     /// log gets it, unless the server's console is the source. Neither rule
     /// gates the other.
-    pub(in crate::game) fn broadcast_to_admins(&mut self, message: Text) {
+    pub(in crate::game::server_side) fn broadcast_to_admins(&mut self, message: Text) {
         if !self.should_inform_admins() {
             return;
         }
@@ -198,7 +198,7 @@ impl Game<'_> {
             self.server.admin_feedback.push((line, source));
         }
     }
-    pub(in crate::game) fn clone_between(
+    pub(in crate::game::server_side) fn clone_between(
         &mut self,
         ctx: &Context,
         a: [i32; 3],
@@ -330,7 +330,7 @@ impl Game<'_> {
             to_dim.unwrap_or(here),
         )
     }
-    pub(in crate::game) fn cmd_fill(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_fill(&mut self, ctx: &Context) -> R<i32> {
         let a = self.block_pos_arg(ctx, "from")?;
         let b = self.block_pos_arg(ctx, "to")?;
         let Some(Arg::Block(block)) = ctx.get("block").cloned() else {
@@ -469,7 +469,7 @@ impl Game<'_> {
         self.feedback(Text::tr("commands.fill.success", &[&count]));
         Ok(count)
     }
-    pub(in crate::game) fn cmd_gamerule(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_gamerule(&mut self, ctx: &Context) -> R<i32> {
         let Some(name) = ctx.literals.get(1).cloned() else {
             return Ok(0);
         };
@@ -516,7 +516,7 @@ impl Game<'_> {
             Value::Int(i) => i,
         })
     }
-    pub(in crate::game) fn cmd_give(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_give(&mut self, ctx: &Context) -> R<i32> {
         let Some(Arg::Item(ItemInput { id, components, .. })) = ctx.get("item").cloned() else {
             return Ok(0);
         };
@@ -617,7 +617,7 @@ impl Game<'_> {
         Ok(targets.len() as i32)
     }
     /// `SayCommand.register`: resolve the source name and broadcast unsigned announcements.
-    pub(in crate::game) fn cmd_say(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_say(&mut self, id: &str, ctx: &Context) -> R<i32> {
         let raw = match ctx.get(if id == "me" { "action" } else { "message" }) {
             Some(Arg::Str(s)) => s.clone(),
             _ => String::new(),
@@ -686,7 +686,7 @@ impl Game<'_> {
         );
         Ok(1)
     }
-    pub(in crate::game) fn cmd_setblock(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_setblock(&mut self, ctx: &Context) -> R<i32> {
         let pos = self.block_pos_arg(ctx, "pos")?;
         let Some(Arg::Block(b)) = ctx.get("block").cloned() else {
             return Ok(0);
@@ -746,7 +746,7 @@ impl Game<'_> {
         ));
         Ok(1)
     }
-    pub(in crate::game) fn cmd_setworldspawn(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_setworldspawn(&mut self, ctx: &Context) -> R<i32> {
         // SetWorldSpawnCommand: BlockPosArgument.getSpawnablePos, in the source's level.
         let pos = if ctx.get("pos").is_some() {
             self.spawnable_pos_arg(ctx, "pos")?
@@ -909,7 +909,7 @@ impl Game<'_> {
         self.feedback(Text::translate("commands.summon.success", &[name]));
         Ok(1)
     }
-    pub(in crate::game) fn cmd_teleport(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_teleport(&mut self, id: &str, ctx: &Context) -> R<i32> {
         let targets = if id.starts_with("teleport.targets") {
             without_knots(self.entities(ctx, "targets", false)?)?
         } else {
@@ -1097,7 +1097,11 @@ impl Game<'_> {
         }
         self.system_message(formatted_command_failure(message, None));
     }
-    pub(in crate::game) fn execute_command(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn execute_command(
+        &mut self,
+        id: &str,
+        ctx: &Context,
+    ) -> R<i32> {
         match id {
             "native_mod_command" => self.run_native_command(ctx.clone()),
             "help" => self.cmd_help(ctx),
@@ -1239,7 +1243,10 @@ impl Game<'_> {
     }
     /// `f` with the command's origin level in place (`source.origin_dimension`):
     /// where its command block or minecart is, whatever level `execute in` named.
-    pub(in crate::game) fn in_origin_level<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
+    pub(in crate::game::server_side) fn in_origin_level<T>(
+        &mut self,
+        f: impl FnOnce(&mut Self) -> T,
+    ) -> T {
         let origin = self.server.command_source.map(|s| s.origin_dimension);
         let back = origin.and_then(|dim| self.enter_command_level(dim));
         let out = f(self);
@@ -1474,7 +1481,7 @@ impl Game<'_> {
     }
     /// The loaded levels, in the order the server holds them: the
     /// overworld, the nether, the end (MinecraftServer.getAllLevels).
-    pub(in crate::game) fn loaded_dims(&self) -> Vec<Dim> {
+    pub(in crate::game::server_side) fn loaded_dims(&self) -> Vec<Dim> {
         let mut dims = vec![self.dim];
         dims.extend(self.levels.0.parked_dims());
         dims.sort_by_key(|d| match d {
@@ -1488,7 +1495,7 @@ impl Game<'_> {
     /// `MinecraftServer.sendSystemMessage`: a line in the server's log, as the
     /// console's replies are logged. Kept out of an RCON reply, which carries
     /// only the source's own output.
-    pub(in crate::game) fn log_server_system_message(&self, line: &Text) {
+    pub(in crate::game::server_side) fn log_server_system_message(&self, line: &Text) {
         let message = format!("System chat: {}", line.plain());
         if self.is_dedicated_server() {
             super::dedicated::log_outside_rcon_reply(self.server.rcon_source, &message);
@@ -1612,7 +1619,7 @@ impl Game<'_> {
         self.server.command_source = outer;
         ok
     }
-    pub(in crate::game) fn send_player_look_at(
+    pub(in crate::game::server_side) fn send_player_look_at(
         &mut self,
         t: Target,
         from_eyes: bool,
@@ -1692,7 +1699,7 @@ impl Game<'_> {
     /// the block itself: looked up in its own level); the console's
     /// `broadcast-console-to-ops` (`DedicatedServer`) and RCON's
     /// `broadcast-rcon-to-ops` (`RconConsoleSource`).
-    pub(in crate::game) fn should_inform_admins(&mut self) -> bool {
+    pub(in crate::game::server_side) fn should_inform_admins(&mut self) -> bool {
         let source = self.server.command_source;
         let origin = source.and_then(|s| s.block.map(Ok).or(s.cart.map(Err)));
         let Some(origin) = origin else {
@@ -1729,7 +1736,7 @@ impl Game<'_> {
     /// What changes when an entity spawns, kinds that take their id only
     /// when first tracked (primed TNT, falling blocks, projectiles)
     /// included: a summon compares it before and after.
-    pub(in crate::game) fn spawned_mark(&self) -> (u32, usize) {
+    pub(in crate::game::server_side) fn spawned_mark(&self) -> (u32, usize) {
         (
             self.server.next_entity,
             self.tnts.len()
@@ -1814,7 +1821,7 @@ impl Game<'_> {
     /// once (`teleport_target_across`), a server's player is queued to move
     /// after the command (ServerPlayer.teleport). False when `t` cannot
     /// change level or is already in `level`.
-    pub(in crate::game) fn teleport_across(
+    pub(in crate::game::server_side) fn teleport_across(
         &mut self,
         t: Target,
         level: super::Dim,

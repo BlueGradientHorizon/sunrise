@@ -43,7 +43,7 @@ use sunrise_protocol::packets::play::Clientbound as C;
 pub(in crate::game) mod progress_tests;
 
 /// Capture the owning progress without changing its dates or requirement semantics.
-pub(in crate::game) fn progress_snapshot(
+pub(in crate::game::server_side) fn progress_snapshot(
     a: &adv::Advancement,
     progress: &Progress,
 ) -> mod_api::AdvancementProgress {
@@ -111,7 +111,11 @@ impl Toast {
         result
     }
     /// `Toast.update` with `fullyVisibleForMs`: whether it wants to be shown.
-    pub(in crate::game) fn wants_show(&mut self, fully_for: i64, multiplier: f64) -> bool {
+    pub(in crate::game::server_side) fn wants_show(
+        &mut self,
+        fully_for: i64,
+        multiplier: f64,
+    ) -> bool {
         let time = 5000.0 * multiplier;
         if self.recipes.is_empty() {
             // AdvancementToast.
@@ -125,7 +129,11 @@ impl Toast {
     }
     /// `RecipeToast.displayedRecipeIndex`: the displays take turns over the
     /// toast's display time.
-    pub(in crate::game) fn displayed_recipe(&self, fully_for: i64, multiplier: f64) -> usize {
+    pub(in crate::game::server_side) fn displayed_recipe(
+        &self,
+        fully_for: i64,
+        multiplier: f64,
+    ) -> usize {
         let n = self.recipes.len() as f64;
         (fully_for as f64 / (5000.0 * multiplier / n).max(1.0) % n) as usize
     }
@@ -177,7 +185,7 @@ pub(in crate::game) struct AdvState {
 }
 impl AdvState {
     /// Drop the index built for the previous tree after a new one is installed.
-    pub(in crate::game) fn reset_tree(&mut self) {
+    pub(in crate::game::server_side) fn reset_tree(&mut self) {
         self.inventory_index = None;
     }
 }
@@ -233,7 +241,7 @@ impl RemoteTree {
 
     /// Release identities no current node can reach in either direction.
     /// A removed or overwritten node remains as long as its links still matter.
-    pub(in crate::game) fn prune_unreachable(&mut self) {
+    pub(in crate::game::server_side) fn prune_unreachable(&mut self) {
         if self.nodes.len() == self.current.len() {
             return;
         }
@@ -429,7 +437,9 @@ pub(in crate::game) type Tags =
 /// The game's own `worldgen/structure` tags (a world without data packs has
 /// no `WorldTables` to hold them), loaded once for the resource root first
 /// asked for.
-pub(in crate::game) fn vanilla_structure_tags(root: &std::path::Path) -> &'static Tags {
+pub(in crate::game::server_side) fn vanilla_structure_tags(
+    root: &std::path::Path,
+) -> &'static Tags {
     static TAGS: std::sync::OnceLock<Tags> = std::sync::OnceLock::new();
     TAGS.get_or_init(|| {
         sunrise_client::items::load_tags(
@@ -440,7 +450,7 @@ pub(in crate::game) fn vanilla_structure_tags(root: &std::path::Path) -> &'stati
         .unwrap_or_default()
     })
 }
-pub(in crate::game) fn now_text() -> String {
+pub(in crate::game::server_side) fn now_text() -> String {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs()) as i64;
@@ -469,7 +479,7 @@ impl Game<'_> {
 }
 /// `MinMaxBounds.Doubles.matchesSqr`: `sqr` against the bounds squared
 /// (a missing one matches anything).
-pub(in crate::game) fn matches_sqr(v: &Value, sqr: f64) -> bool {
+pub(in crate::game::server_side) fn matches_sqr(v: &Value, sqr: f64) -> bool {
     let (min, max) = match v {
         Value::Null => (None, None),
         Value::Number(n) => (n.as_f64(), n.as_f64()),
@@ -497,7 +507,7 @@ pub(in crate::game) fn item_view(s: &ItemStack) -> ItemView {
     }
 }
 impl Game<'_> {
-    pub(in crate::game) fn adv_path(&self) -> Option<std::path::PathBuf> {
+    pub(in crate::game::server_side) fn adv_path(&self) -> Option<std::path::PathBuf> {
         Some(super::stats::player_json(
             &self.server.world_root,
             "advancements",
@@ -506,7 +516,7 @@ impl Game<'_> {
     }
     /// A server with no player of its own and nobody it acts for: there is
     /// no player for advancements and statistics.
-    pub(in crate::game) fn no_player_here(&self) -> bool {
+    pub(in crate::game::server_side) fn no_player_here(&self) -> bool {
         self.options.dedicated.is_some() && self.server.lan_acting.is_none()
     }
     /// Load the local tree once; an empty server tree is still authoritative.
@@ -519,7 +529,7 @@ impl Game<'_> {
         self.adv.tree.clone()
     }
     /// `inventory_changed`'s criteria by item, for the tree in place.
-    pub(in crate::game) fn inventory_index(&mut self) -> Arc<adv::InventoryIndex> {
+    pub(in crate::game::server_side) fn inventory_index(&mut self) -> Arc<adv::InventoryIndex> {
         let tree = self.adv.tree.clone();
         if let Some((built, index)) = &self.adv.inventory_index
             && Arc::ptr_eq(built, &tree)
@@ -564,7 +574,7 @@ impl Game<'_> {
             self.grant_rewards(&tree.list[index]);
         }
     }
-    pub(in crate::game) fn save_advancements(&self) {
+    pub(in crate::game::server_side) fn save_advancements(&self) {
         if !self.adv.loaded
             || self.remote.is_some()
             || self.no_player_here()
@@ -588,7 +598,10 @@ impl Game<'_> {
     }
     /// The player as predicates see it.
     /// The predicate view of a command target.
-    pub(in crate::game) fn entity_view_of(&self, t: super::commands::Target) -> EntityView {
+    pub(in crate::game::server_side) fn entity_view_of(
+        &self,
+        t: super::commands::Target,
+    ) -> EntityView {
         use super::commands::Target;
         match t {
             Target::Player => self.player_entity(),
@@ -632,7 +645,7 @@ impl Game<'_> {
         }
     }
     /// A `ContextAwarePredicate` for `this` at `origin`.
-    pub(in crate::game) fn conditions_hold(
+    pub(in crate::game::server_side) fn conditions_hold(
         &self,
         v: &Value,
         this: Option<&EntityView>,
@@ -652,12 +665,16 @@ impl Game<'_> {
     }
     /// A `ContextAwarePredicate` in a loot context that may also carry
     /// `target_entity` and `interacting_entity`.
-    pub(in crate::game) fn conditions_hold_in(&self, v: &Value, entities: &adv::Entities) -> bool {
+    pub(in crate::game::server_side) fn conditions_hold_in(
+        &self,
+        v: &Value,
+        entities: &adv::Entities,
+    ) -> bool {
         adv::conditions(v, entities, &View(self))
     }
     /// `ExecuteCommand.checkCustomPredicate`: no seed/sequence override;
     /// reached literal chance leaves use this active level's random source.
-    pub(in crate::game) fn command_conditions_hold(
+    pub(in crate::game::server_side) fn command_conditions_hold(
         &mut self,
         v: &Value,
         this: Option<&EntityView>,
@@ -681,14 +698,14 @@ impl Game<'_> {
         })
     }
     /// The player as a command's predicates see it: with what it looks at.
-    pub(in crate::game) fn player_entity(&self) -> EntityView {
+    pub(in crate::game::server_side) fn player_entity(&self) -> EntityView {
         self.player_entity_looking(true)
     }
     /// [`Self::entity_view_of`] for testing `predicate` (a predicate, a list
     /// of conditions or an item modifier): the player with the level,
     /// statistics, advancements and recipes it may ask for, and nothing
     /// copied when it asks for none.
-    pub(in crate::game) fn entity_view_asked(
+    pub(in crate::game::server_side) fn entity_view_asked(
         &self,
         t: super::commands::Target,
         predicate: &Value,
@@ -697,7 +714,7 @@ impl Game<'_> {
     }
     /// [`Self::entity_view_asked`] with the holder's live scoreboard scores,
     /// which `entity_scores` reads.
-    pub(in crate::game) fn entity_view_scored(
+    pub(in crate::game::server_side) fn entity_view_scored(
         &mut self,
         t: super::commands::Target,
         predicate: &Value,
@@ -714,7 +731,7 @@ impl Game<'_> {
         view
     }
     /// [`Self::entity_view_of`] with the player's records `asked` names.
-    pub(in crate::game) fn entity_view_asking(
+    pub(in crate::game::server_side) fn entity_view_asking(
         &self,
         t: super::commands::Target,
         asked: adv::FactsAsked,
@@ -731,7 +748,7 @@ impl Game<'_> {
     /// [`Self::player_facts`] of a server's player who is not in place
     /// (selectors leave out the one in place): its own records, kept on the
     /// hub while another acts.
-    pub(in crate::game) fn guest_facts(
+    pub(in crate::game::server_side) fn guest_facts(
         &self,
         conn: u32,
         asked: adv::FactsAsked,
@@ -782,7 +799,7 @@ impl Game<'_> {
         me
     }
     /// `KilledTrigger` takes the actual killer, not the player borrowing the acting slot.
-    pub(in crate::game) fn displaced_player_entity_for(
+    pub(in crate::game::server_side) fn displaced_player_entity_for(
         &self,
         frame: &DisplacedPlayer,
         body: &PlayerMotion,
@@ -816,7 +833,10 @@ impl Game<'_> {
         );
         Some(view)
     }
-    pub(in crate::game) fn player_facts(&self, asked: adv::FactsAsked) -> adv::PlayerFacts {
+    pub(in crate::game::server_side) fn player_facts(
+        &self,
+        asked: adv::FactsAsked,
+    ) -> adv::PlayerFacts {
         let Some(p) = self.player.as_ref() else {
             return adv::PlayerFacts::default();
         };
@@ -830,7 +850,7 @@ impl Game<'_> {
         )
     }
     /// Only copy the records named by `PlayerPredicate`; unloaded records stay absent.
-    pub(in crate::game) fn player_facts_from(
+    pub(in crate::game::server_side) fn player_facts_from(
         &self,
         asked: adv::FactsAsked,
         body: &PlayerMotion,
@@ -850,7 +870,7 @@ impl Game<'_> {
         }
     }
     /// The player as predicates see it, with what it looks at when `looking`.
-    pub(in crate::game) fn player_entity_looking(&self, looking: bool) -> EntityView {
+    pub(in crate::game::server_side) fn player_entity_looking(&self, looking: bool) -> EntityView {
         let Some(body) = self.player.as_ref() else {
             return EntityView::default();
         };
@@ -867,7 +887,10 @@ impl Game<'_> {
             look: looking.then_some((self.yaw, self.pitch)),
         })
     }
-    pub(in crate::game) fn player_entity_from(&self, state: PlayerEntityState<'_>) -> EntityView {
+    pub(in crate::game::server_side) fn player_entity_from(
+        &self,
+        state: PlayerEntityState<'_>,
+    ) -> EntityView {
         let p = state.body;
         let mut eq: [Option<ItemView>; 7] = Default::default();
         eq[0] = state.main_hand.map(item_view);
@@ -930,7 +953,7 @@ impl Game<'_> {
         }
     }
     /// The player as a passenger of the vehicle `id` (`Entity.getPassengers`).
-    pub(in crate::game) fn rider_entity(&self, id: u32) -> Option<EntityView> {
+    pub(in crate::game::server_side) fn rider_entity(&self, id: u32) -> Option<EntityView> {
         let p = self.player.as_ref().filter(|_| self.riding == Some(id))?;
         Some(EntityView {
             kind: "minecraft:player".into(),
@@ -941,7 +964,7 @@ impl Game<'_> {
     }
     /// A boat as the predicates see it: its type, and its passengers (the
     /// mobs seated on it, then the player riding it).
-    pub(in crate::game) fn boat_entity(&self, b: &super::boats::Boat) -> EntityView {
+    pub(in crate::game::server_side) fn boat_entity(&self, b: &super::boats::Boat) -> EntityView {
         EntityView {
             kind: b.entity_type(),
             position: [b.position.x, b.position.y, b.position.z],
@@ -1087,7 +1110,7 @@ impl Game<'_> {
     }
     /// `trigger` for some of a trigger's criteria: (advancement, criterion)
     /// indexes in `tree`, in tree order.
-    pub(in crate::game) fn trigger_criteria(
+    pub(in crate::game::server_side) fn trigger_criteria(
         &mut self,
         tree: &Tree,
         list: &[(usize, usize)],
@@ -1128,7 +1151,7 @@ impl Game<'_> {
         }
     }
     /// `PlayerAdvancements.award` / `revoke` after a criterion's progress changed.
-    pub(in crate::game) fn advancement_progress(
+    pub(in crate::game::server_side) fn advancement_progress(
         &mut self,
         advancement: &adv::Advancement,
         criterion: &str,
@@ -1158,7 +1181,7 @@ impl Game<'_> {
     }
     /// Lend the hub each guest turn's actual advancement storage, without
     /// moving it back into a record while that turn is still active.
-    pub(in crate::game) fn with_advancement_hub<R>(
+    pub(in crate::game::server_side) fn with_advancement_hub<R>(
         &mut self,
         run: impl FnOnce(
             &mut sunrise_client::lan::hub::Hub,
@@ -1256,7 +1279,7 @@ impl Game<'_> {
         });
     }
     /// `PlayerAdvancements.progressChanged`, kept for a network player's client.
-    pub(in crate::game) fn progress_changed(&mut self, index: usize) {
+    pub(in crate::game::server_side) fn progress_changed(&mut self, index: usize) {
         if self.server.lan_acting.is_some() {
             self.adv.changed.insert(index);
         }
@@ -1265,7 +1288,7 @@ impl Game<'_> {
     /// `recipe_unlocked` trigger of each recipe now known. Returns the
     /// number of recipe displays taken back out because a mod refused their
     /// discovery.
-    pub(in crate::game) fn recipe_unlocked(&mut self, unlocked: &[String]) -> usize {
+    pub(in crate::game::server_side) fn recipe_unlocked(&mut self, unlocked: &[String]) -> usize {
         let mut allowed = Vec::with_capacity(unlocked.len());
         let mut refused = Vec::new();
         let mut taken_back = 0;
@@ -1336,7 +1359,7 @@ impl Game<'_> {
     /// vanilla's `Invalid recipe: {}` and knows nothing. Whether the click
     /// ends here: `InteractionResult.SUCCESS` does and swings, `FAIL` leaves
     /// the other hand its turn (`Minecraft.startUseItem`).
-    pub(in crate::game) fn use_knowledge_book(&mut self, stack: &ItemStack) -> bool {
+    pub(in crate::game::server_side) fn use_knowledge_book(&mut self, stack: &ItemStack) -> bool {
         if &*stack.item != "minecraft:knowledge_book" {
             return false;
         }
@@ -1372,7 +1395,7 @@ impl Game<'_> {
     }
     /// `PlayerAdvancements.award` once done: `AdvancementRewards.grant`,
     /// then toast and announcement.
-    pub(in crate::game) fn award(&mut self, index: usize) {
+    pub(in crate::game::server_side) fn award(&mut self, index: usize) {
         if self.server.lan_acting_fake {
             return;
         }
@@ -1397,7 +1420,7 @@ impl Game<'_> {
     }
 
     /// Publish a completed advancement's rewards after its tentative criterion commits.
-    pub(in crate::game) fn commit_merchant_reward(&mut self, a: &adv::Advancement) {
+    pub(in crate::game::server_side) fn commit_merchant_reward(&mut self, a: &adv::Advancement) {
         let rewards = self.grant_rewards(a);
         if let Some(d) = &a.display {
             // A network player's client shows its own toast.
@@ -1455,7 +1478,10 @@ impl Game<'_> {
     /// a finished advancement, and the recipes it unlocked for the
     /// `recipe_unlocked` trigger, which the caller runs after its toast and
     /// announcement. Returns those recipes.
-    pub(in crate::game) fn grant_rewards(&mut self, a: &adv::Advancement) -> Vec<String> {
+    pub(in crate::game::server_side) fn grant_rewards(
+        &mut self,
+        a: &adv::Advancement,
+    ) -> Vec<String> {
         // AdvancementRewards.grant: giveExperiencePoints runs even for 0.
         self.give_experience_points(a.rewards.experience);
         // ServerPlayer.awardRecipesByKey: the rewards that name a recipe.
@@ -1612,7 +1638,7 @@ impl Game<'_> {
         });
     }
     /// Per-tick checks for the player already in place, without a guest connection turn.
-    pub(in crate::game) fn tick_advancements(&mut self) {
+    pub(in crate::game::server_side) fn tick_advancements(&mut self) {
         self.tick_level_advancements();
         if let Some(player) = &self.player
             && player.health.tick_count % 20 == 0
@@ -1622,7 +1648,7 @@ impl Game<'_> {
     }
 
     /// Criteria on the level path (`ServerPlayer.tick`).
-    pub(in crate::game) fn tick_level_advancements(&mut self) {
+    pub(in crate::game::server_side) fn tick_level_advancements(&mut self) {
         if self.player.is_none() || self.remote.is_some() {
             return;
         }
@@ -1681,7 +1707,12 @@ impl Game<'_> {
         });
     }
     /// A player condition plus one entity (`player`, `entity` keys).
-    pub(in crate::game) fn trigger_entity(&mut self, name: &str, key: &str, target: &EntityView) {
+    pub(in crate::game::server_side) fn trigger_entity(
+        &mut self,
+        name: &str,
+        key: &str,
+        target: &EntityView,
+    ) {
         let me = self.player_entity_for(name);
         let target = target.clone();
         let key = key.to_owned();
@@ -1731,7 +1762,7 @@ impl Game<'_> {
         });
     }
     /// `KilledByArrowTrigger`: what the arrow killed and the weapon it came from.
-    pub(in crate::game) fn trigger_killed_by_arrow(
+    pub(in crate::game::server_side) fn trigger_killed_by_arrow(
         &mut self,
         victims: &[EntityView],
         weapon: Option<&ItemStack>,
@@ -1745,7 +1776,11 @@ impl Game<'_> {
     }
     /// `LevitationTrigger`: how far the player rose from where it started
     /// levitating, and for how long.
-    pub(in crate::game) fn trigger_levitation(&mut self, start: [f64; 3], duration: i64) {
+    pub(in crate::game::server_side) fn trigger_levitation(
+        &mut self,
+        start: [f64; 3],
+        duration: i64,
+    ) {
         let me = self.player_entity_for("minecraft:levitation");
         self.trigger("minecraft:levitation", move |c, w| {
             let pctx = adv::Entities {
@@ -1765,7 +1800,7 @@ impl Game<'_> {
     /// (`resetFallDistance`), `trackEnteredOrExitedLavaOnVehicle`, the way back
     /// from the Nether, and `onEffectAdded`, `onEffectUpdated` and
     /// `onEffectsRemoved`, which are seen as each tick ends.
-    pub(in crate::game) fn tick_marks(&mut self) {
+    pub(in crate::game::server_side) fn tick_marks(&mut self) {
         let Some(p) = self.player.as_ref() else {
             return;
         };
@@ -1821,7 +1856,7 @@ impl Game<'_> {
         }
     }
     /// The (effect, amplifier) pairs `marks.effects` compares.
-    pub(in crate::game) fn effects_seen(&self) -> Vec<(&'static str, i32)> {
+    pub(in crate::game::server_side) fn effects_seen(&self) -> Vec<(&'static str, i32)> {
         self.potions
             .effects
             .list
@@ -1838,12 +1873,12 @@ impl Game<'_> {
     }
     /// `DistanceTrigger`: the player's `player` condition, `start_position`
     /// at `start`, and the `distance` from `start` to the player.
-    pub(in crate::game) fn trigger_distance(&mut self, name: &str, start: [f64; 3]) {
+    pub(in crate::game::server_side) fn trigger_distance(&mut self, name: &str, start: [f64; 3]) {
         self.trigger_distance_at(name, start, None);
     }
 
     /// Complete a distance trigger at the position recorded by its call site.
-    pub(in crate::game) fn trigger_distance_at(
+    pub(in crate::game::server_side) fn trigger_distance_at(
         &mut self,
         name: &str,
         start: [f64; 3],
@@ -1871,7 +1906,7 @@ impl Game<'_> {
     /// `impact` (made by `cause`, or by nothing), measured to where the
     /// player is now. `matches` tests `cause` only when the instance has one,
     /// and a missing cause fails it.
-    pub(in crate::game) fn trigger_fall_after_explosion(
+    pub(in crate::game::server_side) fn trigger_fall_after_explosion(
         &mut self,
         impact: [f64; 3],
         cause: Option<EntityView>,
@@ -1905,7 +1940,10 @@ impl Game<'_> {
     }
     /// `EffectsChangedTrigger`: the player's `effects`, and for an effect that
     /// `source` gave, that entity (`source`).
-    pub(in crate::game) fn trigger_effects_changed(&mut self, source: Option<EntityView>) {
+    pub(in crate::game::server_side) fn trigger_effects_changed(
+        &mut self,
+        source: Option<EntityView>,
+    ) {
         let me = self.player_entity_for("minecraft:effects_changed");
         self.trigger("minecraft:effects_changed", move |c, w| {
             let pctx = adv::Entities {
@@ -2020,7 +2058,7 @@ impl Game<'_> {
     /// The entity a 100 block ray from the eyes meets first, if no block is
     /// in the way (`ProjectileUtil.getEntityHitResult` over every entity but
     /// the player that is not a spectator, then `hasLineOfSight`).
-    pub(in crate::game) fn looking_at_entity(
+    pub(in crate::game::server_side) fn looking_at_entity(
         &self,
         eye: [f64; 3],
         dir: [f64; 3],
@@ -2075,7 +2113,7 @@ impl Game<'_> {
         })
     }
     /// `PlayerHurtEntityTrigger`: the player, the damage and the victim.
-    pub(in crate::game) fn trigger_player_hurt_entity(
+    pub(in crate::game::server_side) fn trigger_player_hurt_entity(
         &mut self,
         victim: &EntityView,
         damage: &adv::DamageView,
@@ -2125,7 +2163,10 @@ impl Game<'_> {
         );
     }
     /// `EntityHurtPlayerTrigger`: the player and the damage it took.
-    pub(in crate::game) fn trigger_entity_hurt_player(&mut self, damage: &adv::DamageView) {
+    pub(in crate::game::server_side) fn trigger_entity_hurt_player(
+        &mut self,
+        damage: &adv::DamageView,
+    ) {
         let me = self.player_entity_for("minecraft:entity_hurt_player");
         let damage = damage.clone();
         self.trigger("minecraft:entity_hurt_player", move |c, w| {
@@ -2248,7 +2289,11 @@ impl Game<'_> {
         });
     }
     /// `TradeTrigger`: the villager and the item the trade gave.
-    pub(in crate::game) fn trigger_trade(&mut self, villager: &EntityView, stack: &ItemStack) {
+    pub(in crate::game::server_side) fn trigger_trade(
+        &mut self,
+        villager: &EntityView,
+        stack: &ItemStack,
+    ) {
         let me = self.player_entity_for("minecraft:villager_trade");
         let villager = villager.clone();
         let it = item_view(stack);
@@ -2272,7 +2317,7 @@ impl Game<'_> {
     }
     /// `FishingRodHookedTrigger`: the rod, what the hook is in (or the hook)
     /// and the items it caught.
-    pub(in crate::game) fn trigger_fishing_rod_hooked(
+    pub(in crate::game::server_side) fn trigger_fishing_rod_hooked(
         &mut self,
         rod: &ItemStack,
         hooked: &EntityView,
@@ -2345,7 +2390,11 @@ impl Game<'_> {
     }
     /// `TargetBlockTrigger`: signal and projectile conditions are evaluated in
     /// the shooter's context, including distance from the shooter.
-    pub(in crate::game) fn trigger_target_hit(&mut self, projectile: &EntityView, strength: i32) {
+    pub(in crate::game::server_side) fn trigger_target_hit(
+        &mut self,
+        projectile: &EntityView,
+        strength: i32,
+    ) {
         let me = self.player_entity_for("minecraft:target_hit");
         let projectile = projectile.clone();
         self.trigger("minecraft:target_hit", move |c, w| {
@@ -2392,10 +2441,14 @@ impl Game<'_> {
     /// `AnyBlockInteractionTrigger` (any_block_use): the player, and the
     /// block's `ADVANCEMENT_LOCATION` context at its centre with the original
     /// stack and its in-place edits, as documented on `Game::finish_block_use`.
-    pub(in crate::game) fn trigger_any_block_use(&mut self, pos: [i32; 3], stack: &ItemStack) {
+    pub(in crate::game::server_side) fn trigger_any_block_use(
+        &mut self,
+        pos: [i32; 3],
+        stack: &ItemStack,
+    ) {
         self.trigger_block_use("minecraft:any_block_use", pos, Some(stack));
     }
-    pub(in crate::game) fn trigger_block_use(
+    pub(in crate::game::server_side) fn trigger_block_use(
         &mut self,
         name: &str,
         pos: [i32; 3],
@@ -2492,7 +2545,7 @@ impl Game<'_> {
         });
     }
     /// `SpearMobsTrigger`: the living entities the spear stabbed in this use.
-    pub(in crate::game) fn trigger_spear_mobs(&mut self, stabbed: usize) {
+    pub(in crate::game::server_side) fn trigger_spear_mobs(&mut self, stabbed: usize) {
         let me = self.player_entity_for("minecraft:spear_mobs");
         self.trigger("minecraft:spear_mobs", move |c, w| {
             let pctx = adv::Entities {
@@ -2509,7 +2562,7 @@ impl Game<'_> {
     }
     /// `BeeNestDestroyedTrigger`: the nest's block state, the tool that broke
     /// it and the bees left inside.
-    pub(in crate::game) fn trigger_bee_nest_destroyed(
+    pub(in crate::game::server_side) fn trigger_bee_nest_destroyed(
         &mut self,
         state: sunrise_world::registry::BlockStateId,
         tool: Option<&ItemStack>,
@@ -2543,7 +2596,7 @@ impl Game<'_> {
     }
     /// `Entity.startRiding`'s `sendEventAndTriggers`: `START_RIDING_TRIGGER`
     /// for every `ServerPlayer` in `entityToRide.getIndirectPassengersStream()`.
-    pub(in crate::game) fn trigger_started_riding(&mut self, vehicle: u32) {
+    pub(in crate::game::server_side) fn trigger_started_riding(&mut self, vehicle: u32) {
         let mounts: Vec<(u32, Option<u32>)> =
             self.mobs.iter().map(|m| (m.id, m.extra.mount)).collect();
         let aboard = super::boarding::passenger_vehicles(vehicle, &mounts);
@@ -2605,7 +2658,7 @@ impl Game<'_> {
     }
     /// `LootTableTrigger`: a container's loot table unpacked for this player
     /// (`RandomizableContainer.unpackLootTable`).
-    pub(in crate::game) fn trigger_loot_table(&mut self, table: &str) {
+    pub(in crate::game::server_side) fn trigger_loot_table(&mut self, table: &str) {
         let me = self.player_entity_for("minecraft:player_generates_container_loot");
         let table = table.to_owned();
         self.trigger("minecraft:player_generates_container_loot", move |c, w| {
@@ -2622,7 +2675,7 @@ impl Game<'_> {
         });
     }
     /// `BredAnimalsTrigger`.
-    pub(in crate::game) fn trigger_bred(
+    pub(in crate::game::server_side) fn trigger_bred(
         &mut self,
         parent: &EntityView,
         partner: &EntityView,
@@ -2670,7 +2723,12 @@ impl Game<'_> {
     /// `ChangeDimensionTrigger`, and `ServerPlayer.enteredNetherPosition`: the
     /// Overworld position the player went into the Nether from (`at`) is kept
     /// for the way back, and any other trip drops it.
-    pub(in crate::game) fn trigger_dimension(&mut self, from: Dim, to: Dim, at: [f64; 3]) {
+    pub(in crate::game::server_side) fn trigger_dimension(
+        &mut self,
+        from: Dim,
+        to: Dim,
+        at: [f64; 3],
+    ) {
         self.trigger_changed_dimension(from, to);
         if from == Dim::Overworld && to == Dim::Nether {
             self.adv.marks.nether = Some(at);
@@ -2683,7 +2741,7 @@ impl Game<'_> {
     /// `ServerPlayer.triggerDimensionChangeTriggers`: a respawn after the
     /// credits triggers the criterion (`END` → `OVERWORLD`, whatever level
     /// the point is in) and leaves that position as it is.
-    pub(in crate::game) fn trigger_changed_dimension(&mut self, from: Dim, to: Dim) {
+    pub(in crate::game::server_side) fn trigger_changed_dimension(&mut self, from: Dim, to: Dim) {
         let (from_id, to_id) = (from.id().to_owned(), to.id().to_owned());
         self.trigger("minecraft:changed_dimension", move |c, _| {
             c["from"].as_str().is_none_or(|f| adv::full(f) == from_id)
@@ -2761,7 +2819,7 @@ impl Game<'_> {
 }
 /// The toast's frame label and its colour (`AdvancementToast`: -30465, pink,
 /// for a challenge, else -256, yellow), packed as `hud::rgba` for the batch.
-pub(in crate::game) fn toast_label(frame: Frame) -> (&'static str, u32) {
+pub(in crate::game::server_side) fn toast_label(frame: Frame) -> (&'static str, u32) {
     match frame {
         Frame::Task => ("advancements.toast.task", rgba(255, 255, 0, 255)),
         Frame::Goal => ("advancements.toast.goal", rgba(255, 255, 0, 255)),
@@ -2781,7 +2839,7 @@ pub(in crate::game) fn adv_name(a: &adv::Advancement) -> Text {
     });
     Text::translate("chat.square_brackets", &[title]).with_color(color)
 }
-pub(in crate::game) fn frame_color(frame: Frame) -> u32 {
+pub(in crate::game::server_side) fn frame_color(frame: Frame) -> u32 {
     match frame {
         Frame::Challenge => text::DARK_PURPLE,
         _ => text::GREEN,
@@ -2793,7 +2851,7 @@ pub(in crate::game) fn frame_color(frame: Frame) -> u32 {
 /// Built on the title's JSON (a list as its first element with the rest as
 /// siblings): a parsed Text moves a styled root's style down a level once it
 /// has siblings.
-pub(in crate::game) fn decorate_name(d: &adv::Display) -> Text {
+pub(in crate::game::server_side) fn decorate_name(d: &adv::Display) -> Text {
     let mut component = match sunrise_client::scoreboard::canonical_component(&d.title) {
         Value::String(s) => serde_json::json!({ "text": s }),
         c => c,
@@ -2868,7 +2926,7 @@ impl Game<'_> {
     }
     /// `PlayerAdvancements.revoke(holder, criterion)`: the progress change and
     /// the hook for it.
-    pub(in crate::game) fn revoke_criterion(
+    pub(in crate::game::server_side) fn revoke_criterion(
         &mut self,
         advancement: &adv::Advancement,
         criterion: &str,
@@ -2928,7 +2986,7 @@ impl Game<'_> {
 
     /// `AdvancementTree.remove` and `AdvancementTree.addAll`: prune whole
     /// subtrees, then admit additions in the order their parents become available.
-    pub(in crate::game) fn update_remote_advancement_tree(
+    pub(in crate::game::server_side) fn update_remote_advancement_tree(
         &mut self,
         reset: bool,
         removed: &[String],
@@ -3031,7 +3089,7 @@ impl Game<'_> {
 
     /// Convert the admitted packet's network icon, components and requirements
     /// into the definition used by the screen and toast.
-    pub(in crate::game) fn remote_advancement(
+    pub(in crate::game::server_side) fn remote_advancement(
         &self,
         a: sunrise_protocol::packets::play::Advancement,
     ) -> adv::Advancement {
@@ -3394,7 +3452,7 @@ pub(in crate::game) mod tests {
         );
     }
 
-    pub(in crate::game) fn recipes(n: usize) -> Toast {
+    pub(in crate::game::server_side) fn recipes(n: usize) -> Toast {
         Toast::recipe(
             (0..n)
                 .map(|i| {
@@ -3406,7 +3464,7 @@ pub(in crate::game) mod tests {
     }
     /// Drives a toast frame by frame (every `step` ms) and returns the slide
     /// portions at the given times and when it finished.
-    pub(in crate::game) fn run(
+    pub(in crate::game::server_side) fn run(
         toast: &mut Toast,
         step: i64,
         until: i64,
@@ -3446,7 +3504,10 @@ pub(in crate::game) mod tests {
         );
     }
 
-    pub(in crate::game) fn announced(title: Value, description: Value) -> adv::Advancement {
+    pub(in crate::game::server_side) fn announced(
+        title: Value,
+        description: Value,
+    ) -> adv::Advancement {
         adv::Advancement {
             id: "quests:board".into(),
             parent: None,
@@ -3466,7 +3527,7 @@ pub(in crate::game) mod tests {
         }
     }
     /// The chat hover: the JSON a client receives, and the spans drawn here.
-    pub(in crate::game) fn hover(a: &adv::Advancement) -> (Value, Text) {
+    pub(in crate::game::server_side) fn hover(a: &adv::Advancement) -> (Value, Text) {
         let local = decorate_name(a.display.as_ref().unwrap());
         let sent = adv_name(a).component()["with"][0]["hover_event"]["value"].clone();
         (sent, local)
@@ -4081,7 +4142,7 @@ pub(in crate::game) mod movement_predicate_tests {
 /// A player's 41 slots in `Inventory` numbering, for
 /// `native_player_inventory_changed`: the main inventory (0..36), the armour
 /// feet to head (36..40; `armor` holds it head first), the off hand (40).
-pub(in crate::game) fn inventory_slots(
+pub(in crate::game::server_side) fn inventory_slots(
     inventory: &[Option<ItemStack>],
     armor: &[Option<ItemStack>; 4],
     offhand: &Option<ItemStack>,

@@ -81,7 +81,7 @@ impl BlockEntityPartState for Counter {
     const DATA: &'static AttachmentType<i32> = &COUNT;
 }
 
-pub fn register(registrar: &mut dyn Registrar) {
+pub(in crate::game::server_side) fn register(registrar: &mut dyn Registrar) {
     for name in ["part_state_count", "part_state_mark"] {
         registrar
             .register_attachment_type(&format!("part_state_fixture:{name}"), false)
@@ -97,7 +97,7 @@ pub fn register(registrar: &mut dyn Registrar) {
 }
 
 /// The block the state's block entity stands in, so a save keeps it.
-pub fn blocks(event: &mut BlocksEvent<'_>) {
+pub(in crate::game::server_side) fn blocks(event: &mut BlocksEvent<'_>) {
     event
         .register(Block::new("part_state_fixture:part_state", "minecraft:barrel").with_item(false))
         .unwrap();

@@ -83,7 +83,7 @@ impl Game<'_> {
     }
     /// Preserve installed answers when publishing a fresh world-loot snapshot,
     /// including loads after parts install. This never asks a listener twice.
-    pub(in crate::game) fn copy_loot_enchantment_answers(
+    pub(in crate::game::server_side) fn copy_loot_enchantment_answers(
         &self,
         loot: &sunrise_world::loot::LootData,
     ) {

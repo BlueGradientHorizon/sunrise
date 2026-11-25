@@ -127,7 +127,7 @@ fn saved_map_codec_fixture() {
     run_saved_map_codec_fixture();
 }
 
-pub(in crate::game) fn run_saved_map_codec_fixture() {
+pub(in crate::game::server_side) fn run_saved_map_codec_fixture() {
     let cases = std::fs::read_to_string(std::env::var("SUNRISE_MAP_SAVE_CASES").unwrap()).unwrap();
     let cases: Vec<serde_json::Value> = serde_json::from_str(&cases).unwrap();
     let mut lines = Vec::new();

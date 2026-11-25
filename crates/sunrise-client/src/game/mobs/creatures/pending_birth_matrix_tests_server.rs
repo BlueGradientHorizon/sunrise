@@ -27,7 +27,7 @@ pub(in crate::game) fn breed(game: &mut Game<'_>, mode: u32) -> (u32, u32, Optio
 }
 
 /// Select the fixture mode without reusing an ID issued to an earlier mob or breeding orb.
-pub(in crate::game) fn next_parent_id(game: &Game<'_>, mode: u32) -> u32 {
+pub(in crate::game::server_side) fn next_parent_id(game: &Game<'_>, mode: u32) -> u32 {
     (game.server.next_entity + 1).next_multiple_of(10) + mode
 }
 

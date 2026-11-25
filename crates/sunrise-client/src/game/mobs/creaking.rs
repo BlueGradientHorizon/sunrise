@@ -53,7 +53,7 @@ pub(in crate::game) struct Host<'a> {
 impl Host<'_> {
     /// The slot of the live mob `id` in `mobs`, as a scan for the first
     /// one with that id that is not removed (ids are unique in the list).
-    pub(in crate::game) fn slot(&self, id: u32) -> Option<usize> {
+    pub(in crate::game::server_side) fn slot(&self, id: u32) -> Option<usize> {
         self.index
             .borrow_mut()
             .find(self.mobs, id)
@@ -103,7 +103,7 @@ impl HeartHost for Host<'_> {
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn heart_state_name(&self, state: BlockStateId) -> String {
+    pub(in crate::game::server_side) fn heart_state_name(&self, state: BlockStateId) -> String {
         self.pack
             .assets
             .registry
@@ -116,7 +116,7 @@ impl Game<'_> {
     /// mob world, which is then built with the other mobs (`f` gets None
     /// otherwise: the world reads every player, the teams and the weather, and
     /// most heart ticks need none of it).
-    pub(in crate::game) fn with_heart(
+    pub(in crate::game::server_side) fn with_heart(
         &mut self,
         key: Pos,
         heart: &mut CreakingHeart,
@@ -256,7 +256,11 @@ impl Game<'_> {
     /// `creaking_heart_broken` once the breaker is known: `award` is
     /// `tryAwardExperience`'s player check (a player who neither builds
     /// instantly, `preventsBlockDrops`, nor spectates).
-    pub(in crate::game) fn creaking_heart_broken_by(&mut self, pos: [i32; 3], award: bool) {
+    pub(in crate::game::server_side) fn creaking_heart_broken_by(
+        &mut self,
+        pos: [i32; 3],
+        award: bool,
+    ) {
         let key = (pos[0], pos[1], pos[2]);
         if !matches!(
             self.world.block_entities.get(&key),
@@ -342,7 +346,7 @@ impl Game<'_> {
         Ok(())
     }
     /// `ServerLevel.isSpawningMonsters`.
-    pub(in crate::game) fn spawning_monsters(&self) -> bool {
+    pub(in crate::game::server_side) fn spawning_monsters(&self) -> bool {
         self.ui.difficulty != 0
             && self
                 .ui
@@ -436,7 +440,7 @@ pub(in crate::game) struct CreakingState {
 impl CreakingState {
     /// Exchange the chunks scanned for creaking hearts with another level's
     /// (game/world/levels.rs).
-    pub(in crate::game) fn swap_level(&mut self, other: &mut Self) {
+    pub(in crate::game::server_side) fn swap_level(&mut self, other: &mut Self) {
         std::mem::swap(&mut self.scanned, &mut other.scanned);
         std::mem::swap(&mut self.unscanned, &mut other.unscanned);
         std::mem::swap(&mut self.revision, &mut other.revision);
@@ -445,7 +449,7 @@ impl CreakingState {
     /// chunk that left is forgotten (it is scanned again if it comes back
     /// later), one that arrived waits to be scanned. From the map's
     /// membership changes, or from all its keys when they can't be replayed.
-    pub(in crate::game) fn follow_chunks(&mut self, chunks: &ChunkMap) {
+    pub(in crate::game::server_side) fn follow_chunks(&mut self, chunks: &ChunkMap) {
         let revision = chunks.membership_revision();
         if self.revision == Some(revision) {
             return;

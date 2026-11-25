@@ -16,7 +16,7 @@ const MAX_AIR: i32 = 300;
 
 impl Game<'_> {
     /// `Hud.extractItemHotbar`'s inputs and where its stacks come from; None draws nothing.
-    pub(in crate::game) fn camera_hotbar(
+    pub(in crate::game::client_side) fn camera_hotbar(
         &self,
         camera: CameraPlayer,
     ) -> Option<(HotbarInputs, HotbarSource)> {
@@ -68,7 +68,10 @@ impl Game<'_> {
     }
 
     /// `Hud.getPlayerVehicleWithHealth`: the camera player's vehicle as its max health and health.
-    pub(in crate::game) fn camera_vehicle(&mut self, camera: CameraPlayer) -> Option<(f32, f32)> {
+    pub(in crate::game::client_side) fn camera_vehicle(
+        &mut self,
+        camera: CameraPlayer,
+    ) -> Option<(f32, f32)> {
         let id = match camera {
             CameraPlayer::Absent | CameraPlayer::Detached => return None,
             CameraPlayer::Own => self.riding?,
@@ -120,7 +123,7 @@ impl Game<'_> {
     }
 
     /// `Hud.extractPlayerHealth` inputs for `VanillaGuiLayer::PlayerHealth`; None draws nothing.
-    pub(in crate::game) fn camera_health_inputs(
+    pub(in crate::game::client_side) fn camera_health_inputs(
         &mut self,
         camera: CameraPlayer,
     ) -> Option<(HealthInputs, HeartKind)> {
@@ -253,7 +256,10 @@ impl Game<'_> {
     }
 
     /// `Hud.extractArmor` value for `VanillaGuiLayer::ArmorLevel`; None draws nothing.
-    pub(in crate::game) fn camera_armor(&mut self, camera: CameraPlayer) -> Option<i32> {
+    pub(in crate::game::client_side) fn camera_armor(
+        &mut self,
+        camera: CameraPlayer,
+    ) -> Option<i32> {
         match camera {
             CameraPlayer::Absent => None,
             CameraPlayer::Own => {
@@ -282,7 +288,10 @@ impl Game<'_> {
     }
 
     /// `Hud.extractFood` inputs for `VanillaGuiLayer::FoodLevel`; None draws nothing.
-    pub(in crate::game) fn camera_food_inputs(&self, camera: CameraPlayer) -> Option<FoodInputs> {
+    pub(in crate::game::client_side) fn camera_food_inputs(
+        &self,
+        camera: CameraPlayer,
+    ) -> Option<FoodInputs> {
         let tick = self.visual_ticks() as i32;
         match camera {
             CameraPlayer::Absent => None,
@@ -311,7 +320,7 @@ impl Game<'_> {
     }
 
     /// `Hud.extractAirBubbles` inputs for `VanillaGuiLayer::AirLevel`; only the local player plays pop sounds.
-    pub(in crate::game) fn camera_air_inputs(
+    pub(in crate::game::client_side) fn camera_air_inputs(
         &self,
         camera: CameraPlayer,
     ) -> Option<(AirInputs, Option<[f64; 3]>)> {

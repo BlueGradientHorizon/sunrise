@@ -17,7 +17,7 @@ pub(in crate::game::server_side) use sunrise_protocol::text::translatable;
 impl Game<'_> {
     /// SaveAllCommand. Every save waits for the chunks to be written, so
     /// `flush` changes nothing.
-    pub(in crate::game) fn cmd_save_all(&mut self) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_save_all(&mut self) -> R<i32> {
         self.dedicated_lists()?;
         self.feedback(Text::translate("commands.save.saving", &[]));
         Self::admit_entity_save().map_err(|_| err("commands.save.failed", &[]))?;
@@ -40,7 +40,7 @@ impl Game<'_> {
     /// the source is told who went — the player's name for one, the count for
     /// several. Without a players argument the source's own player is the
     /// target, as `getPlayerOrException` asks.
-    pub(in crate::game) fn cmd_transfer(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_transfer(&mut self, ctx: &Context) -> R<i32> {
         let Some(Arg::Str(hostname)) = ctx.get("hostname").cloned() else {
             return Ok(0);
         };

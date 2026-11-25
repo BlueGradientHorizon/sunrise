@@ -40,7 +40,7 @@ pub(in crate::game) enum Target {
 impl Game<'_> {
     /// `Item.use` of a kinetic weapon: `startUsingItem` with a new
     /// `recentKineticEnemies`, and `KineticWeapon.makeSound` at the user.
-    pub(in crate::game) fn use_spear(&mut self, stack: &ItemStack) -> bool {
+    pub(in crate::game::server_side) fn use_spear(&mut self, stack: &ItemStack) -> bool {
         let Some(kinetic) = Kinetic::of(&stack.item) else {
             return false;
         };
@@ -76,7 +76,7 @@ impl Game<'_> {
 
     /// `Entity.getKnownSpeed` of the mob at `index`, per second: its root
     /// vehicle's (`KineticWeapon.getMotion`).
-    pub(in crate::game) fn mob_speed(&self, index: usize) -> Vec3 {
+    pub(in crate::game::server_side) fn mob_speed(&self, index: usize) -> Vec3 {
         let mut mob = &self.mobs[index];
         while let Some(vehicle) = mob
             .extra
@@ -90,7 +90,7 @@ impl Game<'_> {
 
     /// `Level.clip` with COLLIDER shapes and no fluids: where the segment
     /// first meets a block, if it does (tall grass lets a stab through).
-    pub(in crate::game) fn clip_collider(&self, from: Vec3, to: Vec3) -> Option<Vec3> {
+    pub(in crate::game::server_side) fn clip_collider(&self, from: Vec3, to: Vec3) -> Option<Vec3> {
         let mut scene = SceneCollisions {
             world: &self.world,
             binding: self.collision,
@@ -122,7 +122,7 @@ impl Game<'_> {
 
     /// `ProjectileUtil.getHitEntitiesAlong` with the spear's `AttackRange`:
     /// the mobs and the other players along the view, nearest first.
-    pub(in crate::game) fn stab_targets(
+    pub(in crate::game::server_side) fn stab_targets(
         &self,
         eye: Vec3,
         look: Vec3,
@@ -232,7 +232,7 @@ impl Game<'_> {
     /// What follows a charge tick that affected an entity:
     /// `Level.broadcastEntityEvent(player, 2)`, felt by the player too, and
     /// SPEAR_MOBS_TRIGGER with the living entities stabbed in this use.
-    pub(in crate::game) fn spear_hit_feedback(&mut self, kinetic: &Kinetic) {
+    pub(in crate::game::server_side) fn spear_hit_feedback(&mut self, kinetic: &Kinetic) {
         let Some(feet) = self.player.as_ref().map(|p| p.position) else {
             return;
         };
@@ -252,7 +252,7 @@ impl Game<'_> {
     }
 
     /// `Player.stabAttack` on the mob at `index`: whether it was affected.
-    pub(in crate::game) fn stab_mob(
+    pub(in crate::game::server_side) fn stab_mob(
         &mut self,
         index: usize,
         base_damage: f32,
@@ -440,7 +440,7 @@ impl Game<'_> {
     /// `LivingEntity.onKineticHit` for `entity`: the hit feels (the spear
     /// moves back, `kinetic_hit_ticks`) and sounds, at most once every ten
     /// ticks.
-    pub(in crate::game) fn kinetic_hit_feedback(
+    pub(in crate::game::server_side) fn kinetic_hit_feedback(
         &mut self,
         entity: i32,
         kinetic: &Kinetic,

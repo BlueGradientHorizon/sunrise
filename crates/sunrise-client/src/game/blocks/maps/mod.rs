@@ -54,11 +54,11 @@ pub(in crate::game) struct MapBanner {
 }
 impl MapBanner {
     /// `MapBanner.getDecoration`: the marker of the banner's colour.
-    pub(in crate::game) fn sprite(&self) -> &'static str {
+    pub(in crate::game::server_side) fn sprite(&self) -> &'static str {
         decoration_sprite(&format!("banner_{}", self.color)).unwrap_or(BANNER_WHITE)
     }
     /// `MapBanner.CODEC`.
-    pub(in crate::game) fn to_nbt(&self) -> Tag {
+    pub(in crate::game::server_side) fn to_nbt(&self) -> Tag {
         let mut entries = vec![
             ("pos", Tag::IntArray(self.pos.to_vec())),
             ("color", Tag::String(self.color.as_str().into())),
@@ -68,7 +68,7 @@ impl MapBanner {
         }
         Tag::compound(entries)
     }
-    pub(in crate::game) fn from_nbt(tag: &Tag) -> Option<Self> {
+    pub(in crate::game::server_side) fn from_nbt(tag: &Tag) -> Option<Self> {
         // DyeColor.CODEC is read leniently: white when missing or unknown.
         let color = sunrise_client::save::text(tag.get("color"))
             .filter(|c| decoration_sprite(&format!("banner_{c}")).is_some())
@@ -90,14 +90,14 @@ pub(in crate::game) struct MapFrame {
 }
 impl MapFrame {
     /// `MapFrame.CODEC`.
-    pub(in crate::game) fn to_nbt(self) -> Tag {
+    pub(in crate::game::server_side) fn to_nbt(self) -> Tag {
         Tag::compound([
             ("pos", Tag::IntArray(self.pos.to_vec())),
             ("rotation", Tag::Int(self.rotation)),
             ("entity_id", Tag::Int(self.entity_id)),
         ])
     }
-    pub(in crate::game) fn from_nbt(tag: &Tag) -> Option<Self> {
+    pub(in crate::game::server_side) fn from_nbt(tag: &Tag) -> Option<Self> {
         let int = |k: &str| sunrise_client::save::number(tag.get(k)).map(|v| v as i32);
         Some(Self {
             pos: block_pos(tag.get("pos"))?,
@@ -107,7 +107,7 @@ impl MapFrame {
     }
 }
 /// `BlockPos.CODEC`: three ints, as an int array or a list.
-pub(in crate::game) fn block_pos(tag: Option<&Tag>) -> Option<[i32; 3]> {
+pub(in crate::game::server_side) fn block_pos(tag: Option<&Tag>) -> Option<[i32; 3]> {
     match tag? {
         Tag::IntArray(v) if v.len() == 3 => Some([v[0], v[1], v[2]]),
         Tag::List(l) if l.len() == 3 => {
@@ -131,7 +131,7 @@ pub(in crate::game) struct Framed {
 }
 /// `Direction.get2DDataValue` of a 3D data value: south 0, west 1, north 2,
 /// east 3, and -1 for up and down.
-pub(in crate::game) fn direction_2d(facing: u8) -> i32 {
+pub(in crate::game::server_side) fn direction_2d(facing: u8) -> i32 {
     match facing {
         3 => 0,
         4 => 1,
@@ -168,7 +168,7 @@ pub(in crate::game) struct Holder {
     pub(in crate::game) invisible: bool,
 }
 impl Holder {
-    pub(in crate::game) fn new(who: u32) -> Self {
+    pub(in crate::game::server_side) fn new(who: u32) -> Self {
         Self {
             who,
             carried: 0,
@@ -181,7 +181,7 @@ impl Holder {
         }
     }
     /// Still carrying the map, or seeing it framed (frames tick every 10).
-    pub(in crate::game) fn holds(&self, now: i64) -> bool {
+    pub(in crate::game::server_side) fn holds(&self, now: i64) -> bool {
         self.carried + 1 >= now || self.framed + 10 >= now
     }
 }
@@ -226,7 +226,7 @@ impl MapData {
     /// `MapItemSavedData.setColor` for every pixel of `colors` (128 by 128, row by row): each
     /// changed one marks the map to save, redraw and send. Whether one changed; None for
     /// another length.
-    pub(in crate::game) fn paint(&mut self, colors: &[u8]) -> Option<bool> {
+    pub(in crate::game::server_side) fn paint(&mut self, colors: &[u8]) -> Option<bool> {
         if colors.len() != self.colors.len() {
             return None;
         }
@@ -236,7 +236,7 @@ impl MapData {
         }
         Some(changed)
     }
-    pub(in crate::game) fn update_color(&mut self, x: i32, y: i32, color: u8) -> bool {
+    pub(in crate::game::server_side) fn update_color(&mut self, x: i32, y: i32, color: u8) -> bool {
         let i = (x + y * 128) as usize;
         if self.colors[i] == color {
             return false;
@@ -254,7 +254,7 @@ impl MapData {
         true
     }
     /// `tickCarriedBy`'s holder for `who`, added when new.
-    pub(in crate::game) fn holder(&mut self, who: u32) -> &mut Holder {
+    pub(in crate::game::server_side) fn holder(&mut self, who: u32) -> &mut Holder {
         let i = match self.holders.iter().position(|h| h.who == who) {
             Some(i) => i,
             None => {
@@ -266,7 +266,7 @@ impl MapData {
     }
     /// The holders that no longer carry the map nor see it framed go, and
     /// their markers with them (`tickCarriedBy`'s removeDecoration).
-    pub(in crate::game) fn drop_holders(&mut self, now: i64) {
+    pub(in crate::game::server_side) fn drop_holders(&mut self, now: i64) {
         self.holders.retain(|h| h.holds(now));
         let holders = &self.holders;
         let before = self.decorations.len();
@@ -279,14 +279,14 @@ impl MapData {
         }
     }
     /// setDecorationsDirty.
-    pub(in crate::game) fn decorations_changed(&mut self) {
+    pub(in crate::game::server_side) fn decorations_changed(&mut self) {
         for h in &mut self.holders {
             h.decorations = true;
         }
     }
     /// `MapItemSavedData.removeDecoration`: whatever `key` names goes, and
     /// every holder is told the decorations changed, found or not.
-    pub(in crate::game) fn remove_decoration(&mut self, key: Key) {
+    pub(in crate::game::server_side) fn remove_decoration(&mut self, key: Key) {
         self.decorations.retain(|d| d.key != key);
         self.decorations_changed();
     }
@@ -298,7 +298,7 @@ impl MapData {
     /// unlimited tracking) and removes what the key had. `game_time` is the
     /// level's: without a level the Nether's spinning rotation is not used.
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::game) fn add_decoration(
+    pub(in crate::game::server_side) fn add_decoration(
         &mut self,
         sprite: &'static str,
         game_time: Option<i64>,
@@ -352,7 +352,7 @@ impl MapData {
     }
     /// `tickCarriedBy` adds only missing component keys. Another carried
     /// copy without those entries must not erase an explorer map's target.
-    pub(in crate::game) fn add_item_decorations(
+    pub(in crate::game::server_side) fn add_item_decorations(
         &mut self,
         targets: Vec<StaticDecoration>,
         game_time: i64,
@@ -374,7 +374,7 @@ impl MapData {
     }
     /// `MapItemSavedData.tickCarriedBy`'s check on every holder but `who`, the
     /// player ticking: one wearing map invisibility gear has no marker.
-    pub(in crate::game) fn hide_invisible(&mut self, who: u32) {
+    pub(in crate::game::server_side) fn hide_invisible(&mut self, who: u32) {
         let hidden: Vec<u32> = self
             .holders
             .iter()
@@ -391,7 +391,7 @@ impl MapData {
     /// `invisible` whether they wear map invisibility gear. Without a carried
     /// copy the player has no marker; the frame gets its own, which replaces
     /// the marker of another frame entity remembered at the same block.
-    pub(in crate::game) fn tick_framed(
+    pub(in crate::game::server_side) fn tick_framed(
         &mut self,
         who: u32,
         now: i64,
@@ -438,14 +438,18 @@ impl MapData {
     }
     /// `MapItemSavedData.removedFromFrame`: the frame entity's marker goes,
     /// and the frame remembered at its block.
-    pub(in crate::game) fn removed_from_frame(&mut self, pos: [i32; 3], entity_id: i32) {
+    pub(in crate::game::server_side) fn removed_from_frame(
+        &mut self,
+        pos: [i32; 3],
+        entity_id: i32,
+    ) {
         self.remove_decoration(Key::Frame(entity_id));
         self.frames.retain(|f| f.pos != pos);
         self.dirty = true;
     }
     /// `MapItemSavedData.isTrackedCountOverLimit`: more than `limit`
     /// decorations count (`MapDecorationType.trackCount`).
-    pub(in crate::game) fn tracked_over_limit(&self, limit: usize) -> bool {
+    pub(in crate::game::server_side) fn tracked_over_limit(&self, limit: usize) -> bool {
         self.decorations
             .iter()
             .filter(|d| tracks_count(d.sprite))
@@ -457,7 +461,7 @@ impl MapData {
     /// there as it stands loses it, and a changed banner's marker is renewed.
     /// `current` is the banner at `pos` (`MapBanner.fromWorld`); true when
     /// the markers changed.
-    pub(in crate::game) fn toggle_banner(
+    pub(in crate::game::server_side) fn toggle_banner(
         &mut self,
         pos: [i32; 3],
         current: Option<MapBanner>,
@@ -500,7 +504,7 @@ impl MapData {
     /// `MapItemSavedData.checkBanners`: a banner marker in the column `x`,
     /// `z` whose banner is gone or changed (`current` reads
     /// `MapBanner.fromWorld` at a position) is dropped with its decoration.
-    pub(in crate::game) fn check_banners(
+    pub(in crate::game::server_side) fn check_banners(
         &mut self,
         x: i32,
         z: i32,
@@ -520,7 +524,7 @@ impl MapData {
     }
     /// `HoldingPlayer.nextUpdatePacket` for `who`: the changed pixels, and
     /// the decorations (at most every 5th call while they changed).
-    pub(in crate::game) fn update_packet(
+    pub(in crate::game::server_side) fn update_packet(
         &mut self,
         id: i32,
         who: u32,
@@ -576,7 +580,7 @@ impl MapData {
         })
     }
     /// `MapItemSavedData.<clinit>`: the CODEC save arm omits optional defaults.
-    pub(in crate::game) fn to_nbt(&self) -> Tag {
+    pub(in crate::game::server_side) fn to_nbt(&self) -> Tag {
         let mut data = vec![
             ("dimension", Tag::String(self.dimension.as_str().into())),
             ("xCenter", Tag::Int(self.center[0])),
@@ -612,7 +616,7 @@ impl MapData {
             ("DataVersion", Tag::Int(sunrise_world::DATA_VERSION)),
         ])
     }
-    pub(in crate::game) fn from_nbt(tag: &Tag) -> Option<Self> {
+    pub(in crate::game::server_side) fn from_nbt(tag: &Tag) -> Option<Self> {
         let d = tag.get("data")?;
         let int = |k: &str| match d.get(k) {
             Some(Tag::Int(v)) => Some(*v),
@@ -667,7 +671,7 @@ impl MapData {
     }
 }
 /// What a read of a map gives: from the cache when the map is loaded, else from its saved file.
-pub(in crate::game) fn map_read<T>(
+pub(in crate::game::server_side) fn map_read<T>(
     cached: Option<&MapData>,
     saved: impl FnOnce() -> Option<MapData>,
     read: impl FnOnce(&MapData) -> T,
@@ -782,7 +786,7 @@ pub(in crate::game) fn shown_on_frame(sprite: &str) -> bool {
 }
 /// `MapDecorationType.trackCount`: the players' arrows, the markers, the
 /// frames and the banners count toward a map's limit, the structures do not.
-pub(in crate::game) fn tracks_count(sprite: &str) -> bool {
+pub(in crate::game::server_side) fn tracks_count(sprite: &str) -> bool {
     decoration_type(sprite).is_some_and(|t| {
         t.starts_with("banner_")
             || matches!(
@@ -799,7 +803,7 @@ pub(in crate::game) fn tracks_count(sprite: &str) -> bool {
 /// The sprite of a decoration type that a `minecraft:map_decorations`
 /// entry or a server's packet names: vanilla's, or one a mod registered
 /// (`map_decoration_types`).
-pub(in crate::game) fn decoration_sprite(id: &str) -> Option<&'static str> {
+pub(in crate::game::server_side) fn decoration_sprite(id: &str) -> Option<&'static str> {
     let name = id.strip_prefix("minecraft:").unwrap_or(id);
     DECORATION_TYPES
         .iter()
@@ -809,7 +813,7 @@ pub(in crate::game) fn decoration_sprite(id: &str) -> Option<&'static str> {
 }
 /// The type a decoration's sprite stands for, as its registry names it (a mod's with its
 /// namespace).
-pub(in crate::game) fn decoration_type(sprite: &str) -> Option<&'static str> {
+pub(in crate::game::server_side) fn decoration_type(sprite: &str) -> Option<&'static str> {
     DECORATION_TYPES
         .iter()
         .find(|(_, s)| *s == sprite)
@@ -826,7 +830,7 @@ impl Game<'_> {
 pub(in crate::game) type StaticDecoration = (JavaString, &'static str, f64, f64, f32);
 
 /// `minecraft:map_decorations` of a map item, in the component's order.
-pub(in crate::game) fn static_decorations(stack: &ItemStack) -> Vec<StaticDecoration> {
+pub(in crate::game::server_side) fn static_decorations(stack: &ItemStack) -> Vec<StaticDecoration> {
     let Some(Tag::Compound(entries)) = stack.data().and_then(|d| {
         d.preserved_components()
             .iter()
@@ -860,7 +864,7 @@ pub(in crate::game) fn static_decorations(stack: &ItemStack) -> Vec<StaticDecora
 }
 /// `MapItemSavedData.addTargetDecoration`: the `"+"` entry of
 /// `minecraft:map_decorations`, rotation 180.
-pub(in crate::game) fn target_decoration(decoration: &str, at: [i32; 3]) -> Tag {
+pub(in crate::game::server_side) fn target_decoration(decoration: &str, at: [i32; 3]) -> Tag {
     Tag::compound([(
         "+",
         Tag::compound([
@@ -872,7 +876,7 @@ pub(in crate::game) fn target_decoration(decoration: &str, at: [i32; 3]) -> Tag 
     )])
 }
 /// `MapItemSavedData.clampMapCoordinate`.
-pub(in crate::game) fn clamp_map_coordinate(d: f32) -> i8 {
+pub(in crate::game::server_side) fn clamp_map_coordinate(d: f32) -> i8 {
     if d <= -63.0 {
         -128
     } else if d >= 63.0 {
@@ -882,7 +886,11 @@ pub(in crate::game) fn clamp_map_coordinate(d: f32) -> i8 {
     }
 }
 /// `MapItemSavedData.calculateRotation`: spinning in the Nether.
-pub(in crate::game) fn decoration_rotation(nether: bool, game_time: i64, y_rot: f64) -> u8 {
+pub(in crate::game::server_side) fn decoration_rotation(
+    nether: bool,
+    game_time: i64,
+    y_rot: f64,
+) -> u8 {
     if nether {
         let s = (game_time / 10) as i32;
         (s.wrapping_mul(s)
@@ -903,7 +911,7 @@ impl Game<'_> {
     pub(in crate::game) fn dimension_id(&self) -> &'static str {
         self.dim.id()
     }
-    pub(in crate::game) fn map_path(&self, name: &str) -> std::path::PathBuf {
+    pub(in crate::game::server_side) fn map_path(&self, name: &str) -> std::path::PathBuf {
         self.server
             .world_root
             .join("data/minecraft/maps")
@@ -911,7 +919,11 @@ impl Game<'_> {
     }
     /// `f` of map `id`'s data: the loaded map, else its `.dat` read without keeping it, so a
     /// read needs no `&mut`. None for a map id nothing made.
-    pub(in crate::game) fn with_map<R>(&self, id: i32, f: impl FnOnce(&MapData) -> R) -> Option<R> {
+    pub(in crate::game::server_side) fn with_map<R>(
+        &self,
+        id: i32,
+        f: impl FnOnce(&MapData) -> R,
+    ) -> Option<R> {
         map_read(
             self.transactions
                 .iter()
@@ -1033,12 +1045,12 @@ impl Game<'_> {
     }
 
     /// Register a reserved ID; only committed data and the committed counter are saveable.
-    pub(in crate::game) fn publish_map(&mut self, id: i32, data: MapData) {
+    pub(in crate::game::server_side) fn publish_map(&mut self, id: i32, data: MapData) {
         self.maps.last_id = Some(self.maps.last_id.map_or(id, |last| last.max(id)));
         self.maps.data.insert(id, data);
     }
 
-    pub(in crate::game) fn store_new_map(&mut self, id: i32, data: MapData) {
+    pub(in crate::game::server_side) fn store_new_map(&mut self, id: i32, data: MapData) {
         if let Some(level) = self.transactions.last_mut() {
             level.new_maps.insert(id, data);
         } else {
@@ -1064,7 +1076,7 @@ impl Game<'_> {
     /// structure of the tag around `origin`, a new map centred on it with its
     /// biome preview and target decoration. False when nothing is found: the
     /// loot table's `filtered` map_id check would have discarded the item.
-    pub(in crate::game) fn resolve_pending_map(
+    pub(in crate::game::server_side) fn resolve_pending_map(
         &mut self,
         item: &mut ItemStack,
         origin: [f64; 3],
@@ -1075,7 +1087,7 @@ impl Game<'_> {
         self.materialize_exploration_map(item, &map, origin)
     }
     /// The existing exploration-map materialization, shared with command modifiers.
-    pub(in crate::game) fn materialize_exploration_map(
+    pub(in crate::game::server_side) fn materialize_exploration_map(
         &mut self,
         item: &mut ItemStack,
         map: &sunrise_world::loot::ExplorationMap,
@@ -1112,7 +1124,7 @@ impl Game<'_> {
     }
     /// The unsearched exploration maps of a container being opened
     /// (`RandomizableContainer.unpackLootTable` runs the function then).
-    pub(in crate::game) fn resolve_container_maps(
+    pub(in crate::game::server_side) fn resolve_container_maps(
         &mut self,
         key: (i32, i32, i32),
         origin: [f64; 3],
@@ -1145,7 +1157,7 @@ impl Game<'_> {
     }
     /// `MapItem.renderBiomePreviewMap`: the map's biomes at sea level, water
     /// outlines (`#water_on_map_outlines`) drawn in orange and brown.
-    pub(in crate::game) fn render_biome_preview(&mut self, id: i32) {
+    pub(in crate::game::server_side) fn render_biome_preview(&mut self, id: i32) {
         let Some(terrain) = self.end.locator() else {
             return;
         };
@@ -1239,7 +1251,7 @@ impl Game<'_> {
         id
     }
     /// `EmptyMapItem.use`: a new map centred around the player.
-    pub(in crate::game) fn use_empty_map(&mut self, stack: &ItemStack) -> bool {
+    pub(in crate::game::server_side) fn use_empty_map(&mut self, stack: &ItemStack) -> bool {
         if &*stack.item != "minecraft:map" {
             return false;
         }
@@ -1276,7 +1288,7 @@ impl Game<'_> {
         true
     }
     /// `ItemFrame.removeFramedMap`: the map `frame` holds forgets the frame.
-    pub(in crate::game) fn remove_framed_map(
+    pub(in crate::game::server_side) fn remove_framed_map(
         &mut self,
         frame: &sunrise_client::entities::ItemFrame,
     ) {
@@ -1290,7 +1302,7 @@ impl Game<'_> {
     /// `MapItem.useOn`: a map used on a banner toggles that banner's marker
     /// on the map; when the map's data says no (`toggleBanner` fails) the use
     /// ends without a swing, and nothing else is done with the map either way.
-    pub(in crate::game) fn use_map_on_banner(
+    pub(in crate::game::server_side) fn use_map_on_banner(
         &mut self,
         hit: &super::Hit,
         stack: &ItemStack,
@@ -1340,7 +1352,10 @@ impl Game<'_> {
     /// `MapItemSavedData.hasMapInvisibilityItemEquipped`: a piece of
     /// `#map_invisibility_equipment` (a carved pumpkin) in an armor slot; the
     /// hands do not count.
-    pub(in crate::game) fn map_invisibility_worn(&self, worn: &[Option<ItemStack>]) -> bool {
+    pub(in crate::game::server_side) fn map_invisibility_worn(
+        &self,
+        worn: &[Option<ItemStack>],
+    ) -> bool {
         let tag = self
             .res
             .items()
@@ -1351,7 +1366,7 @@ impl Game<'_> {
             .any(|s| tag.is_some_and(|t| t.contains(&*s.item)))
     }
     /// Held maps update; every carried map tracks the player marker.
-    pub(in crate::game) fn tick_maps(&mut self) {
+    pub(in crate::game::server_side) fn tick_maps(&mut self) {
         let Some(p) = self.player.as_ref().map(|p| p.position) else {
             return;
         };
@@ -1433,7 +1448,7 @@ impl Game<'_> {
     /// carries, and every 10 ticks (`ServerEntity.sendChanges`) for each map
     /// framed in the level: a `ClientboundMapItemDataPacket` when something
     /// changed since the guest's last one.
-    pub(in crate::game) fn lan_map_updates(&mut self, conn: u32) {
+    pub(in crate::game::server_side) fn lan_map_updates(&mut self, conn: u32) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -1511,7 +1526,7 @@ impl Game<'_> {
     }
     /// `MapItemSavedData.checkBanners` on map `id` for the column `x`, `z`
     /// that `MapItem.update` is reading.
-    pub(in crate::game) fn check_banners(&mut self, id: i32, x: i32, z: i32) {
+    pub(in crate::game::server_side) fn check_banners(&mut self, id: i32, x: i32, z: i32) {
         let (world, res) = (&self.world, &self.res);
         let Some(m) = self.maps.data.get_mut(&id) else {
             return;
@@ -1529,7 +1544,7 @@ impl Game<'_> {
         });
     }
     /// `MapItem.update` for the player holding map `id`.
-    pub(in crate::game) fn update_map(&mut self, id: i32) {
+    pub(in crate::game::server_side) fn update_map(&mut self, id: i32) {
         let dim = self.dimension_id();
         let Some(p) = self.player.as_ref().map(|p| p.position) else {
             return;
@@ -1677,7 +1692,7 @@ impl Game<'_> {
         }
     }
     /// Writes changed maps and the id counter (`MapItemSavedData`, `MapIndex`).
-    pub(in crate::game) fn save_maps(&mut self) {
+    pub(in crate::game::server_side) fn save_maps(&mut self) {
         for (id, m) in &mut self.maps.data {
             if m.dirty {
                 let path = self

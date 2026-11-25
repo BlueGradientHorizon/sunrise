@@ -20,7 +20,7 @@ fn saves() -> Result<PathBuf> {
 
 impl Game<'_> {
     /// Some(reply) for these commands (Some(None): the reply comes later), None for others.
-    pub(in crate::game) fn saves_control(
+    pub(in crate::game::client_side) fn saves_control(
         &mut self,
         words: &[&str],
         line: &str,

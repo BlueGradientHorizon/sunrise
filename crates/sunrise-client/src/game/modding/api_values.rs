@@ -129,20 +129,26 @@ pub(in crate::game) use super::native_worldgen::prepare as prepare_block_states;
 
 /// Publish the block state index prepared for this game. Between a tick's phases only: the
 /// token is the tick thread's, which a phase's work can't take or capture.
-pub(in crate::game) fn install_block_states(_tick: &TickThread, prepared: Arc<block_state::Index>) {
+pub(in crate::game::server_side) fn install_block_states(
+    _tick: &TickThread,
+    prepared: Arc<block_state::Index>,
+) {
     block_state::install(prepared);
 }
 
 /// Publish the parts table prepared for this game, and with it its listen index. Between a tick's
 /// phases only, like [`install_block_states`]: a phase keeps the `ListenSnapshot` it captured.
-pub(in crate::game) fn install_resolved_parts(_tick: &TickThread, parts: Option<mod_api::Parts>) {
+pub(in crate::game::server_side) fn install_resolved_parts(
+    _tick: &TickThread,
+    parts: Option<mod_api::Parts>,
+) {
     mod_api::__private::install_resolved_parts(parts);
 }
 
 /// Who listens, as the tick thread holds it now, for a phase view to keep: None before this
 /// game's block states are bound.
 #[cfg(test)]
-pub(in crate::game) fn listen_snapshot(tick: &TickThread) -> Option<ListenSnapshot> {
+pub(in crate::game::server_side) fn listen_snapshot(tick: &TickThread) -> Option<ListenSnapshot> {
     let index = block_state::current().ok()?;
     Some(ListenSnapshot::capture(
         tick,
@@ -175,7 +181,7 @@ pub(in crate::game) fn resolve_item_registry(items: &crate::items::Items) -> Res
 
 /// Publish the loaded enchantment registry's keys in `RegistryDataLoader`'s order,
 /// separately for a path that reloads only the data-pack tables.
-pub(in crate::game) fn resolve_enchantment_registry(
+pub(in crate::game::server_side) fn resolve_enchantment_registry(
     items: &crate::items::Items,
 ) -> Result<(), String> {
     mod_api::__private::resolve_enchantments(items.enchantments.list.iter().map(|entry| &*entry.id))
@@ -1806,7 +1812,7 @@ impl TryIntoApi for crate::containers::ModBlockEntity {
 }
 
 impl super::Game<'_> {
-    pub(in crate::game) fn api_block_entity_update_tag(
+    pub(in crate::game::server_side) fn api_block_entity_update_tag(
         pos: [i32; 3],
         entity: &crate::containers::ModBlockEntity,
         tag: &mut Option<sunrise_core::nbt::Compound>,
@@ -1873,7 +1879,7 @@ impl super::Game<'_> {
     }
 }
 impl super::GameLevel<'_> {
-    pub(in crate::game) fn api_pre_remove_side_effects(
+    pub(in crate::game::server_side) fn api_pre_remove_side_effects(
         &mut self,
         pos: sunrise_core::position::BlockPos,
         state: sunrise_world::registry::BlockStateId,

@@ -9,13 +9,16 @@ use mod_api::{DragonPhase, DragonRef, EntityRef, LivingRef, MobRef};
 
 impl Game<'_> {
     /// The dragon an entity handle names now.
-    pub(in crate::game) fn native_dragon(&self, entity: EntityRef) -> Option<&Dragon> {
+    pub(in crate::game::server_side) fn native_dragon(&self, entity: EntityRef) -> Option<&Dragon> {
         let Target::Dragon(id) = self.native_entity_target(entity)? else {
             return None;
         };
         self.dragon.as_ref().filter(|d| d.id == id)
     }
-    pub(in crate::game) fn native_dragon_mut(&mut self, entity: EntityRef) -> Option<&mut Dragon> {
+    pub(in crate::game::server_side) fn native_dragon_mut(
+        &mut self,
+        entity: EntityRef,
+    ) -> Option<&mut Dragon> {
         let Target::Dragon(id) = self.native_entity_target(entity)? else {
             return None;
         };
@@ -92,7 +95,10 @@ impl Game<'_> {
     /// `Mob.getTarget` for the dragon: the mob or player a mod set, None once
     /// it is no longer a valid target. The dragon's flight never sets or
     /// reads it.
-    pub(in crate::game) fn native_dragon_target(&self, entity: EntityRef) -> Option<LivingRef> {
+    pub(in crate::game::server_side) fn native_dragon_target(
+        &self,
+        entity: EntityRef,
+    ) -> Option<LivingRef> {
         let target = self.entity(self.native_dragon(entity)?.target?)?;
         self.native_dragon_valid_target(self.native_entity_target(target)?)
             .then(|| self.living(target))?
@@ -101,7 +107,7 @@ impl Game<'_> {
     /// `Mob.setTarget` for the dragon; None clears it. An invalid target is
     /// refused (false, unchanged) where vanilla stores None. False too for a
     /// stale handle or a target that is not a mob or a player.
-    pub(in crate::game) fn native_dragon_set_target(
+    pub(in crate::game::server_side) fn native_dragon_set_target(
         &mut self,
         entity: EntityRef,
         target: Option<LivingRef>,

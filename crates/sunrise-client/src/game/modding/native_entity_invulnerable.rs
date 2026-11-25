@@ -12,7 +12,7 @@ use sunrise_client::mobs::Damage;
 
 impl Game<'_> {
     /// Whether a named causing entity is a creative player.
-    pub(in crate::game) fn creative_damage_source_id(&self, id: i32) -> bool {
+    pub(in crate::game::server_side) fn creative_damage_source_id(&self, id: i32) -> bool {
         id != 0
             && ((id == self.own_entity_id() && self.creative)
                 || self.lan.as_ref().is_some_and(|host| {
@@ -23,7 +23,7 @@ impl Game<'_> {
                 }))
     }
     /// Ask listeners about a nonliving entity damage source.
-    pub(in crate::game) fn native_nonliving_invulnerable(
+    pub(in crate::game::server_side) fn native_nonliving_invulnerable(
         &mut self,
         id: u32,
         kind: &str,
@@ -54,7 +54,7 @@ impl Game<'_> {
         self.native_nonliving_invulnerable(id, kind, source, vanilla)
     }
     /// A player's body, where it is kept now.
-    pub(in crate::game) fn native_player_body(
+    pub(in crate::game::server_side) fn native_player_body(
         &self,
         t: Target,
     ) -> Option<&sunrise_client::motion::PlayerMotion> {
@@ -64,7 +64,7 @@ impl Game<'_> {
             _ => None,
         }
     }
-    pub(in crate::game) fn native_player_body_mut(
+    pub(in crate::game::server_side) fn native_player_body_mut(
         &mut self,
         t: Target,
     ) -> Option<&mut sunrise_client::motion::PlayerMotion> {
@@ -194,7 +194,7 @@ impl Game<'_> {
     /// A non-mob kind's saved invulnerability (#916), the one parse of its
     /// entity data: the `Invulnerable` flag and the `invulnerable_time`
     /// window. `(false, 0)` where its data has neither.
-    pub(in crate::game) fn saved_invulnerability(&self, id: u32) -> (bool, i32) {
+    pub(in crate::game::server_side) fn saved_invulnerability(&self, id: u32) -> (bool, i32) {
         use sunrise_core::nbt::Tag;
         match self.persist.raw.get(&id) {
             Some(Tag::Compound(map)) => (
@@ -238,7 +238,7 @@ impl Game<'_> {
     }
     /// `Entity.isInvulnerableToBase` for resident items and orbs. These bodies
     /// have no intrinsic fire immunity; item-stack resistance is checked separately.
-    pub(in crate::game) fn resident_item_or_orb_immune(
+    pub(in crate::game::server_side) fn resident_item_or_orb_immune(
         &self,
         id: u32,
         entity_type: &str,
@@ -264,7 +264,7 @@ impl Game<'_> {
     /// mode, the host's own or a guest's; false for anything else. The one
     /// decision every invulnerability gate shares with `/damage`'s and the
     /// dragon's.
-    pub(in crate::game) fn creative_source_of(&self, cause: Option<Target>) -> bool {
+    pub(in crate::game::server_side) fn creative_source_of(&self, cause: Option<Target>) -> bool {
         match cause {
             Some(Target::Player) => self.creative,
             Some(Target::Guest(conn)) => self.command_guest(conn).is_some_and(|g| g.creative()),
@@ -291,7 +291,7 @@ impl Game<'_> {
     /// `invulnerable_time` (#916): one less each tick while it runs, so the
     /// window an entity carries in its saved data closes like a mob's and a
     /// player's do.
-    pub(in crate::game) fn tick_saved_invulnerable_time(&mut self, id: u32) {
+    pub(in crate::game::server_side) fn tick_saved_invulnerable_time(&mut self, id: u32) {
         use sunrise_core::nbt::Tag;
         let ticks = self.saved_invulnerability(id).1;
         if ticks <= 0 {
@@ -355,7 +355,7 @@ impl Game<'_> {
 
     /// `Entity.isInvulnerableTo` asked of `mob` outside a hit, for a source of `damage_type`:
     /// the vanilla answer, which `entity_invulnerability_check` listeners may change.
-    pub(in crate::game) fn mob_query_invulnerable(
+    pub(in crate::game::server_side) fn mob_query_invulnerable(
         &self,
         mob: &sunrise_client::mobs::Mob,
         damage_type: &str,
@@ -378,7 +378,11 @@ impl Game<'_> {
 
     /// `isInvulnerableToBase` of a non-living entity the acting player strikes in melee
     /// (`player_attack`), asked of listeners.
-    pub(in crate::game) fn native_player_hit_invulnerable(&mut self, id: u32, kind: &str) -> bool {
+    pub(in crate::game::server_side) fn native_player_hit_invulnerable(
+        &mut self,
+        id: u32,
+        kind: &str,
+    ) -> bool {
         let attacker = self.own_entity_id();
         let source = sunrise_client::health::HurtSource {
             damage_type: "minecraft:player_attack",
@@ -406,7 +410,7 @@ impl Game<'_> {
 
     /// The team an entity is on: a mob's own or its tamed owner's, the
     /// acting player's, a guest's by name.
-    pub(in crate::game) fn native_target_team(
+    pub(in crate::game::server_side) fn native_target_team(
         &self,
         t: Target,
     ) -> Option<Option<&sunrise_client_core::scoreboard::Team>> {

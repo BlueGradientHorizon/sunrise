@@ -10,7 +10,7 @@ fn saved_silent(extra: Option<&Tag>) -> bool {
 impl Game<'_> {
     /// `Entity.isSilent` for the player this window plays: its saved `Silent`,
     /// which its sounds already read.
-    pub(in crate::game) fn player_silent(&self) -> bool {
+    pub(in crate::game::client_side) fn player_silent(&self) -> bool {
         saved_silent(self.level.player_extra.as_ref())
     }
     /// `Level.playSound(except, mob, ...)`: the category and actor exclusion
@@ -76,7 +76,10 @@ impl Game<'_> {
         );
     }
 
-    pub(in crate::game) fn sound_entity_state(&mut self, id: u32) -> Option<SoundEntityState> {
+    pub(in crate::game::client_side) fn sound_entity_state(
+        &mut self,
+        id: u32,
+    ) -> Option<SoundEntityState> {
         if self.remote.is_some() {
             return self.remote_sound_entity_state(id as i32);
         }

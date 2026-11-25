@@ -28,7 +28,7 @@ use sunrise_protocol::{
 use sunrise_world::entity_move::MoverType;
 
 /// `PlayerInput` flags, as the server player's client last sent them.
-pub(in crate::game) fn input_keys(flags: u8) -> Keys {
+pub(in crate::game::server_side) fn input_keys(flags: u8) -> Keys {
     Keys {
         forward: flags & 1 != 0,
         backward: flags & 2 != 0,
@@ -61,7 +61,10 @@ pub(in crate::game) struct WatchedVehicle {
 
 impl Game<'_> {
     /// Where the boat or minecart `id` of this level is.
-    pub(in crate::game) fn watched_vehicle_position(&self, id: u32) -> Option<[f64; 3]> {
+    pub(in crate::game::server_side) fn watched_vehicle_position(
+        &self,
+        id: u32,
+    ) -> Option<[f64; 3]> {
         let at = |v: Vec3| [v.x, v.y, v.z];
         self.boats
             .iter()
@@ -77,7 +80,7 @@ impl Game<'_> {
 
     /// `VehicleMoveEvent` for the boats and minecarts server players ride
     /// (and left less than ten seconds ago): once a tick, after they moved.
-    pub(in crate::game) fn tick_vehicle_watch(&mut self) {
+    pub(in crate::game::server_side) fn tick_vehicle_watch(&mut self) {
         let riders: Vec<(u32, u32, u128)> = self.lan.as_ref().map_or_else(Vec::new, |h| {
             h.hub
                 .guests
@@ -173,7 +176,7 @@ impl Game<'_> {
     /// Whether a server player rides `vehicle` (`Entity.isPassenger`: a
     /// passenger does not use a portal on its own, the vehicle carries it
     /// across, `Entity.teleportCrossDimension`).
-    pub(in crate::game) fn guest_rides(&self, vehicle: u32) -> bool {
+    pub(in crate::game::server_side) fn guest_rides(&self, vehicle: u32) -> bool {
         self.lan
             .as_ref()
             .is_some_and(|h| h.hub.guests.iter().any(|g| g.vehicle == Some(vehicle)))
@@ -181,7 +184,7 @@ impl Game<'_> {
 
     /// `Player.rideTick` for a server player, before its moves this tick:
     /// it stays in its seat, steers its minecart, or gets out.
-    pub(in crate::game) fn guest_vehicle_tick(&mut self, conn: u32) {
+    pub(in crate::game::server_side) fn guest_vehicle_tick(&mut self, conn: u32) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -304,7 +307,7 @@ impl Game<'_> {
 
     /// After an interaction: a player that got into a vehicle sits in it,
     /// and its last good vehicle position is where the vehicle is.
-    pub(in crate::game) fn guest_boarded(&mut self, conn: u32, before: Option<u32>) {
+    pub(in crate::game::server_side) fn guest_boarded(&mut self, conn: u32, before: Option<u32>) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -377,7 +380,11 @@ impl Game<'_> {
     /// saddled horse its rider drives goes where the client says, unless it
     /// moved too quickly or wrongly; then it stays, and the client is told
     /// where it is.
-    pub(in crate::game) fn guest_move_vehicle(&mut self, conn: u32, p: &play::MoveVehicleRequest) {
+    pub(in crate::game::server_side) fn guest_move_vehicle(
+        &mut self,
+        conn: u32,
+        p: &play::MoveVehicleRequest,
+    ) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -690,7 +697,11 @@ impl Game<'_> {
     /// boat has two seats, and only its first player passenger drives it. The
     /// window player sits first when it rides; of the server's players it is
     /// the one that got in first.
-    pub(in crate::game) fn guest_controls_vehicle(&self, conn: u32, vehicle: u32) -> bool {
+    pub(in crate::game::server_side) fn guest_controls_vehicle(
+        &self,
+        conn: u32,
+        vehicle: u32,
+    ) -> bool {
         let Some(host) = self.lan.as_ref() else {
             return false;
         };
@@ -708,7 +719,11 @@ impl Game<'_> {
     /// `handlePaddleBoat`: the paddles of the boat the player controls
     /// (`player.getControlledVehicle()`); a passenger in the second seat moves
     /// no paddle.
-    pub(in crate::game) fn guest_paddle_boat(&mut self, conn: u32, paddles: [bool; 2]) {
+    pub(in crate::game::server_side) fn guest_paddle_boat(
+        &mut self,
+        conn: u32,
+        paddles: [bool; 2],
+    ) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -957,7 +972,7 @@ pub(in crate::game) mod controller_tests {
     }
 
     /// A guest drives a horse with an unobstructed ten-block fall to stone.
-    pub(in crate::game) fn guest_horse_at_start_of_fall(
+    pub(in crate::game::server_side) fn guest_horse_at_start_of_fall(
         game: &mut Game<'_>,
     ) -> (u32, mpsc::Receiver<sunrise_client::lan::Out>) {
         game.build_registries();

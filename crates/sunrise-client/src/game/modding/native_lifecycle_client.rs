@@ -13,8 +13,6 @@ pub(in crate::game::client_side) use crate::game::server_side::native_lifecycle:
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::native_lifecycle::OpenState;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_lifecycle::fresh_epoch;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::native_lifecycle::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use mod_api::{

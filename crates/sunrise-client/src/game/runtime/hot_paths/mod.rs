@@ -97,7 +97,7 @@ impl Recorder {
 
 impl Game<'_> {
     /// Run the workloads and write their lines to `output`.
-    pub(in crate::game) fn hot_paths(&mut self, output: &str) -> Result<()> {
+    pub(in crate::game::server_side) fn hot_paths(&mut self, output: &str) -> Result<()> {
         assert!(
             !self.options.execution_role.is_client(),
             "the benchmark requires a server Game"

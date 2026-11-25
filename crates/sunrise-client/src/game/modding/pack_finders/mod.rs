@@ -184,7 +184,7 @@ pub(in crate::game) fn data_packs(mods: &ModsState) -> Vec<std::sync::Arc<DataPa
 }
 
 /// The same repository is used by commands, content loading and world generation.
-pub(in crate::game) fn data_repository(
+pub(in crate::game::server_side) fn data_repository(
     world: &std::path::Path,
     resources: &std::path::Path,
     additional: &[std::sync::Arc<DataPack>],

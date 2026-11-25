@@ -13,7 +13,7 @@ use sunrise_protocol::entity_data::{PaintingHolder, Value};
 
 /// `Mth.rotLerp(alpha, from, to)`: `from` turned `alpha` of the way to `to` by
 /// the shorter arc (`wrapDegrees` of the difference).
-pub(in crate::game) fn rot_lerp(alpha: f32, from: f32, to: f32) -> f32 {
+pub(in crate::game::client_side) fn rot_lerp(alpha: f32, from: f32, to: f32) -> f32 {
     let mut d = (to - from) % 360.0;
     if d >= 180.0 {
         d -= 360.0;
@@ -406,7 +406,7 @@ impl Game<'_> {
     }
 
     /// `MinecartTNT.handleEntityEvent(70)`: the client's fuse starts at 80.
-    pub(in crate::game) fn remote_cart_primed(&mut self, id: u32) {
+    pub(in crate::game::client_side) fn remote_cart_primed(&mut self, id: u32) {
         if let Some(i) = self
             .carts
             .iter()
@@ -420,7 +420,7 @@ impl Game<'_> {
     /// the entity's last sent one, if it has a move in progress. A minecart
     /// on `NewMinecartBehavior` is moved by `lerp_cart` (true when it did)
     /// instead.
-    pub(in crate::game) fn tick_remote_objects(
+    pub(in crate::game::client_side) fn tick_remote_objects(
         &mut self,
         mut step: impl FnMut(u32, Vec3) -> Vec3,
         mut turn: impl FnMut(u32, f32) -> f32,
@@ -532,7 +532,7 @@ impl Game<'_> {
 
     /// The boats, minecarts, armor stands, item frames and paintings in the
     /// level (a server's client: the ones it was sent), for `status`.
-    pub(in crate::game) fn objects_status(&self) -> Vec<serde_json::Value> {
+    pub(in crate::game::client_side) fn objects_status(&self) -> Vec<serde_json::Value> {
         use serde_json::json;
         let at = |p: Vec3| [p.x, p.y, p.z];
         let mut out = Vec::new();

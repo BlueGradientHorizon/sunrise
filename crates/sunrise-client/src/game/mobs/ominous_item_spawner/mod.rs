@@ -53,7 +53,7 @@ sunrise_mod_runtime::impl_attachment_lifetime!(OminousItemSpawner);
 
 /// `ProjectileItem.DispenseConfig` of the items fired down: power,
 /// uncertainty and `overrideDispenseEvent`; None for items that just fall.
-pub(in crate::game) fn projectile(item: &str) -> Option<(f32, f32, Option<i32>)> {
+pub(in crate::game::server_side) fn projectile(item: &str) -> Option<(f32, f32, Option<i32>)> {
     Some(match item {
         "minecraft:fire_charge" => (1.0, 6.666_666_5, Some(1018)),
         "minecraft:wind_charge" => (1.0, 6.666_666_5, Some(1051)),
@@ -72,13 +72,13 @@ pub(in crate::game) fn projectile(item: &str) -> Option<(f32, f32, Option<i32>)>
     })
 }
 
-pub(in crate::game) fn block(p: [f64; 3]) -> [i32; 3] {
+pub(in crate::game::server_side) fn block(p: [f64; 3]) -> [i32; 3] {
     p.map(|v| v.floor() as i32)
 }
 
 impl Game<'_> {
     /// `OminousItemSpawner.create` added at `position`.
-    pub(in crate::game) fn add_ominous_item_spawner(
+    pub(in crate::game::server_side) fn add_ominous_item_spawner(
         &mut self,
         item: ItemStack,
         position: [f64; 3],
@@ -105,7 +105,7 @@ impl Game<'_> {
     pub(in crate::game) fn load_ominous_item_spawner(&mut self, tag: sunrise_core::nbt::Tag) {
         self.load_ominous_item_spawner_transferred(tag, None);
     }
-    pub(in crate::game) fn load_ominous_item_spawner_transferred(
+    pub(in crate::game::server_side) fn load_ominous_item_spawner_transferred(
         &mut self,
         mut tag: sunrise_core::nbt::Tag,
         transferred: Option<super::entity_initialization::TransferredEntityState>,
@@ -224,7 +224,7 @@ impl Game<'_> {
     }
     /// `spawnItem`: a projectile shot down, or an item entity; level event
     /// 3021 and the entity_place game event.
-    pub(in crate::game) fn spawn_ominous_item(&mut self, s: &OminousItemSpawner) {
+    pub(in crate::game::server_side) fn spawn_ominous_item(&mut self, s: &OminousItemSpawner) {
         // An empty item spawns nothing, and no event marks it.
         if &*s.item.item == "minecraft:air" {
             return;

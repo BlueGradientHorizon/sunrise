@@ -55,7 +55,7 @@ const FLIPPED_ROWS: [(&str, Flips); 9] = [
 ];
 
 /// The sticks as the row meant them.
-pub(in crate::game) fn sticks(
+pub(in crate::game::client_side) fn sticks(
     pad: &Gamepad,
     left: [f32; 2],
     right: [f32; 2],

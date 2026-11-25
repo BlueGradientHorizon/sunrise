@@ -61,7 +61,7 @@ pub(in crate::game) struct Scenario {
     pub(in crate::game) actions: Vec<(i32, Vec<String>)>,
 }
 
-pub(in crate::game) fn parse(text: &str) -> Vec<Scenario> {
+pub(in crate::game::server_side) fn parse(text: &str) -> Vec<Scenario> {
     let mut out = Vec::new();
     let mut cur: Option<Scenario> = None;
     for line in text.lines() {
@@ -140,14 +140,14 @@ pub(in crate::game) fn parse(text: &str) -> Vec<Scenario> {
 /// An entity's own random is unseeded in vanilla, and so are its sensors'
 /// first delays and its brain's `RunOne` shuffles: the oracle seeds what
 /// appeared, and so does this.
-pub(in crate::game) fn seed_fresh(m: &mut Mob, seed: i64) {
+pub(in crate::game::server_side) fn seed_fresh(m: &mut Mob, seed: i64) {
     m.random.set_seed(seed);
     sunrise_client::mobs::warden::init_brain(m, seed);
 }
-pub(in crate::game) fn d(v: f64) -> String {
+pub(in crate::game::server_side) fn d(v: f64) -> String {
     format!("{:x}", v.to_bits())
 }
-pub(in crate::game) fn f(v: f32) -> String {
+pub(in crate::game::server_side) fn f(v: f32) -> String {
     format!("{:x}", v.to_bits())
 }
 
@@ -162,7 +162,7 @@ pub(in crate::game) const CLIENT_SOUNDS: &[&str] = &[
 
 impl Game<'_> {
     /// Run every scenario of `spec` ("SCENARIOS,OUTPUT") and write the results.
-    pub(in crate::game) fn sculk_fixture(&mut self, spec: &str) -> Result<()> {
+    pub(in crate::game::server_side) fn sculk_fixture(&mut self, spec: &str) -> Result<()> {
         assert!(
             !self.options.execution_role.is_client(),
             "fixture requires a server Game"
@@ -186,7 +186,7 @@ impl Game<'_> {
     }
 
     /// `minecraft:name[key=value,...]` to a state.
-    pub(in crate::game) fn fixture_state(&self, text: &str) -> Result<BlockStateId> {
+    pub(in crate::game::server_side) fn fixture_state(&self, text: &str) -> Result<BlockStateId> {
         let (name, props) = match text.split_once('[') {
             Some((n, rest)) => (n, rest.trim_end_matches(']')),
             None => (text, ""),
@@ -210,7 +210,7 @@ impl Game<'_> {
     }
 
     /// `BlockStateParser.serialize`.
-    pub(in crate::game) fn fixture_state_text(&self, state: BlockStateId) -> String {
+    pub(in crate::game::server_side) fn fixture_state_text(&self, state: BlockStateId) -> String {
         let Some(s) = self.pack.assets.registry.state(state) else {
             return "?".into();
         };
@@ -223,7 +223,7 @@ impl Game<'_> {
         format!("{}[{}]", s.name, props.join(","))
     }
 
-    pub(in crate::game) fn fixture_who(
+    pub(in crate::game::server_side) fn fixture_who(
         &self,
         who: Option<Who>,
         names: &HashMap<u32, String>,
@@ -235,7 +235,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn fixture_info(
+    pub(in crate::game::server_side) fn fixture_info(
         &self,
         info: Option<&Info>,
         names: &HashMap<u32, String>,
@@ -267,7 +267,7 @@ impl Game<'_> {
         )
     }
 
-    pub(in crate::game) fn sculk_describe(
+    pub(in crate::game::server_side) fn sculk_describe(
         &self,
         p: [i32; 3],
         names: &HashMap<u32, String>,
@@ -335,7 +335,7 @@ impl Game<'_> {
         line
     }
 
-    pub(in crate::game) fn sculk_fixture_reset(&mut self, s: &Scenario) -> Result<()> {
+    pub(in crate::game::server_side) fn sculk_fixture_reset(&mut self, s: &Scenario) -> Result<()> {
         self.world = Game::world_for_mods(self.res.facts().air, 0);
         let plains = u32::from(world_biomes!(self).id("minecraft:plains"));
         let layers = [
@@ -418,7 +418,7 @@ impl Game<'_> {
         Ok(())
     }
 
-    pub(in crate::game) fn sculk_scenario(&mut self, s: &Scenario) -> Result<String> {
+    pub(in crate::game::server_side) fn sculk_scenario(&mut self, s: &Scenario) -> Result<String> {
         self.sculk_fixture_reset(s)?;
         let at = s.player.unwrap_or([
             f64::from(s.origin[0]) + 0.5,
@@ -682,7 +682,7 @@ impl Game<'_> {
     }
 
     /// One `ServerLevel.tick` of a scenario.
-    pub(in crate::game) fn sculk_fixture_tick(
+    pub(in crate::game::server_side) fn sculk_fixture_tick(
         &mut self,
         t: i32,
         s: &Scenario,

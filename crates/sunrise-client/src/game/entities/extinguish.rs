@@ -28,7 +28,7 @@ impl Game<'_> {
     /// runBefore EXTINGUISH, `LayeredCauldronBlock.entityInside`) change
     /// first, then the hiss plays once, as vanilla plays it when the move
     /// left `wasOnFire && !isOnFire()`.
-    pub(in crate::game) fn block_extinguish_player(&mut self, events: &[MotionEvent]) {
+    pub(in crate::game::server_side) fn block_extinguish_player(&mut self, events: &[MotionEvent]) {
         let mut out = false;
         for event in events {
             match event {
@@ -50,7 +50,7 @@ impl Game<'_> {
     /// in the cauldron at `pos` (`mayInteract`): the fill level drops
     /// (`lowerFillLevel`, a `block_change` with no source). A server's
     /// cauldron is the server's.
-    pub(in crate::game) fn cauldron_extinguish(&mut self, pos: BlockPos) {
+    pub(in crate::game::server_side) fn cauldron_extinguish(&mut self, pos: BlockPos) {
         if self.remote.is_some() || !self.may_interact_at(pos) {
             return;
         }

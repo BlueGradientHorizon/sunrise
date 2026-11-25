@@ -230,7 +230,10 @@ impl Game<'_> {
             self.server.guest_cooldowns.push((group, 0));
         }
     }
-    pub(in crate::game) fn break_block_as_player(&mut self, pos: [i32; 3]) -> Result<bool> {
+    pub(in crate::game::server_side) fn break_block_as_player(
+        &mut self,
+        pos: [i32; 3],
+    ) -> Result<bool> {
         // DebugStickItem.canDestroyBlock: a left click selects a property and
         // never destroys the block.
         if !self.debug_stick_can_destroy(pos)? {
@@ -473,7 +476,7 @@ impl Game<'_> {
         self.clear_entities_client_render_caches();
     }
     #[inline(always)]
-    pub(in crate::game) fn clear_entities_server_missing_professions(&mut self) {
+    pub(in crate::game::server_side) fn clear_entities_server_missing_professions(&mut self) {
         self.server.missing_professions.clear();
     }
     pub(crate) fn close_container(&mut self) {
@@ -731,7 +734,7 @@ impl Game<'_> {
     /// (`Entity.checkFallDamage`): a mod block's `fall_on` Part hears it, through the same
     /// `block_contact::fall` as a player's and a mob's landing. An item takes no fall damage.
     /// Nothing is lent or built unless a Part of that block listens.
-    pub(in crate::game) fn item_fall_on(
+    pub(in crate::game::server_side) fn item_fall_on(
         &mut self,
         id: u32,
         on: sunrise_core::position::BlockPos,
@@ -769,7 +772,7 @@ impl Game<'_> {
         }
     }
     /// An item-specific POV outline ray at the current rotation and block reach.
-    pub(crate) fn item_pick(&self) -> Option<Hit> {
+    pub(in crate::game::server_side) fn item_pick(&self) -> Option<Hit> {
         if let Some(hit) = self.server.forced_hit {
             return Some(hit);
         }
@@ -817,7 +820,7 @@ impl Game<'_> {
     /// `LivingEntity.startSleeping`: the player takes the bed whose head
     /// `head` names, moved onto it and asleep from now on. False when the
     /// bed gives no shape to lie on.
-    pub(in crate::game) fn lie_in_bed(&mut self, head: [i32; 3]) -> bool {
+    pub(in crate::game::server_side) fn lie_in_bed(&mut self, head: [i32; 3]) -> bool {
         // The shape the bed gives the player to lie on (`getSleepHeight`).
         // A straw bed's head answers with its foot's shape, and with no foot
         // of its own there is none, so the player stays up as
@@ -1721,7 +1724,7 @@ impl Game<'_> {
     /// scheduled from the game time at which it becomes a ticking chunk
     /// (block ticking, with its neighbours loaded). Chunks become ticking
     /// between ticks in vanilla: before this tick's clock advanced.
-    pub(in crate::game) fn start_ticking_chunks(&mut self) {
+    pub(in crate::game::server_side) fn start_ticking_chunks(&mut self) {
         let levels = self.tickets.0.levels();
         let world = &self.world;
         let started = self
@@ -1898,7 +1901,12 @@ impl Game<'_> {
     /// A translated message for the player the game acts for: `overlay` is
     /// `sendOverlayMessage` (the action bar), else `sendSystemMessage` (chat).
     /// A guest gets a packet, so its own client translates it.
-    pub(in crate::game) fn tell_sleeper(&mut self, key: &str, fallback: &str, overlay: bool) {
+    pub(in crate::game::server_side) fn tell_sleeper(
+        &mut self,
+        key: &str,
+        fallback: &str,
+        overlay: bool,
+    ) {
         if self.server.lan_acting.is_some() {
             self.server.guest_packets.push(
                 sunrise_protocol::packets::play::Clientbound::SystemChat(
@@ -1915,7 +1923,7 @@ impl Game<'_> {
             self.system_message(sunrise_client::text::Text::translate(key, &[]));
         }
     }
-    pub(in crate::game) fn tick_mining(&mut self) -> Result<()> {
+    pub(in crate::game::server_side) fn tick_mining(&mut self) -> Result<()> {
         if self.server.destroy_delay > 0 {
             self.server.destroy_delay -= 1;
         }
@@ -2068,7 +2076,7 @@ impl Game<'_> {
     /// ServerPlayer.startSleepInBed: in reach, not obstructed, night or thunder,
     /// and (outside creative) no monsters within 8 blocks; the bed becomes the
     /// respawn point either way.
-    pub(in crate::game) fn try_sleep(&mut self, pos: [i32; 3]) {
+    pub(in crate::game::server_side) fn try_sleep(&mut self, pos: [i32; 3]) {
         if self.fake_blocks(mod_api::FakeEffect::Sleep) {
             return;
         }
@@ -2300,7 +2308,7 @@ impl Game<'_> {
         Ok(true)
     }
     /// Block tool use: distinguish success, failure and fall-through for hand feedback.
-    pub(in crate::game) fn use_tool(
+    pub(in crate::game::server_side) fn use_tool(
         &mut self,
         stack: &ItemStack,
         allow_block_actions: bool,
@@ -2616,7 +2624,7 @@ impl Game<'_> {
     }
     /// `HoneycombItem.useOn`'s `Level.playSound(player, ...)`: the actor's client
     /// already played it in `predict_item_on_block`.
-    pub(in crate::game) fn wax_on_sound(&mut self, at: [f64; 3]) {
+    pub(in crate::game::server_side) fn wax_on_sound(&mut self, at: [f64; 3]) {
         let sound = "minecraft:item.honeycomb.wax_on";
         if self.server.lan_acting.is_some() {
             self.client_audio_play_unshared(sound, Some(at), 1.0, 1.0);

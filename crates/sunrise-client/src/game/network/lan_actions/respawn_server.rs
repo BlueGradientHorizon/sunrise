@@ -9,7 +9,12 @@ impl Game<'_> {
     /// `SculkCatalystBlockEntity.CatalystListener`'s trigger on a player's
     /// death: for the player the dying guest's combat record credits
     /// (`LivingEntity.getKillCredit`), with the death's `killing_blow`.
-    pub(in crate::game) fn guest_catalyst_trigger(&mut self, gi: usize, conn: u32, at: [f64; 3]) {
+    pub(in crate::game::server_side) fn guest_catalyst_trigger(
+        &mut self,
+        gi: usize,
+        conn: u32,
+        at: [f64; 3],
+    ) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -138,7 +143,7 @@ impl Game<'_> {
     }
     /// The scalar death-tail/death-message source. `living_death` uses the
     /// full accepted hit retained on the body instead.
-    pub(in crate::game) fn guest_damage_source(&self, conn: u32) -> (String, u32) {
+    pub(in crate::game::server_side) fn guest_damage_source(&self, conn: u32) -> (String, u32) {
         let cause = if self.server.lan_acting == Some(conn) {
             self.ui.death_cause.as_deref()
         } else {
@@ -158,7 +163,7 @@ impl Game<'_> {
     }
     /// `ServerPlayer.die`'s message from a guest's own `CombatTracker`, which
     /// sits in `guest_combat` between turns.
-    pub(in crate::game) fn guest_death_message(
+    pub(in crate::game::server_side) fn guest_death_message(
         &mut self,
         conn: u32,
         me: sunrise_client::text::Text,
@@ -464,7 +469,7 @@ impl Game<'_> {
     /// guest), a mob (one gone already credits nobody, as vanilla's reference
     /// no longer resolves), a mob whose own blast this tick killed the guest,
     /// or the ender dragon.
-    pub(in crate::game) fn guest_kill_credit_type(&self, conn: u32) -> Option<String> {
+    pub(in crate::game::server_side) fn guest_kill_credit_type(&self, conn: u32) -> Option<String> {
         let id = self
             .guest_combat_record(conn)?
             .kill_credit(self.world.game_time)?;
@@ -485,7 +490,7 @@ impl Game<'_> {
             .map(|_| "minecraft:ender_dragon".into())
     }
     /// PlayerList.respawn, after its TeleportTransition and NeoForge's redirect are final.
-    pub(in crate::game) fn place_cloned_player(
+    pub(in crate::game::server_side) fn place_cloned_player(
         &mut self,
         conn: u32,
         to: crate::game::respawn_position::Respawn,

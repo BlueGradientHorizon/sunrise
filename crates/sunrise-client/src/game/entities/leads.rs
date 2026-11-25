@@ -76,7 +76,7 @@ pub(in crate::game) struct Rope {
 impl Game<'_> {
     /// The fences the live leads of the level in place hang on, mobs first,
     /// each once.
-    pub(in crate::game) fn lead_fences(&self) -> Vec<[i32; 3]> {
+    pub(in crate::game::server_side) fn lead_fences(&self) -> Vec<[i32; 3]> {
         let mut fences = Vec::new();
         let mobs = self
             .mobs
@@ -105,7 +105,7 @@ impl Game<'_> {
     /// `LeashFenceKnotEntity.notifyLeasheeRemoved`: only a knot losing a
     /// holder asks whether it still has another one. The departing entity may
     /// be ticked through a copy, so its old stored payload must not count.
-    pub(in crate::game) fn notify_knot_leashee_removed(
+    pub(in crate::game::server_side) fn notify_knot_leashee_removed(
         &mut self,
         holder: Option<Holder>,
         departing: u32,
@@ -168,19 +168,21 @@ impl Game<'_> {
         Some(self.resident_entities.knots[index].fence)
     }
     /// Actual natural knot owners, without allocating or inferring membership from leashes.
-    pub(in crate::game) fn natural_knot_id_iter(&self) -> impl Iterator<Item = u32> + '_ {
+    pub(in crate::game::server_side) fn natural_knot_id_iter(
+        &self,
+    ) -> impl Iterator<Item = u32> + '_ {
         self.resident_entities.knots.iter().map(|knot| knot.id)
     }
     /// The ids of the level's natural knots that a lead still holds, in the
     /// order they were made.
-    pub(in crate::game) fn natural_knot_ids(&self) -> Vec<u32> {
+    pub(in crate::game::server_side) fn natural_knot_ids(&self) -> Vec<u32> {
         let mut ids: Vec<u32> = self.natural_knot_id_iter().collect();
         ids.sort_unstable();
         ids.dedup();
         ids
     }
     /// BlockAttachedEntity.tick / LeashFenceKnotEntity.survives for explicitly loaded knots.
-    pub(in crate::game) fn tick_explicit_knots(&mut self) {
+    pub(in crate::game::server_side) fn tick_explicit_knots(&mut self) {
         let ticking = self.entity_ticking_area();
         let world = &self.world;
         let facts = self.res.facts();
@@ -276,7 +278,7 @@ impl Game<'_> {
     }
     /// `Entity.spawnAtLocation(level, Items.LEAD)`: the item entity draws its
     /// motion from its own random, not the level's.
-    pub(in crate::game) fn drop_lead_item(&mut self, at: [f64; 3]) {
+    pub(in crate::game::server_side) fn drop_lead_item(&mut self, at: [f64; 3]) {
         self.spawn_item_own(ItemStack::new("minecraft:lead", 1), at, 10);
     }
     /// `Leashable.dropLeash` / `removeLeash`: the lead falls as an item.
@@ -285,7 +287,12 @@ impl Game<'_> {
     }
     /// `Leashable.tickLeash` ending a lead: a dying mob's falls as an item only under
     /// `entity_drops`, else it is `removeLeash`.
-    pub(in crate::game) fn tick_break_leash(&mut self, id: u32, drop: bool, sound: bool) {
+    pub(in crate::game::server_side) fn tick_break_leash(
+        &mut self,
+        id: u32,
+        drop: bool,
+        sound: bool,
+    ) {
         let dying = self.mobs.iter().any(|m| m.id == id && !m.alive());
         let drop = drop
             && (!dying
@@ -299,7 +306,7 @@ impl Game<'_> {
     /// acting player, inside the 32-block box around the player's centre,
     /// drops its lead. Then `GameEvent.SHEAR`. Whether anything dropped.
     /// The player is not `Leashable`, so there is no lead of their own.
-    pub(in crate::game) fn drop_all_leash_connections(&mut self) -> bool {
+    pub(in crate::game::server_side) fn drop_all_leash_connections(&mut self) -> bool {
         let center = self.player_center();
         let mobs: Vec<u32> = self
             .player_leashed(center)
@@ -330,7 +337,7 @@ impl Game<'_> {
     /// `Leashable.setLeashedTo` on the mob or boat `target`: its lead goes to `holder` whatever
     /// held it, or was still waiting for a saved holder. `player` is a player holder's UUID.
     /// Taking the lead over is no removal, so no unleash hook hears it. False for anything else.
-    pub(in crate::game) fn set_leash(
+    pub(in crate::game::server_side) fn set_leash(
         &mut self,
         target: Target,
         holder: Holder,
@@ -376,7 +383,11 @@ impl Game<'_> {
     }
     /// `Leashable.dropLeash` (`drop`) or `removeLeash` on the mob or boat `target`. False when no
     /// holder has the lead: a holder still unresolved from a save stays, as in `dropLeash`.
-    pub(in crate::game) fn detach_leash(&mut self, target: Target, drop: bool) -> bool {
+    pub(in crate::game::server_side) fn detach_leash(
+        &mut self,
+        target: Target,
+        drop: bool,
+    ) -> bool {
         match target {
             Target::Mob(id) => {
                 let held = self
@@ -403,7 +414,13 @@ impl Game<'_> {
     pub(in crate::game) fn break_leash_used(&mut self, id: u32, drop: bool) {
         self.drop_leash(id, drop, false, true);
     }
-    pub(in crate::game) fn drop_leash(&mut self, id: u32, drop: bool, sound: bool, used: bool) {
+    pub(in crate::game::server_side) fn drop_leash(
+        &mut self,
+        id: u32,
+        drop: bool,
+        sound: bool,
+        used: bool,
+    ) {
         let killer = self
             .server
             .lead_killers
@@ -469,7 +486,11 @@ impl Game<'_> {
         }
     }
     /// `LeashFenceKnotEntity.hurtServer` -> `kill` and `dropItem` for a natural or explicit knot.
-    pub(in crate::game) fn break_leash_knot(&mut self, id: u32, source: Option<Target>) -> bool {
+    pub(in crate::game::server_side) fn break_leash_knot(
+        &mut self,
+        id: u32,
+        source: Option<Target>,
+    ) -> bool {
         if let Some(fence) = self.natural_knot(id) {
             let at = leash::knot_state(fence).position.components();
             self.server.knot_ids.remove(&fence);
@@ -497,7 +518,7 @@ impl Game<'_> {
     }
     /// Holders read from a save become real once the entity is found; a
     /// holder that never shows up drops the lead after 100 ticks.
-    pub(in crate::game) fn tick_leads(&mut self) {
+    pub(in crate::game::server_side) fn tick_leads(&mut self) {
         if !self.server.broken_knots.is_empty() {
             let fences = std::mem::take(&mut self.server.broken_knots);
             let drop = self
@@ -592,7 +613,7 @@ impl Game<'_> {
         }
     }
     /// The `leash` tag of a mob about to be saved.
-    pub(in crate::game) fn write_leash(&mut self, tag: &mut Tag, id: u32) {
+    pub(in crate::game::server_side) fn write_leash(&mut self, tag: &mut Tag, id: u32) {
         let Some(m) = self.mob_object(id) else {
             return;
         };
@@ -613,7 +634,7 @@ impl Game<'_> {
         self.interact_leash_with_item_context(index, item).is_some()
     }
     /// `LeadItem.useOn` on the fence the crosshair hits.
-    pub(in crate::game) fn interact_knot(&mut self) -> bool {
+    pub(in crate::game::server_side) fn interact_knot(&mut self) -> bool {
         let Some(hit) = self.pick() else {
             return false;
         };

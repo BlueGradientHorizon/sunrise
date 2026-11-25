@@ -5,10 +5,6 @@ pub(in crate::game::client_side) use crate::game::server_side::machines::crafter
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::machines::crafter::RESULT_SLOT;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::machines::crafter::center;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::machines::crafter::recipe_matches;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::machines::crafter::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use serde_json::Value;

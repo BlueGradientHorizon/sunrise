@@ -15,8 +15,6 @@ pub(in crate::game::client_side) use crate::game::server_side::native_player_lev
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::native_player_level_tests::in_the_nether;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_player_level_tests::some_diamonds;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::native_player_level_tests::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use mod_api::{HostTransaction, ItemPlace, ServerHost};

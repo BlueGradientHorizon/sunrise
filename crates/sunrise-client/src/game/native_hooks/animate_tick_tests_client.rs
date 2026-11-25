@@ -33,7 +33,7 @@ pub(in crate::game::client_side) use sunrise_core::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_world::registry::BlockStateId;
 
-pub(in crate::game) fn level_random(game: &mut Game<'_>) -> LegacyRandom {
+pub(in crate::game::client_side) fn level_random(game: &mut Game<'_>) -> LegacyRandom {
     LegacyRandom::from(<(u64, Option<f64>)>::from(
         &*game.particles.0.level_random(),
     ))

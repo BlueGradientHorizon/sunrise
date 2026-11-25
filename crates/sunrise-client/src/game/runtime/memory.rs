@@ -46,20 +46,22 @@ pub(in crate::game) fn mb(bytes: impl TryInto<u64>) -> f64 {
     (bytes as f64 / MB * 10.0).round() / 10.0
 }
 
-pub(in crate::game) fn mb_signed(bytes: i64) -> f64 {
+pub(in crate::game::server_side) fn mb_signed(bytes: i64) -> f64 {
     (bytes as f64 / MB * 10.0).round() / 10.0
 }
 
-pub(in crate::game) fn vec_bytes<T>(v: &Vec<T>) -> usize {
+pub(in crate::game::server_side) fn vec_bytes<T>(v: &Vec<T>) -> usize {
     v.capacity() * size_of::<T>()
 }
 
-pub(in crate::game) fn string_bytes(s: &Option<String>) -> usize {
+pub(in crate::game::server_side) fn string_bytes(s: &Option<String>) -> usize {
     s.as_ref().map_or(0, String::capacity)
 }
 
 /// Counts each section once however many columns (or worlds) share it.
-pub(in crate::game) fn census(chunks: &[Arc<Chunk>]) -> (ColumnCensus, FxHashSet<*const Section>) {
+pub(in crate::game::server_side) fn census(
+    chunks: &[Arc<Chunk>],
+) -> (ColumnCensus, FxHashSet<*const Section>) {
     let mut census = ColumnCensus::default();
     let mut seen = FxHashSet::default();
     for chunk in chunks {
@@ -87,7 +89,7 @@ pub(in crate::game) struct Columns {
 }
 
 impl Columns {
-    pub(in crate::game) fn new(c: &ColumnCensus) -> Self {
+    pub(in crate::game::server_side) fn new(c: &ColumnCensus) -> Self {
         Self {
             total_mb: mb(c.total_bytes()),
             columns: c.columns,
@@ -108,7 +110,7 @@ impl Columns {
 
 /// The sections that are also in `others` (by address), and their heap
 /// bytes: what one copy of them costs.
-pub(in crate::game) fn shared<'a>(
+pub(in crate::game::server_side) fn shared<'a>(
     entries: impl IntoIterator<Item = &'a Arc<Section>>,
     mut others: FxHashSet<*const Section>,
 ) -> SharedSections {
@@ -155,7 +157,9 @@ pub(in crate::game) struct Generation {
 }
 
 impl Generation {
-    pub(in crate::game) fn of(streaming: &sunrise_client::streaming::Streaming) -> Self {
+    pub(in crate::game::server_side) fn of(
+        streaming: &sunrise_client::streaming::Streaming,
+    ) -> Self {
         let c = streaming.proto_census();
         let [blocks, lists, heightmaps, other, biomes, records] = c.bytes;
         let protos: usize = c.bytes.iter().sum();
@@ -286,7 +290,7 @@ pub(in crate::game) struct ServerSide {
 
 impl ServerSide {
     /// The bytes of every part this side names.
-    pub(in crate::game) fn bytes(&self) -> usize {
+    pub(in crate::game::server_side) fn bytes(&self) -> usize {
         self.generation.bytes
             + self.entities.bytes
             + self.players.bytes
@@ -338,7 +342,7 @@ pub(in crate::game) struct MemoryInputs {
 }
 
 impl MemoryInputs {
-    pub(in crate::game) fn report(
+    pub(in crate::game::server_side) fn report(
         self,
         server: Option<ServerSide>,
         active: impl Fn() -> bool,
@@ -457,18 +461,25 @@ impl MemoryInputs {
 }
 
 /// `resident - named` in megabytes, None without a resident size.
-pub(in crate::game) fn unattributed(resident: Option<u64>, named: usize) -> Option<f64> {
+pub(in crate::game::server_side) fn unattributed(
+    resident: Option<u64>,
+    named: usize,
+) -> Option<f64> {
     resident.map(|r| mb_signed(r as i64 - named as i64))
 }
 
 /// `sunrise-ctl memory`'s report as a capture's rows: `a.b` paths, `key[name]` for `[name, value]` lists.
-pub(in crate::game) fn flatten_report(report: &Value) -> Vec<(String, f64)> {
+pub(in crate::game::server_side) fn flatten_report(report: &Value) -> Vec<(String, f64)> {
     let mut rows = Vec::new();
     flatten(String::new(), report, &mut rows);
     rows
 }
 
-pub(in crate::game) fn flatten(path: String, value: &Value, rows: &mut Vec<(String, f64)>) {
+pub(in crate::game::server_side) fn flatten(
+    path: String,
+    value: &Value,
+    rows: &mut Vec<(String, f64)>,
+) {
     match value {
         Value::Number(n) => rows.extend(n.as_f64().map(|n| (path, n))),
         Value::Object(fields) => {
@@ -499,7 +510,7 @@ pub(in crate::game) fn flatten(path: String, value: &Value, rows: &mut Vec<(Stri
 }
 
 /// The `limit` rows with the biggest key first, ties by name.
-pub(in crate::game) fn biggest<K: Copy + Ord, V>(
+pub(in crate::game::server_side) fn biggest<K: Copy + Ord, V>(
     mut rows: Vec<(String, K, V)>,
     limit: usize,
 ) -> Vec<(String, K, V)> {
@@ -509,7 +520,7 @@ pub(in crate::game) fn biggest<K: Copy + Ord, V>(
 }
 
 /// The hub's players: what waits in each one's send queue and what the hub tracks for it.
-pub(in crate::game) fn player_census(hub: &Hub) -> Players {
+pub(in crate::game::server_side) fn player_census(hub: &Hub) -> Players {
     let set = |len: usize| len * (size_of::<(i32, i32)>() + 1);
     let mut rows = Vec::new();
     let mut bytes = 0usize;
@@ -558,7 +569,7 @@ pub(in crate::game) fn player_census(hub: &Hub) -> Players {
     }
 }
 
-pub(in crate::game) fn chunk_send_census(hub: &Hub) -> ChunkSend {
+pub(in crate::game::server_side) fn chunk_send_census(hub: &Hub) -> ChunkSend {
     let [sections, heights] = hub.encoder.cache_census();
     let frames = sunrise_client::lan::conn::shared_frame_census();
     let cached = |(entries, bytes): (usize, usize)| Cached {
@@ -585,7 +596,7 @@ impl Game<'_> {
     }
 
     /// The entities of every level by type; a record's bytes are its struct and the buffers its fields own.
-    pub(in crate::game) fn entity_census(&self) -> Entities {
+    pub(in crate::game::server_side) fn entity_census(&self) -> Entities {
         let record = [
             size_of::<sunrise_client::entities::ItemEntity>(),
             size_of::<sunrise_client::entities::ExperienceOrb>(),
@@ -648,7 +659,7 @@ impl Game<'_> {
     }
 
     /// This game's own server parts: it is a dedicated server, or the single-player server thread.
-    pub(in crate::game) fn server_side(&self) -> ServerSide {
+    pub(in crate::game::server_side) fn server_side(&self) -> ServerSide {
         let (players, chunk_send) = match &self.lan {
             Some(host) => (player_census(&host.hub), chunk_send_census(&host.hub)),
             None => (Players::default(), ChunkSend::default()),
@@ -680,7 +691,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn memory_report(&self) -> MemoryReport {
+    pub(in crate::game::server_side) fn memory_report(&self) -> MemoryReport {
         let inputs = self.memory_inputs();
         let server = if self.options.dedicated.is_some() {
             Some(self.server_side())
@@ -711,7 +722,7 @@ pub(in crate::game) struct ServerMemoryRequest {
 }
 
 impl ServerMemoryRequest {
-    pub(in crate::game) fn collect(mut self, collect: impl FnOnce() -> ServerSide) {
+    pub(in crate::game::server_side) fn collect(mut self, collect: impl FnOnce() -> ServerSide) {
         if self.cancelled.load(Ordering::Acquire) {
             return;
         }
@@ -737,7 +748,7 @@ pub(in crate::game) struct MemoryCancellation {
 }
 
 impl MemoryCancellation {
-    pub(in crate::game) fn cancel(&mut self) {
+    pub(in crate::game::server_side) fn cancel(&mut self) {
         self.cancelled.store(true, Ordering::Release);
         if let Some(wake) = self.wake_worker.take() {
             let _ = wake.send(None);
@@ -802,7 +813,7 @@ impl PendingMemory {
         Poll::Ready(self.rows.try_recv().ok())
     }
 
-    pub(in crate::game) fn spawn(
+    pub(in crate::game::server_side) fn spawn(
         cost: MemoryCost,
         from_server: bool,
         report: impl FnOnce(Option<ServerSide>, &AtomicBool) -> Option<MemoryRows> + Send + 'static,

@@ -64,17 +64,23 @@ impl Game<'_> {
     }
     /// The `BaseCommandBlock` an edit screen shows: the block entity's or the
     /// minecart's.
-    pub(in crate::game) fn edit_base(&self, s: &CommandBlockScreen) -> Option<&CommandBlock> {
+    pub(in crate::game::client_side) fn edit_base(
+        &self,
+        s: &CommandBlockScreen,
+    ) -> Option<&CommandBlock> {
         match s.cart {
             Some(id) => self.carts.iter().find(|c| c.id == id).map(|c| &c.command),
             None => self.command_block(s.pos),
         }
     }
-    pub(in crate::game) fn block_state_at(&self, pos: Pos) -> Option<&'static BlockState> {
+    pub(in crate::game::client_side) fn block_state_at(
+        &self,
+        pos: Pos,
+    ) -> Option<&'static BlockState> {
         let registry = self.pack.assets.registry;
         state_of(registry, self.world.block(pos.0, pos.1, pos.2))
     }
-    pub(in crate::game) fn schedule_command_block(&mut self, pos: Pos) {
+    pub(in crate::game::client_side) fn schedule_command_block(&mut self, pos: Pos) {
         let at = BlockPos::new(pos.0, pos.1, pos.2);
         self.with_level(|b, level, ticks| b.schedule_tick(level, ticks, at, 1));
     }
@@ -98,11 +104,11 @@ impl Game<'_> {
         }
     }
     /// `CommandBlockEntity.scheduleTick`.
-    pub(in crate::game) fn schedule_command_block_tick(&mut self, pos: Pos) {
+    pub(in crate::game::client_side) fn schedule_command_block_tick(&mut self, pos: Pos) {
         mark_condition_met(&mut self.world, self.pack.assets.registry, pos);
         self.schedule_command_block(pos);
     }
-    pub(in crate::game) fn update_output_signal(&mut self, pos: Pos) {
+    pub(in crate::game::client_side) fn update_output_signal(&mut self, pos: Pos) {
         let at = BlockPos::new(pos.0, pos.1, pos.2);
         self.with_level(|b, level, ticks| b.update_neighbour_for_output_signal(level, ticks, at));
     }
@@ -219,7 +225,11 @@ impl Game<'_> {
     }
     /// `CommandBlock.execute`: the command (or no successes without one),
     /// then the chain in front.
-    pub(in crate::game) fn command_block_execute(&mut self, pos: Pos, state: &BlockState) {
+    pub(in crate::game::client_side) fn command_block_execute(
+        &mut self,
+        pos: Pos,
+        state: &BlockState,
+    ) {
         let has_command = self
             .command_block(pos)
             .is_some_and(|c| !c.command.is_empty());
@@ -232,7 +242,7 @@ impl Game<'_> {
     }
     /// `CommandBlock.executeChain`: the chain command blocks in front, each
     /// facing on to the next, up to `max_command_sequence_length`.
-    pub(in crate::game) fn execute_chain(&mut self, start: Pos, mut step: [i32; 3]) {
+    pub(in crate::game::client_side) fn execute_chain(&mut self, start: Pos, mut step: [i32; 3]) {
         let registry = self.pack.assets.registry;
         let limit = self
             .ui
@@ -276,7 +286,7 @@ impl Game<'_> {
     /// `BaseCommandBlock.performCommand`: runs the command as the block, at
     /// game master level, counting the successful results. False when it
     /// already ran this game tick.
-    pub(in crate::game) fn perform_command_block(&mut self, pos: Pos) -> bool {
+    pub(in crate::game::client_side) fn perform_command_block(&mut self, pos: Pos) -> bool {
         let game_time = self.world.game_time;
         let Some(c) = command_block_mut(&mut self.world, pos) else {
             return false;
@@ -404,12 +414,12 @@ impl Game<'_> {
         self.set_screen(Screen::CommandBlock);
         self.capture(false);
     }
-    pub(in crate::game) fn close_command_block(&mut self) {
+    pub(in crate::game::client_side) fn close_command_block(&mut self) {
         self.command_block_screen.0 = None;
         self.set_screen(Screen::Playing);
         self.capture(true);
     }
-    pub(in crate::game) fn draw_command_block(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_command_block(&mut self, batch: &mut HudBatch) {
         let Some(s) = self.command_block_screen.0.as_ref() else {
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
@@ -515,7 +525,7 @@ impl Game<'_> {
         sunrise_client::screen_draw::paint_tooltip(batch, atlas, &draws, tooltip);
     }
     /// The wheel over the suggestion list (`CommandSuggestions.mouseScrolled`).
-    pub(in crate::game) fn command_block_scroll(&mut self, amount: f32) -> bool {
+    pub(in crate::game::client_side) fn command_block_scroll(&mut self, amount: f32) -> bool {
         let mouse = (
             self.client.cursor.0.floor() as i32,
             self.client.cursor.1.floor() as i32,
@@ -547,7 +557,7 @@ impl Game<'_> {
         s.command.server_suggestions(&m, &c, id, range, list);
         self.command_block_screen.0 = Some(s);
     }
-    pub(in crate::game) fn command_block_click(&mut self) -> bool {
+    pub(in crate::game::client_side) fn command_block_click(&mut self) -> bool {
         let Some(mut s) = self.command_block_screen.0.take() else {
             return false;
         };
@@ -617,7 +627,7 @@ impl Game<'_> {
     /// then Enter is Done, Escape cancels, the rest edits the command.
     /// A key pressed on the command block screen, with the edit shortcut it
     /// makes and the text it types.
-    pub(in crate::game) fn command_block_key_code(
+    pub(in crate::game::client_side) fn command_block_key_code(
         &mut self,
         key: KeyCode,
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
@@ -670,7 +680,7 @@ impl Game<'_> {
         handled
     }
     /// Characters typed into the command box (`StringUtil.isAllowedChatCharacter`).
-    pub(in crate::game) fn command_block_type(&mut self, typed: &str) {
+    pub(in crate::game::client_side) fn command_block_type(&mut self, typed: &str) {
         let allowed: String = typed
             .chars()
             .filter(|&c| c != '\u{a7}' && c >= ' ' && c != '\u{7f}')
@@ -691,7 +701,7 @@ impl Game<'_> {
     }
     /// The edit screen's Done: a server's client sends the packet, the
     /// window's own world applies it (`handleSetCommandBlock`).
-    pub(in crate::game) fn set_command_block(&mut self, s: &CommandBlockScreen) {
+    pub(in crate::game::client_side) fn set_command_block(&mut self, s: &CommandBlockScreen) {
         if !self.can_use_game_master_blocks() {
             self.system_message(Text::translate("advMode.notAllowed", &[]));
             return;

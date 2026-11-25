@@ -11,27 +11,15 @@ pub(in crate::game::client_side) use crate::game::server_side::armor_stands::Car
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::armor_stands::TYPE_ID;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::armor_stands::apply_pose;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::armor_stands::armor_stand_cart_shove;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::armor_stands::armor_stand_dying_drops;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::armor_stands::broken_armor_stand_equipment;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::armor_stands::layer_color;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::armor_stands::overlaps;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::armor_stands::preview_slot;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::armor_stands::skull_kind;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::armor_stands::spared_by_blast;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::armor_stands::stand_box;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::armor_stands::swap_with_equipment_slot;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::armor_stands::*;
 #[allow(unused_imports)]
@@ -95,7 +83,7 @@ impl Game<'_> {
         out
     }
     /// ArmorStandRenderer: the stand with its default pose, then armor layers.
-    pub(in crate::game) fn armor_stand_geometry(
+    pub(in crate::game::client_side) fn armor_stand_geometry(
         &self,
         camera: glam::DVec3,
         alpha: f64,
@@ -194,7 +182,7 @@ impl Game<'_> {
     /// head (`translateToHead`: down a quarter, turned, 0.625 scale). With
     /// `skin`, items that can are posed on the GPU with the stand.
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::game) fn armor_stand_items(
+    pub(in crate::game::client_side) fn armor_stand_items(
         &self,
         a: &ArmorStand,
         model: &Part,
@@ -332,7 +320,7 @@ impl Game<'_> {
     /// `setupRotations`): the body, the hand and head items, the armour and
     /// the wings, at packed light `packed`. `world_partial` is absent in the GUI preview.
     /// With `skin`, supported meshes are posed on the GPU.
-    pub(in crate::game) fn armor_stand_vertices(
+    pub(in crate::game::client_side) fn armor_stand_vertices(
         &self,
         a: &ArmorStand,
         world_partial: Option<f32>,
@@ -588,7 +576,7 @@ impl Game<'_> {
     /// result on a stand without its base plate and with its arms, turned to
     /// 210 degrees, and `extractEntityInInventory` draws it at scale 25 in
     /// the box (x0, y0) to (x1, y1), moved up 1 and tilted by `ARMOR_STAND_ANGLE`.
-    pub(in crate::game) fn draw_smithing_armor_stand(
+    pub(in crate::game::client_side) fn draw_smithing_armor_stand(
         &self,
         batch: &mut sunrise_client::hud::HudBatch,
         result: Option<&ItemStack>,
@@ -629,7 +617,7 @@ impl Game<'_> {
     /// (the player's armour and the armour stands'): each generated texture
     /// goes into an atlas trim slot, a free one, else the least recently
     /// drawn. Reuse the completed preparation while the requests and atlas stay the same.
-    pub(in crate::game) fn prepare_trims(&mut self) {
+    pub(in crate::game::client_side) fn prepare_trims(&mut self) {
         let assets = &self.armor_stand_assets.0;
         let items = self.items();
         let mut wanted: Vec<TrimTexture> = Vec::new();
@@ -699,7 +687,7 @@ impl Game<'_> {
     }
     /// `ArmorStand.showBreakingParticles`: ten oak plank crumbs from the box,
     /// spread by a quarter of its width and height, sent like `sendParticles`.
-    pub(in crate::game) fn show_breaking_particles(
+    pub(in crate::game::client_side) fn show_breaking_particles(
         &mut self,
         at: [f64; 3],
         width: f64,

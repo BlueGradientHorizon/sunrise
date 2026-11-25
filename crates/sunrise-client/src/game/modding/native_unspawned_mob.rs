@@ -46,7 +46,7 @@ pub(in crate::game) struct LentMobs {
 #[cfg(test)]
 impl LentMobs {
     /// Whether no lend is open.
-    pub(in crate::game) fn is_empty(&self) -> bool {
+    pub(in crate::game::server_side) fn is_empty(&self) -> bool {
         self.lends.is_empty()
     }
 }
@@ -97,7 +97,7 @@ pub(in crate::game) struct Edits<'a, 'g> {
 
 impl Game<'_> {
     /// A nested pending action must expire standalone lends too, including their metadata.
-    pub(in crate::game) fn expire_standalone_lends(&self) {
+    pub(in crate::game::server_side) fn expire_standalone_lends(&self) {
         for previous in &mut self.lent_mobs.0.borrow_mut().lends {
             previous.valid = false;
         }
@@ -173,7 +173,7 @@ impl Game<'_> {
     }
 
     /// Runs `read` on the mob the lend `handle` names.
-    pub(in crate::game) fn with_lent_mob<T>(
+    pub(in crate::game::server_side) fn with_lent_mob<T>(
         &self,
         handle: UnspawnedMobRef,
         read: impl FnOnce(&Mob) -> Result<T, UnspawnedMobError>,
@@ -195,7 +195,7 @@ impl Game<'_> {
     }
 
     /// Runs `edit` on the mob the lend `handle` names.
-    pub(in crate::game) fn edit_lent_mob<T>(
+    pub(in crate::game::server_side) fn edit_lent_mob<T>(
         &self,
         handle: UnspawnedMobRef,
         edit: impl FnOnce(&Game<'_>, &mut Mob) -> Result<T, UnspawnedMobError>,

@@ -322,7 +322,7 @@ impl Game<'_> {
             _ => stack,
         }
     }
-    pub(in crate::game) fn block_slot_set(
+    pub(in crate::game::server_side) fn block_slot_set(
         &mut self,
         p: [i32; 3],
         i: usize,
@@ -386,7 +386,7 @@ impl Game<'_> {
         true
     }
     /// `/item replace|fill|override <target> <slots> (with <item> [count] | from <source> <slots>)`.
-    pub(in crate::game) fn cmd_item(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_item(&mut self, ctx: &Context) -> R<i32> {
         let mode = ctx
             .literals
             .iter()
@@ -587,7 +587,7 @@ impl Game<'_> {
         Ok(total)
     }
     /// `/item modify (entity|block) <target> <slot> <modifier>`.
-    pub(in crate::game) fn cmd_item_modify(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_item_modify(&mut self, ctx: &Context) -> R<i32> {
         let targets = self.owner_of(ctx, "target", true)?;
         let Some(Arg::Str(slot_name)) = ctx.get("slot").cloned() else {
             return Ok(0);
@@ -718,7 +718,7 @@ impl Game<'_> {
     }
     /// `ResourceOrIdArgument.getItemModifier`: an inline modifier (SNBT) or
     /// a registered one.
-    pub(in crate::game) fn item_modifier_arg(
+    pub(in crate::game::server_side) fn item_modifier_arg(
         &mut self,
         ctx: &Context,
         name: &str,

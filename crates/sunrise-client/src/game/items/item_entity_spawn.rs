@@ -7,7 +7,7 @@ use sunrise_core::geometry::Vec3;
 impl Game<'_> {
     /// `new ItemEntity(..)`: the item at the end of `dropped`, not yet joined
     /// (`join_item_entity`). Returns its motion.
-    pub(in crate::game) fn push_item_entity(
+    pub(in crate::game::server_side) fn push_item_entity(
         &mut self,
         stack: ItemStack,
         position: [f64; 3],
@@ -45,11 +45,15 @@ impl Game<'_> {
     /// made, with the stack it holds now.
     /// Whether the item entity is in the level after its join: false when a join listener kept
     /// it out (or no such item entity was made).
-    pub(in crate::game) fn join_item_entity(&mut self, id: u32, position: [f64; 3]) -> bool {
+    pub(in crate::game::server_side) fn join_item_entity(
+        &mut self,
+        id: u32,
+        position: [f64; 3],
+    ) -> bool {
         self.announce_item_entity(id, position, false)
     }
 
-    pub(in crate::game) fn join_removal_item(&mut self, id: u32, position: [f64; 3]) {
+    pub(in crate::game::server_side) fn join_removal_item(&mut self, id: u32, position: [f64; 3]) {
         self.announce_item_entity(id, position, true);
     }
 

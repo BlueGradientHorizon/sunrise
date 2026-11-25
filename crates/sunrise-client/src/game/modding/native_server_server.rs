@@ -408,7 +408,10 @@ impl Game<'_> {
     }
     /// Resolve a UUID-based item place in the acting state or a parked guest's own record.
     /// Unlike a write, a read never initializes a body or the level owner's UUID.
-    pub(in crate::game) fn native_item_place_player(&self, uuid: u128) -> Option<PlayerRead<'_>> {
+    pub(in crate::game::server_side) fn native_item_place_player(
+        &self,
+        uuid: u128,
+    ) -> Option<PlayerRead<'_>> {
         if self.server.lan_acting_uuid != Some(uuid) {
             if let Some(guest) = self.native_player_holder(uuid) {
                 return (!guest.dead && !self.server.lan_guest_swaps.contains(&guest.conn))
@@ -526,7 +529,10 @@ impl Game<'_> {
     /// (`native_register_commands`). The console is level 4, so a registered
     /// usage is always allowed; a command no mod takes answers as vanilla's
     /// unknown command.
-    pub(in crate::game) fn perform_native_console_command(&mut self, line: &str) -> bool {
+    pub(in crate::game::server_side) fn perform_native_console_command(
+        &mut self,
+        line: &str,
+    ) -> bool {
         if self.lan.is_none() || self.native_commands.0.level(line).is_none() {
             return false;
         }
@@ -937,7 +943,7 @@ impl Game<'_> {
     /// call (`ChunkTickets::take_changes`), told to the mods in order as
     /// `chunk_ticket_level_updated`, with no player's state swapped in. The
     /// tickets keep them only while a mod listens (`update_chunk_tickets`).
-    pub(in crate::game) fn run_chunk_ticket_level_updates(&mut self) {
+    pub(in crate::game::server_side) fn run_chunk_ticket_level_updates(&mut self) {
         use sunrise_client::ticket_levels::UNLOADED;
         let changes = self.tickets.0.take_changes();
         if changes.is_empty() {
@@ -992,7 +998,7 @@ impl Game<'_> {
         (ok, lines)
     }
     /// The shared command-node executor, also reached by functions and `execute`.
-    pub(in crate::game) fn run_native_command(
+    pub(in crate::game::server_side) fn run_native_command(
         &mut self,
         context: Context,
     ) -> super::commands::R<i32> {

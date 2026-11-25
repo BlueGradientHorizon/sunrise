@@ -83,19 +83,19 @@ impl Default for RuntimeTable {
 
 impl RuntimeTable {
     /// Forget every level, at the end of a world open. The cap and the generations stay.
-    pub(in crate::game) fn clear(&mut self) {
+    pub(in crate::game::server_side) fn clear(&mut self) {
         self.entries.clear();
         self.erasing.clear();
         self.queue.clear();
     }
 
-    pub(in crate::game) fn set_cap(&mut self, cap: usize) {
+    pub(in crate::game::server_side) fn set_cap(&mut self, cap: usize) {
         self.cap = cap;
     }
 
     /// Queue the open of `id`, which the caller has checked except against the table: the cap and
     /// a repeat. Returns the generation of this open.
-    pub(in crate::game) fn queue_open(
+    pub(in crate::game::server_side) fn queue_open(
         &mut self,
         owner: &'static str,
         id: &str,
@@ -126,7 +126,10 @@ impl RuntimeTable {
     }
 
     /// Queue the close of `id`: it must be open, not waiting to open or to close.
-    pub(in crate::game) fn queue_unload(&mut self, id: &str) -> Result<(), RuntimeLevelError> {
+    pub(in crate::game::server_side) fn queue_unload(
+        &mut self,
+        id: &str,
+    ) -> Result<(), RuntimeLevelError> {
         match self.entries.get_mut(id) {
             Some(entry) if entry.state == State::Open => {
                 entry.state = State::Closing;
@@ -140,7 +143,7 @@ impl RuntimeTable {
     /// Queue the removal of `id`, which the caller has checked except against the table. A level
     /// that is open is marked closing until the removal is applied; one that is not in the table
     /// has only files to remove. A level waiting to open is refused: its open comes first.
-    pub(in crate::game) fn queue_delete(
+    pub(in crate::game::server_side) fn queue_delete(
         &mut self,
         owner: &'static str,
         id: &str,
@@ -157,29 +160,29 @@ impl RuntimeTable {
 
     /// Whether `id` is open: a level waiting to open is not, one waiting to close still is, and so
     /// is one the idle close dropped from memory (it opens again when entered).
-    pub(in crate::game) fn is_open(&self, id: &str) -> bool {
+    pub(in crate::game::server_side) fn is_open(&self, id: &str) -> bool {
         self.entries
             .get(id)
             .is_some_and(|entry| entry.state != State::Opening)
     }
 
     /// Whether `id` is a runtime level, open or not yet.
-    pub(in crate::game) fn holds(&self, id: &str) -> bool {
+    pub(in crate::game::server_side) fn holds(&self, id: &str) -> bool {
         self.entries.contains_key(id)
     }
 
     /// The generation a handle to the level `id` must carry: 0 for a level every world has.
-    pub(in crate::game) fn generation_of(&self, id: &str) -> u32 {
+    pub(in crate::game::server_side) fn generation_of(&self, id: &str) -> u32 {
         self.entries.get(id).map_or(0, |entry| entry.generation)
     }
 
-    pub(in crate::game) fn level_of(&self, id: &str) -> Option<&RuntimeLevel> {
+    pub(in crate::game::server_side) fn level_of(&self, id: &str) -> Option<&RuntimeLevel> {
         self.entries.get(id).map(|entry| &entry.level)
     }
 
     /// Whether a level below `id` (`id/...`) is in the table, open, waiting or with files to
     /// remove.
-    pub(in crate::game) fn any_below(&self, id: &str) -> bool {
+    pub(in crate::game::server_side) fn any_below(&self, id: &str) -> bool {
         let below = format!("{id}/");
         self.entries
             .keys()
@@ -214,7 +217,7 @@ impl RuntimeTable {
     }
 
     /// The own seed of each level in the table, by id: what the hub tells a joining client.
-    pub(in crate::game) fn seeds(&self) -> BTreeMap<String, i64> {
+    pub(in crate::game::server_side) fn seeds(&self) -> BTreeMap<String, i64> {
         self.entries
             .iter()
             .map(|(id, entry)| (id.clone(), entry.level.seed))
@@ -241,11 +244,11 @@ impl RuntimeTable {
     }
 
     /// Forget `id`: it is closed, or never opened.
-    pub(in crate::game) fn remove(&mut self, id: &str) {
+    pub(in crate::game::server_side) fn remove(&mut self, id: &str) {
         self.entries.remove(id);
     }
 
-    pub(in crate::game) fn mark_open(&mut self, id: &str) {
+    pub(in crate::game::server_side) fn mark_open(&mut self, id: &str) {
         if let Some(entry) = self.entries.get_mut(id) {
             entry.state = State::Open;
         }
@@ -492,7 +495,7 @@ fn ensure_no_links(path: &Path, stop: &Path, include_path: bool) -> std::io::Res
 /// file, with the folders they leave empty. Whatever is not there is not an error; a link on the
 /// way is, before anything is removed. `id` has passed `owned_level_id`; the folder comes from it
 /// alone.
-pub(in crate::game) fn erase_level_files(
+pub(in crate::game::server_side) fn erase_level_files(
     root: &Path,
     id: &str,
     references: bool,
@@ -573,7 +576,7 @@ impl Dim {
 impl Game<'_> {
     /// The cap on open runtime levels `server.properties` sets (`sunrise-max-runtime-levels`,
     /// docs/hosting.md): the default, 64, for a missing or unreadable value.
-    pub(in crate::game) fn read_runtime_level_cap(
+    pub(in crate::game::server_side) fn read_runtime_level_cap(
         &mut self,
         property: impl Fn(&str) -> Option<String>,
     ) {
@@ -769,7 +772,7 @@ impl Game<'_> {
     /// Apply the requests mods made since the last time, in order. Runs after the level loop of a
     /// server tick, on the server thread, with no level in the middle of a tick. A request
     /// that no longer holds is dropped, with a line in the log.
-    pub(in crate::game) fn apply_runtime_levels(&mut self) {
+    pub(in crate::game::server_side) fn apply_runtime_levels(&mut self) {
         for request in self.levels.0.runtime.take_queue() {
             match request {
                 Request::Open(id) => {
@@ -944,7 +947,10 @@ impl Game<'_> {
 
     /// What the level `dim` is opened with: its generator, and its seed, which the world's is for
     /// a level every world has.
-    pub(in crate::game) fn runtime_terrain(&self, dim: Dim) -> Option<(Generate, i64)> {
+    pub(in crate::game::server_side) fn runtime_terrain(
+        &self,
+        dim: Dim,
+    ) -> Option<(Generate, i64)> {
         let level = self.levels.0.runtime.level_of(dim.id())?;
         Some((Generate::of(level)?, level.seed))
     }

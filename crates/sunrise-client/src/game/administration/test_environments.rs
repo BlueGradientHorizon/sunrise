@@ -24,7 +24,7 @@ impl Game<'_> {
     }
 
     /// The definition of a batch's environment (`batch()` of its tests).
-    pub(in crate::game) fn test_environment(&self, id: &str) -> Option<Environment> {
+    pub(in crate::game::server_side) fn test_environment(&self, id: &str) -> Option<Environment> {
         parse(
             &Json::String(id.to_owned()),
             &|i| self.read_test_environment_json(i),
@@ -34,7 +34,7 @@ impl Game<'_> {
     }
 
     /// `TestEnvironmentDefinition.activate`.
-    pub(in crate::game) fn activate_test_environment(
+    pub(in crate::game::server_side) fn activate_test_environment(
         &mut self,
         environment: Environment,
     ) -> Activation {
@@ -43,7 +43,10 @@ impl Game<'_> {
     }
 
     /// `Activation.teardown`.
-    pub(in crate::game) fn tear_down_test_environment(&mut self, activation: Activation) {
+    pub(in crate::game::server_side) fn tear_down_test_environment(
+        &mut self,
+        activation: Activation,
+    ) {
         self.tear_down_environment(&activation.environment, activation.saved);
     }
 

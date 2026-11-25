@@ -67,7 +67,7 @@ impl Game<'_> {
         }
         count
     }
-    pub(in crate::game) fn cmd_particle(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_particle(&mut self, ctx: &Context) -> R<i32> {
         use sunrise_client::particles::{ParticleOptions, ParticleType};
         let (name, options, block_state) = match ctx.get("name") {
             Some(Arg::Particle(opts)) => {
@@ -298,7 +298,7 @@ impl Game<'_> {
         ));
         Ok(sent)
     }
-    pub(in crate::game) fn cmd_rotate(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_rotate(&mut self, ctx: &Context) -> R<i32> {
         let targets = super::without_knots(self.entities(ctx, "target", false)?)?;
         let Some(t) = targets.first().copied() else {
             return Ok(0);
@@ -353,7 +353,7 @@ impl Game<'_> {
         self.feedback(Text::translate("commands.rotate.success", &[name]));
         Ok(1)
     }
-    pub(in crate::game) fn cmd_spreadplayers(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_spreadplayers(&mut self, ctx: &Context) -> R<i32> {
         let centre = self
             .position_arg(ctx, "center")
             .unwrap_or_else(|| self.source_position());
@@ -580,7 +580,7 @@ impl Game<'_> {
         ));
         Ok(points.len() as i32)
     }
-    pub(in crate::game) fn cmd_swing(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_swing(&mut self, ctx: &Context) -> R<i32> {
         let targets = if ctx.get("targets").is_some() {
             self.entities(ctx, "targets", false)?
         } else {
@@ -625,7 +625,7 @@ impl Game<'_> {
     /// `DamageCommand.damage`: retain the accepted hit's player context and run
     /// `Zombie.hurtServer`'s reinforcement requests before the command returns.
     /// Health-changing hits also raise their damage vibration before return.
-    pub(in crate::game) fn command_damage_mob(
+    pub(in crate::game::server_side) fn command_damage_mob(
         &mut self,
         id: u32,
         amount: f32,
@@ -685,7 +685,7 @@ impl Game<'_> {
     }
     /// `VehicleEntity.hurtServer`: report acceptance even when the vehicle survives.
     /// `by` is the `DamageSource`'s direct entity, `causing` its causing entity.
-    pub(in crate::game) fn command_damage_vehicle(
+    pub(in crate::game::server_side) fn command_damage_vehicle(
         &mut self,
         target: Target,
         amount: f32,
@@ -1165,7 +1165,7 @@ pub(in crate::game::server_side) use crate::game::commands::world_cmds::vehicle_
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::commands::world_cmds::vehicle_damage_command_tests::attribute_chat_count;
 
-    pub(in crate::game) fn attribute_guests(
+    pub(in crate::game::server_side) fn attribute_guests(
         game: &mut Game<'_>,
     ) -> Vec<std::sync::mpsc::Receiver<sunrise_client::lan::Out>> {
         use std::sync::{atomic::AtomicI32, mpsc};

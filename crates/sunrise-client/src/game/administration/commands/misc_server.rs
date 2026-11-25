@@ -19,7 +19,7 @@ pub(in crate::game::server_side) use sunrise_core::java_number::format_fixed;
 pub(in crate::game::server_side) use sunrise_core::random::RandomSource;
 
 impl Game<'_> {
-    pub(in crate::game) fn cmd_random(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_random(&mut self, id: &str, ctx: &Context) -> R<i32> {
         let seed = self.level.seed;
         if id == "random.reset" {
             let sequence = match ctx.get("sequence") {
@@ -141,7 +141,7 @@ impl Game<'_> {
         Ok(value)
     }
     /// `/teammsg`: the executor's team hears the message.
-    pub(in crate::game) fn cmd_teammsg(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_teammsg(&mut self, ctx: &Context) -> R<i32> {
         let entity = match self.server.command_source {
             Some(s) => s.entity,
             None => Some(Target::Player),

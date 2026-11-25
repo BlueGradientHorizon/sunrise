@@ -8,14 +8,14 @@ use sunrise_world::registry::BlockStateId;
 
 impl Game<'_> {
     /// `ClientPacketListener.handleAddTransientBlockPacket`.
-    pub(in crate::game) fn add_transient_block(&mut self, pos: [i32; 3], state: i32) {
+    pub(in crate::game::client_side) fn add_transient_block(&mut self, pos: [i32; 3], state: i32) {
         self.client
             .transient_blocks
             .queue(pos, BlockStateId(state as u32));
     }
 
     /// `LevelExtractor.drainTransientBlockQueue`, once a frame.
-    pub(in crate::game) fn drain_transient_block_queue(&mut self) {
+    pub(in crate::game::client_side) fn drain_transient_block_queue(&mut self) {
         self.client
             .transient_blocks
             .drain(Instant::now(), self.streaming.sequence());
@@ -25,7 +25,7 @@ impl Game<'_> {
     /// run out, drawn as a moving block at its position, camera-relative.
     /// One whose section mesh has been rebuilt since it came is dropped
     /// (`performTransientBlockRemovals`).
-    pub(in crate::game) fn transient_block_geometry(
+    pub(in crate::game::client_side) fn transient_block_geometry(
         &mut self,
         camera: glam::DVec3,
         out: &mut Vec<Vertex>,

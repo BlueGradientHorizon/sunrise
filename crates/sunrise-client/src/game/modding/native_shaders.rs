@@ -50,7 +50,12 @@ pub(in crate::game) struct NativeShaders {
 }
 
 impl NativeShaders {
-    pub fn resolve_path(&mut self, dir: &Path, picked: &str, filesystem: bool) -> PathBuf {
+    pub(in crate::game::client_side) fn resolve_path(
+        &mut self,
+        dir: &Path,
+        picked: &str,
+        filesystem: bool,
+    ) -> PathBuf {
         if self.selection != picked || self.resolved_at.is_none_or(|t| t.elapsed() >= LOOK_EVERY) {
             let resolved = if filesystem {
                 dir.join(picked)
@@ -74,13 +79,13 @@ impl NativeShaders {
         self.resolved.clone()
     }
 
-    pub fn select(&mut self, name: &str) {
+    pub(in crate::game::client_side) fn select(&mut self, name: &str) {
         self.picked = name.to_owned();
         self.stamp = None;
         self.looked = None;
     }
 
-    pub fn picking(name: &str) -> Self {
+    pub(in crate::game::client_side) fn picking(name: &str) -> Self {
         Self {
             picked: name.to_owned(),
             ..Self::default()
@@ -90,7 +95,7 @@ impl NativeShaders {
 
 impl Game<'_> {
     /// Builds the pack at `path` when its files changed since it was last read.
-    pub(in crate::game) fn tick_native_shader_pack(&mut self, path: &Path) {
+    pub(in crate::game::client_side) fn tick_native_shader_pack(&mut self, path: &Path) {
         // A reload would replace the pack a `screenshot-sequence` draws: it waits for the reply.
         if self.screenshot_sequence.0.is_some() {
             return;
@@ -222,7 +227,7 @@ fn not_drawn(m: &Manifest, switch: bool) -> Option<String> {
 
 /// `SUNRISE_HDR_FRAME=float`: shader API 0.2 packs are drawn, on a float frame where the
 /// renderer is made with one picked and not refused, as HDR without a pack is (`PickedPack::hdr_float`).
-pub(in crate::game) fn linear_frame_switch() -> bool {
+pub(in crate::game::client_side) fn linear_frame_switch() -> bool {
     std::env::var("SUNRISE_HDR_FRAME").is_ok_and(|v| v == "float")
 }
 

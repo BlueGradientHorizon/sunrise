@@ -40,7 +40,11 @@ pub(in crate::game) struct Snapshot {
 pub(in crate::game) type Hit = (i64, String, Option<f32>, Option<String>);
 
 /// What the newest damage was, for a `hurt` or `death` event.
-pub(in crate::game) fn add_cause(event: &mut Value, before: &Snapshot, now: &Snapshot) {
+pub(in crate::game::client_side) fn add_cause(
+    event: &mut Value,
+    before: &Snapshot,
+    now: &Snapshot,
+) {
     if let Some((at, kind, damage, by)) = &now.hit
         && before.hit.as_ref().is_none_or(|h| h.0 != *at)
     {
@@ -85,7 +89,7 @@ pub(in crate::game) struct Events {
 }
 
 impl Events {
-    pub(in crate::game) fn push(&mut self, tick: u64, mut event: Value) {
+    pub(in crate::game::client_side) fn push(&mut self, tick: u64, mut event: Value) {
         self.seq += 1;
         event["seq"] = self.seq.into();
         event["tick"] = tick.into();
@@ -101,14 +105,14 @@ impl Events {
         self.remote_hit = Some((n, cause, None, by));
     }
     /// An event from outside the once-a-turn comparison (`user-input`).
-    pub(in crate::game) fn note(&mut self, tick: u64, event: Value) {
+    pub(in crate::game::client_side) fn note(&mut self, tick: u64, event: Value) {
         self.push(tick, event);
     }
     /// Whether a `wait-for` is waiting: its agent is still watching.
-    pub(in crate::game) fn has_waits(&self) -> bool {
+    pub(in crate::game::client_side) fn has_waits(&self) -> bool {
         !self.waits.is_empty()
     }
-    pub(in crate::game) fn since(&self, seq: u64) -> impl Iterator<Item = &Value> {
+    pub(in crate::game::client_side) fn since(&self, seq: u64) -> impl Iterator<Item = &Value> {
         self.log
             .iter()
             .filter(move |e| e["seq"].as_u64() > Some(seq))
@@ -116,7 +120,11 @@ impl Events {
 }
 
 /// The events between two snapshots.
-pub(in crate::game) fn diff(before: &Snapshot, now: &Snapshot, chat: &[String]) -> Vec<Value> {
+pub(in crate::game::client_side) fn diff(
+    before: &Snapshot,
+    now: &Snapshot,
+    chat: &[String],
+) -> Vec<Value> {
     let mut out = Vec::new();
     if before.world != now.world {
         if let Some(name) = &before.world {
@@ -174,7 +182,7 @@ pub(in crate::game) fn diff(before: &Snapshot, now: &Snapshot, chat: &[String]) 
 
 /// The condition, the timeout and `--since`.
 /// `events [--since SEQ] [--limit N]` → (since, newest N).
-pub(in crate::game) fn parse_events(words: &[&str]) -> Result<(u64, Option<usize>)> {
+pub(in crate::game::client_side) fn parse_events(words: &[&str]) -> Result<(u64, Option<usize>)> {
     let (mut since, mut limit) = (0, None);
     let mut it = words.iter();
     while let Some(word) = it.next() {
@@ -187,7 +195,9 @@ pub(in crate::game) fn parse_events(words: &[&str]) -> Result<(u64, Option<usize
     Ok((since, limit))
 }
 
-pub(in crate::game) fn parse_wait(words: &[&str]) -> Result<(Condition, Duration, Option<u64>)> {
+pub(in crate::game::client_side) fn parse_wait(
+    words: &[&str],
+) -> Result<(Condition, Duration, Option<u64>)> {
     let mut rest = Vec::new();
     let mut timeout = 30.0;
     let mut since = None;
@@ -238,7 +248,7 @@ pub(in crate::game) fn parse_wait(words: &[&str]) -> Result<(Condition, Duration
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn snapshot(&self) -> Snapshot {
+    pub(in crate::game::client_side) fn snapshot(&self) -> Snapshot {
         let world = self.title.0.is_none().then(|| self.level.name.clone());
         Snapshot {
             screen: self.screen_label(),
@@ -267,14 +277,14 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn loaded(&self) -> bool {
+    pub(in crate::game::client_side) fn loaded(&self) -> bool {
         self.title.0.is_none()
             && self.player.is_some()
             && self.streaming.pending() + self.pending_uploads.0.len() == 0
     }
 
     /// Once per event loop turn: record what changed, answer the waits that hold.
-    pub(in crate::game) fn watch_events(&mut self) {
+    pub(in crate::game::client_side) fn watch_events(&mut self) {
         let now = self.snapshot();
         if let Some(before) = &self.events.last
             && *before != now
@@ -345,7 +355,7 @@ impl Game<'_> {
     }
 
     /// `events` and `wait-for`; None for other commands, Some(None) when deferred.
-    pub(in crate::game) fn events_command(
+    pub(in crate::game::client_side) fn events_command(
         &mut self,
         words: &[&str],
         reply: &Sender<String>,

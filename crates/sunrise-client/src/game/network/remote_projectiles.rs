@@ -48,7 +48,7 @@ impl Game<'_> {
     /// `Arrow.handleEntityEvent(0)`: a tipped arrow stuck for 600 ticks bursts
     /// into twenty particles in its colour. The server turns it into a plain
     /// arrow and does not send the colour again, so it stops here.
-    pub(in crate::game) fn remote_arrow_puff(&mut self, id: u32) {
+    pub(in crate::game::client_side) fn remote_arrow_puff(&mut self, id: u32) {
         let Some(i) = self.creatures.projectiles.iter().position(|p| p.id == id) else {
             return;
         };
@@ -74,7 +74,7 @@ impl Game<'_> {
     }
 
     /// Whether the client tracks `id` already: asked by `AddEntity` before it tracks the new one.
-    pub(in crate::game) fn tracks_remote_entity(&self, id: i32) -> bool {
+    pub(in crate::game::client_side) fn tracks_remote_entity(&self, id: i32) -> bool {
         self.remote
             .as_ref()
             .is_some_and(|r| r.tracked_entity(id).is_some())
@@ -83,7 +83,7 @@ impl Game<'_> {
     /// `AddEntity`'s `spawn_remote_projectile`. Only an id the client already tracked (`replace`)
     /// can still be in `falling` or `tnts`, so a new id skips those passes; the crystals and the
     /// small lists are filtered every time, since the client adds to some of those itself.
-    pub(in crate::game) fn spawn_added_projectile(
+    pub(in crate::game::client_side) fn spawn_added_projectile(
         &mut self,
         p: &sunrise_protocol::packets::play::AddEntity,
         kind: &str,
@@ -294,7 +294,7 @@ impl Game<'_> {
 
     /// `Entity.getEyePosition` of a projectile's owner: this game's player or
     /// another player the server sent.
-    pub(in crate::game) fn remote_eye(&self, id: u32) -> Option<Vec3> {
+    pub(in crate::game::client_side) fn remote_eye(&self, id: u32) -> Option<Vec3> {
         if self.remote_player_id() == Some(id) {
             let eye = self.eye_position()?;
             return Some(Vec3::new(eye[0], eye[1], eye[2]));
@@ -308,7 +308,7 @@ impl Game<'_> {
     }
 
     /// This client's own player's entity id on the server.
-    pub(in crate::game) fn remote_player_id(&self) -> Option<u32> {
+    pub(in crate::game::client_side) fn remote_player_id(&self) -> Option<u32> {
         self.remote
             .as_ref()
             .and_then(|r| u32::try_from(r.entity_id).ok())
@@ -563,7 +563,7 @@ impl Game<'_> {
         self.remove_remote_small_projectiles(id);
     }
 
-    pub(in crate::game) fn remove_remote_small_projectiles(&mut self, id: u32) {
+    pub(in crate::game::client_side) fn remove_remote_small_projectiles(&mut self, id: u32) {
         self.fangs.list.retain(|f| f.id != id);
         self.creatures.projectiles.retain(|p| p.id != id);
         self.tridents.retain(|t| t.id != id);
@@ -644,7 +644,7 @@ impl Game<'_> {
     /// handles read the live rows; the others tick between, in the same order
     /// and through the same steps as the family's loop, with the views built
     /// again only after a hand-back. A canceled one keeps its state.
-    pub(in crate::game) fn tick_remote_projectiles_told(
+    pub(in crate::game::client_side) fn tick_remote_projectiles_told(
         &mut self,
         mut projectiles: JoinList<Projectile, false>,
         mut tridents: JoinList<super::trident::ThrownTrident>,
@@ -819,7 +819,7 @@ impl Game<'_> {
     /// about one of them, and takes them again. Whether each list came back
     /// written (its write stamp): its rows may then have moved. What spawns
     /// meanwhile goes after them, as at the end of the family's tick.
-    pub(in crate::game) fn remote_projectiles_told(
+    pub(in crate::game::client_side) fn remote_projectiles_told(
         &mut self,
         projectiles: JoinList<Projectile, false>,
         tridents: JoinList<super::trident::ThrownTrident>,
@@ -853,7 +853,7 @@ impl Game<'_> {
     /// sheds two entity-effect swirls in its colour while flying, one every
     /// fifth tick in a block; a spectral arrow an effect sparkle at its
     /// position while flying.
-    pub(in crate::game) fn arrow_effect_particles(&mut self) {
+    pub(in crate::game::client_side) fn arrow_effect_particles(&mut self) {
         let mut puffs: Vec<(Vec3, i32, u32)> = Vec::new();
         for p in &self.creatures.projectiles {
             let Some(a) = p.arrow.as_ref().filter(|_| p.is_arrow()) else {
@@ -880,7 +880,12 @@ impl Game<'_> {
     }
     /// `Arrow.makeParticle`: `count` entity-effect swirls in `color` (an ARGB
     /// int, -1 for none) inside the arrow's 0.5 x 0.5 box.
-    pub(in crate::game) fn arrow_makeparticle(&mut self, at: Vec3, color: i32, count: u32) {
+    pub(in crate::game::client_side) fn arrow_makeparticle(
+        &mut self,
+        at: Vec3,
+        color: i32,
+        count: u32,
+    ) {
         // `EntityType.ARROW` is 0.5 x 0.5.
         const SIZE: f64 = 0.5;
         if color == -1 {
@@ -920,7 +925,7 @@ impl Game<'_> {
     }
     /// `ShulkerBullet.tick` on a client: two `END_ROD` particles in its
     /// 0.3125 box (`getRandomX(0.5)`, `getRandomY`, `getRandomZ(0.5)`).
-    pub(in crate::game) fn shulker_bullet_trails(&mut self) {
+    pub(in crate::game::client_side) fn shulker_bullet_trails(&mut self) {
         let bullets: Vec<Vec3> = self
             .creatures
             .projectiles
@@ -948,7 +953,7 @@ impl Game<'_> {
     }
     /// `spawn_remote_projectile` without first removing an entity under the same id: for
     /// `AddEntity` of an id the client does not track yet, which no list holds.
-    pub(in crate::game) fn spawn_remote_projectile_inner(
+    pub(in crate::game::client_side) fn spawn_remote_projectile_inner(
         &mut self,
         kind: &str,
         packet: &sunrise_protocol::packets::play::AddEntity,
@@ -1083,7 +1088,10 @@ impl Game<'_> {
         }
         true
     }
-    pub(in crate::game) fn throwable_bubbles(&mut self, at: Vec<([f64; 3], [f64; 3])>) {
+    pub(in crate::game::client_side) fn throwable_bubbles(
+        &mut self,
+        at: Vec<([f64; 3], [f64; 3])>,
+    ) {
         let bubble = ParticleOptions::simple(ParticleType::Bubble);
         for (position, speed) in at {
             for _ in 0..4 {
@@ -1092,7 +1100,7 @@ impl Game<'_> {
         }
     }
     /// `AreaEffectCloud.clientTick` for each cloud a server tracks.
-    pub(in crate::game) fn tick_remote_clouds(&mut self) {
+    pub(in crate::game::client_side) fn tick_remote_clouds(&mut self) {
         for c in &mut self.potions.clouds {
             cloud_client_tick(
                 &mut self.particles.0,
@@ -1326,7 +1334,7 @@ pub(in crate::game) mod nested_spawn_tests {
     }
     type Spawn = fn(&mut Game<'_>, u32);
     thread_local! { static PENDING: Cell<Option<(Point, Spawn)>> = const { Cell::new(None) }; }
-    pub(in crate::game) fn after_lift(game: &mut Game<'_>, point: Point) {
+    pub(in crate::game::client_side) fn after_lift(game: &mut Game<'_>, point: Point) {
         if let Some((expected, spawn)) = PENDING.get()
             && point == expected
         {
@@ -1761,7 +1769,7 @@ pub(in crate::game) mod entity_tick_tests {
 
 /// The visit of one entity told alone: a passenger counts before its Pre (`tickPassenger`), a
 /// root once `pre` let it through (`tickNonPassenger`).
-pub(in crate::game) fn told_visit(
+pub(in crate::game::client_side) fn told_visit(
     game: &mut Game<'_>,
     id: u32,
     pre: impl FnOnce(&mut Game<'_>) -> bool,

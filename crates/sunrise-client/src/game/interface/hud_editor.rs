@@ -55,7 +55,7 @@ fn buttons((w, h): (f32, f32)) -> [(f32, f32); 6] {
 
 impl Game<'_> {
     /// Opens the editor over the game, from the page (`from_options`) or the key.
-    pub(in crate::game) fn open_hud_editor(&mut self, from_options: bool) {
+    pub(in crate::game::client_side) fn open_hud_editor(&mut self, from_options: bool) {
         if self.player.is_none() || self.title.0.is_some() {
             return;
         }
@@ -69,7 +69,7 @@ impl Game<'_> {
         self.commit_screen_transition();
         self.capture(false);
     }
-    pub(in crate::game) fn close_hud_editor(&mut self) {
+    pub(in crate::game::client_side) fn close_hud_editor(&mut self) {
         let from_options = self
             .client
             .pvp
@@ -86,7 +86,7 @@ impl Game<'_> {
         }
     }
     /// The editor key, from the game.
-    pub(in crate::game) fn hud_editor_key_press(&mut self, name: &str) -> bool {
+    pub(in crate::game::client_side) fn hud_editor_key_press(&mut self, name: &str) -> bool {
         if self.client.screen != Screen::Playing
             || self.settings.extras.pvp.editor_key != name
             || name == "key.keyboard.unknown"
@@ -97,7 +97,7 @@ impl Game<'_> {
         self.client.screen == Screen::HudEditor
     }
     /// Whether the HUD draws the editor's stand-ins for widgets that have nothing to show.
-    pub(in crate::game) fn hud_editing(&self) -> bool {
+    pub(in crate::game::client_side) fn hud_editing(&self) -> bool {
         self.client.screen == Screen::HudEditor
     }
     fn style_label(&self, opt: Opt) -> Text {
@@ -120,7 +120,7 @@ impl Game<'_> {
             .copied()
             .find(|(_, [x, y, w, h])| cx >= *x && cx < x + w && cy >= *y && cy < y + h)
     }
-    pub(in crate::game) fn draw_hud_editor(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_hud_editor(&mut self, batch: &mut HudBatch) {
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
         let atlas = &self.gui.atlas;
         let (w, h) = (batch.width, batch.height);
@@ -172,7 +172,7 @@ impl Game<'_> {
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
     }
     /// A press: a button, else the widget under the cursor (right button: back to its corner).
-    pub(in crate::game) fn hud_editor_press(&mut self, right: bool) -> bool {
+    pub(in crate::game::client_side) fn hud_editor_press(&mut self, right: bool) -> bool {
         let size = self.gui_size();
         for (i, &(x, y)) in buttons(size).iter().enumerate() {
             if right || !ui::hovered(self.client.cursor, x, y, BUTTON_W, BUTTON_H) {
@@ -208,7 +208,7 @@ impl Game<'_> {
         false
     }
     /// The cursor moved: the held widget follows, snapping to edges near it.
-    pub(in crate::game) fn hud_editor_drag(&mut self) -> bool {
+    pub(in crate::game::client_side) fn hud_editor_drag(&mut self) -> bool {
         let Some((id, dx, dy)) = self.client.pvp.editor.as_ref().and_then(|e| e.drag) else {
             return false;
         };
@@ -228,7 +228,7 @@ impl Game<'_> {
         }
         true
     }
-    pub(in crate::game) fn hud_editor_release(&mut self) -> bool {
+    pub(in crate::game::client_side) fn hud_editor_release(&mut self) -> bool {
         if let Some(e) = &mut self.client.pvp.editor
             && e.drag.take().is_some()
         {
@@ -239,7 +239,7 @@ impl Game<'_> {
         false
     }
     /// The wheel over a widget resizes it by 10%.
-    pub(in crate::game) fn hud_editor_scroll(&mut self, amount: f64) -> bool {
+    pub(in crate::game::client_side) fn hud_editor_scroll(&mut self, amount: f64) -> bool {
         let Some((id, _)) = self.widget_under_cursor() else {
             return false;
         };

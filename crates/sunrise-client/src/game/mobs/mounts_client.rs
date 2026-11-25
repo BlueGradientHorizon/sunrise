@@ -13,31 +13,11 @@ pub(in crate::game::client_side) use crate::game::server_side::mounts::MountStat
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::mounts::Rider;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mounts::animal_dismount_location;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mounts::dismount_location;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mounts::dismounts_underwater;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mounts::eating;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mounts::horse_dismount_location;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mounts::horse_side;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::mounts::on_top;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mounts::rider_poses;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mounts::seat_of;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::mounts::start_riding_jump;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::mounts::steering_item;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mounts::strider_dismount_location;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::mounts::turned;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::mounts::*;
 #[allow(unused_imports)]
@@ -228,7 +208,11 @@ impl Game<'_> {
         true
     }
     /// `Pig.mobInteract` / `Strider.mobInteract`: saddle an adult, or ride a saddled mount with no passenger.
-    pub(in crate::game) fn interact_steerable(&mut self, index: usize, item: &str) -> bool {
+    pub(in crate::game::client_side) fn interact_steerable(
+        &mut self,
+        index: usize,
+        item: &str,
+    ) -> bool {
         let held = self.inventory[self.selected].clone();
         let sneaking = self.held_mapping(Action::Sneak);
         let m = &self.mobs[index];
@@ -358,19 +342,9 @@ pub(in crate::game) mod tests {
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::mounts::tests::Shown;
     #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::mounts::tests::block_of;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::mounts::tests::mob;
-    #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::mounts::tests::mount;
     #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::mounts::tests::rider;
-    #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::mounts::tests::server_game;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::mounts::tests::sparkle_draws;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::mounts::tests::strider_at;
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::mounts::tests::*;
     #[allow(unused_imports)]

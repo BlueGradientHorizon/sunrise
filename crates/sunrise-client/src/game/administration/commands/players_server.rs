@@ -16,7 +16,7 @@ pub(in crate::game::server_side) use sunrise_protocol::packets::play::{self, Cli
 impl Game<'_> {
     /// `PlayerList.getPlayers` but the player in place: the guests who
     /// joined the world.
-    pub(in crate::game) fn command_players(&self) -> impl Iterator<Item = &Guest> {
+    pub(in crate::game::server_side) fn command_players(&self) -> impl Iterator<Item = &Guest> {
         let acting = self.server.lan_acting;
         self.lan
             .iter()
@@ -81,7 +81,10 @@ impl Game<'_> {
     }
     /// Native console calls cannot reach an outer turn's displaced player.
     /// Ordinary command resolution is unchanged, including nested turns.
-    pub(in crate::game) fn native_command_player_available(&self, guest: &Guest) -> bool {
+    pub(in crate::game::server_side) fn native_command_player_available(
+        &self,
+        guest: &Guest,
+    ) -> bool {
         !self.server.native_command_filter || self.entity(guest.entity_id as u32).is_some()
     }
     /// The guests a selector looks at, in join order (`PlayerList.getPlayers`),
@@ -89,7 +92,11 @@ impl Game<'_> {
     /// source's level when it limits the search to a place
     /// (`isWorldLimited`); with only the `Entity::isAlive` ones when
     /// `alive_only` (the built-in `@e` and `@n`).
-    pub(in crate::game) fn player_candidates(&self, s: &Selector, alive_only: bool) -> Vec<Target> {
+    pub(in crate::game::server_side) fn player_candidates(
+        &self,
+        s: &Selector,
+        alive_only: bool,
+    ) -> Vec<Target> {
         let limited = s.distance.is_some()
             || s.pos.iter().any(Option::is_some)
             || s.delta.iter().any(Option::is_some);
@@ -115,7 +122,7 @@ impl Game<'_> {
     /// (`native_set_nickname`), a name no player has finds the player going
     /// by it, without its `~` or with it (quoted), so `/msg` and `/tell`
     /// reach a player by the name chat shows. No nickname, no change.
-    pub(in crate::game) fn player_named(&self, name: &str) -> Option<Target> {
+    pub(in crate::game::server_side) fn player_named(&self, name: &str) -> Option<Target> {
         if !self.server.lan_acting_fake
             && self.player.is_some()
             && name.eq_ignore_ascii_case(self.acting_player_name())
@@ -129,7 +136,7 @@ impl Game<'_> {
     }
     /// The name of the server's own source: "Rcon" for a command an RCON client sent
     /// (`RconConsoleSource`), "Server" otherwise (`MinecraftServer.createCommandSourceStack`).
-    pub(in crate::game) fn server_name(&self) -> Text {
+    pub(in crate::game::server_side) fn server_name(&self) -> Text {
         Text::literal(if self.server.rcon_source {
             "Rcon"
         } else {
@@ -139,7 +146,7 @@ impl Game<'_> {
     /// `CommandSourceStack.getDisplayName`: the executing entity's name, the
     /// command block's or minecart's own name when the source has no entity,
     /// or the server's.
-    pub(in crate::game) fn source_display_name(&self) -> Text {
+    pub(in crate::game::server_side) fn source_display_name(&self) -> Text {
         match self.server.command_source {
             Some(source) => match source.entity {
                 Some(target) => self.target_name(target),

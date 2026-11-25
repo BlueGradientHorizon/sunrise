@@ -21,7 +21,7 @@ impl Game<'_> {
     /// Closing it copies the items back and keeps the block entity, as vanilla's
     /// `EnderChestBlockEntity` persists across open/close (`close_ender_chest`
     /// must not remove it, or `/data get block` loses it after a use).
-    pub(in crate::game) fn close_ender_chest(&mut self) {
+    pub(in crate::game::server_side) fn close_ender_chest(&mut self) {
         let Some(key) = self.server.ender_open.take() else {
             return;
         };
@@ -32,7 +32,7 @@ impl Game<'_> {
         }
     }
     /// Opening an ender chest shows the player's ender inventory in its place.
-    pub(in crate::game) fn open_ender_chest(&mut self, key: (i32, i32, i32)) {
+    pub(in crate::game::server_side) fn open_ender_chest(&mut self, key: (i32, i32, i32)) {
         self.world
             .block_entities
             .insert(key, BlockEntity::Chest(self.server.ender_items.clone()));

@@ -15,7 +15,7 @@ use sunrise_client_gameplay::mob_ambient as ambient;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 
 impl Game<'_> {
-    pub(in crate::game) fn tick_client_ambient(&mut self) {
+    pub(in crate::game::client_side) fn tick_client_ambient(&mut self) {
         if self.serving.is_some() || self.options.dedicated.is_some() {
             return;
         }
@@ -207,7 +207,7 @@ impl Game<'_> {
     /// feet at `position` (`getOnPosLegacy`), thrown back against `movement`,
     /// unless that block is invisible. `offsets` draws the two random
     /// `nextDouble`s for x and z (the entity's random in vanilla).
-    pub(in crate::game) fn sprint_particle(
+    pub(in crate::game::client_side) fn sprint_particle(
         &mut self,
         position: Vec3,
         movement: Vec3,

@@ -24,7 +24,7 @@ impl Game<'_> {
     /// `LivingEntity.tick`'s arrows and bee stingers falling out of the
     /// players' bodies, and their counts for the players around
     /// (`DATA_ARROW_COUNT_ID`, `DATA_STINGER_COUNT_ID`).
-    pub(in crate::game) fn lan_stuck(&mut self, paused: bool) {
+    pub(in crate::game::server_side) fn lan_stuck(&mut self, paused: bool) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };

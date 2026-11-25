@@ -7,7 +7,7 @@ use sunrise_client::motion::MotionEvent;
 impl Game<'_> {
     /// `ServerLevel.EntityCallbacks.onTrackingStart`: register from the loaded
     /// attributes. Saved equipment contributes modifiers on the first living tick.
-    pub(in crate::game) fn lan_register_player_waypoint(&mut self, conn: u32) {
+    pub(in crate::game::server_side) fn lan_register_player_waypoint(&mut self, conn: u32) {
         self.as_guest(conn, |game| {
             game.update_waypoint_transmitter(Target::Guest(conn));
         });
@@ -80,7 +80,11 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn lan_set_waypoint_transmitting(&mut self, conn: u32, enabled: bool) {
+    pub(in crate::game::server_side) fn lan_set_waypoint_transmitting(
+        &mut self,
+        conn: u32,
+        enabled: bool,
+    ) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -117,7 +121,7 @@ impl Game<'_> {
     /// level: a player who changes level leaves the old one's manager
     /// (`ServerLevel.removePlayerImmediately`: untracked for everyone there)
     /// and joins the new one's (`addDuringTeleport`).
-    pub(in crate::game) fn lan_update_waypoints(&mut self) {
+    pub(in crate::game::server_side) fn lan_update_waypoints(&mut self) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };

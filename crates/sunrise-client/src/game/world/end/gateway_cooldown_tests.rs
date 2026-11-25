@@ -15,7 +15,7 @@ fn gateway_counters_match_actual_vanilla_methods() {
     run_gateway_counters_match_actual_vanilla_methods();
 }
 
-pub(in crate::game) fn run_gateway_counters_match_actual_vanilla_methods() {
+pub(in crate::game::server_side) fn run_gateway_counters_match_actual_vanilla_methods() {
     let reference: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(std::env::var_os("SUNRISE_PORTAL_REFERENCE").unwrap()).unwrap(),
     )

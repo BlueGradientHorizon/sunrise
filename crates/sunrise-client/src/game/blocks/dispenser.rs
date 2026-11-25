@@ -48,7 +48,7 @@ use sunrise_world::{
 };
 
 /// A behaviour returns a detached stack; the dispenser applies the slot limit afterwards.
-pub(in crate::game) fn mod_dispensed(
+pub(in crate::game::server_side) fn mod_dispensed(
     (stack, event): mod_api::Dispensed,
     items: &Items,
 ) -> std::result::Result<Dispensed, mod_api::StackWriteError> {
@@ -142,7 +142,7 @@ impl Game<'_> {
             .get(tag)
             .is_some_and(|s| s.contains(block))
     }
-    pub(in crate::game) fn water_at(&self, p: Pos) -> bool {
+    pub(in crate::game::server_side) fn water_at(&self, p: Pos) -> bool {
         matches!(
             self.res.behaviours().fluid_kind(self.block_at(p)),
             FluidKind::Water | FluidKind::FlowingWater
@@ -165,7 +165,7 @@ impl Game<'_> {
 
     /// `DispenserBlock.getDispensePosition(source, scale, offset)`; vanilla adds
     /// `scale * step + offset` first, then adds that sum to the block centre.
-    pub(in crate::game) fn dispense_position(
+    pub(in crate::game::server_side) fn dispense_position(
         pos: Pos,
         facing: Direction,
         scale: f64,
@@ -180,7 +180,7 @@ impl Game<'_> {
         )
     }
     /// `DefaultDispenseItemBehavior.spawnItem` at `getDispensePosition`.
-    pub(in crate::game) fn prepared_dispensed(
+    pub(in crate::game::server_side) fn prepared_dispensed(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -210,7 +210,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn spawn_dispensed(
+    pub(in crate::game::server_side) fn spawn_dispensed(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -220,7 +220,7 @@ impl Game<'_> {
         self.commit_dispensed(pos, facing, spawn, false);
     }
 
-    pub(in crate::game) fn stage_dispensed(
+    pub(in crate::game::server_side) fn stage_dispensed(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -486,7 +486,7 @@ impl Game<'_> {
         scope.game.dispense_item_from_source(pos, facing, stack)
     }
 
-    pub(in crate::game) fn dispense_item_from_source(
+    pub(in crate::game::server_side) fn dispense_item_from_source(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -609,7 +609,7 @@ impl Game<'_> {
         Ok(ControlFlow::Continue(left))
     }
     /// `DispenserBlock.getDefaultDispenseMethod`: equipment, spawn eggs, or a drop.
-    pub(in crate::game) fn dispense_default_method(
+    pub(in crate::game::server_side) fn dispense_default_method(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -698,14 +698,14 @@ impl Game<'_> {
     }
     /// `EntityType.getYOffset(level, pos, false, box)`: [`Self::drop_offset_from`] without
     /// `movedUp`.
-    pub(in crate::game) fn drop_offset(&self, width: f64, height: f64, p: Pos) -> f64 {
+    pub(in crate::game::server_side) fn drop_offset(&self, width: f64, height: f64, p: Pos) -> f64 {
         self.drop_offset_from(width, height, p, false)
     }
     /// `EntityType.getYOffset(level, pos, movedUp, box)`: the entity box set on
     /// top of the block (`setPos(x + 0.5, y + 1, z + 0.5)`) falls one block
     /// against the collision shapes overlapping that block, or, `moved_up`, two
     /// blocks against those of the block and the one under it.
-    pub(in crate::game) fn drop_offset_from(
+    pub(in crate::game::server_side) fn drop_offset_from(
         &self,
         width: f64,
         height: f64,
@@ -828,7 +828,7 @@ impl Game<'_> {
         self.apply_equipment();
     }
     /// After `EntityType.spawn` / `MobBucketItem.spawn`: `mob.playAmbientSound()`.
-    pub(in crate::game) fn mob_ambient(&mut self, id: u32) -> Result<()> {
+    pub(in crate::game::server_side) fn mob_ambient(&mut self, id: u32) -> Result<()> {
         if self.dragon_spawn_ambient(id) {
             return Ok(());
         }
@@ -879,7 +879,7 @@ impl Game<'_> {
         self.mob_ambient(id)
     }
     /// `SpawnEggItemBehavior.execute`: spawn the type selected by the stack's entity data.
-    pub(in crate::game) fn dispense_spawn_egg(
+    pub(in crate::game::server_side) fn dispense_spawn_egg(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -917,7 +917,7 @@ impl Game<'_> {
 
     // ---- ProjectileDispenseBehavior ----
 
-    pub(in crate::game) fn dispense_projectile(
+    pub(in crate::game::server_side) fn dispense_projectile(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -967,7 +967,7 @@ impl Game<'_> {
 
     /// `ProjectileItem.asProjectile` and `Projectile.spawnProjectileUsingShoot`:
     /// one of `stack` fired from `at` along `dir`.
-    pub(in crate::game) fn shoot_projectile_item(
+    pub(in crate::game::server_side) fn shoot_projectile_item(
         &mut self,
         at: Vec3,
         dir: [f64; 3],
@@ -1052,7 +1052,7 @@ impl Game<'_> {
 
     // ---- entities placed by items ----
 
-    pub(in crate::game) fn dispense_armor_stand(
+    pub(in crate::game::server_side) fn dispense_armor_stand(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -1084,7 +1084,7 @@ impl Game<'_> {
         (shrink(stack), CLICK)
     }
     /// A tame donkey, mule or llama in front without a chest gets it.
-    pub(in crate::game) fn dispense_chest(
+    pub(in crate::game::server_side) fn dispense_chest(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -1112,7 +1112,7 @@ impl Game<'_> {
         )
     }
     /// `BoatDispenseItemBehavior`.
-    pub(in crate::game) fn dispense_boat(
+    pub(in crate::game::server_side) fn dispense_boat(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -1167,7 +1167,7 @@ impl Game<'_> {
         (shrink(stack), CLICK)
     }
     /// `MinecartDispenseItemBehavior`.
-    pub(in crate::game) fn dispense_minecart(
+    pub(in crate::game::server_side) fn dispense_minecart(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -1224,7 +1224,7 @@ impl Game<'_> {
     // ---- buckets ----
 
     /// The empty bucket: `BucketPickup.pickupBlock`.
-    pub(in crate::game) fn dispense_empty_bucket(
+    pub(in crate::game::server_side) fn dispense_empty_bucket(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -1254,7 +1254,7 @@ impl Game<'_> {
 
     // ---- fire, bone meal and TNT ----
 
-    pub(in crate::game) fn dispense_flint_and_steel(
+    pub(in crate::game::server_side) fn dispense_flint_and_steel(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -1352,7 +1352,7 @@ impl Game<'_> {
             || (self.in_block_tag("minecraft:candle_cakes", name)
                 && lit.as_deref() == Some("false"))
     }
-    pub(in crate::game) fn dispense_bone_meal(
+    pub(in crate::game::server_side) fn dispense_bone_meal(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -1387,7 +1387,7 @@ impl Game<'_> {
 
     // ---- blocks placed by dispensers ----
 
-    pub(in crate::game) fn dispense_wither_skull(
+    pub(in crate::game::server_side) fn dispense_wither_skull(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -1441,7 +1441,7 @@ impl Game<'_> {
     }
     /// `WitherSkullBlock.getOrCreateWitherBase().find(level, pos)`: a soul
     /// sand T for the skull row, in any orientation.
-    pub(in crate::game) fn can_build_wither(&self, head: Pos) -> bool {
+    pub(in crate::game::server_side) fn can_build_wither(&self, head: Pos) -> bool {
         self.find_wither_pattern(
             sunrise_client::block_pattern::WITHER_BASE,
             [head.0, head.1, head.2],
@@ -1449,7 +1449,7 @@ impl Game<'_> {
         )
         .is_some()
     }
-    pub(in crate::game) fn dispense_carved_pumpkin(
+    pub(in crate::game::server_side) fn dispense_carved_pumpkin(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -1479,7 +1479,7 @@ impl Game<'_> {
         ))
     }
     /// `ShulkerBoxDispenseBehavior`: place it like a `DirectionalPlaceContext`.
-    pub(in crate::game) fn shulker_box_place_context(
+    pub(in crate::game::server_side) fn shulker_box_place_context(
         front: Pos,
         facing: Direction,
         below_empty: bool,
@@ -1501,7 +1501,7 @@ impl Game<'_> {
         }
     }
     /// `ShulkerBoxDispenseBehavior`: place it like a `DirectionalPlaceContext`.
-    pub(in crate::game) fn dispense_shulker_box(
+    pub(in crate::game::server_side) fn dispense_shulker_box(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -1531,7 +1531,7 @@ impl Game<'_> {
 
     // ---- bottles, glowstone, shears, brush, honeycomb ----
 
-    pub(in crate::game) fn dispense_glass_bottle(
+    pub(in crate::game::server_side) fn dispense_glass_bottle(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -1569,7 +1569,7 @@ impl Game<'_> {
         }
         Ok((self.default_execute(pos, facing, stack), FAIL))
     }
-    pub(in crate::game) fn dispense_shears(
+    pub(in crate::game::server_side) fn dispense_shears(
         &mut self,
         pos: Pos,
         facing: Direction,
@@ -1779,7 +1779,12 @@ pub(in crate::game) mod tests {
     );
 
     impl Heard {
-        pub(in crate::game) fn record(&self, part: &'static str, pos: [i32; 3], state: u32) {
+        pub(in crate::game::server_side) fn record(
+            &self,
+            part: &'static str,
+            pos: [i32; 3],
+            state: u32,
+        ) {
             self.0.lock().unwrap().push((part, pos, state));
         }
         pub(in crate::game) fn take(&self) -> Vec<(&'static str, [i32; 3], u32)> {
@@ -1862,17 +1867,19 @@ pub(in crate::game) mod tests {
         }
     }
     impl Fits {
-        pub(in crate::game) fn new(accepts: &'static str) -> Self {
+        pub(in crate::game::server_side) fn new(accepts: &'static str) -> Self {
             Self {
                 accepts: Arc::new(std::sync::Mutex::new(accepts)),
                 asked: Arc::default(),
             }
         }
-        pub(in crate::game) fn asked(&self) -> Vec<(String, u32, String, Option<[f64; 3]>)> {
+        pub(in crate::game::server_side) fn asked(
+            &self,
+        ) -> Vec<(String, u32, String, Option<[f64; 3]>)> {
             std::mem::take(&mut *self.asked.lock().unwrap())
         }
         /// Runs `test` with a mod whose part of the iron helmet is this one installed.
-        pub(in crate::game) fn installed(&self, test: impl FnOnce()) {
+        pub(in crate::game::server_side) fn installed(&self, test: impl FnOnce()) {
             let tailor = mod_api::ModEntry::new("tailor", Box::new(Tailor(self.clone())));
             let mods: mod_api::Mods = vec![tailor].into();
             crate::entry::install_client_hooks();
@@ -1885,7 +1892,7 @@ pub(in crate::game) mod tests {
     /// and in front a zombie that picks up loot (id 10 + row) and an armour stand (id 20 + row),
     /// the zombie first. Dispenses `stack` and answers whether the dispenser equipped it, the
     /// zombie's slot that took it, whether the stand took it, and where the two stand.
-    pub(in crate::game) fn dress(
+    pub(in crate::game::server_side) fn dress(
         game: &mut Game<'_>,
         row: u32,
         stack: ItemStack,
@@ -1921,7 +1928,7 @@ pub(in crate::game) mod tests {
     }
 
     /// An iron helmet whose `equippable` is removed (`fields` None) or replaced by `fields`.
-    pub(in crate::game) fn helmet_with(
+    pub(in crate::game::server_side) fn helmet_with(
         fields: Option<Vec<(&str, sunrise_core::nbt::Tag)>>,
     ) -> ItemStack {
         use sunrise_core::nbt::Tag;
@@ -2226,7 +2233,7 @@ pub(in crate::game) mod tests {
 
     /// A server with no player of its own, an open hub and one guest (conn 2)
     /// standing at (8.5, 200, 8.5) on a stone floor.
-    pub(in crate::game) fn server_with_guest(
+    pub(in crate::game::server_side) fn server_with_guest(
         resources: &mut Option<std::sync::Arc<crate::game::Resources>>,
     ) -> Game<'_> {
         let mut game = super::super::game_tests::tests::server_game(resources);
@@ -2288,7 +2295,10 @@ pub(in crate::game) mod tests {
         game
     }
 
-    pub(in crate::game) fn dispense_at_guest(game: &mut Game<'_>, item: &str) -> (bool, u32) {
+    pub(in crate::game::server_side) fn dispense_at_guest(
+        game: &mut Game<'_>,
+        item: &str,
+    ) -> (bool, u32) {
         let mut stack = ItemStack::new(item, 2);
         // The dispenser sits one block over the guest's feet, facing down.
         let done = game.dispense_equipment((8, 201, 8), Direction::Down, &mut stack);
@@ -2378,7 +2388,7 @@ pub(in crate::game) mod tests {
     }
 
     /// A stand of entity id `id` standing at `x`, 200, `z`.
-    pub(in crate::game) fn stand_at(
+    pub(in crate::game::server_side) fn stand_at(
         id: u32,
         x: f64,
         z: f64,

@@ -212,16 +212,16 @@ pub(in crate::game) struct ExplicitBlastSource {
     pub cause: Option<ExplosionCause>,
 }
 impl ExplosionSource {
-    pub(in crate::game) fn with_silence(mut self, silent: bool) -> Self {
+    pub(in crate::game::server_side) fn with_silence(mut self, silent: bool) -> Self {
         self.silent = silent;
         self
     }
-    pub(in crate::game) fn with_portal_proof(mut self, portal_proof: bool) -> Self {
+    pub(in crate::game::server_side) fn with_portal_proof(mut self, portal_proof: bool) -> Self {
         self.portal_proof = portal_proof;
         self
     }
     /// The exploding entity, which a default damage source also names as its direct entity.
-    pub(in crate::game) fn with_entity(
+    pub(in crate::game::server_side) fn with_entity(
         mut self,
         id: u32,
         kind: &'static str,
@@ -230,7 +230,7 @@ impl ExplosionSource {
         self.entity = Some((id, kind));
         self.with_damage_direct(id, class)
     }
-    pub(in crate::game) fn with_damage_direct(
+    pub(in crate::game::server_side) fn with_damage_direct(
         mut self,
         id: u32,
         class: sunrise_client::health::DirectEntity,
@@ -242,7 +242,11 @@ impl ExplosionSource {
 
 /// `ServerExplosion.hurtEntities`: an entity is hurt when its position is
 /// within the blast's diameter of the centre.
-pub(in crate::game) fn blast_reaches(center: [f64; 3], diameter: f64, at: [f64; 3]) -> bool {
+pub(in crate::game::server_side) fn blast_reaches(
+    center: [f64; 3],
+    diameter: f64,
+    at: [f64; 3],
+) -> bool {
     let d =
         ((at[0] - center[0]).powi(2) + (at[1] - center[1]).powi(2) + (at[2] - center[2]).powi(2))
             .sqrt();
@@ -266,7 +270,7 @@ fn items_ignore_explosion(mob_griefing: bool, interaction: BlockInteraction) -> 
 /// `mob_refused`: a mob causes the blast and may not grief, so it does no harm
 /// (`BlockAttachedEntity.hurtServer` and `ArmorStand.hurtServer`:
 /// `source.getEntity() instanceof Mob`, with `canEntityGrief` for that mob).
-pub(in crate::game) fn blast_spares_decorations(
+pub(in crate::game::server_side) fn blast_spares_decorations(
     mob_griefing: bool,
     interaction: BlockInteraction,
     mob_refused: bool,
@@ -363,12 +367,12 @@ thread_local! {
     /// Client-side randomness (explosion sound pitch), separate from the level random.
     static CLIENT_RANDOM: std::cell::RefCell<LegacyRandom> = std::cell::RefCell::new(LegacyRandom::new(0x5eed));
 }
-pub(in crate::game) fn client_float() -> f32 {
+pub(in crate::game::server_side) fn client_float() -> f32 {
     CLIENT_RANDOM.with(|r| r.borrow_mut().next_float())
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn explosion_entity_name(&self, id: u32, kind: &str) -> Text {
+    pub(in crate::game::server_side) fn explosion_entity_name(&self, id: u32, kind: &str) -> Text {
         self.persist_raw(id)
             .and_then(|r| r.get("CustomName"))
             .map_or_else(
@@ -402,7 +406,7 @@ impl Game<'_> {
     }
 
     /// An explicit DamageSource must not inherit an enclosing blast's cause.
-    pub(in crate::game) fn with_explosion_cause<R>(
+    pub(in crate::game::server_side) fn with_explosion_cause<R>(
         &mut self,
         cause: Option<ExplosionCause>,
         direct_source: (u32, Text),
@@ -539,7 +543,7 @@ impl Game<'_> {
         self.combat.0.explosion_source.map(Who::Mob)
     }
     /// `ServerExplosion.getSeenPercent` for an entity box.
-    pub(in crate::game) fn seen_percent(
+    pub(in crate::game::server_side) fn seen_percent(
         &self,
         center: [f64; 3],
         min: [f64; 3],
@@ -1483,7 +1487,9 @@ impl Game<'_> {
 
     /// Decoration kills credit `DamageSource.getEntity`: the explicit blast
     /// cause, including a TNT igniter or the player who broke an end crystal.
-    pub(in crate::game) fn explosion_kill_credit(&self) -> Option<super::commands::Target> {
+    pub(in crate::game::server_side) fn explosion_kill_credit(
+        &self,
+    ) -> Option<super::commands::Target> {
         use super::commands::Target;
         // An explicit crystal or cart source names its own cause.
         if let Some(Some(cause)) = &self.combat.0.explicit_explosion_cause {
@@ -1512,7 +1518,10 @@ impl Game<'_> {
     }
     /// Decoration hurt checks use the damage source's cause (`instanceof Mob`),
     /// unlike vehicles, which use the explosion's indirect source.
-    pub(in crate::game) fn blast_spares_decorations(&self, interaction: BlockInteraction) -> bool {
+    pub(in crate::game::server_side) fn blast_spares_decorations(
+        &self,
+        interaction: BlockInteraction,
+    ) -> bool {
         blast_spares_decorations(
             self.blast_griefs(),
             interaction,
@@ -1548,7 +1557,10 @@ impl Game<'_> {
         mob.is_some_and(|id| !self.can_entity_grief(Some(id)))
     }
     /// `Entity.isInWater` for an entity box: `updateFluidInteraction` over the box.
-    pub(in crate::game) fn bounds_in_water(&self, bounds: sunrise_core::geometry::Aabb) -> bool {
+    pub(in crate::game::server_side) fn bounds_in_water(
+        &self,
+        bounds: sunrise_core::geometry::Aabb,
+    ) -> bool {
         self.mob_world_base(&[])
             .fluids(bounds, bounds.max_position().y)
             .in_water
@@ -1688,7 +1700,7 @@ impl Game<'_> {
     /// Runs an explosion whose source empties the hives it destroys
     /// (`BeehiveBlock.getDrops`: primed TNT, creeper, wither skull, wither,
     /// TNT minecart).
-    pub(in crate::game) fn with_hive_emptying_blast<R>(
+    pub(in crate::game::server_side) fn with_hive_emptying_blast<R>(
         &mut self,
         blast: impl FnOnce(&mut Self) -> R,
     ) -> R {
@@ -1728,7 +1740,7 @@ impl Game<'_> {
     }
     /// An explicit `DamageSource` is independent of the blast's indirect owner.
     /// `Some(None)` is explicitly ownerless; `None` keeps the ordinary source.
-    pub(in crate::game) fn server_explode_from_cause(
+    pub(in crate::game::server_side) fn server_explode_from_cause(
         &mut self,
         center: [f64; 3],
         radius: f32,
@@ -1792,7 +1804,7 @@ impl Game<'_> {
     }
     /// `server_explode` with the damage type the player takes and a block
     /// whose explosion resistance the damage calculator overrides.
-    pub(in crate::game) fn server_explode_as(
+    pub(in crate::game::server_side) fn server_explode_as(
         &mut self,
         center: [f64; 3],
         radius: f32,
@@ -1889,7 +1901,7 @@ impl Game<'_> {
     /// `InfestedBlock.spawnAfterBreak` without a tool that prevents it: while
     /// blocks drop, its silverfish (`spawnInfestation`) comes out at the
     /// bottom centre of the block, with its spawn animation.
-    pub(in crate::game) fn spawn_infestation(&mut self, pos: [i32; 3]) {
+    pub(in crate::game::server_side) fn spawn_infestation(&mut self, pos: [i32; 3]) {
         if !self
             .ui
             .rules
@@ -2116,7 +2128,7 @@ impl Game<'_> {
     /// A mob explosion (`ServerLevel.explode` with `ExplosionInteraction.MOB`:
     /// blocks are kept without mobGriefing, else the mob_explosion_drop_decay
     /// rule picks decay).
-    pub(in crate::game) fn explode(
+    pub(in crate::game::server_side) fn explode(
         &mut self,
         source: Option<u32>,
         center: [f64; 3],
@@ -2126,7 +2138,7 @@ impl Game<'_> {
         self.explode_with(source, center, radius, false, blast)
     }
     /// `ServerLevel.explode` with `ExplosionInteraction.MOB` and the caller's fire flag.
-    pub(in crate::game) fn explode_mob(
+    pub(in crate::game::server_side) fn explode_mob(
         &mut self,
         center: [f64; 3],
         radius: f32,
@@ -2137,7 +2149,7 @@ impl Game<'_> {
     }
     /// `SulfurCube.tickFuse`: `ExplosionInteraction.TNT` (the
     /// tnt_explosion_drop_decay rule) with mobGriefing, `NONE` without.
-    pub(in crate::game) fn explode_sulfur_cube(
+    pub(in crate::game::server_side) fn explode_sulfur_cube(
         &mut self,
         source: Option<u32>,
         center: [f64; 3],
@@ -2156,7 +2168,7 @@ impl Game<'_> {
 #[cfg(test)]
 impl Game<'_> {
     /// Exercise the real explosion entity walk on an empty, headless world.
-    pub(in crate::game) fn run_explosion_items_fixture(
+    pub(in crate::game::server_side) fn run_explosion_items_fixture(
         &mut self,
         directory: &std::path::Path,
     ) -> Result<()> {
@@ -2683,7 +2695,7 @@ pub(in crate::game) mod tests {
         run_explosion_items_parity_fixture();
     }
 
-    pub(in crate::game) fn run_explosion_items_parity_fixture() {
+    pub(in crate::game::server_side) fn run_explosion_items_parity_fixture() {
         let directory = std::env::var_os("SUNRISE_EXPLOSION_ITEMS_FIXTURE")
             .expect("set SUNRISE_EXPLOSION_ITEMS_FIXTURE to the fixture directory");
         crate::game::native_entity_refs::tests::with_game(|game| {

@@ -42,7 +42,7 @@ impl Game<'_> {
 
     /// `BundleItem.dropContent`: `removeOneItemFromBundle` and `Player.drop`,
     /// then the drop sound and the used statistic.
-    pub(in crate::game) fn drop_bundle_content(&mut self, slot: usize) {
+    pub(in crate::game::client_side) fn drop_bundle_content(&mut self, slot: usize) {
         let items = self.items();
         let Some(mut bundle) = self.stack_in(slot).cloned() else {
             return;

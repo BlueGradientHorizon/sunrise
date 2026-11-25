@@ -34,7 +34,7 @@ pub(in crate::game) struct Jobs {
 impl Jobs {
     /// Browse mods opened: the index, read again from the registry (the
     /// launcher's copy when it can't be reached).
-    pub(in crate::game) fn browse(&mut self, ui: &mut ModBrowser, home: PathBuf) {
+    pub(in crate::game::client_side) fn browse(&mut self, ui: &mut ModBrowser, home: PathBuf) {
         if self.running.is_some() {
             return;
         }
@@ -53,7 +53,12 @@ impl Jobs {
     }
 
     /// Install or update `id` from the index read last.
-    pub(in crate::game) fn install(&mut self, ui: &mut ModBrowser, home: PathBuf, id: String) {
+    pub(in crate::game::client_side) fn install(
+        &mut self,
+        ui: &mut ModBrowser,
+        home: PathBuf,
+        id: String,
+    ) {
         let Some(index) = self.index.clone() else {
             return;
         };
@@ -76,7 +81,7 @@ impl Jobs {
     /// again for `installed`, and lays the Browse mods page out again for
     /// `changed`, which covers a listing's content too, not just its count.
     /// Completion waits while a world owns its frozen registry set.
-    pub(in crate::game) fn poll(
+    pub(in crate::game::client_side) fn poll(
         &mut self,
         ui: &mut ModBrowser,
         mods: &mut ModList,
@@ -170,7 +175,7 @@ fn spawn(name: &str, work: impl FnOnce() + Send + 'static) {
 
 impl Game<'_> {
     /// Each frame: what the browser's worker finished.
-    pub(in crate::game) fn drive_mod_browser(&mut self) {
+    pub(in crate::game::client_side) fn drive_mod_browser(&mut self) {
         // The Browse mods page's layout reads the browser: a worker's answer
         // arriving makes the built page again at its next draw.
         let (installed, changed) = self.mod_jobs.0.poll(

@@ -8,7 +8,7 @@ const EV_ABS: u16 = 0x03;
 const ABS_GAS: u16 = 0x09;
 const ABS_BRAKE: u16 = 0x0a;
 
-pub(in crate::game) fn triggers(pad: &Gamepad) -> [f32; 2] {
+pub(in crate::game::client_side) fn triggers(pad: &Gamepad) -> [f32; 2] {
     let axes = cfg!(target_os = "linux")
         && axis_triggers(
             pad.mapping_source(),

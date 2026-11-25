@@ -4,7 +4,7 @@ use super::*;
 impl Game<'_> {
     /// `tickDeath`: rising for 200 ticks, explosions, experience, then the
     /// exit portal, the egg and a gateway.
-    pub(in crate::game) fn tick_dragon_death(&mut self) {
+    pub(in crate::game::server_side) fn tick_dragon_death(&mut self) {
         let Some(d) = self.dragon.as_mut() else {
             return;
         };
@@ -72,7 +72,12 @@ impl Game<'_> {
     /// sensors (and, while it has health, wardens) hear it, and the nearest
     /// catalyst blooms (`CatalystListener`). It takes no experience: the
     /// dragon's `xpReward` is 0, its orbs come from `tickDeath`.
-    pub(in crate::game) fn dragon_died_event(&mut self, id: u32, at: Vec3, targetable: bool) {
+    pub(in crate::game::server_side) fn dragon_died_event(
+        &mut self,
+        id: u32,
+        at: Vec3,
+        targetable: bool,
+    ) {
         let at = [at.x, at.y, at.z];
         let ctx = sunrise_client::sculk::Context {
             source: Some(Who::Mob(id).into()),

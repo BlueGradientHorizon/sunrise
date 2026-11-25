@@ -13,14 +13,6 @@ pub(in crate::game::server_side) use crate::game::client_side::books::MAX_PAGES;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::books::PAGE_CHARS;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::books::book_page_box;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::books::book_title_box;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::books::link_cursor;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::books::view_pages;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::books::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_client::{
@@ -53,7 +45,7 @@ pub(in crate::game::server_side) use winit::keyboard::KeyCode;
 impl Game<'_> {
     /// `ServerGamePacketListenerImpl.handleEditBook`: a guest's book in a
     /// hotbar slot or its off hand (`updateBookContents`, `signBook`).
-    pub(in crate::game) fn lan_edit_book(&mut self, conn: u32, p: play::EditBook) {
+    pub(in crate::game::server_side) fn lan_edit_book(&mut self, conn: u32, p: play::EditBook) {
         if !((0..9).contains(&p.slot) || p.slot == super::shield::OFFHAND_SLOT as i32) {
             return;
         }
@@ -170,7 +162,7 @@ impl Game<'_> {
     /// A server's player writes in its own client's editor
     /// (`LocalPlayer.openItemGui`), and reads on its own client once told to
     /// (`ServerPlayer.openItemGui`'s ClientboundOpenBookPacket).
-    pub(in crate::game) fn use_book(&mut self, stack: &ItemStack) -> bool {
+    pub(in crate::game::server_side) fn use_book(&mut self, stack: &ItemStack) -> bool {
         let written = match &*stack.item {
             "minecraft:writable_book" => false,
             "minecraft:written_book" => true,
@@ -201,7 +193,11 @@ impl Game<'_> {
         true
     }
     /// `LecternBlock.useItemOn`: a book goes onto an empty lectern.
-    pub(in crate::game) fn use_lectern(&mut self, pos: [i32; 3], held: Option<&ItemStack>) -> bool {
+    pub(in crate::game::server_side) fn use_lectern(
+        &mut self,
+        pos: [i32; 3],
+        held: Option<&ItemStack>,
+    ) -> bool {
         let key = (pos[0], pos[1], pos[2]);
         if &*self
             .res

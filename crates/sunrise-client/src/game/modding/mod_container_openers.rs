@@ -14,11 +14,15 @@ pub(in crate::game) struct ModContainerOpeners {
 
 impl Game<'_> {
     /// startOpen/stopOpen, with the opening player's body in place.
-    pub(in crate::game) fn mod_container_player_opener(&mut self, pos: Pos, open: bool) {
+    pub(in crate::game::server_side) fn mod_container_player_opener(
+        &mut self,
+        pos: Pos,
+        open: bool,
+    ) {
         self.mod_container_player_opener_for(pos, open, None);
     }
 
-    pub(in crate::game) fn mod_container_player_opener_for(
+    pub(in crate::game::server_side) fn mod_container_player_opener_for(
         &mut self,
         pos: Pos,
         open: bool,
@@ -114,7 +118,7 @@ impl Game<'_> {
     }
 
     /// Scheduled rechecks only: no player or mob walk without an open container.
-    pub(in crate::game) fn tick_mod_container_viewers(&mut self) {
+    pub(in crate::game::server_side) fn tick_mod_container_viewers(&mut self) {
         let dim = self.dim.id();
         let time = self.world.game_time;
         let due: Vec<_> = self

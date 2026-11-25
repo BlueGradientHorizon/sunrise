@@ -22,7 +22,7 @@ pub(in crate::game) struct ListenedRolls<'g, 'a, 'h> {
 
 impl<'g, 'a, 'h> ListenedRolls<'g, 'a, 'h> {
     /// A death's rolls: its attacker is the blow's causing entity.
-    pub(in crate::game) fn new(
+    pub(in crate::game::server_side) fn new(
         game: &'g mut Game<'a>,
         entity: LivingRef,
         source: &'h HurtSource<'h>,
@@ -97,7 +97,10 @@ impl Game<'_> {
     /// the level random. It reads levels as a death does, and a mod listening
     /// to `enchanted_entity_loot` is asked: the damage is `magic()`, as
     /// vanilla's, whose source names nobody, so the attacker is the command's.
-    pub(in crate::game) fn roll_kill_loot(&mut self, kill: KillRoll<'_>) -> Vec<ItemStack> {
+    pub(in crate::game::server_side) fn roll_kill_loot(
+        &mut self,
+        kill: KillRoll<'_>,
+    ) -> Vec<ItemStack> {
         let KillRoll {
             kind,
             table,
@@ -217,7 +220,7 @@ pub(in crate::game) struct CallerLoot {
 
 impl CallerLoot {
     /// Runs `roll` with these parameters in scope for every table it rolls.
-    pub(in crate::game) fn with<T>(self, roll: impl FnOnce() -> T) -> T {
+    pub(in crate::game::server_side) fn with<T>(self, roll: impl FnOnce() -> T) -> T {
         sunrise_world::loot::query::with_query(self.query, || {
             sunrise_world::loot::with_native_loot_place(self.place, roll)
         })
@@ -227,7 +230,7 @@ impl CallerLoot {
 impl Game<'_> {
     /// A roll's `origin` (None when its parameter set has none) and `tool`,
     /// taken before the roll borrows the game.
-    pub(in crate::game) fn caller_loot(
+    pub(in crate::game::server_side) fn caller_loot(
         &self,
         origin: Option<[f64; 3]>,
         tool: Option<sunrise_world::loot::LootStack>,
@@ -243,7 +246,7 @@ impl Game<'_> {
 
     /// What a loot table reads of `target` as `THIS_ENTITY`: a mob's facts, a
     /// player's worn and held items, and the entity's type for the rest.
-    pub(in crate::game) fn target_loot_entity(
+    pub(in crate::game::server_side) fn target_loot_entity(
         &mut self,
         target: Target,
     ) -> sunrise_world::loot::LootEntity {
@@ -275,7 +278,7 @@ impl Game<'_> {
     /// TOOL and `this` as THIS_ENTITY when given, from the table's random
     /// sequence, else the level random. The stacks come split to their stack
     /// sizes; None for a missing table.
-    pub(in crate::game) fn roll_table_at(
+    pub(in crate::game::server_side) fn roll_table_at(
         &mut self,
         table: &str,
         origin: Option<[f64; 3]>,

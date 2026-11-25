@@ -166,11 +166,11 @@ pub(in crate::game) struct Index {
     pub(in crate::game) cells: FxHashMap<(i32, i32, i32), Vec<(u64, (i32, i32, i32))>>,
     pub(in crate::game) next: u64,
 }
-pub(in crate::game) fn index_cell(key: (i32, i32, i32)) -> (i32, i32, i32) {
+pub(in crate::game::client_side) fn index_cell(key: (i32, i32, i32)) -> (i32, i32, i32) {
     (key.0 >> 5, key.1 >> 5, key.2 >> 5)
 }
 impl Index {
-    pub(in crate::game) fn insert(&mut self, key: (i32, i32, i32)) {
+    pub(in crate::game::client_side) fn insert(&mut self, key: (i32, i32, i32)) {
         if self.set.insert(key) {
             self.order.push(key);
             self.cells
@@ -180,7 +180,7 @@ impl Index {
             self.next += 1;
         }
     }
-    pub(in crate::game) fn remove(&mut self, key: &(i32, i32, i32)) {
+    pub(in crate::game::client_side) fn remove(&mut self, key: &(i32, i32, i32)) {
         if self.set.remove(key) {
             self.order.retain(|k| k != key);
             let cell = index_cell(*key);
@@ -213,13 +213,16 @@ impl Index {
         found.sort_unstable_by_key(|(rank, _)| *rank);
         found.into_iter().map(|(_, k)| k).collect()
     }
-    pub(in crate::game) fn contains(&self, key: &(i32, i32, i32)) -> bool {
+    pub(in crate::game::client_side) fn contains(&self, key: &(i32, i32, i32)) -> bool {
         self.set.contains(key)
     }
     pub(in crate::game) fn iter(&self) -> impl Iterator<Item = &(i32, i32, i32)> {
         self.order.iter()
     }
-    pub(in crate::game) fn retain(&mut self, mut keep: impl FnMut(&(i32, i32, i32)) -> bool) {
+    pub(in crate::game::client_side) fn retain(
+        &mut self,
+        mut keep: impl FnMut(&(i32, i32, i32)) -> bool,
+    ) {
         self.order.retain(|k| keep(k));
         self.set.retain(|k| keep(k));
         self.cells.retain(|_, list| {
@@ -233,7 +236,7 @@ pub(in crate::game) const KIND_CALIBRATED: u8 = 2;
 pub(in crate::game) const KIND_SHRIEKER: u8 = 3;
 pub(in crate::game) const KIND_CATALYST: u8 = 4;
 
-pub(in crate::game) fn center(p: (i32, i32, i32)) -> [f64; 3] {
+pub(in crate::game::client_side) fn center(p: (i32, i32, i32)) -> [f64; 3] {
     [
         f64::from(p.0) + 0.5,
         f64::from(p.1) + 0.5,
@@ -247,7 +250,7 @@ pub(in crate::game) fn block_of(p: [f64; 3]) -> [i32; 3] {
         p[2].floor() as i32,
     ]
 }
-pub(in crate::game) fn dist_sqr(a: [i32; 3], b: (i32, i32, i32)) -> i64 {
+pub(in crate::game::client_side) fn dist_sqr(a: [i32; 3], b: (i32, i32, i32)) -> i64 {
     let d = |x: i32, y: i32| i64::from(x) - i64::from(y);
     d(a[0], b.0).pow(2) + d(a[1], b.1).pow(2) + d(a[2], b.2).pow(2)
 }
@@ -263,7 +266,10 @@ impl Game<'_> {
 
     /// The `sculk` control command: listeners and their vibrations, or a
     /// test charge for the nearest catalyst.
-    pub(in crate::game) fn sculk_command(&mut self, words: &[&str]) -> Result<serde_json::Value> {
+    pub(in crate::game::client_side) fn sculk_command(
+        &mut self,
+        words: &[&str],
+    ) -> Result<serde_json::Value> {
         match words.get(1).copied() {
             Some("charge") => {
                 let num = |i: usize| -> Result<f64> {
@@ -294,7 +300,7 @@ impl Game<'_> {
         }
     }
     /// The `sculk` control command's listing.
-    pub(in crate::game) fn sculk_status(&self) -> serde_json::Value {
+    pub(in crate::game::client_side) fn sculk_status(&self) -> serde_json::Value {
         let listeners: Vec<serde_json::Value> = self
             .sculk
             .index
@@ -362,7 +368,7 @@ impl Game<'_> {
     }
     /// Whether a mod canceled the `ServerPlayer.tick` of the world's owner, whose warden spawn
     /// tracker this is: looked up only when a Pre canceled a player.
-    pub(in crate::game) fn owner_tick_canceled(&self) -> bool {
+    pub(in crate::game::client_side) fn owner_tick_canceled(&self) -> bool {
         !self.creatures.canceled_players.is_empty()
             && self
                 .lan
@@ -374,7 +380,9 @@ impl Game<'_> {
                 .is_some_and(|g| self.player_tick_canceled(g.conn))
     }
     /// The tracker as saved, once it has been loaded.
-    pub(in crate::game) fn warden_tracker_tag(&self) -> Option<sunrise_core::nbt::Tag> {
+    pub(in crate::game::client_side) fn warden_tracker_tag(
+        &self,
+    ) -> Option<sunrise_core::nbt::Tag> {
         self.sculk
             .tracker_loaded
             .then(|| self.sculk.tracker.to_nbt())
@@ -452,7 +460,7 @@ impl Game<'_> {
         self.world.watched = t.kinds.iter().map(|k| *k != 0).collect();
         self.sculk.tables = t;
     }
-    pub(in crate::game) fn kind_of_state(&self, state: u32) -> u8 {
+    pub(in crate::game::client_side) fn kind_of_state(&self, state: u32) -> u8 {
         self.sculk
             .tables
             .kinds
@@ -460,10 +468,14 @@ impl Game<'_> {
             .copied()
             .unwrap_or(0)
     }
-    pub(in crate::game) fn state_is(&self, table: &[bool], state: BlockStateId) -> bool {
+    pub(in crate::game::client_side) fn state_is(
+        &self,
+        table: &[bool],
+        state: BlockStateId,
+    ) -> bool {
         table.get(state.0 as usize).copied().unwrap_or(false)
     }
-    pub(in crate::game) fn entity_for_kind(kind: u8) -> Option<SculkEntity> {
+    pub(in crate::game::client_side) fn entity_for_kind(kind: u8) -> Option<SculkEntity> {
         Some(SculkEntity::new(match kind {
             KIND_SENSOR => SculkKind::Sensor,
             KIND_CALIBRATED => SculkKind::Calibrated,
@@ -509,7 +521,7 @@ impl Game<'_> {
         true
     }
 
-    pub(in crate::game) fn sculk_sync_writes(&mut self) {
+    pub(in crate::game::client_side) fn sculk_sync_writes(&mut self) {
         let writes = std::mem::take(&mut self.world.watched_writes);
         for (key, old, new) in writes {
             let (old_kind, new_kind) = (self.kind_of_state(old), self.kind_of_state(new));
@@ -539,7 +551,7 @@ impl Game<'_> {
             }
         }
     }
-    pub(in crate::game) fn sculk_scan_chunk(&mut self, key: (i32, i32)) {
+    pub(in crate::game::client_side) fn sculk_scan_chunk(&mut self, key: (i32, i32)) {
         let Some(chunk) = self.world.chunks.get(&key).cloned() else {
             return;
         };
@@ -583,7 +595,7 @@ impl Game<'_> {
             self.sculk.index.insert(pos);
         }
     }
-    pub(in crate::game) fn sculk_entity(
+    pub(in crate::game::client_side) fn sculk_entity(
         &mut self,
         key: (i32, i32, i32),
     ) -> Option<&mut SculkEntity> {
@@ -636,7 +648,7 @@ impl Game<'_> {
         }
         self.mob_index.find(&self.mobs, id)
     }
-    pub(in crate::game) fn context_of_mob(
+    pub(in crate::game::client_side) fn context_of_mob(
         &self,
         mob: Option<&Mob>,
         id: u32,
@@ -673,7 +685,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn event_source_context(
+    pub(in crate::game::client_side) fn event_source_context(
         &mut self,
         source: Option<EventSource>,
         state: Option<BlockStateId>,
@@ -736,7 +748,10 @@ impl Game<'_> {
     /// The saved UUID of a vibration's mob through the save layer's
     /// `save_who_uuid`. `Who::Player` stays `None`: on a server it can be the
     /// acting guest as well as the host, so it names no single entity here.
-    pub(in crate::game) fn vibration_uuid(&self, who: Option<Who>) -> Option<[i32; 4]> {
+    pub(in crate::game::client_side) fn vibration_uuid(
+        &self,
+        who: Option<Who>,
+    ) -> Option<[i32; 4]> {
         match who {
             Some(who @ Who::Mob(_)) => self.save_who_uuid(who),
             _ => None,
@@ -820,7 +835,7 @@ impl Game<'_> {
         self.post_block_game_event(event, [pos.x, pos.y, pos.z], who, state);
     }
 
-    pub(in crate::game) fn occluded(&self, origin: [f64; 3], dest: [f64; 3]) -> bool {
+    pub(in crate::game::client_side) fn occluded(&self, origin: [f64; 3], dest: [f64; 3]) -> bool {
         sculk::is_occluded(origin, dest, |p| {
             self.state_is(&self.sculk.tables.occludes, self.world.block(p.x, p.y, p.z))
         })
@@ -913,7 +928,7 @@ impl Game<'_> {
             );
         }
     }
-    pub(in crate::game) fn calibrated_signal(&mut self, key: (i32, i32, i32)) -> i32 {
+    pub(in crate::game::client_side) fn calibrated_signal(&mut self, key: (i32, i32, i32)) -> i32 {
         let pos = BlockPos::new(key.0, key.1, key.2);
         let mut value = 0;
         self.with_level(|b, level, ticks| {
@@ -921,10 +936,14 @@ impl Game<'_> {
         });
         value
     }
-    pub(in crate::game) fn shrieker_shrieking(&self, state: BlockStateId) -> bool {
+    pub(in crate::game::client_side) fn shrieker_shrieking(&self, state: BlockStateId) -> bool {
         self.state_property(state, "shrieking") == Some("true")
     }
-    pub(in crate::game) fn state_property(&self, state: BlockStateId, key: &str) -> Option<&str> {
+    pub(in crate::game::client_side) fn state_property(
+        &self,
+        state: BlockStateId,
+        key: &str,
+    ) -> Option<&str> {
         self.pack
             .assets
             .registry
@@ -934,7 +953,7 @@ impl Game<'_> {
     }
 
     /// `Warden.VibrationUser`: accept a vibration for the warden at `index`.
-    pub(in crate::game) fn warden_listen(
+    pub(in crate::game::client_side) fn warden_listen(
         &mut self,
         index: usize,
         event: &'static str,
@@ -957,7 +976,7 @@ impl Game<'_> {
 
     /// `VibrationSystem.Listener.handleGameEvent` for the allay at `index`
     /// (`Allay.VibrationUser`).
-    pub(in crate::game) fn allay_listen(
+    pub(in crate::game::client_side) fn allay_listen(
         &mut self,
         index: usize,
         event: &'static str,
@@ -1073,7 +1092,7 @@ impl Game<'_> {
     // ---- sensors ----
 
     /// `onReceiveVibration` of a sensor or a shrieker.
-    pub(in crate::game) fn sculk_receive(
+    pub(in crate::game::client_side) fn sculk_receive(
         &mut self,
         key: (i32, i32, i32),
         info: Info,
@@ -1128,7 +1147,7 @@ impl Game<'_> {
         matches!(who, Some(Who::Mob(id)) if self.mobs.iter().any(|m| m.id == id && m.rider.is_some()))
     }
     /// `SculkSensorBlock.activate`.
-    pub(in crate::game) fn activate_sensor(
+    pub(in crate::game::client_side) fn activate_sensor(
         &mut self,
         key: (i32, i32, i32),
         source: Option<EventSource>,
@@ -1167,7 +1186,7 @@ impl Game<'_> {
     }
     /// `SculkSensorBlock.stepOn` and `SculkShriekerBlock.stepOn`: standing on
     /// them is heard (or seen) every tick.
-    pub(in crate::game) fn sculk_step_on(&mut self) {
+    pub(in crate::game::client_side) fn sculk_step_on(&mut self) {
         self.sculk_step_on_player();
         let mut standing: Vec<(Who, [f64; 3])> = Vec::new();
         for m in &self.mobs {
@@ -1187,7 +1206,7 @@ impl Game<'_> {
             self.sculk_stand_on(vec![(Who::Player, at)]);
         }
     }
-    pub(in crate::game) fn sculk_stand_on(&mut self, standing: Vec<(Who, [f64; 3])>) {
+    pub(in crate::game::client_side) fn sculk_stand_on(&mut self, standing: Vec<(Who, [f64; 3])>) {
         for (who, at) in standing {
             // getOnPosLegacy: 0.2 below the feet.
             let key = (
@@ -1246,7 +1265,7 @@ impl Game<'_> {
 
     // ---- shriekers ----
 
-    pub(in crate::game) fn can_respond(&self, state: BlockStateId) -> bool {
+    pub(in crate::game::client_side) fn can_respond(&self, state: BlockStateId) -> bool {
         use sunrise_world::food::Difficulty;
         self.state_property(state, "can_summon") == Some("true")
             && self.world.health_rules.difficulty != Difficulty::Peaceful
@@ -1256,7 +1275,7 @@ impl Game<'_> {
                 .bool_at(sunrise_client::gamerules::vanilla::SPAWN_WARDENS)
     }
     /// `SculkShriekerBlockEntity.tryShriek`.
-    pub(in crate::game) fn try_shriek(
+    pub(in crate::game::client_side) fn try_shriek(
         &mut self,
         key: (i32, i32, i32),
         by_player: bool,
@@ -1277,7 +1296,7 @@ impl Game<'_> {
         Ok(())
     }
     /// `WardenSpawnTracker.tryWarn` for the one player.
-    pub(in crate::game) fn try_to_warn(&mut self, key: (i32, i32, i32)) -> bool {
+    pub(in crate::game::client_side) fn try_to_warn(&mut self, key: (i32, i32, i32)) -> bool {
         let c = center(key);
         let warden_nearby = self.mobs.iter().any(|m| {
             m.species() == Species::Warden
@@ -1301,7 +1320,7 @@ impl Game<'_> {
         }
     }
     /// `SculkShriekerBlockEntity.shriek`.
-    pub(in crate::game) fn shriek(&mut self, key: (i32, i32, i32)) -> Result<()> {
+    pub(in crate::game::client_side) fn shriek(&mut self, key: (i32, i32, i32)) -> Result<()> {
         let pos = BlockPos::new(key.0, key.1, key.2);
         self.with_level(|b, level, ticks| b.sculk_shrieker_shriek(level, ticks, pos));
         self.process_level_events()?;
@@ -1310,7 +1329,7 @@ impl Game<'_> {
         Ok(())
     }
     /// The shriek ended (or the block went away while shrieking).
-    pub(in crate::game) fn shrieker_respond(
+    pub(in crate::game::client_side) fn shrieker_respond(
         &mut self,
         key: (i32, i32, i32),
         state: BlockStateId,
@@ -1330,7 +1349,11 @@ impl Game<'_> {
         let warning = self.sculk_entity(key).map_or(0, |e| e.warning_level);
         self.shrieker_respond(key, state, warning);
     }
-    pub(in crate::game) fn warden_reply_sound(&mut self, key: (i32, i32, i32), warning: i32) {
+    pub(in crate::game::client_side) fn warden_reply_sound(
+        &mut self,
+        key: (i32, i32, i32),
+        warning: i32,
+    ) {
         let sound = match warning {
             1 => "minecraft:entity.warden.nearby_close",
             2 => "minecraft:entity.warden.nearby_closer",
@@ -1408,7 +1431,7 @@ impl Game<'_> {
 
     /// The darkness effect's blend, where this game ticks the player in its
     /// own level (a server's client ticks it in `tick_client_effects`).
-    pub(in crate::game) fn tick_darkness_blend(&mut self) {
+    pub(in crate::game::client_side) fn tick_darkness_blend(&mut self) {
         self.sculk.darkness = darkness_blend_tick(&self.potions.effects, self.sculk.darkness);
     }
     /// The darkness effect's blend factor at the partial tick.
@@ -1416,7 +1439,7 @@ impl Game<'_> {
         darkness_blend_at(self.sculk.darkness, partial)
     }
     /// The fog's view of the darkness effect, while it is on.
-    pub(in crate::game) fn darkness_fog(&self) -> Option<f32> {
+    pub(in crate::game::client_side) fn darkness_fog(&self) -> Option<f32> {
         self.potions
             .effects
             .get("darkness")
@@ -1424,7 +1447,7 @@ impl Game<'_> {
     }
     /// `LightmapRenderStateExtractor`: (brightness taken off the gamma
     /// option, the pulsing light scale).
-    pub(in crate::game) fn darkness_lighting(&self, partial: f32) -> (f32, f32) {
+    pub(in crate::game::client_side) fn darkness_lighting(&self, partial: f32) -> (f32, f32) {
         let scale = self.darkness_effect_scale();
         let modifier = self.darkness_blend(partial) * scale;
         let pulse = ((self.visual_ticks() as f32 - partial) * std::f32::consts::PI * 0.025).cos()
@@ -1434,13 +1457,13 @@ impl Game<'_> {
     }
 
     /// The Darkness Effect option (`darknessEffectScale`), 0..1.
-    pub(in crate::game) fn darkness_effect_scale(&self) -> f32 {
+    pub(in crate::game::client_side) fn darkness_effect_scale(&self) -> f32 {
         self.settings.file.double("darknessEffectScale") as f32
     }
 
     /// `LightmapRenderStateExtractor`: the night vision effect's intensity
     /// (`GameRenderer.nightVisionScale`), or conduit power's water vision.
-    pub(in crate::game) fn night_vision_intensity(&self, partial: f32) -> f32 {
+    pub(in crate::game::client_side) fn night_vision_intensity(&self, partial: f32) -> f32 {
         use mod_api::client::fog::FogType;
         if let Some(e) = self.potions.effects.get("night_vision") {
             // MobEffectInstance.endsWithin(200); -1 is infinite.
@@ -1463,7 +1486,7 @@ impl Game<'_> {
     pub(in crate::game) fn apply_darkness(&mut self, at: [f64; 3], radius: f64) {
         self.for_each_player(|g| g.darkness_on_player(at, radius));
     }
-    pub(in crate::game) fn darkness_on_player(&mut self, at: [f64; 3], radius: f64) {
+    pub(in crate::game::client_side) fn darkness_on_player(&mut self, at: [f64; 3], radius: f64) {
         if self.creative || self.spectator() {
             return;
         }
@@ -1537,7 +1560,7 @@ impl Game<'_> {
         self.catalyst_bloom(key);
         true
     }
-    pub(in crate::game) fn catalyst_bloom(&mut self, key: (i32, i32, i32)) {
+    pub(in crate::game::client_side) fn catalyst_bloom(&mut self, key: (i32, i32, i32)) {
         let pos = BlockPos::new(key.0, key.1, key.2);
         self.with_level(|b, level, ticks| b.sculk_catalyst_bloom(level, ticks, pos));
         self.native_sculk_bloom(self.dim.id(), [key.0, key.1, key.2]);
@@ -1652,7 +1675,7 @@ impl Game<'_> {
         }
     }
     /// `ParticleUtils.spawnParticleOnFace` for a sculk charge.
-    pub(in crate::game) fn spawn_particle_on_face(
+    pub(in crate::game::client_side) fn spawn_particle_on_face(
         &mut self,
         pos: BlockPos,
         face: Direction,
@@ -1708,7 +1731,7 @@ impl Game<'_> {
     /// 1, 0, 0, 0, 0)` from `VibrationSystem.Ticker.trySelectAndScheduleVibration`:
     /// the window draws it when it is a client, and every player within 32
     /// blocks is sent it.
-    pub(in crate::game) fn vibration_particle(
+    pub(in crate::game::client_side) fn vibration_particle(
         &mut self,
         source: PositionSource,
         from: [f64; 3],
@@ -1870,7 +1893,7 @@ impl Game<'_> {
 
     /// Events from entities moving, getting hurt and dying, derived from what
     /// changed this tick.
-    pub(in crate::game) fn tick_entity_events(&mut self) {
+    pub(in crate::game::client_side) fn tick_entity_events(&mut self) {
         self.tick_player_sculk_events();
         self.tick_mob_sculk_events();
         if !self.sculk.falling_items.is_empty() {
@@ -2085,7 +2108,7 @@ impl Game<'_> {
     }
 
     /// Where the vehicle `id` stands: a mob, boat, minecart or cushion.
-    pub(in crate::game) fn vehicle_position(&mut self, id: u32) -> Option<[f64; 3]> {
+    pub(in crate::game::client_side) fn vehicle_position(&mut self, id: u32) -> Option<[f64; 3]> {
         let p = if let Some(i) = self.mob_slot(id) {
             self.mobs[i].position
         } else if let Some(b) = self.boats.iter().find(|b| b.id == id) {
@@ -2129,7 +2152,7 @@ impl Game<'_> {
             }
         }
     }
-    pub(in crate::game) fn in_water_at(&self, at: [f64; 3]) -> bool {
+    pub(in crate::game::client_side) fn in_water_at(&self, at: [f64; 3]) -> bool {
         let (x, y, z) = (
             at[0].floor() as i32,
             at[1].floor() as i32,
@@ -2166,7 +2189,7 @@ impl Game<'_> {
         .flatten()
     }
     /// `Entity.mainSupportingBlockPos` of a player or mob on the ground.
-    pub(in crate::game) fn main_support(&mut self, who: Who) -> Option<BlockPos> {
+    pub(in crate::game::client_side) fn main_support(&mut self, who: Who) -> Option<BlockPos> {
         match who {
             Who::Player => self.player.as_ref()?.ground.supporting_block,
             Who::Mob(id) => {
@@ -2333,7 +2356,7 @@ impl Game<'_> {
 pub(in crate::game) const DARKNESS_BLEND: i32 = 22;
 
 /// `MobEffectInstance.BlendState.hasEffect` for the darkness effect.
-pub(in crate::game) fn darkness_target(e: &EffectInstance) -> f32 {
+pub(in crate::game::client_side) fn darkness_target(e: &EffectInstance) -> f32 {
     if e.ends_within(DARKNESS_BLEND) {
         0.0
     } else {
@@ -2344,7 +2367,7 @@ pub(in crate::game) fn darkness_target(e: &EffectInstance) -> f32 {
 /// `MobEffectInstance.BlendState.tick` for the darkness effect: from the
 /// (previous, current) factors, the next ones. It fades in and out over 22
 /// ticks; with no darkness it is gone.
-pub(in crate::game) fn darkness_blend_tick(
+pub(in crate::game::client_side) fn darkness_blend_tick(
     effects: &PlayerEffects,
     (_, current): (f32, f32),
 ) -> (f32, f32) {
@@ -2360,14 +2383,17 @@ pub(in crate::game) fn darkness_blend_tick(
 
 /// The darkness effect's blend factor at the partial tick, from its (previous, current)
 /// factors (`Mth.lerp(partial, previous, current)`).
-pub(in crate::game) fn darkness_blend_at((previous, current): (f32, f32), partial: f32) -> f32 {
+pub(in crate::game::client_side) fn darkness_blend_at(
+    (previous, current): (f32, f32),
+    partial: f32,
+) -> f32 {
     previous + (current - previous) * partial
 }
 
 /// `GameRenderer.nightVisionScale` of another entity's night vision instance with `duration`
 /// ticks left: 1, or over its last 200 ticks (`MobEffectInstance.endsWithin(200)`: only -1 is
 /// infinite) a flicker on `Mth.sin`'s table, in vanilla's float order.
-pub(in crate::game) fn night_vision_scale(duration: i32, partial: f32) -> f32 {
+pub(in crate::game::client_side) fn night_vision_scale(duration: i32, partial: f32) -> f32 {
     if duration == -1 || duration > 200 {
         return 1.0;
     }

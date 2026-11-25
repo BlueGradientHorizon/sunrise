@@ -82,7 +82,7 @@ impl Game<'_> {
         }
     }
     /// A hotbar key as a spectator (`SpectatorGui.onHotbarSelected`).
-    pub(in crate::game) fn spectator_hotbar_key(&mut self, slot: i32) {
+    pub(in crate::game::client_side) fn spectator_hotbar_key(&mut self, slot: i32) {
         let now = self.spectator_now();
         let menu = self.spectator_menu_if_needed();
         let outcome = self
@@ -92,7 +92,7 @@ impl Game<'_> {
         self.spectator_outcome(outcome);
     }
     /// `key.spectatorHotbar`: opens the menu, or uses the selected item.
-    pub(in crate::game) fn spectator_action_key(&mut self) {
+    pub(in crate::game::client_side) fn spectator_action_key(&mut self) {
         let now = self.spectator_now();
         let menu = self.spectator_menu_if_needed();
         let outcome = self.client.spectator_gui.on_action_key(now, menu);
@@ -103,12 +103,12 @@ impl Game<'_> {
         (!self.client.spectator_gui.is_menu_active()).then(|| self.new_spectator_menu())
     }
     /// `MouseHandler.onScroll` in spectator mode with the menu up.
-    pub(in crate::game) fn spectator_scroll(&mut self, wheel: i32) {
+    pub(in crate::game::client_side) fn spectator_scroll(&mut self, wheel: i32) {
         let now = self.spectator_now();
         self.client.spectator_gui.on_mouse_scrolled(wheel, now);
     }
     /// `Hud.extractHotbar` for a spectator, and `extractAction`'s prompt.
-    pub(in crate::game) fn draw_spectator_hotbar(
+    pub(in crate::game::client_side) fn draw_spectator_hotbar(
         &mut self,
         batch: &mut HudBatch,
         show_action: bool,

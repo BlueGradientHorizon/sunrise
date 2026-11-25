@@ -23,7 +23,7 @@ struct ServerSources {
 static SOURCES: Mutex<Option<ServerSources>> = Mutex::new(None);
 
 /// Every byte of the packs' files, what a pack set is keyed by.
-pub(in crate::game) fn overlay_key(overlay: &sunrise_world::loot::PackOverlay) -> u64 {
+pub(in crate::game::server_side) fn overlay_key(overlay: &sunrise_world::loot::PackOverlay) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     overlay.files.hash(&mut hasher);
@@ -134,7 +134,7 @@ pub(in crate::game) fn initial_sources(
 
 /// Build server recipes privately so a refused reload leaves the current cache intact.
 /// Like `load_sources`, for a caller that builds the tables with `Recipes::from_resolved`.
-pub(in crate::game) fn prepare_server_sources(
+pub(in crate::game::server_side) fn prepare_server_sources(
     root: &std::path::Path,
     item_data: &ItemData,
     items: &Items,
@@ -149,7 +149,7 @@ pub(in crate::game) fn prepare_server_sources(
     )
 }
 
-pub(in crate::game) fn install_server_sources(
+pub(in crate::game::server_side) fn install_server_sources(
     root: &std::path::Path,
     item_data: &ItemData,
     overlay: &sunrise_world::loot::PackOverlay,
@@ -164,7 +164,7 @@ pub(in crate::game) fn install_server_sources(
 }
 
 /// The recipes of a load of `origin`: a server's are shared, a client's own.
-pub(in crate::game) fn load_sources(
+pub(in crate::game::server_side) fn load_sources(
     root: &std::path::Path,
     item_data: &ItemData,
     items: &Items,
@@ -233,7 +233,7 @@ pub(in crate::game) fn sync_data(
     cached_sync_data(&mut sync, root, overlay, item_data, items)
 }
 
-pub(in crate::game) fn cached_sync_data(
+pub(in crate::game::server_side) fn cached_sync_data(
     sync: &mut SyncCache,
     root: &std::path::Path,
     overlay: &sunrise_world::loot::PackOverlay,
@@ -289,7 +289,7 @@ pub(in crate::game) fn cached_sync_data(
 
 /// Keep a usable no-pack preload, but decode any eager world wire data in a
 /// private cache so a refused decode cannot publish the world's registries.
-pub(in crate::game) fn prepare_world_sync_data(
+pub(in crate::game::server_side) fn prepare_world_sync_data(
     root: &std::path::Path,
     item_data: &ItemData,
     overlay: &sunrise_world::loot::PackOverlay,
@@ -309,11 +309,11 @@ pub(in crate::game) fn prepare_world_sync_data(
     Ok(staged)
 }
 
-pub(in crate::game) fn install_world_sync_data(staged: SyncCache) {
+pub(in crate::game::server_side) fn install_world_sync_data(staged: SyncCache) {
     *SYNC.lock().unwrap_or_else(|e| e.into_inner()) = staged;
 }
 
-pub(in crate::game) fn initialize_world_sync_data(
+pub(in crate::game::server_side) fn initialize_world_sync_data(
     sync: &mut SyncCache,
     root: &std::path::Path,
     overlay: &sunrise_world::loot::PackOverlay,
@@ -356,7 +356,7 @@ pub(in crate::game) fn cached_reload_sync() -> Option<Arc<SyncData>> {
 /// Keep lazy-cache admission aligned with the current packs even when no
 /// complete wire snapshot has been loaded yet. Damage definitions stay frozen.
 #[cfg(test)]
-pub(in crate::game) fn prepare_sync_reload(
+pub(in crate::game::server_side) fn prepare_sync_reload(
     sync: &mut SyncCache,
     overlay: &sunrise_world::loot::PackOverlay,
 ) -> Option<Arc<SyncData>> {
@@ -371,7 +371,7 @@ pub(in crate::game) fn prepare_sync_reload(
 /// tags, recipes and advancements read again with the world's packs, the
 /// synchronized registries `kept` (the hub's) as they were, and that becomes
 /// what `sync_data` gives.
-pub(in crate::game) fn prepare_wire_reload(
+pub(in crate::game::server_side) fn prepare_wire_reload(
     root: &std::path::Path,
     item_data: &ItemData,
     overlay: &sunrise_world::loot::PackOverlay,
@@ -395,7 +395,7 @@ pub(in crate::game) fn prepare_wire_reload(
     })
 }
 
-pub(in crate::game) fn install_wire_reload(
+pub(in crate::game::server_side) fn install_wire_reload(
     root: &std::path::Path,
     item_data: &ItemData,
     overlay: &sunrise_world::loot::PackOverlay,
@@ -421,7 +421,7 @@ impl Game<'_> {
     /// The commands' `minecraft:dialog` ids as the clients get them in the
     /// configuration phase (`sync`, the world's packs' dialogs among them):
     /// `/dialog show` parses an id against these and sends its index.
-    pub(in crate::game) fn sync_dialog_ids(&mut self, sync: &SyncData) {
+    pub(in crate::game::server_side) fn sync_dialog_ids(&mut self, sync: &SyncData) {
         let Some(names) = sync.dynamic.registries.get("minecraft:dialog") else {
             return;
         };
@@ -437,7 +437,7 @@ impl Game<'_> {
 
 /// A server's own data load over `item_data`'s registry inputs: the owner of
 /// the data a server reads and sends, whichever window shares the `ItemData`.
-pub(in crate::game) fn server_data_load(
+pub(in crate::game::server_side) fn server_data_load(
     root: &std::path::Path,
     item_data: &ItemData,
 ) -> std::io::Result<sunrise_world::native_load_context::LoadContext> {
@@ -516,7 +516,7 @@ pub(in crate::game) fn preload_sync_data(
 impl SyncPreload {
     /// The world is open: without packs of its own (`overlay`), what was read
     /// becomes `sync_data`'s; with them, `sync_data` loads them as before.
-    pub(in crate::game) fn adopt(self, overlay: &sunrise_world::loot::PackOverlay) {
+    pub(in crate::game::server_side) fn adopt(self, overlay: &sunrise_world::loot::PackOverlay) {
         if !overlay.files.is_empty() {
             return;
         }

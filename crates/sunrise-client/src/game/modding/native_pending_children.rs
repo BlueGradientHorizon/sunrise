@@ -24,7 +24,7 @@ pub(in crate::game) struct PendingMob {
     pub(in crate::game) dimension: super::Dim,
 }
 
-pub(in crate::game) fn pending_error(error: Error) -> UnspawnedMobError {
+pub(in crate::game::server_side) fn pending_error(error: Error) -> UnspawnedMobError {
     match error {
         Error::Expired => UnspawnedMobError::Expired,
         Error::Ownership => UnspawnedMobError::Ownership,
@@ -35,7 +35,7 @@ pub(in crate::game) fn pending_error(error: Error) -> UnspawnedMobError {
 }
 
 /// Ends the previous listener's leases when any new listener has begun.
-pub(in crate::game) fn sync_listener(
+pub(in crate::game::server_side) fn sync_listener(
     arena: &RefCell<PendingChildren<PendingMob>>,
     hook: &std::cell::Cell<Option<mod_api::HookId>>,
 ) {
@@ -46,7 +46,7 @@ pub(in crate::game) fn sync_listener(
     }
 }
 
-pub(in crate::game) fn pending_key(
+pub(in crate::game::server_side) fn pending_key(
     game: &Game<'_>,
     mob: UnspawnedMobRef,
 ) -> Result<Option<Borrow>, UnspawnedMobError> {
@@ -83,7 +83,11 @@ impl Children {
     /// Capture only shared resources and action ownership, leaving Game available as a
     /// mutable ServerHost during dispatch. The caller must still recheck the live world,
     /// parent and read-set versions before accepting the frozen output.
-    pub(in crate::game) fn new(game: &Game<'_>, action: Action, breeding: bool) -> Self {
+    pub(in crate::game::server_side) fn new(
+        game: &Game<'_>,
+        action: Action,
+        breeding: bool,
+    ) -> Self {
         game.expire_standalone_lends();
         Self {
             resources: game.res.clone(),
@@ -96,7 +100,9 @@ impl Children {
         }
     }
 
-    pub(in crate::game) fn receiver(&self) -> Result<PendingChildrenRef, UnspawnedMobError> {
+    pub(in crate::game::server_side) fn receiver(
+        &self,
+    ) -> Result<PendingChildrenRef, UnspawnedMobError> {
         sync_listener(&self.arena, &self.hook);
         let (world, lease) = self
             .arena
@@ -142,7 +148,7 @@ impl Children {
     /// Object invariants in addition to the caller's authoritative parent/read-set check.
     /// In particular this validates the complete list before any insertion consumer runs.
     #[cfg(test)]
-    pub(in crate::game) fn valid_child(&self, child: &PendingMob) -> bool {
+    pub(in crate::game::server_side) fn valid_child(&self, child: &PendingMob) -> bool {
         valid_child(&self.resources, self.dimension, self.breeding, child)
     }
 
@@ -342,7 +348,7 @@ impl PendingChildrenEdits for Children {
 /// Whether a final child satisfies every object invariant: a registered kind, the action's
 /// dimension, a finite spawnable position and yaw, baby state the species supports (a
 /// breeding child must be one) and a size the species allows.
-pub(in crate::game) fn valid_child(
+pub(in crate::game::server_side) fn valid_child(
     resources: &super::Resources,
     dimension: super::Dim,
     breeding: bool,

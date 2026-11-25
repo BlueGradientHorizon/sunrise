@@ -29,7 +29,7 @@ impl Game<'_> {
     /// `Zombie.hurtServer` after the hit: on Hard, with the zombie's chance
     /// and monsters spawning, a copy of it appears out of sight and takes
     /// `target`; both then call less often.
-    pub(in crate::game) fn call_reinforcements(&mut self, caller: u32, target: Who) {
+    pub(in crate::game::server_side) fn call_reinforcements(&mut self, caller: u32, target: Who) {
         let Some(index) = self.mobs.iter().position(|m| m.id == caller) else {
             return;
         };

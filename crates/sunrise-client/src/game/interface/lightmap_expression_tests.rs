@@ -262,13 +262,15 @@ fn corner(game: &mut super::Game<'_>) -> [u8; 3] {
 }
 
 /// A game frame.
-pub(in crate::game) fn frame(game: &mut super::Game<'_>) -> sunrise_client::Result<bool> {
+pub(in crate::game::client_side) fn frame(
+    game: &mut super::Game<'_>,
+) -> sunrise_client::Result<bool> {
     game.render_with(|renderer, frame| renderer.render(frame))
 }
 
 /// The colour of the pixel two in from the top left corner of the frame `draw` draws (a game
 /// frame, a loading screen's), from a screenshot of it.
-pub(in crate::game) fn corner_of(
+pub(in crate::game::client_side) fn corner_of(
     game: &mut super::Game<'_>,
     draw: impl FnOnce(&mut super::Game<'_>) -> sunrise_client::Result<bool>,
 ) -> [u8; 3] {

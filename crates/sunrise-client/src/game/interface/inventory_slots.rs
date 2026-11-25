@@ -39,7 +39,7 @@ impl Game<'_> {
     /// craft drag a dragged slot shows what it would hold over a white
     /// highlight (its count yellow when the slot caps it), and hides while
     /// it is the drag's only slot.
-    pub(in crate::game) fn draw_slot_item(
+    pub(in crate::game::client_side) fn draw_slot_item(
         &self,
         batch: &mut HudBatch,
         drag: Option<&DragView>,
@@ -74,7 +74,7 @@ impl Game<'_> {
     }
     /// `extractCarriedItem`: the carried stack at the cursor, showing what a
     /// quick craft drag over several slots leaves in hand.
-    pub(in crate::game) fn draw_carried(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_carried(&mut self, batch: &mut HudBatch) {
         let Some(mut stack) = self.carried.clone() else {
             return;
         };
@@ -92,7 +92,7 @@ impl Game<'_> {
         );
     }
     /// The quick craft drag in progress, as the menu engine previews it.
-    pub(in crate::game) fn drag_view(&mut self) -> Option<DragView> {
+    pub(in crate::game::client_side) fn drag_view(&mut self) -> Option<DragView> {
         let (ty, slots) = self.client.inv_drag.clone()?;
         let mut view = None;
         self.menu_session(|menu, env, to_menu| {
@@ -119,7 +119,7 @@ impl Game<'_> {
     /// Whether a quick craft drag takes `slot`
     /// (`shouldAddSlotToQuickCraft`); screens the menu engine doesn't
     /// model take every slot.
-    pub(in crate::game) fn quick_craft_accepts(
+    pub(in crate::game::client_side) fn quick_craft_accepts(
         &mut self,
         slot: usize,
         ty: i32,
@@ -185,7 +185,7 @@ impl Game<'_> {
     /// The open container screen's player-inventory origin (`getXOrigin`/
     /// `getYOrigin`): the build's, or the frame's own arithmetic with no
     /// build yet.
-    pub(in crate::game) fn inventory_origin(&self, batch: &HudBatch) -> (f32, f32) {
+    pub(in crate::game::client_side) fn inventory_origin(&self, batch: &HudBatch) -> (f32, f32) {
         match self.built_container(batch) {
             Some(layout) => layout.origin,
             None => self.inventory_origin_unbuilt(batch),
@@ -195,7 +195,10 @@ impl Game<'_> {
     /// own arithmetic, and the fallback when no build holds this size. The
     /// open book moves the window right, the room the mods ask beside it
     /// (`screen_room`) left.
-    pub(in crate::game) fn inventory_origin_unbuilt(&self, batch: &HudBatch) -> (f32, f32) {
+    pub(in crate::game::client_side) fn inventory_origin_unbuilt(
+        &self,
+        batch: &HudBatch,
+    ) -> (f32, f32) {
         if self.client.screen == Screen::Creative {
             return Self::creative_origin(batch);
         }
@@ -205,7 +208,7 @@ impl Game<'_> {
         (x, y)
     }
     /// InventoryMenu / CraftingMenu slot layouts.
-    pub(in crate::game) fn slot_position(&self, i: usize) -> (f32, f32) {
+    pub(in crate::game::client_side) fn slot_position(&self, i: usize) -> (f32, f32) {
         #[cfg(test)]
         SLOT_POSITIONS.with(|count| count.set(count.get() + 1));
         if self.creative_inventory_open()
@@ -297,7 +300,12 @@ impl Game<'_> {
     /// from the build's slot boxes rather than a fresh grid, so the hit test
     /// is the one the frame draws with. None while the recipe book covers the
     /// menu in a narrow window (`AbstractRecipeBookScreen.isHovering`).
-    pub(in crate::game) fn slot_at(&self, batch: &HudBatch, x: f32, y: f32) -> Option<usize> {
+    pub(in crate::game::client_side) fn slot_at(
+        &self,
+        batch: &HudBatch,
+        x: f32,
+        y: f32,
+    ) -> Option<usize> {
         if self.book_covers_menu(batch.width) {
             return None;
         }
@@ -350,7 +358,7 @@ impl Game<'_> {
     /// `AbstractContainerScreen.extractSlotHighlightFront`: the 24 x 24
     /// `container/slot_highlight_back` sprite behind the slot at `x`, `y` (its
     /// 16 x 16 item box), the `_front` one over its item.
-    pub(in crate::game) fn draw_slot_highlight(
+    pub(in crate::game::client_side) fn draw_slot_highlight(
         &self,
         batch: &mut HudBatch,
         front: bool,
@@ -376,7 +384,7 @@ impl Game<'_> {
     /// The highlight of the slot under the cursor, for the screens whose
     /// slots all sit in `slot_at`'s grid. `Slot.isHighlightable` is false
     /// for the crafter's result (`NonInteractiveResultSlot`).
-    pub(in crate::game) fn draw_hovered_slot_highlight(
+    pub(in crate::game::client_side) fn draw_hovered_slot_highlight(
         &self,
         batch: &mut HudBatch,
         front: bool,
@@ -436,7 +444,7 @@ impl Game<'_> {
             _ => self.inventory[i].clone(),
         }
     }
-    pub(in crate::game) fn craft_result(&self) -> Option<ItemStack> {
+    pub(in crate::game::client_side) fn craft_result(&self) -> Option<ItemStack> {
         // A server's result slot is the server's (`CraftingMenu.slotChangedCraftingGrid`).
         if let Some(r) = &self.remote {
             return r.craft_result.clone();
@@ -467,7 +475,12 @@ impl Game<'_> {
             .find_with(&self.loop_context, &grid, n, &scale)
             .map(|(name, result)| (name.to_owned(), result))
     }
-    pub(in crate::game) fn draw_inventory_slots(&mut self, batch: &mut HudBatch, ox: f32, oy: f32) {
+    pub(in crate::game::client_side) fn draw_inventory_slots(
+        &mut self,
+        batch: &mut HudBatch,
+        ox: f32,
+        oy: f32,
+    ) {
         let drag = self.drag_view();
         for i in self.slots() {
             let (sx, sy) = self.slot_position(i);
@@ -488,7 +501,7 @@ impl Game<'_> {
         }
     }
     /// True when the inventory painter ran, not a station without its side regions.
-    pub(in crate::game) fn draw_inventory(&mut self, batch: &mut HudBatch) -> bool {
+    pub(in crate::game::client_side) fn draw_inventory(&mut self, batch: &mut HudBatch) -> bool {
         screen_info::begin_container("container");
         if self.draw_station(batch) {
             return false;

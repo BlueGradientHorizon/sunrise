@@ -28,7 +28,7 @@ impl Game<'_> {
     /// The server thread's half of the debug entries, in the level of
     /// `dim` while it is in place: the server chunk's heightmaps, the local
     /// difficulty, the last spawn state and the chunk source's counts.
-    pub(in crate::game) fn server_debug_lines(&self, feet: [i32; 3]) -> ServerDebug {
+    pub(in crate::game::server_side) fn server_debug_lines(&self, feet: [i32; 3]) -> ServerDebug {
         let [x, y, z] = feet;
         let key = (x >> 4, z >> 4);
         let loaded = self.world.chunks.contains_key(&key);

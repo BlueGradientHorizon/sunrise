@@ -37,13 +37,13 @@ pub fn cache_dir() -> PathBuf {
         .unwrap_or_default()
         .join(".sunrise-cache/resourcepacks")
 }
-pub fn packs_dir() -> PathBuf {
+pub(in crate::game::client_side) fn packs_dir() -> PathBuf {
     std::env::current_dir()
         .unwrap_or_default()
         .join("resourcepacks")
 }
 /// `Blaze3D.openPath`: the desktop's handler on the folder (the default file manager).
-pub fn open_folder(dir: &Path) {
+pub(in crate::game::client_side) fn open_folder(dir: &Path) {
     if let Err(e) = sunrise_client::desktop::open_path(dir) {
         log::warn!("Sunrise: could not open {}: {e}", dir.display());
     }
@@ -63,7 +63,7 @@ pub(in crate::game) struct PackRoots {
 }
 
 impl PackRoots {
-    pub(in crate::game) fn for_selection(
+    pub(in crate::game::client_side) fn for_selection(
         base: ResourceRoot,
         all: &[Pack],
         ids: &[String],
@@ -132,7 +132,7 @@ pub(in crate::game) fn layer_client_packs(
             .with_mod_layers(base.mod_layers().clone()),
     )
 }
-pub(in crate::game) fn info(p: &Pack) -> PackInfo {
+pub(in crate::game::client_side) fn info(p: &Pack) -> PackInfo {
     if let Some(info) = &p.selection {
         return info.clone();
     }
@@ -158,7 +158,7 @@ pub(in crate::game) fn info(p: &Pack) -> PackInfo {
 /// A pack from `DownloadedPackSource.loadRequestedPacks`: fixed at the top of
 /// the selected list (`DOWNLOADED_PACK_SELECTION`), labelled as a server pack
 /// (or a world's own pack when its id is the local-world uuid).
-pub(in crate::game) fn downloaded_info(p: &Pack) -> PackInfo {
+pub(in crate::game::client_side) fn downloaded_info(p: &Pack) -> PackInfo {
     // `WorldOpenFlows.WORLD_PACK_ID` as hex in `server/{uuid}/…`.
     const WORLD: &str = "server/640a6a92b6cb48a0b391831586500359/";
     let world = p.id.starts_with(WORLD);
@@ -182,7 +182,7 @@ pub(in crate::game) fn downloaded_info(p: &Pack) -> PackInfo {
 }
 /// The vanilla pack: required, at the bottom (`BuiltInPackSource`), with the
 /// client JAR's `pack.png` that the prepared resources hold.
-pub(in crate::game) fn vanilla_info(vanilla: &Path) -> PackInfo {
+pub(in crate::game::client_side) fn vanilla_info(vanilla: &Path) -> PackInfo {
     PackInfo {
         id: "vanilla".into(),
         title: Text::translate("resourcePack.vanilla.name", &[]),
@@ -218,7 +218,7 @@ pub(in crate::game) fn pack_infos(
 }
 /// The folder packs' Polytone config entries (#11486), by pack id, for those that have some:
 /// what the Pack Options page edits.
-pub(in crate::game) fn pack_configs(
+pub(in crate::game::client_side) fn pack_configs(
     vanilla: &Path,
 ) -> std::collections::BTreeMap<String, packs::Configs> {
     packs::discover(vanilla, &packs_dir())
@@ -229,7 +229,7 @@ pub(in crate::game) fn pack_configs(
 }
 
 /// The confirmation's callback, shared by the startup menu and in-game options.
-pub(in crate::game) fn import_resource_packs(
+pub(in crate::game::client_side) fn import_resource_packs(
     ui: &mut sunrise_client::options_ui::OptionsUi,
     vanilla: &Path,
     server: &[Pack],
@@ -258,7 +258,7 @@ pub(in crate::game) fn import_resource_packs(
 }
 /// The player changed Pack Options: `chosen` replaces their choices for `entries`, kept in
 /// `polytone-configs.json`.
-pub(in crate::game) fn save_pack_options(
+pub(in crate::game::client_side) fn save_pack_options(
     entries: &[String],
     chosen: std::collections::BTreeMap<String, packs::ConfigValue>,
 ) {
@@ -271,7 +271,7 @@ pub(in crate::game) fn save_pack_options(
     packs::set_polytone_choices(all);
 }
 impl Game<'_> {
-    pub(in crate::game) fn drop_pack_file(&mut self, path: &Path) {
+    pub(in crate::game::client_side) fn drop_pack_file(&mut self, path: &Path) {
         let size = self.gui_size();
         let handled = self.client.screen == super::Screen::Options
             && self
@@ -285,7 +285,7 @@ impl Game<'_> {
             title.drop_file(path.to_path_buf());
         }
     }
-    pub(in crate::game) fn resource_pack_infos(&mut self) -> Vec<PackInfo> {
+    pub(in crate::game::client_side) fn resource_pack_infos(&mut self) -> Vec<PackInfo> {
         let additional = self.discover_mod_packs(mod_api::PackType::ClientResources);
         pack_infos(
             &self.vanilla_root(),
@@ -302,7 +302,7 @@ impl Game<'_> {
     }
     /// Whether all active packs preserve vanilla's block models. The server
     /// overlay sits above the local selection and must be included too.
-    pub(in crate::game) fn model_packs_are_vanilla(&self) -> bool {
+    pub(in crate::game::client_side) fn model_packs_are_vanilla(&self) -> bool {
         self.settings.sunrise.vanilla_models_with_server_packs(
             self.settings.resource_packs.iter().map(String::as_str),
             self.server_packs
@@ -313,7 +313,7 @@ impl Game<'_> {
         )
     }
     /// The leaf mode that is safe for the current local and server packs.
-    pub(in crate::game) fn effective_leaf_culling(
+    pub(in crate::game::client_side) fn effective_leaf_culling(
         &self,
     ) -> sunrise_client::graphics::LeafCullingMode {
         self.settings
@@ -351,7 +351,7 @@ impl Game<'_> {
     /// the window keeps drawing; `drive_pack_reload` applies it.
     /// Sunrise's pack browser: what its worker finished since the last
     /// frame. A pack that landed becomes an entry in the available list.
-    pub(in crate::game) fn drive_pack_browser(&mut self) {
+    pub(in crate::game::client_side) fn drive_pack_browser(&mut self) {
         let Some(screen) = &mut self.ui.options.pack_screen else {
             return;
         };
@@ -392,7 +392,7 @@ impl Game<'_> {
     }
     /// NeoForge's `Minecraft.rollbackResourcePacks`: reset the selection and
     /// reload only if an optional pack was selected; otherwise show the error.
-    pub(in crate::game) fn selection_reload_failed(&mut self, error: &str) {
+    pub(in crate::game::client_side) fn selection_reload_failed(&mut self, error: &str) {
         log::warn!("Sunrise: resource reload failed: {error}");
         let mut all = packs::discover(&self.vanilla_root(), &packs_dir());
         all.extend(self.discover_mod_packs(mod_api::PackType::ClientResources));
@@ -420,7 +420,10 @@ impl Game<'_> {
     /// worker (`createReload`'s background executor); the frame draws its
     /// progress meanwhile, and the overlay takes no input (`LoadingOverlay`),
     /// so what is held is released (`KeyMapping.releaseAll`).
-    pub(in crate::game) fn spawn_pack_reload(&mut self, kind: ReloadKind) -> std::io::Result<()> {
+    pub(in crate::game::client_side) fn spawn_pack_reload(
+        &mut self,
+        kind: ReloadKind,
+    ) -> std::io::Result<()> {
         // A selection reload, including startup rollback, needs tail-owned mob metadata.
         // An in-flight reload finishes first (vanilla's `pendingReload`).
         if kind == ReloadKind::Selection
@@ -498,7 +501,9 @@ impl Game<'_> {
     /// One frame of the pack reload's `LoadingOverlay`: its bar eased toward
     /// the reload's progress (all of it once applied) and how far it has
     /// faded. `None`, and the overlay dropped, once it has faded out.
-    pub(in crate::game) fn reload_overlay_frame(&mut self) -> Option<(f32, OverlayFade)> {
+    pub(in crate::game::client_side) fn reload_overlay_frame(
+        &mut self,
+    ) -> Option<(f32, OverlayFade)> {
         let overlay = self.client.reload_overlay.as_mut()?;
         let now = Instant::now();
         let since = |at: Instant| now.duration_since(at).as_millis() as u64;
@@ -518,7 +523,7 @@ impl Game<'_> {
     /// `LoadingOverlay.tick` once the reload is done: the staged pack is
     /// applied on the render thread, and its outcome goes to whoever asked
     /// (`reloadResourcePacks`' callback, or `PackReloadConfig.Callbacks`).
-    pub(in crate::game) fn drive_pack_reload(&mut self) {
+    pub(in crate::game::client_side) fn drive_pack_reload(&mut self) {
         let Some((kind, staged)) = self.pack_reload.0.as_mut().and_then(PackReload::finished)
         else {
             return;
@@ -902,7 +907,7 @@ pub(in crate::game) const RELOAD_LINES: [&str; 4] = [
 /// Whether a reload asked for now waits: for the world's resources, or for
 /// the reload already under its overlay (`Minecraft.reloadResourcePacks`
 /// hands back `pendingReload` while a `LoadingOverlay` is up).
-pub(in crate::game) fn reload_waits(world_loading: bool, in_flight: bool) -> bool {
+pub(in crate::game::client_side) fn reload_waits(world_loading: bool, in_flight: bool) -> bool {
     world_loading || in_flight
 }
 /// Who asked for a pack reload: its outcome goes back there.
@@ -944,14 +949,14 @@ pub(in crate::game) struct ReloadOverlay {
 pub(in crate::game) const OVERLAY_HOLD: Duration = Duration::from_millis(1000);
 impl PackReload {
     /// Starts `stage` on its own thread and returns at once.
-    pub(in crate::game) fn spawn(
+    pub(in crate::game::client_side) fn spawn(
         kind: ReloadKind,
         stage: impl FnOnce(&super::Progress) -> StageResult + Send + 'static,
     ) -> std::io::Result<Self> {
         Self::spawn_holding(kind, OVERLAY_HOLD, stage)
     }
     /// `spawn` with the overlay's hold spelled out, so a test need not wait it.
-    pub(in crate::game) fn spawn_holding(
+    pub(in crate::game::client_side) fn spawn_holding(
         kind: ReloadKind,
         hold: Duration,
         stage: impl FnOnce(&super::Progress) -> StageResult + Send + 'static,
@@ -970,12 +975,12 @@ impl PackReload {
             hold,
         })
     }
-    pub(in crate::game) fn kind(&self) -> ReloadKind {
+    pub(in crate::game::client_side) fn kind(&self) -> ReloadKind {
         self.kind
     }
     /// The staged pack once the worker is done and the overlay has had its
     /// second (taken once); none while either is outstanding.
-    pub(in crate::game) fn finished(&mut self) -> Option<(ReloadKind, StageResult)> {
+    pub(in crate::game::client_side) fn finished(&mut self) -> Option<(ReloadKind, StageResult)> {
         if self.started.elapsed() < self.hold || !self.handle.as_ref()?.is_finished() {
             return None;
         }

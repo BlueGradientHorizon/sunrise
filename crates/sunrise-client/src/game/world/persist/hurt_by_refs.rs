@@ -16,7 +16,7 @@ impl Game<'_> {
     /// is not written. A reference read back that names nothing in the level
     /// yet (`ai.last_hurt_by_ref`) is written as it is. This is not
     /// `baseTick`'s cleanup itself, the AI's record, or `#no_anger`.
-    pub(in crate::game) fn put_last_hurt_by_mob(&self, m: &Mob, tag: &mut Tag) {
+    pub(in crate::game::server_side) fn put_last_hurt_by_mob(&self, m: &Mob, tag: &mut Tag) {
         let Tag::Compound(c) = tag else { return };
         // A reference read back and not resolved yet (its attacker is not in
         // the level) is kept as it is, for ever: `baseTick` cannot resolve it,
@@ -70,7 +70,7 @@ impl Game<'_> {
     /// One naming nothing loaded stays a bare UUID, still saved. A reference to
     /// the mob itself resolves like any other (`getEntity` looks up the UUID
     /// and does not exclude the holder).
-    pub(in crate::game) fn resolve_last_hurt_by_refs(&mut self) {
+    pub(in crate::game::server_side) fn resolve_last_hurt_by_refs(&mut self) {
         let resolved: Vec<(usize, Who)> = self
             .mobs
             .iter()

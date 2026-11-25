@@ -9,8 +9,6 @@ pub(in crate::game::server_side) use crate::game::client_side::totem::TOTEM;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::totem::TOTEM_EVENT;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::totem::death_protection_of;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::totem::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_assets::item_model::DisplayContext;
@@ -29,7 +27,7 @@ impl Game<'_> {
     /// count it, set health to 1, then clear and apply its effects. Returns
     /// the player's body with the protector copy the activation animation shows.
     /// A server guest's entity event is broadcast before the hit's Post.
-    pub(in crate::game) fn apply_totem(&mut self, entity: i32) -> Option<Body> {
+    pub(in crate::game::server_side) fn apply_totem(&mut self, entity: i32) -> Option<Body> {
         // The mods hear a server player's totem before it is used up.
         if let (Some(uuid), Some(name)) = (
             self.server.lan_acting_uuid,

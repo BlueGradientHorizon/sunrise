@@ -12,8 +12,6 @@ pub(in crate::game::server_side) use crate::game::client_side::lightning::Bolt;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::lightning::StrikeState;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::lightning::in_viewer_box;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::lightning::thunder_strike_column;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::lightning::*;
@@ -34,7 +32,7 @@ pub(in crate::game::server_side) use sunrise_world::level::Ticks;
 
 impl Game<'_> {
     /// Load a `minecraft:lightning_bolt` from NBT (`/summon`, `/execute summon`, or a `Passengers` entry).
-    pub(in crate::game) fn load_bolt(
+    pub(in crate::game::server_side) fn load_bolt(
         &mut self,
         mut tag: sunrise_core::nbt::Tag,
         mount: Option<u32>,
@@ -366,7 +364,7 @@ impl Game<'_> {
     /// `ServerChunkCache.tickSpawningChunk`: one `tickThunder` roll per
     /// spawning chunk (within 128 blocks of a player) that is in entity
     /// ticking range.
-    pub(in crate::game) fn tick_thunder(&mut self) {
+    pub(in crate::game::server_side) fn tick_thunder(&mut self) {
         // isRaining (rain level > 0.2) and isThundering (> 0.9) both need
         // Level.canHaveWeather: sky light, no ceiling and not the End.
         let (rain, thunder) = self.world.weather.levels(1.0);

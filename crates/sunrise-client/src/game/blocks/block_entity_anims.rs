@@ -105,7 +105,7 @@ impl Game<'_> {
     /// on both halves of a double chest (`CompoundContainer`). True when the
     /// count went from 0 to 1 or back to 0: the only moments the container
     /// plays its open or close sound.
-    pub(in crate::game) fn container_opener_event(
+    pub(in crate::game::server_side) fn container_opener_event(
         &mut self,
         key: (i32, i32, i32),
         open: bool,
@@ -114,7 +114,7 @@ impl Game<'_> {
         !self.spectator() && self.container_openers_changed(key, open)
     }
     /// `container_opener_event` for a player who is not a spectator (a guest).
-    pub(in crate::game) fn container_openers_changed(
+    pub(in crate::game::server_side) fn container_openers_changed(
         &mut self,
         key: (i32, i32, i32),
         open: bool,
@@ -161,7 +161,7 @@ impl Game<'_> {
     /// chest at `key` (the host and the guests are counted), then
     /// `ChestBlockEntity.signalOpenCount`: block event 1 with the count, here
     /// and for the guests. True when the count crossed zero.
-    pub(in crate::game) fn lid_openers_changed(
+    pub(in crate::game::server_side) fn lid_openers_changed(
         &mut self,
         key: (i32, i32, i32),
         open: bool,
@@ -186,7 +186,7 @@ impl Game<'_> {
     /// `BarrelBlockEntity.openersCounter`: the first opener opens the barrel
     /// (`open=true`), the last one to leave closes it (`updateBlockState`).
     /// True when the count crossed zero.
-    pub(in crate::game) fn barrel_openers_changed(
+    pub(in crate::game::server_side) fn barrel_openers_changed(
         &mut self,
         key: (i32, i32, i32),
         open: bool,
@@ -205,7 +205,11 @@ impl Game<'_> {
     }
     /// One opener more (`open`) or less at `key`: the count before and after
     /// (`ContainerOpenersCounter.incrementOpeners` / `decrementOpeners`).
-    pub(in crate::game) fn count_opener(&mut self, key: (i32, i32, i32), open: bool) -> (i32, i32) {
+    pub(in crate::game::server_side) fn count_opener(
+        &mut self,
+        key: (i32, i32, i32),
+        open: bool,
+    ) -> (i32, i32) {
         let count = self.server.lid_openers.entry(key).or_default();
         let before = *count;
         *count = (before + if open { 1 } else { -1 }).max(0);
@@ -224,7 +228,7 @@ impl Game<'_> {
     }
     /// `BellBlockEntity.updateEntities`: the living entities whose bounding
     /// box meets the bell's block box inflated by 48.
-    pub(in crate::game) fn bell_gather(&self, pos: [i32; 3]) -> Vec<u64> {
+    pub(in crate::game::server_side) fn bell_gather(&self, pos: [i32; 3]) -> Vec<u64> {
         let area = Aabb::new(
             Vec3::new(
                 f64::from(pos[0]) - 48.0,
@@ -254,7 +258,7 @@ impl Game<'_> {
     /// `BellBlockEntity.updateEntities`: every gathered entity alive within 32
     /// blocks of the bell's centre gets `HEARD_BELL_TIME` (only villagers
     /// have a brain that reads it).
-    pub(in crate::game) fn bell_heard(&mut self, pos: [i32; 3], now: i64) {
+    pub(in crate::game::server_side) fn bell_heard(&mut self, pos: [i32; 3], now: i64) {
         let nearby = self
             .be_anims
             .bells
@@ -273,7 +277,7 @@ impl Game<'_> {
     }
     /// `ShulkerBoxBlock.canOpen`: a closed box opens only when its lid has
     /// room to rise (`level.noCollision` of the half-open lid box).
-    pub(in crate::game) fn shulker_can_open(&self, pos: [i32; 3]) -> bool {
+    pub(in crate::game::server_side) fn shulker_can_open(&self, pos: [i32; 3]) -> bool {
         let state = self.world.block(pos[0], pos[1], pos[2]).0;
         let Some(Ticker::Shulker { facing }) = self.be_anims.ticker(state) else {
             return true;
@@ -299,7 +303,7 @@ impl Game<'_> {
     }
     /// `BellBlockEntity.serverTick`: ringing server bells belong to the world,
     /// including when no renderer is attached.
-    pub(in crate::game) fn tick_bell_servers(&mut self) {
+    pub(in crate::game::server_side) fn tick_bell_servers(&mut self) {
         if self.be_anims.bells.is_empty() {
             return;
         }
@@ -320,7 +324,7 @@ impl Game<'_> {
     }
 
     /// The server tickers of the bells and conduits, which a server runs in its block-entity pass.
-    pub(in crate::game) fn tick_block_entity_servers(&mut self) {
+    pub(in crate::game::server_side) fn tick_block_entity_servers(&mut self) {
         self.tick_conduit_servers();
         self.tick_bell_servers();
     }
@@ -364,7 +368,7 @@ impl Game<'_> {
     /// tick blocks, with or without a renderer. The conduits are looked for
     /// when the shape is checked, every 40 ticks (they have no block entity
     /// of their own here).
-    pub(in crate::game) fn tick_conduit_servers(&mut self) {
+    pub(in crate::game::server_side) fn tick_conduit_servers(&mut self) {
         if self.world.game_time % 40 == 0 {
             self.find_conduits();
         }
@@ -383,7 +387,7 @@ impl Game<'_> {
     }
     /// Sets `be_anims.conduit_servers` to the conduits in the
     /// chunks that tick blocks, keeping the state of those already known.
-    pub(in crate::game) fn find_conduits(&mut self) {
+    pub(in crate::game::server_side) fn find_conduits(&mut self) {
         let levels = self.tickets.0.levels();
         let kinds = &self.be_anims.kinds;
         let is_conduit = |id: u32| matches!(kinds.get(id as usize), Some(Some(Ticker::Conduit)));
@@ -417,7 +421,7 @@ impl Game<'_> {
     /// that ticks blocks: the shape check every 40 ticks with its sounds, the
     /// power for players in range, the hurt for an enemy, then the ambient
     /// sounds.
-    pub(in crate::game) fn tick_conduit_server(&mut self, pos: [i32; 3]) {
+    pub(in crate::game::server_side) fn tick_conduit_server(&mut self, pos: [i32; 3]) {
         let state = self.world.block(pos[0], pos[1], pos[2]).0;
         if self.be_anims.ticker(state) != Some(Ticker::Conduit) {
             // Broken since the chunks were searched.
@@ -491,7 +495,11 @@ impl Game<'_> {
     }
     /// `ConduitBlockEntity.applyEffects`: conduit power for every player
     /// in water or rain within `frames / 7 * 16` blocks.
-    pub(in crate::game) fn conduit_apply_effects(&mut self, pos: [i32; 3], frames: usize) {
+    pub(in crate::game::server_side) fn conduit_apply_effects(
+        &mut self,
+        pos: [i32; 3],
+        frames: usize,
+    ) {
         let range = (frames / 7 * 16) as i64;
         self.for_each_player(|g| {
             let Some(p) = g.player.as_ref().filter(|p| !p.health.dead_or_dying()) else {
@@ -546,7 +554,7 @@ impl Game<'_> {
     /// blocks, else a random enemy in water or rain is chosen; the target
     /// takes 4 magic damage. The target is the block entity's (`Target`), so
     /// a saved or `/data` one is kept or dropped as vanilla's reference is.
-    pub(in crate::game) fn conduit_attack(
+    pub(in crate::game::server_side) fn conduit_attack(
         &mut self,
         conduit: &mut ConduitServer,
         pos: [i32; 3],
@@ -617,7 +625,10 @@ impl Game<'_> {
     }
     /// `ConduitBlockEntity.selectNewTarget`: one of the enemies in water or
     /// rain whose box meets the conduit's block inflated by 8.
-    pub(in crate::game) fn conduit_new_target(&mut self, pos: [i32; 3]) -> Option<u32> {
+    pub(in crate::game::server_side) fn conduit_new_target(
+        &mut self,
+        pos: [i32; 3],
+    ) -> Option<u32> {
         let [x, y, z] = pos.map(f64::from);
         let area = Aabb::new(
             Vec3::new(x - 8.0, y - 8.0, z - 8.0),
@@ -693,7 +704,7 @@ impl Game<'_> {
         }
     }
     /// Whether the gateway at `pos` can be entered (`!isCoolingDown`).
-    pub(in crate::game) fn gateway_available(&self, pos: [i32; 3]) -> bool {
+    pub(in crate::game::server_side) fn gateway_available(&self, pos: [i32; 3]) -> bool {
         self.be_anims
             .gateway_servers
             .get(&pos)
@@ -705,7 +716,7 @@ impl Game<'_> {
 
     /// `EndGatewayBlock.entityInside` on the server: whether the gateway at
     /// `pos` let the entity in (`triggerCooldown`, with its block event).
-    pub(in crate::game) fn gateway_enter(&mut self, pos: [i32; 3]) -> bool {
+    pub(in crate::game::server_side) fn gateway_enter(&mut self, pos: [i32; 3]) -> bool {
         let initial = self.gateway_loaded(pos);
         let entered = self
             .be_anims
@@ -722,7 +733,7 @@ impl Game<'_> {
     }
     /// `triggerCooldown`'s block event 1, on this level and for the window
     /// (`ClientboundBlockEventPacket` within 64 blocks).
-    pub(in crate::game) fn gateway_cooldown_event(&mut self, pos: [i32; 3]) {
+    pub(in crate::game::server_side) fn gateway_cooldown_event(&mut self, pos: [i32; 3]) {
         self.block_entity_event(pos, 1, 0);
         self.lan_block_event(pos, 1, 0);
     }
@@ -740,7 +751,7 @@ impl Game<'_> {
         }
     }
     /// The block entity at `pos` Sunrise keeps as loaded, if any.
-    pub(in crate::game) fn saved_tag(&self, pos: [i32; 3]) -> Option<&Tag> {
+    pub(in crate::game::server_side) fn saved_tag(&self, pos: [i32; 3]) -> Option<&Tag> {
         self.world
             .chunks
             .get(&(pos[0] >> 4, pos[2] >> 4))
@@ -795,7 +806,7 @@ impl Game<'_> {
 }
 
 /// `Entity.isInRain`'s two positions: `blockPosition()` and the same column at the box's top.
-pub(in crate::game) fn rain_positions(at: Vec3, top: f64) -> (BlockPos, BlockPos) {
+pub(in crate::game::server_side) fn rain_positions(at: Vec3, top: f64) -> (BlockPos, BlockPos) {
     let p = BlockPos::new(
         at.x.floor() as i32,
         at.y.floor() as i32,
@@ -812,7 +823,7 @@ pub(in crate::game) mod tests {
         run_replacing_a_gateway_discards_its_old_cooldown();
     }
 
-    pub(in crate::game) fn run_replacing_a_gateway_discards_its_old_cooldown() {
+    pub(in crate::game::server_side) fn run_replacing_a_gateway_discards_its_old_cooldown() {
         use crate::game::*;
         let root = std::path::PathBuf::from(
             std::env::var_os("SUNRISE_TEST_RESOURCES").expect("set SUNRISE_TEST_RESOURCES"),

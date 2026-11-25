@@ -151,7 +151,7 @@ impl Game<'_> {
         self.inventory_menu_slot_boxes(menu.fields().window, name, &batch)
     }
 
-    pub(in crate::game) fn inventory_menu_slot_boxes(
+    pub(in crate::game::client_side) fn inventory_menu_slot_boxes(
         &self,
         window: i32,
         name: &str,
@@ -629,7 +629,7 @@ pub(in crate::game) mod tests {
         }
     }
 
-    pub(in crate::game) fn with_panel(
+    pub(in crate::game::client_side) fn with_panel(
         slots: usize,
         test: impl FnOnce(&mut Game<'_>, &Mutex<Option<(MenuRef, usize)>>),
     ) {
@@ -670,7 +670,7 @@ pub(in crate::game) mod tests {
         });
     }
 
-    pub(in crate::game) fn open_panel(game: &mut Game<'_>) {
+    pub(in crate::game::client_side) fn open_panel(game: &mut Game<'_>) {
         use sunrise_protocol::packets::play::{Clientbound, OpenScreen};
         game.handle_packet(Clientbound::OpenScreen(OpenScreen {
             container: 1,
@@ -720,7 +720,7 @@ pub(in crate::game) mod tests {
         });
     }
 
-    pub(in crate::game) fn creative_tab(
+    pub(in crate::game::client_side) fn creative_tab(
         game: &mut Game<'_>,
         pick: impl Fn(&sunrise_client::creative::Tab) -> bool,
     ) {
@@ -731,7 +731,7 @@ pub(in crate::game) mod tests {
     /// A hidden window's offscreen renderer over a joined level with the player's body in it,
     /// so the public screen reads have a window to lay the screen out in. The event loop
     /// returned holds the window.
-    pub(in crate::game) fn offscreen_window(
+    pub(in crate::game::client_side) fn offscreen_window(
         game: &mut Game<'_>,
     ) -> winit::event_loop::EventLoop<()> {
         let (event_loop, window) = crate::game::native_entity_refs::tests::test_window([320, 240]);
@@ -749,7 +749,7 @@ pub(in crate::game) mod tests {
         event_loop
     }
 
-    pub(in crate::game) fn window_batch(game: &Game<'_>) -> super::super::HudBatch {
+    pub(in crate::game::client_side) fn window_batch(game: &Game<'_>) -> super::super::HudBatch {
         let config = &game.renderer.0.as_ref().unwrap().config;
         super::super::HudBatch::new(
             [config.width, config.height],

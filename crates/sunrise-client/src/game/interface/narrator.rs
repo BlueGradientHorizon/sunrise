@@ -37,7 +37,7 @@ fn check_status(required_active: bool) {
 
 /// The options the narrator reads, after they load or change: its status and
 /// the voice volume (master times voice).
-pub(in crate::game) fn sync(settings: &Settings) {
+pub(in crate::game::client_side) fn sync(settings: &Settings) {
     sunrise_narrator::set_status(settings.narrator());
     sunrise_narrator::set_volume(settings.final_volume("voice"));
 }
@@ -46,7 +46,7 @@ pub(in crate::game) fn sync(settings: &Settings) {
 /// `status`: what was being said stops and "Narrator : <status>" is said,
 /// whatever the status (Off included). Then the `NARRATOR_TOGGLE` toast goes
 /// up, or the one still up takes the new text (`SystemToast.addOrUpdate`).
-pub(in crate::game) fn update_status(
+pub(in crate::game::client_side) fn update_status(
     status: Status,
     toast: Option<&mut SystemToast>,
 ) -> Option<SystemToast> {
@@ -71,7 +71,7 @@ pub(in crate::game) fn update_status(
 /// (`hasControlDownWithQuirk`: Cmd on macOS, Ctrl elsewhere), unless the
 /// screen's focus is an edit box that takes the keys, while the narrator is
 /// there and the Narrator Hotkey option is on.
-pub(in crate::game) fn is_hotkey(
+pub(in crate::game::client_side) fn is_hotkey(
     pressed: bool,
     control_with_quirk: bool,
     letter: Option<char>,
@@ -93,7 +93,7 @@ pub(in crate::game) fn is_hotkey(
 /// (`afterMouseMove`), and `KeyboardHandler.keyPress` (Tab and the arrows
 /// set the input type; a press is `afterKeyboardAction`). The window's own
 /// shortcuts (fullscreen, screenshots, debug keys) never get here.
-pub(in crate::game) fn narrate_input(
+pub(in crate::game::client_side) fn narrate_input(
     narration: &mut ScreenNarrator,
     event: &WindowEvent,
     cursor: (f32, f32),
@@ -121,7 +121,11 @@ pub(in crate::game) fn narrate_input(
 /// `KeyboardHandler.keyPress` for the narration: Tab and the arrows set the
 /// input type, a press is `afterKeyboardAction`. The window's keys and the
 /// control socket's `key` both come here.
-pub(in crate::game) fn narrate_key(narration: &mut ScreenNarrator, key: KeyCode, pressed: bool) {
+pub(in crate::game::client_side) fn narrate_key(
+    narration: &mut ScreenNarrator,
+    key: KeyCode,
+    pressed: bool,
+) {
     match key {
         KeyCode::Tab => narration.set_input(InputType::KeyboardTab),
         KeyCode::ArrowUp | KeyCode::ArrowDown | KeyCode::ArrowLeft | KeyCode::ArrowRight => {
@@ -136,7 +140,7 @@ pub(in crate::game) fn narrate_key(narration: &mut ScreenNarrator, key: KeyCode,
 
 /// The hotkey's step: `options.narrator().set(byId(getId() + 1))`. Whether
 /// the narrator was off before (`wasDisabled`).
-pub(in crate::game) fn cycle_status(settings: &mut Settings) -> bool {
+pub(in crate::game::client_side) fn cycle_status(settings: &mut Settings) -> bool {
     let was = settings.narrator();
     settings.set_narrator(was.next());
     was == Status::Off
@@ -149,13 +153,13 @@ impl Game<'_> {
         self.options.execution_role.is_client()
     }
     /// `GameNarrator.saySystemNow(message)`: cuts off what is being said.
-    pub(in crate::game) fn say_system_now(&self, message: &Text) {
+    pub(in crate::game::client_side) fn say_system_now(&self, message: &Text) {
         if self.narrates() {
             sunrise_narrator::say_system_now(&message.plain());
         }
     }
     /// `GameNarrator.saySystemQueued(message)`.
-    pub(in crate::game) fn say_system_queued(&self, message: &Text) {
+    pub(in crate::game::client_side) fn say_system_queued(&self, message: &Text) {
         if self.narrates() {
             sunrise_narrator::say_system_queued(&message.plain());
         }
@@ -173,13 +177,13 @@ impl Game<'_> {
         }
     }
     /// `GameNarrator.clear()`: what is being said and queued stops.
-    pub(in crate::game) fn clear_narrator(&self) {
+    pub(in crate::game::client_side) fn clear_narrator(&self) {
         if self.narrates() {
             sunrise_narrator::clear();
         }
     }
     /// The narrator option changed, on the options screen or by its hotkey.
-    pub(in crate::game) fn narrator_status_changed(&mut self) {
+    pub(in crate::game::client_side) fn narrator_status_changed(&mut self) {
         let id = SystemToastId::Narrator;
         if let Some(toast) = update_status(
             self.settings.narrator(),
@@ -191,7 +195,7 @@ impl Game<'_> {
     /// The narrator hotkey on a key press or repeat, before the screen or
     /// the game takes the key (it doesn't consume it): the next status,
     /// announced with its toast, saved, then the screen hears of it.
-    pub(in crate::game) fn narrator_hotkey(&mut self, event: &KeyEvent) {
+    pub(in crate::game::client_side) fn narrator_hotkey(&mut self, event: &KeyEvent) {
         let letter = clipboard::shortcut_letter(&event.logical_key, event.physical_key);
         if letter != Some('b') {
             return;
@@ -219,7 +223,7 @@ impl Game<'_> {
     /// after the narrator came on (`NARRATE_DELAY_NARRATOR_ENABLED`) and its
     /// narrator button shows the new value. Sunrise's narrator buttons read
     /// the option each frame.
-    pub(in crate::game) fn on_narrator_status_changed(
+    pub(in crate::game::client_side) fn on_narrator_status_changed(
         &mut self,
         was_disabled: bool,
         trigger: Trigger,
@@ -228,7 +232,7 @@ impl Game<'_> {
     }
     /// The open screen's narration, once a turn after the frame's widgets
     /// were read: `handleDelayedNarration` and a new screen's narration.
-    pub(in crate::game) fn narrate_screen(&mut self) {
+    pub(in crate::game::client_side) fn narrate_screen(&mut self) {
         if !self.narrates() {
             return;
         }
@@ -245,7 +249,7 @@ impl Game<'_> {
     /// book (no `EditBox`), the recipe book (its component has the focus) and
     /// the creative search (focused as a widget, not as the screen's focus)
     /// do not.
-    pub(in crate::game) fn edit_box_focused(&mut self) -> bool {
+    pub(in crate::game::client_side) fn edit_box_focused(&mut self) -> bool {
         if self.mounted_widget_captures_input() {
             return true;
         }
@@ -271,7 +275,7 @@ impl Game<'_> {
 }
 
 /// `Minecraft.destroy`: `narrator.destroy()`.
-pub(in crate::game) fn stop() {
+pub(in crate::game::client_side) fn stop() {
     sunrise_narrator::destroy();
 }
 

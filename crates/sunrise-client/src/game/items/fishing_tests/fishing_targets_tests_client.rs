@@ -15,19 +15,9 @@ pub(in crate::game::client_side) use crate::game::server_side::fishing::fishing_
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::fishing::fishing_targets_tests::align_next_entity_mod4;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::fishing_targets_tests::bits;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::fishing::fishing_targets_tests::check_hook_tick;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::fishing::fishing_targets_tests::clear_entities;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::fishing_targets_tests::fbits;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::fishing_targets_tests::load_witness;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::fishing_targets_tests::run_witness_fishing_bobber_targets;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::fishing_targets_tests::setup_game;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::fishing::fishing_targets_tests::spawn_test_hook;
 #[allow(unused_imports)]
@@ -51,7 +41,7 @@ pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_core::random::{LegacyRandom, RandomSource};
 
-pub(in crate::game) fn reset_arena(game: &mut Game<'_>, target: &str) {
+pub(in crate::game::client_side) fn reset_arena(game: &mut Game<'_>, target: &str) {
     clear_entities(game);
     let _ = game.run_command("fill 0 63 0 11 63 9 minecraft:stone");
     let _ = game.run_command("fill 0 64 0 11 70 9 minecraft:air");

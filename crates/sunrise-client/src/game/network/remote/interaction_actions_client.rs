@@ -7,7 +7,7 @@ impl Game<'_> {
     /// `Hud.onDisconnected`, from `Minecraft.disconnect` and `clearClientLevel`
     /// (a proxy's reconfiguration too), but the chat: joining clears it and a
     /// reconfiguration keeps it (`ChatComponent.storeState`).
-    pub(in crate::game) fn hud_disconnected(&mut self) {
+    pub(in crate::game::client_side) fn hud_disconnected(&mut self) {
         self.tab_list.0.reset();
         self.client.boss_overlay.reset();
         self.client.toast_manager = Default::default();
@@ -17,7 +17,7 @@ impl Game<'_> {
     }
     /// `handleAnimate`: a player wakes up, or an entity gets the critical
     /// hit (`CRIT`) or magic critical hit (`ENCHANTED_HIT`) emitter.
-    pub(in crate::game) fn remote_animate(&mut self, id: i32, action: u8) {
+    pub(in crate::game::client_side) fn remote_animate(&mut self, id: i32, action: u8) {
         use sunrise_client::particles::{ParticleOptions, ParticleType};
         let particle = match action {
             // Player.stopSleepInBed.
@@ -108,7 +108,7 @@ impl Game<'_> {
         }
     }
     /// The server's death message; chat uses the shared ChatComponent.
-    pub(in crate::game) fn remote_hud(&self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn remote_hud(&self, batch: &mut HudBatch) {
         let Some(r) = &self.remote else { return };
         let atlas = &self.gui.atlas;
         let w = batch.width;

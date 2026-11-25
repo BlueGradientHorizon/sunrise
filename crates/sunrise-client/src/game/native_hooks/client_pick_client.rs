@@ -15,7 +15,7 @@ pub(in crate::game::client_side) use mod_api::CrosshairTarget;
 
 impl Game<'_> {
     /// The sole mod-output geometry boundary. Occlusion is intentionally not reapplied.
-    pub(in crate::game) fn accept_client_pick(&self, result: CrosshairTarget) -> bool {
+    pub(in crate::game::client_side) fn accept_client_pick(&self, result: CrosshairTarget) -> bool {
         let (point, reach) = match result {
             CrosshairTarget::Block { hit, .. } => {
                 if !matches!(
@@ -35,7 +35,7 @@ impl Game<'_> {
     }
     /// How many picks (a tick's or a frame's) have been taken: an agent command that turned
     /// waits for the count to move before it reads the target.
-    pub(in crate::game) fn client_picks(&self) -> u64 {
+    pub(in crate::game::client_side) fn client_picks(&self) -> u64 {
         self.client.client_pick.taken
     }
     pub(in crate::game) fn pick_distance(&self, point: [f64; 3]) -> f64 {
@@ -44,7 +44,10 @@ impl Game<'_> {
             .sum::<f64>()
             .sqrt()
     }
-    pub(in crate::game) fn publish_client_pick(&mut self, result: Option<CrosshairTarget>) {
+    pub(in crate::game::client_side) fn publish_client_pick(
+        &mut self,
+        result: Option<CrosshairTarget>,
+    ) {
         self.client.client_pick.result = result;
         self.client.client_pick.entity_metadata = match result {
             Some(CrosshairTarget::Entity { entity, .. }) => (

@@ -37,7 +37,7 @@ use sunrise_core::geometry::{Aabb, Vec3};
 /// The pose a client sizes its copy of a server mob by: `Entity.getPose`, the synched
 /// `DATA_POSE` (a player's as the server sent it, not the one its client tick derives), never a
 /// villager's bed position, which moves it without sizing it.
-pub(in crate::game) fn synced_pose(m: &Mob) -> Pose {
+pub(in crate::game::server_side) fn synced_pose(m: &Mob) -> Pose {
     match &*m.kind.id {
         "minecraft:player" => Pose::from_id(i32::from(m.extra.synced_pose)),
         "minecraft:mannequin" => m.extra.avatar_pose.into(),
@@ -48,7 +48,7 @@ pub(in crate::game) fn synced_pose(m: &Mob) -> Pose {
 impl Game<'_> {
     /// Ask `entity_size` for an entity whose vanilla size in `pose` is `vanilla`, unless
     /// `previous` was already asked for both. `None`: nothing to ask, keep `previous`.
-    pub(in crate::game) fn ask_entity_size(
+    pub(in crate::game::server_side) fn ask_entity_size(
         &self,
         id: u32,
         pose: Pose,
@@ -140,7 +140,7 @@ impl Game<'_> {
     /// What the client copy `id`'s size refresh computes now: its pose and vanilla size, with
     /// the answer it holds. `pose` is a synched pose just received, for a copy that keeps no pose
     /// of its own (anything but a mob).
-    pub(in crate::game) fn client_copy_size(
+    pub(in crate::game::server_side) fn client_copy_size(
         &mut self,
         id: u32,
         pose: Option<Pose>,
@@ -159,7 +159,11 @@ impl Game<'_> {
         Some((pose, self.client_object_dimensions(id, kind)?, previous))
     }
 
-    pub(in crate::game) fn set_client_copy_size(&mut self, id: u32, answer: SizeAnswer) {
+    pub(in crate::game::server_side) fn set_client_copy_size(
+        &mut self,
+        id: u32,
+        answer: SizeAnswer,
+    ) {
         if let Some(m) = self.mob_index.get_mut(&mut self.mobs, id) {
             m.size_answer = Some(answer);
         } else if let Some(row) = self
@@ -277,7 +281,7 @@ impl Game<'_> {
     }
 
     /// A body's pose or size changed since it was last asked: ask, and size it by the answer.
-    pub(in crate::game) fn ask_body_size(
+    pub(in crate::game::server_side) fn ask_body_size(
         &self,
         id: u32,
         body: &sunrise_client::motion::PlayerMotion,
@@ -292,7 +296,7 @@ impl Game<'_> {
     }
 
     /// Snapshot only the three candidate boxes the shared pose fit test asks about.
-    pub(in crate::game) fn body_fit_sizes(
+    pub(in crate::game::server_side) fn body_fit_sizes(
         &self,
         id: u32,
         body: &sunrise_client::motion::PlayerMotion,
@@ -337,7 +341,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn apply_body_size(
+    pub(in crate::game::server_side) fn apply_body_size(
         body: &mut sunrise_client::motion::PlayerMotion,
         answer: SizeAnswer,
     ) {
@@ -366,7 +370,7 @@ impl Game<'_> {
     }
 
     /// Each guest's body on the server, once a tick.
-    pub(in crate::game) fn native_guest_sizes(&mut self) {
+    pub(in crate::game::server_side) fn native_guest_sizes(&mut self) {
         if !mod_api::__private::listened(mod_api::HookId::EntitySize) {
             return;
         }
@@ -756,7 +760,7 @@ pub(in crate::game) mod tests {
         }
     }
 
-    pub(in crate::game) fn m_pose(game: &crate::game::Game<'_>, i: usize) -> Pose {
+    pub(in crate::game::server_side) fn m_pose(game: &crate::game::Game<'_>, i: usize) -> Pose {
         game.mobs[i].pose()
     }
 
@@ -836,7 +840,7 @@ pub(in crate::game) mod tests {
         });
     }
 
-    pub(in crate::game) fn deliver(
+    pub(in crate::game::server_side) fn deliver(
         game: &mut crate::game::Game<'_>,
         packet: sunrise_protocol::packets::play::Clientbound,
     ) {
@@ -892,7 +896,11 @@ pub(in crate::game) mod tests {
         );
     }
 
-    pub(in crate::game) fn scale(game: &mut crate::game::Game<'_>, id: i32, base: f64) {
+    pub(in crate::game::server_side) fn scale(
+        game: &mut crate::game::Game<'_>,
+        id: i32,
+        base: f64,
+    ) {
         use sunrise_protocol::packets::play::{AttributeSnapshot, Clientbound, UpdateAttributes};
         let attribute = game
             .motion
@@ -1092,7 +1100,7 @@ pub(in crate::game) mod tests {
     pub(in crate::game) use crate::game::client_side::entity_sizes_client::tests::white_outline;
 
     /// A server game with `Log` listening (`seen`), or with no listener at all.
-    pub(in crate::game) fn with_server(
+    pub(in crate::game::server_side) fn with_server(
         listen: bool,
         test: impl FnOnce(&mut crate::game::Game<'_>, &Mutex<Seen>),
     ) {
@@ -1106,7 +1114,7 @@ pub(in crate::game) mod tests {
     }
 
     /// The box `EntityDimensions.makeBoundingBox` makes for `width` by `height` at `at`.
-    pub(in crate::game) fn made_box(
+    pub(in crate::game::server_side) fn made_box(
         at: sunrise_core::geometry::Vec3,
         [width, height, _]: [f32; 3],
     ) -> [[f64; 3]; 2] {
@@ -1117,7 +1125,7 @@ pub(in crate::game) mod tests {
         ]
     }
 
-    pub(in crate::game) fn corners(b: sunrise_core::geometry::Aabb) -> [[f64; 3]; 2] {
+    pub(in crate::game::server_side) fn corners(b: sunrise_core::geometry::Aabb) -> [[f64; 3]; 2] {
         let (lo, hi) = (b.min_position(), b.max_position());
         [[lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]]
     }

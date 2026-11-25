@@ -27,7 +27,10 @@ pub(in crate::game) const OFFHAND: usize = usize::MAX;
 
 /// `AttackRange.effectiveMinRange`, `effectiveMaxRange` (for a player) and
 /// `hitboxMargin` of an `attack_range` component.
-pub(in crate::game) fn attack_reach(range: &serde_json::Value, creative: bool) -> (f32, f32, f32) {
+pub(in crate::game::client_side) fn attack_reach(
+    range: &serde_json::Value,
+    creative: bool,
+) -> (f32, f32, f32) {
     let value = |key: &str, default: f32| range[key].as_f64().map_or(default, |v| v as f32);
     let (min, max) = if creative {
         (
@@ -40,7 +43,7 @@ pub(in crate::game) fn attack_reach(range: &serde_json::Value, creative: bool) -
     (min, max, value("hitbox_margin", 0.3))
 }
 
-pub(in crate::game) fn v3(v: [f64; 3]) -> Vec3 {
+pub(in crate::game::client_side) fn v3(v: [f64; 3]) -> Vec3 {
     Vec3::new(v[0], v[1], v[2])
 }
 
@@ -48,7 +51,7 @@ pub(in crate::game) fn v3(v: [f64; 3]) -> Vec3 {
 /// (`AttackRange.getClosesetHit`): the distance from the eye to the nearest
 /// box hit along the item's own `reach`, which goes past the plain pick's
 /// 3 blocks (a spear's 4.5). A miss falls back to the plain pick (`None`).
-pub(in crate::game) fn reach_pick(
+pub(in crate::game::client_side) fn reach_pick(
     boxes: &[(usize, Aabb)],
     eye: Vec3,
     look: Vec3,
@@ -63,7 +66,7 @@ pub(in crate::game) fn reach_pick(
 }
 
 /// `AttackRange.isInRange`: float bounds, then inclusive double comparison.
-pub(in crate::game) fn attack_range_contains(
+pub(in crate::game::client_side) fn attack_range_contains(
     range: &serde_json::Value,
     distance: f64,
     creative: bool,
@@ -84,7 +87,7 @@ pub(in crate::game) fn attack_range_contains(
 /// place), unless the slot was `replaced` by one the hand doesn't show yet:
 /// swapping the hands (`setItemInHand`, and the server's slot updates that
 /// answer it) puts another object in both (#2866).
-pub(in crate::game) fn shows_held_stack(
+pub(in crate::game::client_side) fn shows_held_stack(
     visible: &(usize, Option<ItemStack>),
     held: &(usize, Option<ItemStack>),
     replaced: bool,
@@ -110,7 +113,7 @@ pub(in crate::game) fn matches_for_swap(a: Option<&ItemStack>, b: Option<&ItemSt
 /// `AttackRange.isInRange(attacker, box, buffer)` with the reach of
 /// `attack_reach` (or `AttackRange.defaultFor`'s, from the entity interaction
 /// range): the eye's distance to the box, inclusive.
-pub(in crate::game) fn in_attack_range(
+pub(in crate::game::client_side) fn in_attack_range(
     distance: f64,
     (min, max, margin): (f32, f32, f32),
     buffer: f64,
@@ -149,7 +152,7 @@ impl Game<'_> {
 
     /// A stack's `minecraft:attack_range` component, falling back to the spear's
     /// default reach (`spear::REACH`) for spear items unless explicitly removed.
-    pub(in crate::game) fn attack_range_component(
+    pub(in crate::game::client_side) fn attack_range_component(
         &self,
         stack: &ItemStack,
     ) -> Option<serde_json::Value> {
@@ -320,7 +323,7 @@ impl Game<'_> {
     /// (`keyHotbarSlots[i].consumeClick`), so the highest key clicked this tick wins and a
     /// key's further clicks wait for the next ticks. A creative player holding the load or
     /// save toolbar key loads or saves that toolbar instead (load first when both are held).
-    pub(in crate::game) fn select_queued_hotbar(&mut self) {
+    pub(in crate::game::client_side) fn select_queued_hotbar(&mut self) {
         const HOTBAR: [&str; 9] = [
             "key.hotbar.1",
             "key.hotbar.2",
@@ -358,7 +361,7 @@ impl Game<'_> {
     }
     /// `LocalPlayer.raycastHitResult`'s item (`getActiveItem`: the one in
     /// use, else the main hand's) `attack_range` component.
-    pub(in crate::game) fn active_attack_range(&self) -> Option<serde_json::Value> {
+    pub(in crate::game::client_side) fn active_attack_range(&self) -> Option<serde_json::Value> {
         let active = self
             .using
             .and_then(|(slot, _)| self.inventory.get(slot).and_then(Option::as_ref))
@@ -366,7 +369,10 @@ impl Game<'_> {
         self.attack_range_component(active)
     }
 
-    pub(in crate::game) fn client_pick_entity_reach(&self, direction: [f64; 3]) -> f64 {
+    pub(in crate::game::client_side) fn client_pick_entity_reach(
+        &self,
+        direction: [f64; 3],
+    ) -> f64 {
         self.active_attack_range()
             .map_or(self.entity_reach, |range| {
                 (f64::from(attack_reach(&range, self.own_player_is_creative()).1)
@@ -378,7 +384,7 @@ impl Game<'_> {
     /// `AttackRange.getClosesetHit` plus `LocalPlayer.filterHitResult` on block hits:
     /// preserves entity hits, in-range block hits, and misses separately so block hits
     /// do not fall back to the plain `LocalPlayer.pick` ray.
-    pub(in crate::game) fn attack_range_pick_result(
+    pub(in crate::game::client_side) fn attack_range_pick_result(
         &self,
         range: &serde_json::Value,
     ) -> super::pick_entity::AttackRangePickResult {
@@ -577,7 +583,7 @@ impl Game<'_> {
     /// answered `harvest`: the block's parts (`can_harvest_block`, NeoForge's
     /// `IBlockExtension.canHarvestBlock`) answer first, then the global `player_harvest_check`
     /// (`PlayerEvent.HarvestCheck`) hears the result.
-    pub(in crate::game) fn mod_harvest_check(
+    pub(in crate::game::client_side) fn mod_harvest_check(
         &mut self,
         pos: [i32; 3],
         state: sunrise_world::registry::BlockStateId,
@@ -662,7 +668,7 @@ impl Game<'_> {
         sunrise_items::mining::destroy_progress(hardness, harvest, speed)
     }
     /// `EntityFluidInteraction`: compare the eyes with the camera fluid surface.
-    pub(in crate::game) fn mining_eyes_in_water(&self) -> bool {
+    pub(in crate::game::client_side) fn mining_eyes_in_water(&self) -> bool {
         use sunrise_client::blocks::Fluid;
         let Some(eye) = self.eye_position() else {
             return false;
@@ -730,7 +736,7 @@ impl Game<'_> {
     }
     /// `LocalPlayer.isHandsBusy`: paddling a boat this player controls
     /// (`getControlledVehicle`: its first passenger, on a server's client).
-    pub(in crate::game) fn hands_busy(&self) -> bool {
+    pub(in crate::game::client_side) fn hands_busy(&self) -> bool {
         self.riding
             .is_some_and(|id| self.controls_boat(id) && self.boats.iter().any(|b| b.id == id))
             && [
@@ -747,7 +753,7 @@ impl Game<'_> {
     /// busy, and `LocalPlayer.itemUsed` drops the hand after a use that
     /// swung and spent (or, with infinite materials, kept) the item, or that
     /// started using it.
-    pub(in crate::game) fn use_with_hand(&mut self) -> Result<()> {
+    pub(in crate::game::client_side) fn use_with_hand(&mut self) -> Result<()> {
         if self.clicks.destroying.active || self.hands_busy() {
             return Ok(());
         }
@@ -823,7 +829,7 @@ impl Game<'_> {
     /// off), asked while the stack it shows differs from `held` by slot or
     /// by value and `held` isn't empty: `same` (shown at once) is vanilla's
     /// answer, and the parts of the held item may turn it either way.
-    pub(in crate::game) fn reequip_part(
+    pub(in crate::game::client_side) fn reequip_part(
         &self,
         h: usize,
         held: &(usize, Option<ItemStack>),
@@ -858,7 +864,7 @@ impl Game<'_> {
     /// A replay owns its held-item and equip animation state. Reset it when a
     /// standalone replay closes so a later world cannot inherit lowered hands
     /// or the replay player's visible stacks.
-    pub(in crate::game) fn reset_studio_hand_state(&mut self) {
+    pub(in crate::game::client_side) fn reset_studio_hand_state(&mut self) {
         let main = self.inventory.get(self.selected).cloned().flatten();
         self.client.visible_hands = [(self.selected, main), (OFFHAND, self.offhand.clone())];
         self.client.hands_replaced = [false; 2];
@@ -936,7 +942,7 @@ impl Game<'_> {
         Some(true)
     }
     /// `Hud.canRenderCrosshairForSpectator`: MenuProvider entity or spectator-interactable block.
-    pub(in crate::game) fn spectator_crosshair(&self) -> bool {
+    pub(in crate::game::client_side) fn spectator_crosshair(&self) -> bool {
         if let Some(hit) = self.crosshair_entity_hit() {
             return self.carts.iter().any(|c| {
                 c.id as i32 == hit.id && matches!(c.kind, CartKind::Chest | CartKind::Hopper)
@@ -946,7 +952,10 @@ impl Game<'_> {
             .is_some_and(|hit| self.block_interactable_for_spectator(&hit))
     }
     /// `BlockBehaviour.showAsInteractableInSpectatorMode`: a block with a menu, or a portal.
-    pub(in crate::game) fn block_interactable_for_spectator(&self, hit: &super::Hit) -> bool {
+    pub(in crate::game::client_side) fn block_interactable_for_spectator(
+        &self,
+        hit: &super::Hit,
+    ) -> bool {
         let block = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
         matches!(
             &*self.res.facts().get(block).name,
@@ -954,7 +963,7 @@ impl Game<'_> {
         ) || self.block_opens_menu(hit)
     }
     /// A lectern with no book (`LecternBlock.useWithoutItem` consumes the click and does nothing).
-    pub(in crate::game) fn block_is_empty_lectern(&self, hit: &super::Hit) -> bool {
+    pub(in crate::game::client_side) fn block_is_empty_lectern(&self, hit: &super::Hit) -> bool {
         let state = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
         &*self.res.facts().get(state).name == "minecraft:lectern"
             && self
@@ -966,7 +975,7 @@ impl Game<'_> {
                 .is_none_or(|v| v != "true")
     }
     /// `BlockState.getMenuProvider`: the block's use opens a screen.
-    pub(in crate::game) fn block_opens_menu(&self, hit: &super::Hit) -> bool {
+    pub(in crate::game::client_side) fn block_opens_menu(&self, hit: &super::Hit) -> bool {
         if self.block_is_empty_lectern(hit) {
             return false;
         }
@@ -1017,7 +1026,7 @@ impl Game<'_> {
     }
 
     /// `evaluateWhichHandsToRender`: which of the main and off hand show.
-    pub(in crate::game) fn hands_to_render(&self) -> [bool; 2] {
+    pub(in crate::game::client_side) fn hands_to_render(&self) -> [bool; 2] {
         let held = |slot| {
             self.stack_in(slot)
                 .map(|s: &ItemStack| (&*s.item, s.data().is_some_and(|d| !d.charged.is_empty())))
@@ -1033,7 +1042,7 @@ impl Game<'_> {
         )
     }
     /// The visible main- and off-hand items.
-    pub(in crate::game) fn visible_hand_items(&self) -> [Option<ItemStack>; 2] {
+    pub(in crate::game::client_side) fn visible_hand_items(&self) -> [Option<ItemStack>; 2] {
         [
             self.client.visible_hands[0].1.clone(),
             self.client.visible_hands[1].1.clone(),
@@ -1048,12 +1057,14 @@ pub(in crate::game) struct GameHands<'g, 'a> {
 }
 impl GameHands<'_, '_> {
     /// The main-hand item's `kinetic_weapon` and `piercing_weapon`, a spear's.
-    pub(in crate::game) fn attack_kinetic(&self) -> Option<sunrise_client::spear::Kinetic> {
+    pub(in crate::game::client_side) fn attack_kinetic(
+        &self,
+    ) -> Option<sunrise_client::spear::Kinetic> {
         self.game
             .held()
             .and_then(|s| sunrise_client::spear::Kinetic::of(&s.item))
     }
-    pub(in crate::game) fn keep(&mut self, r: Result<()>) {
+    pub(in crate::game::client_side) fn keep(&mut self, r: Result<()>) {
         if let Err(e) = r
             && self.error.is_none()
         {
@@ -1372,7 +1383,7 @@ pub(in crate::game) struct BreakSpeedDispatch {
 }
 
 impl BreakSpeedDispatch {
-    pub(in crate::game) fn enter() -> Self {
+    pub(in crate::game::client_side) fn enter() -> Self {
         Self {
             outer: BREAK_SPEED_DISPATCH.replace(true),
         }
@@ -1401,7 +1412,7 @@ pub(in crate::game) struct HarvestDispatch {
 }
 
 impl HarvestDispatch {
-    pub(in crate::game) fn enter() -> Self {
+    pub(in crate::game::client_side) fn enter() -> Self {
         Self {
             outer: HARVEST_DISPATCH.replace(true),
         }

@@ -14,7 +14,7 @@ pub(in crate::game) const ARMOR: [&str; 4] = ["head", "chest", "legs", "feet"];
 pub(in crate::game) const OFFHAND: &str = "offhand";
 
 /// `ItemStack.isSameItemSameComponents` over optional stacks.
-pub(in crate::game) fn same(a: Option<&ItemStack>, b: Option<&ItemStack>) -> bool {
+pub(in crate::game::server_side) fn same(a: Option<&ItemStack>, b: Option<&ItemStack>) -> bool {
     match (a, b) {
         (None, None) => true,
         (Some(a), Some(b)) => a.same_item_same_components(b),
@@ -74,7 +74,7 @@ impl Game<'_> {
         self.put_equipment_modifiers();
     }
 
-    pub(in crate::game) fn put_equipment_modifiers(&mut self) {
+    pub(in crate::game::server_side) fn put_equipment_modifiers(&mut self) {
         let Some(player) = self.player.as_mut() else {
             return;
         };

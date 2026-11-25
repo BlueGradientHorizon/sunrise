@@ -52,17 +52,20 @@ impl Default for ModSounds {
 }
 impl ModSounds {
     /// Queues `sound` to start at the next audio update, `after` ticks from then.
-    pub(in crate::game) fn queue(&self, sound: &SoundPlay, after: u32) -> SoundRef {
+    pub(in crate::game::client_side) fn queue(&self, sound: &SoundPlay, after: u32) -> SoundRef {
         let id = self.last.get() + 1;
         self.last.set(id);
         self.queued.borrow_mut().push((id, sound.clone(), after));
         sound_ref(id)
     }
-    pub(in crate::game) fn pending_checkpoint(&self) -> (usize, usize) {
+    pub(in crate::game::client_side) fn pending_checkpoint(&self) -> (usize, usize) {
         (self.queued.borrow().len(), self.changes.borrow().len())
     }
 
-    pub(in crate::game) fn discard_pending_since(&self, (plays, changes): (usize, usize)) {
+    pub(in crate::game::client_side) fn discard_pending_since(
+        &self,
+        (plays, changes): (usize, usize),
+    ) {
         self.queued.borrow_mut().truncate(plays);
         self.changes.borrow_mut().truncate(changes);
         // Do not rewind `last`: a mod might have retained a handle to a discarded play.
@@ -71,7 +74,7 @@ impl ModSounds {
     /// Forgets every mod sound: the queued plays, the changes asked of them and the started
     /// ones' instances, as a level change stops every sound. Their handles read `Stopped`;
     /// handles are still never reused.
-    pub(in crate::game) fn clear(&mut self) {
+    pub(in crate::game::client_side) fn clear(&mut self) {
         self.queued.get_mut().clear();
         self.changes.get_mut().clear();
         self.started.clear();
@@ -83,7 +86,7 @@ impl Game<'_> {
     /// and fades, and forgets the instances the engine let go. A play stopped (or faded to 0 at
     /// once) before this update never reaches the engine. Called from the audio update
     /// (`tick_sound_engine`), before the engine's own tick.
-    pub(in crate::game) fn apply_mod_sounds(&mut self) {
+    pub(in crate::game::client_side) fn apply_mod_sounds(&mut self) {
         let sounds = &mut self.client.mod_sounds;
         let stopped: Vec<u64> = sounds
             .changes

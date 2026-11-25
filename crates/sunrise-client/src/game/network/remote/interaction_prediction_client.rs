@@ -201,7 +201,7 @@ impl Game<'_> {
     }
     /// Bounding box `[lo, hi]` and world origin `[x, y, z]` of a crosshair entity for
     /// `Minecraft.startUseItem` (including remote/resident leash knots, which have no API body).
-    pub(in crate::game) fn use_entity_geometry(
+    pub(in crate::game::client_side) fn use_entity_geometry(
         &self,
         entity: mod_api::EntityRef,
     ) -> Option<([[f64; 3]; 2], [f64; 3])> {

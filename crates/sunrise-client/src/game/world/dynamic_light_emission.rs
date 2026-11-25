@@ -27,7 +27,7 @@ impl Game<'_> {
     }
     /// [`Self::ask_chunk_light_emission`] in the level in place (`parked: None`) or in the
     /// parked level whose dimension is `parked`, its cells asked as `dimension`'s.
-    pub(in crate::game) fn ask_level_chunk_light_emission(
+    pub(in crate::game::server_side) fn ask_level_chunk_light_emission(
         &mut self,
         parked: Option<&str>,
         dimension: LevelDimension,

@@ -78,7 +78,7 @@ pub(crate) enum HeldRefusal {
 
 impl Passages {
     /// Level `key` closed (`LevelEvent.Unload`): its passages and their untold changes go.
-    pub(in crate::game) fn retire_level(&mut self, key: DimensionKey) {
+    pub(in crate::game::server_side) fn retire_level(&mut self, key: DimensionKey) {
         if self.levels.remove(&key).is_none() && self.dirty.is_empty() {
             return;
         }
@@ -103,7 +103,7 @@ impl Passages {
 
     /// A new hub (the LAN opened again) records the chunks it sends from its start while a
     /// passage lives, so a chunk it sends before the next `flush_passages` carries them.
-    pub(in crate::game) fn record_on(&self, hub: &mut sunrise_client::lan::hub::Hub) {
+    pub(in crate::game::server_side) fn record_on(&self, hub: &mut sunrise_client::lan::hub::Hub) {
         if !self.index.is_empty() {
             hub.chunk_watches.record_for_passages();
         }
@@ -192,7 +192,7 @@ impl Game<'_> {
     /// records the chunks it sends (`ChunkWatchLog::record_for_passages`), a new hub after
     /// the LAN reopens too, so a client that gets the chunk later hears of it with the
     /// chunk. Kept for the next call while the hub is lent out.
-    pub(in crate::game) fn flush_passages(&mut self) {
+    pub(in crate::game::server_side) fn flush_passages(&mut self) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };

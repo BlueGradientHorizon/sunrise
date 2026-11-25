@@ -28,9 +28,6 @@ impl Hooks for Native {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::creatures_server::pending_birth_matrix_tests::next_parent_id;
-
-#[allow(unused_imports)]
 pub(in crate::game) use crate::game::server_side::creatures_server::pending_birth_matrix_tests::split;
 
 #[allow(unused_imports)]

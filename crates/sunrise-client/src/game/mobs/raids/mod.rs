@@ -55,26 +55,29 @@ pub(in crate::game) struct Raiding {
 }
 
 /// A level's living raid members, in mob-list order.
-pub(in crate::game) fn members(mobs: &[Mob], id: i32) -> impl Iterator<Item = &Mob> {
+pub(in crate::game::server_side) fn members(mobs: &[Mob], id: i32) -> impl Iterator<Item = &Mob> {
     mobs.iter().filter(move |m| {
         m.alive() && !m.removed && raider::state(m).is_some_and(|s| s.raid_id == Some(id))
     })
 }
 
 impl Raiding {
-    pub(in crate::game) fn raids(&self, dimension: &str) -> Option<&Raids> {
+    pub(in crate::game::server_side) fn raids(&self, dimension: &str) -> Option<&Raids> {
         self.loaded
             .filter(|dim| dim.id() == dimension)
             .map(|_| &self.raids)
     }
-    pub(in crate::game) fn raids_mut(&mut self, dimension: &str) -> Option<&mut Raids> {
+    pub(in crate::game::server_side) fn raids_mut(
+        &mut self,
+        dimension: &str,
+    ) -> Option<&mut Raids> {
         self.loaded
             .filter(|dim| dim.id() == dimension)
             .map(|_| &mut self.raids)
     }
     /// Exchange the level-held parts (`ServerLevel.getRaids`) with another
     /// level's (game/world/levels.rs).
-    pub(in crate::game) fn swap_level(&mut self, other: &mut Self) {
+    pub(in crate::game::server_side) fn swap_level(&mut self, other: &mut Self) {
         std::mem::swap(&mut self.raids, &mut other.raids);
         std::mem::swap(&mut self.loaded, &mut other.loaded);
         std::mem::swap(&mut self.unseeded, &mut other.unseeded);
@@ -236,14 +239,14 @@ impl PatrolLevel for PatrolCx<'_, '_, '_> {
     }
 }
 
-pub(in crate::game) fn block_of(p: Vec3) -> [i32; 3] {
+pub(in crate::game::server_side) fn block_of(p: Vec3) -> [i32; 3] {
     [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
 }
 
 impl Game<'_> {
     /// `Heightmap.Types.WORLD_SURFACE`: the first free block above the
     /// highest non-air one.
-    pub(in crate::game) fn surface_height(&self, x: i32, z: i32) -> i32 {
+    pub(in crate::game::server_side) fn surface_height(&self, x: i32, z: i32) -> i32 {
         let top = if self.dim == Dim::Nether { 127 } else { 319 };
         (self.world.bottom_y()..=top)
             .rev()
@@ -251,7 +254,7 @@ impl Game<'_> {
             .map_or(self.world.bottom_y(), |y| y + 1)
     }
     /// Every claimed village point of interest (job sites, beds, bells).
-    pub(in crate::game) fn village_pois(&self) -> Vec<[i32; 3]> {
+    pub(in crate::game::server_side) fn village_pois(&self) -> Vec<[i32; 3]> {
         let mut out: Vec<[i32; 3]> = Vec::new();
         for m in &self.mobs {
             if m.species() != Species::Villager || !m.alive() {
@@ -277,18 +280,18 @@ impl Game<'_> {
             Difficulty::Hard => 3,
         }
     }
-    pub(in crate::game) fn player_block(&self) -> Option<[i32; 3]> {
+    pub(in crate::game::server_side) fn player_block(&self) -> Option<[i32; 3]> {
         self.player.as_ref().map(|p| block_of(p.position))
     }
     /// `dimensions/<dimension>/data/minecraft/raids.dat`: each dimension
     /// keeps its own raids.
-    pub(in crate::game) fn raids_path(&self, dim: Dim) -> std::path::PathBuf {
+    pub(in crate::game::server_side) fn raids_path(&self, dim: Dim) -> std::path::PathBuf {
         sunrise_client::save::dimension_dir(&self.server.world_root, dim.id())
             .join("data/minecraft/raids.dat")
     }
     /// The raids of the player's dimension, seeded (the previous dimension's
     /// saved first).
-    pub(in crate::game) fn load_raids(&mut self) {
+    pub(in crate::game::server_side) fn load_raids(&mut self) {
         self.read_raids();
         if let Some(order) = self.raiding.0.unseeded.take() {
             let seed = random_source::unique_seed();
@@ -299,7 +302,7 @@ impl Game<'_> {
     /// dimension's saved first), as a level opens (`ServerLevel`'s
     /// constructor). Their own randoms are seeded by `load_raids` on the first
     /// raid tick without drawing from the level's stream.
-    pub(in crate::game) fn read_raids(&mut self) {
+    pub(in crate::game::server_side) fn read_raids(&mut self) {
         if self.raiding.0.loaded == Some(self.dim) {
             return;
         }
@@ -319,7 +322,7 @@ impl Game<'_> {
         self.raiding.0.unseeded = Some(order);
     }
     /// `Raids` as its dimension's `raids.dat`, when it changed.
-    pub(in crate::game) fn save_raids(&mut self) {
+    pub(in crate::game::server_side) fn save_raids(&mut self) {
         let Some(dim) = self.raiding.0.loaded else {
             return;
         };
@@ -339,7 +342,7 @@ impl Game<'_> {
         self.save_raid_omen_position();
     }
     /// `ServerPlayer.raidOmenPosition` from the player data.
-    pub(in crate::game) fn load_raid_omen_position(&mut self) {
+    pub(in crate::game::server_side) fn load_raid_omen_position(&mut self) {
         if self.raiding.0.omen_loaded {
             return;
         }
@@ -355,7 +358,7 @@ impl Game<'_> {
         };
     }
     /// Writes `raid_omen_position` into the player data being saved.
-    pub(in crate::game) fn save_raid_omen_position(&mut self) {
+    pub(in crate::game::server_side) fn save_raid_omen_position(&mut self) {
         if !self.raiding.0.omen_loaded {
             return;
         }
@@ -377,7 +380,9 @@ impl Game<'_> {
             }
         }
     }
-    pub(in crate::game) fn gameplay_attributes(&mut self) -> std::sync::Arc<GameplayAttributes> {
+    pub(in crate::game::server_side) fn gameplay_attributes(
+        &mut self,
+    ) -> std::sync::Arc<GameplayAttributes> {
         if self.raiding.0.attributes.is_none() {
             self.raiding.0.attributes = Some(std::sync::Arc::new(GameplayAttributes::load(
                 &self.options.resources,
@@ -387,7 +392,11 @@ impl Game<'_> {
     }
     /// A boolean gameplay attribute at a position (dimension, biome, then
     /// the timelines at the overworld clock).
-    pub(in crate::game) fn gameplay_attribute(&mut self, key: &str, at: [i32; 3]) -> bool {
+    pub(in crate::game::server_side) fn gameplay_attribute(
+        &mut self,
+        key: &str,
+        at: [i32; 3],
+    ) -> bool {
         let attributes = self.gameplay_attributes();
         let biome = self
             .world
@@ -445,7 +454,7 @@ impl Game<'_> {
     /// `Raids.createOrExtendRaid`: not for spectators, with the `raids` rule
     /// and where raids may start; the raid centres on the occupied village
     /// points of interest within 64 blocks.
-    pub(in crate::game) fn create_or_extend_raid(
+    pub(in crate::game::server_side) fn create_or_extend_raid(
         &mut self,
         at: [i32; 3],
         amplifier: Option<i32>,
@@ -483,7 +492,7 @@ impl Game<'_> {
         Some(id)
     }
     /// The raids of the level in place, once they are read (`read_raids`).
-    pub(in crate::game) fn raids_in_place(&self) -> Option<&Raids> {
+    pub(in crate::game::server_side) fn raids_in_place(&self) -> Option<&Raids> {
         self.raiding.0.raids(self.dim.id())
     }
     /// `ServerLevel.getRaidAt`.
@@ -537,18 +546,22 @@ impl Game<'_> {
         )
     }
     /// A raid's members (`groupRaiderMap`): the living raiders it counts.
-    pub(in crate::game) fn raid_members(&self, id: i32) -> impl Iterator<Item = &Mob> {
+    pub(in crate::game::server_side) fn raid_members(&self, id: i32) -> impl Iterator<Item = &Mob> {
         members(&self.mobs, id)
     }
     /// `getHealthOfLivingRaiders`, leaving out one raider.
-    pub(in crate::game) fn remaining_raider_health(&self, id: i32, except: Option<u32>) -> f32 {
+    pub(in crate::game::server_side) fn remaining_raider_health(
+        &self,
+        id: i32,
+        except: Option<u32>,
+    ) -> f32 {
         self.raid_members(id)
             .filter(|m| Some(m.id) != except)
             .fold(0.0, |a, m| a + m.health)
     }
     /// The bar update the last hurt raider of a raid asked for
     /// (`Raider.hurtServer` runs `updateBossbar` before the damage).
-    pub(in crate::game) fn flush_raid_bar(&mut self, id: i32) {
+    pub(in crate::game::server_side) fn flush_raid_bar(&mut self, id: i32) {
         let seen = self.raiding.0.bar_hurts.get(&id).copied().unwrap_or(0);
         let last = self
             .raid_members(id)
@@ -566,7 +579,7 @@ impl Game<'_> {
     }
 
     /// The members of every raid, for `Raids.tick`.
-    pub(in crate::game) fn raider_infos(&self) -> HashMap<i32, Vec<RaiderInfo>> {
+    pub(in crate::game::server_side) fn raider_infos(&self) -> HashMap<i32, Vec<RaiderInfo>> {
         let mut out: HashMap<i32, Vec<RaiderInfo>> = HashMap::new();
         for m in &self.mobs {
             if !m.alive() || m.removed {
@@ -594,7 +607,7 @@ impl Game<'_> {
     /// Raiders loaded with a `RaidId` join their raid
     /// (`readAdditionalSaveData`: `addWaveMob` without counting health, and
     /// the wave's leader).
-    pub(in crate::game) fn register_loaded_raiders(&mut self) {
+    pub(in crate::game::server_side) fn register_loaded_raiders(&mut self) {
         let pending: Vec<(u32, i32, i32, f32, bool)> = self
             .mobs
             .iter()
@@ -628,7 +641,7 @@ impl Game<'_> {
         }
     }
     /// `ServerLevel.tick` for the raids and their raiders.
-    pub(in crate::game) fn tick_raids(&mut self) {
+    pub(in crate::game::server_side) fn tick_raids(&mut self) {
         if self.remote.is_some() {
             return;
         }
@@ -689,7 +702,7 @@ impl Game<'_> {
         let infos = self.raider_infos();
         self.sync_villager_raids(&infos);
     }
-    pub(in crate::game) fn apply_raid_action(&mut self, id: i32, action: Action) {
+    pub(in crate::game::server_side) fn apply_raid_action(&mut self, id: i32, action: Action) {
         match action {
             Action::Spawn { pos, wave, spawns } => self.spawn_wave(id, pos, wave, &spawns),
             Action::Horn { pos, seed } => self.raid_horn(id, pos, seed),
@@ -718,7 +731,7 @@ impl Game<'_> {
 
     /// Raid.tick resolves and rewards each living hero in the set's traversal
     /// order, not in the level's player order.
-    pub(in crate::game) fn for_each_raid_hero(
+    pub(in crate::game::server_side) fn for_each_raid_hero(
         &mut self,
         heroes: &[[i32; 4]],
         mut reward: impl FnMut(&mut Self),
@@ -755,7 +768,7 @@ impl Game<'_> {
     /// `Raid.playSound`: the horn, 13 blocks from each player toward the wave,
     /// for everyone within 64 blocks or in the raid. One seed for every packet
     /// (`SoundSource.NEUTRAL`, volume 64, pitch 1).
-    pub(in crate::game) fn raid_horn(&mut self, id: i32, pos: [i32; 3], seed: i64) {
+    pub(in crate::game::server_side) fn raid_horn(&mut self, id: i32, pos: [i32; 3], seed: i64) {
         let in_raid = self.raiding.0.raids.get(id).is_some_and(|r| r.bar.player);
         let (rx, rz) = (f64::from(pos[0]) + 0.5, f64::from(pos[2]) + 0.5);
         // The raid tracks one participant (`bar.player`): the first player in
@@ -802,7 +815,7 @@ impl Game<'_> {
     }
     /// `Raid.spawnGroup`: a wave of raiders at `pos`, the leader wearing the
     /// banner, ravagers carrying their riders.
-    pub(in crate::game) fn spawn_wave(
+    pub(in crate::game::server_side) fn spawn_wave(
         &mut self,
         raid_id: i32,
         pos: [i32; 3],
@@ -834,7 +847,7 @@ impl Game<'_> {
     }
     /// `Raid.joinRaid` for a new raider: placed at the block's centre one
     /// above, finalized for an event, its raid buffs applied.
-    pub(in crate::game) fn spawn_raider(
+    pub(in crate::game::server_side) fn spawn_raider(
         &mut self,
         kind: RaiderType,
         pos: [i32; 3],
@@ -904,7 +917,10 @@ impl Game<'_> {
     /// Per-tick raid bookkeeping of every raider (and the ravagers they
     /// ride): the raid's state for the goals, joining and recruiting,
     /// the banner of a fallen captain, idle time.
-    pub(in crate::game) fn sync_raiders(&mut self, centers: &HashSet<(i32, i32, i32)>) {
+    pub(in crate::game::server_side) fn sync_raiders(
+        &mut self,
+        centers: &HashSet<(i32, i32, i32)>,
+    ) {
         let now = self.world.game_time;
         let golems: HashSet<u32> = self
             .mobs
@@ -1102,7 +1118,7 @@ impl Game<'_> {
     }
     /// `Raid.joinRaid` for a raider already in the world: it counts toward
     /// the bar and takes the raid's current wave.
-    pub(in crate::game) fn join_raid(&mut self, mob: u32, id: i32, health: f32) {
+    pub(in crate::game::server_side) fn join_raid(&mut self, mob: u32, id: i32, health: f32) {
         let Some(wave) = self.raiding.0.raids.get(id).map(|r| r.groups_spawned) else {
             return;
         };
@@ -1126,7 +1142,9 @@ impl Game<'_> {
     }
     /// Beds within 64 blocks of each raid's centre (the `HOME` points of
     /// interest), rescanned every five seconds.
-    pub(in crate::game) fn raid_homes(&mut self) -> HashMap<i32, std::sync::Arc<Vec<[i32; 3]>>> {
+    pub(in crate::game::server_side) fn raid_homes(
+        &mut self,
+    ) -> HashMap<i32, std::sync::Arc<Vec<[i32; 3]>>> {
         let now = self.world.game_time;
         let ids: Vec<(i32, [i32; 3])> = self
             .raiding
@@ -1187,7 +1205,12 @@ impl Game<'_> {
     /// `Raider.die`: the wave loses its leader, the killing player becomes
     /// a hero of the village, and the raider leaves the raid (its health
     /// stays in the bar's total).
-    pub(in crate::game) fn raider_died(&mut self, m: &Mob, by_player: bool, killer: Option<u32>) {
+    pub(in crate::game::server_side) fn raider_died(
+        &mut self,
+        m: &Mob,
+        by_player: bool,
+        killer: Option<u32>,
+    ) {
         let Some(s) = raider::state(m) else {
             return;
         };
@@ -1216,7 +1239,10 @@ impl Game<'_> {
     /// What `getRaidAt` tells each villager where it stands (its brain's
     /// `SetRaidStatus`, `ResetRaidStatus`, `ReactToBell` and raid packages
     /// read it).
-    pub(in crate::game) fn sync_villager_raids(&mut self, infos: &HashMap<i32, Vec<RaiderInfo>>) {
+    pub(in crate::game::server_side) fn sync_villager_raids(
+        &mut self,
+        infos: &HashMap<i32, Vec<RaiderInfo>>,
+    ) {
         let raids = &self.raiding.0.raids;
         let mut ongoing = Vec::new();
         for m in &mut self.mobs {
@@ -1258,7 +1284,7 @@ impl Game<'_> {
     }
     /// Entity event 42 for villager `id`: the guests get the byte, and this
     /// game draws `AbstractVillager.addParticlesAroundSelf(SPLASH)` itself.
-    pub(in crate::game) fn mob_raid_splash(&mut self, id: u32) {
+    pub(in crate::game::server_side) fn mob_raid_splash(&mut self, id: u32) {
         let Some(m) = self.mobs.iter().find(|m| m.id == id) else {
             return;
         };
@@ -1272,7 +1298,7 @@ impl Game<'_> {
     /// beat, so a viewer joins or leaves it up to 19 ticks late, alive or not
     /// (`validPlayer`'s `isAlive` is only read on a beat). The name is the
     /// translate component the client draws.
-    pub(in crate::game) fn raid_bars_at(&self, uuid: u128) -> Vec<(i32, Tag, f32)> {
+    pub(in crate::game::server_side) fn raid_bars_at(&self, uuid: u128) -> Vec<(i32, Tag, f32)> {
         if self.dim != Dim::Overworld {
             return Vec::new();
         }
@@ -1289,7 +1315,12 @@ impl Game<'_> {
             .collect()
     }
     /// A firework a villager launches to celebrate (`CelebrateVillagersSurvivedRaid`).
-    pub(in crate::game) fn villager_firework(&mut self, at: [f64; 3], color: usize, flight: u8) {
+    pub(in crate::game::server_side) fn villager_firework(
+        &mut self,
+        at: [f64; 3],
+        color: usize,
+        flight: u8,
+    ) {
         let mut stack = sunrise_client::items::ItemStack::new("minecraft:firework_rocket", 1);
         stack.data_mut().fireworks = Some((
             flight,
@@ -1310,7 +1341,12 @@ impl Game<'_> {
         self.rockets.push(rocket);
     }
     /// `BehaviorUtils.throwItem`: a hero's gift tossed toward the player.
-    pub(in crate::game) fn throw_gift(&mut self, table: &str, from: [f64; 3], to: [f64; 3]) {
+    pub(in crate::game::server_side) fn throw_gift(
+        &mut self,
+        table: &str,
+        from: [f64; 3],
+        to: [f64; 3],
+    ) {
         let drops = self
             .res
             .items()
@@ -1421,7 +1457,10 @@ impl Game<'_> {
         self.raiding.0.siege = siege;
     }
     /// `ServerLevel.isVillage`: within one section of a village.
-    pub(in crate::game) fn is_village(centers: &HashSet<(i32, i32, i32)>, pos: [i32; 3]) -> bool {
+    pub(in crate::game::server_side) fn is_village(
+        centers: &HashSet<(i32, i32, i32)>,
+        pos: [i32; 3],
+    ) -> bool {
         sunrise_gameplay::village_siege::is_village(centers, pos)
     }
 }
@@ -1462,7 +1501,7 @@ impl SiegeLevel for Game<'_> {
 
 /// `Raid.raidEvent`'s name: the raid title, the remaining-raiders line, or
 /// the victory and defeat lines.
-pub(in crate::game) fn raid_name_tag(name: BarName) -> Tag {
+pub(in crate::game::server_side) fn raid_name_tag(name: BarName) -> Tag {
     let key = |k: &str| Tag::compound([("translate", Tag::String(k.into()))]);
     match name {
         BarName::Raid => key("event.minecraft.raid"),
@@ -1492,7 +1531,7 @@ pub(in crate::game) fn raid_name_tag(name: BarName) -> Tag {
 
 impl Game<'_> {
     /// Read-only command-harness observation of the existing raid state and inputs.
-    pub(in crate::game) fn raid_fixture_state(
+    pub(in crate::game::server_side) fn raid_fixture_state(
         &self,
         op: &serde_json::Value,
     ) -> sunrise_client::Result<serde_json::Value> {

@@ -116,7 +116,11 @@ pub(in crate::game) mod save_lending;
 
 impl Game<'_> {
     /// `MinecartItem.useOn`: a cart on the clicked rail.
-    pub(in crate::game) fn place_minecart(&mut self, hit: &Hit, stack: &ItemStack) -> bool {
+    pub(in crate::game::server_side) fn place_minecart(
+        &mut self,
+        hit: &Hit,
+        stack: &ItemStack,
+    ) -> bool {
         let Some(kind) = CartKind::from_id(&stack.item) else {
             return false;
         };

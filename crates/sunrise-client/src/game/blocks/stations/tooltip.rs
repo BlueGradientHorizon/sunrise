@@ -6,7 +6,7 @@ use sunrise_client::tooltip_components::TooltipComponentPrepareError;
 
 /// Single integer anchor quantization shared by Gather wrapping, `render_tooltip_pre`
 /// (`TooltipPlace`), and the active positioner. Vanilla GUI extraction truncates toward zero.
-pub(in crate::game) fn quantize_tooltip_anchor(at: (f32, f32)) -> [i32; 2] {
+pub(in crate::game::client_side) fn quantize_tooltip_anchor(at: (f32, f32)) -> [i32; 2] {
     [at.0 as i32, at.1 as i32]
 }
 
@@ -83,7 +83,9 @@ pub(in crate::game) enum PreparedTooltipItem {
 
 impl PreparedTooltipItem {
     #[cfg(test)]
-    pub(in crate::game) fn as_text(&self) -> Option<(&sunrise_client::text::Text, u32)> {
+    pub(in crate::game::client_side) fn as_text(
+        &self,
+    ) -> Option<(&sunrise_client::text::Text, u32)> {
         match self {
             Self::Text { text, color } => Some((text, *color)),
             _ => None,
@@ -91,7 +93,7 @@ impl PreparedTooltipItem {
     }
 
     #[cfg(test)]
-    pub(in crate::game) fn as_bundle(&self) -> Option<&ItemStack> {
+    pub(in crate::game::client_side) fn as_bundle(&self) -> Option<&ItemStack> {
         match self {
             Self::Bundle { stack, .. } => Some(stack),
             _ => None,
@@ -99,7 +101,9 @@ impl PreparedTooltipItem {
     }
 
     #[cfg(test)]
-    pub(in crate::game) fn as_custom(&self) -> Option<&mod_api::PreparedTooltipComponent> {
+    pub(in crate::game::client_side) fn as_custom(
+        &self,
+    ) -> Option<&mod_api::PreparedTooltipComponent> {
         match self {
             Self::Custom(component) => Some(component),
             _ => None,
@@ -107,7 +111,9 @@ impl PreparedTooltipItem {
     }
 
     #[cfg(test)]
-    pub(in crate::game) fn downcast_ref<C: mod_api::ClientTooltipComponent + 'static>(
+    pub(in crate::game::client_side) fn downcast_ref<
+        C: mod_api::ClientTooltipComponent + 'static,
+    >(
         &self,
     ) -> Option<&C> {
         self.as_custom().and_then(|c| c.downcast_ref::<C>())
@@ -128,7 +134,7 @@ pub(in crate::game) enum GatheredTooltip {
 
 #[cfg(test)]
 impl GatheredTooltip {
-    pub(in crate::game) fn unwrap_ready(self) -> Vec<PreparedTooltipItem> {
+    pub(in crate::game::client_side) fn unwrap_ready(self) -> Vec<PreparedTooltipItem> {
         match self {
             Self::Ready(components) => components,
             Self::Cancelled => panic!("expected GatheredTooltip::Ready, got Cancelled"),
@@ -147,7 +153,7 @@ enum RawTooltipImage {
 
 /// NeoForge `ClientHooks.gatherTooltipComponentsFromElements` wrapping width calculation using
 /// Java `int` wrapping arithmetic.
-pub(in crate::game) fn wrap_tooltip_width(
+pub(in crate::game::client_side) fn wrap_tooltip_width(
     mut tooltip_text_width: i32,
     mouse_x: i32,
     screen_width: i32,
@@ -246,7 +252,7 @@ impl Game<'_> {
     /// Prepare a [`mod_api::TooltipComponent`] into a [`PreparedTooltipItem`]
     /// (`ClientTooltipComponent.create`): built-in bundles are prepared directly with `Items`,
     /// custom components go through the registered client factory table.
-    pub(in crate::game) fn prepare_tooltip_component(
+    pub(in crate::game::client_side) fn prepare_tooltip_component(
         &self,
         component: &mod_api::TooltipComponent,
     ) -> Result<PreparedTooltipItem, TooltipComponentPrepareError> {
@@ -264,7 +270,10 @@ impl Game<'_> {
     /// `AbstractContainerScreen.showTooltipWithItemInHand`: whether this stack's tooltip image
     /// shows while carrying another item, avoiding unnecessary `Contents::of` work for ordinary
     /// bundles and returning `false` on preparation errors.
-    pub(in crate::game) fn tooltip_image_shows_with_carried(&self, stack: &ItemStack) -> bool {
+    pub(in crate::game::client_side) fn tooltip_image_shows_with_carried(
+        &self,
+        stack: &ItemStack,
+    ) -> bool {
         match self.resolve_raw_tooltip_image(stack) {
             Some(RawTooltipImage::VanillaBundle) => true,
             Some(RawTooltipImage::Mod(component)) => {
@@ -322,7 +331,7 @@ impl Game<'_> {
     /// `RenderTooltipEvent.GatherComponents` followed by wrapping in the item's tooltip font
     /// (`ClientHooks.getTooltipFont` -> `ClientItemExtensions::tooltip_font`) and component
     /// preparation (`ClientHooks.gatherTooltipComponentsFromElements`).
-    pub(in crate::game) fn gather_tooltip_components(
+    pub(in crate::game::client_side) fn gather_tooltip_components(
         &self,
         stack: &ItemStack,
         lines: Vec<(sunrise_client::text::Text, u32)>,
@@ -477,7 +486,7 @@ impl Game<'_> {
     /// `at`. Query the item font again here: Gather may have changed the provider's answer, but
     /// its line breaks are already fixed. Return the final anchor and font, or `None` when a
     /// listener cancels drawing (custom Pre draws stay in `batch`).
-    pub(in crate::game) fn tooltip_pre_components(
+    pub(in crate::game::client_side) fn tooltip_pre_components(
         &self,
         batch: &mut HudBatch,
         stack: Option<&ItemStack>,
@@ -587,7 +596,7 @@ impl Game<'_> {
     /// position with the caller's positioner, draw background (`render_tooltip_texture`), then
     /// run Pass 1 (`draw_text`) and Pass 2 (`draw_image`). Returns the drawn content rect
     /// `[x, y, w, h]` when drawn.
-    pub(in crate::game) fn draw_prepared_tooltip(
+    pub(in crate::game::client_side) fn draw_prepared_tooltip(
         &self,
         batch: &mut HudBatch,
         stack: Option<&ItemStack>,
@@ -720,7 +729,7 @@ impl Game<'_> {
     /// A stack's tooltip: its ordered lines and a bundle's contents
     /// (`ClientBundleTooltip`: the 4 wide grid, the `+N` of what it leaves
     /// out, and the weight bar).
-    pub(in crate::game) fn draw_stack_tooltip(
+    pub(in crate::game::client_side) fn draw_stack_tooltip(
         &mut self,
         batch: &mut HudBatch,
         stack: &ItemStack,
@@ -733,7 +742,7 @@ impl Game<'_> {
     /// [`Self::draw_stack_tooltip`] with `TooltipFlag.isCreative` set when
     /// `creative` (a creative tab's own slot), and `after_name` inserted from
     /// line 1, as the creative screen adds its tab names.
-    pub(in crate::game) fn draw_stack_tooltip_with(
+    pub(in crate::game::client_side) fn draw_stack_tooltip_with(
         &mut self,
         batch: &mut HudBatch,
         stack: &ItemStack,
@@ -754,7 +763,7 @@ impl Game<'_> {
     }
 
     /// Draw already-built item lines, keeping the stack's image, style and gather hooks.
-    pub(in crate::game) fn draw_stack_tooltip_lines(
+    pub(in crate::game::client_side) fn draw_stack_tooltip_lines(
         &mut self,
         batch: &mut HudBatch,
         stack: &ItemStack,

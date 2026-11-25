@@ -36,7 +36,7 @@ impl<'g, 'a> JournalLevelWrite<'g, 'a> {
         }
     }
 
-    pub(in crate::game) fn write_block(
+    pub(in crate::game::server_side) fn write_block(
         &mut self,
         pos: [i32; 3],
         state: BlockStateId,
@@ -336,7 +336,7 @@ pub(in crate::game) enum PendingWrite {
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn level_removal_write(
+    pub(in crate::game::server_side) fn level_removal_write(
         &mut self,
         pos: [i32; 3],
         moved: bool,
@@ -546,7 +546,7 @@ impl Game<'_> {
     }
 
     /// A part that refuses or falls through does not keep its tentative writes.
-    pub(in crate::game) fn journalled_place_liquid(
+    pub(in crate::game::server_side) fn journalled_place_liquid(
         &mut self,
         level: LevelRef,
         write: &FluidWrite,

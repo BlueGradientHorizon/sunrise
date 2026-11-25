@@ -66,7 +66,7 @@ impl SpawnTree {
         (!members.is_empty()).then_some(Self(members))
     }
 
-    pub(in crate::game) fn root_uuid(&self) -> [i32; 4] {
+    pub(in crate::game::server_side) fn root_uuid(&self) -> [i32; 4] {
         self.0[0].uuid
     }
 
@@ -74,7 +74,7 @@ impl SpawnTree {
     /// to the UUIDs already loaded before this attempt. Then offer every node
     /// in `Entity.getSelfAndPassengers` order to `addEntityUuid`, so only the
     /// first occurrence of an internal duplicate joins the level.
-    pub(in crate::game) fn admit(
+    pub(in crate::game::server_side) fn admit(
         &mut self,
         pending: &mut FxHashSet<[i32; 4]>,
         loaded: impl Fn([i32; 4]) -> bool,
@@ -94,7 +94,7 @@ impl SpawnTree {
 
     // Only mobs of the supported passenger families block construction or
     // null-source collision, and only mob types can be spawner roots here.
-    pub(in crate::game) fn resident_mobs(&self) -> impl Iterator<Item = &Mob> {
+    pub(in crate::game::server_side) fn resident_mobs(&self) -> impl Iterator<Item = &Mob> {
         self.0.iter().filter_map(|m| match (&m.node, m.resident) {
             (Node::Mob(mob), true) => Some(mob.as_ref()),
             _ => None,

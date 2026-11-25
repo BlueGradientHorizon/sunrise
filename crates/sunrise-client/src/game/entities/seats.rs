@@ -22,7 +22,11 @@ pub(in crate::game) struct Seat {
 }
 
 impl Seat {
-    pub(in crate::game) fn general(type_slot: usize, position: Vec3, yaw: f32) -> Self {
+    pub(in crate::game::server_side) fn general(
+        type_slot: usize,
+        position: Vec3,
+        yaw: f32,
+    ) -> Self {
         let catalog = super::general::general_type_catalog();
         let (width, height) = catalog.dimensions(type_slot);
         Self {
@@ -40,11 +44,11 @@ impl Seat {
     }
 
     /// `Entity.positionRider` for a player: its vehicle attachment below the passenger point.
-    pub fn player_seat(&self) -> Vec3 {
+    pub(in crate::game::server_side) fn player_seat(&self) -> Vec3 {
         self.passenger_position(PLAYER_VEHICLE_ATTACHMENT)
     }
 
-    pub(in crate::game) fn position_mob(&self, mob: &mut sunrise_client::mobs::Mob) {
+    pub(in crate::game::server_side) fn position_mob(&self, mob: &mut sunrise_client::mobs::Mob) {
         let offset = sunrise_client::mobs::riders::vehicle_attachment(mob, self.width);
         sunrise_client::mobs::living::teleports::snap_to(mob, self.passenger_position(offset));
         mob.velocity = Vec3::ZERO;
@@ -54,7 +58,7 @@ impl Seat {
         mob.ai.nav.stop();
     }
     /// `Entity.getDismountLocationForPassenger`: `(getX(), getBoundingBox().maxY, getZ())`.
-    pub fn dismount(&self) -> Vec3 {
+    pub(in crate::game::server_side) fn dismount(&self) -> Vec3 {
         Vec3::new(
             self.position.x,
             self.position.y + self.height,
@@ -95,7 +99,7 @@ pub(in crate::game) fn could_accept_passenger(kind: &str) -> bool {
 
 /// `EntityType.canSerialize`, which `Entity.startRiding` requires of a vehicle on the server and which a
 /// save requires of a root: false for the types built with `noSave()`.
-pub(in crate::game) fn saves_with_chunk(kind: &str) -> bool {
+pub(in crate::game::server_side) fn saves_with_chunk(kind: &str) -> bool {
     !matches!(kind, "minecraft:leash_knot" | "minecraft:lightning_bolt")
 }
 
@@ -152,7 +156,7 @@ impl Game<'_> {
     }
 
     /// Seats the player in place on such a vehicle (`ServerPlayer.startRiding`: at once, as a teleport).
-    pub(in crate::game) fn board_seat(&mut self, id: u32, seat: Seat) {
+    pub(in crate::game::server_side) fn board_seat(&mut self, id: u32, seat: Seat) {
         let at = seat.player_seat();
         if let Some(player) = self.player.as_mut() {
             player.position = at;
@@ -167,7 +171,7 @@ impl Game<'_> {
 
     /// `LivingEntity.stopRiding` off such a vehicle: `dismountVehicle` on top of it. A vehicle that is
     /// gone lets the rider go where it is.
-    pub(in crate::game) fn get_off_seat(&mut self) {
+    pub(in crate::game::server_side) fn get_off_seat(&mut self) {
         let Some(id) = self.riding else {
             return;
         };
@@ -189,7 +193,7 @@ impl Game<'_> {
 
     /// `Player.rideTick` on such a vehicle: keep the seat (the vehicle may have been moved), get off on
     /// sneak. The seat, or None once off.
-    pub(in crate::game) fn tick_seat_riding(&mut self, keys: Keys) -> Option<Vec3> {
+    pub(in crate::game::server_side) fn tick_seat_riding(&mut self, keys: Keys) -> Option<Vec3> {
         let vehicle = self.riding?;
         let seat = self.seat(vehicle)?;
         if keys.shift {

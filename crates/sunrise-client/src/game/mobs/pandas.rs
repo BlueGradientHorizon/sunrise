@@ -18,7 +18,7 @@ use sunrise_core::geometry::Vec3;
 
 impl Game<'_> {
     /// `Panda.canPickUpAndEat`'s tag.
-    pub(in crate::game) fn panda_eats_from_ground(&self, item: &str) -> bool {
+    pub(in crate::game::server_side) fn panda_eats_from_ground(&self, item: &str) -> bool {
         self.res
             .items()
             .item_tags
@@ -78,7 +78,11 @@ impl Game<'_> {
         }
     }
     /// `Panda.mobInteract` for a click with `item`; whether the click is taken.
-    pub(in crate::game) fn interact_panda(&mut self, index: usize, item: &str) -> bool {
+    pub(in crate::game::server_side) fn interact_panda(
+        &mut self,
+        index: usize,
+        item: &str,
+    ) -> bool {
         let creative = self.creative;
         let m = &mut self.mobs[index];
         if panda::scared(m) {
@@ -145,7 +149,7 @@ impl Game<'_> {
         true
     }
     /// `Panda.afterSneeze`: the grown pandas within 10 blocks of a cub jump.
-    pub(in crate::game) fn panda_sneezed(&mut self, id: u32) {
+    pub(in crate::game::server_side) fn panda_sneezed(&mut self, id: u32) {
         let Some(area) = self
             .mobs
             .iter()

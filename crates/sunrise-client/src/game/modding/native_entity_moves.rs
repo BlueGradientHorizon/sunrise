@@ -23,7 +23,7 @@ pub(in crate::game) fn in_bounds([x, y, z]: [f64; 3]) -> bool {
 }
 
 /// `Direction.fromYRot`: the horizontal direction a yaw faces.
-pub(in crate::game) fn facing(yaw: f32) -> &'static str {
+pub(in crate::game::server_side) fn facing(yaw: f32) -> &'static str {
     const BY_2D: [&str; 4] = ["south", "west", "north", "east"];
     BY_2D[((f64::from(yaw) / 90.0 + 0.5).floor() as i32 & 3) as usize]
 }
@@ -76,7 +76,7 @@ impl Game<'_> {
     /// falling blocks, ...; `teleport_target_across`), a player who is not a
     /// server guest, or a transfer the game could not make. A fake player
     /// stays, and the call is true.
-    pub(in crate::game) fn teleport_to_level(
+    pub(in crate::game::server_side) fn teleport_to_level(
         &mut self,
         t: Target,
         level: Dim,
@@ -311,7 +311,7 @@ impl Game<'_> {
     }
     /// Update the resolved player's body, in place for its own turn or in its guest record.
     /// The resolver already excludes displaced outer players. Send to the owning client only.
-    pub(in crate::game) fn write_player_velocity(
+    pub(in crate::game::server_side) fn write_player_velocity(
         &mut self,
         target: Target,
         change: impl FnOnce(Vec3) -> Option<Vec3>,
@@ -328,7 +328,7 @@ impl Game<'_> {
     }
 
     /// Put back a player's own random after a copy of it drew for them.
-    pub(in crate::game) fn write_player_random(
+    pub(in crate::game::server_side) fn write_player_random(
         &mut self,
         target: Target,
         random: sunrise_core::random::EntityRandom,
@@ -559,7 +559,7 @@ pub(in crate::game) mod tests {
         run_move_boundaries_match_vanilla();
     }
 
-    pub(in crate::game) fn run_move_boundaries_match_vanilla() {
+    pub(in crate::game::server_side) fn run_move_boundaries_match_vanilla() {
         use serde_json::Value;
         let cases = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),

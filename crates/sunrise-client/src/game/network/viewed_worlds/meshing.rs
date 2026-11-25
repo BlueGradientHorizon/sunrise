@@ -15,7 +15,7 @@ use sunrise_client::{
 impl ViewedWorlds {
     /// A frame's meshing of the viewed levels. While no level is wanted and none keeps a set it
     /// is two checks and nothing else: no source on the pool, no job, no allocation.
-    pub(in crate::game) fn mesh_frame(
+    pub(in crate::game::client_side) fn mesh_frame(
         &mut self,
         source: impl FnOnce() -> MeshSource,
         now: Instant,

@@ -9,7 +9,7 @@ impl Game<'_> {
     /// and `thrower`: made, heard by `item_toss`, then added to the level
     /// (`ServerLevel.addFreshEntity`). Its id, or None when a mod canceled
     /// the toss or kept it out of the level.
-    pub(in crate::game) fn toss_item(
+    pub(in crate::game::server_side) fn toss_item(
         &mut self,
         thrown: ItemStack,
         at: [f64; 3],

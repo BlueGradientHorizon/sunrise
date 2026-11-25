@@ -59,41 +59,13 @@ pub(in crate::game::client_side) use crate::game::server_side::dragon::breath_ex
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::dragon::breath_puffs;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::breath_victims;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::cloud_hits;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::dragon::dragon_part_id;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::dragon::dragon_part_index;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::dragon::dragon_part_wire_id;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::fireball_cloud_origin;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::harm_amount;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::hurt_source;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::is_fire;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::nearest_enemy;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::saved_silent;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::scanning_turn;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::search_dragon_path;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::shrugs;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::strafe_angle;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::vanilla_normalize;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::dragon::wrap;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dragon::wrap64;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::dragon::*;
 #[allow(unused_imports)]
@@ -162,11 +134,11 @@ impl Game<'_> {
         })
     }
     /// `BossHealthOverlay.shouldPlayMusic`.
-    pub(in crate::game) fn boss_music(&self) -> bool {
+    pub(in crate::game::client_side) fn boss_music(&self) -> bool {
         self.client.boss_overlay.should_play_music()
     }
     /// `EnderDragonRenderer.submit` and `EnderDragonModel.setupAnim`, from the real dragon's slot.
-    pub(in crate::game) fn dragon_geometry(
+    pub(in crate::game::client_side) fn dragon_geometry(
         &self,
         d: &Dragon,
         camera: glam::DVec3,
@@ -395,7 +367,7 @@ impl Game<'_> {
     /// dragon breath from the head (their `look.yRot(...)` results are thrown
     /// away in vanilla, so every puff leaves along the same line), the third
     /// puffs an explosion every 10 ticks and the last growls on every tick.
-    pub(in crate::game) fn remote_dragon_phase_tick(&mut self) {
+    pub(in crate::game::client_side) fn remote_dragon_phase_tick(&mut self) {
         let look = self.dragon_look_normalised();
         let Some(d) = self.dragon.as_mut() else {
             return;
@@ -497,7 +469,7 @@ impl Game<'_> {
     /// One client tick of the dragon. `lerp`: the step toward its last
     /// sent position and yaw (LivingEntity's interpolation), and the
     /// steps left including this one.
-    pub(in crate::game) fn tick_remote_dragon(
+    pub(in crate::game::client_side) fn tick_remote_dragon(
         &mut self,
         lerp: Option<([f64; 3], Option<f32>, u32)>,
     ) {

@@ -128,9 +128,6 @@ pub(in crate::game) fn knot_uuid(game: &mut Game<'_>) -> [i32; 4] {
     }
 }
 
-#[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::commands_server::knot_identity_tests::host;
-
 #[test]
 #[ignore = "daily"]
 fn two_leads_on_one_fence_share_one_knot() {

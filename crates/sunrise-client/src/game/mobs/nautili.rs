@@ -9,7 +9,7 @@ use sunrise_client::{items::ItemStack, mobs::nautilus};
 use sunrise_core::random::RandomSource;
 
 impl Game<'_> {
-    pub(in crate::game) fn item_tagged(&self, tag: &str, item: &str) -> bool {
+    pub(in crate::game::client_side) fn item_tagged(&self, tag: &str, item: &str) -> bool {
         self.res
             .items()
             .item_tags

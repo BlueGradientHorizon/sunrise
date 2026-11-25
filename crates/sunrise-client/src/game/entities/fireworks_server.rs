@@ -81,7 +81,7 @@ impl Game<'_> {
     ///
     /// `shoot` gives the shot's velocity from the rocket's own random, after the
     /// constructor's draws (`asProjectile`, then `spawnProjectileUsingShoot`).
-    pub(in crate::game) fn launch_angled_rocket(
+    pub(in crate::game::server_side) fn launch_angled_rocket(
         &mut self,
         at: Vec3,
         stack: &ItemStack,

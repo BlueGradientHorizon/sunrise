@@ -18,7 +18,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn consume_mapping_click(&mut self, name: &str) -> bool {
+    pub(in crate::game::client_side) fn consume_mapping_click(&mut self, name: &str) -> bool {
         VanillaMappingSlot::by_name(name)
             .is_some_and(|slot| self.client.vanilla_mappings.consume_click(slot))
     }

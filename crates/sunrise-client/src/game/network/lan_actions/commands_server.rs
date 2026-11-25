@@ -7,7 +7,7 @@ impl Game<'_> {
     /// Commands.performCommand for a guest, with the message arguments it
     /// signed (none after an unsigned command packet). The packet's command has no chat slash, and
     /// vanilla parses it as sent: a leading `/` is part of the command (a mod's `//set` is `/set`).
-    pub(in crate::game) fn guest_command(
+    pub(in crate::game::server_side) fn guest_command(
         &mut self,
         conn: u32,
         command: &str,

@@ -12,7 +12,7 @@ impl Game<'_> {
     /// The receiving container's `keyPressed` runs before the input Post hook.
     /// `AbstractContainerScreen` reports inventory close as handled but still
     /// performs swap, clone and throw before returning false for those actions.
-    pub(in crate::game) fn container_screen_key(
+    pub(in crate::game::client_side) fn container_screen_key(
         &mut self,
         raw: KeyCode,
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
@@ -105,7 +105,7 @@ impl Game<'_> {
     }
 
     /// `AbstractContainerScreen.keyPressed`: the inventory binding closes the current menu.
-    pub(in crate::game) fn close_inventory_key(&mut self) {
+    pub(in crate::game::client_side) fn close_inventory_key(&mut self) {
         if self.client.screen == Screen::Creative {
             self.pad_clear_focus();
             if let Some(c) = self.carried.take() {
@@ -121,7 +121,7 @@ impl Game<'_> {
 
     /// `CreativeModeInventoryScreen.keyPressed` on the search tab: a hotbar
     /// key over a slot swaps before the search box sees it.
-    pub(in crate::game) fn search_tab_hotbar_key(&mut self, code: KeyCode) -> bool {
+    pub(in crate::game::client_side) fn search_tab_hotbar_key(&mut self, code: KeyCode) -> bool {
         use sunrise_client::creative::{Hover, search_key_swaps};
         let numeric = HOTBAR_DIGITS.contains(&code) || NUMERIC_KEYS.contains(&code);
         if !numeric {
@@ -150,7 +150,7 @@ impl Game<'_> {
     }
     /// Number keys, F and Q over a slot of the open menu: SWAP with a hotbar
     /// slot or the off hand, THROW one or the whole stack.
-    pub(in crate::game) fn inventory_hotkey(&mut self, key: KeyCode) -> bool {
+    pub(in crate::game::client_side) fn inventory_hotkey(&mut self, key: KeyCode) -> bool {
         use sunrise_client::container_screen::{HotbarKey, hotbar_swap};
         use sunrise_client::menu::Input;
         let Some(size) = self
@@ -189,7 +189,7 @@ impl Game<'_> {
     /// The pick block key bound to a keyboard key, over a slot of the open
     /// menu (`AbstractContainerScreen.keyPressed`): `CLONE` with button 0. The
     /// search tab's box takes the key instead.
-    pub(in crate::game) fn inventory_pick_key(&mut self) {
+    pub(in crate::game::client_side) fn inventory_pick_key(&mut self) {
         let menu = (self.client.screen == Screen::Inventory
             || (self.client.screen == Screen::Creative && !self.creative_screen.0.tab().search))
             && !self.dialog_open();
@@ -216,7 +216,7 @@ impl Game<'_> {
     }
     /// The plain inventory mouse press: starts a quick craft drag when a
     /// stack is held, gathers on a double click, else the normal click.
-    pub(in crate::game) fn inventory_press(&mut self, right: bool) -> bool {
+    pub(in crate::game::client_side) fn inventory_press(&mut self, right: bool) -> bool {
         use sunrise_client::container_screen::Target;
         use sunrise_client::menu::Input;
         self.direct_craft_stop();
@@ -369,7 +369,7 @@ impl Game<'_> {
         self.click_inventory(right)
     }
     /// Mouse movement while a quick craft drag is running.
-    pub(in crate::game) fn inventory_drag_move(&mut self) -> bool {
+    pub(in crate::game::client_side) fn inventory_drag_move(&mut self) -> bool {
         if self.tweaks_on() && self.tweak_drag_move(self.inventory_target().0) {
             return true;
         }
@@ -407,7 +407,7 @@ impl Game<'_> {
         allowed
     }
     /// The hovered slot and whether the cursor is outside the window.
-    pub(in crate::game) fn inventory_target(&self) -> (Option<usize>, bool) {
+    pub(in crate::game::client_side) fn inventory_target(&self) -> (Option<usize>, bool) {
         let Some(r) = self.renderer.0.as_ref() else {
             return (None, false);
         };
@@ -418,7 +418,10 @@ impl Game<'_> {
         self.target_at(&batch)
     }
     /// `inventory_target` for the frame `batch` describes.
-    pub(in crate::game) fn target_at(&self, batch: &HudBatch) -> (Option<usize>, bool) {
+    pub(in crate::game::client_side) fn target_at(
+        &self,
+        batch: &HudBatch,
+    ) -> (Option<usize>, bool) {
         let slot = self.slot_at(batch, self.client.cursor.0, self.client.cursor.1);
         // A mod screen may place a slot beyond its image: a click on one is
         // not a click outside the window.
@@ -426,7 +429,9 @@ impl Game<'_> {
             self.clicked_outside(batch) && !(slot.is_some() && self.native_screen_shown());
         (slot, outside)
     }
-    pub(in crate::game) fn screen_button(right: bool) -> sunrise_client::container_screen::Button {
+    pub(in crate::game::client_side) fn screen_button(
+        right: bool,
+    ) -> sunrise_client::container_screen::Button {
         use sunrise_client::container_screen::Button;
         if right { Button::Right } else { Button::Left }
     }
@@ -442,14 +447,14 @@ impl Game<'_> {
         self.client.modifiers.shift_key()
     }
     /// The same live word for Control (`InputWithModifiers.hasControlDown`).
-    pub(in crate::game) fn has_control_down(&self) -> bool {
+    pub(in crate::game::client_side) fn has_control_down(&self) -> bool {
         self.client.modifiers.control_key()
     }
 
     /// Real events word the modifiers by their own `ModifiersChanged`; a
     /// control socket's `key` is synthesized, so it words the bit directly
     /// and every reader can ask the one live state.
-    pub(in crate::game) fn press_modifier_key(&mut self, key: KeyCode, down: bool) {
+    pub(in crate::game::client_side) fn press_modifier_key(&mut self, key: KeyCode, down: bool) {
         sunrise_client_input::modifiers::set_key(
             &mut self.client.modifiers,
             &mut self.client.physical_keys,
@@ -458,7 +463,7 @@ impl Game<'_> {
         );
     }
     /// `hasClickedOutside` of the open screen at the cursor.
-    pub(in crate::game) fn clicked_outside(&self, batch: &HudBatch) -> bool {
+    pub(in crate::game::client_side) fn clicked_outside(&self, batch: &HudBatch) -> bool {
         use sunrise_client::container_screen::{Book, clicked_outside};
         let image = self.container_image(batch);
         let book = self
@@ -487,7 +492,7 @@ impl Game<'_> {
     /// `leftPos`, `topPos`, `imageWidth`, `imageHeight` from the game's state
     /// alone: the container build's own arithmetic, and the fallback when no
     /// build holds this size.
-    pub(in crate::game) fn container_image_parts(&self, batch: &HudBatch) -> [f32; 4] {
+    pub(in crate::game::client_side) fn container_image_parts(&self, batch: &HudBatch) -> [f32; 4] {
         let (ox, oy) = self.inventory_origin_unbuilt(batch);
         let (shift, width, height) = if self.client.screen == Screen::Creative {
             (0.0, Creative::WIDTH, Creative::HEIGHT)
@@ -514,7 +519,11 @@ impl Game<'_> {
     /// A click outside the window (slot id -999): `THROW` does nothing; a
     /// `PICKUP` drops the carried stack (left) or one of it (right), thrown
     /// from the hand (`AbstractContainerMenu.doClick`, `LivingEntity.drop`).
-    pub(in crate::game) fn throw_click(&mut self, right: bool, input: sunrise_client::menu::Input) {
+    pub(in crate::game::client_side) fn throw_click(
+        &mut self,
+        right: bool,
+        input: sunrise_client::menu::Input,
+    ) {
         use sunrise_client::menu::Input;
         let button = i32::from(right);
         if self.remote.is_some() {
@@ -554,7 +563,7 @@ impl Game<'_> {
     }
     /// Settle the slot action before releasing a screen child. Return true
     /// only for an early swallowed release or a mouse tweak that took it.
-    pub(in crate::game) fn inventory_mouse_release(&mut self, right: bool) -> bool {
+    pub(in crate::game::client_side) fn inventory_mouse_release(&mut self, right: bool) -> bool {
         use sunrise_client::container_screen::{Release, Target};
         let tweaked = self.tweak_release();
         let (slot, outside) = self.inventory_target();
@@ -602,7 +611,7 @@ impl Game<'_> {
     /// full size (`CLONE`), a carried stack starts a quick craft drag of type
     /// 2 that fills every slot it crosses; without infinite materials the
     /// press does nothing.
-    pub(in crate::game) fn inventory_pick_press(&mut self) -> bool {
+    pub(in crate::game::client_side) fn inventory_pick_press(&mut self) -> bool {
         use sunrise_client::container_screen::{Button, Target};
         let (slot, outside) = self.inventory_target();
         let was_crafting = self.client.inv_clicks.quick_crafting().is_some();
@@ -632,7 +641,7 @@ impl Game<'_> {
     /// The pick block button's release (`mouseReleased`): ends its quick
     /// craft drag, cancels another button's, or clones onto the slot under a
     /// carried stack (`CLONE`, which only an item tab's display slot takes).
-    pub(in crate::game) fn inventory_pick_release(&mut self) -> bool {
+    pub(in crate::game::client_side) fn inventory_pick_release(&mut self) -> bool {
         use sunrise_client::container_screen::{Button, Release, Target};
         let (slot, outside) = self.inventory_target();
         let dragged = self
@@ -663,7 +672,7 @@ impl Game<'_> {
         false
     }
     /// Mouse release: finishes a quick craft drag (one slot is a plain click).
-    pub(in crate::game) fn inventory_release(&mut self) {
+    pub(in crate::game::client_side) fn inventory_release(&mut self) {
         use sunrise_client::menu::Input;
         let Some((ty, slots)) = self.client.inv_drag.take() else {
             return;

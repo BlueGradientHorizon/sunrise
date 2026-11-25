@@ -11,7 +11,7 @@ use sunrise_client::{
 #[allow(unused_imports)]
 use sunrise_core::geometry::{Aabb, Axis};
 
-pub(in crate::game) fn warden_mob_target_bounds(mob: &Mob) -> Option<Aabb> {
+pub(in crate::game::server_side) fn warden_mob_target_bounds(mob: &Mob) -> Option<Aabb> {
     (!mob.removed && mob.alive() && !mob.is_invulnerable() && mob.species() != Species::Warden)
         .then(|| mob.bounds())
 }
@@ -30,7 +30,7 @@ impl Game<'_> {
     /// target that is absent or invalid resolves to none, as EntityReference
     /// does while vanilla loads a neutral mob. Returns false only when the
     /// actor cannot yet be represented by a native handle.
-    pub(in crate::game) fn native_restore_loaded_target(
+    pub(in crate::game::server_side) fn native_restore_loaded_target(
         &mut self,
         id: u32,
         uuid: Option<[i32; 4]>,
@@ -69,7 +69,10 @@ impl Game<'_> {
 
     /// A player target's game mode, liveness, invulnerability (the ability,
     /// the `Invulnerable` flag or its window) and uuid.
-    pub(in crate::game) fn native_player_facts(&self, target: Target) -> Option<PlayerFacts> {
+    pub(in crate::game::server_side) fn native_player_facts(
+        &self,
+        target: Target,
+    ) -> Option<PlayerFacts> {
         match target {
             Target::Guest(conn) => {
                 let g = self.command_guest(conn)?;
@@ -121,7 +124,11 @@ impl Game<'_> {
     /// `Mob.asValidTarget` and the modeled `canAttack` overrides: the game's
     /// own state as the target's facts, through the one rule set
     /// [`Mob::valid_target`] (#1175) a goal tick's view shares.
-    pub(in crate::game) fn native_mob_valid_target(&self, mob: &Mob, target: Target) -> bool {
+    pub(in crate::game::server_side) fn native_mob_valid_target(
+        &self,
+        mob: &Mob,
+        target: Target,
+    ) -> bool {
         if mob.species() == Species::Warden {
             return self.warden_valid_target(self.mob_team_of(mob), target);
         }
@@ -174,7 +181,7 @@ impl Game<'_> {
     }
     /// `Warden.getTarget` resolves the stored entity and validates the read;
     /// the brain memory is not changed when that entity becomes invalid.
-    pub(in crate::game) fn warden_attack_target(
+    pub(in crate::game::server_side) fn warden_attack_target(
         &self,
         mob: &Mob,
         scope: Option<(&Mob, &MobWorld<'_>)>,
@@ -213,7 +220,7 @@ impl Game<'_> {
     }
 
     /// `Warden.canTargetEntity`, which overrides the usual `Mob.canAttack`.
-    pub(in crate::game) fn warden_valid_target(
+    pub(in crate::game::server_side) fn warden_valid_target(
         &self,
         own_team: Option<&Team>,
         target: Target,
@@ -275,7 +282,7 @@ impl Game<'_> {
         self.warden_target_in_bounds(bounds, own_team, team)
     }
 
-    pub(in crate::game) fn warden_target_in_bounds(
+    pub(in crate::game::server_side) fn warden_target_in_bounds(
         &self,
         bounds: Aabb,
         own: Option<&Team>,
@@ -500,7 +507,11 @@ impl Game<'_> {
     }
 
     /// The mob flag a handle names: a mob's, or the dragon's own.
-    pub(in crate::game) fn native_mob_flag(&self, mob: MobRef, flag: MobFlag) -> Option<bool> {
+    pub(in crate::game::server_side) fn native_mob_flag(
+        &self,
+        mob: MobRef,
+        flag: MobFlag,
+    ) -> Option<bool> {
         match self.native_entity_target(mob.entity())? {
             Target::Mob(id) => {
                 let mob = self.mobs.iter().find(|m| m.id == id)?;
@@ -519,7 +530,7 @@ impl Game<'_> {
             _ => None,
         }
     }
-    pub(in crate::game) fn native_mob_set_flag(
+    pub(in crate::game::server_side) fn native_mob_set_flag(
         &mut self,
         mob: MobRef,
         flag: MobFlag,
@@ -912,7 +923,11 @@ pub(in crate::game) mod tests {
     #[allow(unused_imports)]
     use sunrise_core::geometry::Vec3;
 
-    pub(in crate::game) fn add_mob(game: &mut Game<'_>, id: u32, name: &str) -> MobRef {
+    pub(in crate::game::server_side) fn add_mob(
+        game: &mut Game<'_>,
+        id: u32,
+        name: &str,
+    ) -> MobRef {
         let kind = game.res.mob_types().get(name).unwrap().clone();
         game.mobs.push(Mob::new(id, kind, Vec3::ZERO, 0.0));
         game.mob(game.entity(id).unwrap()).unwrap()

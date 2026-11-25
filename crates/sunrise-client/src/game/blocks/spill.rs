@@ -88,7 +88,7 @@ impl Pending {
     ) -> Option<std::sync::Arc<sunrise_world::loot::copy::BlockSource>> {
         self.sources.get(&pos).cloned()
     }
-    pub(in crate::game) fn record_from(
+    pub(in crate::game::server_side) fn record_from(
         &mut self,
         world: &sunrise_client::world::World,
         pos: [i32; 3],
@@ -98,10 +98,14 @@ impl Pending {
         let name = world.block_names.get(&key).cloned();
         self.record_source(pos, source_snapshot(saved, name, world.block_lock(key)));
     }
-    pub(in crate::game) fn record_saved(&mut self, pos: [i32; 3], tag: &sunrise_core::nbt::Tag) {
+    pub(in crate::game::server_side) fn record_saved(
+        &mut self,
+        pos: [i32; 3],
+        tag: &sunrise_core::nbt::Tag,
+    ) {
         self.record_source(pos, source_snapshot(tag.clone(), None, None));
     }
-    pub(in crate::game) fn record_source(
+    pub(in crate::game::server_side) fn record_source(
         &mut self,
         pos: [i32; 3],
         source: sunrise_world::loot::copy::BlockSource,
@@ -171,7 +175,7 @@ pub(crate) struct DropState {
 
 impl DropState {
     /// The state `drop` asks for.
-    pub(crate) fn of(drop: &mod_api::ItemDrop) -> Self {
+    pub(in crate::game::server_side) fn of(drop: &mod_api::ItemDrop) -> Self {
         Self {
             thrower: drop.thrower,
             target: drop.target,
@@ -180,7 +184,7 @@ impl DropState {
         }
     }
     /// `drop` with this state.
-    pub(crate) fn to_api(self, drop: mod_api::ItemDrop) -> mod_api::ItemDrop {
+    pub(in crate::game::server_side) fn to_api(self, drop: mod_api::ItemDrop) -> mod_api::ItemDrop {
         drop.with_thrower(self.thrower)
             .with_target(self.target)
             .with_no_gravity(self.no_gravity)
@@ -188,7 +192,7 @@ impl DropState {
     }
     /// `item` as a fresh item entity with this state (`setThrower`, `setTarget`,
     /// `setNoGravity` and its age).
-    pub(crate) fn apply(
+    pub(in crate::game::server_side) fn apply(
         self,
         item: sunrise_client::entities::ItemEntity,
     ) -> sunrise_client::entities::ItemEntity {
@@ -281,7 +285,10 @@ pub(crate) struct BlockItemDrop {
 
 impl BlockItemDrop {
     /// The drop as the mods hear and edit it.
-    pub(in crate::game) fn from_api(drop: &mod_api::ItemDrop, stack: ItemStack) -> Self {
+    pub(in crate::game::server_side) fn from_api(
+        drop: &mod_api::ItemDrop,
+        stack: ItemStack,
+    ) -> Self {
         Self {
             random: None,
             stack,
@@ -294,7 +301,7 @@ impl BlockItemDrop {
 
     /// The constructor random the item entity joins with, carrying the state a hook set. A drop
     /// with no state set keeps its random as it was (none: drawn when it joins).
-    pub(in crate::game) fn random_with_state(&self) -> Option<ItemRandom> {
+    pub(in crate::game::server_side) fn random_with_state(&self) -> Option<ItemRandom> {
         if self.state == DropState::default() {
             return self.random;
         }
@@ -517,7 +524,7 @@ pub(in crate::game) struct UsedDrops {
 }
 
 impl Spill {
-    pub(in crate::game) fn is_empty(&self) -> bool {
+    pub(in crate::game::server_side) fn is_empty(&self) -> bool {
         self.piston_positions.is_empty()
             && self.spawns.is_empty()
             && self.orbs.is_empty()
@@ -556,7 +563,7 @@ fn retell_runs(
 }
 
 /// `Block.popResource`: a spot around the block's centre from the level random.
-pub(in crate::game) fn pop_position(
+pub(in crate::game::server_side) fn pop_position(
     random: &mut impl sunrise_core::random::RandomSource,
     pos: [i32; 3],
 ) -> [f64; 3] {
@@ -572,7 +579,7 @@ pub(in crate::game) fn pop_position(
 
 /// `Block.popResource` draws the level offsets even when the rule prevents
 /// constructing (or capturing) an item entity.
-pub(in crate::game) fn admitted_pop_position(
+pub(in crate::game::server_side) fn admitted_pop_position(
     random: &mut impl RandomSource,
     pos: [i32; 3],
     block_drops: bool,
@@ -583,7 +590,7 @@ pub(in crate::game) fn admitted_pop_position(
 
 /// `Block.popResourceFromFace`'s position and motion: an item on the clicked
 /// face, moved off that face and jittered across the other two axes.
-pub(in crate::game) fn pop_position_from_face(
+pub(in crate::game::server_side) fn pop_position_from_face(
     random: &mut impl sunrise_core::random::RandomSource,
     pos: [i32; 3],
     face: [i32; 3],
@@ -657,7 +664,7 @@ pub(in crate::game) fn saved_entity(
 }
 
 /// The read-only payload of an entity kept in packed chunk data, not its loader metadata.
-pub(in crate::game) fn packed_block_entity_payload(tag: Tag) -> Option<Compound> {
+pub(in crate::game::server_side) fn packed_block_entity_payload(tag: Tag) -> Option<Compound> {
     let Tag::Compound(mut data) = tag else {
         return None;
     };
@@ -676,7 +683,7 @@ pub(in crate::game) fn put_saved_entity(
 }
 
 /// Restore a saved-only block entity, or remove the tag created by a tentative write.
-pub(in crate::game) fn set_saved_entity(
+pub(in crate::game::server_side) fn set_saved_entity(
     world: &mut sunrise_client::world::World,
     pos: [i32; 3],
     tag: Option<sunrise_core::nbt::Tag>,
@@ -915,7 +922,7 @@ impl GameLevel<'_> {
     /// standing: `drop_resources_now`'s roll, with what the block entity copies into the drops,
     /// drawn from the same random, but nothing popped, no `block_drops` event and no
     /// experience. A scratch record keeps a break in progress at `pos` as it was.
-    pub(in crate::game) fn block_drops_of(
+    pub(in crate::game::server_side) fn block_drops_of(
         &mut self,
         pos: BlockPos,
         state: BlockStateId,
@@ -1062,7 +1069,7 @@ impl GameLevel<'_> {
     }
     /// `ExperienceOrb.award`: orbs of the largest sizes, each drawing the id
     /// `tryMergeToExisting` compares from the level random.
-    pub(in crate::game) fn award_orbs(&mut self, at: [f64; 3], mut amount: u32) {
+    pub(in crate::game::server_side) fn award_orbs(&mut self, at: [f64; 3], mut amount: u32) {
         while amount > 0 {
             let value = removal::orb_value(amount);
             amount -= value;
@@ -1429,7 +1436,11 @@ impl Game<'_> {
         Some(EntityRef::new(epoch, id.filter(|id| *id != 0)?))
     }
     /// Apply the shared block-drop event's item entities and experience unchanged.
-    pub(in crate::game) fn spawn_block_drops(&mut self, pos: [i32; 3], dropped: BlockDrops) {
+    pub(in crate::game::server_side) fn spawn_block_drops(
+        &mut self,
+        pos: [i32; 3],
+        dropped: BlockDrops,
+    ) {
         for item in dropped.items {
             self.add_item_drop(item);
         }

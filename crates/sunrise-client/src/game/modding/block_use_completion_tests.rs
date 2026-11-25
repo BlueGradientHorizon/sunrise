@@ -9,7 +9,7 @@ thread_local! {
     static CAPTURE: Cell<bool> = const { Cell::new(false) };
     static SEEN: RefCell<Vec<(String, Option<ItemStack>)>> = const { RefCell::new(Vec::new()) };
 }
-pub(in crate::game) fn record(name: &str, stack: Option<&ItemStack>) {
+pub(in crate::game::server_side) fn record(name: &str, stack: Option<&ItemStack>) {
     if CAPTURE.get() {
         SEEN.with_borrow_mut(|seen| seen.push((name.to_owned(), stack.cloned())));
     }

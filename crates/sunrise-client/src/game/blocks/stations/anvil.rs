@@ -7,7 +7,7 @@ pub(in crate::game) const NAME_CHARS: usize = 50;
 
 /// `AnvilScreen.init`: the unbordered box of 50 at the menu's name position,
 /// focused; `slotChanged` makes it editable once the input slot has an item.
-pub(in crate::game) fn rename_box() -> sunrise_client::ui::EditBox {
+pub(in crate::game::client_side) fn rename_box() -> sunrise_client::ui::EditBox {
     let mut edit = sunrise_client::ui::EditBox::new(0.0, 0.0, 103.0, 12.0);
     edit.message = super::super::screen_info::tr("container.repair", &[]);
     edit.bordered = false;
@@ -25,7 +25,7 @@ pub(in crate::game) fn rename_box() -> sunrise_client::ui::EditBox {
 /// `AnvilScreen.slotChanged`: the box shows the input's name, and only an
 /// input item makes it editable (`name.setEditable(!itemStack.isEmpty())`).
 /// A read-only box still keeps the focus, the caret keys and copy.
-pub(in crate::game) fn input_changed(station: &mut Station, name: String) {
+pub(in crate::game::client_side) fn input_changed(station: &mut Station, name: String) {
     station.name = name;
     let value = station.name.clone();
     station.rename.set_value(&value);

@@ -227,7 +227,7 @@ fn enchant_power_query_reads_the_logged_in_client_level() {
     );
 }
 
-pub(in crate::game) fn place(game: &mut Game<'_>, offset: [i32; 3], block: &str) {
+pub(in crate::game::client_side) fn place(game: &mut Game<'_>, offset: [i32; 3], block: &str) {
     let state = game.pack.assets.registry.default_state(block).unwrap();
     let [x, y, z] = [0, 1, 2].map(|i| TABLE[i] + offset[i]);
     game.world.set(x, y, z, state).unwrap();
@@ -274,7 +274,7 @@ fn block_parts_answer_the_enchanting_power_and_the_beam_colour() {
 }
 
 /// Drive the public worker entry, observing real particle requests rather than cache bits.
-pub(in crate::game) fn enchant_particles(game: &Game<'_>) -> usize {
+pub(in crate::game::client_side) fn enchant_particles(game: &Game<'_>) -> usize {
     use sunrise_client::{
         animate_tick::{AnimateContext, animate_tick},
         particles::{ParticleEngine, ParticleType},

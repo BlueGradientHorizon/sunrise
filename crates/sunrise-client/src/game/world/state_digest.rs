@@ -138,7 +138,11 @@ impl DigestParts for trident::ThrownTrident {
 
 impl Game<'_> {
     /// The end of one level's tick: append its digest line.
-    pub(in crate::game) fn state_digest_tick(&mut self, dim: Dim, running: Option<bool>) {
+    pub(in crate::game::server_side) fn state_digest_tick(
+        &mut self,
+        dim: Dim,
+        running: Option<bool>,
+    ) {
         let Some(sink) = sink() else {
             return;
         };
@@ -266,7 +270,10 @@ impl Game<'_> {
     }
 
     /// `digest-sync U E S`: the command harness's `sync_randoms`, from a dedicated server's console.
-    pub(in crate::game) fn state_digest_sync(&mut self, args: &[&str]) -> Result<(), String> {
+    pub(in crate::game::server_side) fn state_digest_sync(
+        &mut self,
+        args: &[&str],
+    ) -> Result<(), String> {
         let [u, e, s] = args else {
             return Err("digest-sync UNIQUIFIER ENTITY_ID LEVEL_SEED".into());
         };

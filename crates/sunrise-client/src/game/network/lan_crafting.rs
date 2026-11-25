@@ -430,7 +430,7 @@ impl Game<'_> {
     /// (a mod's menu slot write, at the root commit): the result made again from the grid, with
     /// `native_prepare_item_craft` as a click has it, kept by the guest and their menu. The
     /// client hears it with the tick's inventory sync.
-    pub(in crate::game) fn guest_craft_result(&mut self, conn: u32) {
+    pub(in crate::game::server_side) fn guest_craft_result(&mut self, conn: u32) {
         let Some(g) = self
             .lan
             .as_ref()
@@ -1256,7 +1256,7 @@ impl Game<'_> {
     /// `ServerGamePacketListenerImpl.handleContainerSlotStateChanged`: a
     /// guest's crafter slot toggle (`CrafterBlockEntity.setSlotState`) in
     /// their open crafter window.
-    pub(in crate::game) fn lan_crafter_slot_state(
+    pub(in crate::game::server_side) fn lan_crafter_slot_state(
         &mut self,
         conn: u32,
         window: i32,
@@ -1292,7 +1292,7 @@ impl Game<'_> {
     /// book places a known recipe in their inventory grid, crafting table or furnace
     /// (`ServerPlaceRecipe`), and answers with a ghost recipe when the items
     /// are missing.
-    pub(in crate::game) fn lan_place_recipe(
+    pub(in crate::game::server_side) fn lan_place_recipe(
         &mut self,
         conn: u32,
         p: &sunrise_protocol::packets::recipes::PlaceRecipe,
@@ -1443,7 +1443,7 @@ impl Game<'_> {
         self.menu_transfer_answer(player, &menu_id, pos, recipe, max, dry_run)
     }
 
-    pub(in crate::game) fn guest_recipe_transfer(&mut self, conn: u32, data: &[u8]) {
+    pub(in crate::game::server_side) fn guest_recipe_transfer(&mut self, conn: u32, data: &[u8]) {
         use sunrise_core::vanilla_bytes::Writer;
         let Some(host) = self.lan.as_ref() else {
             return;
@@ -1491,7 +1491,7 @@ impl Game<'_> {
     /// written back: no slot, block entity or `container_changed`, and no
     /// packet but the reply. Each guest can burst ten checks, then gains one
     /// check per server tick (twenty per second at 20 TPS); more go unanswered.
-    pub(in crate::game) fn guest_recipe_check(&mut self, conn: u32, data: &[u8]) {
+    pub(in crate::game::server_side) fn guest_recipe_check(&mut self, conn: u32, data: &[u8]) {
         use sunrise_protocol::buf::Reader;
         let Some(host) = self.lan.as_mut() else {
             return;
@@ -1938,7 +1938,7 @@ impl Game<'_> {
     /// the containers behind them again (`native_menu_links`), before the
     /// hub sends the tick's slot changes, so a tab the player picked or a
     /// chest placed or broken shows in the same tick.
-    pub(in crate::game) fn lan_menu_links_tick(&mut self) {
+    pub(in crate::game::server_side) fn lan_menu_links_tick(&mut self) {
         if !mod_api::__private::listened(mod_api::HookId::MenuLinks) {
             return;
         }
@@ -2086,7 +2086,7 @@ impl Game<'_> {
 
     /// `ServerPlayer.tick`'s `stillValid`: a guest's crafting table closes
     /// once it is gone or out of reach, giving its grid back.
-    pub(in crate::game) fn lan_tables_tick(&mut self) {
+    pub(in crate::game::server_side) fn lan_tables_tick(&mut self) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -2149,7 +2149,10 @@ impl Game<'_> {
     /// dropped. False when no such window is open.
     /// The open crafting table's own slots (result and grid) before the
     /// player's inventory, if the guest has one open.
-    pub(in crate::game) fn lan_crafting_table_own_slots(&self, conn: u32) -> Option<usize> {
+    pub(in crate::game::server_side) fn lan_crafting_table_own_slots(
+        &self,
+        conn: u32,
+    ) -> Option<usize> {
         let (_, _, menu, _) = self
             .lan
             .as_ref()?
@@ -2254,7 +2257,7 @@ impl Game<'_> {
 
     /// A guest left: what their crafting grids and workstation held goes back into their
     /// inventory before it is saved (dropped where they stood if full).
-    pub(in crate::game) fn lan_crafting_left(&mut self, g: &mut Guest) {
+    pub(in crate::game::server_side) fn lan_crafting_left(&mut self, g: &mut Guest) {
         // The guest's play state stays: their statistics are awarded and saved
         // after this (`HostEvent::Left`), which removes it.
         let Some(host) = self.lan.as_mut() else {

@@ -263,7 +263,7 @@ pub(in crate::game) fn witness_body(id: u32, start: usize, end: usize) {
     }
 }
 
-pub(in crate::game) fn capture_body_witnesses<T>(
+pub(in crate::game::client_side) fn capture_body_witnesses<T>(
     draw: impl FnOnce() -> T,
 ) -> (T, Vec<BodyWitness>) {
     BODY_WITNESSES.with_borrow_mut(|witnesses| *witnesses = Some(Vec::new()));
@@ -272,7 +272,7 @@ pub(in crate::game) fn capture_body_witnesses<T>(
     (output, witnesses)
 }
 
-pub(in crate::game) fn submitted_bodies<T>(
+pub(in crate::game::client_side) fn submitted_bodies<T>(
     game: &mut Game<'_>,
     draw: impl FnOnce(&mut Game<'_>) -> T,
 ) -> (T, Vec<u32>) {
@@ -310,7 +310,7 @@ fn entity_draw_order_after_client_packets() {
     run_entity_draw_order_after_client_packets();
 }
 
-pub(in crate::game) fn run_entity_draw_order_after_client_packets() {
+pub(in crate::game::client_side) fn run_entity_draw_order_after_client_packets() {
     use sunrise_client::camera::CameraType;
     use sunrise_protocol::{
         entity_data::{

@@ -17,7 +17,7 @@ impl Game<'_> {
     /// Order controls only the ordinary-storage walk, not the separate crystal,
     /// dragon, player and decoration passes. Without a listener nothing is listed, and the walks
     /// enumerate the storages as before.
-    pub(in crate::game) fn explosion_detonate(
+    pub(in crate::game::server_side) fn explosion_detonate(
         &mut self,
         center: [f64; 3],
         radius: f32,
@@ -105,7 +105,7 @@ impl Game<'_> {
     /// The kinds outside the storages (frames, paintings, cushions, crystals,
     /// the dragon and its parts, hooks, players) answer None: their own
     /// passes and the player walk read the list for them.
-    pub(in crate::game) fn blast_handle(&self, id: u32) -> Option<EntityHandle> {
+    pub(in crate::game::server_side) fn blast_handle(&self, id: u32) -> Option<EntityHandle> {
         if let Some(i) = self.mobs.iter().position(|m| m.id == id) {
             return Some(EntityHandle::Mob(i));
         }

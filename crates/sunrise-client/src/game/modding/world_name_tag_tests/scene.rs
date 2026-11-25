@@ -9,7 +9,7 @@ use mod_api::{
 pub const SCENE_TIME: i64 = 4171;
 
 /// The scene's labels: one of each kind the offscreen tests pin, then one refused.
-pub fn scene() -> Vec<([f64; 3], Text, NameTagOptions)> {
+pub(in crate::game::client_side) fn scene() -> Vec<([f64; 3], Text, NameTagOptions)> {
     let mut bold = TextStyle::default();
     bold.bold = Some(true);
     vec![
@@ -40,7 +40,7 @@ pub fn scene() -> Vec<([f64; 3], Text, NameTagOptions)> {
     ]
 }
 
-pub fn render_level_stage(event: &mut RenderLevelStageEvent<'_>) {
+pub(in crate::game::client_side) fn render_level_stage(event: &mut RenderLevelStageEvent<'_>) {
     if event.stage != RenderLevelStage::AfterLevel || event.view.game_time != SCENE_TIME {
         return;
     }
@@ -65,7 +65,7 @@ pub fn render_level_stage(event: &mut RenderLevelStageEvent<'_>) {
 pub const RESULT_CODES: [u32; 4] = [0, 0, 0, 1];
 
 /// A `name_tag` result as a number: 0 drawn, then each refusal.
-pub fn result_code(result: Result<(), DrawError>) -> u32 {
+pub(in crate::game::client_side) fn result_code(result: Result<(), DrawError>) -> u32 {
     match result {
         Ok(()) => 0,
         Err(DrawError::NonFinite) => 1,

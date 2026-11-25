@@ -14,7 +14,7 @@ impl Game<'_> {
         self.server.tick_scratch = scratch;
         result
     }
-    pub(in crate::game) fn tick_blocks_with_scratch(
+    pub(in crate::game::server_side) fn tick_blocks_with_scratch(
         &mut self,
         scratch: &mut TickScratch,
     ) -> Result<Option<usize>> {

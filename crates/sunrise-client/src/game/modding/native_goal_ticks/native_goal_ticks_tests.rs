@@ -127,7 +127,11 @@ impl mobs::goals::Goal for Vanilla {
 }
 
 /// A zombie in the game's list, as `Mob::new` builds it.
-pub(in crate::game) fn zombie(game: &mut super::super::Game<'_>, id: u32, at: [f64; 3]) {
+pub(in crate::game::server_side) fn zombie(
+    game: &mut super::super::Game<'_>,
+    id: u32,
+    at: [f64; 3],
+) {
     let kind = game
         .res
         .mob_types()

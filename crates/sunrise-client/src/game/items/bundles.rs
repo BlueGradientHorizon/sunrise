@@ -21,7 +21,7 @@ pub(in crate::game) struct BundleMouse {
 /// `onStopHovering` clears the selection: the inventory and container menus, and
 /// `CreativeModeInventoryScreen`, which scrolls its items only when no bundle took
 /// the wheel.
-pub(in crate::game) fn takes_bundle_wheel(screen: Screen) -> bool {
+pub(in crate::game::client_side) fn takes_bundle_wheel(screen: Screen) -> bool {
     matches!(screen, Screen::Inventory | Screen::Creative)
 }
 
@@ -39,7 +39,7 @@ impl Game<'_> {
 
     /// `BundleMouseActions.onMouseScrolled`: the wheel over a bundle moves the selection
     /// through the items its tooltip shows. True when the bundle took the wheel.
-    pub(in crate::game) fn bundle_scroll(&mut self, x: f64, y: f64) -> bool {
+    pub(in crate::game::client_side) fn bundle_scroll(&mut self, x: f64, y: f64) -> bool {
         let Some(slot) = self.inventory_target().0 else {
             return false;
         };
@@ -84,7 +84,7 @@ impl Game<'_> {
     }
 
     /// `BundleMouseActions.unselectedBundleItem` for the bundle in `slot`, if it has a selection.
-    pub(in crate::game) fn unselect_bundle(&mut self, slot: usize) {
+    pub(in crate::game::client_side) fn unselect_bundle(&mut self, slot: usize) {
         if !self.bundle_slot(slot) {
             return;
         }
@@ -100,7 +100,7 @@ impl Game<'_> {
 
     /// `AbstractContainerScreen.onStopHovering` (and `onClose`): leaving a slot, or the
     /// screen, clears the bundle's selection.
-    pub(in crate::game) fn tick_bundle_hover(&mut self) {
+    pub(in crate::game::client_side) fn tick_bundle_hover(&mut self) {
         let now = if takes_bundle_wheel(self.client.screen) {
             self.inventory_target().0
         } else {

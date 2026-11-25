@@ -35,7 +35,7 @@ pub(in crate::game) fn redirectable(p: &Projectile) -> bool {
 /// to 0.1 (`AbstractHurtingProjectile.onDeflection` by an attack). A wind
 /// charge in its first five ticks refuses (`WindCharge.deflect`): false, and
 /// nothing changes.
-pub(in crate::game) fn aim_deflect(
+pub(in crate::game::server_side) fn aim_deflect(
     p: &mut Projectile,
     look: Option<Vec3>,
     owner: Option<Who>,
@@ -59,7 +59,7 @@ pub(in crate::game) fn attackable(p: &Projectile) -> bool {
 impl Game<'_> {
     /// Whether `kind` belongs to `#minecraft:redirectable_projectile`, reading the server's synced
     /// entity-type tags on a remote client when present, else the loaded entity tags.
-    pub(in crate::game) fn is_redirectable_projectile_type(&self, kind: &str) -> bool {
+    pub(in crate::game::server_side) fn is_redirectable_projectile_type(&self, kind: &str) -> bool {
         if let Some(remote) = &self.remote
             && let Some(tags) = remote.registries.tags.get("minecraft:entity_type")
             && let Some(ids) = remote.builtin.get("minecraft:entity_type")
@@ -112,7 +112,7 @@ impl Game<'_> {
         self.is_redirectable_projectile_type("minecraft:firework_rocket")
     }
     /// The pickable projectile under the crosshair within entity reach.
-    pub(in crate::game) fn redirectable_hit(&self) -> Option<(usize, f64)> {
+    pub(in crate::game::server_side) fn redirectable_hit(&self) -> Option<(usize, f64)> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, _) = hit?;
             let index = self
@@ -139,7 +139,7 @@ impl Game<'_> {
     /// player its owner, its acceleration power back to 0.1
     /// (`onDeflection` by an attack), and the no-damage sound. True when a
     /// projectile was turned.
-    pub(in crate::game) fn attack_redirectable(&mut self) -> bool {
+    pub(in crate::game::server_side) fn attack_redirectable(&mut self) -> bool {
         let Some((i, t)) = self.redirectable_hit() else {
             return false;
         };
@@ -268,7 +268,7 @@ impl Game<'_> {
 /// `Player.attack`'s `deflect(AIM_DEFLECT, player, player, true)`: [`aim_deflect`] along the
 /// player's look at `pitch` and `yaw` (`Entity.getLookAngle`, vanilla's sine table), with `p`
 /// turned to it. False, and nothing changes, when the projectile refuses.
-pub(in crate::game) fn attack_deflect(
+pub(in crate::game::server_side) fn attack_deflect(
     p: &mut Projectile,
     pitch: f32,
     yaw: f32,

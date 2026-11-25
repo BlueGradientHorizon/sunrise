@@ -30,7 +30,7 @@ use sunrise_world::registry::{BlockRegistry, BlockStateId};
 /// The tree the chat parses and completes with: `Remote::chat_tree`, which is
 /// a server's, once it has sent one (ClientPacketListener.commands), else the
 /// game's own, plus the commands native mods own (`chat_tree_for`).
-pub(in crate::game) fn chat_tree(
+pub(in crate::game::client_side) fn chat_tree(
     remote: &Option<super::remote::Remote>,
 ) -> &sunrise_client::command::Dispatcher {
     match remote.as_ref() {
@@ -39,7 +39,7 @@ pub(in crate::game) fn chat_tree(
     }
 }
 /// The arguments of a typed `/profiler` the client answers itself: only when the chat tree's `profiler` is Sunrise's, else the server or mod that owns the name runs it.
-pub(in crate::game) fn sunrise_profiler_args<'a>(
+pub(in crate::game::client_side) fn sunrise_profiler_args<'a>(
     message: &'a str,
     server_tree: Option<&sunrise_client::command::Dispatcher>,
 ) -> Option<&'a str> {
@@ -56,7 +56,7 @@ use winit::keyboard::KeyCode;
 /// `base` with extra client-local commands added: each a literal taking the
 /// rest of the line as typed (`Dispatcher::with_mod_commands`), so the chat
 /// box colours and completes them as it does the game's own.
-pub(in crate::game) fn with_native_commands(
+pub(in crate::game::client_side) fn with_native_commands(
     base: &sunrise_client::command::Dispatcher,
     names: &[&str],
 ) -> sunrise_client::command::Dispatcher {
@@ -72,7 +72,7 @@ pub(in crate::game) fn with_native_commands(
 /// Add Studio's local command grammar to the suggestion tree. Commands are
 /// still dispatched by `studio_command`; this tree supplies coloring,
 /// completion, and Tab acceptance in chat.
-pub(in crate::game) fn with_studio_commands(base: &Dispatcher) -> Dispatcher {
+pub(in crate::game::client_side) fn with_studio_commands(base: &Dispatcher) -> Dispatcher {
     fn literal(d: &mut Dispatcher, parent: usize, name: &str) -> usize {
         let node = d.literal(parent, name);
         d.executes(node, MOD_COMMAND);
@@ -222,7 +222,10 @@ pub(in crate::game) enum ChatExit {
     Done,
 }
 /// `ChatScreen.shouldDiscardDraft`.
-pub(in crate::game) fn should_discard_draft(reason: ChatExit, save_chat_drafts: bool) -> bool {
+pub(in crate::game::client_side) fn should_discard_draft(
+    reason: ChatExit,
+    save_chat_drafts: bool,
+) -> bool {
     reason != ChatExit::Interrupted && (reason != ChatExit::Intentional || !save_chat_drafts)
 }
 /// An owned command tree, initialized even before a world is opened.
@@ -310,7 +313,7 @@ impl UiState {
         self.show_hand_when_hidden = mode == HudMode::NoHud;
     }
 
-    pub fn hand_hidden(&self) -> bool {
+    pub(in crate::game::client_side) fn hand_hidden(&self) -> bool {
         self.hide_gui && !self.show_hand_when_hidden
     }
 
@@ -326,7 +329,7 @@ impl UiState {
         !spectator && !self.hand_hidden() && !sleeping && first_person && alive && !dead_screen
     }
 
-    pub(in crate::game) fn toggle_hide_gui(&mut self) {
+    pub(in crate::game::client_side) fn toggle_hide_gui(&mut self) {
         use mod_api::HudMode;
         self.player_hides_gui = !self.player_hides_gui;
         self.set_hud_mode(if self.player_hides_gui {
@@ -418,7 +421,7 @@ pub(in crate::game) static RESOURCE_IDS: Mutex<Vec<(PathBuf, Arc<ResourceIds>)>>
     Mutex::new(Vec::new());
 
 /// The `minecraft:` ids of the `.json` files directly in `dir`, sorted.
-pub(in crate::game) fn json_ids_in(dir: &Path) -> Vec<String> {
+pub(in crate::game::client_side) fn json_ids_in(dir: &Path) -> Vec<String> {
     let mut out: Vec<String> = std::fs::read_dir(dir)
         .into_iter()
         .flatten()
@@ -436,7 +439,7 @@ pub(in crate::game) fn json_ids_in(dir: &Path) -> Vec<String> {
 
 /// The overworld clock's timelines (with their periods) and their time
 /// markers, read from `data/minecraft/timeline`.
-pub(in crate::game) fn overworld_timelines(
+pub(in crate::game::client_side) fn overworld_timelines(
     root: &Path,
 ) -> (Vec<(String, Option<i64>)>, Vec<(String, TimeMarker)>) {
     let dir = root.join("data/minecraft/timeline");
@@ -474,7 +477,7 @@ pub(in crate::game) fn overworld_timelines(
     (timelines, markers)
 }
 
-pub(in crate::game) fn resource_ids(root: &Path) -> Arc<ResourceIds> {
+pub(in crate::game::client_side) fn resource_ids(root: &Path) -> Arc<ResourceIds> {
     let mut cache = RESOURCE_IDS.lock().unwrap_or_else(|e| e.into_inner());
     if let Some((_, ids)) = cache.iter().find(|(cached, _)| cached == root) {
         return ids.clone();
@@ -562,7 +565,10 @@ pub(in crate::game) fn command_export(dir: &Path, keep: bool) -> Option<Arc<Regi
 
 /// The ids of the `.json` files in `data/<namespace>/<kind>` of every
 /// namespace of `root` (vanilla's and the content mods'), sorted.
-pub(in crate::game) fn json_ids_of_every_namespace(root: &Path, kind: &str) -> Vec<String> {
+pub(in crate::game::client_side) fn json_ids_of_every_namespace(
+    root: &Path,
+    kind: &str,
+) -> Vec<String> {
     let data = root.join("data");
     let mut namespaces: std::collections::BTreeSet<String> = std::fs::read_dir(&data)
         .into_iter()
@@ -589,7 +595,7 @@ pub(in crate::game) fn json_ids_of_every_namespace(root: &Path, kind: &str) -> V
 
 /// The templates of every namespace folder under `root` (vanilla's and the
 /// content mods'), as `namespace:path`, sorted.
-pub(in crate::game) fn templates_under(root: &Path) -> Vec<String> {
+pub(in crate::game::client_side) fn templates_under(root: &Path) -> Vec<String> {
     let Ok(namespaces) = std::fs::read_dir(root) else {
         return Vec::new();
     };
@@ -603,7 +609,11 @@ pub(in crate::game) fn templates_under(root: &Path) -> Vec<String> {
 }
 
 /// The `namespace:` ids of the `extension` files under `root`, sorted.
-pub(in crate::game) fn ids_in(root: &Path, extension: &str, namespace: &str) -> Vec<String> {
+pub(in crate::game::client_side) fn ids_in(
+    root: &Path,
+    extension: &str,
+    namespace: &str,
+) -> Vec<String> {
     let suffix = format!(".{extension}");
     // A prepared root's folder: from its data file, without listing the disk.
     if let Some(files) = sunrise_core::prepared_files::files_under(root) {
@@ -647,7 +657,7 @@ pub(in crate::game) fn ids_in(root: &Path, extension: &str, namespace: &str) -> 
 
 /// `SuggestionProviders.SUMMONABLE_ENTITIES`: Entity types available for
 /// `/summon` autocomplete, filtering out types that cannot be summoned.
-pub(in crate::game) fn summonable_entities(
+pub(in crate::game::client_side) fn summonable_entities(
     entity_types: &[String],
     mob_types: impl IntoIterator<Item = impl AsRef<str>>,
 ) -> Vec<String> {
@@ -696,7 +706,7 @@ impl Game<'_> {
     /// thread while the title screen is up: the first world opened or server joined
     /// built them in its frame (20 ms of the Join click on an M4 Pro). Whoever needs one
     /// before it is done waits for it, as before.
-    pub(in crate::game) fn preload_registries(&self) {
+    pub(in crate::game::client_side) fn preload_registries(&self) {
         if self.options.dedicated.is_some() {
             return;
         }
@@ -939,7 +949,7 @@ impl Game<'_> {
     /// `ClientSuggestionProvider.getRelevantCoordinates` and
     /// `getAbsoluteCoordinates` read `Minecraft.hitResult` only when it is a
     /// block: an entity in front of the block leaves the `~` defaults.
-    pub(in crate::game) fn refresh_dynamic_registries(&mut self) {
+    pub(in crate::game::client_side) fn refresh_dynamic_registries(&mut self) {
         let hit = if self.pick_entity_hit().is_some() {
             None
         } else {
@@ -979,7 +989,7 @@ impl Game<'_> {
     /// `ChatComponent.createScreen`: T or / opens the chat with the draft kept
     /// last time, when this method can restore it (a command draft only for
     /// /), else with its prefix.
-    pub(in crate::game) fn open_chat_method(&mut self, prefix: &str) {
+    pub(in crate::game::client_side) fn open_chat_method(&mut self, prefix: &str) {
         let command = prefix == "/";
         let draft = self
             .ui
@@ -993,7 +1003,11 @@ impl Game<'_> {
     /// Open the chat box on `initial`; `is_draft` when that text is the saved
     /// draft (`ChatComponent.createScreen`), which draws grey italic until it
     /// is edited.
-    pub(in crate::game) fn begin_chat_screen(&mut self, initial: &str, is_draft: bool) {
+    pub(in crate::game::client_side) fn begin_chat_screen(
+        &mut self,
+        initial: &str,
+        is_draft: bool,
+    ) {
         if self.player.is_none() {
             return;
         }
@@ -1026,7 +1040,7 @@ impl Game<'_> {
         self.set_screen(Screen::Chat);
         self.capture(false);
     }
-    pub(in crate::game) fn close_chat(&mut self, reason: ChatExit) {
+    pub(in crate::game::client_side) fn close_chat(&mut self, reason: ChatExit) {
         // InBedChatScreen.onClose: leaving the screen means getting up; the
         // screen goes once the player has woken (`tick_in_bed_chat`).
         if self.ui.in_bed_chat && self.sleeping.is_some() {
@@ -1051,7 +1065,7 @@ impl Game<'_> {
     /// `shouldDiscardDraft` (closed on purpose without Save Chat Drafts, or
     /// sent); blank text discards the draft. A draft still shown unchanged
     /// stays as it is.
-    pub(in crate::game) fn keep_chat_draft(&mut self, text: &str, reason: ChatExit) {
+    pub(in crate::game::client_side) fn keep_chat_draft(&mut self, text: &str, reason: ChatExit) {
         // During PvP & HUD's chat search the box holds the query: the draft is the text the
         // search put aside, whichever way the chat closed.
         let aside;
@@ -1076,7 +1090,7 @@ impl Game<'_> {
         }
     }
     /// `ChatScreen.removed` after another screen interrupted chat.
-    pub(in crate::game) fn remove_chat_screen(&mut self) {
+    pub(in crate::game::client_side) fn remove_chat_screen(&mut self) {
         if let Some(chat) = self.ui.chat_screen.take() {
             self.keep_chat_draft(chat.value(), ChatExit::Interrupted);
             self.ui.chat_draft_shown = false;
@@ -1088,7 +1102,7 @@ impl Game<'_> {
     /// `Gui.tick`: a sleeper gets `InBedChatScreen`; when the player has
     /// woken (`onPlayerWokeUp`) it closes, or turns into the plain chat
     /// screen if something was typed.
-    pub(in crate::game) fn tick_in_bed_chat(&mut self) {
+    pub(in crate::game::client_side) fn tick_in_bed_chat(&mut self) {
         if self.client.screen != Screen::Chat {
             self.remove_chat_screen();
         }
@@ -1114,13 +1128,16 @@ impl Game<'_> {
     }
     /// The Leave Bed button of `InBedChatScreen`: its bounds, laid out once
     /// per build (`ChatLayout`).
-    pub(in crate::game) fn leave_bed_button(width: f32, height: f32) -> (i32, i32, i32, i32) {
+    pub(in crate::game::client_side) fn leave_bed_button(
+        width: f32,
+        height: f32,
+    ) -> (i32, i32, i32, i32) {
         (width as i32 / 2 - 100, height as i32 - 40, 200, 20)
     }
     /// The Leave Bed button's draws. It registers as a button
     /// (`widgets::record`), so the pad's and the keyboard's focus reach it (the
     /// pad's starts on it) and `sunrise-ctl click-button` finds it.
-    pub(in crate::game) fn leave_bed_draws(
+    pub(in crate::game::client_side) fn leave_bed_draws(
         m: &Measure,
         mouse: (i32, i32),
         (x, y, w, h): (i32, i32, i32, i32),
@@ -1188,7 +1205,7 @@ impl Game<'_> {
         );
     }
     /// Keys while the chat screen is open.
-    pub(in crate::game) fn chat_key(
+    pub(in crate::game::client_side) fn chat_key(
         &mut self,
         key: KeyCode,
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
@@ -1208,7 +1225,7 @@ impl Game<'_> {
         self.chat_key_code(key, None)
     }
     /// A key (and the text it typed) while the chat screen is open.
-    pub(in crate::game) fn chat_key_code(
+    pub(in crate::game::client_side) fn chat_key_code(
         &mut self,
         key: KeyCode,
         typed_text: Option<&str>,
@@ -1291,7 +1308,7 @@ impl Game<'_> {
         self.notify_chat_suggestion_completion();
         handled
     }
-    pub(in crate::game) fn notify_chat_suggestion_completion(&mut self) {
+    pub(in crate::game::client_side) fn notify_chat_suggestion_completion(&mut self) {
         if let Some(completion) = self
             .ui
             .chat_screen
@@ -1325,7 +1342,7 @@ impl Game<'_> {
         }
     }
     /// Text typed into the chat box (control socket `chat`).
-    pub(in crate::game) fn chat_type(&mut self, text: &str) {
+    pub(in crate::game::client_side) fn chat_type(&mut self, text: &str) {
         let m = Measure(&self.gui.atlas.font);
         let c = Commands {
             dispatcher: chat_tree(&self.remote),
@@ -1340,7 +1357,7 @@ impl Game<'_> {
     /// 256 UTF-16 units the packet holds), into history, then as a command or
     /// a chat line. The Chat option's restrictions stop the message here too,
     /// so a control-socket `chat` cannot send what the player's setting hides.
-    pub(in crate::game) fn handle_chat_input(&mut self, message: &str) {
+    pub(in crate::game::client_side) fn handle_chat_input(&mut self, message: &str) {
         let message = normalize_chat_message(message);
         if message.is_empty() || !self.chat_abilities().allows(&message) {
             return;
@@ -1387,7 +1404,7 @@ impl Game<'_> {
             );
         }
     }
-    pub(in crate::game) fn chat_scroll(&mut self, amount: f32) {
+    pub(in crate::game::client_side) fn chat_scroll(&mut self, amount: f32) {
         let cursor = self.client.cursor;
         let mouse = (cursor.0.floor() as i32, cursor.1.floor() as i32);
         if let Some(screen) = self.ui.chat_screen.as_mut()
@@ -1400,7 +1417,7 @@ impl Game<'_> {
         let amount = amount.clamp(-1.0, 1.0) * if shift { 1.0 } else { 7.0 };
         self.ui.chat.scroll_by(amount as i32, true);
     }
-    pub(in crate::game) fn chat_click(&mut self) -> bool {
+    pub(in crate::game::client_side) fn chat_click(&mut self) -> bool {
         let cursor = self.client.cursor;
         let height = self.renderer.0.as_ref().map_or(720.0, |r| {
             HudBatch::new(
@@ -1551,7 +1568,7 @@ impl Game<'_> {
     }
     /// `Screen.clickUrlAction`: nothing with Web Links off, else the link
     /// opens, after the confirmation unless Prompt on Links is off.
-    pub(in crate::game) fn click_url(&mut self, url: String) {
+    pub(in crate::game::client_side) fn click_url(&mut self, url: String) {
         if !self.settings.chat_links {
             return;
         }
@@ -1563,7 +1580,7 @@ impl Game<'_> {
     }
     /// `ConfirmLinkScreen` (untrusted): the link and its warning over the
     /// chat, answered yes to open it.
-    pub(in crate::game) fn link_prompt_layout(
+    pub(in crate::game::client_side) fn link_prompt_layout(
         &self,
         url: &str,
         size: (f32, f32),
@@ -1582,7 +1599,7 @@ impl Game<'_> {
             100.0,
         )
     }
-    pub(in crate::game) fn draw_link_prompt(&self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_link_prompt(&self, batch: &mut HudBatch) {
         let Some(url) = &self.client.link_prompt else {
             return;
         };
@@ -1610,7 +1627,7 @@ impl Game<'_> {
         self.draw_overlay_mounted_widgets(batch, "link_prompt");
     }
     /// The prompt's answer: the link opens on yes; either way the chat is back.
-    pub(in crate::game) fn answer_link_prompt(&mut self, yes: bool) {
+    pub(in crate::game::client_side) fn answer_link_prompt(&mut self, yes: bool) {
         let Some(url) = self.client.link_prompt.take() else {
             return;
         };
@@ -1619,7 +1636,7 @@ impl Game<'_> {
             super::packs::open_uri(&url);
         }
     }
-    pub(in crate::game) fn link_prompt_click(&mut self) -> bool {
+    pub(in crate::game::client_side) fn link_prompt_click(&mut self) -> bool {
         let Some(url) = self.client.link_prompt.clone() else {
             return false;
         };
@@ -1641,7 +1658,7 @@ impl Game<'_> {
     /// without adding it to the chat history. A client mod's command goes
     /// first, as `ClientPacketListener.sendUnattendedCommand` lets client
     /// commands take it.
-    pub(in crate::game) fn click_command(&mut self, command: &str) {
+    pub(in crate::game::client_side) fn click_command(&mut self, command: &str) {
         let command = command.strip_prefix('/').unwrap_or(command);
         if self.client_mod_command(command) {
             return;
@@ -1654,7 +1671,7 @@ impl Game<'_> {
     }
     /// PvP & HUD's chat search on or off. The box holds the query: what was typed is put aside
     /// when the search starts and comes back when it stops.
-    pub(in crate::game) fn toggle_chat_search(&mut self) {
+    pub(in crate::game::client_side) fn toggle_chat_search(&mut self) {
         let typed = self.ui.chat_screen.as_ref().map(|s| s.value().to_owned());
         let next = if self.client.pvp.chat_search {
             std::mem::take(&mut self.client.pvp.chat_search_aside)
@@ -1725,7 +1742,9 @@ impl Game<'_> {
     }
     /// `HoverEvent.EntityTooltipInfo.getTooltipLines`: the name when the
     /// event has one, the entity type and the UUID.
-    pub(in crate::game) fn entity_tooltip_lines(entity: &serde_json::Value) -> Vec<(Text, u32)> {
+    pub(in crate::game::client_side) fn entity_tooltip_lines(
+        entity: &serde_json::Value,
+    ) -> Vec<(Text, u32)> {
         let mut lines = Vec::new();
         if let Some(name) = entity.get("name") {
             let name = sunrise_client::component::to_text(name, &mut |s| Text::literal(s));
@@ -1747,7 +1766,9 @@ impl Game<'_> {
     }
     /// The UUID of a ShowEntity event: its string, or the int array
     /// `UUIDUtil.CODEC` writes (most significant word first).
-    pub(in crate::game) fn hover_event_entity_uuid(v: &serde_json::Value) -> Option<String> {
+    pub(in crate::game::client_side) fn hover_event_entity_uuid(
+        v: &serde_json::Value,
+    ) -> Option<String> {
         if let Some(s) = v.as_str() {
             return Some(s.to_owned());
         }
@@ -1758,7 +1779,7 @@ impl Game<'_> {
         }
         Some(sunrise_protocol::crypto::uuid_string(bits))
     }
-    pub(in crate::game) fn draw_chat_screen(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_chat_screen(&mut self, batch: &mut HudBatch) {
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
         // ChatScreen extracts focused chat separately, outside the HUD chat slot.
         self.draw_chat(batch);
@@ -1879,7 +1900,7 @@ impl Game<'_> {
         }
     }
     /// `component_hover`, only while a mod listens: true when a mod cancelled the hover.
-    pub(in crate::game) fn component_hover_canceled(
+    pub(in crate::game::client_side) fn component_hover_canceled(
         &self,
         batch: &mut HudBatch,
         style: &sunrise_client::text::Style,
@@ -1903,7 +1924,11 @@ impl Game<'_> {
         cancel
     }
     /// `Font.split`: a tooltip text wrapped at `width`, one white row per line.
-    pub(in crate::game) fn wrapped_rows(&self, text: &Text, width: i32) -> Vec<(Text, u32)> {
+    pub(in crate::game::client_side) fn wrapped_rows(
+        &self,
+        text: &Text,
+        width: i32,
+    ) -> Vec<(Text, u32)> {
         let split = self
             .gui
             .atlas
@@ -2148,7 +2173,7 @@ impl Game<'_> {
         self.ui.toggle_hide_gui();
     }
     /// F2: ScreenShot.grab into `screenshots/` with vanilla's file name.
-    pub(in crate::game) fn take_screenshot(&mut self) -> Option<std::path::PathBuf> {
+    pub(in crate::game::client_side) fn take_screenshot(&mut self) -> Option<std::path::PathBuf> {
         if self.screenshot_sequence.0.is_some() {
             return None;
         }
@@ -2176,7 +2201,11 @@ impl Game<'_> {
     /// `Minecraft.handleGlobalKeyPress`'s screenshot branch: the
     /// `key.screenshot` mapping (F2 by default) takes the picture before a
     /// screen or a text box sees the key, and the debug modifier suppresses it.
-    pub(in crate::game) fn screenshot_shortcut(&mut self, key: KeyCode, repeat: bool) -> bool {
+    pub(in crate::game::client_side) fn screenshot_shortcut(
+        &mut self,
+        key: KeyCode,
+        repeat: bool,
+    ) -> bool {
         if repeat
             || sunrise_client::keybinds::key_name(key)
                 != Some(self.settings.keys.get("key.screenshot"))
@@ -2187,7 +2216,7 @@ impl Game<'_> {
     }
     /// key.screenshot from any device: not while F3 is down, where F3+F2 is a
     /// debug key.
-    pub(in crate::game) fn screenshot_action(&mut self) -> bool {
+    pub(in crate::game::client_side) fn screenshot_action(&mut self) -> bool {
         if self.client.debug_keys.modifier_down {
             return false;
         }
@@ -2195,7 +2224,7 @@ impl Game<'_> {
         true
     }
     /// Readback is complete: fire the client hook, then save the image it left.
-    pub(in crate::game) fn save_screenshot(
+    pub(in crate::game::client_side) fn save_screenshot(
         &mut self,
         mut pending: sunrise_client::gfx::PendingScreenshot,
     ) -> Option<std::result::Result<[u32; 2], String>> {
@@ -2275,7 +2304,7 @@ impl Game<'_> {
         self.post_screenshot_chat(message);
     }
 
-    pub(in crate::game) fn post_screenshot_chat(&mut self, message: Text) {
+    pub(in crate::game::client_side) fn post_screenshot_chat(&mut self, message: Text) {
         let focused = self.client.screen == Screen::Chat;
         self.ui.chat.add(
             &self.gui.atlas,
@@ -2289,7 +2318,7 @@ impl Game<'_> {
 }
 
 /// `ScreenshotEvent.getCancelMessage`: the listener's line, or the default reason.
-pub(in crate::game) fn screenshot_cancel_line(message: Option<Text>) -> Text {
+pub(in crate::game::client_side) fn screenshot_cancel_line(message: Option<Text>) -> Text {
     message.unwrap_or_else(|| {
         Text::translate(
             "screenshot.failure",
@@ -2298,7 +2327,10 @@ pub(in crate::game) fn screenshot_cancel_line(message: Option<Text>) -> Text {
     })
 }
 /// `yyyy-MM-dd_HH.mm.ss[_n].png` (Util.getFilenameFormattedDateTime, in local time).
-pub fn screenshot_name(dir: &std::path::Path, pending: &[std::path::PathBuf]) -> String {
+pub(in crate::game::client_side) fn screenshot_name(
+    dir: &std::path::Path,
+    pending: &[std::path::PathBuf],
+) -> String {
     // Util.getFilenameFormattedDateTime: the local date and time.
     let base = chrono::Local::now().format("%Y-%m-%d_%H.%M.%S").to_string();
     let mut n = 1;
@@ -2318,7 +2350,7 @@ pub fn screenshot_name(dir: &std::path::Path, pending: &[std::path::PathBuf]) ->
 
 /// `IntegratedServer.getProfilePermissions` for the owner: `OWNER` (4) when
 /// commands are allowed, else `ALL` (0).
-pub(in crate::game) fn owner_permission(allow_commands: bool) -> u8 {
+pub(in crate::game::client_side) fn owner_permission(allow_commands: bool) -> u8 {
     if allow_commands { 4 } else { 0 }
 }
 

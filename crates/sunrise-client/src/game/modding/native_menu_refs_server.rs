@@ -243,17 +243,7 @@ pub(in crate::game) mod tests {
     #[allow(unused_imports)]
     pub(in crate::game::server_side) use crate::game::client_side::native_menu_refs::tests::Panel;
     #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::client_side::native_menu_refs::tests::creative_tab;
-    #[allow(unused_imports)]
     pub(in crate::game::server_side) use crate::game::client_side::native_menu_refs::tests::guest;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::client_side::native_menu_refs::tests::offscreen_window;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::client_side::native_menu_refs::tests::open_panel;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::client_side::native_menu_refs::tests::window_batch;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::client_side::native_menu_refs::tests::with_panel;
     #[allow(unused_imports)]
     pub(in crate::game::server_side) use crate::game::client_side::native_menu_refs::tests::*;
     #[allow(unused_imports)]

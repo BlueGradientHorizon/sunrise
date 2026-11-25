@@ -35,7 +35,7 @@ impl Game<'_> {
         }
     }
     /// ChunkGenerator.getOrigin and getSpawnHeight of the overworld.
-    pub(in crate::game) fn spawn_origin(&self) -> Result<((i32, i32), i32)> {
+    pub(in crate::game::server_side) fn spawn_origin(&self) -> Result<((i32, i32), i32)> {
         if let Some(flat) = self.level.generator.as_ref().and_then(|g| {
             sunrise_client::flatgen::FlatTerrain::from_settings(
                 g.settings(),
@@ -58,7 +58,7 @@ impl Game<'_> {
     /// MinecraftServer.setInitialSpawn: the first chunk of the spiral with a
     /// valid respawn column gives the world spawn, else the origin chunk's
     /// centre at the spawn height. None while a chunk to test is loading.
-    pub(in crate::game) fn find_world_spawn(&mut self) -> Result<Option<[i32; 3]>> {
+    pub(in crate::game::server_side) fn find_world_spawn(&mut self) -> Result<Option<[i32; 3]>> {
         if !self.server.spawn_hook_fired {
             self.server.spawn_hook_fired = true;
             let mut position = self.level.world_spawn.unwrap_or([0, 0, 0]);
@@ -105,7 +105,10 @@ impl Game<'_> {
     /// in the spawn chunk, a chest with the spawn bonus loot and a torch on
     /// each side that can hold one, on the first free column of a shuffled
     /// walk over the chunk. Skipped while the chunk is not loaded.
-    pub(in crate::game) fn place_bonus_chest(&mut self, origin: [i32; 3]) -> Result<()> {
+    pub(in crate::game::server_side) fn place_bonus_chest(
+        &mut self,
+        origin: [i32; 3],
+    ) -> Result<()> {
         use sunrise_client::containers::BlockEntity;
         let (cx, cz) = (origin[0] >> 4, origin[2] >> 4);
         let registry = &self.pack.assets.registry;
@@ -176,7 +179,7 @@ impl Game<'_> {
         self.process_level_events()
     }
     /// The block at `pos` has no collision shape.
-    pub(in crate::game) fn collision_empty(&self, pos: [i32; 3]) -> bool {
+    pub(in crate::game::server_side) fn collision_empty(&self, pos: [i32; 3]) -> bool {
         let mut scene = SceneCollisions {
             world: &self.world,
             binding: self.collision,
@@ -197,7 +200,7 @@ impl Game<'_> {
     /// (None to begin); Err gives the chunk of the candidate being waited for,
     /// which the caller must have loaded (the finder tries at most 1024
     /// columns).
-    pub(in crate::game) fn search_spawn(
+    pub(in crate::game::server_side) fn search_spawn(
         &self,
         suggestion: [i32; 3],
         state: &mut Option<PlayerSpawnFinder>,
@@ -233,7 +236,7 @@ impl Game<'_> {
     }
     /// PlayerSpawnFinder.findSpawn around the world spawn: the feet of a
     /// player who has no position yet. None while a candidate's chunk loads.
-    pub(in crate::game) fn find_player_spawn(
+    pub(in crate::game::server_side) fn find_player_spawn(
         &mut self,
         suggestion: [i32; 3],
     ) -> Result<Option<Vec3>> {

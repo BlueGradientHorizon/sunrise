@@ -36,14 +36,14 @@ impl Game<'_> {
         })
     }
 
-    pub(in crate::game) fn container_layout(
+    pub(in crate::game::client_side) fn container_layout(
         &self,
         batch: &sunrise_client::hud::HudBatch,
     ) -> ContainerLayout {
         self.build_container_layout(batch, self.container_layout_inputs(batch))
     }
 
-    pub(in crate::game) fn build_container_layout(
+    pub(in crate::game::client_side) fn build_container_layout(
         &self,
         batch: &sunrise_client::hud::HudBatch,
         mut inputs: ContainerLayout,
@@ -83,7 +83,7 @@ impl Game<'_> {
     /// draws, the book and effect panels beside it, the creative tab rows and
     /// every slot's hover box. The build calls it when it makes the layout;
     /// nothing else does.
-    pub(in crate::game) fn container_layout_inputs(
+    pub(in crate::game::client_side) fn container_layout_inputs(
         &self,
         batch: &sunrise_client::hud::HudBatch,
     ) -> ContainerLayout {

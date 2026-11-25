@@ -33,35 +33,15 @@ pub(in crate::game::client_side) use crate::game::server_side::maps::PLAYER_OFF_
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::maps::StaticDecoration;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::block_pos;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::clamp_map_coordinate;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::maps::decoration_pose;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::maps::decoration_pose_at;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::decoration_rotation;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::decoration_sprite;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::decoration_type;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::direction_2d;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::maps::map_id;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::map_read;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::maps::packed_rgba;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::maps::shown_on_frame;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::static_decorations;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::target_decoration;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::maps::tracks_count;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::maps::*;
 #[allow(unused_imports)]

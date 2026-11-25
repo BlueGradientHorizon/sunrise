@@ -105,7 +105,7 @@ pub(in crate::game) struct Menu {
 }
 
 impl Menu {
-    pub(in crate::game) fn new(state: MenuState) -> Self {
+    pub(in crate::game::server_side) fn new(state: MenuState) -> Self {
         Self {
             id: MenuId::fresh(),
             inner: Rc::new(RefCell::new(MenuInner {
@@ -115,13 +115,13 @@ impl Menu {
         }
     }
 
-    pub(in crate::game) fn read<R>(&self, f: impl FnOnce(&MenuState) -> R) -> R {
+    pub(in crate::game::server_side) fn read<R>(&self, f: impl FnOnce(&MenuState) -> R) -> R {
         f(&self.inner.borrow().state)
     }
 
     /// Journal before granting write access; even an equal or panicking write
     /// advances the epoch. Rollback restores content, never the epoch counter.
-    pub(in crate::game) fn edit<H: ActionHost, R>(
+    pub(in crate::game::server_side) fn edit<H: ActionHost, R>(
         &self,
         host: &mut H,
         f: impl FnOnce(&mut MenuState) -> R,
@@ -153,7 +153,7 @@ pub(in crate::game) struct Plan {
 }
 
 impl Plan {
-    pub(in crate::game) fn new(steps: Vec<Step>) -> Self {
+    pub(in crate::game::server_side) fn new(steps: Vec<Step>) -> Self {
         Self { steps }
     }
 }
@@ -249,7 +249,10 @@ pub(in crate::game) enum Reply {
 
 /// Boundary helpers for untrusted numbers. No float-to-int saturation or
 /// overflowing arithmetic may turn malformed output into a valid write.
-pub(in crate::game) fn listener_count(value: f64, maximum: u32) -> Result<u32, InvalidReason> {
+pub(in crate::game::server_side) fn listener_count(
+    value: f64,
+    maximum: u32,
+) -> Result<u32, InvalidReason> {
     if !value.is_finite() {
         return Err(InvalidReason::Numeric);
     }
@@ -259,7 +262,7 @@ pub(in crate::game) fn listener_count(value: f64, maximum: u32) -> Result<u32, I
     Ok(value as u32)
 }
 
-pub(in crate::game) fn add_count(a: u32, b: u32) -> Result<u32, InvalidReason> {
+pub(in crate::game::server_side) fn add_count(a: u32, b: u32) -> Result<u32, InvalidReason> {
     a.checked_add(b).ok_or(InvalidReason::Count)
 }
 
@@ -527,7 +530,7 @@ pub(in crate::game) fn run<H: ActionHost, T: ActionTarget<H>>(
 /// Subscriber lookup is resolved by the caller at load, not by scanning mods.
 /// The fast branch does not enter the coordinator, snapshot a menu, or construct
 /// a Vec/read set/token. Baseline retains its enclosing transaction guarantees.
-pub(in crate::game) fn route<H: ActionHost, T: ActionTarget<H>>(
+pub(in crate::game::server_side) fn route<H: ActionHost, T: ActionTarget<H>>(
     subscribed: bool,
     host: &mut H,
     menu: &T,

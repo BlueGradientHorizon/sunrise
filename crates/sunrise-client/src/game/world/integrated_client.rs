@@ -41,15 +41,9 @@ pub(in crate::game::client_side) use crate::game::server_side::integrated::Servi
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::integrated::Starting;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::integrated::refused;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::integrated::serve;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::integrated::server_game;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::integrated::server_thread_stack;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::integrated::stack_for;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::integrated::*;
 #[allow(unused_imports)]
@@ -252,7 +246,7 @@ impl Game<'_> {
         Ok(())
     }
     /// The starting server's answer, polled each frame: joined once it is ready.
-    pub(in crate::game) fn poll_integrated_start(&mut self) -> Result<()> {
+    pub(in crate::game::client_side) fn poll_integrated_start(&mut self) -> Result<()> {
         if self.integrated_starting.is_none() {
             return Ok(());
         }
@@ -313,7 +307,7 @@ impl Game<'_> {
     }
     /// `LevelLoadingScreen.tick`'s easing of the server's progress, every 50 ms
     /// of wall time (the starting server has no client tick yet).
-    pub(in crate::game) fn tick_load_progress(&mut self) {
+    pub(in crate::game::client_side) fn tick_load_progress(&mut self) {
         let view = match (&self.integrated_starting, &self.integrated) {
             (Some(s), _) => s.handle.load_view().clone(),
             (None, Some(i)) => i.load_view().clone(),

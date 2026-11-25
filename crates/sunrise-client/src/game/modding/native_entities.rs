@@ -13,7 +13,7 @@ use sunrise_core::nbt::{Compound, Tag};
 
 impl super::commands::OtherEntity {
     /// Physical query bounds, not display rendering/culling dimensions.
-    pub(in crate::game) fn display_marker_or_interaction_bounds(
+    pub(in crate::game::server_side) fn display_marker_or_interaction_bounds(
         &self,
     ) -> Option<sunrise_core::geometry::Aabb> {
         let dimensions = self.vanilla_dimensions()?;
@@ -44,7 +44,7 @@ impl super::commands::OtherEntity {
     /// `EntityDimensions.scalable(width, height)`, none for a display or a marker. None for
     /// every other kind the list keeps without simulating it (a leash knot, an eye of ender),
     /// which isn't asked.
-    pub(in crate::game) fn vanilla_dimensions(&self) -> Option<[f32; 3]> {
+    pub(in crate::game::server_side) fn vanilla_dimensions(&self) -> Option<[f32; 3]> {
         if !matches!(
             self.kind.as_str(),
             "minecraft:block_display"
@@ -255,7 +255,7 @@ impl Game<'_> {
     /// [`Self::native_joins_flush`], never announcing the entities `removed` names and, with a
     /// `through`, none that joined after it: a root commit's, for the entities its transaction
     /// added and removed, each held flush keeping its own `loaded_from_disk`.
-    pub(in crate::game) fn flush_joins(
+    pub(in crate::game::server_side) fn flush_joins(
         &mut self,
         loaded_from_disk: bool,
         watch: u32,
@@ -508,14 +508,14 @@ impl Game<'_> {
     }
     /// An entity taken out of the level without leaving it (an item through
     /// an End gateway): forgotten, not told of.
-    pub(in crate::game) fn native_leave_skip(&mut self, id: u32) {
+    pub(in crate::game::server_side) fn native_leave_skip(&mut self, id: u32) {
         self.entity_section_forget(id);
         if let Ok(i) = self.persist.live.binary_search_by_key(&id, |l| l.0) {
             self.persist.live.remove(i);
         }
     }
     /// Entity `id` has left the level: told once, if mods were told it joined.
-    pub(in crate::game) fn native_entity_left(&mut self, id: u32) {
+    pub(in crate::game::server_side) fn native_entity_left(&mut self, id: u32) {
         if self.remote.is_some()
             || self.hold_announcement(super::transactions::Announcement::Left(id))
         {
@@ -525,7 +525,7 @@ impl Game<'_> {
     }
     /// [`Self::native_entity_left`] told now, though a transaction or a commit holds the rest:
     /// the root commit's own telling.
-    pub(in crate::game) fn entity_left_now(&mut self, id: u32) {
+    pub(in crate::game::server_side) fn entity_left_now(&mut self, id: u32) {
         self.entity_section_forget(id);
         if let Ok(i) = self.persist.live.binary_search_by_key(&id, |l| l.0) {
             let (id, kind, _) = self.persist.live.remove(i);
@@ -550,7 +550,7 @@ impl Game<'_> {
     }
     /// [`Self::native_leaves_flush`] past its guards and told now, though a transaction or a
     /// commit holds the rest: the root commit's own telling.
-    pub(in crate::game) fn leaves_now(&mut self) {
+    pub(in crate::game::server_side) fn leaves_now(&mut self) {
         use super::entity::Entity;
         for l in &mut self.persist.live {
             l.2 = false;

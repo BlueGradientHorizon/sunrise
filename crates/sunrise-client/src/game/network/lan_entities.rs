@@ -12,7 +12,7 @@ use sunrise_protocol::entity_data::{PaintingHolder, PaintingVariant, Value, seri
 use {sunrise_core::nbt::Tag, sunrise_world::registry::BlockStateId};
 
 /// Allocate once: a native summon may need its id before the tracking tick.
-pub(in crate::game) fn assign_entity_id(next: &mut u32, id: &mut u32) -> u32 {
+pub(in crate::game::server_side) fn assign_entity_id(next: &mut u32, id: &mut u32) -> u32 {
     if *id == 0 {
         *next += 1;
         *id = *next;
@@ -143,7 +143,7 @@ impl Game<'_> {
     /// tracking pass kept back (`TrackingBatch::held`) is sent up to each
     /// start's bundle or stop's removal before the mods hear it, so what a
     /// listener sends the player follows that packet; the rest after the last.
-    pub(in crate::game) fn run_native_tracking(&mut self) {
+    pub(in crate::game::server_side) fn run_native_tracking(&mut self) {
         let batches = match self.lan.as_mut() {
             Some(host) => std::mem::take(&mut host.hub.native_tracking),
             None => return,
@@ -208,7 +208,7 @@ impl Game<'_> {
     }
 
     /// One start or stop of tracking, told to the mods.
-    pub(in crate::game) fn tell_tracking(
+    pub(in crate::game::server_side) fn tell_tracking(
         &mut self,
         player: u128,
         name: &str,
@@ -814,7 +814,7 @@ impl Game<'_> {
     /// ServerEntity.sendChanges clears needsSync once it has looked, and
     /// SteppedInterpolationTracker.updateTracking clears syncPosition: once the states for the
     /// tracking pass are taken.
-    pub(in crate::game) fn lan_syncs_looked(&mut self) {
+    pub(in crate::game::server_side) fn lan_syncs_looked(&mut self) {
         self.persist.sync_body_position.clear();
         for m in &mut self.mobs {
             m.needs_sync = false;

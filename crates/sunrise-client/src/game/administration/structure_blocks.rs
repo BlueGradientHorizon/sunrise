@@ -281,7 +281,7 @@ impl Game<'_> {
     /// `fillFromWorld`, which leaves a template alone when a side of the area
     /// is empty; `ignore_air` is `ignoreBlocks = [AIR]`.
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::game) fn save_structure_area(
+    pub(in crate::game::server_side) fn save_structure_area(
         &mut self,
         name: &str,
         origin: [i32; 3],
@@ -528,7 +528,7 @@ impl Game<'_> {
 
     /// `StructureBlock.neighborChanged` (the level's neighbour hook): a rising
     /// signal triggers the block once.
-    pub(in crate::game) fn structure_block_neighbor_changed(&mut self, pos: Pos) {
+    pub(in crate::game::server_side) fn structure_block_neighbor_changed(&mut self, pos: Pos) {
         if self.structure_block_at(pos).is_none() {
             return;
         }
@@ -550,7 +550,7 @@ impl Game<'_> {
 
     /// `ServerGamePacketListenerImpl.handleSetStructureBlock` for a guest:
     /// only a creative player with game master commands edits the block.
-    pub(in crate::game) fn lan_set_structure_block(
+    pub(in crate::game::server_side) fn lan_set_structure_block(
         &mut self,
         conn: u32,
         p: play::SetStructureBlock,

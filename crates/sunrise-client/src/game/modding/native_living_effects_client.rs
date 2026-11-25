@@ -22,8 +22,6 @@ pub(in crate::game) mod tests {
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use super::super::native_entity_refs::tests::with_game;
     #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_living_effects::tests::effect;
-    #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::native_living_effects::tests::*;
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use mod_api::{

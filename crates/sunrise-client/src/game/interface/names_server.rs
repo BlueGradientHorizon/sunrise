@@ -11,17 +11,7 @@ pub(in crate::game::server_side) use crate::game::client_side::names::NameTagLay
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::names::NameTagLine;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::names::collect_vehicle_ids;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::names::first_mob_indices;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::names::name_component;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::names::name_tag_at;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::names::name_tag_in_view;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::names::named_by_player_list;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::names::*;
 #[allow(unused_imports)]
@@ -37,7 +27,7 @@ pub(in crate::game::server_side) use sunrise_client::{
 
 impl Game<'_> {
     /// A named name tag names the mob under the crosshair.
-    pub(in crate::game) fn name_mob(&mut self, index: usize) -> bool {
+    pub(in crate::game::server_side) fn name_mob(&mut self, index: usize) -> bool {
         // `NameTagItem`: the mob takes the tag's `custom_name` component, style and all.
         let Some((name, text)) = self
             .held()

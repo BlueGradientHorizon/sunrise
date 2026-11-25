@@ -13,7 +13,7 @@ impl Game<'_> {
     /// A click on `ConnectScreen`: Cancel aborts the connection
     /// (`connect.aborted`) and goes back. Escape does nothing there
     /// (`shouldCloseOnEsc` is false).
-    pub(in crate::game) fn connect_screen_click(&mut self) -> Result<bool> {
+    pub(in crate::game::client_side) fn connect_screen_click(&mut self) -> Result<bool> {
         // ServerReconfigScreen's Disconnect, once it is active.
         if let Some(since) = self.remote.as_ref().and_then(|r| r.reconfiguring) {
             let (_, (x, y)) = self.reconfigure_layout(self.gui_size());
@@ -96,7 +96,7 @@ impl Game<'_> {
     }
     /// The server let the player in (`Hooks::joined`); nothing for a world the window plays
     /// itself, whose session joins the same way.
-    pub(in crate::game) fn connection_joined(&mut self) {
+    pub(in crate::game::client_side) fn connection_joined(&mut self) {
         if !self.client.connection_open {
             return;
         }
@@ -127,7 +127,7 @@ impl Game<'_> {
     /// any more). Cancelled or left, the offer and its due connection go. An online-mode server
     /// gets the signed-in account again: `connect_server` takes it from `auth::current()`, held
     /// in memory for the whole run (the launcher's session file is gone after the first read).
-    pub(in crate::game) fn follow_retry(&mut self) -> Result<()> {
+    pub(in crate::game::client_side) fn follow_retry(&mut self) -> Result<()> {
         if retry_slot(&mut self.title.0).is_none_or(|slot| slot.is_none()) {
             self.client.retry_due = None;
             return Ok(());
@@ -165,7 +165,7 @@ impl Game<'_> {
     /// The Disconnected screen just shown offers to connect again when the answer to the
     /// connection's end asked to: its line, or the connection on the next frame (`follow_retry`)
     /// when it is due at once.
-    pub(in crate::game) fn offer_retry(&mut self) {
+    pub(in crate::game::client_side) fn offer_retry(&mut self) {
         let Some(answer) = self.client.pending_retry.take() else {
             return;
         };
@@ -191,12 +191,12 @@ impl Game<'_> {
     }
     /// The server this window connected to last over the network: while connected, and after a
     /// lost connection while the Disconnected screen may connect there again.
-    pub(in crate::game) fn server_address(&self) -> Option<&str> {
+    pub(in crate::game::client_side) fn server_address(&self) -> Option<&str> {
         let server = self.client.last_connection.as_ref();
         server.map(|server| server.address.as_str())
     }
     /// That server was found on the local network.
-    pub(in crate::game) fn server_is_lan(&self) -> bool {
+    pub(in crate::game::client_side) fn server_is_lan(&self) -> bool {
         self.client
             .last_connection
             .as_ref()

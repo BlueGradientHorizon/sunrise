@@ -5,7 +5,11 @@ use sunrise_client::items::Items;
 pub(in crate::game) struct BrewingRemainder(Option<Option<ItemStack>>);
 
 impl BrewingRemainder {
-    pub(in crate::game) fn resolve(&self, items: &Items, stack: &ItemStack) -> Option<ItemStack> {
+    pub(in crate::game::server_side) fn resolve(
+        &self,
+        items: &Items,
+        stack: &ItemStack,
+    ) -> Option<ItemStack> {
         self.0
             .clone()
             .unwrap_or_else(|| crate::crafting::CraftingRemainder::crafting_remainder(items, stack))
@@ -13,7 +17,10 @@ impl BrewingRemainder {
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn brewing_fuel_remainder(&self, pos: (i32, i32, i32)) -> BrewingRemainder {
+    pub(in crate::game::server_side) fn brewing_fuel_remainder(
+        &self,
+        pos: (i32, i32, i32),
+    ) -> BrewingRemainder {
         let answer = match self.world.block_entities.get(&pos) {
             Some(BlockEntity::Brewing(b)) => b.items[4]
                 .as_ref()
@@ -31,7 +38,7 @@ impl Game<'_> {
         BrewingRemainder(answer)
     }
 
-    pub(in crate::game) fn brewing_ingredient_remainder(
+    pub(in crate::game::server_side) fn brewing_ingredient_remainder(
         &self,
         pos: (i32, i32, i32),
         cancelled: bool,

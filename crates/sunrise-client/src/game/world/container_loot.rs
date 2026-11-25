@@ -13,7 +13,7 @@ pub(in crate::game) enum LootTarget {
     Boat(u32),
 }
 impl Game<'_> {
-    pub(in crate::game) fn loot_inventory_item(
+    pub(in crate::game::server_side) fn loot_inventory_item(
         &mut self,
         key: (i32, i32, i32),
         index: usize,
@@ -28,7 +28,7 @@ impl Game<'_> {
     }
     /// A hopper cart's tick owns its metadata while its resident row is lent out.
     /// Publish only a pending inventory for this access, then recover the result.
-    pub(in crate::game) fn unpack_ticked_cart_loot(
+    pub(in crate::game::server_side) fn unpack_ticked_cart_loot(
         &mut self,
         cart: &mut super::minecarts::Minecart,
     ) -> bool {
@@ -340,7 +340,7 @@ fn unpack_slots<R: RandomSource + Clone>(
 
 impl super::GameLevel<'_> {
     /// Null-player accesses inside world behavior (comparator, destruction).
-    pub(in crate::game) fn unpack_loot(
+    pub(in crate::game::server_side) fn unpack_loot(
         &mut self,
         target: LootTarget,
         player: Option<mod_api::PlayerRef>,

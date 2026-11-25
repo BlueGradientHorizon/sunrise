@@ -3,7 +3,7 @@ use super::*;
 use crate::game::Dim;
 
 impl Game<'_> {
-    pub(in crate::game) fn resume_raw_inbox(
+    pub(in crate::game::server_side) fn resume_raw_inbox(
         &mut self,
         hub: &mut Hub,
         entities: &[sunrise_client::lan::entity::EntityState],
@@ -35,7 +35,7 @@ impl Game<'_> {
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn drain_raw_turns(
+    pub(in crate::game::server_side) fn drain_raw_turns(
         &mut self,
         mut host: LanHost,
         mut events: Vec<HostEvent>,

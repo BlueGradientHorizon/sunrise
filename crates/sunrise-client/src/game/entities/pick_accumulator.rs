@@ -36,7 +36,7 @@ impl PickAccumulator {
         }
     }
 
-    pub(in crate::game) fn consider_candidate(
+    pub(in crate::game::client_side) fn consider_candidate(
         &mut self,
         game: &Game<'_>,
         candidate: PickCandidate,
@@ -63,7 +63,7 @@ impl PickAccumulator {
     }
 
     /// Reuses the caller's candidate buffer when `CanRiderInteract` is subscribed.
-    pub(in crate::game) fn recording(
+    pub(in crate::game::client_side) fn recording(
         max_distance_sq: f64,
         mut candidates: Vec<PickCandidate>,
     ) -> Self {
@@ -74,7 +74,10 @@ impl PickAccumulator {
         }
     }
 
-    pub(in crate::game) fn dispatch(&mut self, game: &mut Game<'_>) -> Vec<PickCandidate> {
+    pub(in crate::game::client_side) fn dispatch(
+        &mut self,
+        game: &mut Game<'_>,
+    ) -> Vec<PickCandidate> {
         let candidates = self.candidates.take().unwrap_or_default();
         let camera = game.pick_camera_id();
         for &candidate in &candidates {
@@ -126,7 +129,7 @@ impl PickAccumulator {
 
 impl Game<'_> {
     /// Vanilla `ProjectileUtil.getEntityHitResult` per-box test (`AABB.contains` and `AABB.clip`).
-    pub(in crate::game) fn test_pick_box(
+    pub(in crate::game::client_side) fn test_pick_box(
         &self,
         id: u32,
         from: Vec3,
@@ -160,7 +163,7 @@ impl Game<'_> {
     }
 
     /// `Entity.canBePickedFromInside`, false only for a sulfur cube holding a body item.
-    pub(in crate::game) fn pickable_from_inside(&self, id: u32) -> bool {
+    pub(in crate::game::client_side) fn pickable_from_inside(&self, id: u32) -> bool {
         !self.mobs.iter().any(|m| {
             m.id == id
                 && m.species() == sunrise_client::mobs::Species::SulfurCube
@@ -243,7 +246,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn pick_shares_vehicle(&self, id: u32) -> bool {
+    pub(in crate::game::client_side) fn pick_shares_vehicle(&self, id: u32) -> bool {
         let camera_root = self
             .pick_camera_id()
             .and_then(|camera| self.pick_vehicle_root(camera))

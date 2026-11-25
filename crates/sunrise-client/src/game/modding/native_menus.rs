@@ -19,7 +19,10 @@ use sunrise_client::{
 /// inventory below the menu (`ChestMenu`: the menu's slots, then the
 /// inventory's 27, then the hotbar's 9).
 #[allow(dead_code)]
-pub(crate) fn native_menu_inventory_slot(size: usize, slot: i32) -> Option<usize> {
+pub(in crate::game::server_side) fn native_menu_inventory_slot(
+    size: usize,
+    slot: i32,
+) -> Option<usize> {
     let n = usize::try_from(slot).ok()?.checked_sub(size)?;
     match n {
         0..27 => Some(n + 9),
@@ -31,7 +34,7 @@ pub(crate) fn native_menu_inventory_slot(size: usize, slot: i32) -> Option<usize
 /// Adds every stack of `gets` to the 36 slots of `inventory`, onto matching
 /// stacks first, then into empty slots, hotbar first; false when one doesn't
 /// fit whole. `max` is an item's stack size.
-pub(in crate::game) fn fit(
+pub(in crate::game::server_side) fn fit(
     inventory: &mut [Option<ItemStack>],
     gets: &[ItemStack],
     max: &impl Fn(&ItemStack) -> u32,
@@ -68,7 +71,7 @@ pub(in crate::game) fn fit(
 /// a command executor, the menus can be opened and filled).
 #[allow(dead_code)]
 impl Game<'_> {
-    pub(in crate::game) fn native_conn(&self, uuid: u128) -> Option<u32> {
+    pub(in crate::game::server_side) fn native_conn(&self, uuid: u128) -> Option<u32> {
         let host = self.lan.as_ref()?;
         let g = host
             .hub
@@ -107,7 +110,7 @@ impl Game<'_> {
     /// `ServerPlayer.openMenu`'s close of the menu that was open: `closeContainer`, which then
     /// tells the client, or `doCloseContainer` for a provider that skips the client's close.
     /// Either way the old menu's `removed` runs and the mods hear it close.
-    pub(in crate::game) fn close_for_open(&mut self, conn: u32, replace: MenuReplace) {
+    pub(in crate::game::server_side) fn close_for_open(&mut self, conn: u32, replace: MenuReplace) {
         self.journal_merchant_replacement(conn);
         match replace {
             MenuReplace::CloseFirst => self.guest_close_menus_and_tell(conn),
@@ -318,7 +321,7 @@ pub(in crate::game) struct HeardMenu {
 }
 
 impl GuestMenus {
-    pub(in crate::game) fn menu_holds(
+    pub(in crate::game::server_side) fn menu_holds(
         &self,
         menu: Option<&Menu>,
         pos: ContainerPos,

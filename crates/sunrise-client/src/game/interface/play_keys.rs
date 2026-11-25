@@ -17,7 +17,7 @@ pub(in crate::game) const GUI_KEYS: [&str; 5] = [
 impl Game<'_> {
     /// `new InventoryScreen(player)`: the player's inventory, or in creative
     /// mode the creative inventory `InventoryScreen.init` swaps in.
-    pub(in crate::game) fn open_player_inventory(&mut self) {
+    pub(in crate::game::client_side) fn open_player_inventory(&mut self) {
         if self.instabuild() {
             self.set_screen(Screen::Creative);
             self.refresh_creative_tabs();
@@ -51,7 +51,7 @@ impl Game<'_> {
         self.immediate_key_pressed(key, raw)
     }
 
-    pub(in crate::game) fn tick_mapping(name: &str) -> bool {
+    pub(in crate::game::client_side) fn tick_mapping(name: &str) -> bool {
         matches!(
             name,
             "key.togglePerspective"
@@ -65,7 +65,7 @@ impl Game<'_> {
             || name.starts_with("key.hotbar.")
     }
 
-    pub(in crate::game) fn immediate_key_pressed(
+    pub(in crate::game::client_side) fn immediate_key_pressed(
         &mut self,
         key: KeyCode,
         raw: KeyCode,
@@ -189,7 +189,7 @@ impl Game<'_> {
     }
     /// Minecraft.handleKeybinds and Gui.handleKeybinds, in their polling order.
     /// Opening a screen releases the live mappings, including clicks not yet reached.
-    pub(in crate::game) fn handle_play_keybinds(&mut self) {
+    pub(in crate::game::client_side) fn handle_play_keybinds(&mut self) {
         while self.consume_mapping_click("key.togglePerspective") {
             self.cycle_camera();
         }
@@ -256,7 +256,7 @@ impl Game<'_> {
     }
 
     /// The inventory key either asks the vehicle's server menu or opens the local inventory.
-    pub(in crate::game) fn open_inventory_key_action(&mut self) {
+    pub(in crate::game::client_side) fn open_inventory_key_action(&mut self) {
         if self.in_portal_transition() {
             return;
         }
@@ -277,7 +277,7 @@ impl Game<'_> {
     /// (`player_swap_hands`), and may stop it or change what each hand gets.
     /// Then setItemInHand for the off hand, then the main hand. The stacks are
     /// copied only for a listener: `heard` holds the old main and off hands.
-    pub(in crate::game) fn own_swap_hands(&mut self) {
+    pub(in crate::game::client_side) fn own_swap_hands(&mut self) {
         if self.spectator() {
             return;
         }

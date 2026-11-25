@@ -9,7 +9,7 @@ use std::num::NonZeroU32;
 use sunrise_assets::item_model::{Context, DisplayContext, StackView};
 use sunrise_client::item_render::{SpecialModelInput, stack_view};
 
-pub(in crate::game) fn draw_input<'a>(
+pub(in crate::game::client_side) fn draw_input<'a>(
     game: &'a Game<'_>,
     stack: &StackView,
     context: &Context<'_>,
@@ -31,7 +31,7 @@ pub(in crate::game) fn draw_input<'a>(
 }
 
 /// Convert only an explicitly submitted nested stack; ordinary input stays borrowed.
-pub(in crate::game) fn nested_stack(
+pub(in crate::game::client_side) fn nested_stack(
     stack: &ItemStack,
     display: ItemDisplayContext,
 ) -> Option<(StackView, DisplayContext)> {

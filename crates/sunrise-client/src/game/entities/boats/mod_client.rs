@@ -27,25 +27,9 @@ pub(in crate::game::client_side) use crate::game::server_side::boats::WIDTH;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::boats::any_boat_wood;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::boats::boat_wood;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::boats::powder_snow_stuck;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::boats::put_ticks_frozen;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::boats::reached_cells;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::boats::registered_boat;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::boats::registered_boat_item;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::boats::saved_fire;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::boats::saved_ticks_frozen;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::boats::snowflake_velocity;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::boats::wrap_degrees_f64;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::boats::*;
 #[allow(unused_imports)]
@@ -251,7 +235,7 @@ impl Game<'_> {
     /// the camera to its ground. A lake or the sea has one plane; the mirror shows only the
     /// water on it. With no water in reach the last plane found stays, so the mirror never
     /// switches off as the camera moves.
-    pub(in crate::game) fn water_plane(&self, camera: glam::DVec3) -> Option<f32> {
+    pub(in crate::game::client_side) fn water_plane(&self, camera: glam::DVec3) -> Option<f32> {
         const RADIUS: i32 = 48;
         const STEP: usize = 4;
         const DEPTH: i32 = 96;

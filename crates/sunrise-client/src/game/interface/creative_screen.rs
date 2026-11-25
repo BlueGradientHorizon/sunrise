@@ -6,23 +6,26 @@ impl Game<'_> {
         self.client.screen == Screen::Creative && self.creative_screen.0.tab().inventory
     }
     /// An item tab of the creative screen (its ItemPickerMenu).
-    pub(in crate::game) fn creative_tab_open(&self) -> bool {
+    pub(in crate::game::client_side) fn creative_tab_open(&self) -> bool {
         self.client.screen == Screen::Creative && !self.creative_screen.0.tab().inventory
     }
     /// The stack at a resolved display slot on the active item tab, accounting for scroll.
-    pub(in crate::game) fn creative_display_stack(&self, slot: usize) -> Option<ItemStack> {
+    pub(in crate::game::client_side) fn creative_display_stack(
+        &self,
+        slot: usize,
+    ) -> Option<ItemStack> {
         let names = &self.pack.names;
         let cell = slot - Creative::DISPLAY;
         let first_row = self.creative_screen.0.first_row(names);
         self.creative_screen.0.shown(names, first_row * 9 + cell)
     }
-    pub(in crate::game) fn creative_origin(batch: &HudBatch) -> (f32, f32) {
+    pub(in crate::game::client_side) fn creative_origin(batch: &HudBatch) -> (f32, f32) {
         batch.centered_origin(Creative::WIDTH, Creative::HEIGHT)
     }
     /// A creative tab's title: `itemGroup.*` for vanilla's; a mod tab's
     /// `itemGroup.<mod>.<name>`, else its `title` as a lang key (a mod's own
     /// `itemGroup.<mod>`), else `title` as English text.
-    pub(in crate::game) fn creative_tab_title(
+    pub(in crate::game::client_side) fn creative_tab_title(
         &self,
         tab: &sunrise_client::creative::Tab,
     ) -> String {
@@ -46,7 +49,13 @@ impl Game<'_> {
     }
     /// Vanilla tooltip: dark box with a purple gradient border, laid out and
     /// drawn like an item tooltip (4 px of padding on every side).
-    pub(in crate::game) fn tooltip(&self, batch: &mut HudBatch, text: &str, x: f32, y: f32) {
+    pub(in crate::game::client_side) fn tooltip(
+        &self,
+        batch: &mut HudBatch,
+        text: &str,
+        x: f32,
+        y: f32,
+    ) {
         self.draw_tooltip_lines(
             batch,
             &[(sunrise_client::text::Text::literal(text), u32::MAX)],
@@ -58,7 +67,7 @@ impl Game<'_> {
     /// that follow the item's name, none for a category tab's own grid slots
     /// (`grid`): the names of the tabs containing the stack, in blue, then on
     /// the search tab's grid the tags a `#` search shows, in dark purple.
-    pub(in crate::game) fn creative_tooltip_tabs(
+    pub(in crate::game::client_side) fn creative_tooltip_tabs(
         &self,
         stack: &ItemStack,
         grid: bool,
@@ -88,7 +97,7 @@ impl Game<'_> {
     }
     /// `CreativeModeInventoryScreen.extractRenderState`: item slots share the
     /// container screen's hover target for their highlight and tooltip. False if no tab was drawn.
-    pub(in crate::game) fn draw_creative(&mut self, batch: &mut HudBatch) -> bool {
+    pub(in crate::game::client_side) fn draw_creative(&mut self, batch: &mut HudBatch) -> bool {
         // CreativeModeInventoryScreen: `CommonComponents.EMPTY` for a title.
         screen_info::begin_container("creative");
         let (ox, oy) = Self::creative_origin(batch);
@@ -312,7 +321,10 @@ impl Game<'_> {
         }
         true
     }
-    pub(in crate::game) fn creative_trash_hovered(batch: &HudBatch, cursor: (f32, f32)) -> bool {
+    pub(in crate::game::client_side) fn creative_trash_hovered(
+        batch: &HudBatch,
+        cursor: (f32, f32),
+    ) -> bool {
         let (ox, oy) = Self::creative_origin(batch);
         let (x, y) = Creative::TRASH_POSITION;
         cursor.0 >= ox + x
@@ -323,7 +335,7 @@ impl Game<'_> {
     /// NeoForge's creative page buttons, 20 square, 50 above the screen at
     /// its left and right edges: -1 or 1 for the one at `cursor`, when there
     /// is more than one page.
-    pub(in crate::game) fn creative_page_button(
+    pub(in crate::game::client_side) fn creative_page_button(
         ox: f32,
         oy: f32,
         cursor: (f32, f32),
@@ -344,7 +356,12 @@ impl Game<'_> {
         }
     }
     /// The page buttons and "page / pages" between them.
-    pub(in crate::game) fn draw_creative_pages(&self, batch: &mut HudBatch, ox: f32, oy: f32) {
+    pub(in crate::game::client_side) fn draw_creative_pages(
+        &self,
+        batch: &mut HudBatch,
+        ox: f32,
+        oy: f32,
+    ) {
         let pages = self.creative_screen.0.pages();
         if pages <= 1 {
             return;
@@ -380,7 +397,7 @@ impl Game<'_> {
             true,
         );
     }
-    pub(in crate::game) fn click_creative(&mut self, right: bool) -> bool {
+    pub(in crate::game::client_side) fn click_creative(&mut self, right: bool) -> bool {
         if self.mod_browser_press(right) {
             return true;
         }
@@ -469,7 +486,7 @@ impl Game<'_> {
         false
     }
     /// A click on the search tab's box (`EditBox.onClick`).
-    pub(in crate::game) fn creative_search_click(&mut self, ox: f32, oy: f32) -> bool {
+    pub(in crate::game::client_side) fn creative_search_click(&mut self, ox: f32, oy: f32) -> bool {
         if !self.creative_screen.0.tab().search {
             return false;
         }

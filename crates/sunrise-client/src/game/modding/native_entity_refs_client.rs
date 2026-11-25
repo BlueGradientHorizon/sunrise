@@ -12,14 +12,6 @@ pub(in crate::game::client_side) use super::{
     transactions::After,
 };
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::block_face_direction;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::clip_entity_ray;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::list_query_body;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::uuid_from_words;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use core::ops::ControlFlow;
@@ -64,37 +56,19 @@ pub(in crate::game) mod tests {
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::bind_local_player;
     #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::block_part_bounce_restitution_in_own_process;
-    #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::collect_all_entities;
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::collect_entities_in;
     #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::collect_game_all_entities;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::collect_game_entities_in;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::declared_part_root;
-    #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::fixture_root;
     #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::lever_on;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::output_within;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::piston_pulls_above;
-    #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::prepare_entity_ticking_neighborhood;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::ran_one_test;
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::record_key;
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::resolve_parts;
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::run_fresh_cases;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::run_fresh_cases_at_once;
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::native_entity_refs::tests::run_with_game_stack;
     #[allow(unused_imports)]

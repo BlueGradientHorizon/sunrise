@@ -18,14 +18,18 @@ use sunrise_world::registry::BlockStateId;
 
 /// A server's game on the prepared resources, or None when they are absent
 /// (CI has none: the tests then skip quietly).
-pub(in crate::game) fn server<'a>(
+pub(in crate::game::server_side) fn server<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
 ) -> Option<Game<'a>> {
     std::env::var_os("SUNRISE_TEST_RESOURCES")?;
     Some(server_game(resources))
 }
 
-pub(in crate::game) fn state(game: &Game<'_>, name: &str, level: &str) -> BlockStateId {
+pub(in crate::game::server_side) fn state(
+    game: &Game<'_>,
+    name: &str,
+    level: &str,
+) -> BlockStateId {
     let mut state = BlockState {
         name: name.into(),
         properties: Default::default(),
@@ -36,7 +40,7 @@ pub(in crate::game) fn state(game: &Game<'_>, name: &str, level: &str) -> BlockS
     game.pack.assets.registry.resolve(&state).unwrap()
 }
 
-pub(in crate::game) fn block(game: &Game<'_>, pos: [i32; 3]) -> String {
+pub(in crate::game::server_side) fn block(game: &Game<'_>, pos: [i32; 3]) -> String {
     let state = game.world.block(pos[0], pos[1], pos[2]);
     game.res.facts().get(state).name.to_string()
 }
@@ -47,7 +51,7 @@ pub(in crate::game) use crate::game::client_side::extinguish_client::extinguish_
 /// A server's player standing in the block at `pos` (feet on its floor), on
 /// fire: the tick `guest_server_tick` runs for it, its block effects and the
 /// consumer of their events.
-pub(in crate::game) fn burn_in(game: &mut Game<'_>, pos: [i32; 3]) {
+pub(in crate::game::server_side) fn burn_in(game: &mut Game<'_>, pos: [i32; 3]) {
     let at = Vec3::new(
         f64::from(pos[0]) + 0.5,
         f64::from(pos[1]),
@@ -86,7 +90,7 @@ pub(in crate::game) fn burn_in(game: &mut Game<'_>, pos: [i32; 3]) {
 
 /// Outside the world border, as `/worldborder center 1000 1000` and
 /// `/worldborder set 100` put the origin.
-pub(in crate::game) fn outside_the_border(game: &mut Game<'_>) {
+pub(in crate::game::server_side) fn outside_the_border(game: &mut Game<'_>) {
     game.border.set_center([1000.0, 1000.0]);
     game.border.set_size(100.0);
 }

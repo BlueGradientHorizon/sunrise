@@ -28,7 +28,7 @@ impl Game<'_> {
         };
     }
 
-    pub(in crate::game) fn cull_entity_vertices(
+    pub(in crate::game::client_side) fn cull_entity_vertices(
         &self,
         vertices: &mut Vec<Vertex>,
         start: usize,
@@ -47,7 +47,7 @@ impl Game<'_> {
         hidden
     }
 
-    pub(in crate::game) fn cull_entity_camera_bounds(
+    pub(in crate::game::client_side) fn cull_entity_camera_bounds(
         &self,
         lo: glam::Vec3,
         hi: glam::Vec3,
@@ -69,7 +69,7 @@ impl Game<'_> {
     }
 
     /// Pre-model visibility hook for dynamic block-entity geometry.
-    pub(in crate::game) fn block_entity_occluded(&self, bounds: Aabb) -> bool {
+    pub(in crate::game::client_side) fn block_entity_occluded(&self, bounds: Aabb) -> bool {
         self.occlusion_hidden(None, 0, Some(bounds))
     }
 
@@ -84,7 +84,7 @@ impl Game<'_> {
 
     /// Cull from a renderer-computed envelope when the rendered transform has
     /// extra offsets or model geometry that the entity type alone cannot see.
-    pub(in crate::game) fn entity_cull_decision_in_bounds<T: RenderEntityBounds>(
+    pub(in crate::game::client_side) fn entity_cull_decision_in_bounds<T: RenderEntityBounds>(
         &self,
         entity: &T,
         render_bounds: Aabb,
@@ -195,7 +195,7 @@ impl Game<'_> {
 }
 
 /// `Options.getEffectiveRenderDistance`: client setting capped by positive server view distance.
-pub(in crate::game) fn effective_render_distance_for(
+pub(in crate::game::client_side) fn effective_render_distance_for(
     client_render_distance: i32,
     server_view_distance: Option<i32>,
 ) -> i32 {
@@ -236,7 +236,7 @@ impl Game<'_> {
 impl Game<'_> {
     /// `LevelRenderer.isSectionCompiledAndVisible(BlockPos)`: entities outside build height
     /// always render; inside build height they wait for a compiled section past the fade gate.
-    pub(in crate::game) fn entity_section_visible(
+    pub(in crate::game::client_side) fn entity_section_visible(
         &self,
         position: glam::DVec3,
         now: std::time::Instant,
@@ -297,7 +297,7 @@ impl Game<'_> {
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn prepare_occlusion_culling(&mut self, camera: glam::DVec3) {
+    pub(in crate::game::client_side) fn prepare_occlusion_culling(&mut self, camera: glam::DVec3) {
         self.occlusion.0.section_camera = None;
         self.occlusion.0.section_visibility_valid = false;
         let entity_mode = self.settings.sunrise.entity_culling;
@@ -355,7 +355,7 @@ impl Game<'_> {
             .then(|| OcclusionCuller::new(camera.to_array(), 8_192));
     }
 
-    pub(in crate::game) fn finish_async_occlusion_culling(&mut self) {
+    pub(in crate::game::client_side) fn finish_async_occlusion_culling(&mut self) {
         if let Some(culler) = &mut self.occlusion.0.async_culler {
             culler.finish_frame(&self.world, self.res.facts());
         }

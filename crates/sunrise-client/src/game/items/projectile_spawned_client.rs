@@ -9,8 +9,6 @@ pub(in crate::game::client_side) use crate::game::server_side::projectile_spawne
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::projectile_spawned::SpawnedEffect;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::projectile_spawned::applied;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::projectile_spawned::float_provider;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::projectile_spawned::level_sound;

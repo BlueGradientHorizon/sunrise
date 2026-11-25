@@ -9,12 +9,6 @@ pub(in crate::game::client_side) use crate::game::server_side::respawn_anchor::R
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::respawn_anchor::SavedRespawn;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::respawn_anchor::look_at_yaw;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::respawn_anchor::respawn_offsets;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::respawn_anchor::wrap_degrees;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::respawn_anchor::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use mod_api::client::first_person::Hand;

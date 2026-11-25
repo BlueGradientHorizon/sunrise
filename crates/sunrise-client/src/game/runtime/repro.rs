@@ -200,24 +200,24 @@ pub(in crate::game) struct SessionMeta {
     pub(in crate::game) start: Option<Value>,
 }
 
-pub(in crate::game) fn home() -> PathBuf {
+pub(in crate::game::client_side) fn home() -> PathBuf {
     sunrise_client::logging::game_home()
 }
-pub(in crate::game) fn recordings_dir() -> PathBuf {
+pub(in crate::game::client_side) fn recordings_dir() -> PathBuf {
     home().join("recordings")
 }
-pub(in crate::game) fn bundles_dir() -> PathBuf {
+pub(in crate::game::client_side) fn bundles_dir() -> PathBuf {
     home().join("repro")
 }
-pub(in crate::game) fn saves_dir() -> PathBuf {
+pub(in crate::game::client_side) fn saves_dir() -> PathBuf {
     std::env::current_dir()
         .map(|dir| dir.join("saves"))
         .unwrap_or_else(|_| PathBuf::from("saves"))
 }
-pub(in crate::game) fn stamp() -> String {
+pub(in crate::game::client_side) fn stamp() -> String {
     chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string()
 }
-pub(in crate::game) fn slug(name: &str) -> String {
+pub(in crate::game::client_side) fn slug(name: &str) -> String {
     let slug: String = name
         .chars()
         .map(|c| {
@@ -237,7 +237,7 @@ pub(in crate::game) fn slug(name: &str) -> String {
 }
 
 /// One buffered line writer per file, off the game thread.
-pub(in crate::game) fn spawn_lines(
+pub(in crate::game::client_side) fn spawn_lines(
     path: &Path,
 ) -> io::Result<(Sender<String>, thread::JoinHandle<()>)> {
     let file = fs::File::create(path)?;
@@ -261,7 +261,7 @@ pub(in crate::game) fn spawn_lines(
 }
 
 /// Copy a world without its lock or symlinks; the recording's own snapshot.
-pub(in crate::game) fn copy_tree(src: &Path, dst: &Path) -> io::Result<()> {
+pub(in crate::game::client_side) fn copy_tree(src: &Path, dst: &Path) -> io::Result<()> {
     fs::create_dir_all(dst)?;
     for entry in fs::read_dir(src)? {
         let entry = entry?;
@@ -285,7 +285,7 @@ pub(in crate::game) fn copy_tree(src: &Path, dst: &Path) -> io::Result<()> {
 }
 
 /// The oldest recordings or bundles beyond `max`, leaving `keep` alone.
-pub(in crate::game) fn prune_dir(dir: &Path, keep: Option<&Path>, max: usize) {
+pub(in crate::game::client_side) fn prune_dir(dir: &Path, keep: Option<&Path>, max: usize) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
@@ -318,7 +318,7 @@ pub(in crate::game) fn prune_dir(dir: &Path, keep: Option<&Path>, max: usize) {
     }
 }
 
-pub(in crate::game) fn readme() -> String {
+pub(in crate::game::client_side) fn readme() -> String {
     format!(
         "Sunrise repro recording ({FORMAT})\n\
          \n\
@@ -338,7 +338,7 @@ pub(in crate::game) fn readme() -> String {
     )
 }
 
-pub(in crate::game) fn recording_meta(
+pub(in crate::game::client_side) fn recording_meta(
     rec: &Recording,
     ended: Option<&Instant>,
     ticks: u64,
@@ -361,7 +361,7 @@ pub(in crate::game) fn recording_meta(
 }
 
 /// A keyframe without the absolute recording path (it holds the user name).
-pub(in crate::game) fn keyframe_state(mut state: Value) -> Value {
+pub(in crate::game::client_side) fn keyframe_state(mut state: Value) -> Value {
     if let Some(recording) = state
         .pointer_mut("/input/recording")
         .and_then(Value::as_object_mut)
@@ -379,7 +379,7 @@ pub(in crate::game) fn keyframe_state(mut state: Value) -> Value {
 
 impl Game<'_> {
     /// `record-*` and `repro-export`; None for other commands, Some(None) when deferred.
-    pub(in crate::game) fn repro_command(
+    pub(in crate::game::client_side) fn repro_command(
         &mut self,
         words: &[&str],
         _line: &str,
@@ -397,7 +397,7 @@ impl Game<'_> {
     }
 
     /// Once per loop turn: a waiting replay, the inputs due, and finished exports.
-    pub(in crate::game) fn poll_repro(&mut self, event_loop: &dyn EventLoopCtl) {
+    pub(in crate::game::client_side) fn poll_repro(&mut self, event_loop: &dyn EventLoopCtl) {
         self.poll_pending_replay();
         self.advance_replay(event_loop);
         self.poll_exports();
@@ -439,7 +439,7 @@ impl Game<'_> {
 
     /// A native exit: finish the recording and write its bundle, so a crash or a
     /// quit still leaves a repro.
-    pub(in crate::game) fn repro_on_exit(&mut self) {
+    pub(in crate::game::client_side) fn repro_on_exit(&mut self) {
         if self.repro.0.recording.is_none() {
             return;
         }
@@ -451,7 +451,7 @@ impl Game<'_> {
 
     /// The world is closing (quit to title, another world): a recording cannot
     /// cross it, and a replay feeding the title screen is nonsense.
-    pub(in crate::game) fn repro_world_closed(&mut self) {
+    pub(in crate::game::client_side) fn repro_world_closed(&mut self) {
         if self.repro.0.recording.is_some()
             && let Err(e) = self.stop_recording(false, None)
         {
@@ -463,7 +463,7 @@ impl Game<'_> {
     }
 
     /// F3+R: start a recording, or stop the running one and write its bundle.
-    pub(in crate::game) fn toggle_recording_key(&mut self) {
+    pub(in crate::game::client_side) fn toggle_recording_key(&mut self) {
         if self.repro.0.replay.is_some() || self.repro.0.pending_replay.is_some() {
             return;
         }
@@ -480,7 +480,7 @@ impl Game<'_> {
     }
 
     /// F3+E: write a bundle now, from the running or the newest recording.
-    pub(in crate::game) fn export_repro_key(&mut self) {
+    pub(in crate::game::client_side) fn export_repro_key(&mut self) {
         if self.repro.0.recording.is_some() {
             if let Err(e) = self.stop_recording(true, None) {
                 self.repro_say(
@@ -503,13 +503,13 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn repro_say(&mut self, key: &str, args: &[Text]) {
+    pub(in crate::game::client_side) fn repro_say(&mut self, key: &str, args: &[Text]) {
         self.system_message(Text::translate(key, args));
     }
 
     // ---- start / stop -------------------------------------------------------
 
-    pub(in crate::game) fn record_start_command(
+    pub(in crate::game::client_side) fn record_start_command(
         &mut self,
         args: &[&str],
         reply: Option<Sender<String>>,
@@ -532,7 +532,7 @@ impl Game<'_> {
 
     /// Start a recording. The world copy is made here, with the world frozen, so
     /// a later stop never races a half-copied world.
-    pub(in crate::game) fn start_recording(
+    pub(in crate::game::client_side) fn start_recording(
         &mut self,
         name: Option<String>,
         no_world: bool,
@@ -671,7 +671,7 @@ impl Game<'_> {
         }))
     }
 
-    pub(in crate::game) fn record_stop_command(
+    pub(in crate::game::client_side) fn record_stop_command(
         &mut self,
         args: &[&str],
         reply: Option<Sender<String>>,
@@ -691,7 +691,7 @@ impl Game<'_> {
 
     /// Stop the recording. With `export`, its bundle is written off the game
     /// thread: None means the reply comes later.
-    pub(in crate::game) fn stop_recording(
+    pub(in crate::game::client_side) fn stop_recording(
         &mut self,
         export: bool,
         reply: Option<Sender<String>>,
@@ -764,7 +764,7 @@ impl Game<'_> {
 
     // ---- status / list -----------------------------------------------------
 
-    pub(in crate::game) fn record_status(&self, inputs: u64) -> Value {
+    pub(in crate::game::client_side) fn record_status(&self, inputs: u64) -> Value {
         json!({
             "recording": self.repro.0.recording.as_ref().map(|r| json!({
                 "name": r.name,
@@ -787,7 +787,7 @@ impl Game<'_> {
         })
     }
 
-    pub(in crate::game) fn record_list(&self) -> Value {
+    pub(in crate::game::client_side) fn record_list(&self) -> Value {
         let mut recordings = Vec::new();
         if let Ok(entries) = fs::read_dir(recordings_dir()) {
             for entry in entries.flatten() {
@@ -830,7 +830,7 @@ impl Game<'_> {
 
     // ---- export -------------------------------------------------------------
 
-    pub(in crate::game) fn export_command(
+    pub(in crate::game::client_side) fn export_command(
         &mut self,
         args: &[&str],
         reply: Option<Sender<String>>,
@@ -867,7 +867,7 @@ impl Game<'_> {
         Ok(Some(None))
     }
 
-    pub(in crate::game) fn spawn_export(
+    pub(in crate::game::client_side) fn spawn_export(
         &mut self,
         dir: PathBuf,
         dest: Option<PathBuf>,
@@ -912,7 +912,7 @@ impl Game<'_> {
         Ok(())
     }
 
-    pub(in crate::game) fn poll_exports(&mut self) {
+    pub(in crate::game::client_side) fn poll_exports(&mut self) {
         let mut done = Vec::new();
         for (i, export) in self.repro.0.exports.iter().enumerate() {
             match export.rx.try_recv() {
@@ -945,7 +945,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn drain_exports(&mut self, timeout: Duration) {
+    pub(in crate::game::client_side) fn drain_exports(&mut self, timeout: Duration) {
         let deadline = Instant::now() + timeout;
         while !self.repro.0.exports.is_empty() && Instant::now() < deadline {
             self.poll_exports();
@@ -958,7 +958,7 @@ impl Game<'_> {
 
     // ---- replay -------------------------------------------------------------
 
-    pub(in crate::game) fn replay_command(
+    pub(in crate::game::client_side) fn replay_command(
         &mut self,
         args: &[&str],
         reply: Option<Sender<String>>,
@@ -1068,7 +1068,7 @@ impl Game<'_> {
         Ok(Some(None))
     }
 
-    pub(in crate::game) fn poll_pending_replay(&mut self) {
+    pub(in crate::game::client_side) fn poll_pending_replay(&mut self) {
         let Some((in_place, opened, folder, deadline)) = self
             .repro
             .0
@@ -1110,7 +1110,7 @@ impl Game<'_> {
         self.begin_replay(pending);
     }
 
-    pub(in crate::game) fn begin_replay(&mut self, pending: PendingReplay) {
+    pub(in crate::game::client_side) fn begin_replay(&mut self, pending: PendingReplay) {
         let total = pending.events.len();
         let name = pending.name.clone();
         // The world copy's player data can be older than the recording: put the
@@ -1186,7 +1186,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn advance_replay(&mut self, event_loop: &dyn EventLoopCtl) {
+    pub(in crate::game::client_side) fn advance_replay(&mut self, event_loop: &dyn EventLoopCtl) {
         let mut due = Vec::new();
         let mut timed_out = false;
         {
@@ -1247,7 +1247,7 @@ impl Game<'_> {
     }
 
     /// One recorded event, fed back. False when it is not replayed.
-    pub(in crate::game) fn replay_event(
+    pub(in crate::game::client_side) fn replay_event(
         &mut self,
         event: TraceEvent,
         event_loop: &dyn EventLoopCtl,
@@ -1353,7 +1353,7 @@ impl Game<'_> {
     }
 
     /// Let go of everything a replay (or a person) held.
-    pub(in crate::game) fn release_replay_inputs(&mut self) {
+    pub(in crate::game::client_side) fn release_replay_inputs(&mut self) {
         self.clear_device_keys();
         self.client.physical_keys.clear();
         self.client.physical_buttons.clear();
@@ -1364,7 +1364,7 @@ impl Game<'_> {
         self.pad.0.clear_injected();
     }
 
-    pub(in crate::game) fn finish_replay(&mut self, timed_out: bool) {
+    pub(in crate::game::client_side) fn finish_replay(&mut self, timed_out: bool) {
         let Some(replay) = self.repro.0.replay.take() else {
             return;
         };
@@ -1394,7 +1394,7 @@ impl Game<'_> {
     }
 
     /// Stop a running or waiting replay; whether there was one.
-    pub(in crate::game) fn stop_replay(&mut self) -> bool {
+    pub(in crate::game::client_side) fn stop_replay(&mut self) -> bool {
         let mut stopped = false;
         if let Some(pending) = self.repro.0.pending_replay.take() {
             self.discard_replay_world(&pending);
@@ -1410,13 +1410,17 @@ impl Game<'_> {
         stopped
     }
 
-    pub(in crate::game) fn discard_replay_world(&self, pending: &PendingReplay) {
+    pub(in crate::game::client_side) fn discard_replay_world(&self, pending: &PendingReplay) {
         if !pending.in_place && !pending.keep_world {
             let _ = fs::remove_dir_all(saves_dir().join(&pending.folder));
         }
     }
 
-    pub(in crate::game) fn reply_error(&mut self, reply: Option<Sender<String>>, error: &str) {
+    pub(in crate::game::client_side) fn reply_error(
+        &mut self,
+        reply: Option<Sender<String>>,
+        error: &str,
+    ) {
         match reply {
             Some(reply) => {
                 let _ = reply.send(json!({ "error": error }).to_string());
@@ -1428,12 +1432,12 @@ impl Game<'_> {
 
 impl Repro {
     /// A replay is running or waiting for its world.
-    pub(in crate::game) fn replaying(&self) -> bool {
+    pub(in crate::game::client_side) fn replaying(&self) -> bool {
         self.replay.is_some() || self.pending_replay.is_some()
     }
 
     /// An agent event while recording joins `events.jsonl`.
-    pub(in crate::game) fn note_event(&mut self, tick: u64, event: &Value) {
+    pub(in crate::game::client_side) fn note_event(&mut self, tick: u64, event: &Value) {
         let Some(rec) = self.recording.as_mut() else {
             return;
         };
@@ -1447,7 +1451,7 @@ impl Repro {
     }
 
     /// A `state.jsonl` keyframe: the state at this tick.
-    pub(in crate::game) fn record_state(&mut self, tick: u64, state: Value) {
+    pub(in crate::game::client_side) fn record_state(&mut self, tick: u64, state: Value) {
         self.record_keyframe(
             tick,
             json!({ "kind": "state", "state": keyframe_state(state) }),
@@ -1455,11 +1459,11 @@ impl Repro {
     }
 
     /// An `state.jsonl` keyframe of the nearby entities, rarer than the state.
-    pub(in crate::game) fn record_entities(&mut self, tick: u64, entities: Value) {
+    pub(in crate::game::client_side) fn record_entities(&mut self, tick: u64, entities: Value) {
         self.record_keyframe(tick, json!({ "kind": "entities", "entities": entities }));
     }
 
-    pub(in crate::game) fn record_keyframe(&mut self, tick: u64, mut value: Value) {
+    pub(in crate::game::client_side) fn record_keyframe(&mut self, tick: u64, mut value: Value) {
         let Some(rec) = self.recording.as_mut() else {
             return;
         };
@@ -1472,12 +1476,12 @@ impl Repro {
     }
 
     /// Whether a recording is running (the AI Agent page's button label).
-    pub(in crate::game) fn recording_active(&self) -> bool {
+    pub(in crate::game::client_side) fn recording_active(&self) -> bool {
         self.recording.is_some()
     }
 
     /// The AI Agent page's line while a recording or replay runs.
-    pub(in crate::game) fn agent_line(&self, inputs: u64) -> Option<String> {
+    pub(in crate::game::client_side) fn agent_line(&self, inputs: u64) -> Option<String> {
         if let Some(rec) = &self.recording {
             Some(format!(
                 "Recording {}: {} s, {} input events.",
@@ -1497,12 +1501,12 @@ impl Repro {
     }
 
     /// The recording and replay parts of `state`'s and `status`'s `input`.
-    pub(in crate::game) fn fill_summary(&self, out: &mut Value, inputs: u64) {
+    pub(in crate::game::client_side) fn fill_summary(&self, out: &mut Value, inputs: u64) {
         out["recording"] = self.summary(inputs)["recording"].clone();
         out["replay"] = self.summary(inputs)["replay"].clone();
     }
 
-    pub(in crate::game) fn summary(&self, inputs: u64) -> Value {
+    pub(in crate::game::client_side) fn summary(&self, inputs: u64) -> Value {
         json!({
             "recording": self.recording.as_ref().map(|r| json!({
                 "name": r.name,
@@ -1525,7 +1529,7 @@ impl Repro {
 }
 
 /// When a recording on disk started, from its `session.json`.
-pub(in crate::game) fn recording_started_at(dir: &Path) -> Option<SystemTime> {
+pub(in crate::game::client_side) fn recording_started_at(dir: &Path) -> Option<SystemTime> {
     let text = fs::read_to_string(dir.join("session.json")).ok()?;
     let meta: Value = serde_json::from_str(&text).ok()?;
     let created = meta.get("created")?.as_str()?;
@@ -1533,7 +1537,7 @@ pub(in crate::game) fn recording_started_at(dir: &Path) -> Option<SystemTime> {
     Some(SystemTime::from(time))
 }
 
-pub(in crate::game) fn newest_recording() -> Option<PathBuf> {
+pub(in crate::game::client_side) fn newest_recording() -> Option<PathBuf> {
     let mut newest: Option<(SystemTime, PathBuf)> = None;
     let entries = fs::read_dir(recordings_dir()).ok()?;
     for entry in entries.flatten() {
@@ -1554,7 +1558,7 @@ pub(in crate::game) fn newest_recording() -> Option<PathBuf> {
 
 /// A recording by name: an exact folder, the newest folder ending in it, or a
 /// bundle (which is unpacked into `recordings/` first).
-pub(in crate::game) fn resolve_recording(name: &str) -> Result<PathBuf> {
+pub(in crate::game::client_side) fn resolve_recording(name: &str) -> Result<PathBuf> {
     let recordings = recordings_dir();
     let exact = recordings.join(name);
     if exact.join("session.json").is_file() {
@@ -1614,7 +1618,7 @@ pub(in crate::game) fn resolve_recording(name: &str) -> Result<PathBuf> {
     Err(format!("no recording or bundle named {name}; record-list lists them").into())
 }
 
-pub(in crate::game) fn read_events(path: &Path) -> Result<Vec<TraceEvent>> {
+pub(in crate::game::client_side) fn read_events(path: &Path) -> Result<Vec<TraceEvent>> {
     let text = fs::read_to_string(path)?;
     let mut events = Vec::new();
     let mut skipped = 0;
@@ -1643,7 +1647,7 @@ pub(in crate::game) fn read_events(path: &Path) -> Result<Vec<TraceEvent>> {
     Ok(events)
 }
 
-pub(in crate::game) fn extract_zip(path: &Path, dest: &Path) -> Result<()> {
+pub(in crate::game::client_side) fn extract_zip(path: &Path, dest: &Path) -> Result<()> {
     let file = fs::File::open(path)?;
     let mut archive = zip::ZipArchive::new(file)?;
     fs::create_dir_all(dest)?;
@@ -1682,7 +1686,7 @@ pub(in crate::game) fn extract_zip(path: &Path, dest: &Path) -> Result<()> {
 
 /// The status the bundle carries: no server address, players, name tags or
 /// clipboard (an invite code lives there).
-pub(in crate::game) fn bundle_status(status: &Value) -> Value {
+pub(in crate::game::client_side) fn bundle_status(status: &Value) -> Value {
     let mut status = status.clone();
     if let Some(obj) = status.as_object_mut() {
         obj.remove("server");
@@ -1699,7 +1703,7 @@ pub(in crate::game) fn bundle_status(status: &Value) -> Value {
 
 /// The places and names the bundle's text must not say: the user folder, the
 /// world and the server it was played on, and the other players' names.
-pub(in crate::game) fn bundle_scrubber(dir: &Path, status: &Value) -> Scrubber {
+pub(in crate::game::client_side) fn bundle_scrubber(dir: &Path, status: &Value) -> Scrubber {
     let mut terms = vec![dir.display().to_string()];
     for path in ["/server/address", "/server/name", "/input/recording/world"] {
         if let Some(value) = status.pointer(path).and_then(Value::as_str) {
@@ -1735,7 +1739,7 @@ pub(in crate::game) fn bundle_scrubber(dir: &Path, status: &Value) -> Scrubber {
     scrubber
 }
 
-pub(in crate::game) fn unique_dest(path: &Path) -> PathBuf {
+pub(in crate::game::client_side) fn unique_dest(path: &Path) -> PathBuf {
     if !path.exists() {
         return path.to_path_buf();
     }
@@ -1756,7 +1760,7 @@ pub(in crate::game) fn unique_dest(path: &Path) -> PathBuf {
     path.to_path_buf()
 }
 
-pub(in crate::game) fn write_bundle(
+pub(in crate::game::client_side) fn write_bundle(
     dir: &Path,
     dest: &Path,
     status: &Value,
@@ -1857,7 +1861,7 @@ pub(in crate::game) fn write_bundle(
     result
 }
 
-pub(in crate::game) fn add_text_file<W: Write + io::Seek>(
+pub(in crate::game::client_side) fn add_text_file<W: Write + io::Seek>(
     zip: &mut zip::ZipWriter<W>,
     path: &Path,
     name: &str,
@@ -1867,7 +1871,7 @@ pub(in crate::game) fn add_text_file<W: Write + io::Seek>(
     add_bytes(zip, name, scrubber.scrub(&text).as_bytes())
 }
 
-pub(in crate::game) fn add_bytes<W: Write + io::Seek>(
+pub(in crate::game::client_side) fn add_bytes<W: Write + io::Seek>(
     zip: &mut zip::ZipWriter<W>,
     name: &str,
     bytes: &[u8],

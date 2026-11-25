@@ -89,7 +89,7 @@ impl Game<'_> {
     }
 
     /// Give the registered main-hand behavior this click instead of using a target or item.
-    pub(in crate::game) fn start_client_item_use(&mut self) -> bool {
+    pub(in crate::game::client_side) fn start_client_item_use(&mut self) -> bool {
         let slot = self.selected;
         let Some(stack) = self.stack_in(slot) else {
             return false;
@@ -153,7 +153,10 @@ impl Game<'_> {
 
     /// Retire the capture before entering mod code. Only a valid input release calls
     /// `release_using`; every other end is a reset. Return whether a capture owned the input.
-    pub(in crate::game) fn end_client_item_use(&mut self, release_requested: bool) -> bool {
+    pub(in crate::game::client_side) fn end_client_item_use(
+        &mut self,
+        release_requested: bool,
+    ) -> bool {
         let Some(mut active) = self.client_item_use.0.take() else {
             return false;
         };

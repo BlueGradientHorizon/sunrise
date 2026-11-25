@@ -54,7 +54,7 @@ pub(in crate::game) struct Env<'a, 'g> {
 }
 impl Game<'_> {
     /// Before a frame is drawn: drop the model draws prepared for the last one.
-    pub(in crate::game) fn begin_frame_draws(&self) {
+    pub(in crate::game::client_side) fn begin_frame_draws(&self) {
         self.client.prepared_model_draws.borrow_mut().clear();
     }
 }
@@ -321,7 +321,7 @@ fn civil(days: i64) -> (i64, u32, u32) {
 /// `DateTimeFormatter.ofPattern(pattern).format(now)` for the month, day,
 /// year and time letters item models use, in the system time zone
 /// (`LocalTime` without a `time_zone`).
-pub(in crate::game) fn local_time(pattern: &str) -> String {
+pub(in crate::game::client_side) fn local_time(pattern: &str) -> String {
     let now = chrono::Local::now();
     let secs = now.timestamp() + i64::from(now.offset().local_minus_utc());
     let (y, mo, d) = civil(secs.div_euclid(86_400));
@@ -464,7 +464,7 @@ impl Game<'_> {
     pub(in crate::game) fn item_env(&self) -> Env<'_, '_> {
         Env { game: self }
     }
-    pub(in crate::game) fn item_host(&self) -> Host<'_> {
+    pub(in crate::game::client_side) fn item_host(&self) -> Host<'_> {
         Host {
             banners: &self.stations().banners,
             sprites: &self.gui.atlas.sprites,
@@ -474,7 +474,7 @@ impl Game<'_> {
     }
     /// The client level as item models read it: worked out once a frame (a
     /// screen of items read the same level, its sky sampled once).
-    pub(in crate::game) fn item_level(&self) -> LevelState {
+    pub(in crate::game::client_side) fn item_level(&self) -> LevelState {
         let dimension = self.dim.id();
         let key = (
             self.client.frames,
@@ -517,7 +517,10 @@ impl Game<'_> {
     }
     /// The local player as `ItemOwner`; `stack` is the stack drawn, to tell
     /// whether it is the one in use.
-    pub(in crate::game) fn player_owner(&self, stack: Option<&ItemStack>) -> OwnerState {
+    pub(in crate::game::client_side) fn player_owner(
+        &self,
+        stack: Option<&ItemStack>,
+    ) -> OwnerState {
         let position = self
             .player
             .as_ref()
@@ -575,7 +578,7 @@ impl Game<'_> {
     }
     /// [`Self::resolve_item`] of a stack held in `hand`, which OptiFine CIT rules can test
     /// (GUI items count as the main hand).
-    pub(in crate::game) fn resolve_item_in_hand(
+    pub(in crate::game::client_side) fn resolve_item_in_hand(
         &self,
         stack: &ItemStack,
         display: DisplayContext,
@@ -586,7 +589,7 @@ impl Game<'_> {
         self.resolve_item_in_level(stack, display, owner, Some(&self.item_level()), seed, hand)
     }
     /// Tint only the resolved draw, never the model shared by other holders or contexts.
-    pub(in crate::game) fn tint_held_item(
+    pub(in crate::game::client_side) fn tint_held_item(
         &self,
         state: &mut ItemRenderState,
         stack: &ItemStack,
@@ -676,7 +679,7 @@ impl Game<'_> {
         self.draw_item_model_with_owner(batch, stack, x, y, Some(&owner));
     }
     /// `GuiGraphicsExtractor.item`: `fakeItem` uses the same model draw with no owner.
-    pub(in crate::game) fn draw_item_model_with_owner(
+    pub(in crate::game::client_side) fn draw_item_model_with_owner(
         &self,
         batch: &mut HudBatch,
         stack: &ItemStack,
@@ -698,7 +701,7 @@ impl Game<'_> {
     }
     /// An item under `pose` (GUI pixels), cut by no slot and with a depth of its own: what
     /// `DrawContext::model_3d` draws a turned item with.
-    pub(in crate::game) fn draw_item_model_posed(
+    pub(in crate::game::client_side) fn draw_item_model_posed(
         &self,
         batch: &mut HudBatch,
         stack: &ItemStack,
@@ -721,7 +724,7 @@ impl Game<'_> {
     }
     /// The glint clock, options and sprite for this frame: read once per
     /// frame, not per item (`GameRenderer.extractOptions`).
-    pub(in crate::game) fn capture_glint_frame(&self) -> item_render::GlintFrame {
+    pub(in crate::game::client_side) fn capture_glint_frame(&self) -> item_render::GlintFrame {
         item_render::GlintFrame {
             millis: self.visual_millis(),
             speed: self.settings.file.double("glintSpeed"),
@@ -734,7 +737,7 @@ impl Game<'_> {
         }
     }
     /// The `GLINT_TEXTURING` inputs of this frame (`WorldSink` picks `ENTITY_SCALE` per quad).
-    pub(in crate::game) fn glint(&self) -> Option<item_render::Glint> {
+    pub(in crate::game::client_side) fn glint(&self) -> Option<item_render::Glint> {
         self.client
             .glint_frame
             .glint(item_render::Glint::ITEM_SCALE)
@@ -752,7 +755,7 @@ impl Game<'_> {
         self.submit_item_lit(state, pose, light, lights, out);
     }
     /// [`Self::submit_item_world`] preserving JOML `Matrix4f` rounding through baked quads.
-    pub(in crate::game) fn submit_item_world_joml(
+    pub(in crate::game::client_side) fn submit_item_world_joml(
         &self,
         state: &ItemRenderState,
         pose: sunrise_client::camera::joml::Mat4,
@@ -777,7 +780,7 @@ impl Game<'_> {
     }
     /// [`Self::submit_item_world`] shaded by other diffuse lights (a
     /// `Lighting.Entry` other than the level's), in the pose's output space.
-    pub(in crate::game) fn submit_item_lit(
+    pub(in crate::game::client_side) fn submit_item_lit(
         &self,
         state: &ItemRenderState,
         pose: glam::Mat4,
@@ -801,7 +804,7 @@ impl Game<'_> {
         );
     }
     /// [`Self::submit_item_world`] without the level's diffuse shading.
-    pub(in crate::game) fn submit_item_unlit(
+    pub(in crate::game::client_side) fn submit_item_unlit(
         &self,
         state: &ItemRenderState,
         pose: glam::Mat4,
@@ -826,7 +829,7 @@ impl Game<'_> {
     /// [`Self::submit_item_lit`] of `state` under each of `poses` on the GPU path: the mark
     /// before its draws and their bounds, or `None` (nothing drawn) when the state cannot
     /// take it.
-    pub(in crate::game) fn submit_item_skinned(
+    pub(in crate::game::client_side) fn submit_item_skinned(
         &self,
         state: &ItemRenderState,
         poses: &[glam::Mat4],
@@ -848,7 +851,7 @@ impl Game<'_> {
     /// One pose of [`Self::submit_item_skinned`] into an entity's open
     /// `skin` (its bounds grow by the item's): false, with nothing drawn,
     /// when the item cannot take the GPU path.
-    pub(in crate::game) fn skin_item(
+    pub(in crate::game::client_side) fn skin_item(
         &self,
         state: &ItemRenderState,
         pose: glam::Mat4,
@@ -867,7 +870,7 @@ impl Game<'_> {
     /// [`Self::submit_item_world`] of `state` under `pose` on the GPU path, its draws counted
     /// with an entity's (`skinned`: its mark and bounds, `cull_skinned`'s); false, with
     /// nothing drawn, when the state cannot take it.
-    pub(in crate::game) fn skin_item_into(
+    pub(in crate::game::client_side) fn skin_item_into(
         &self,
         state: &ItemRenderState,
         pose: glam::Mat4,
@@ -891,7 +894,7 @@ impl Game<'_> {
         true
     }
     /// `ItemEntityRenderer.submit` for every dropped item.
-    pub(in crate::game) fn dropped_item_geometry(
+    pub(in crate::game::client_side) fn dropped_item_geometry(
         &self,
         camera: glam::DVec3,
         alpha: f64,
@@ -918,7 +921,7 @@ impl Game<'_> {
         self.item_entity_geometry(camera, live, out);
     }
 
-    pub(in crate::game) fn pickup_item_geometry(
+    pub(in crate::game::client_side) fn pickup_item_geometry(
         &self,
         camera: glam::DVec3,
         alpha: f64,
@@ -1712,7 +1715,7 @@ pub(in crate::game) mod tests {
         run_item_display_end_crystal_world_submit_uses_vanilla_glint_scale_and_atlas_uv_26_3();
     }
 
-    pub(in crate::game) fn run_item_display_end_crystal_world_submit_uses_vanilla_glint_scale_and_atlas_uv_26_3()
+    pub(in crate::game::client_side) fn run_item_display_end_crystal_world_submit_uses_vanilla_glint_scale_and_atlas_uv_26_3()
      {
         crate::game::in_own_process(
             "game::client_side::item_draw::tests::item_display_end_crystal_world_submit_uses_vanilla_glint_scale_and_atlas_uv_26_3",

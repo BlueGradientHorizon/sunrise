@@ -9,7 +9,7 @@ pub(in crate::game) use sunrise_gameplay::wandering_trader::Spawner;
 
 impl Creatures {
     /// A fresh spawner for a newly opened world.
-    pub(in crate::game) fn reset_trader(&mut self) {
+    pub(in crate::game::server_side) fn reset_trader(&mut self) {
         self.trader = Spawner::default();
     }
 }
@@ -30,7 +30,7 @@ impl Game<'_> {
             .trader
             .load(tag.as_ref().and_then(|t| t.get("data")));
     }
-    pub(in crate::game) fn save_wandering_trader(&mut self) {
+    pub(in crate::game::server_side) fn save_wandering_trader(&mut self) {
         let Some(tag) = self.creatures.trader.to_save() else {
             return;
         };

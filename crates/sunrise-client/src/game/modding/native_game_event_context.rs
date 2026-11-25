@@ -2,7 +2,7 @@ use super::{Game, commands::Target};
 use crate::game::api_values::TryIntoEngine;
 
 impl Game<'_> {
-    pub(in crate::game) fn post_contextual_game_event(
+    pub(in crate::game::server_side) fn post_contextual_game_event(
         &mut self,
         event: &'static str,
         at: [f64; 3],

@@ -1,8 +1,6 @@
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::{Game, Hit, entity_culling::default_range};
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::paintings::faces_camera;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::paintings::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use std::sync::Arc;

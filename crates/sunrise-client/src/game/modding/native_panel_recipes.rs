@@ -125,7 +125,7 @@ pub(in crate::game) struct Pages {
 }
 
 impl Pages {
-    pub(in crate::game) fn new(
+    pub(in crate::game::client_side) fn new(
         items: &sunrise_client::items::Items,
         shown: &RecipePage,
         old: Option<Pages>,
@@ -406,7 +406,7 @@ impl Game<'_> {
         stacks.get(n % stacks.len().max(1))
     }
     /// The tab under the pointer: its index and icon.
-    pub(in crate::game) fn recipe_tab_hovered(
+    pub(in crate::game::client_side) fn recipe_tab_hovered(
         &self,
         layout: &Layout,
     ) -> Option<(usize, BrowserStack, ItemStack)> {
@@ -421,7 +421,7 @@ impl Game<'_> {
         })
     }
     /// The fluid in the well under the pointer.
-    pub(in crate::game) fn recipe_fluid_hovered(
+    pub(in crate::game::client_side) fn recipe_fluid_hovered(
         &self,
         layout: &Layout,
     ) -> Option<mod_api::FluidStack> {
@@ -439,7 +439,7 @@ impl Game<'_> {
             })
     }
     /// The recipe slot under the pointer: recipe, slot, and its stack now.
-    pub(in crate::game) fn recipe_slot_hovered(
+    pub(in crate::game::client_side) fn recipe_slot_hovered(
         &self,
         layout: &Layout,
     ) -> Option<(usize, usize, BrowserStack, ItemStack)> {
@@ -459,7 +459,11 @@ impl Game<'_> {
     }
 
     /// Draws the title row, the page's recipes and the page arrows.
-    pub(in crate::game) fn draw_browser_recipes(&mut self, batch: &mut HudBatch, layout: &Layout) {
+    pub(in crate::game::client_side) fn draw_browser_recipes(
+        &mut self,
+        batch: &mut HudBatch,
+        layout: &Layout,
+    ) {
         let Some(pages) = &self.client.panel.recipes else {
             return;
         };
@@ -742,7 +746,7 @@ impl Game<'_> {
 
     /// A wheel notch `d` over the recipe pages: turns them as the arrows
     /// do (`wheel_turn`, telling the mod of a turn); false off the panel.
-    pub(in crate::game) fn browser_recipes_wheel(
+    pub(in crate::game::client_side) fn browser_recipes_wheel(
         &mut self,
         layout: &Layout,
         owner: &Owner,
@@ -767,7 +771,7 @@ impl Game<'_> {
     }
 
     /// A press on the recipes: true when it hit one of their parts.
-    pub(in crate::game) fn browser_recipes_press(
+    pub(in crate::game::client_side) fn browser_recipes_press(
         &mut self,
         layout: &Layout,
         owner: &Owner,

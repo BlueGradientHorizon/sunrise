@@ -169,7 +169,7 @@ impl Bolt {
 }
 /// The box `LightningBolt.tick` collects the `LightningStrikeTrigger` bystanders from: 15 blocks
 /// around the bolt, 15 down and `6 + 15` up.
-pub(in crate::game) fn in_viewer_box(bolt: [f64; 3], p: [f64; 3]) -> bool {
+pub(in crate::game::client_side) fn in_viewer_box(bolt: [f64; 3], p: [f64; 3]) -> bool {
     (p[0] - bolt[0]).abs() <= 15.0
         && (p[2] - bolt[2]).abs() <= 15.0
         && p[1] >= bolt[1] - 15.0
@@ -228,7 +228,10 @@ impl Game<'_> {
     /// block is the top (`WORLD_SURFACE`) of its column; the strike lands one
     /// above it. Sunrise keeps no point-of-interest index, so this scans the
     /// loaded chunks the way `/locate poi` does.
-    pub(in crate::game) fn find_lightning_rod(&self, center: [i32; 3]) -> Option<[i32; 3]> {
+    pub(in crate::game::client_side) fn find_lightning_rod(
+        &self,
+        center: [i32; 3],
+    ) -> Option<[i32; 3]> {
         const RANGE: i32 = 128;
         let facts = self.res.facts();
         let mut is_rod: std::collections::HashMap<u32, bool> = std::collections::HashMap::new();
@@ -445,7 +448,10 @@ impl Game<'_> {
         }
         Tag::Compound(c)
     }
-    pub(in crate::game) fn vehicle_position_by_id(&self, vehicle: u32) -> Option<[f64; 3]> {
+    pub(in crate::game::client_side) fn vehicle_position_by_id(
+        &self,
+        vehicle: u32,
+    ) -> Option<[f64; 3]> {
         if let Some(target) = self.level_entity(vehicle as i32) {
             return self.target_position(target);
         }
@@ -483,7 +489,7 @@ impl Game<'_> {
     /// (from the bolt's own `random`), wherever `BaseFireBlock.getState` fire
     /// can survive, when a player is within the fire-spread radius. Returns how
     /// many blocks it set on fire.
-    pub(in crate::game) fn bolt_fire(
+    pub(in crate::game::client_side) fn bolt_fire(
         &mut self,
         at: [f64; 3],
         extra: i32,
@@ -721,7 +727,7 @@ impl Game<'_> {
         }
     }
     /// `LightningRodBlock.onLightningStrike`: powered for 8 ticks.
-    pub(in crate::game) fn strike_rod(&mut self, at: [f64; 3]) {
+    pub(in crate::game::client_side) fn strike_rod(&mut self, at: [f64; 3]) {
         let p = [
             at[0].floor() as i32,
             (at[1] - 1.0e-6).floor() as i32,
@@ -761,7 +767,7 @@ impl Game<'_> {
         }
     }
     /// `LightningBolt.clearCopperOnLightningStrike` at the block the bolt struck.
-    pub(in crate::game) fn bolt_clear_copper(&mut self, at: [f64; 3]) {
+    pub(in crate::game::client_side) fn bolt_clear_copper(&mut self, at: [f64; 3]) {
         let p = BlockPos::new(
             at[0].floor() as i32,
             (at[1] - 1.0e-6).floor() as i32,
@@ -772,7 +778,7 @@ impl Game<'_> {
     }
     /// `LightningStrikeTrigger` at the bolt's discard: every player within 256
     /// blocks, with the mobs in its 30-block box that it did not hit.
-    pub(in crate::game) fn lightning_strike_triggers(
+    pub(in crate::game::client_side) fn lightning_strike_triggers(
         &mut self,
         at: [f64; 3],
         fires: i32,

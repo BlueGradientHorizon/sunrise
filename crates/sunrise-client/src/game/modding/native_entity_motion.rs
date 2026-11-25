@@ -19,7 +19,11 @@ use sunrise_core::position::BlockPos;
 
 /// `Entity.calculateViewVector` for a look turned `pitch_offset` degrees down: the unit
 /// vector along `yaw` and `pitch + pitch_offset`.
-pub(in crate::game) fn turned_view_vector(yaw: f32, pitch: f32, pitch_offset: f32) -> [f64; 3] {
+pub(in crate::game::server_side) fn turned_view_vector(
+    yaw: f32,
+    pitch: f32,
+    pitch_offset: f32,
+) -> [f64; 3] {
     let v = sunrise_world::view_direction::view_vector(pitch + pitch_offset, yaw);
     [v.x, v.y, v.z]
 }
@@ -39,23 +43,27 @@ pub(in crate::game) fn on_block_position(support: Option<BlockPos>, position: Ve
 
 /// The end of a ray `distance` blocks from `from` along the unit vector `look`
 /// (`from.add(look.scale(distance))`).
-pub(in crate::game) fn ray_end(from: [f64; 3], look: [f64; 3], distance: f64) -> [f64; 3] {
+pub(in crate::game::server_side) fn ray_end(
+    from: [f64; 3],
+    look: [f64; 3],
+    distance: f64,
+) -> [f64; 3] {
     std::array::from_fn(|i| from[i] + look[i] * distance)
 }
 
-pub(in crate::game) fn corners(b: Aabb) -> [[f64; 3]; 2] {
+pub(in crate::game::server_side) fn corners(b: Aabb) -> [[f64; 3]; 2] {
     let axes = [Axis::X, Axis::Y, Axis::Z];
     [axes.map(|a| b.min(a)), axes.map(|a| b.max(a))]
 }
 
 impl Game<'_> {
     /// The simulated entity (one of the shared entity walk's lists) with `id`.
-    pub(in crate::game) fn native_walk_entity(&self, id: u32) -> Option<EntityHandle> {
+    pub(in crate::game::server_side) fn native_walk_entity(&self, id: u32) -> Option<EntityHandle> {
         self.entity_handles()
             .find(|h| with_entity!(self, *h, e => e.id() == id))
     }
     /// This window's own player, when a client's target names it.
-    pub(in crate::game) fn native_client_player(
+    pub(in crate::game::server_side) fn native_client_player(
         &self,
         t: Target,
     ) -> Option<&sunrise_client::motion::PlayerMotion> {
@@ -64,7 +72,7 @@ impl Game<'_> {
         self.player.as_ref()
     }
     /// The server's copy of the player a target names.
-    pub(in crate::game) fn native_target_guest(
+    pub(in crate::game::server_side) fn native_target_guest(
         &self,
         t: Target,
     ) -> Option<&sunrise_client::lan::guest::Guest> {
@@ -110,7 +118,10 @@ impl Game<'_> {
     /// previous tick's). Every list the walk keeps has a previous position.
     /// A frame, painting, crystal, spawner, cloud, fangs or marker never
     /// moves, so zero; the dragon uses its own previous position.
-    pub(in crate::game) fn native_entity_known_speed(&self, entity: EntityRef) -> Option<Vec3> {
+    pub(in crate::game::server_side) fn native_entity_known_speed(
+        &self,
+        entity: EntityRef,
+    ) -> Option<Vec3> {
         let t = self.native_entity_target(entity)?;
         if let Some(g) = self.native_target_guest(t) {
             let [x, y, z] = g.known_movement;
@@ -135,7 +146,7 @@ impl Game<'_> {
     /// first passenger, or a mount's rider as `equine::controlled` decides
     /// (saddled; a pig or strider's rider holding the stick; a harnessed
     /// happy ghast), the rule the mount code steers by.
-    pub(in crate::game) fn native_steered(&self, t: Target) -> bool {
+    pub(in crate::game::server_side) fn native_steered(&self, t: Target) -> bool {
         match t {
             Target::Boat(_) => true,
             Target::Mob(id) => self
@@ -146,7 +157,7 @@ impl Game<'_> {
         }
     }
     /// `Entity.getControllingPassenger` when it is a player.
-    pub(in crate::game) fn native_controlling_player(
+    pub(in crate::game::server_side) fn native_controlling_player(
         &self,
         t: Target,
         entity: EntityRef,
@@ -277,7 +288,7 @@ impl Game<'_> {
 
     /// The acting player's record and motion must agree when the guest turn ends. A parked
     /// player's position and equipment belong to its hub row, not to the last simulated motion.
-    pub(in crate::game) fn set_server_player_ground(
+    pub(in crate::game::server_side) fn set_server_player_ground(
         &mut self,
         target: Target,
         entity_id: u32,
@@ -433,7 +444,7 @@ impl Game<'_> {
     }
     /// `Entity.mainSupportingBlockPos`, retained by bodies with a shared ground state.
     /// Families that have not moved onto that state still use their existing support read.
-    pub(in crate::game) fn native_supporting_block(
+    pub(in crate::game::server_side) fn native_supporting_block(
         &self,
         entity: EntityRef,
         t: Target,

@@ -25,7 +25,9 @@ impl SpecializedSource<'_> {
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn current_player_resident_location(&self) -> Option<Location> {
+    pub(in crate::game::server_side) fn current_player_resident_location(
+        &self,
+    ) -> Option<Location> {
         match self.server.lan_acting {
             Some(conn) => self.command_guest(conn)?.residency.location(),
             None => self.resident_entities.local_player.location(),
@@ -46,7 +48,7 @@ impl Game<'_> {
         (at.owner.dimension == dimension).then_some(uuid).flatten()
     }
 
-    pub(in crate::game) fn resident_target_id(&self, target: Target) -> Option<u32> {
+    pub(in crate::game::server_side) fn resident_target_id(&self, target: Target) -> Option<u32> {
         match target {
             Target::Player => match self.server.lan_acting {
                 Some(conn) => self
@@ -69,7 +71,9 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn acting_player_join(&self) -> sunrise_client::join_seq::JoinSeq {
+    pub(in crate::game::server_side) fn acting_player_join(
+        &self,
+    ) -> sunrise_client::join_seq::JoinSeq {
         self.server
             .lan_acting
             .and_then(|conn| self.command_guest(conn))
@@ -145,7 +149,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn bind_current_hook_residency(&mut self) {
+    pub(in crate::game::server_side) fn bind_current_hook_residency(&mut self) {
         let journal = self.resident_entities.table.borrow().producer();
         let (owner, source) = self
             .hook
@@ -175,7 +179,10 @@ impl Game<'_> {
         );
     }
 
-    pub(in crate::game) fn bind_specialized_resident_owners(&mut self, journal: &Journal) {
+    pub(in crate::game::server_side) fn bind_specialized_resident_owners(
+        &mut self,
+        journal: &Journal,
+    ) {
         self.resident_entities.local_player.rebind(journal);
         let body_id = self.player.as_ref().map(|player| player.entity_id as u32);
         if self.server.lan_acting.is_some()
@@ -238,7 +245,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn specialized_resident_source(
+    pub(in crate::game::server_side) fn specialized_resident_source(
         &self,
         at: Location,
     ) -> Option<SourceEntity<(SpecializedSource<'_>, Target)>> {
@@ -340,7 +347,7 @@ impl Game<'_> {
         })
     }
 
-    pub(in crate::game) fn with_specialized_resident_slot<R>(
+    pub(in crate::game::server_side) fn with_specialized_resident_slot<R>(
         &mut self,
         at: Location,
         visit: impl FnOnce(&mut sunrise_mod_runtime::attachments::AttachmentLifetime) -> R,
@@ -381,7 +388,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn locate_specialized_resident_owner(
+    pub(in crate::game::server_side) fn locate_specialized_resident_owner(
         &self,
         at: Location,
     ) -> Option<SourceEntity<(Target, bool)>> {

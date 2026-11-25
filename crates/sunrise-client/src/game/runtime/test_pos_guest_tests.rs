@@ -14,7 +14,9 @@ use sunrise_protocol::packets::configuration::ClientInformation;
 pub(in crate::game) const GUEST: &str = "H274Guest";
 
 /// A host on a stone floor with one connected, placed guest (conn 2).
-pub(in crate::game) fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
+pub(in crate::game::server_side) fn game(
+    resources: &mut Option<std::sync::Arc<Resources>>,
+) -> Game<'_> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),

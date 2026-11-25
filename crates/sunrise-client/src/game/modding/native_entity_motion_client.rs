@@ -5,13 +5,7 @@ pub(in crate::game::client_side) use super::entity::{
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::{Game, commands::Target};
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_entity_motion::corners;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::native_entity_motion::on_block_position;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_entity_motion::ray_end;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_entity_motion::turned_view_vector;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::native_entity_motion::*;
 #[allow(unused_imports)]

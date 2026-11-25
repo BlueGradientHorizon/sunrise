@@ -49,7 +49,10 @@ pub(in crate::game) fn in_the_nether(game: &mut super::Game<'_>) -> mod_api::Ite
 }
 
 /// `count` diamonds, as a mod reads them from SNBT.
-pub(in crate::game) fn some_diamonds(game: &super::Game<'_>, count: u32) -> mod_api::ItemStack {
+pub(in crate::game::server_side) fn some_diamonds(
+    game: &super::Game<'_>,
+    count: u32,
+) -> mod_api::ItemStack {
     let host: &dyn mod_api::Host = game;
     host.item_from_snbt(&format!(r#"{{id:"minecraft:diamond",count:{count}}}"#))
         .unwrap()

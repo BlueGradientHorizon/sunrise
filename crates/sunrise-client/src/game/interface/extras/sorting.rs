@@ -58,7 +58,12 @@ impl Game<'_> {
     }
     /// The sort buttons: a bordered square with three bars, lighter under
     /// the cursor.
-    pub(in crate::game) fn draw_sort_buttons(&self, batch: &mut HudBatch, ox: f32, oy: f32) {
+    pub(in crate::game::client_side) fn draw_sort_buttons(
+        &self,
+        batch: &mut HudBatch,
+        ox: f32,
+        oy: f32,
+    ) {
         let atlas = &self.gui.atlas;
         for ((x, y), _) in self.sort_buttons() {
             let (x, y) = (ox + x, oy + y);
@@ -85,7 +90,7 @@ impl Game<'_> {
         }
     }
     /// A left press on a sort button sorts its slots (true).
-    pub(in crate::game) fn sort_press(&mut self) -> bool {
+    pub(in crate::game::client_side) fn sort_press(&mut self) -> bool {
         let Some(r) = self.renderer.0.as_ref() else {
             return false;
         };
@@ -107,10 +112,10 @@ impl Game<'_> {
     }
     /// The sort key: sorts the part under the cursor (the container when
     /// the cursor is over no slot).
-    pub(in crate::game) fn sort_key_press(&mut self, key: KeyCode) -> bool {
+    pub(in crate::game::client_side) fn sort_key_press(&mut self, key: KeyCode) -> bool {
         keybinds::key_name(key).is_some_and(|name| self.sort_input(name))
     }
-    pub(in crate::game) fn sort_mouse_press(&mut self, button: MouseButton) -> bool {
+    pub(in crate::game::client_side) fn sort_mouse_press(&mut self, button: MouseButton) -> bool {
         self.sort_input(&keybinds::mouse_name(button))
     }
     fn sort_input(&mut self, name: &str) -> bool {

@@ -47,7 +47,7 @@ pub(crate) fn sound_type(
 
 /// Whether a part's answer can be played: a finite volume and pitch of at least 0, and every
 /// event a `namespace:path` id (a mod's own included; one the resources lack plays nothing).
-pub(in crate::game) fn playable(sound: &BlockSoundType) -> bool {
+pub(in crate::game::server_side) fn playable(sound: &BlockSoundType) -> bool {
     let level = |value: f32| value.is_finite() && value >= 0.0;
     let events = [
         &sound.break_sound,

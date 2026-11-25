@@ -8,7 +8,7 @@ pub(in crate::game::client_side) use sunrise_client::tab_list::{TabPlayer, defau
 impl Game<'_> {
     /// `Entity.push`'s share of the other entities' ticks: added to the local
     /// player's deltaMovement, unless it lies dead, sleeps or rides.
-    pub(in crate::game) fn apply_remote_push(&mut self, pushed: Vec3) {
+    pub(in crate::game::client_side) fn apply_remote_push(&mut self, pushed: Vec3) {
         let still =
             self.client.screen == Screen::Dead || self.sleeping.is_some() || self.riding.is_some();
         if let Some(player) = self.player.as_mut()
@@ -121,7 +121,10 @@ impl Game<'_> {
         push
     }
     /// ClientPacketListener.handleMovePlayer.
-    pub(in crate::game) fn remote_teleport(&mut self, p: &play::PlayerPosition) -> Result<()> {
+    pub(in crate::game::client_side) fn remote_teleport(
+        &mut self,
+        p: &play::PlayerPosition,
+    ) -> Result<()> {
         use play::relative as rel;
         let (had_player, current) = self
             .player

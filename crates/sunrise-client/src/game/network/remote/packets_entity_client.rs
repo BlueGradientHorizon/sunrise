@@ -5,7 +5,7 @@ pub(in crate::game::client_side) use crate::game::remote::packets_entity::*;
 
 impl Game<'_> {
     /// `C::EntityEvent`: its arms of `apply_packet`, guard and order kept.
-    pub(in crate::game) fn apply_entity_event_packet(
+    pub(in crate::game::client_side) fn apply_entity_event_packet(
         &mut self,
         p: play::EntityEvent,
     ) -> Result<()> {
@@ -209,7 +209,7 @@ impl Game<'_> {
         Ok(())
     }
     /// `C::UpdateAttributes`: its arms of `apply_packet`, guard and order kept.
-    pub(in crate::game) fn apply_update_attributes_packet(
+    pub(in crate::game::client_side) fn apply_update_attributes_packet(
         &mut self,
         p: play::UpdateAttributes,
     ) -> Result<()> {

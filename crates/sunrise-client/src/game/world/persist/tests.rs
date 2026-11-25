@@ -306,7 +306,7 @@ fn comparator_and_hopper_live_state_survives_chunk_reload() {
     run_comparator_and_hopper_live_state_survives_chunk_reload();
 }
 
-pub(in crate::game) fn run_comparator_and_hopper_live_state_survives_chunk_reload() {
+pub(in crate::game::server_side) fn run_comparator_and_hopper_live_state_survives_chunk_reload() {
     use super::super::{Audio, Options, Progress, Settings, load_resources};
     use sunrise_client::{containers::BlockEntity, items::ItemStack, save};
     fn cooldown(game: &Game<'_>) -> i32 {

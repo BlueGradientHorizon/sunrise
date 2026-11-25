@@ -145,7 +145,7 @@ impl Game<'_> {
     /// Polytone GPU particles, before the frame's quads are built: any pending clear, the
     /// renderer's verdict on each shader and on the quads drawn here, then the heightmap for the readers that draw (a custom shader's `Sampler1`,
     /// and the surface rain drawn as quads dies under), every half second.
-    pub(in crate::game) fn polytone_gpu_decide(&mut self, camera: glam::DVec3) {
+    pub(in crate::game::client_side) fn polytone_gpu_decide(&mut self, camera: glam::DVec3) {
         // A mod's clear asked since the last frame goes first: cleared records read nothing.
         self.apply_mod_particle_clear();
         let (world, properties) = (&self.world, &self.pack.assets.properties);
@@ -163,7 +163,11 @@ impl Game<'_> {
 
     /// After the frame's quads (and any clear in their extraction): the records of the types
     /// the renderer draws with their own shader go to it.
-    pub(in crate::game) fn polytone_gpu_particles(&mut self, camera: glam::DVec3, alpha: f64) {
+    pub(in crate::game::client_side) fn polytone_gpu_particles(
+        &mut self,
+        camera: glam::DVec3,
+        alpha: f64,
+    ) {
         let world = &self.world;
         let renderer = self.renderer.0.as_mut().map(|r| r as _);
         self.particles
@@ -178,15 +182,15 @@ impl Game<'_> {
         self.dimension_type().cardinal_light == CardinalLight::Nether
     }
     /// `SkyRenderer`'s overworld skybox: sun, moon and stars.
-    pub(in crate::game) fn overworld_skybox(&self) -> bool {
+    pub(in crate::game::client_side) fn overworld_skybox(&self) -> bool {
         self.dimension_type().skybox == Skybox::Overworld
     }
     /// `SkyRenderer`'s End skybox and its flashes.
-    pub(in crate::game) fn end_skybox(&self) -> bool {
+    pub(in crate::game::client_side) fn end_skybox(&self) -> bool {
         self.dimension_type().skybox == Skybox::End
     }
     /// `LevelRenderer.prepareTranslucents`: prepare the clouds the frame draws.
-    pub(in crate::game) fn frame_cloud_uv(
+    pub(in crate::game::client_side) fn frame_cloud_uv(
         &self,
         title: bool,
         sky: &sunrise_client::environment::Sky,
@@ -197,7 +201,7 @@ impl Game<'_> {
         let white = self.gui.atlas.sprites.get("sunrise/white")?;
         Some([(white.u0 + white.u1) / 2.0, (white.v0 + white.v1) / 2.0])
     }
-    pub(in crate::game) fn forward(&self) -> [f64; 3] {
+    pub(in crate::game::client_side) fn forward(&self) -> [f64; 3] {
         let (yaw, pitch) = (
             f64::from(self.yaw).to_radians(),
             f64::from(self.pitch).to_radians(),
@@ -209,7 +213,7 @@ impl Game<'_> {
         ]
     }
     /// `Camera.getNearPlane` at the FOV option, as `getFluidInCamera` asks for it.
-    pub(in crate::game) fn near_plane(&self) -> NearPlane {
+    pub(in crate::game::client_side) fn near_plane(&self) -> NearPlane {
         let [width, height] = self
             .renderer
             .0
@@ -222,7 +226,7 @@ impl Game<'_> {
         )
     }
     /// `FogRenderer.setupFog` for the frame's camera, and Sunrise's Fog option.
-    pub(in crate::game) fn frame_fog(
+    pub(in crate::game::client_side) fn frame_fog(
         &self,
         camera: glam::DVec3,
         sky: &sunrise_client::environment::Sky,
@@ -384,7 +388,7 @@ impl Game<'_> {
         }
     }
     /// `SkyRenderer.shouldRenderDarkDisc`: uses `minecraft.player` eye and water state, not camera.
-    pub(in crate::game) fn dark_disc(&self, _camera: glam::DVec3) -> bool {
+    pub(in crate::game::client_side) fn dark_disc(&self, _camera: glam::DVec3) -> bool {
         let Some(p) = self.player.as_ref() else {
             return false;
         };
@@ -703,7 +707,7 @@ impl Game<'_> {
     /// What `Minecraft` ticks outside the level's own tick: `GameRenderer.tick` runs the light
     /// flicker whenever the game is not paused, frozen or not, while `TextureManager.tick`
     /// needs the level running normally. `SUNRISE_STILL` keeps both with the world.
-    pub(in crate::game) fn tick_frame_visuals(&mut self, running: bool) {
+    pub(in crate::game::client_side) fn tick_frame_visuals(&mut self, running: bool) {
         self.hold_fullbright();
         if running || !self.clock.still() {
             self.client.fog.tick_flicker();
@@ -731,13 +735,13 @@ impl Game<'_> {
     }
     /// Under `SUNRISE_STILL` a frozen client's rain fog sits at its level, as the rain does: it
     /// eases only in `tick_particles`, which waits for the world.
-    pub(in crate::game) fn settle_rain_fog(&mut self) {
+    pub(in crate::game::client_side) fn settle_rain_fog(&mut self) {
         if let Some(e) = self.camera_eye_position() {
             let (rain, sky_light, rains) = self.rain_fog_inputs(e);
             settle_rain_fog(&mut self.client.fog, rain, sky_light, rains);
         }
     }
-    pub(in crate::game) fn remote_tracking_body(
+    pub(in crate::game::client_side) fn remote_tracking_body(
         &self,
         id: i32,
     ) -> Option<(TrackingTarget, TrackingBody)> {
@@ -752,7 +756,7 @@ impl Game<'_> {
     }
 
     /// `Hud.updateVignetteBrightness` from the camera entity's eye, running even while frozen.
-    pub(in crate::game) fn tick_vignette(&mut self) {
+    pub(in crate::game::client_side) fn tick_vignette(&mut self) {
         if let Some(e) = self.camera_eye_position() {
             let brightness = self.eye_brightness(e);
             self.client.screen_fx.tick_vignette(brightness);
@@ -767,7 +771,7 @@ impl Game<'_> {
 
     /// What adds particles in `Minecraft.tick` and the level's ambient: `animateTick`, the rain,
     /// the vignette and fog, before the block entities tick.
-    pub(in crate::game) fn tick_particle_sources(&mut self) {
+    pub(in crate::game::client_side) fn tick_particle_sources(&mut self) {
         // A client mod's `clear_particles`, before this tick adds any.
         self.apply_mod_particle_clear();
         self.update_animation_inputs();
@@ -1193,7 +1197,7 @@ impl Game<'_> {
 
     /// The clock of the animated textures: `Minecraft.runTick` ticks the `TextureManager`
     /// only while the level runs normally. Under `SUNRISE_STILL` it is the world's ticks.
-    pub(in crate::game) fn texture_clock(&self) -> u64 {
+    pub(in crate::game::client_side) fn texture_clock(&self) -> u64 {
         if self.clock.still() {
             self.visual_ticks()
         } else {
@@ -1203,7 +1207,7 @@ impl Game<'_> {
 
     /// `Util.getMillis` for what the frame shows (the world border's scroll, the hearts' blink,
     /// the glint's under the switch): under `SUNRISE_STILL`, the world's ticks in milliseconds.
-    pub(in crate::game) fn visual_millis(&self) -> i64 {
+    pub(in crate::game::client_side) fn visual_millis(&self) -> i64 {
         if self.clock.still() {
             self.visual_ticks() as i64 * 50
         } else {
@@ -1248,20 +1252,20 @@ impl Game<'_> {
     /// Whether an installed pack core shader reads expression uniforms this frame. Fullbright
     /// excludes the lightmap only, and a frame where no world runs the text
     /// ([`Self::world_runs`]). The frame's expression context is made only when needed.
-    pub(in crate::game) fn reads_pack_expressions(&mut self) -> bool {
+    pub(in crate::game::client_side) fn reads_pack_expressions(&mut self) -> bool {
         let world = self.world_runs();
         (self.renderer.0.as_mut()).is_some_and(|r| r.reads_pack_expressions(world))
     }
 
     /// Whether an installed pack core shader reads Polytone's `PolyGlobals` this frame (the
     /// text's only where a world runs).
-    pub(in crate::game) fn reads_poly_globals(&mut self) -> bool {
+    pub(in crate::game::client_side) fn reads_poly_globals(&mut self) -> bool {
         let world = self.world_runs();
         (self.renderer.0.as_mut()).is_some_and(|r| r.reads_poly_globals(world))
     }
 
     /// The frame's `PolyGlobals` for the pack core shaders that read them; none leaves them 0.
-    pub(in crate::game) fn give_poly_globals(
+    pub(in crate::game::client_side) fn give_poly_globals(
         &mut self,
         globals: Option<&sunrise_client::polytone_post::PolyGlobals>,
     ) {
@@ -1274,7 +1278,7 @@ impl Game<'_> {
     /// Evaluate the installed pack pipelines' expression uniforms from `frame`, skipping the
     /// lightmap under fullbright, and the text's where no world runs
     /// ([`Self::world_runs`]). Values are uploaded when each pipeline prepares its draw.
-    pub(in crate::game) fn evaluate_pack_expressions(
+    pub(in crate::game::client_side) fn evaluate_pack_expressions(
         &mut self,
         frame: Option<&sunrise_client::environment::Frame>,
     ) {

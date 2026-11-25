@@ -203,7 +203,8 @@ fn a_spectated_rider_backs_off_by_its_living_vehicles_camera_distance() {
     run_a_spectated_rider_backs_off_by_its_living_vehicles_camera_distance();
 }
 
-pub(in crate::game) fn run_a_spectated_rider_backs_off_by_its_living_vehicles_camera_distance() {
+pub(in crate::game::client_side) fn run_a_spectated_rider_backs_off_by_its_living_vehicles_camera_distance()
+ {
     let path = std::env::var("SUNRISE_CAMERA_MOUNT_WITNESS")
         .expect("run through tools/test_camera_parity.py, which records the witness");
     let raw = std::fs::read_to_string(&path).unwrap_or_else(|err| {

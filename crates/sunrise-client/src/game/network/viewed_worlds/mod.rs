@@ -113,7 +113,7 @@ pub(in crate::game) mod tests {
     }
 
     /// Binds `slot` with the next epoch, as a server's `open` or `swap` does.
-    pub(in crate::game) fn bind(slot: i32) -> viewed_levels::Level {
+    pub(in crate::game::client_side) fn bind(slot: i32) -> viewed_levels::Level {
         EPOCHS.with(|epochs| {
             let (next, slots) = &mut *epochs.borrow_mut();
             let epoch = *next;
@@ -124,7 +124,7 @@ pub(in crate::game) mod tests {
     }
 
     /// `slot` with the epoch it was last bound with.
-    pub(in crate::game) fn bound_slot(slot: i32) -> viewed_levels::Level {
+    pub(in crate::game::client_side) fn bound_slot(slot: i32) -> viewed_levels::Level {
         let epoch = EPOCHS.with(|epochs| epochs.borrow().1.get(&slot).copied().unwrap_or(0));
         viewed_levels::Level::Bound { slot, epoch }
     }
@@ -167,7 +167,7 @@ pub(in crate::game) mod tests {
     }
 
     /// The custom payload the client's net thread hands the game for a whole packet body.
-    pub(in crate::game) fn payload(body: &[u8]) -> C {
+    pub(in crate::game::client_side) fn payload(body: &[u8]) -> C {
         let mut r = Reader::new(body);
         let id = r.varint().unwrap();
         C::decode(id, r.rest()).unwrap()
@@ -185,7 +185,7 @@ pub(in crate::game) mod tests {
     }
 
     /// A `run` of `level`, its slot and epoch as given.
-    pub(in crate::game) fn run_at(level: viewed_levels::Level, packets: &[C]) -> C {
+    pub(in crate::game::client_side) fn run_at(level: viewed_levels::Level, packets: &[C]) -> C {
         let mut run = viewed_levels::Run::new(level, &packets[0].encode()).unwrap();
         for packet in &packets[1..] {
             run.push(&packet.encode()).unwrap();
@@ -199,11 +199,11 @@ pub(in crate::game) mod tests {
     }
 
     /// The server's `swap` after a travel's Respawn: `slot` with the next epoch.
-    pub(in crate::game) fn swap(slot: i32) -> C {
+    pub(in crate::game::client_side) fn swap(slot: i32) -> C {
         payload(&viewed_levels::swap(bind(slot)))
     }
 
-    pub(in crate::game) fn data(packet: &C) -> &[u8] {
+    pub(in crate::game::client_side) fn data(packet: &C) -> &[u8] {
         let C::CustomPayload(p) = packet else {
             panic!("not a payload")
         };

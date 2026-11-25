@@ -75,18 +75,23 @@ pub(in crate::game) struct LiveScenes {
 impl LiveScenes {
     /// Forgets every kept scene: their particles name the old atlas's sprites and their
     /// entities the old resources' types (a resource reload), or the world closed.
-    pub(in crate::game) fn clear(&mut self) {
+    pub(in crate::game::client_side) fn clear(&mut self) {
         self.live.clear();
         self.animating.clear();
     }
     /// How many scenes are kept.
     #[cfg(test)]
-    pub(in crate::game) fn len(&self) -> usize {
+    pub(in crate::game::client_side) fn len(&self) -> usize {
         self.live.len()
     }
     /// Whether scene (`owner`, `id`) may animate in `frame`: the first
     /// `SCENE_MAX_ANIMATING` scenes a frame do, each as often as it is drawn.
-    pub(in crate::game) fn admit(&mut self, frame: u64, owner: &'static str, id: u32) -> bool {
+    pub(in crate::game::client_side) fn admit(
+        &mut self,
+        frame: u64,
+        owner: &'static str,
+        id: u32,
+    ) -> bool {
         if self.frame != frame {
             self.frame = frame;
             self.animating.clear();
@@ -103,7 +108,7 @@ impl LiveScenes {
 }
 
 /// The blocks' hash: a scene whose blocks change starts over.
-pub(in crate::game) fn scene_key(blocks: &[SceneBlock<'_>]) -> u64 {
+pub(in crate::game::client_side) fn scene_key(blocks: &[SceneBlock<'_>]) -> u64 {
     let mut h = DefaultHasher::new();
     for b in blocks {
         (b.pos, b.state.0).hash(&mut h);
@@ -112,7 +117,7 @@ pub(in crate::game) fn scene_key(blocks: &[SceneBlock<'_>]) -> u64 {
 }
 
 /// The seed of scene `id`'s tick `tick`: the same ticks give the same particles.
-pub(in crate::game) fn tick_seed(id: u32, tick: u64) -> i64 {
+pub(in crate::game::client_side) fn tick_seed(id: u32, tick: u64) -> i64 {
     let mut h = DefaultHasher::new();
     (0x5343_454e_u32, id, tick).hash(&mut h);
     h.finish() as i64
@@ -121,7 +126,7 @@ pub(in crate::game) fn tick_seed(id: u32, tick: u64) -> i64 {
 /// The ticks a scene last run at `last` runs to show `tick`: whether it starts over from
 /// no particles first (a jump past `SCENE_CATCH_UP`), and the first and last tick to run.
 /// None when nothing runs (paused, or a tick behind, which the caller starts over).
-pub(in crate::game) fn ticks_to_run(last: u64, tick: u64) -> Option<(bool, u64, u64)> {
+pub(in crate::game::client_side) fn ticks_to_run(last: u64, tick: u64) -> Option<(bool, u64, u64)> {
     if tick <= last {
         return None;
     }
@@ -136,7 +141,7 @@ pub(in crate::game) fn ticks_to_run(last: u64, tick: u64) -> Option<(bool, u64, 
 
 /// The camera turn that shows a particle's quad flat to the screen through
 /// `scene_matrix`: its up up the screen and its right to the right.
-pub(in crate::game) fn facing_viewer(view: SceneView) -> Quat {
+pub(in crate::game::client_side) fn facing_viewer(view: SceneView) -> Quat {
     Quat::from_rotation_y(-view.yaw.to_radians())
         * Quat::from_rotation_x(view.pitch.to_radians())
         * Quat::from_rotation_y(std::f32::consts::PI)
@@ -144,14 +149,14 @@ pub(in crate::game) fn facing_viewer(view: SceneView) -> Quat {
 
 /// Whether `scene` lives: entities, particles to add, or blocks that animate. A scene
 /// that doesn't takes the block-only path and keeps nothing.
-pub(in crate::game) fn lives(scene: &Scene) -> bool {
+pub(in crate::game::client_side) fn lives(scene: &Scene) -> bool {
     !scene.entities.is_empty()
         || !scene.particles.is_empty()
         || scene.clock.is_some_and(|c| c.animate_blocks)
 }
 
 /// A living scene's input, checked before anything is kept or drawn: its clock.
-pub(in crate::game) fn check(
+pub(in crate::game::client_side) fn check(
     rect: [f32; 4],
     scene: &Scene,
     view: SceneView,
@@ -523,7 +528,7 @@ fn entity_quads(verts: &[Vertex], quads: &mut Vec<SceneQuad>) {
 #[cfg(test)]
 impl Game<'_> {
     /// The live particles of the mod's scene `id`: positions, previous positions and ages.
-    pub(in crate::game) fn scene_particles(
+    pub(in crate::game::client_side) fn scene_particles(
         &self,
         owner: &str,
         id: u32,
@@ -542,7 +547,7 @@ impl Game<'_> {
             .unwrap_or_default()
     }
     /// The tick the mod's scene `id` last ran, when it is kept.
-    pub(in crate::game) fn scene_tick(&self, owner: &str, id: u32) -> Option<u64> {
+    pub(in crate::game::client_side) fn scene_tick(&self, owner: &str, id: u32) -> Option<u64> {
         let scenes = self.live_scenes.0.borrow();
         scenes
             .live

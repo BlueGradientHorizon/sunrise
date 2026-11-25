@@ -12,7 +12,7 @@ use sunrise_items::items::ItemStack;
 impl Game<'_> {
     /// Whether vanilla could make an item entity of `stack`: not empty
     /// (`ItemStack.isEmpty`) and of an item the registry has.
-    pub(in crate::game) fn stack_spawns(&self, stack: &ItemStack) -> bool {
+    pub(in crate::game::server_side) fn stack_spawns(&self, stack: &ItemStack) -> bool {
         stack.count > 0
             && &*stack.item != "minecraft:air"
             && self.res.items().get(&stack.item).is_some()

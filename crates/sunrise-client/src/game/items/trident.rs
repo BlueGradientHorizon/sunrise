@@ -141,7 +141,11 @@ impl Game<'_> {
     /// The `summon_entity` and `play_sound` effects of `channeling.json`: in a
     /// thunderstorm (`weather_check`) a spot that sees the sky (`can_see_sky`)
     /// gets a lightning bolt and the thunder sound.
-    pub(in crate::game) fn channel_lightning(&mut self, at: [f64; 3], guest: Option<u32>) {
+    pub(in crate::game::server_side) fn channel_lightning(
+        &mut self,
+        at: [f64; 3],
+        guest: Option<u32>,
+    ) {
         // Level.isThundering: the thunder level, in dimensions with weather.
         if !self.can_have_weather() || self.weather_levels(1.0).1 <= 0.9 {
             return;
@@ -168,7 +172,7 @@ impl Game<'_> {
     /// `minecraft:hit_block` of Channeling (`AbstractArrow.hitBlockEnchantmentEffects`):
     /// the block the trident's path first hits, if it is a lightning rod, with
     /// the hit location clamped into the block (`BlockPos.clampLocationWithin`).
-    pub(in crate::game) fn channel_rod_hit(
+    pub(in crate::game::server_side) fn channel_rod_hit(
         &mut self,
         from: Vec3,
         velocity: Vec3,
@@ -409,7 +413,7 @@ impl Game<'_> {
     }
     /// `settle_dealt_absorbed` for the player who threw a trident: a LAN guest's own
     /// statistics are only reachable inside `as_guest`, so the host is not credited.
-    pub(in crate::game) fn thrower_dealt_absorbed(&mut self, guest: Option<u32>) {
+    pub(in crate::game::server_side) fn thrower_dealt_absorbed(&mut self, guest: Option<u32>) {
         let Some(conn) = guest.filter(|c| self.server.lan_acting != Some(*c)) else {
             self.settle_dealt_absorbed(true);
             return;
@@ -421,7 +425,7 @@ impl Game<'_> {
     }
     /// The thrower's `PLAYER_HURT_ENTITY` for a trident hit: run as the
     /// guest that threw it, and not at all once they have left.
-    pub(in crate::game) fn thrower_hit(
+    pub(in crate::game::server_side) fn thrower_hit(
         &mut self,
         guest: Option<u32>,
         victim: &sunrise_client::advancements::EntityView,
@@ -437,7 +441,7 @@ impl Game<'_> {
         });
     }
     /// The connection of the guest whose entity id is `id`.
-    pub(in crate::game) fn trident_guest_conn(&self, id: u32) -> Option<u32> {
+    pub(in crate::game::server_side) fn trident_guest_conn(&self, id: u32) -> Option<u32> {
         self.lan
             .as_ref()?
             .hub
@@ -449,7 +453,7 @@ impl Game<'_> {
     /// `ThrownTrident.onHitEntity` on the guest `conn`: the hurt runs as them and
     /// `ServerPlayer.hurtServer` refuses it when the `pvp` game rule or their
     /// teams forbid it (`canHarmPlayer`); the trident bounces off either way.
-    pub(in crate::game) fn trident_hits_guest(
+    pub(in crate::game::server_side) fn trident_hits_guest(
         &mut self,
         t: &ThrownTrident,
         conn: u32,
@@ -477,7 +481,7 @@ impl Game<'_> {
     /// The players tridents fly back to or land at: this game's player and the
     /// guests in this level. A server has no player of its own, so its
     /// tridents belong to guests.
-    pub(in crate::game) fn trident_catchers(&self) -> Vec<Catcher> {
+    pub(in crate::game::server_side) fn trident_catchers(&self) -> Vec<Catcher> {
         let mut out = Vec::new();
         if let Some(eye) = self.eye_position() {
             let feet = self.player.as_ref().map_or(Vec3::ZERO, |p| p.position);
@@ -509,7 +513,7 @@ impl Game<'_> {
     }
     /// Notify at the contact with the live trident in its owning slot. Return the live row
     /// and whether to skip the hit (veto or invalidated contact). Only removal ends the tick.
-    pub(in crate::game) fn trident_impact(
+    pub(in crate::game::server_side) fn trident_impact(
         &mut self,
         index: &mut usize,
         t: ThrownTrident,
@@ -568,7 +572,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn tick_tridents_in_scope(
+    pub(in crate::game::server_side) fn tick_tridents_in_scope(
         &mut self,
         transaction: &mut Option<TransactionFrame>,
     ) {

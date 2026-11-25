@@ -175,7 +175,7 @@ impl Game<'_> {
     /// recovery at open. The carrier file and the chunks go out through
     /// the flush barrier, the journal commits, the fences drop.
     #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) fn carrier_assemble(
+    pub(in crate::game::server_side) fn carrier_assemble(
         &mut self,
         uuid: u128,
         cells: &[BlockPos],
@@ -491,7 +491,7 @@ impl Game<'_> {
     /// neighbour updates run. One synchronous server call: no tick runs
     /// between `prepared` and `committed`.
     #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) fn carrier_disassemble(
+    pub(in crate::game::server_side) fn carrier_disassemble(
         &mut self,
         uuid: u128,
         generation: u32,
@@ -878,7 +878,7 @@ impl Game<'_> {
     /// does not pass for an old one — and a transfer that never
     /// finished recovers before the first tick and any player. A
     /// refusal fails the open, and no save runs after it.
-    pub(in crate::game) fn carrier_world_opened(&mut self) -> crate::Result<()> {
+    pub(in crate::game::server_side) fn carrier_world_opened(&mut self) -> crate::Result<()> {
         self.world.carrier_data_existed_at_open = self.server.world_root.join("data").is_dir();
         self.server.carrier_retention_snapshot = match Store::open(&self.server.world_root) {
             Ok(crate::carrier_store::Opened::Live(store)) => store.retention_snapshot(),
@@ -910,7 +910,7 @@ impl Game<'_> {
     /// autosave uses. A refusal fails the world's load with a clear
     /// message — and nothing saves after it: the open itself aborts,
     /// while the store stays exactly as recovery found it.
-    pub(crate) fn carrier_recover_all_levels(&mut self) -> crate::Result<()> {
+    pub(in crate::game::server_side) fn carrier_recover_all_levels(&mut self) -> crate::Result<()> {
         // No pending operation: no level is touched at all.
         let dimension = match crate::carrier_store::Store::open(&self.server.world_root) {
             Ok(crate::carrier_store::Opened::Live(store)) => {

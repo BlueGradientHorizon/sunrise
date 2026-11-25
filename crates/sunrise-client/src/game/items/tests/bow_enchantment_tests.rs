@@ -11,7 +11,7 @@ pub(in crate::game) use crate::game::client_side::use_hand_client::bow_enchantme
 
 /// The horizontal heading `p` was shot with, in degrees:
 /// `Projectile.shootFromRotation` sends it along `(-sin(yaw), ..., cos(yaw))`.
-pub(in crate::game) fn heading(p: &sunrise_client::projectiles::Projectile) -> f32 {
+pub(in crate::game::server_side) fn heading(p: &sunrise_client::projectiles::Projectile) -> f32 {
     (-p.velocity.x as f32)
         .atan2(p.velocity.z as f32)
         .to_degrees()

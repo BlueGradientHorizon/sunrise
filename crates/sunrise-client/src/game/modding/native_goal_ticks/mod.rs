@@ -134,7 +134,7 @@ impl GoalCx<'_, '_> {
 
     /// `Host::entity`: the id resolves in the tick's view — the ticking mob,
     /// the player it sees, a mob of the snapshot, the dragon — or none.
-    pub(crate) fn lookup_entity(&self, id: u32) -> Option<EntityRef> {
+    pub(in crate::game::server_side) fn lookup_entity(&self, id: u32) -> Option<EntityRef> {
         let host = self.w.goal_host?;
         let epoch = host.epoch()?;
         let entity = EntityRef::new(epoch, id);
@@ -153,7 +153,10 @@ impl GoalCx<'_, '_> {
     }
 
     /// `Host::living`: the handle resolves in the tick's view.
-    pub(crate) fn lookup_living(&self, entity: EntityRef) -> Option<LivingRef> {
+    pub(in crate::game::server_side) fn lookup_living(
+        &self,
+        entity: EntityRef,
+    ) -> Option<LivingRef> {
         match self.resolve(entity) {
             Some(Resolved::Unavailable) => None,
             Some(_) => Some(LivingRef::new(entity)),
@@ -164,7 +167,7 @@ impl GoalCx<'_, '_> {
     /// `Host::mob`: the handle resolves in the tick's view as a mob — the
     /// ticking mob, a snapshot mob, the dragon — but never a player: a player
     /// is no `MobRef`, as the write handle's own narrowing refuses it.
-    pub(crate) fn lookup_mob(&self, entity: EntityRef) -> Option<MobRef> {
+    pub(in crate::game::server_side) fn lookup_mob(&self, entity: EntityRef) -> Option<MobRef> {
         match self.resolve(entity) {
             Some(Resolved::Player | Resolved::Unavailable) => None,
             Some(_) => Some(MobRef::new(entity)),
@@ -174,7 +177,7 @@ impl GoalCx<'_, '_> {
 
     /// `Host::player`: resolve any online player, including the one the tick
     /// sees, by UUID.
-    pub(crate) fn lookup_player(&self, uuid: u128) -> Option<PlayerRef> {
+    pub(in crate::game::server_side) fn lookup_player(&self, uuid: u128) -> Option<PlayerRef> {
         self.host.player(uuid).or_else(|| {
             let (uuid_seen, id) = self.w.selected_player_identity()?;
             let epoch = self.w.goal_host?.epoch()?;
@@ -185,13 +188,16 @@ impl GoalCx<'_, '_> {
     }
 
     /// `Host::item_entity`: items remain in the game during mob ticks.
-    pub(crate) fn lookup_item_entity(&self, entity: EntityRef) -> Option<mod_api::ItemEntityRef> {
+    pub(in crate::game::server_side) fn lookup_item_entity(
+        &self,
+        entity: EntityRef,
+    ) -> Option<mod_api::ItemEntityRef> {
         self.host.item_entity(entity)
     }
 
     /// `Host::block_entity`: block entities live in the world's chunks, which
     /// the tick does not take out — the game host answers for them.
-    pub(crate) fn lookup_block_entity(
+    pub(in crate::game::server_side) fn lookup_block_entity(
         &self,
         level: mod_api::LevelRef,
         pos: [i32; 3],
@@ -903,7 +909,7 @@ impl Game<'_> {
     /// itself, the player it sees and the snapshot of the others — because the
     /// game has lent its mob list to the tick and `Game` itself would answer
     /// nothing for any of them.
-    pub(in crate::game) fn native_mob_despawn_in_tick(
+    pub(in crate::game::server_side) fn native_mob_despawn_in_tick(
         &self,
         mob: &mut Mob,
         world: &MobWorld<'_>,
@@ -928,7 +934,7 @@ impl Game<'_> {
     }
     /// Run `read` against the goal view of `mob`'s tick, as a mod goal reads.
     #[cfg(test)]
-    pub(in crate::game) fn in_goal_view<R>(
+    pub(in crate::game::server_side) fn in_goal_view<R>(
         &self,
         mob: &mut Mob,
         read: impl FnOnce(&GoalCx<'_, '_>) -> R,

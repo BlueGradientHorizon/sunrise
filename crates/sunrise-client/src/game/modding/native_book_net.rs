@@ -42,7 +42,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn sync_replaced_book_settings(&mut self, uuid: u128) {
+    pub(in crate::game::server_side) fn sync_replaced_book_settings(&mut self, uuid: u128) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -79,12 +79,12 @@ impl Game<'_> {
         self.native_net.book_retry_at = None;
         self.build_screen();
     }
-    pub(in crate::game) fn clear_guest_book_connection(&mut self, conn: u32) {
+    pub(in crate::game::server_side) fn clear_guest_book_connection(&mut self, conn: u32) {
         self.guest_combat.0.remove(&conn);
         self.native_net.book_connections.remove(&conn);
         self.native_net.placement.servers.remove(&conn);
     }
-    pub(in crate::game) fn notify_vanilla_book_settings(
+    pub(in crate::game::server_side) fn notify_vanilla_book_settings(
         &mut self,
         uuid: u128,
         name: &str,
@@ -202,7 +202,7 @@ impl Game<'_> {
             }));
         }
     }
-    pub(in crate::game) fn guest_book_settings(&mut self, conn: u32, data: &[u8]) {
+    pub(in crate::game::server_side) fn guest_book_settings(&mut self, conn: u32, data: &[u8]) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };

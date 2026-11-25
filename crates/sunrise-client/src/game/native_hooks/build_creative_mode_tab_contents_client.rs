@@ -48,7 +48,7 @@ pub(in crate::game::client_side) use sunrise_items::creative_catalog::{
 pub(in crate::game::client_side) use sunrise_items::items::Items;
 
 impl Game<'_> {
-    pub(in crate::game) fn build_creative(
+    pub(in crate::game::client_side) fn build_creative(
         &mut self,
         permissions: CreativeTabPermissions,
     ) -> Result<Contents, CreativeTabReadError> {
@@ -240,7 +240,7 @@ impl Game<'_> {
         apply(&mut session.contents, &active.items)
     }
     /// The name components that replace the creative search's prepared name lines.
-    pub(in crate::game) fn refresh_creative_search_names(&mut self) {
+    pub(in crate::game::client_side) fn refresh_creative_search_names(&mut self) {
         // Only when the search tab's stacks were made again, not every creative tick.
         let generation = self.creative_screen.0.search_generation();
         if self.client.creative_search_named == Some(generation) {
@@ -263,7 +263,7 @@ impl Game<'_> {
         self.creative_screen.0.set_search_names(names);
     }
     /// The screen uses the completed cache, with the same holder definitions for search text.
-    pub(in crate::game) fn refresh_creative_tabs(&mut self) {
+    pub(in crate::game::client_side) fn refresh_creative_tabs(&mut self) {
         let Ok(lists) = self.build_creative(self.creative_permissions()) else {
             return;
         };
@@ -285,7 +285,7 @@ impl Game<'_> {
     }
     /// The built-in sorter is only a reader. A cold sort previews stock order
     /// without publishing anything or giving mods a creative callback.
-    pub(in crate::game) fn stock_sort_order(&self) -> Vec<ItemStack> {
+    pub(in crate::game::client_side) fn stock_sort_order(&self) -> Vec<ItemStack> {
         let preview;
         let lists = if let Some(published) = &self.creative_contents.0.published {
             &published.lists

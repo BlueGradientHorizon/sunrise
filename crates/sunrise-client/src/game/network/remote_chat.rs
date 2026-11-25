@@ -105,7 +105,7 @@ pub(in crate::game) struct SecureChat {
 }
 
 impl SecureChat {
-    pub(in crate::game) fn signed(&self) -> bool {
+    pub(in crate::game::client_side) fn signed(&self) -> bool {
         self.session.is_some()
     }
     #[cfg(test)]
@@ -155,7 +155,7 @@ impl Game<'_> {
     /// The session itself goes out from `tick_chat_session`, never from here:
     /// vanilla's tick sends it once the key future is done, after the login's
     /// teleport confirm.
-    pub(in crate::game) fn remote_chat_login(&mut self) {
+    pub(in crate::game::client_side) fn remote_chat_login(&mut self) {
         if let Some(r) = self.remote.as_mut() {
             r.secure_chat = SecureChat::default();
             r.signatures = Default::default();
@@ -170,7 +170,7 @@ impl Game<'_> {
 
     /// ClientPacketListener.tick's key refresh (shouldRefreshKeyPair), then
     /// setKeyPair with whatever key pair is ready.
-    pub(in crate::game) fn tick_chat_session(&mut self) {
+    pub(in crate::game::client_side) fn tick_chat_session(&mut self) {
         // shouldRefreshKeyPair is asked only once there is a chat session; a
         // first key pair arrives through the join's prepareKeyPair.
         if self
@@ -308,7 +308,7 @@ impl Game<'_> {
     /// a server nor a mod can have the player sign a message they never saw.
     /// Returns true when sent without a confirmation, so a dialog can open
     /// its screen after the command.
-    pub(in crate::game) fn send_unattended_command(&mut self, command: &str) -> bool {
+    pub(in crate::game::client_side) fn send_unattended_command(&mut self, command: &str) -> bool {
         let command = command.trim();
         let command = command.strip_prefix('/').unwrap_or(command);
         if command.is_empty() || !self.chat_abilities().allows(&format!("/{command}")) {
@@ -364,7 +364,7 @@ impl Game<'_> {
     }
 
     /// The command just clicked left this screen: if it asks, no returns there.
-    pub(in crate::game) fn command_prompt_returns_to(&mut self, behind: Behind) {
+    pub(in crate::game::client_side) fn command_prompt_returns_to(&mut self, behind: Behind) {
         if let Some(prompt) = self.command_prompt.0.as_mut() {
             prompt.behind = Some(behind);
             prompt.over_screen = true;
@@ -372,7 +372,7 @@ impl Game<'_> {
     }
 
     /// The translation key of the open confirmation's message.
-    pub(in crate::game) fn command_prompt_message(&self) -> Option<&'static str> {
+    pub(in crate::game::client_side) fn command_prompt_message(&self) -> Option<&'static str> {
         self.command_prompt.0.as_ref().map(|p| p.message)
     }
 
@@ -392,7 +392,7 @@ impl Game<'_> {
         choice
     }
 
-    pub(in crate::game) fn draw_command_prompt(&self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_command_prompt(&self, batch: &mut HudBatch) {
         let Some(prompt) = &self.command_prompt.0 else {
             return;
         };
@@ -432,7 +432,7 @@ impl Game<'_> {
     }
 
     /// The confirmation's answer; on no, what was behind it is back.
-    pub(in crate::game) fn answer_command_prompt(&mut self, yes: bool) {
+    pub(in crate::game::client_side) fn answer_command_prompt(&mut self, yes: bool) {
         let Some(prompt) = self.command_prompt.0.take() else {
             return;
         };
@@ -464,7 +464,7 @@ impl Game<'_> {
 
     /// ConfirmScreen.keyPressed, and what its buttons take from the keyboard
     /// (Screen's focus navigation, AbstractButton's Enter and Space).
-    pub(in crate::game) fn command_prompt_key(&mut self, key: KeyCode) -> bool {
+    pub(in crate::game::client_side) fn command_prompt_key(&mut self, key: KeyCode) -> bool {
         let (size, shift) = (self.gui_size(), self.has_shift_down());
         let Some(prompt) = &self.command_prompt.0 else {
             return false;
@@ -494,7 +494,7 @@ impl Game<'_> {
         false
     }
 
-    pub(in crate::game) fn command_prompt_click(&mut self) -> bool {
+    pub(in crate::game::client_side) fn command_prompt_click(&mut self) -> bool {
         let Some(prompt) = &self.command_prompt.0 else {
             return false;
         };
@@ -524,7 +524,7 @@ impl Game<'_> {
 
     /// `ClientPacketListener.sendChatAcknowledgement`, used after a
     /// configuration transition flushes the delayed chat queue.
-    pub(in crate::game) fn send_chat_acknowledgement(&mut self) {
+    pub(in crate::game::client_side) fn send_chat_acknowledgement(&mut self) {
         let offset = self
             .remote
             .as_mut()

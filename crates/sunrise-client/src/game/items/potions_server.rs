@@ -27,32 +27,15 @@ pub(in crate::game::server_side) use crate::game::client_side::potions::ThrownPo
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::potions::Victim;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::potions::client_tick_effects;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::potions::collect_dragon_breath;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::potions::mob_can_be_affected;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::potions::mob_effect_id;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::potions::potion_cloud_from_nbt;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::potions::potion_cloud_to_nbt;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::potions::sound_on_added;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::potions::splash_distance_sqr;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::potions::thrown_kind;
-#[cfg(test)]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::potions::thrown_left_owner;
-#[cfg(test)]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::potions::thrown_margin;
-#[cfg(test)]
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::potions::thrown_player_at;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::potions::thrown_projectile;
 #[allow(unused_imports)]
@@ -189,7 +172,11 @@ impl Game<'_> {
     /// a mob's arrow without such an item (a stray's) carries its own effect.
     /// Instant effects act at once: harming hurts and healing heals, the
     /// other way round for the undead.
-    pub(in crate::game) fn arrow_post_hurt_effects(&mut self, p: &Projectile, who: Who) {
+    pub(in crate::game::server_side) fn arrow_post_hurt_effects(
+        &mut self,
+        p: &Projectile,
+        who: Who,
+    ) {
         let from_item = p.arrow.as_ref().map(|a| &a.pickup_item);
         let mut effects: Vec<(&'static str, i32, i32)> = match from_item {
             // SpectralArrow.doPostHurtEffects: Glowing for the arrow's own
@@ -602,7 +589,7 @@ impl Game<'_> {
         }
     }
     /// Right-click with a potion, splash/lingering potion or glass bottle.
-    pub(in crate::game) fn use_potion_item(
+    pub(in crate::game::server_side) fn use_potion_item(
         &mut self,
         stack: &ItemStack,
     ) -> sunrise_client::Result<bool> {
@@ -726,8 +713,6 @@ pub(in crate::game) mod tests {
     pub(in crate::game::server_side) use crate::game::client_side::potions::tests::OtherEffectMod;
     #[allow(unused_imports)]
     pub(in crate::game::server_side) use crate::game::client_side::potions::tests::effect_test_mod;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::client_side::potions::tests::flt;
     #[allow(unused_imports)]
     pub(in crate::game::server_side) use crate::game::client_side::potions::tests::*;
     #[allow(unused_imports)]

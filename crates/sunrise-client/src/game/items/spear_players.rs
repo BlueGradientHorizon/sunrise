@@ -84,7 +84,7 @@ impl Game<'_> {
     /// alive and no spectators (`canBeHitByProjectile`), allowed by
     /// `canHarmPlayer` (the `pvp` game rule and the victim's team), and not
     /// on the attacker's vehicle.
-    pub(in crate::game) fn stab_players_for(&self, actor: u32) -> Vec<StabPlayer> {
+    pub(in crate::game::server_side) fn stab_players_for(&self, actor: u32) -> Vec<StabPlayer> {
         let Some(host) = self.lan.as_ref() else {
             return Vec::new();
         };
@@ -126,7 +126,7 @@ impl Game<'_> {
 
     /// The attacker's side of `Player.stabAttack` on the player `target`
     /// (an index in `stab_players`), queued to land once the hub is back.
-    pub(in crate::game) fn queue_player_stab(
+    pub(in crate::game::server_side) fn queue_player_stab(
         &mut self,
         target: usize,
         contact: usize,
@@ -192,7 +192,7 @@ impl Game<'_> {
 
     /// Keeps a guest's charge tick's or jab's stabs on players: they land
     /// once the guest's turn ends and the hub is back (`land_player_stabs`).
-    pub(in crate::game) fn keep_player_stabs(
+    pub(in crate::game::server_side) fn keep_player_stabs(
         &mut self,
         kinetic: Kinetic,
         charge: bool,
@@ -213,7 +213,7 @@ impl Game<'_> {
 
     /// The queued stabs on players landing, each then followed by the
     /// attacker's side of a stab that affected its victim.
-    pub(in crate::game) fn land_player_stabs(&mut self) {
+    pub(in crate::game::server_side) fn land_player_stabs(&mut self) {
         for batch in std::mem::take(&mut self.server.player_stabs) {
             let landed: Vec<Landed> = (batch.stabs.iter())
                 .filter_map(|s| self.land_player_stab(batch.attacker, s))

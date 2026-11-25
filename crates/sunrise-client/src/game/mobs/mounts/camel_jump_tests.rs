@@ -15,7 +15,7 @@ use sunrise_protocol::packets::configuration::ClientInformation;
 const GUEST: &str = "CamelGuest";
 
 /// A host on a stone floor with one connected, placed guest (conn 2).
-pub(in crate::game) fn game<'a>(
+pub(in crate::game::server_side) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
 ) -> Game<'a> {
     let root = std::path::PathBuf::from(

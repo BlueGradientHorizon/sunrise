@@ -155,7 +155,7 @@ pub(in crate::game) struct BlockEditScreen {
 }
 
 impl BlockEditScreen {
-    pub(in crate::game) fn new(pos: Pos, editor: Box<dyn Editor>) -> Self {
+    pub(in crate::game::client_side) fn new(pos: Pos, editor: Box<dyn Editor>) -> Self {
         let focus = Some(editor.initial_focus());
         Self {
             pos,
@@ -167,7 +167,7 @@ impl BlockEditScreen {
     }
     /// Whether one of the block's text boxes has the keyboard's focus: the
     /// window asks the OS for an input method only then.
-    pub(in crate::game) fn text_focused(&self) -> bool {
+    pub(in crate::game::client_side) fn text_focused(&self) -> bool {
         self.focus.is_some()
     }
 }
@@ -248,7 +248,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn close_block_editor(&mut self) {
+    pub(in crate::game::client_side) fn close_block_editor(&mut self) {
         self.block_editor.0 = None;
         self.set_screen(Screen::Playing);
         self.capture(true);
@@ -305,7 +305,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn draw_block_editor(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_block_editor(&mut self, batch: &mut HudBatch) {
         let cursor = self.client.cursor;
         let Some(items) = self.with_block_editor(|s, e| {
             let items = s.editor.items(e, batch.width, batch.height);
@@ -436,7 +436,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn block_editor_click(&mut self) -> bool {
+    pub(in crate::game::client_side) fn block_editor_click(&mut self) -> bool {
         let size = self
             .renderer
             .0
@@ -503,7 +503,7 @@ impl Game<'_> {
     }
 
     /// The cursor moved with a slider held (`AbstractSliderButton.onDrag`).
-    pub(in crate::game) fn block_editor_drag(&mut self) -> bool {
+    pub(in crate::game::client_side) fn block_editor_drag(&mut self) -> bool {
         let x = self.client.cursor.0;
         if let Some(screen) = self.block_editor.0.as_mut()
             && let Some((id, sx, sw)) = screen.dragging
@@ -515,7 +515,7 @@ impl Game<'_> {
     }
 
     /// The left button released: a held slider lets go.
-    pub(in crate::game) fn block_editor_release(&mut self) -> bool {
+    pub(in crate::game::client_side) fn block_editor_release(&mut self) -> bool {
         self.block_editor
             .0
             .as_mut()
@@ -524,7 +524,7 @@ impl Game<'_> {
 
     /// A key pressed on an edit screen: Enter is Done, Escape cancels, Tab
     /// moves between the boxes, the rest edits the focused one.
-    pub(in crate::game) fn block_editor_key_code(
+    pub(in crate::game::client_side) fn block_editor_key_code(
         &mut self,
         key: KeyCode,
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
@@ -646,7 +646,11 @@ impl Game<'_> {
     }
 
     /// A status for the open screen.
-    pub(in crate::game) fn block_editor_status(&mut self, status: Text, size: Option<[i32; 3]>) {
+    pub(in crate::game::client_side) fn block_editor_status(
+        &mut self,
+        status: Text,
+        size: Option<[i32; 3]>,
+    ) {
         let Some(mut screen) = self.block_editor.0.take() else {
             return;
         };
@@ -680,7 +684,7 @@ impl Game<'_> {
 
     /// Characters typed (`type TEXT` from the agent control): into the box
     /// with the focus.
-    pub(in crate::game) fn block_editor_type(&mut self, typed: &str) {
+    pub(in crate::game::client_side) fn block_editor_type(&mut self, typed: &str) {
         let Some(mut screen) = self.block_editor.0.take() else {
             return;
         };

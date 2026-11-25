@@ -95,18 +95,22 @@ pub struct Flight {
 }
 
 impl Flight {
-    pub(in crate::game) fn note_upload_queue_work(&mut self, work: [usize; 2]) {
+    pub(in crate::game::client_side) fn note_upload_queue_work(&mut self, work: [usize; 2]) {
         self.upload_queue_work = work;
     }
 
-    pub(in crate::game) fn note_mesh_uploads(&mut self, count: usize, vertex_bytes: u64) {
+    pub(in crate::game::client_side) fn note_mesh_uploads(
+        &mut self,
+        count: usize,
+        vertex_bytes: u64,
+    ) {
         self.mesh_uploads[0] += count as u64;
         self.mesh_uploads[1] += vertex_bytes;
     }
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn record_streaming_work(
+    pub(in crate::game::client_side) fn record_streaming_work(
         &mut self,
         rendered: bool,
         block_entity_work: [u64; 2],
@@ -130,7 +134,7 @@ impl Game<'_> {
     }
 
     /// Move the camera along the running flight; reply when it ends.
-    pub(in crate::game) fn advance_flight(&mut self) {
+    pub(in crate::game::client_side) fn advance_flight(&mut self) {
         let tick_ms = self
             .integrated
             .as_ref()
@@ -227,7 +231,7 @@ impl Game<'_> {
     }
 
     /// Adds the allocations since the last rendered frame to the frame stats; the first frame has no mark.
-    pub(in crate::game) fn record_frame_allocs(&mut self) {
+    pub(in crate::game::client_side) fn record_frame_allocs(&mut self) {
         use sunrise_threads::alloc_count::{here, process};
         let now = (here(), process());
         if let Some((window, all)) = self.client.alloc_mark.replace(now) {
@@ -252,7 +256,7 @@ impl Game<'_> {
             culler.reset_stats();
         }
     }
-    pub(in crate::game) fn poll_control(&mut self, event_loop: &dyn EventLoopCtl) {
+    pub(in crate::game::client_side) fn poll_control(&mut self, event_loop: &dyn EventLoopCtl) {
         if let Some((deadline, reply, raw)) = self.pending_bench.0.take() {
             if Instant::now() >= deadline {
                 let mut summary = self.summary_with_passes();
@@ -310,7 +314,7 @@ impl Game<'_> {
     /// `type`: its `\b` is a backspace sentinel for the boxes that have always
     /// taken one, not the characters `\` and `b`. `Err` when no text box of
     /// the screen takes it.
-    pub(in crate::game) fn type_into_screen(&mut self, text: &str) -> Result<()> {
+    pub(in crate::game::client_side) fn type_into_screen(&mut self, text: &str) -> Result<()> {
         if text == "\\b" {
             let instance = self.screen_state.0.screen_instance;
             if self.mounted_widget_key_pressed(
@@ -1544,7 +1548,7 @@ impl Game<'_> {
         json!({ "ok": true, "players": players })
     }
 
-    pub(in crate::game) fn control_status(&self) -> Value {
+    pub(in crate::game::client_side) fn control_status(&self) -> Value {
         let player = self.player.as_ref().map(|p| {
             json!({
                 "position": [p.position.x, p.position.y, p.position.z],
@@ -1896,7 +1900,7 @@ fn gpu_passes_reply(
 
 /// The title's own screens (not one opened over it, as Options is) take the
 /// text: the world name, the seed, a server's address.
-pub(in crate::game) fn title_owns_text(screen: &Screen, title_up: bool) -> bool {
+pub(in crate::game::client_side) fn title_owns_text(screen: &Screen, title_up: bool) -> bool {
     title_up && *screen == Screen::Playing
 }
 

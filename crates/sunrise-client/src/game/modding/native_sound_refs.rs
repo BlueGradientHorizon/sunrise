@@ -18,7 +18,10 @@ use sunrise_core::random::RandomSource;
 
 impl Game<'_> {
     /// Where `player` is reached now: the window's own player or a guest.
-    pub(in crate::game) fn native_player_sound_target(&self, player: PlayerRef) -> Option<Target> {
+    pub(in crate::game::server_side) fn native_player_sound_target(
+        &self,
+        player: PlayerRef,
+    ) -> Option<Target> {
         if self.player(player.uuid()) != Some(player) {
             return None;
         }
@@ -29,7 +32,7 @@ impl Game<'_> {
     }
     /// Whether the server's registry has `sound`, when it is a vanilla
     /// event; a mod's goes by name.
-    pub(in crate::game) fn native_sound_known(&self, sound: &str) -> bool {
+    pub(in crate::game::server_side) fn native_sound_known(&self, sound: &str) -> bool {
         !sound.starts_with("minecraft:")
             || self.lan.as_ref().is_none_or(|host| {
                 host.hub
@@ -188,7 +191,11 @@ pub(in crate::game) mod tests {
     use sunrise_core::geometry::Vec3;
     use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
 
-    pub(in crate::game) fn guest(conn: u32, uuid: u128, at: [f64; 3]) -> (Guest, Receiver<Out>) {
+    pub(in crate::game::server_side) fn guest(
+        conn: u32,
+        uuid: u128,
+        at: [f64; 3],
+    ) -> (Guest, Receiver<Out>) {
         let (tx, rx) = std::sync::mpsc::channel();
         let mut g = Guest::new(
             Joined {
@@ -211,7 +218,7 @@ pub(in crate::game) mod tests {
         (g, rx)
     }
 
-    pub(in crate::game) fn packets(rx: &Receiver<Out>) -> Vec<Clientbound> {
+    pub(in crate::game::server_side) fn packets(rx: &Receiver<Out>) -> Vec<Clientbound> {
         let mut out = Vec::new();
         while let Ok(Out::Packet(body)) = rx.try_recv() {
             let mut reader = sunrise_protocol::buf::Reader::new(&body);

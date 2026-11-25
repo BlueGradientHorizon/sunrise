@@ -44,7 +44,7 @@ impl Game<'_> {
 
     /// ServerGamePacketListenerImpl.detectRateSpam: a chat message or command adds 20 to the
     /// guest's throttler; over the threshold, a guest who is not an operator is kicked.
-    pub(in crate::game) fn detect_rate_spam(&mut self, conn: u32, command: bool) {
+    pub(in crate::game::server_side) fn detect_rate_spam(&mut self, conn: u32, command: bool) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -76,7 +76,7 @@ impl Game<'_> {
 
     /// handleChatCommand (performUnsignedChatCommand): refused when the
     /// server enforces secure chat and the command has a message to sign.
-    pub(in crate::game) fn guest_chat_command(&mut self, conn: u32, command: &str) {
+    pub(in crate::game::server_side) fn guest_chat_command(&mut self, conn: u32, command: &str) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -113,7 +113,11 @@ impl Game<'_> {
 
     /// handleSignedChatCommand: the acknowledgements, then each message
     /// argument through the sender's chain, then the command with them.
-    pub(in crate::game) fn guest_signed_command(&mut self, conn: u32, p: play::ChatCommandSigned) {
+    pub(in crate::game::server_side) fn guest_signed_command(
+        &mut self,
+        conn: u32,
+        p: play::ChatCommandSigned,
+    ) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -155,7 +159,7 @@ impl Game<'_> {
     /// A player's chat line, once `server_chat` has left it: `chat_recipient` is asked of each
     /// receiver (`shown` is what players read), the line goes to everyone it keeps nobody from,
     /// and the log keeps it. None when there is no hub.
-    pub(in crate::game) fn lan_broadcast_chat(
+    pub(in crate::game::server_side) fn lan_broadcast_chat(
         &mut self,
         message: &ChatMessage,
         bound: &play::ChatTypeBound,
@@ -176,7 +180,7 @@ impl Game<'_> {
 
     /// Unsigned `/say` from the command dispatcher. Returns whether the acting player's copy
     /// should go with its captured command output. `None` refuses reentrant `/say`.
-    pub(in crate::game) fn lan_broadcast_source_say(
+    pub(in crate::game::server_side) fn lan_broadcast_source_say(
         &mut self,
         name: &Text,
         message: &Text,
@@ -219,7 +223,7 @@ impl Game<'_> {
     /// unsigned command packet). False when the command is another one, or
     /// one this can't run (selectors other than `@s` and `@a`), for the
     /// game's dispatcher to handle.
-    pub(in crate::game) fn guest_message_command(
+    pub(in crate::game::server_side) fn guest_message_command(
         &mut self,
         conn: u32,
         command: &str,

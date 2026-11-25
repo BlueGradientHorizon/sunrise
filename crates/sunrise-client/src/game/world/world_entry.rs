@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 pub(in crate::game) static BIOME_KEYS_SESSION: AtomicU64 = AtomicU64::new(1);
 
-pub(in crate::game) fn next_biome_keys_session() -> u64 {
+pub(in crate::game::server_side) fn next_biome_keys_session() -> u64 {
     BIOME_KEYS_SESSION.fetch_add(1, Ordering::Relaxed)
 }
 
@@ -74,7 +74,7 @@ impl Game<'_> {
     /// Load the world's data packs' content tables (`None`: the world has no
     /// packs, and `Resources.rest` stays in use). This re-reads the tables,
     /// so it runs once per world open and on `/reload`.
-    pub(in crate::game) fn stage_world_tables(
+    pub(in crate::game::server_side) fn stage_world_tables(
         &mut self,
         stack: &functions::PackStack,
         reload: bool,
@@ -397,7 +397,7 @@ impl Game<'_> {
     /// before any table is published. `None` when no mod declared a registry: nothing is
     /// scanned. A file whose `neoforge:conditions` fail is absent; the key is dropped before
     /// the schema sees the file.
-    pub(in crate::game) fn datapack_candidate(
+    pub(in crate::game::server_side) fn datapack_candidate(
         &self,
         stack: &functions::PackStack,
         conditions: &sunrise_world::conditions::LoadConditions,
@@ -439,7 +439,7 @@ impl Game<'_> {
             })
     }
     /// A world open's tables, and the first generation of the registries the mods declared.
-    pub(in crate::game) fn open_world_tables(
+    pub(in crate::game::server_side) fn open_world_tables(
         &mut self,
         staged: super::condition_reload_state::StagedWorldTables,
     ) -> Result<()> {
@@ -464,7 +464,7 @@ impl Game<'_> {
     }
     /// Sends each joined Sunrise client the snapshot of the set just published, built from the
     /// offer owned by its connection. A refused replacement ends that connection with its reason.
-    pub(in crate::game) fn send_datapack_snapshots(&mut self) {
+    pub(in crate::game::server_side) fn send_datapack_snapshots(&mut self) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -481,7 +481,10 @@ impl Game<'_> {
     /// `/reload` reloads a server's (`ReloadableServerResources`).
     /// Publish tables before function admission, leaving advancement rewards queued
     /// until the reload's new function store is available.
-    pub(in crate::game) fn install_world_tables(&mut self, prepared: PreparedWorldReload) {
+    pub(in crate::game::server_side) fn install_world_tables(
+        &mut self,
+        prepared: PreparedWorldReload,
+    ) {
         let PreparedWorldReload {
             structure_spawns,
             tables,
@@ -673,7 +676,7 @@ impl Game<'_> {
     }
     /// Reload the content tables with the world's packs, as
     /// `/reload` reloads a server's (`ReloadableServerResources`).
-    pub(in crate::game) fn prepare_world_reload(
+    pub(in crate::game::server_side) fn prepare_world_reload(
         &mut self,
         stack: &functions::PackStack,
         root: &std::path::Path,
@@ -760,7 +763,7 @@ impl Game<'_> {
         Ok(())
     }
     /// Bind parts, then resolve support and primary item answers against the published tags.
-    pub(in crate::game) fn install_parts(&self, prepared: PreparedParts) {
+    pub(in crate::game::server_side) fn install_parts(&self, prepared: PreparedParts) {
         self.bind_parts(prepared);
         self.resolve_primary_items();
     }
@@ -793,7 +796,7 @@ impl Game<'_> {
         self.resolve_block_paths();
         self.resolve_piston_reactions();
     }
-    pub(in crate::game) fn resolve_block_paths(&self) {
+    pub(in crate::game::server_side) fn resolve_block_paths(&self) {
         use mod_api::{HookId, PathComputationType};
         use sunrise_client::mobs::data::PartAnswers;
         let data = self.res.mob_data();
@@ -819,7 +822,7 @@ impl Game<'_> {
 
 /// [`Game::level_suffocation`] from the fields it reads, for a caller that holds other fields: the
 /// world's own tables (its datapacks' `causes_suffocation`), else the built-in ones.
-pub(in crate::game) fn level_suffocation_of<'a>(
+pub(in crate::game::server_side) fn level_suffocation_of<'a>(
     world_tables: &'a Option<WorldTables>,
     res: &'a Resources,
 ) -> &'a sunrise_world::suffocation::SuffocationRegistry<'static> {

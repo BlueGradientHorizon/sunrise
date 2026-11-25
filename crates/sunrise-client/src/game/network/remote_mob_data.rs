@@ -825,7 +825,7 @@ pub(in crate::game) mod tests {
         run_mob_air_parity_fixture();
     }
 
-    pub(in crate::game) fn run_mob_air_parity_fixture() {
+    pub(in crate::game::client_side) fn run_mob_air_parity_fixture() {
         use std::io::Write;
         let input =
             std::fs::read_to_string(std::env::var("SUNRISE_MOB_AIR_INPUT").unwrap()).unwrap();
@@ -1035,7 +1035,7 @@ pub(in crate::game) mod tests {
         run_raider_celebration_parity_fixture();
     }
 
-    pub(in crate::game) fn run_raider_celebration_parity_fixture() {
+    pub(in crate::game::client_side) fn run_raider_celebration_parity_fixture() {
         use std::io::Write;
         let input =
             std::fs::read_to_string(std::env::var("SUNRISE_RAIDER_SYNC_INPUT").unwrap()).unwrap();
@@ -1617,7 +1617,7 @@ pub(in crate::game) mod tests {
         run_sulfur_cube_max_fuse_sets_the_client_fuse();
     }
 
-    pub(in crate::game) fn run_sulfur_cube_max_fuse_sets_the_client_fuse() {
+    pub(in crate::game::client_side) fn run_sulfur_cube_max_fuse_sets_the_client_fuse() {
         use sunrise_client::mobs::sulfur_cube::{client_tick, fuse, max_fuse, primed};
         let dir = std::env::var_os("SUNRISE_SULFUR_CUBE_FUSE_WITNESS_DIR").unwrap_or_else(|| {
             panic!(

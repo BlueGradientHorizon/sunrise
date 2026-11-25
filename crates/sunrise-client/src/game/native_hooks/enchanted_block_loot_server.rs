@@ -136,7 +136,7 @@ pub(in crate::game) mod tests {
 
     /// `ROLLS` player breaks of gravel: how many gave flint, and where the
     /// level random and the table's sequence stand after them.
-    pub(in crate::game) fn break_gravel(
+    pub(in crate::game::server_side) fn break_gravel(
         game: &mut Game<'_>,
         gravel: BlockStateId,
         tool: Option<&ItemStack>,

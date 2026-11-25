@@ -32,7 +32,7 @@ impl Game<'_> {
         self.recipe_ui.0.server_stations = None;
         self.refresh_recipe_property_context();
     }
-    pub(in crate::game) fn refresh_remote_stonecutter(&mut self) {
+    pub(in crate::game::client_side) fn refresh_remote_stonecutter(&mut self) {
         self.recipe_ui.0.server_stations = self.remote.as_ref().map(|remote| {
             let item = |id: i32| {
                 remote
@@ -74,7 +74,7 @@ impl Game<'_> {
             self.remote_station_slot_changed(crate::game::stations::INPUT);
         }
     }
-    pub(in crate::game) fn remote_recipe_properties(
+    pub(in crate::game::client_side) fn remote_recipe_properties(
         &mut self,
         packet: sunrise_protocol::packets::recipes::UpdateRecipes,
     ) {

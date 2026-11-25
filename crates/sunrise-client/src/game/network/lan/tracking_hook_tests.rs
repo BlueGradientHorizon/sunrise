@@ -36,7 +36,7 @@ pub(in crate::game) enum Heard {
 pub(in crate::game) struct Probe(pub(in crate::game) Arc<Mutex<Vec<Heard>>>);
 impl Probe {
     /// Tell the player which entity it heard of, on the mod's channel.
-    pub(in crate::game) fn send(
+    pub(in crate::game::server_side) fn send(
         &self,
         host: &mut dyn ServerHost,
         player: u128,
@@ -97,7 +97,7 @@ pub(in crate::game) enum Sent {
     Other(i32),
 }
 
-pub(in crate::game) fn read(packets: Vec<Vec<u8>>) -> Vec<Sent> {
+pub(in crate::game::server_side) fn read(packets: Vec<Vec<u8>>) -> Vec<Sent> {
     packets
         .iter()
         .map(|body| {
@@ -209,7 +209,10 @@ pub(in crate::game) fn at(sent: &[Sent], wanted: &Sent) -> usize {
 
 /// The stops a removal packet carries: it is followed at once by the mod's word for each,
 /// in the order the mods heard them.
-pub(in crate::game) fn words_after_removal(sent: &[Sent], id: u32) -> (Vec<u32>, Vec<&Sent>) {
+pub(in crate::game::server_side) fn words_after_removal(
+    sent: &[Sent],
+    id: u32,
+) -> (Vec<u32>, Vec<&Sent>) {
     let removed = sent
         .iter()
         .position(|s| matches!(s, Sent::Remove(ids) if ids.contains(&id)))
@@ -221,7 +224,7 @@ pub(in crate::game) fn words_after_removal(sent: &[Sent], id: u32) -> (Vec<u32>,
     (ids.clone(), words)
 }
 
-pub(in crate::game) fn sorted(mut v: Vec<Heard>) -> Vec<Heard> {
+pub(in crate::game::server_side) fn sorted(mut v: Vec<Heard>) -> Vec<Heard> {
     v.sort_by_key(|h| format!("{h:?}"));
     v
 }

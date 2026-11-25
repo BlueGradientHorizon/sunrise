@@ -76,7 +76,11 @@ impl Game<'_> {
 
     /// Draw the guide (F1's hidden HUD never gets here). `from` is the batch's first vertex of
     /// what the rows must keep off: the HUD drawn so far, minus its full-view overlays.
-    pub(in crate::game) fn draw_pad_guide(&mut self, batch: &mut HudBatch, from: usize) {
+    pub(in crate::game::client_side) fn draw_pad_guide(
+        &mut self,
+        batch: &mut HudBatch,
+        from: usize,
+    ) {
         if !self.pad_guide_shows() {
             return;
         }
@@ -140,7 +144,11 @@ impl Game<'_> {
 
     /// An inventory's rows while the pad drives it, under the gameplay rows' setting. `from` is the
     /// batch's first vertex of the screen.
-    pub(in crate::game) fn draw_pad_menu_guide(&mut self, batch: &mut HudBatch, from: usize) {
+    pub(in crate::game::client_side) fn draw_pad_menu_guide(
+        &mut self,
+        batch: &mut HudBatch,
+        from: usize,
+    ) {
         let settings = &self.settings.controller;
         if !settings.enabled
             || settings.guide_detail == GuideDetail::Off
@@ -273,7 +281,7 @@ impl Game<'_> {
     }
 
     /// The rows last drawn, for `pad status`.
-    pub(in crate::game) fn pad_guide_status(&self) -> Value {
+    pub(in crate::game::client_side) fn pad_guide_status(&self) -> Value {
         let pad = &self.settings.controller;
         let column = |left: bool| -> Vec<Value> {
             self.pad

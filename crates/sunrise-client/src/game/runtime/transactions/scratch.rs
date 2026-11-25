@@ -36,7 +36,7 @@ impl Game<'_> {
     }
 
     /// Puts back the still-live scratch stacks an aborted transaction wrote, from what it kept.
-    pub(in crate::game) fn scratch_roll_back(&mut self, kept: HashMap<u64, Scratch>) {
+    pub(in crate::game::server_side) fn scratch_roll_back(&mut self, kept: HashMap<u64, Scratch>) {
         for (id, was) in kept {
             if let Some(slot) = self.transactions.scratch.get_mut(&id) {
                 *slot = was;
@@ -74,7 +74,10 @@ impl Game<'_> {
     }
 
     /// The first slot of lent scratch place `slot`.
-    pub(in crate::game) fn scratch_held(&self, slot: ScratchSlot) -> Option<&ItemStack> {
+    pub(in crate::game::server_side) fn scratch_held(
+        &self,
+        slot: ScratchSlot,
+    ) -> Option<&ItemStack> {
         self.transactions.scratch.get(&slot.id())?.stack.as_ref()
     }
 
@@ -82,7 +85,11 @@ impl Game<'_> {
     /// the same components, up to the item's stack size; a two-slot copy takes any item into its
     /// first slot where that is empty or holds the same, and what doesn't fit into its second.
     /// How many went.
-    pub(in crate::game) fn scratch_insert(&mut self, slot: ScratchSlot, offer: &ItemStack) -> u32 {
+    pub(in crate::game::server_side) fn scratch_insert(
+        &mut self,
+        slot: ScratchSlot,
+        offer: &ItemStack,
+    ) -> u32 {
         if offer.count == 0 {
             return 0;
         }
@@ -113,7 +120,7 @@ impl Game<'_> {
     }
 
     /// Takes up to `amount` of `resource`'s item and components out of lent scratch place `slot`.
-    pub(in crate::game) fn scratch_extract(
+    pub(in crate::game::server_side) fn scratch_extract(
         &mut self,
         slot: ScratchSlot,
         resource: &ItemStack,
@@ -149,7 +156,7 @@ impl Game<'_> {
 
     /// Number of scratch rollback snapshots recorded on the innermost open transaction frame.
     #[cfg(test)]
-    pub(in crate::game) fn current_scratch_kept_count(&self) -> usize {
+    pub(in crate::game::server_side) fn current_scratch_kept_count(&self) -> usize {
         self.transactions
             .levels
             .last()

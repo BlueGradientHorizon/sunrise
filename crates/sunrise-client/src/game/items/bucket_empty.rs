@@ -56,7 +56,7 @@ impl Game<'_> {
     /// `BucketItem.emptyContents` plays `playSound(player, …)`: a guest's own client already
     /// played the empty or evaporate `sound` from its prediction (#4684), so those go to the
     /// guest's own list instead of being sent back to them.
-    pub(in crate::game) fn keep_guest_bucket_sounds(&mut self, sound: &str) {
+    pub(in crate::game::server_side) fn keep_guest_bucket_sounds(&mut self, sound: &str) {
         if self.server.lan_acting.is_none() {
             return;
         }

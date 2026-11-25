@@ -210,7 +210,7 @@ impl Profile {
     }
 
     /// The GPU timing the running capture needs; off when none runs.
-    pub(in crate::game) fn gpu(&self) -> GpuSwitch {
+    pub(in crate::game::client_side) fn gpu(&self) -> GpuSwitch {
         self.gpu
     }
 
@@ -363,7 +363,7 @@ struct ChatAnswer {
 }
 
 /// The words after `/profiler` when `command`, without its slash, is that command.
-pub(in crate::game) fn profiler_args(command: &str) -> Option<&str> {
+pub(in crate::game::client_side) fn profiler_args(command: &str) -> Option<&str> {
     command
         .strip_prefix("profiler")
         .filter(|rest| rest.is_empty() || rest.starts_with(' '))
@@ -437,7 +437,7 @@ fn profiler_words(literals: &[String], name: Option<&str>) -> Vec<String> {
 
 impl Game<'_> {
     /// `profile [client|server] start|stop|status|mark`; None while a `stop` waits for its file.
-    pub(in crate::game) fn profile_command(
+    pub(in crate::game::client_side) fn profile_command(
         &mut self,
         words: &[&str],
         reply: &Sender<String>,
@@ -519,7 +519,7 @@ impl Game<'_> {
     }
 
     /// `trace [FILE [SECONDS] | stop]`: a timeline-only capture written to FILE; None while a `stop` waits for its file.
-    pub(in crate::game) fn trace_command(
+    pub(in crate::game::client_side) fn trace_command(
         &mut self,
         words: &[&str],
         reply: &Sender<String>,
@@ -726,7 +726,7 @@ impl Game<'_> {
     }
 
     /// `/profiler start|stop|status|mark`: the requests of `sunrise-ctl profile`, answered in chat.
-    pub(in crate::game) fn profiler_chat(&mut self, args: &str) {
+    pub(in crate::game::client_side) fn profiler_chat(&mut self, args: &str) {
         let line = format!("profiler{args}");
         let tree = Dispatcher::profiler();
         let parse = tree.parse(&line, &Registries::default());
@@ -1007,7 +1007,7 @@ impl Game<'_> {
     }
 
     /// One rendered frame: `wall_ms` long, `cpu_ms` of it the CPU's own work.
-    pub(in crate::game) fn record_perf_frame(
+    pub(in crate::game::client_side) fn record_perf_frame(
         &mut self,
         wall_ms: f32,
         cpu_ms: f32,
@@ -1100,7 +1100,7 @@ impl Game<'_> {
     }
 
     /// Once per loop turn: the captures whose files are whole, told to whoever waits for them.
-    pub(in crate::game) fn poll_profile(&mut self) {
+    pub(in crate::game::client_side) fn poll_profile(&mut self) {
         self.poll_server_link();
         self.poll_chat_answer();
         self.poll_progress();
@@ -1112,7 +1112,7 @@ impl Game<'_> {
     }
 
     /// Ends the capture a closing game still has, and waits for its file.
-    pub(in crate::game) fn finish_profile(&mut self) {
+    pub(in crate::game::client_side) fn finish_profile(&mut self) {
         if self.profile.perf.capturing() {
             let _ = self.stop_profile(StopReason::Shutdown);
         }

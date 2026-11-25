@@ -63,7 +63,7 @@ pub(crate) struct WorldRegistries<'a> {
     tags: RefCell<HashMap<String, HashMap<String, HashSet<String>>>>,
 }
 impl<'a> WorldRegistries<'a> {
-    pub(crate) fn new(
+    pub(in crate::game::server_side) fn new(
         ids: impl IntoIterator<Item = (&'a str, &'a [String])>,
         datapack: Option<&'a mod_api::DatapackRegistrySet>,
         items: &'a sunrise_client::items::Items,
@@ -179,7 +179,7 @@ fn full_id(id: &str) -> Cow<'_, str> {
 /// the packs'), with ids and tags resolved against `registries`. Unknown registries and bad
 /// type ids are left out with a warning; a file that isn't a valid data map or contains an
 /// undecodable value is skipped atomically with an error.
-pub(in crate::game) fn load_maps<V: Clone>(
+pub(in crate::game::server_side) fn load_maps<V: Clone>(
     types: &[DataMapType],
     overlay: &sunrise_world::loot::PackOverlay<'_>,
     registries: &dyn MapRegistries,
@@ -248,13 +248,16 @@ fn load_json_maps(
 }
 
 impl DataMaps {
-    pub(crate) fn with_biome_keys(mut self, keys: mod_api::__private::BiomeKeys) -> Self {
+    pub(in crate::game::server_side) fn with_biome_keys(
+        mut self,
+        keys: mod_api::__private::BiomeKeys,
+    ) -> Self {
         self.biome_keys = std::sync::Arc::new(keys);
         self
     }
 
     /// Merge the pack files and publish their winning values as NBT.
-    pub(crate) fn load(
+    pub(in crate::game::server_side) fn load(
         types: &[DataMapType],
         overlay: &sunrise_world::loot::PackOverlay<'_>,
         registries: &dyn MapRegistries,
@@ -273,7 +276,10 @@ impl DataMaps {
         published
     }
 
-    pub(crate) fn with_builtins(mut self, builtin: super::neoforge_mob_maps::Loaded) -> Self {
+    pub(in crate::game::server_side) fn with_builtins(
+        mut self,
+        builtin: super::neoforge_mob_maps::Loaded,
+    ) -> Self {
         for (definition, values) in builtin.values {
             if self
                 .maps
@@ -293,7 +299,7 @@ impl DataMaps {
     }
 
     /// The registries with a loaded type, in id order: what `data_maps_updated` names.
-    pub(crate) fn registries(&self) -> Vec<String> {
+    pub(in crate::game::server_side) fn registries(&self) -> Vec<String> {
         self.maps.keys().cloned().collect()
     }
 
@@ -326,7 +332,7 @@ impl DataMaps {
     }
 
     /// Every entry map `type_id` of `registry` gives a value, in id order.
-    pub(in crate::game) fn entries(
+    pub(in crate::game::server_side) fn entries(
         &self,
         registry: &str,
         type_id: &str,
@@ -338,7 +344,7 @@ impl DataMaps {
 impl Game<'_> {
     /// Tell the mods the data maps of every registry with a type were merged
     /// (`DataMapsUpdatedEvent`), once the server's tables hold them.
-    pub(in crate::game) fn announce_data_maps_updated(
+    pub(in crate::game::server_side) fn announce_data_maps_updated(
         &mut self,
         cause: mod_api::DataMapsUpdateCause,
     ) {
@@ -351,7 +357,9 @@ impl Game<'_> {
 impl Game<'_> {
     /// The server's merged data maps, none unless this is a server whose
     /// tables were built from packs and mods' files.
-    pub(in crate::game) fn loaded_data_maps(&self) -> Result<&DataMaps, mod_api::DataMapError> {
+    pub(in crate::game::server_side) fn loaded_data_maps(
+        &self,
+    ) -> Result<&DataMaps, mod_api::DataMapError> {
         if self.serving.is_none() && self.options.dedicated.is_none() {
             return Err(mod_api::DataMapError::Unavailable);
         }

@@ -16,7 +16,7 @@ pub(in crate::game) struct CartLanding {
 impl Game<'_> {
     /// `Entity.move` resets a ray-clipped fall, then `checkFallDamage` uses the
     /// current position, supporting block and the body's last water contact.
-    pub(in crate::game) fn cart_move_fall(
+    pub(in crate::game::server_side) fn cart_move_fall(
         &self,
         c: &Minecart,
         from: Vec3,
@@ -43,7 +43,7 @@ impl Game<'_> {
 
     /// Run `Block.fallOn`, including `MinecartTNT.causeFallDamage`, before the
     /// landing game event. A removed cart cannot resolve block restitution.
-    pub(in crate::game) fn finish_cart_landing(
+    pub(in crate::game::server_side) fn finish_cart_landing(
         &mut self,
         landing: Option<CartLanding>,
         effect: BodyContact,

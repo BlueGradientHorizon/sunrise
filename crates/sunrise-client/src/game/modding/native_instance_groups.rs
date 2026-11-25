@@ -57,17 +57,17 @@ pub(in crate::game) struct InstanceGroupStorage {
 }
 impl InstanceGroupStorage {
     #[cfg(test)]
-    pub(in crate::game) fn converted_bytes(&self) -> usize {
+    pub(in crate::game::client_side) fn converted_bytes(&self) -> usize {
         self.groups
             .iter()
             .flatten()
             .map(|g| g.converted_bytes)
             .sum()
     }
-    pub(in crate::game) fn clear(&mut self) {
+    pub(in crate::game::client_side) fn clear(&mut self) {
         self.groups.clear();
     }
-    pub(in crate::game) fn retire_disabled(
+    pub(in crate::game::client_side) fn retire_disabled(
         &mut self,
         disabled: &std::collections::BTreeSet<String>,
     ) {

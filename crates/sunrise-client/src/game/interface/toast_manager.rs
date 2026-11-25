@@ -39,7 +39,7 @@ pub(in crate::game) struct ToastManager {
 }
 
 impl ToastManager {
-    pub(in crate::game) fn all_mut(&mut self) -> impl Iterator<Item = &mut Toast> {
+    pub(in crate::game::client_side) fn all_mut(&mut self) -> impl Iterator<Item = &mut Toast> {
         self.visible
             .iter_mut()
             .map(|entry| &mut entry.toast)
@@ -47,14 +47,17 @@ impl ToastManager {
     }
 
     /// `ToastManager.getToast` looks in the visible list before the queue.
-    pub(in crate::game) fn find_mut<T>(
+    pub(in crate::game::client_side) fn find_mut<T>(
         &mut self,
         get: impl FnMut(&mut Toast) -> Option<&mut T>,
     ) -> Option<&mut T> {
         self.all_mut().find_map(get)
     }
 
-    pub(in crate::game) fn system_mut(&mut self, id: SystemToastId) -> Option<&mut SystemToast> {
+    pub(in crate::game::client_side) fn system_mut(
+        &mut self,
+        id: SystemToastId,
+    ) -> Option<&mut SystemToast> {
         self.find_mut(|entry| match entry {
             Toast::System(Some(key), toast) if *key == id => Some(toast),
             _ => None,
@@ -64,7 +67,7 @@ impl ToastManager {
     /// `ToastManager.update`: finish/update the visible list before offering
     /// vacancies to the queue, in insertion order. Admission cannot sound a
     /// visibility change until the next update of the promoted instance.
-    pub(in crate::game) fn update(&mut self, multiplier: f64) -> (Option<bool>, bool) {
+    pub(in crate::game::client_side) fn update(&mut self, multiplier: f64) -> (Option<bool>, bool) {
         let mut visibility_sound = None;
         self.visible.retain_mut(|entry| {
             let (sound, finished) = match &mut entry.toast {
@@ -113,7 +116,7 @@ impl ToastManager {
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn add_system_toast(
+    pub(in crate::game::client_side) fn add_system_toast(
         &mut self,
         id: Option<SystemToastId>,
         mut toast: SystemToast,
@@ -132,7 +135,7 @@ impl Game<'_> {
         true
     }
 
-    pub(in crate::game) fn add_or_update_system_toast(
+    pub(in crate::game::client_side) fn add_or_update_system_toast(
         &mut self,
         id: SystemToastId,
         new: SystemToast,
@@ -146,7 +149,7 @@ impl Game<'_> {
     }
 
     /// `ToastManager.extractRenderState`: F1 hides the draw, not the update.
-    pub(in crate::game) fn draw_every_toast(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_every_toast(&mut self, batch: &mut HudBatch) {
         let replay = self.replay.playing();
         let hidden = self.ui.player_hides_gui || replay;
         let diagnostic_hidden = replay || self.overlay_holds_view();

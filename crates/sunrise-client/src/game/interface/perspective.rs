@@ -153,7 +153,7 @@ impl RayWorld for VisualRays<'_, '_> {
 /// sets it (`shared_flag`), with the Invisibility effect or by a plugin's
 /// `setInvisible` alone, as pose plugins hide the real body under the pose
 /// (#3788); a world in the frame has only the effect.
-pub(in crate::game) fn own_invisible(
+pub(in crate::game::client_side) fn own_invisible(
     effects: &sunrise_client::effects::PlayerEffects,
     shared_flag: bool,
 ) -> bool {
@@ -163,7 +163,7 @@ pub(in crate::game) fn own_invisible(
 /// own body, seen by itself: an invisible player (`own_invisible`) hides it
 /// unless its team sees friendly invisibles, where vanilla draws it
 /// translucent.
-pub(in crate::game) fn body_visible(
+pub(in crate::game::client_side) fn body_visible(
     invisible: bool,
     team: Option<&sunrise_client::scoreboard::Team>,
 ) -> bool {
@@ -203,7 +203,7 @@ pub(in crate::game) fn player_type_with_document(
     kind
 }
 /// `player_type` from the document: the model and its layers from one parse.
-pub(in crate::game) fn load_player_type(
+pub(in crate::game::client_side) fn load_player_type(
     models: &sunrise_client::mobs::EntityModelDocument,
 ) -> Option<Arc<MobType>> {
     models.model("minecraft:player#main").map(|model| {
@@ -282,7 +282,7 @@ pub(in crate::game) enum RiddenBody {
 /// in spectator mode, the texels at the first-person camera hold the terrain below it, where
 /// Sunrise drew the spectator's model (vanilla's `PlayerModel` hides a spectator's body:
 /// `showBody = !state.isSpectator`). A native pack's shadow keeps it.
-pub(in crate::game) fn shadow_pass_takes_own_model(
+pub(in crate::game::client_side) fn shadow_pass_takes_own_model(
     shadow_draws_player: bool,
     shader_pack: bool,
     spectator: bool,
@@ -290,7 +290,7 @@ pub(in crate::game) fn shadow_pass_takes_own_model(
     shadow_draws_player && !(shader_pack && spectator)
 }
 
-pub(in crate::game) fn wrap(d: f32) -> f32 {
+pub(in crate::game::client_side) fn wrap(d: f32) -> f32 {
     let d = d % 360.0;
     if d >= 180.0 {
         d - 360.0
@@ -302,7 +302,7 @@ pub(in crate::game) fn wrap(d: f32) -> f32 {
 }
 impl Game<'_> {
     /// `key.togglePerspective`: the next camera type, as a mod's `camera_type_cycle` leaves it.
-    pub(in crate::game) fn cycle_camera(&mut self) {
+    pub(in crate::game::client_side) fn cycle_camera(&mut self) {
         self.apply_requested_camera_type();
         let previous = self.client.camera_type;
         let mut next = previous.cycle();
@@ -311,7 +311,7 @@ impl Game<'_> {
     }
     /// `Options.setCameraType`, then `Minecraft.handleKeybinds`' check: the chain
     /// follows the first-person view.
-    pub(in crate::game) fn apply_camera_type(&mut self, camera_type: CameraType) {
+    pub(in crate::game::client_side) fn apply_camera_type(&mut self, camera_type: CameraType) {
         self.client.requested_camera_type.take();
         let previous = self.client.camera_type;
         self.client.camera_type = camera_type;
@@ -406,7 +406,7 @@ impl Game<'_> {
     }
     /// `Camera.rotation()` as the quads of particles take it: the frame's camera (a
     /// bed's, a front view's, a mod's), not the player's own yaw and pitch.
-    pub(in crate::game) fn particle_rotation(&self) -> glam::Quat {
+    pub(in crate::game::client_side) fn particle_rotation(&self) -> glam::Quat {
         if self.client.studio.flying() {
             return self.camera_orientation();
         }
@@ -417,7 +417,7 @@ impl Game<'_> {
         super::camera_rotation(CameraType::FirstPerson, yaw, pitch)
     }
     /// The player as `Camera.alignWithEntity` sees it.
-    pub(in crate::game) fn player_camera_entity(&mut self) -> Option<CameraEntity> {
+    pub(in crate::game::client_side) fn player_camera_entity(&mut self) -> Option<CameraEntity> {
         let (scale, distance) = {
             let p = self.player.as_mut()?;
             (
@@ -704,7 +704,7 @@ impl Game<'_> {
     /// agent's `turn`.
     /// The model's old pitch is the player's `xRotO`, which the turn moves
     /// with `xRot` (`turn_rotation`).
-    pub(in crate::game) fn turn_player(&mut self, xo: f64, yo: f64) {
+    pub(in crate::game::client_side) fn turn_player(&mut self, xo: f64, yo: f64) {
         if self.client.studio.flying() {
             self.client
                 .studio
@@ -744,7 +744,7 @@ impl Game<'_> {
     /// What the player rides that sets their body's yaw: a boat's yaw, or a
     /// living vehicle's body yaw. Minecarts and cushions leave it to the
     /// player's own turn.
-    pub(in crate::game) fn ridden_body(&self) -> Option<RiddenBody> {
+    pub(in crate::game::client_side) fn ridden_body(&self) -> Option<RiddenBody> {
         let id = self.riding?;
         if let Some(b) = self.boats.iter().find(|b| b.id == id) {
             return Some(RiddenBody::Boat(b.yaw));
@@ -764,7 +764,7 @@ impl Game<'_> {
     }
     /// `LevelExtractor` submits the local player only when it holds the camera, and
     /// skips the first-person body unless it is sleeping. Studio freecam draws it too.
-    pub(in crate::game) fn own_body_in_view(&self) -> bool {
+    pub(in crate::game::client_side) fn own_body_in_view(&self) -> bool {
         self.client.studio.flying()
             || (self.controls_camera()
                 && (!self.client.camera_type.is_first_person() || self.sleeping.is_some()))
@@ -785,25 +785,27 @@ impl Game<'_> {
                 .is_some_and(|p| !p.health.dead_or_dying())
     }
     /// The player's own team: a server's client is in it by its profile name.
-    pub(in crate::game) fn own_team(&self) -> Option<&sunrise_client::scoreboard::Team> {
+    pub(in crate::game::client_side) fn own_team(
+        &self,
+    ) -> Option<&sunrise_client::scoreboard::Team> {
         match &self.remote {
             Some(r) => self.score.board.players_team(&r.profile_name),
             None => self.player_team(),
         }
     }
     /// `Entity.isInvisible` for the player itself (`own_invisible`).
-    pub(in crate::game) fn own_invisible(&self) -> bool {
+    pub(in crate::game::client_side) fn own_invisible(&self) -> bool {
         own_invisible(
             &self.potions.effects,
             self.remote.as_ref().is_some_and(|r| r.own_invisible),
         )
     }
     /// Whether the player's own body is drawn (`body_visible`).
-    pub(in crate::game) fn own_body_visible(&self) -> bool {
+    pub(in crate::game::client_side) fn own_body_visible(&self) -> bool {
         body_visible(self.own_invisible(), self.own_team())
     }
     /// The local player's body in the ordered entity pass.
-    pub(in crate::game) fn local_player_geometry(
+    pub(in crate::game::client_side) fn local_player_geometry(
         &self,
         camera: glam::DVec3,
         out: &mut Vec<sunrise_client_render::render_geometry::Vertex>,
@@ -823,7 +825,7 @@ impl Game<'_> {
     }
 
     /// The player's model for the entity pass in third person.
-    pub(in crate::game) fn player_model_geometry(
+    pub(in crate::game::client_side) fn player_model_geometry(
         &self,
         camera: glam::DVec3,
         alpha: f64,
@@ -972,7 +974,7 @@ impl Game<'_> {
     /// `[x0, x1) x [y0, y1)`, `size` pixels per block, turned toward the
     /// cursor; drawn with a depth buffer and back-face culling.
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::game) fn draw_player_preview(
+    pub(in crate::game::client_side) fn draw_player_preview(
         &self,
         batch: &mut HudBatch,
         x0: f32,
@@ -1080,7 +1082,12 @@ impl Game<'_> {
         emit_preview(batch, quads, glints, [x0, y0, x1, y1]);
     }
     /// The survival inventory's player box (`InventoryScreen`).
-    pub(in crate::game) fn draw_inventory_player(&self, batch: &mut HudBatch, ox: f32, oy: f32) {
+    pub(in crate::game::client_side) fn draw_inventory_player(
+        &self,
+        batch: &mut HudBatch,
+        ox: f32,
+        oy: f32,
+    ) {
         if self.client.screen == Screen::Inventory {
             self.draw_player_preview(
                 batch,
@@ -1097,7 +1104,7 @@ impl Game<'_> {
 
 impl Game<'_> {
     /// `WingsLayer` for a player wearing `chest`.
-    pub(in crate::game) fn player_elytra_geometry(
+    pub(in crate::game::client_side) fn player_elytra_geometry(
         &self,
         m: &Mob,
         chest: Option<&str>,
@@ -1125,7 +1132,7 @@ impl Game<'_> {
     }
     /// `WingsLayer` draws through `EquipmentLayerRenderer.renderLayers`: the
     /// armour glint when the worn elytra `hasFoil()`.
-    pub(in crate::game) fn wings_overlay(
+    pub(in crate::game::client_side) fn wings_overlay(
         &self,
         stack: Option<&sunrise_client::items::ItemStack>,
     ) -> u32 {
@@ -1145,7 +1152,7 @@ impl Game<'_> {
     /// stack when known: an OptiFine CIT elytra rule for it replaces the
     /// texture, the cape's too, as OptiFine's `LayerElytra` does.
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::game) fn wings_geometry(
+    pub(in crate::game::client_side) fn wings_geometry(
         &self,
         chest: Option<&str>,
         stack: Option<&sunrise_client::items::ItemStack>,
@@ -1243,7 +1250,7 @@ impl Game<'_> {
     }
     /// `CapeLayer` for a player wearing `chest`: no cape under an elytra's
     /// wings, and moved out over a chestplate.
-    pub(in crate::game) fn player_cape_geometry(
+    pub(in crate::game::client_side) fn player_cape_geometry(
         &self,
         m: &Mob,
         chest: Option<&str>,
@@ -1295,7 +1302,7 @@ impl Game<'_> {
     }
     /// `Deadmau5EarsLayer` (`AbstractClientPlayer.showExtraEars`): the ears
     /// of a player whose profile name is `deadmau5`, in the player's skin.
-    pub(in crate::game) fn player_ears_geometry(
+    pub(in crate::game::client_side) fn player_ears_geometry(
         &self,
         m: &Mob,
         name: &str,
@@ -1345,7 +1352,7 @@ impl Game<'_> {
         )
     }
 
-    pub(in crate::game) fn held_arm_poses_with_stacks(
+    pub(in crate::game::client_side) fn held_arm_poses_with_stacks(
         &self,
         entity_id: u32,
         m: &Mob,
@@ -1410,7 +1417,7 @@ impl Game<'_> {
     /// `ArrowLayer` and `BeeStingerLayer` (`StuckInBodyLayer`) for a player:
     /// the arrows and bee stingers stuck in the body, placed from the entity
     /// id `id`.
-    pub(in crate::game) fn stuck_in_body_geometry(
+    pub(in crate::game::client_side) fn stuck_in_body_geometry(
         &self,
         m: &Mob,
         id: i32,
@@ -1455,7 +1462,7 @@ impl Game<'_> {
     }
     /// `ParrotOnShoulderLayer`: the parrots the player keeps in its
     /// `ShoulderEntityLeft` and `ShoulderEntityRight` (game/mobs/shoulders.rs).
-    pub(in crate::game) fn shoulder_parrots_geometry(
+    pub(in crate::game::client_side) fn shoulder_parrots_geometry(
         &self,
         m: &Mob,
         camera: glam::DVec3,
@@ -1479,7 +1486,7 @@ impl Game<'_> {
     }
     /// `SpinAttackEffectLayer`: Riptide's two boxes turning around a spinning
     /// player (`SpinAttackEffectModel.setupAnim`).
-    pub(in crate::game) fn spin_attack_geometry(
+    pub(in crate::game::client_side) fn spin_attack_geometry(
         &self,
         m: &Mob,
         camera: glam::DVec3,
@@ -1525,14 +1532,14 @@ impl Game<'_> {
 /// (-0.2, -1, 0), with the 0.6 light power and 0.4 ambient. `normal` is the
 /// face's outward normal in the preview's screen space (x right, y down, z
 /// towards the viewer), where a face that looks up has a negative y.
-pub(in crate::game) fn entity_in_ui_shade(normal: glam::Vec3) -> f32 {
+pub(in crate::game::client_side) fn entity_in_ui_shade(normal: glam::Vec3) -> f32 {
     const LIGHT_0: glam::Vec3 = glam::Vec3::new(0.2, -1.0, 1.0);
     const LIGHT_1: glam::Vec3 = glam::Vec3::new(-0.2, -1.0, 0.0);
     let light = LIGHT_0.normalize().dot(normal).max(0.0) + LIGHT_1.normalize().dot(normal).max(0.0);
     (light * 0.6 + 0.4).min(1.0)
 }
 
-pub(in crate::game) fn player_preview_quads(
+pub(in crate::game::client_side) fn player_preview_quads(
     verts: Vec<sunrise_client_render::render_geometry::Vertex>,
     gui: glam::Mat4,
     fire: Option<(f32, f32)>,
@@ -1544,7 +1551,7 @@ pub(in crate::game) fn player_preview_quads(
 /// `player_preview_quads` where the faces of the vertices in `no_cull` are
 /// kept when they look away (a `NoCull` render type); their light still comes
 /// from the face's own outward normal, as the vertex normal gives it.
-pub(in crate::game) fn player_preview_quads_no_cull(
+pub(in crate::game::client_side) fn player_preview_quads_no_cull(
     mut verts: Vec<sunrise_client_render::render_geometry::Vertex>,
     gui: glam::Mat4,
     fire: Option<(f32, f32)>,
@@ -1612,7 +1619,7 @@ pub(in crate::game) type PreviewGlint = ([[f32; 3]; 4], [[f32; 2]; 4], [[f32; 2]
 /// `ARMOR_ENTITY_GLINT_TEXTURING`), and the items' glint (overlays 7, 8 and
 /// 33; `glint_uv` already transformed). Each face is culled and turned as
 /// `player_preview_quads_no_cull` does with it.
-pub(in crate::game) fn preview_glint_quads(
+pub(in crate::game::client_side) fn preview_glint_quads(
     verts: &[sunrise_client::mesher::Vertex],
     gui: glam::Mat4,
     no_cull: std::ops::Range<usize>,
@@ -1662,7 +1669,7 @@ pub(in crate::game) fn preview_glint_quads(
 /// `GuiEntityRenderer.renderToTexture`: a GUI model into `batch` in the box
 /// `clip`, its faces with a depth buffer, then their glint over them in the
 /// same pass.
-pub(in crate::game) fn emit_preview(
+pub(in crate::game::client_side) fn emit_preview(
     batch: &mut sunrise_client::hud::HudBatch,
     quads: Vec<(f32, [[f32; 3]; 4], [[f32; 2]; 4], u32)>,
     glints: Vec<PreviewGlint>,
@@ -1684,7 +1691,7 @@ pub(in crate::game) fn emit_preview(
 /// easing in over a tick (#3844), while a change the tick made itself (the
 /// pitch a sleeper lies at) still eases in. `pitch_o` is the model's old
 /// pitch; without a model the old pitch is the pitch.
-pub(in crate::game) fn turn_rotation(
+pub(in crate::game::client_side) fn turn_rotation(
     yaw: f32,
     pitch: f32,
     pitch_o: Option<f32>,
@@ -1706,7 +1713,7 @@ pub(in crate::game) fn turn_rotation(
 /// `Mth.lerp(partialTick * 0.5F, getYRot(), yRotO)`) follows the mouse at once;
 /// only what the tick itself turned (a boat's `deltaRotation`) eases in. `old`
 /// is `(yRotO, xRotO)`; the result is the pair after the turn (#10276).
-pub(in crate::game) fn rope_old_after_turn(
+pub(in crate::game::client_side) fn rope_old_after_turn(
     old: (f32, f32),
     yaw: f32,
     pitch: f32,
@@ -1726,7 +1733,7 @@ pub(in crate::game) fn rope_old_after_turn(
 /// `EntityRenderer.getPackedLightCoords` (`Entity.getLightProbePosition`):
 /// the block containing the entity's eye position, undoing
 /// `AvatarRenderer.getRenderOffset`'s 0.125 crouch drop on the model position.
-pub(in crate::game) fn entity_light_block(
+pub(in crate::game::client_side) fn entity_light_block(
     position: Vec3,
     crouching: bool,
     eye_height: f64,
@@ -1746,7 +1753,7 @@ pub(in crate::game) fn entity_light_block(
 /// `Camera.setup` does, however far it moved: at Levitation 255 (12.75 blocks
 /// a tick) the body keeps up with the camera. A teleport or respawn resets
 /// the old position, and the model jumps with it.
-pub(in crate::game) fn player_model_positions(
+pub(in crate::game::client_side) fn player_model_positions(
     previous_position: Vec3,
     position: Vec3,
     was_crouching: bool,
@@ -1765,7 +1772,7 @@ pub(in crate::game) fn player_model_positions(
 /// for every player (`Entity`'s, not overridden), so only the horizontal
 /// distance counts, flying and gliding included: rising or sinking straight
 /// up or down leaves the legs and arms still.
-pub(in crate::game) fn player_walk_distance(from: Vec3, to: Vec3) -> f32 {
+pub(in crate::game::client_side) fn player_walk_distance(from: Vec3, to: Vec3) -> f32 {
     let (dx, dz) = (to.x - from.x, to.z - from.z);
     (dx * dx + dz * dz).sqrt() as f32
 }

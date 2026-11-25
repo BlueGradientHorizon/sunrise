@@ -13,7 +13,7 @@ pub(in crate::game::server_side) use sunrise_client::{health::AcceptedHit, items
 
 impl Game<'_> {
     /// A veto belongs to the guest's living body, not its replaceable combat history.
-    pub(in crate::game) fn guest_death_canceled(
+    pub(in crate::game::server_side) fn guest_death_canceled(
         &mut self,
         gi: usize,
         conn: u32,
@@ -71,7 +71,11 @@ impl Game<'_> {
     }
     /// The fatal source of a guest's death, read before `living_death` and
     /// kept for the drops and the death's tail.
-    pub(in crate::game) fn guest_fatal_source(&self, gi: usize, conn: u32) -> FatalSource {
+    pub(in crate::game::server_side) fn guest_fatal_source(
+        &self,
+        gi: usize,
+        conn: u32,
+    ) -> FatalSource {
         let (damage_type, causing) = self.guest_damage_source(conn);
         let guest = self.lan.as_ref().and_then(|host| host.hub.guests.get(gi));
         let body = if self.server.lan_acting == Some(conn) {

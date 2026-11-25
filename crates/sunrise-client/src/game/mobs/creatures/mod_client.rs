@@ -277,7 +277,7 @@ impl Game<'_> {
     /// The renderer's models for the GPU path (`mobs::skin`) this frame, if it
     /// poses entities: a new frame of draws, the store restarted when the
     /// renderer's no longer matches. Once per frame, before any entity draws.
-    pub(in crate::game) fn begin_skinning(&self) {
+    pub(in crate::game::client_side) fn begin_skinning(&self) {
         let renderer = self.renderer.0.as_ref().filter(|r| r.skins_entities());
         match renderer.and_then(|r| r.skinned_models()) {
             Some(stored) => {
@@ -327,7 +327,7 @@ impl Game<'_> {
     /// Culls one entity's vertices from `entity_start`, counting what it drew
     /// on the GPU path by the corners of `skinned`'s bounds; a culled entity's
     /// posed draws since `skinned`'s mark are taken back.
-    pub(in crate::game) fn cull_skinned(
+    pub(in crate::game::client_side) fn cull_skinned(
         &self,
         out: &mut Vec<Vertex>,
         entity_start: usize,
@@ -603,7 +603,7 @@ impl Game<'_> {
             .send_particles(&options, at, [0.0; 3], 0.0, 1);
         self.lan_level_particles(&options, at, [0.0; 3], 0.0, 1, None);
     }
-    pub(in crate::game) fn pickup_arrow_geometry(
+    pub(in crate::game::client_side) fn pickup_arrow_geometry(
         &self,
         camera: glam::DVec3,
         alpha: f64,
@@ -910,7 +910,7 @@ impl Game<'_> {
         self.audio.0.play(sound, Some(at), 1.0, 1.0);
     }
     /// Whether this frame's models can be posed on the GPU (`begin_skinning`).
-    pub(in crate::game) fn skinning(&self) -> bool {
+    pub(in crate::game::client_side) fn skinning(&self) -> bool {
         self.renderer
             .0
             .as_ref()

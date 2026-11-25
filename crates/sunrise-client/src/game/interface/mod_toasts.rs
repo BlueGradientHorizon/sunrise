@@ -60,7 +60,7 @@ impl Game<'_> {
         Ok(())
     }
 
-    pub(in crate::game) fn admit_mod_toasts(&mut self) {
+    pub(in crate::game::client_side) fn admit_mod_toasts(&mut self) {
         // Take one snapshot before invoking listeners. A request from toast_add is
         // for the next update, not a recursive add or part of this snapshot.
         for mut request in std::mem::take(self.client.toast_manager.pending_mod.get_mut()) {
@@ -92,7 +92,12 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn draw_mod_toast(&self, batch: &mut HudBatch, entry: &Entry, slot: usize) {
+    pub(in crate::game::client_side) fn draw_mod_toast(
+        &self,
+        batch: &mut HudBatch,
+        entry: &Entry,
+        slot: usize,
+    ) {
         let atlas = &self.gui.atlas;
         let [x, y] = entry
             .request

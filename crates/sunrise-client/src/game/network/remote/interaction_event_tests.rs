@@ -346,9 +346,6 @@ pub(in crate::game) fn hit() -> Hit {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::remote_server::interaction_event_tests::use_block;
-
-#[allow(unused_imports)]
 pub(in crate::game) use crate::game::server_side::remote_server::interaction_event_tests::setup_interaction_guest;
 
 #[test]

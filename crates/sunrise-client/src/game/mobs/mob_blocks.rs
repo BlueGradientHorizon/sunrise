@@ -201,7 +201,7 @@ impl Game<'_> {
         cull_back_quads(out, first);
     }
     /// The blocks one mob holds or carries.
-    pub(in crate::game) fn mob_block_geometry(
+    pub(in crate::game::client_side) fn mob_block_geometry(
         &self,
         mob: &Mob,
         camera: glam::DVec3,
@@ -382,7 +382,7 @@ impl Game<'_> {
     /// `ItemInHandLayer`: both hands through the item model pipeline. World
     /// draws take the held-item tint, level lighting and the mob's GPU path
     /// when supported. GUI previews light the projected quads themselves.
-    pub(in crate::game) fn held_item_geometry(
+    pub(in crate::game::client_side) fn held_item_geometry(
         &self,
         mob: &Mob,
         camera: glam::DVec3,
@@ -526,7 +526,7 @@ impl Game<'_> {
     /// `CustomHeadLayer`: non-armour items worn in the head slot (carved
     /// pumpkins, mob skulls and player heads, or custom blocks) on players
     /// and mobs.
-    pub(in crate::game) fn head_item_geometry(
+    pub(in crate::game::client_side) fn head_item_geometry(
         &self,
         mob: &Mob,
         camera: glam::DVec3,

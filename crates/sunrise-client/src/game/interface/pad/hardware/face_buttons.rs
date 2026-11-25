@@ -6,7 +6,7 @@ use sunrise_client::gamepad::{BITDO_ULTIMATE2_VID_PID, GlyphStyle};
 /// Whether this pad's X and Y reach us crossed. The kernel defines `BTN_X` as `BTN_NORTH` and
 /// `BTN_Y` as `BTN_WEST`, so an Xbox-style pad's X, on the west, sends "north". gilrs' default
 /// mapping takes the names at their word; an SDL row names `x` and `y` itself and is right.
-pub(in crate::game) fn crossed(pad: &Gamepad) -> bool {
+pub(in crate::game::client_side) fn crossed(pad: &Gamepad) -> bool {
     cfg!(target_os = "linux")
         && crossed_layout(
             pad.mapping_source(),
@@ -41,7 +41,7 @@ fn crossed_layout(
 }
 
 /// What gilrs calls the button we know as `button`, on a pad that is `crossed` or not.
-pub(in crate::game) fn named(button: Button, crossed: bool) -> Button {
+pub(in crate::game::client_side) fn named(button: Button, crossed: bool) -> Button {
     match button {
         Button::West if crossed => Button::North,
         Button::North if crossed => Button::West,

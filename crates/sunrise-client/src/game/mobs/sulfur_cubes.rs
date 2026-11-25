@@ -15,13 +15,13 @@ use sunrise_client::{
 #[allow(unused_imports)]
 use sunrise_core::position::BlockPos;
 
-pub(in crate::game) fn block_transform(base: glam::Mat4, baby: bool) -> glam::Mat4 {
+pub(in crate::game::server_side) fn block_transform(base: glam::Mat4, baby: bool) -> glam::Mat4 {
     base * glam::Mat4::from_scale(glam::Vec3::new(1.0, -1.0, -1.0))
         * glam::Mat4::from_scale(glam::Vec3::splat(if baby { 0.5 } else { 1.0 }))
         * glam::Mat4::from_translation(glam::Vec3::new(-0.5, -0.518, -0.5))
 }
 
-pub(in crate::game) fn block_overlay(fuse_ticks: i32, alpha: f32, hurt: bool) -> u32 {
+pub(in crate::game::server_side) fn block_overlay(fuse_ticks: i32, alpha: f32, hurt: bool) -> u32 {
     let fuse = if fuse_ticks >= 0 {
         fuse_ticks as f32 - alpha + 1.0
     } else {
@@ -34,7 +34,7 @@ pub(in crate::game) fn block_overlay(fuse_ticks: i32, alpha: f32, hurt: bool) ->
     }
 }
 
-pub(in crate::game) fn block_light(light: u32, emission: u8) -> u32 {
+pub(in crate::game::server_side) fn block_light(light: u32, emission: u8) -> u32 {
     let block = (light >> 8 & 0xFF).max(u32::from(emission) * 16);
     (light & 0xFF) | block << 8
 }
@@ -82,7 +82,7 @@ impl Game<'_> {
     }
 
     /// Spit the swallowed block out on top (`EntityAttachment.PASSENGER`).
-    pub(in crate::game) fn eject_sulfur_block(&mut self, index: usize) {
+    pub(in crate::game::server_side) fn eject_sulfur_block(&mut self, index: usize) {
         let m = &mut self.mobs[index];
         let Some(item) = m.take_body_equipment() else {
             return;
@@ -95,7 +95,11 @@ impl Game<'_> {
         self.spawn_item(item, at, [0.0, 0.2, 0.0], 10);
     }
     /// `SulfurCube.mobInteract`. Returns whether the click was used.
-    pub(in crate::game) fn interact_sulfur_cube(&mut self, index: usize, item: &str) -> bool {
+    pub(in crate::game::server_side) fn interact_sulfur_cube(
+        &mut self,
+        index: usize,
+        item: &str,
+    ) -> bool {
         let m = &self.mobs[index];
         if m.species() != Species::SulfurCube || !m.alive() {
             return false;
@@ -187,7 +191,7 @@ impl Game<'_> {
     /// `Bucketable.bucketMobPickup` for a sulfur cube
     /// (`SulfurCube.canBePickedUpWithBucket`: an empty bucket), as the water
     /// bucket's mobs are picked up in `interact_mob`.
-    pub(in crate::game) fn bucket_sulfur_cube(&mut self, index: usize) {
+    pub(in crate::game::server_side) fn bucket_sulfur_cube(&mut self, index: usize) {
         let held = self.held().cloned();
         let at = self.mobs[index].center();
         self.client_audio_play("minecraft:item.bucket.fill_sulfur_cube", Some(at), 1.0, 1.0);
@@ -219,7 +223,7 @@ impl Game<'_> {
     /// body `collectEquipmentChanges` last took) explodes, with its fuse:
     /// their cached `explosionData`, which `primeWhenOnPoweredPosition` may
     /// use this tick although the body has changed since.
-    pub(in crate::game) fn sulfur_cubes_adopted_explosive(&self) -> Vec<(u32, i32)> {
+    pub(in crate::game::server_side) fn sulfur_cubes_adopted_explosive(&self) -> Vec<(u32, i32)> {
         self.mobs
             .iter()
             .filter(|m| m.species() == Species::SulfurCube)
@@ -271,7 +275,7 @@ impl Game<'_> {
     /// explosive cube with a block lights its fuse (with `tnt_explodes`, as
     /// `primeTime` asks), called after the hit's hurt, which the priming
     /// leaves as it is, so its knock and the fuse both go ahead.
-    pub(in crate::game) fn burning_arrow_primes(&mut self, p: &Projectile, who: Who) {
+    pub(in crate::game::server_side) fn burning_arrow_primes(&mut self, p: &Projectile, who: Who) {
         if !p.arrow.as_ref().is_some_and(|a| a.on_fire())
             || !self
                 .ui

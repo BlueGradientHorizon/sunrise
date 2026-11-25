@@ -112,7 +112,7 @@ impl Game<'_> {
     }
     /// Control saves acknowledge only after durable completion, while their
     /// snapshot work is spread across event-loop turns too.
-    pub(in crate::game) fn begin_control_save(
+    pub(in crate::game::client_side) fn begin_control_save(
         &mut self,
         all: bool,
         reply: std::sync::mpsc::Sender<String>,
@@ -140,7 +140,7 @@ impl Game<'_> {
     }
     /// `true` means the window can exit. The session lock stays in Game until
     /// every snapshot has been queued and every writer has synced its files.
-    pub(in crate::game) fn poll_closing_save(&mut self) -> Result<bool> {
+    pub(in crate::game::client_side) fn poll_closing_save(&mut self) -> Result<bool> {
         let defers = self.pending_save.0.as_ref().is_some_and(|save| {
             !matches!(save.stage, Stage::Server | Stage::Quit)
                 && save.started.elapsed() < Duration::from_secs(30)
@@ -283,7 +283,7 @@ impl Game<'_> {
             }
         }
     }
-    pub(in crate::game) fn render_closing_save(&mut self) -> Result<()> {
+    pub(in crate::game::client_side) fn render_closing_save(&mut self) -> Result<()> {
         if matches!(
             self.pending_save.0.as_ref().map(|save| &save.stage),
             Some(Stage::Quit)
@@ -353,7 +353,7 @@ impl Game<'_> {
     /// `GameRenderer.tryTakeScreenshotIfNeeded`: while a local world without a
     /// saved icon is on the screen, grab the rendered frame once a second until
     /// the save has one. The Select World list shows it as the world's preview.
-    pub(in crate::game) fn tick_world_icon(&mut self) {
+    pub(in crate::game::client_side) fn tick_world_icon(&mut self) {
         // Its grab would take a sequence's frame.
         if self.screenshot_sequence.0.is_some() {
             return;

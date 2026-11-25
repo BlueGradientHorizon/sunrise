@@ -150,7 +150,7 @@ fn block_entity_items_match_the_vanilla_cases() {
     run_block_entity_items_match_the_vanilla_cases();
 }
 
-pub(in crate::game) fn run_block_entity_items_match_the_vanilla_cases() {
+pub(in crate::game::server_side) fn run_block_entity_items_match_the_vanilla_cases() {
     let (Ok(cases), Ok(out)) = (
         std::env::var("SUNRISE_BLOCK_ENTITY_ITEM_CASES"),
         std::env::var("SUNRISE_BLOCK_ENTITY_ITEM_OUT"),

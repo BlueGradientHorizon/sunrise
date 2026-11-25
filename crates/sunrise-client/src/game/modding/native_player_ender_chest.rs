@@ -110,7 +110,7 @@ impl Game<'_> {
 
     /// The ender chest menus `player_open_ender_chest` asked for in guest `conn`'s turn,
     /// opened now that the turn is over, in the order asked (the last one stays open).
-    pub(in crate::game) fn open_turn_ender_menus(&mut self, conn: u32) {
+    pub(in crate::game::server_side) fn open_turn_ender_menus(&mut self, conn: u32) {
         if !self.server.lan_ender_menus.iter().any(|(c, _)| *c == conn) {
             return;
         }

@@ -7,7 +7,7 @@ use sunrise_world::level::LevelEvent;
 impl Game<'_> {
     /// `FallingBlockEntity.causeFallDamage`: impact damage and anvil wear,
     /// before block effects and portal handling can transfer the entity.
-    pub(in crate::game) fn falling_block_impact(&mut self, block: &mut FallingBlock) {
+    pub(in crate::game::server_side) fn falling_block_impact(&mut self, block: &mut FallingBlock) {
         let name = self.res.facts().get(block.state).name.clone();
         let anvil = name.ends_with("anvil");
         let stalactite = matches!(

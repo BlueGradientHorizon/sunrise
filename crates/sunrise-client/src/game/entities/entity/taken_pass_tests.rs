@@ -81,7 +81,7 @@ impl SlotIdentities {
         });
     }
 
-    pub fn observe_one<T: HasAttachmentLifetime>(
+    pub(in crate::game::server_side) fn observe_one<T: HasAttachmentLifetime>(
         &mut self,
         owner: &mut T,
         epoch: WorldEpoch,
@@ -129,7 +129,7 @@ impl LifecycleFixture {
 
     /// A singleton tests selected and unselected chunks in separate passes.
     /// Remote singleton behavior is checked by its storage-specific fixture.
-    pub fn run_singleton(self) {
+    pub(in crate::game::server_side) fn run_singleton(self) {
         assert!(self.remote.is_none());
         self.walk(true, |_| {});
     }

@@ -79,13 +79,18 @@ const ARROWS: [&str; 3] = [
 
 impl Game<'_> {
     /// Whether the custom crosshair replaces vanilla's sprite.
-    pub(in crate::game) fn custom_crosshair(&self) -> bool {
+    pub(in crate::game::client_side) fn custom_crosshair(&self) -> bool {
         self.settings.extras.pvp.crosshair.custom
     }
     /// The custom crosshair, centred where vanilla's 15x15 sprite is (`Hud.extractCrosshair`):
     /// its outline in black, then the shape, inverting what is under it when its colour is
     /// `Inverted`. The runs are cached, so a frame only adds their quads.
-    pub(in crate::game) fn draw_custom_crosshair(&mut self, batch: &mut HudBatch, w: i32, h: i32) {
+    pub(in crate::game::client_side) fn draw_custom_crosshair(
+        &mut self,
+        batch: &mut HudBatch,
+        w: i32,
+        h: i32,
+    ) {
         let mut c = self.settings.extras.pvp.crosshair;
         if let Some(hover) = c.hover
             && self.crosshair_living() == Some(true)
@@ -115,7 +120,7 @@ impl Game<'_> {
     /// the outline's edges come from) as translucent faces drawn after translucent terrain,
     /// pushed out a little so they don't fight the block's own faces. Only while the outline
     /// shows (`outline` is its edges).
-    pub(in crate::game) fn outline_fill(
+    pub(in crate::game::client_side) fn outline_fill(
         &self,
         outline: &[[f64; 6]],
         camera: glam::DVec3,
@@ -167,7 +172,7 @@ impl Game<'_> {
         }
     }
     /// Once per frame: the options that live outside the game's state.
-    pub(in crate::game) fn pvp_frame(&mut self) {
+    pub(in crate::game::client_side) fn pvp_frame(&mut self) {
         let tweaks = self.settings.extras.pvp.tweaks;
         sunrise_client::enchant::set_numeric_levels(tweaks.numeric_enchants);
     }
@@ -178,13 +183,13 @@ impl Game<'_> {
     }
     /// The day time the frame draws (sky, sun, moon, the sky's light): PvP & HUD's time of day,
     /// else the world's. The world's own `day_time` and everything that plays by it stay.
-    pub(in crate::game) fn view_day_time(&self) -> i64 {
+    pub(in crate::game::client_side) fn view_day_time(&self) -> i64 {
         let fixed = self.settings.extras.pvp.tweaks.time;
         sunrise_client::pvp::view_day_time(self.world.day_time, fixed.filter(|_| self.own_view()))
     }
     /// The rain and thunder levels the frame draws (rain, the sky's colour and light, fog): PvP &
     /// HUD's weather, else the world's. Gameplay (riptide, mobs, crops) keeps the world's.
-    pub(in crate::game) fn view_weather(&self, partial: f32) -> (f32, f32) {
+    pub(in crate::game::client_side) fn view_weather(&self, partial: f32) -> (f32, f32) {
         match self.settings.extras.pvp.tweaks.weather {
             Some(w) if self.own_view() && self.can_have_weather() => w.levels(),
             _ => self.weather_levels(partial),
@@ -195,11 +200,11 @@ impl Game<'_> {
     // the engine (docs/layers.md, plan M5). The HUD editor (`hud_editor.rs`) reads the widgets.
 
     /// Combat feel Legacy's pictures: 1.8.9's sword block, flat item pose and hand swing.
-    pub(in crate::game) fn pvp_legacy_look(&self) -> bool {
+    pub(in crate::game::client_side) fn pvp_legacy_look(&self) -> bool {
         self.settings.extras.pvp.combat.legacy
     }
     /// Combat feel Legacy hides the attack indicator unless the player keeps it.
-    pub(in crate::game) fn pvp_hides_attack_indicator(&self) -> bool {
+    pub(in crate::game::client_side) fn pvp_hides_attack_indicator(&self) -> bool {
         let combat = self.settings.extras.pvp.combat;
         combat.legacy && !combat.indicator
     }
@@ -208,36 +213,36 @@ impl Game<'_> {
         self.settings.extras.pvp.combat.mutes_sound(name)
     }
     /// A particle Combat feel Legacy doesn't draw (sweeps, damage hearts).
-    pub(in crate::game) fn pvp_hides_particle(&self, ty: ParticleType) -> bool {
+    pub(in crate::game::client_side) fn pvp_hides_particle(&self, ty: ParticleType) -> bool {
         self.settings.extras.pvp.combat.hides_particle(ty)
     }
     /// The block outline, hurt overlay and glint colours the renderer draws with.
-    pub(in crate::game) fn pvp_render_frame(&self) -> Frame {
+    pub(in crate::game::client_side) fn pvp_render_frame(&self) -> Frame {
         self.settings.extras.pvp.frame()
     }
     /// The enchantment glint's colour texel, 0 for vanilla's.
-    pub(in crate::game) fn pvp_glint_texel(&self) -> u32 {
+    pub(in crate::game::client_side) fn pvp_glint_texel(&self) -> u32 {
         self.settings.extras.pvp.tweaks.glint_texel()
     }
     /// The held shield's size in percent (100 is vanilla's).
-    pub(in crate::game) fn pvp_shield_size(&self) -> u8 {
+    pub(in crate::game::client_side) fn pvp_shield_size(&self) -> u8 {
         self.settings.extras.pvp.tweaks.shield_size
     }
     /// The totem animation's scale (1 is vanilla's).
-    pub(in crate::game) fn pvp_totem_scale(&self) -> f32 {
+    pub(in crate::game::client_side) fn pvp_totem_scale(&self) -> f32 {
         f32::from(self.settings.extras.pvp.tweaks.totem_size) / 100.0
     }
     /// How far the first-person fire overlay is lowered, as a fraction (0 is vanilla's).
-    pub(in crate::game) fn pvp_fire_lower(&self) -> f32 {
+    pub(in crate::game::client_side) fn pvp_fire_lower(&self) -> f32 {
         f32::from(self.settings.extras.pvp.tweaks.fire_lower) / 100.0
     }
     /// Lava's fog as with fire resistance, and water's as fully adapted.
-    pub(in crate::game) fn pvp_clear_fluids(&self) -> (bool, bool) {
+    pub(in crate::game::client_side) fn pvp_clear_fluids(&self) -> (bool, bool) {
         let tweaks = self.settings.extras.pvp.tweaks;
         (tweaks.clear_lava, tweaks.clear_water)
     }
     /// The chat's options: Ctrl+F search, copy on click, and the rest (`ChatOptions::qol`).
-    pub(in crate::game) fn pvp_chat(&self) -> ChatOptions {
+    pub(in crate::game::client_side) fn pvp_chat(&self) -> ChatOptions {
         self.settings.extras.pvp.chat
     }
     /// This player attacked entity `id`, `distance` from the eyes to where the crosshair's
@@ -249,7 +254,7 @@ impl Game<'_> {
         self.client.pvp.reach.hit(distance, now);
     }
     /// A mouse press, counted for clicks per second while playing with a widget that shows them.
-    pub(in crate::game) fn pvp_click(&mut self, button: MouseButton) {
+    pub(in crate::game::client_side) fn pvp_click(&mut self, button: MouseButton) {
         let hud = &self.settings.extras.pvp.hud;
         if !(hud.cps || hud.keys) || self.client.screen != crate::game::Screen::Playing {
             return;
@@ -281,12 +286,16 @@ impl Game<'_> {
         }
     }
     /// Whether the effects widget replaces vanilla's effect icons (`Hud.extractEffects`).
-    pub(in crate::game) fn pvp_effects_shown(&self) -> bool {
+    pub(in crate::game::client_side) fn pvp_effects_shown(&self) -> bool {
         self.settings.extras.pvp.hud.effects
     }
     /// The HUD widgets that are on, before mods' boxes. Each rebuilds its
     /// lines only when what it shows changed.
-    pub(in crate::game) fn draw_pvp_hud(&mut self, batch: &mut HudBatch, corners: &mut Corners) {
+    pub(in crate::game::client_side) fn draw_pvp_hud(
+        &mut self,
+        batch: &mut HudBatch,
+        corners: &mut Corners,
+    ) {
         let hud = self.settings.extras.pvp.hud;
         if self.player.is_none() || !hud.any() {
             // The editor frames only what was drawn.

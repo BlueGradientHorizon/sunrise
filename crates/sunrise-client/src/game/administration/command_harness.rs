@@ -20,7 +20,7 @@ use std::{
 use sunrise_client::{Result, text::Text};
 
 /// A message's structured component as `ComponentSerialization.CODEC` writes it.
-pub(in crate::game) fn canonical_component(text: &Text) -> Value {
+pub(in crate::game::server_side) fn canonical_component(text: &Text) -> Value {
     sunrise_client::scoreboard::canonical_component(&text.component())
 }
 
@@ -231,7 +231,7 @@ impl Game<'_> {
             std::thread::sleep(Duration::from_millis(2));
         }
     }
-    pub(in crate::game) fn run_command_harness(
+    pub(in crate::game::server_side) fn run_command_harness(
         &mut self,
         script: &Path,
         output: &Path,

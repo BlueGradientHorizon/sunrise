@@ -14,7 +14,7 @@ impl Game<'_> {
         maps.biome_keys.id(key)
     }
     /// The installed snapshot's keys, empty before world data is installed.
-    pub(in crate::game) fn biome_key_snapshot(
+    pub(in crate::game::server_side) fn biome_key_snapshot(
         &self,
     ) -> std::sync::Arc<mod_api::__private::BiomeKeys> {
         self.world_tables
@@ -26,7 +26,7 @@ impl Game<'_> {
     /// Mod features answer `FeatureContext::biome` with the keys `biome_key` gives: publish the
     /// installed snapshot to every level's generation workers and to the live level's
     /// placements, as each data load installs it.
-    pub(in crate::game) fn share_biome_keys(&self) {
+    pub(in crate::game::server_side) fn share_biome_keys(&self) {
         if !self.options.execution_role.is_logical_server() {
             return;
         }

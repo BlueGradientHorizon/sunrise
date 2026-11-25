@@ -5,7 +5,7 @@ pub(in crate::game::server_side) use crate::game::native_hooks::item_fallthrough
 
 impl Game<'_> {
     /// Finish all useOn handlers, including placement, before entering Item.use.
-    pub(in crate::game) fn use_target_then_item(
+    pub(in crate::game::server_side) fn use_target_then_item(
         &mut self,
         hit: &crate::game::Hit,
     ) -> sunrise_client::Result<bool> {

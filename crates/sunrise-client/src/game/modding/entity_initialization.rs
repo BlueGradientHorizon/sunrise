@@ -62,7 +62,7 @@ impl Game<'_> {
     /// `initialize_entity` for a holder whose attachments are about to be read, its type
     /// looked up: an entity that started on a path that doesn't tell (one made and touched
     /// within a pass, before the join pass) is told before the read.
-    pub(in crate::game) fn initialize_entity_on_access(&mut self, holder: Holder) {
+    pub(in crate::game::server_side) fn initialize_entity_on_access(&mut self, holder: Holder) {
         if !mod_api::__private::listened(mod_api::HookId::EntityConstructing) {
             return;
         }
@@ -96,7 +96,10 @@ impl Game<'_> {
     /// Forget destroyed objects in this level before its UUID metadata is pruned.
     /// The supplied set includes reachable off-level objects. Other levels and
     /// player lifetimes are owned by their own cleanup boundaries.
-    pub(in crate::game) fn prune_entity_initializations(&mut self, retained: &HashSet<u32>) {
+    pub(in crate::game::server_side) fn prune_entity_initializations(
+        &mut self,
+        retained: &HashSet<u32>,
+    ) {
         self.server
             .entity_initialization
             .initialized
@@ -109,7 +112,7 @@ impl Game<'_> {
     /// A LAN guest's player, its file just read for connection `conn`: told once per
     /// connection (`PlayerList.placeNewPlayer` constructs the `ServerPlayer`, then
     /// `loadPlayerData` reads its file).
-    pub(in crate::game) fn initialize_server_player(&mut self, uuid: u128, conn: u32) {
+    pub(in crate::game::server_side) fn initialize_server_player(&mut self, uuid: u128, conn: u32) {
         if self.server.entity_initialization.players.insert(uuid, conn) != Some(conn) {
             self.forget_entity_initialization(Holder::Player(uuid));
         }

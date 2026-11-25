@@ -119,7 +119,7 @@ impl Game<'_> {
         }
         self.mark_motion(out.len(), 0);
     }
-    pub(in crate::game) fn pickup_trident_geometry(
+    pub(in crate::game::client_side) fn pickup_trident_geometry(
         &self,
         camera: glam::DVec3,
         alpha: f64,

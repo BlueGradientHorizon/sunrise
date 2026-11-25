@@ -53,7 +53,9 @@ use sunrise_items::items::ItemStack;
 use sunrise_world::registry::BlockStateId;
 
 /// The engine's direction of a mod API block face.
-pub(in crate::game) fn block_face_direction(face: BlockFace) -> sunrise_core::geometry::Direction {
+pub(in crate::game::server_side) fn block_face_direction(
+    face: BlockFace,
+) -> sunrise_core::geometry::Direction {
     use sunrise_core::geometry::Direction;
     match face {
         BlockFace::Down => Direction::Down,
@@ -68,7 +70,7 @@ pub(in crate::game) fn block_face_direction(face: BlockFace) -> sunrise_core::ge
 
 /// `ProjectileUtil.getEntityHitResult`'s test on a candidate: grow its box and clip it
 /// against the segment. A segment starting inside the grown box finds no entry (`AABB.clip`).
-pub(in crate::game) fn clip_entity_ray(
+pub(in crate::game::server_side) fn clip_entity_ray(
     start: Vec3,
     end: Vec3,
     padding: Vec3,
@@ -93,7 +95,7 @@ pub(in crate::game) fn clip_entity_ray(
     ))
 }
 
-pub(in crate::game) fn list_query_body<T: Entity + Joined, const DIRECT: bool>(
+pub(in crate::game::server_side) fn list_query_body<T: Entity + Joined, const DIRECT: bool>(
     list: &JoinList<T, DIRECT>,
     join: JoinSeq,
 ) -> Option<Aabb> {
@@ -126,7 +128,7 @@ impl Game<'_> {
         Some((kind, position))
     }
 
-    pub(in crate::game) fn native_client_display(
+    pub(in crate::game::server_side) fn native_client_display(
         &self,
         entity: EntityRef,
     ) -> Option<&RemoteTextDisplay> {
@@ -151,7 +153,7 @@ impl Game<'_> {
 
     /// [`Self::native_entity_target_with_location`] for an entity resident in the open server
     /// level `dimension`, the one in place or a parked one.
-    pub(in crate::game) fn native_entity_target_in(
+    pub(in crate::game::server_side) fn native_entity_target_in(
         &self,
         entity: EntityRef,
         dimension: DimensionKey,
@@ -321,7 +323,7 @@ impl Game<'_> {
             .filter_map(|dim| self.level(dim.id()))
             .collect()
     }
-    pub(in crate::game) fn level_entity_candidates(
+    pub(in crate::game::server_side) fn level_entity_candidates(
         &self,
         level: LevelRef,
     ) -> impl Iterator<Item = EntityRef> + '_ {
@@ -371,7 +373,7 @@ impl Game<'_> {
         Ok(ControlFlow::Continue(()))
     }
     /// Engine callers that mutate after querying need a snapshot of the matching handles.
-    pub(in crate::game) fn level_entities_in(
+    pub(in crate::game::server_side) fn level_entities_in(
         &self,
         level: LevelRef,
         min: [f64; 3],
@@ -458,7 +460,7 @@ impl Game<'_> {
 
     /// File the rows admitted since the last query. One walk over the families files every
     /// member they hold at its position; only the rows no family walk reaches resolve one by one.
-    pub(in crate::game) fn file_server_section_members(&self, level: LevelRef) {
+    pub(in crate::game::server_side) fn file_server_section_members(&self, level: LevelRef) {
         let table = &self.resident_entities.table;
         if !table
             .borrow_mut()
@@ -493,7 +495,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn client_query_body(
+    pub(in crate::game::server_side) fn client_query_body(
         &self,
         entity: EntityRef,
         member: PickMember,
@@ -531,7 +533,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn query_body(
+    pub(in crate::game::server_side) fn query_body(
         &self,
         target: Target,
         join: JoinSeq,
@@ -635,7 +637,7 @@ impl Game<'_> {
         Ok(nearest.map(|(hit, _)| hit))
     }
 
-    pub(in crate::game) fn visit_entity_ray_hits(
+    pub(in crate::game::server_side) fn visit_entity_ray_hits(
         &self,
         level: LevelRef,
         from: [f64; 3],
@@ -1142,7 +1144,7 @@ impl Game<'_> {
         Some(self.target_rotation(self.native_entity_read_target(entity)?))
     }
 
-    pub(in crate::game) fn native_client_general(
+    pub(in crate::game::server_side) fn native_client_general(
         &self,
         entity: EntityRef,
     ) -> Option<&super::remote::RemoteGeneral> {
@@ -1168,7 +1170,10 @@ impl Game<'_> {
     /// one in place, as a kill credit can name one (`getEntityInAnyDimension`):
     /// its identity reads (`entity_kind`, `entity_uuid`, `entity_level`)
     /// answer from there. None on a client or for anything else.
-    pub(in crate::game) fn mob_in_other_level(&self, id: u32) -> Option<(super::Dim, &super::Mob)> {
+    pub(in crate::game::server_side) fn mob_in_other_level(
+        &self,
+        id: u32,
+    ) -> Option<(super::Dim, &super::Mob)> {
         use sunrise_client::join_seq::residency::table::EntityLookup;
         if !self.is_logical_server() {
             return None;
@@ -1259,7 +1264,7 @@ impl Game<'_> {
 }
 
 /// A saved UUID's four ints (`UUIDUtil.uuidFromIntArray`) as one number.
-pub(in crate::game) fn uuid_from_words(words: [i32; 4]) -> u128 {
+pub(in crate::game::server_side) fn uuid_from_words(words: [i32; 4]) -> u128 {
     words
         .iter()
         .fold(0, |uuid, w| (uuid << 32) | u128::from(*w as u32))
@@ -1506,7 +1511,7 @@ pub(in crate::game) mod tests {
         Ok(entities)
     }
 
-    pub(in crate::game) fn collect_game_all_entities(
+    pub(in crate::game::server_side) fn collect_game_all_entities(
         game: &super::Game<'_>,
         level: LevelRef,
     ) -> Result<Vec<EntityRef>, LevelReadError> {
@@ -1518,7 +1523,7 @@ pub(in crate::game) mod tests {
         Ok(entities)
     }
 
-    pub(in crate::game) fn collect_game_entities_in(
+    pub(in crate::game::server_side) fn collect_game_entities_in(
         game: &super::Game<'_>,
         level: LevelRef,
         min: [f64; 3],
@@ -1539,7 +1544,7 @@ pub(in crate::game) mod tests {
 
     /// [`run_fresh_cases`] with up to `at_once` children running together, for a test that runs
     /// alone in its job: each child still has its own process and folders.
-    pub(in crate::game) fn run_fresh_cases_at_once(
+    pub(in crate::game::server_side) fn run_fresh_cases_at_once(
         name: &str,
         flag: &str,
         cases: &[&str],
@@ -1623,7 +1628,7 @@ pub(in crate::game) mod tests {
         std::time::Duration::from_secs(900);
 
     /// `command`'s output, killing the child if it outlives [`FRESH_CASE_LIMIT`].
-    pub(in crate::game) fn output_within(
+    pub(in crate::game::server_side) fn output_within(
         command: &mut std::process::Command,
         name: &str,
         case: &str,
@@ -1668,7 +1673,7 @@ pub(in crate::game) mod tests {
 
     /// Whether libtest's summary says exactly one test passed: `--exact` with a name no test
     /// has runs nothing and still exits 0.
-    pub(in crate::game) fn ran_one_test(stdout: &str) -> bool {
+    pub(in crate::game::server_side) fn ran_one_test(stdout: &str) -> bool {
         stdout
             .lines()
             .any(|line| line.starts_with("test result: ok. 1 passed;"))
@@ -1687,7 +1692,9 @@ pub(in crate::game) mod tests {
     }
 
     /// The parent runs and checks an isolated child; the child loads the Part fixtures' types.
-    pub(in crate::game) fn declared_part_root(name: &str) -> Option<std::path::PathBuf> {
+    pub(in crate::game::server_side) fn declared_part_root(
+        name: &str,
+    ) -> Option<std::path::PathBuf> {
         if run_fresh_cases(name, "SUNRISE_DECLARED_PART_GAME_CHILD", &["valid"]) {
             return None;
         }
@@ -2241,7 +2248,7 @@ pub(in crate::game) mod tests {
     }
 
     /// A world with block `support` at (5, 64, 5) and a powered lever on its east face.
-    pub(in crate::game) fn lever_on(game: &mut super::super::Game<'_>, support: &str) {
+    pub(in crate::game::server_side) fn lever_on(game: &mut super::super::Game<'_>, support: &str) {
         use std::sync::Arc;
         use sunrise_client::chunk::Chunk;
 
@@ -2773,7 +2780,7 @@ pub(in crate::game) mod tests {
     /// of it, powered from (4, `y`, 5): whether the block above moved with the one below. Moved,
     /// its old cell is air once the push started. Each scenario has its own `y`, so none meets
     /// the moving blocks of another.
-    pub(in crate::game) fn piston_pulls_above(
+    pub(in crate::game::server_side) fn piston_pulls_above(
         game: &mut super::Game<'_>,
         y: i32,
         block: &str,
@@ -2877,7 +2884,7 @@ pub(in crate::game) mod tests {
         );
     }
 
-    pub(in crate::game) fn block_part_bounce_restitution_in_own_process() {
+    pub(in crate::game::server_side) fn block_part_bounce_restitution_in_own_process() {
         use sunrise_client::block_contact::{Contact, bounce_restitution};
         use sunrise_core::position::BlockPos;
 

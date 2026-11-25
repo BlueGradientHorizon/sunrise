@@ -114,7 +114,7 @@ impl ContainerLayout {
     /// The areas the screen draws outside `image`, in the order the screen
     /// draws them: the creative tab rows then the effect panels, or the
     /// recipe book then the effect panels.
-    pub(in crate::game) fn exclusion(&self) -> Vec<[f32; 4]> {
+    pub(in crate::game::client_side) fn exclusion(&self) -> Vec<[f32; 4]> {
         let mut areas = Vec::new();
         match self.tabs {
             Some([above, below]) => {
@@ -266,7 +266,11 @@ impl ScreenBuild {
     }
 
     /// The build's container layout, when it has one at this size.
-    pub(in crate::game) fn container(&self, width: f32, height: f32) -> Option<&ContainerLayout> {
+    pub(in crate::game::client_side) fn container(
+        &self,
+        width: f32,
+        height: f32,
+    ) -> Option<&ContainerLayout> {
         if self.size != (width, height) {
             return None;
         }
@@ -277,7 +281,11 @@ impl ScreenBuild {
     }
 
     /// The build's pause layout, when it has one at this size.
-    pub(in crate::game) fn pause(&self, width: f32, height: f32) -> Option<&PauseLayout> {
+    pub(in crate::game::client_side) fn pause(
+        &self,
+        width: f32,
+        height: f32,
+    ) -> Option<&PauseLayout> {
         if self.size != (width, height) {
             return None;
         }
@@ -288,7 +296,11 @@ impl ScreenBuild {
     }
 
     /// The build's chat layout, when it has one at this size.
-    pub(in crate::game) fn chat(&self, width: f32, height: f32) -> Option<&ChatLayout> {
+    pub(in crate::game::client_side) fn chat(
+        &self,
+        width: f32,
+        height: f32,
+    ) -> Option<&ChatLayout> {
         match &self.layout {
             BuildLayout::Chat(layout) if self.size == (width, height) => Some(layout),
             _ => None,
@@ -296,7 +308,7 @@ impl ScreenBuild {
     }
 
     /// The build's command block layout, when it has one at this size.
-    pub(in crate::game) fn command_block(
+    pub(in crate::game::client_side) fn command_block(
         &self,
         width: f32,
         height: f32,
@@ -429,13 +441,13 @@ pub(in crate::game) struct ScreenBuildState {
 
 impl ScreenBuildState {
     /// A fresh overlay instance must build even when its kind is unchanged.
-    pub(in crate::game) fn reopened(&mut self) {
+    pub(in crate::game::client_side) fn reopened(&mut self) {
         self.current = None;
     }
 
     /// The answer this frame already took for `screen` in `space`, so a
     /// second build of the same frame asks the mods nothing.
-    pub(in crate::game) fn effects_answer(
+    pub(in crate::game::client_side) fn effects_answer(
         &self,
         frame: u64,
         screen: Screen,
@@ -448,7 +460,7 @@ impl ScreenBuildState {
     }
 
     /// Keeps this frame's answer for a second build in the same frame.
-    pub(in crate::game) fn keep_effects_answer(
+    pub(in crate::game::client_side) fn keep_effects_answer(
         &self,
         frame: u64,
         screen: Screen,
@@ -464,7 +476,11 @@ impl ScreenBuildState {
     }
 
     /// The room the mods asked this frame for `screen`, if they were asked.
-    pub(in crate::game) fn room_answer(&self, frame: u64, screen: Screen) -> Option<f32> {
+    pub(in crate::game::client_side) fn room_answer(
+        &self,
+        frame: u64,
+        screen: Screen,
+    ) -> Option<f32> {
         self.room
             .get()
             .filter(|memo| memo.frame == frame && memo.screen == screen)
@@ -472,7 +488,12 @@ impl ScreenBuildState {
     }
 
     /// Keeps this frame's room for the layout's other inputs in the same frame.
-    pub(in crate::game) fn keep_room_answer(&self, frame: u64, screen: Screen, room: f32) {
+    pub(in crate::game::client_side) fn keep_room_answer(
+        &self,
+        frame: u64,
+        screen: Screen,
+        room: f32,
+    ) {
         self.room.set(Some(RoomMemo {
             frame,
             screen,
@@ -482,7 +503,7 @@ impl ScreenBuildState {
 
     /// Whether `sync` would make a new build for this screen, identity and
     /// size: the caller makes the fresh layout only then.
-    pub(in crate::game) fn needs_build(
+    pub(in crate::game::client_side) fn needs_build(
         &self,
         screen: Screen,
         shown: bool,
@@ -507,7 +528,7 @@ impl ScreenBuildState {
     /// comparison found a change. The same screen can keep its panel while its layout
     /// moves under it (a book opens, the effects answer changes, a creative
     /// tab swaps the slots), so a different layout remakes the build in place.
-    pub(in crate::game) fn sync(
+    pub(in crate::game::client_side) fn sync(
         &mut self,
         screen: Screen,
         shown: bool,
@@ -582,7 +603,7 @@ impl Game<'_> {
     }
 
     /// Framebuffer size and GUI projection, including before the renderer is initialized.
-    pub(in crate::game) fn gui_frame_now(&self) -> ([u32; 2], GuiSize) {
+    pub(in crate::game::client_side) fn gui_frame_now(&self) -> ([u32; 2], GuiSize) {
         let framebuffer = self.renderer.0.as_ref().map_or_else(
             || {
                 self.window.0.as_ref().map_or([1280, 720], |window| {
@@ -745,7 +766,7 @@ impl Game<'_> {
     /// painted, or nothing when `screen_render_pre` cancelled the drawing.
     /// Called once the screen has drawn, before `screen_render_post`; the
     /// input hooks then read it until the next draw.
-    pub(in crate::game) fn publish_screen_regions(
+    pub(in crate::game::client_side) fn publish_screen_regions(
         &mut self,
         batch: &HudBatch,
         region_screen: Option<Screen>,
@@ -798,7 +819,11 @@ impl Game<'_> {
     }
 
     /// The build's pause layout, when it holds `(width, height)`.
-    pub(in crate::game) fn built_pause(&self, width: f32, height: f32) -> Option<&PauseLayout> {
+    pub(in crate::game::client_side) fn built_pause(
+        &self,
+        width: f32,
+        height: f32,
+    ) -> Option<&PauseLayout> {
         self.screen_state
             .0
             .build
@@ -808,7 +833,11 @@ impl Game<'_> {
     }
 
     /// The build's chat layout, when it holds `(width, height)`.
-    pub(in crate::game) fn built_chat(&self, width: f32, height: f32) -> Option<&ChatLayout> {
+    pub(in crate::game::client_side) fn built_chat(
+        &self,
+        width: f32,
+        height: f32,
+    ) -> Option<&ChatLayout> {
         self.screen_state
             .0
             .build
@@ -818,7 +847,7 @@ impl Game<'_> {
     }
 
     /// The build's command block layout, when it holds `(width, height)`.
-    pub(in crate::game) fn built_command_block(
+    pub(in crate::game::client_side) fn built_command_block(
         &self,
         width: f32,
         height: f32,
@@ -860,7 +889,7 @@ impl Game<'_> {
     /// this size (or, for the edit screen, for this kind of block). An
     /// unchanged frame only compares: the boxes keep their size and nothing
     /// is laid out.
-    pub(in crate::game) fn text_screen_layout(
+    pub(in crate::game::client_side) fn text_screen_layout(
         &mut self,
         identity: Option<&'static str>,
         gui: GuiSize,

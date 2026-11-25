@@ -30,7 +30,7 @@ pub(in crate::game) const WOBBLE_NEGATIVE: i32 = 1;
 /// loot table, if any, is removed and `LootTable.fill` puts its roll in
 /// `item`. The roll draws from `LootTableSeed`, else the table's random
 /// sequence, else the level random (`LootContext.Builder.create`).
-pub(in crate::game) fn unpack_loot(
+pub(in crate::game::server_side) fn unpack_loot(
     tag: &mut Tag,
     loot: Option<&LootData>,
     random: &mut LegacyRandom,
@@ -101,7 +101,11 @@ impl Game<'_> {
     }
     /// `DecoratedPotBlockEntity.loadAdditional`: command edits and BlockInput
     /// loading write back to the same saved tag that live pot interactions use.
-    pub(in crate::game) fn set_pot_data(&mut self, pos: [i32; 3], input: &Tag) -> Option<bool> {
+    pub(in crate::game::server_side) fn set_pot_data(
+        &mut self,
+        pos: [i32; 3],
+        input: &Tag,
+    ) -> Option<bool> {
         let before = self.pot_data(pos)?;
         let mut input = input.clone();
         if let Tag::Compound(map) = &mut input {

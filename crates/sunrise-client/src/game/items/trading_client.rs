@@ -24,17 +24,9 @@ pub(in crate::game::client_side) use crate::game::server_side::trading::merchant
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::trading::on_scroller;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::trading::random_sequences_file;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::trading::read_random_sequences;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::trading::scrolled;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::trading::scroller_cursor;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::trading::scroller_rect;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::trading::write_random_sequences;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::trading::*;
 #[allow(unused_imports)]
@@ -53,7 +45,7 @@ pub(in crate::game::client_side) use sunrise_client::{
 
 impl Game<'_> {
     /// `MerchantScreen` rendering.
-    pub(in crate::game) fn draw_merchant(&mut self, batch: &mut HudBatch) -> bool {
+    pub(in crate::game::client_side) fn draw_merchant(&mut self, batch: &mut HudBatch) -> bool {
         let (ox, oy) = self.inventory_origin(batch);
         let local = (self.client.cursor.0 - ox, self.client.cursor.1 - oy);
         let Some(m) = self.station.as_ref().and_then(|s| s.merchant.as_ref()) else {
@@ -309,7 +301,7 @@ impl Game<'_> {
     }
     /// Clicks on the offer list; true when one was hit. A press on the
     /// scroller holds it (`MerchantScreen.mouseClicked`).
-    pub(in crate::game) fn merchant_click(&mut self, local: (f32, f32)) -> bool {
+    pub(in crate::game::client_side) fn merchant_click(&mut self, local: (f32, f32)) -> bool {
         let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut()) else {
             return false;
         };
@@ -339,7 +331,7 @@ impl Game<'_> {
         false
     }
     /// `MerchantScreen.mouseDragged`: the held scroller follows the cursor.
-    pub(in crate::game) fn merchant_drag(&mut self) -> bool {
+    pub(in crate::game::client_side) fn merchant_drag(&mut self) -> bool {
         let Some(size) = self
             .renderer
             .0
@@ -362,7 +354,10 @@ impl Game<'_> {
     /// Space presses it again, key repeats included, so holding Space
     /// refills the payment slots after every trade. Focus stays on the
     /// button through slot clicks (`ContainerEventHandler.mouseClicked`).
-    pub(in crate::game) fn merchant_key(&mut self, key: winit::keyboard::KeyCode) -> bool {
+    pub(in crate::game::client_side) fn merchant_key(
+        &mut self,
+        key: winit::keyboard::KeyCode,
+    ) -> bool {
         use winit::keyboard::KeyCode;
         if !matches!(key, KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space) {
             return false;

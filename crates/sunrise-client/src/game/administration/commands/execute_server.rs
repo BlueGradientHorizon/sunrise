@@ -32,7 +32,7 @@ pub(in crate::game::server_side) use sunrise_core::nbt::Tag;
 impl Game<'_> {
     /// `ExecuteCommand.isChunkLoaded`: an entity-ticking loading status and
     /// completed entity loading, rather than merely a retained lit column.
-    pub(in crate::game) fn command_chunk_loaded(&self, x: i32, z: i32) -> bool {
+    pub(in crate::game::server_side) fn command_chunk_loaded(&self, x: i32, z: i32) -> bool {
         self.tickets.0.levels().loaded_entity_ticking(x, z)
             && self.world.chunks.contains_key(&(x, z))
             && self.streaming.is_lit(x, z)
@@ -112,7 +112,12 @@ impl Game<'_> {
         Ok((false, 0))
     }
     /// `CommandResultCallback`s of a source's `store` chain, oldest first.
-    pub(in crate::game) fn deliver(&mut self, store: Option<u32>, success: bool, value: i32) {
+    pub(in crate::game::server_side) fn deliver(
+        &mut self,
+        store: Option<u32>,
+        success: bool,
+        value: i32,
+    ) {
         // The outermost source's own CommandResultCallback (harness record).
         if self.exec.0.functions.is_empty()
             && let Some(results) = self.cmds.0.results.as_mut()
@@ -134,14 +139,14 @@ impl Game<'_> {
         }
     }
     /// `Frame.returnSuccess`/`returnFailure` then `discard`.
-    pub(in crate::game) fn finish_return(&mut self, value: Option<i32>) {
+    pub(in crate::game::server_side) fn finish_return(&mut self, value: Option<i32>) {
         self.exec.0.returned = Some(value);
     }
     /// The players among `Entity.getPassengers` of `vehicle`: the player in
     /// place when it rides it, then the other players of the server riding it.
     /// A server's players are its guests, so a datapack running with no player
     /// in place still finds them.
-    pub(in crate::game) fn player_passengers(&self, vehicle: Target) -> Vec<Target> {
+    pub(in crate::game::server_side) fn player_passengers(&self, vehicle: Target) -> Vec<Target> {
         let id = match vehicle {
             Target::Mob(id) | Target::Boat(id) | Target::Cart(id) => id,
             _ => return Vec::new(),
@@ -393,7 +398,7 @@ impl Game<'_> {
     /// A conditional that ends the chain runs as a command: a test per source.
     /// `CommandSourceStack.handleError`: error delivery depends on the fork flag,
     /// including a fork that yielded only one source; success feedback is unchanged.
-    pub(in crate::game) fn run_conditional_terminal(
+    pub(in crate::game::server_side) fn run_conditional_terminal(
         &mut self,
         c: &Context,
         sources: Vec<Source>,
@@ -457,7 +462,7 @@ impl Game<'_> {
         }
     }
     /// ExecuteCommand: `ctx` is the context holding the `execute` literal.
-    pub(in crate::game) fn run_execute(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn run_execute(&mut self, ctx: &Context) -> R<i32> {
         // BuildContexts: a modifier may not bring the sources to this many.
         let fork_limit =
             self.ui
@@ -598,7 +603,7 @@ impl Game<'_> {
         }
     }
     /// Run a leaf command and report its outcome to the `store` callbacks.
-    pub(in crate::game) fn run_leaf(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn run_leaf(&mut self, id: &str, ctx: &Context) -> R<i32> {
         self.exec.0.callback = None;
         let store = self.server.command_source.and_then(|s| s.store);
         let result = self.execute_command(id, ctx);
@@ -617,7 +622,7 @@ impl Game<'_> {
         result
     }
     /// `return run <command>`: run it and return its result from the frame.
-    pub(in crate::game) fn run_return_run(&mut self, root: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn run_return_run(&mut self, root: &Context) -> R<i32> {
         let Some(command) = root.child.as_deref() else {
             return Err(err("command.unknown.command", &[]));
         };

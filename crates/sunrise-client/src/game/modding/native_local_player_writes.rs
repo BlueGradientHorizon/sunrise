@@ -44,7 +44,7 @@ impl Game<'_> {
     }
 
     /// Whether the local player can move itself rather than being held in place.
-    pub(in crate::game) fn can_move_local_player(&self) -> bool {
+    pub(in crate::game::client_side) fn can_move_local_player(&self) -> bool {
         self.riding.is_none()
             && self.sleeping.is_none()
             && self.client.screen != super::Screen::Dead

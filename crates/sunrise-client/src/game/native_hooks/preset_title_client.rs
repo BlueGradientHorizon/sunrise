@@ -9,7 +9,7 @@ pub(in crate::game::client_side) use winit::keyboard::PhysicalKey;
 
 impl Game<'_> {
     /// Give the bound editor its key before normal title-screen navigation.
-    pub(in crate::game) fn preset_editor_key(&self, key: KeyCode) -> bool {
+    pub(in crate::game::client_side) fn preset_editor_key(&self, key: KeyCode) -> bool {
         let physical = PhysicalKey::Code(key);
         self.preset_editor_title()
             .and_then(|title| title.preset_editor_session())
@@ -42,7 +42,7 @@ impl Game<'_> {
     }
     /// Forward printable characters to the open bound preset editor. Returns `true` if the editor
     /// consumed any character.
-    pub(in crate::game) fn preset_editor_type_text(&self, text: &str) -> bool {
+    pub(in crate::game::client_side) fn preset_editor_type_text(&self, text: &str) -> bool {
         let Some(session) = self
             .preset_editor_title()
             .and_then(|title| title.preset_editor_session())

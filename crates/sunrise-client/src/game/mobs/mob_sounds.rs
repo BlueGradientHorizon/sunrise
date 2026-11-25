@@ -14,7 +14,7 @@ impl Game<'_> {
     /// `LocalPlayer.startRiding` on a happy ghast or an `AbstractNautilus`:
     /// its riding sound (a minecart's are `start_cart_sounds`'). Then what the
     /// instance reads about the mob the player rides.
-    pub(in crate::game) fn start_riding_sound(&mut self) -> Option<RiddenSound> {
+    pub(in crate::game::client_side) fn start_riding_sound(&mut self) -> Option<RiddenSound> {
         let ridden = self
             .riding
             .and_then(|id| self.mobs.iter().find(|m| m.id == id && !m.removed))
@@ -59,7 +59,7 @@ impl Game<'_> {
     /// Start the buzz of each bee that has none (or whose anger changed, which
     /// swaps the flying loop for the aggressive one and back), forget the mobs
     /// that are gone, and read what the instances follow.
-    pub(in crate::game) fn start_mob_sounds(&mut self) -> Vec<MobSound> {
+    pub(in crate::game::client_side) fn start_mob_sounds(&mut self) -> Vec<MobSound> {
         let game_time = self.world.game_time;
         let mut mobs = Vec::new();
         let mut bee_indices = Vec::new();

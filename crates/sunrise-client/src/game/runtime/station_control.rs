@@ -64,7 +64,7 @@ impl Game<'_> {
         }
         self.client.cursor = saved;
     }
-    pub(in crate::game) fn gui_origin(&self) -> Result<(f32, f32)> {
+    pub(in crate::game::client_side) fn gui_origin(&self) -> Result<(f32, f32)> {
         let size = self
             .renderer
             .0
@@ -77,7 +77,10 @@ impl Game<'_> {
         )))
     }
     /// Commands not known to control.rs; None when unknown here too.
-    pub(in crate::game) fn station_command(&mut self, words: &[&str]) -> Result<Option<Value>> {
+    pub(in crate::game::client_side) fn station_command(
+        &mut self,
+        words: &[&str],
+    ) -> Result<Option<Value>> {
         let arg = |i: usize| {
             words
                 .get(i)

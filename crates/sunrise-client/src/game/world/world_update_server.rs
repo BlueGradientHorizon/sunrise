@@ -1,10 +1,6 @@
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::*;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::world_update::order_uploads;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::world_update::section_distance_sq;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::world_update::*;
 
 impl Game<'_> {

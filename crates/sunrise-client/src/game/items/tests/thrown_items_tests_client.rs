@@ -3,8 +3,6 @@ pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::game_tests::tests::server_game;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::item_entities::thrown_items_tests::standing_game;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::item_entities::thrown_items_tests::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::{

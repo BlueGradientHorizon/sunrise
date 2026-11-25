@@ -6,12 +6,6 @@ pub(in crate::game::server_side) use super::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::sign_edit::SignEditor;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::sign_edit::done_button;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::sign_edit::done_label;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::sign_edit::sign_box;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::sign_edit::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use sunrise_client::{

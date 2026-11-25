@@ -10,14 +10,14 @@ use super::super::{minecarts::cart_at, native_ticks::TickRound};
 use super::Game;
 
 /// `Entity.checkBelowWorld`: `getY() < level.getMinY() - 64`.
-pub(in crate::game) fn below_world(y: f64, min_y: i32) -> bool {
+pub(in crate::game::server_side) fn below_world(y: f64, min_y: i32) -> bool {
     y < f64::from(min_y - 64)
 }
 
 impl Game<'_> {
     /// `Entity.checkBelowWorld` for the boat at `i`: true when it fell out of
     /// the world and is gone.
-    pub(in crate::game) fn boat_below_world(&mut self, i: usize) -> bool {
+    pub(in crate::game::server_side) fn boat_below_world(&mut self, i: usize) -> bool {
         if !below_world(self.boats[i].position.y, self.world.shape.min_y) {
             return false;
         }

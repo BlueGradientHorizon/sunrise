@@ -34,7 +34,7 @@ pub(in crate::game) struct ItemTables<'a> {
 }
 
 impl<'w> Game<'w> {
-    pub(in crate::game) fn item_tables(&self) -> ItemTables<'_> {
+    pub(in crate::game::server_side) fn item_tables(&self) -> ItemTables<'_> {
         ItemTables {
             world: &self.world,
             facts: self.res.facts(),
@@ -51,7 +51,7 @@ impl<'w> Game<'w> {
 impl ItemTables<'_> {
     /// `ItemEntity.tick` up to its move's vertical contact: the fluids, the water splash, the move
     /// (pushed out at `escape_speed` when inside a block) and its fall.
-    pub(in crate::game) fn move_item(
+    pub(in crate::game::server_side) fn move_item(
         &self,
         item: &mut ItemEntity,
         escape_speed: Option<f32>,
@@ -112,7 +112,7 @@ impl ItemTables<'_> {
     }
     /// The rest of the move after its vertical contact: block effects, bubble columns, settling
     /// and the water entry. Whether the item lives on.
-    pub(in crate::game) fn settle_item(
+    pub(in crate::game::server_side) fn settle_item(
         &self,
         item: &mut ItemEntity,
         no_physics: bool,
@@ -150,7 +150,7 @@ impl ItemTables<'_> {
 
 /// `getEntityCollisions(entity, bounds.expandTowards(movement))`: the box around an item that its
 /// move reads others' boxes in (a block of slack for the next velocity).
-pub(in crate::game) fn reach(item: &ItemEntity) -> Aabb {
+pub(in crate::game::server_side) fn reach(item: &ItemEntity) -> Aabb {
     let v = item.velocity;
     item.bounds()
         .inflate(Vec3::new(v.x.abs() + 1.0, v.y.abs() + 1.0, v.z.abs() + 1.0))
@@ -216,7 +216,7 @@ pub(in crate::game) struct Moves(Vec<Option<Ahead>>);
 impl Moves {
     /// The moves of the items that will tick (`ticks`), on the helper threads; none while the
     /// parallel tick is off, for few items, or with a mod that could see an item's move.
-    pub(in crate::game) fn work_out(
+    pub(in crate::game::server_side) fn work_out(
         game: &Game,
         items: &[ItemEntity],
         obstacles: &ObstacleGrid,
@@ -262,7 +262,7 @@ impl Moves {
     /// Item `i`'s move, put in place, when it was worked out and no merge changed the item since.
     /// Under `SUNRISE_PARALLEL_TICK=verify` the move is made again at its turn, on a copy, and a
     /// difference is logged.
-    pub(in crate::game) fn take(
+    pub(in crate::game::server_side) fn take(
         &mut self,
         i: usize,
         item: &mut ItemEntity,

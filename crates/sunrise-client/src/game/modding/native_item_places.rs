@@ -34,7 +34,7 @@ pub(in crate::game) enum PlayerStackSlot {
 }
 
 impl PlayerStackSlot {
-    pub(in crate::game) fn borrow<'a>(
+    pub(in crate::game::server_side) fn borrow<'a>(
         place: &ItemPlace,
         inventory: &'a [Option<ItemStack>],
         armor: &'a [Option<ItemStack>; 4],
@@ -69,7 +69,7 @@ impl PlayerStackSlot {
     }
 
     /// The same cell after preparation and journaling, neither of which changes the row.
-    pub(in crate::game) fn stack_mut<'a>(
+    pub(in crate::game::server_side) fn stack_mut<'a>(
         self,
         inventory: &'a mut [Option<ItemStack>],
         armor: &'a mut [Option<ItemStack>; 4],
@@ -87,7 +87,7 @@ impl PlayerStackSlot {
 
 impl Game<'_> {
     /// The player a place belongs to, if a player's: a cursor's only while its menu is open.
-    pub(in crate::game) fn place_player(&self, place: &ItemPlace) -> Option<u128> {
+    pub(in crate::game::server_side) fn place_player(&self, place: &ItemPlace) -> Option<u128> {
         match place {
             ItemPlace::PlayerSlot { player, .. } | ItemPlace::PlayerHand { player, .. } => {
                 Some(*player)
@@ -140,11 +140,11 @@ impl Game<'_> {
         Some(self.boats.update(i, |b| edit(&mut b.items, position)))
     }
     /// Whether this game simulates a world: a client's copy has no places to write.
-    pub(in crate::game) fn places_simulated(&self) -> bool {
+    pub(in crate::game::server_side) fn places_simulated(&self) -> bool {
         self.is_logical_server()
     }
     /// The slot of the player in place that `place` names.
-    pub(in crate::game) fn player_place(
+    pub(in crate::game::server_side) fn player_place(
         &mut self,
         place: &ItemPlace,
     ) -> Option<&mut Option<ItemStack>> {
@@ -161,7 +161,7 @@ impl Game<'_> {
         }
     }
     /// Player place insert and extract use the command/host slot writer (and its journal).
-    pub(in crate::game) fn write_player_place(
+    pub(in crate::game::server_side) fn write_player_place(
         &mut self,
         place: &ItemPlace,
         stack: Option<ItemStack>,
@@ -250,7 +250,7 @@ impl Game<'_> {
     /// Borrow the stack in a native place without initializing a player. Reading a chest
     /// vehicle's `EntitySlot` unpacks its pending loot table without a player; equipment
     /// overlays are only applied when the caller projects a complete stack.
-    pub(in crate::game) fn game_stack_source(
+    pub(in crate::game::server_side) fn game_stack_source(
         &mut self,
         place: &ItemPlace,
     ) -> Option<EquipmentRead<'_>> {
@@ -371,7 +371,7 @@ impl Game<'_> {
     /// Prepare against the occupied slot and apply to that same cell, without lending a Host.
     /// Preparation can refuse or leave the slot unchanged; only a prepared write gets journaled
     /// and published.
-    pub(in crate::game) fn edit_resolved_stack<P>(
+    pub(in crate::game::server_side) fn edit_resolved_stack<P>(
         &mut self,
         place: &ItemPlace,
         tx: &TransactionContext,
@@ -923,7 +923,7 @@ impl Game<'_> {
     }
     /// Project the equipment before a write. Outer `None` is an unavailable place; inner
     /// `None` is an empty slot that can receive an item.
-    pub(in crate::game) fn equipment_stack(
+    pub(in crate::game::server_side) fn equipment_stack(
         &self,
         entity: u32,
         slot: EquipmentSlot,
@@ -933,7 +933,7 @@ impl Game<'_> {
     }
 
     /// A mob's equipment with its worn overlays, or an armor stand's resident equipment.
-    pub(in crate::game) fn equipment_stack_source(
+    pub(in crate::game::server_side) fn equipment_stack_source(
         &self,
         entity: u32,
         slot: EquipmentSlot,
@@ -951,7 +951,7 @@ impl Game<'_> {
     }
     /// The equipment write `set_equipment` makes (#932), deferred: whether it
     /// landed. False where the entity is gone or a client's copy refuses.
-    pub(in crate::game) fn write_entity_equipment(
+    pub(in crate::game::server_side) fn write_entity_equipment(
         &mut self,
         entity: u32,
         slot: EquipmentSlot,
@@ -1399,7 +1399,7 @@ pub(in crate::game) mod tests {
     }
 
     /// A zombie mob, standing at the origin.
-    pub(in crate::game) fn zombie(game: &mut super::Game<'_>) -> u32 {
+    pub(in crate::game::server_side) fn zombie(game: &mut super::Game<'_>) -> u32 {
         let kind = game
             .res
             .mob_types()
@@ -2660,7 +2660,7 @@ pub(in crate::game) mod tests {
         });
     }
 
-    pub(in crate::game) fn saved_mob_attribute(
+    pub(in crate::game::server_side) fn saved_mob_attribute(
         game: &super::Game<'_>,
         entity: u32,
         attribute: &str,
@@ -3123,14 +3123,14 @@ pub(in crate::game) mod tests {
     }
 
     /// The open menu of guest 1 (UUID 123).
-    pub(in crate::game) fn menu_of(game: &super::Game<'_>) -> MenuRef {
+    pub(in crate::game::server_side) fn menu_of(game: &super::Game<'_>) -> MenuRef {
         let player = game.player(123).unwrap();
         game.player_container_menu(player).unwrap()
     }
 
     /// One write at `place` in a transaction of its own: how many went in (`amount > 0`) or
     /// came out (`amount < 0`), committed or aborted.
-    pub(in crate::game) fn write(
+    pub(in crate::game::server_side) fn write(
         game: &mut super::Game<'_>,
         place: &ItemPlace,
         item: &str,
@@ -3367,7 +3367,7 @@ pub(in crate::game) mod tests {
         });
     }
 
-    pub(in crate::game) fn with_crafted_by_handler_map(
+    pub(in crate::game::server_side) fn with_crafted_by_handler_map(
         accepts_replacement: bool,
         on_insert: Option<sunrise_client::lan::PlayerSender>,
         test: impl FnOnce(&mut super::Game<'_>, ItemPlace, i32, mod_api::ItemStack),
@@ -4099,7 +4099,9 @@ pub(in crate::game) mod tests {
     }
 
     /// The guests' inventories, by connection.
-    pub(in crate::game) fn inventories(game: &super::Game<'_>) -> Vec<Vec<Option<ItemStack>>> {
+    pub(in crate::game::server_side) fn inventories(
+        game: &super::Game<'_>,
+    ) -> Vec<Vec<Option<ItemStack>>> {
         let guests = &game.lan.as_ref().unwrap().hub.guests;
         guests.iter().map(|g| g.inventory.clone()).collect()
     }
@@ -4151,7 +4153,7 @@ pub(in crate::game) mod tests {
 
     /// Two guests' trade on a menu, as the docs' recipe has it: each offer's index must still
     /// hold exactly what was offered, and goes whole to the other player, or nothing moves.
-    pub(in crate::game) fn trade(
+    pub(in crate::game::server_side) fn trade(
         game: &mut super::Game<'_>,
         a: &[Offer],
         b: &[Offer],
@@ -4187,7 +4189,10 @@ pub(in crate::game) mod tests {
 
     /// A seller with 3 diamonds in slot 0 and a buyer with 5 emeralds in slot 0, beside
     /// `buyer_rest` in every other slot and the off hand.
-    pub(in crate::game) fn traders(game: &mut super::Game<'_>, buyer_rest: Option<ItemStack>) {
+    pub(in crate::game::server_side) fn traders(
+        game: &mut super::Game<'_>,
+        buyer_rest: Option<ItemStack>,
+    ) {
         open_to_lan(game);
         let mut seller = guest(1);
         seller.inventory[0] = Some(ItemStack::new("minecraft:diamond", 3));
@@ -4205,7 +4210,7 @@ pub(in crate::game) mod tests {
             .extend([seller, buyer]);
     }
 
-    pub(in crate::game) fn offers() -> ([Offer; 1], [Offer; 1]) {
+    pub(in crate::game::server_side) fn offers() -> ([Offer; 1], [Offer; 1]) {
         (
             [(0, ItemStack::new("minecraft:diamond", 3))],
             [(0, ItemStack::new("minecraft:emerald", 5))],
@@ -4652,7 +4657,10 @@ pub(in crate::game) mod tests {
     }
 
     /// Runs `test` with a mod answering `ENTITY_AUTOMATION` for pigs with `bin`.
-    pub(in crate::game) fn with_bin_pigs(bin: &Bin, test: impl FnOnce(&mut super::Game<'_>)) {
+    pub(in crate::game::server_side) fn with_bin_pigs(
+        bin: &Bin,
+        test: impl FnOnce(&mut super::Game<'_>),
+    ) {
         use mod_api::{self, Hooks, ModEntry, Mods, Registrar};
         struct Pigs(Bin);
         #[mod_api::__subscriptions]
@@ -4671,7 +4679,7 @@ pub(in crate::game) mod tests {
     }
 
     /// A hopper at (0, 64, 0) facing `facing` holding `stack`, in an otherwise empty world.
-    pub(in crate::game) fn hopper_with(
+    pub(in crate::game::server_side) fn hopper_with(
         game: &mut super::Game<'_>,
         facing: &str,
         stack: Option<ItemStack>,
@@ -4696,7 +4704,7 @@ pub(in crate::game) mod tests {
             .insert((0, 64, 0), BlockEntity::Chest(slots));
     }
 
-    pub(in crate::game) fn pig(game: &mut super::Game<'_>, id: u32, y: f64) {
+    pub(in crate::game::server_side) fn pig(game: &mut super::Game<'_>, id: u32, y: f64) {
         let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
         game.mobs.push(sunrise_client::mobs::Mob::new(
             id,
@@ -4706,7 +4714,7 @@ pub(in crate::game) mod tests {
         ));
     }
 
-    pub(in crate::game) fn hopper_slot(game: &super::Game<'_>) -> Option<ItemStack> {
+    pub(in crate::game::server_side) fn hopper_slot(game: &super::Game<'_>) -> Option<ItemStack> {
         match game.world.block_entities.get(&(0, 64, 0)) {
             Some(BlockEntity::Chest(slots)) => slots[0].clone(),
             _ => panic!("the hopper is gone"),
@@ -5137,7 +5145,9 @@ pub(in crate::game) mod tests {
     }
 
     /// A chunk at the origin, open to LAN, with a full water cauldron at (2, 64, 0).
-    pub(in crate::game) fn with_cauldron(game: &mut super::Game<'_>) -> mod_api::LevelRef {
+    pub(in crate::game::server_side) fn with_cauldron(
+        game: &mut super::Game<'_>,
+    ) -> mod_api::LevelRef {
         use mod_api::BlockUpdateFlags;
         use sunrise_client::chunk::Chunk;
         open_to_lan(game);

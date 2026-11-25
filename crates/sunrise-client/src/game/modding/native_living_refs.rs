@@ -36,7 +36,7 @@ use sunrise_client::mobs::{
 use sunrise_world::attributes::{Modifier, Operation};
 
 /// A player's armour slots (`armor`, head first) by equipment slot.
-pub(in crate::game) fn armor_index(slot: EquipmentSlot) -> Option<usize> {
+pub(in crate::game::server_side) fn armor_index(slot: EquipmentSlot) -> Option<usize> {
     match slot {
         EquipmentSlot::Head => Some(0),
         EquipmentSlot::Chest => Some(1),
@@ -47,7 +47,7 @@ pub(in crate::game) fn armor_index(slot: EquipmentSlot) -> Option<usize> {
 }
 
 /// A player's stack in `slot`, from its inventory, armour and off hand.
-pub(in crate::game) fn player_slot<'a>(
+pub(in crate::game::server_side) fn player_slot<'a>(
     inventory: &'a [Option<ItemStack>],
     selected: usize,
     armor: &'a [Option<ItemStack>; 4],
@@ -74,7 +74,7 @@ pub(in crate::game) fn lend_equipment(
 }
 
 /// Use checked slot metadata to lend the same lazy view to readers and component editors.
-pub(in crate::game) fn with_equipment_view<R>(
+pub(in crate::game::server_side) fn with_equipment_view<R>(
     stack: &EquipmentRead<'_>,
     metadata: StackReadMetadata,
     read: impl for<'a> FnOnce(ItemStackView<'a>) -> R,
@@ -92,7 +92,7 @@ pub(in crate::game) fn hand_slot(hand: Hand) -> EquipmentSlot {
 }
 
 /// The `/item` slot name of an equipment slot.
-pub(in crate::game) fn slot_name(slot: EquipmentSlot) -> &'static str {
+pub(in crate::game::server_side) fn slot_name(slot: EquipmentSlot) -> &'static str {
     match slot {
         EquipmentSlot::MainHand => "weapon.mainhand",
         EquipmentSlot::OffHand => "weapon.offhand",
@@ -105,7 +105,7 @@ pub(in crate::game) fn slot_name(slot: EquipmentSlot) -> &'static str {
     }
 }
 
-pub(in crate::game) fn world_equipment_slot(
+pub(in crate::game::server_side) fn world_equipment_slot(
     slot: EquipmentSlot,
 ) -> sunrise_core::equipment_slot::EquipmentSlot {
     use sunrise_core::equipment_slot::EquipmentSlot as WorldSlot;
@@ -123,22 +123,24 @@ pub(in crate::game) fn world_equipment_slot(
 
 /// `LivingEntity.isAlive`'s health test: above 0, so a NaN health loaded from
 /// a save is not alive either.
-pub(in crate::game) fn alive_at(health: f32) -> bool {
+pub(in crate::game::server_side) fn alive_at(health: f32) -> bool {
     health > 0.0
 }
 
-pub(in crate::game) fn equipment_stack(stack: Option<ItemStack>) -> Option<ItemStack> {
+pub(in crate::game::server_side) fn equipment_stack(stack: Option<ItemStack>) -> Option<ItemStack> {
     stack.filter(|s| s.count > 0 && &*s.item != "minecraft:air")
 }
 
 /// The map's modifiers as the API's, in their order. Their ids are canonical
 /// (`Modifier` normalizes them), so none is dropped.
-pub(in crate::game) fn attribute_modifiers(list: Vec<Modifier>) -> Vec<AttributeModifier> {
+pub(in crate::game::server_side) fn attribute_modifiers(
+    list: Vec<Modifier>,
+) -> Vec<AttributeModifier> {
     list.iter().filter_map(api_modifier).collect()
 }
 
 /// One map modifier as the API's.
-pub(in crate::game) fn api_modifier(m: &Modifier) -> Option<AttributeModifier> {
+pub(in crate::game::server_side) fn api_modifier(m: &Modifier) -> Option<AttributeModifier> {
     Some(AttributeModifier::new(
         Identifier::parse(m.id()).ok()?,
         m.amount(),
@@ -222,7 +224,7 @@ impl Game<'_> {
     }
 
     /// Lend the victim's own body and level to the player path without switching turns or levels.
-    pub(in crate::game) fn player_knockback_from_mod(
+    pub(in crate::game::server_side) fn player_knockback_from_mod(
         &mut self,
         living: LivingRef,
         target: Target,
@@ -288,7 +290,7 @@ impl Game<'_> {
 
     /// [`Self::attack_of`] for a remembered attacker, which may be a mob in another loaded
     /// level: its main-hand stack is read there.
-    pub(in crate::game) fn last_attacker_attack(&self, attacker: u32) -> Attack {
+    pub(in crate::game::server_side) fn last_attacker_attack(&self, attacker: u32) -> Attack {
         let mut attack = self.attack_of(attacker as i32);
         if let Some((_, mob)) = self.mob_in_other_level(attacker)
             && !mod_api::__private::mods().is_empty()
@@ -298,7 +300,7 @@ impl Game<'_> {
         attack
     }
 
-    pub(in crate::game) fn knock_back_armor_stand(
+    pub(in crate::game::server_side) fn knock_back_armor_stand(
         &mut self,
         id: u32,
         mut knock: Knock,
@@ -481,14 +483,18 @@ impl Game<'_> {
     }
 
     /// A mod's base clamped to the attribute's range, which `/attribute base set` and the entity's own code skip.
-    pub(in crate::game) fn mod_base_in_range(&self, attribute: &str, base: f64) -> f64 {
+    pub(in crate::game::server_side) fn mod_base_in_range(
+        &self,
+        attribute: &str,
+        base: f64,
+    ) -> f64 {
         self.motion
             .attributes
             .definition(attribute)
             .map_or(base, |d| d.sanitize(base))
     }
 
-    pub(in crate::game) fn native_living_add_modifier(
+    pub(in crate::game::server_side) fn native_living_add_modifier(
         &mut self,
         living: LivingRef,
         attribute: &str,
@@ -520,7 +526,7 @@ impl Game<'_> {
         .is_some_and(|write| self.native_living_write(living, attribute, write))
     }
 
-    pub(in crate::game) fn native_living_write(
+    pub(in crate::game::server_side) fn native_living_write(
         &mut self,
         living: LivingRef,
         name: &str,
@@ -531,7 +537,7 @@ impl Game<'_> {
             .unwrap_or(false)
     }
 
-    pub(in crate::game) fn native_living_attribute(
+    pub(in crate::game::server_side) fn native_living_attribute(
         &self,
         living: LivingRef,
         name: &str,
@@ -543,7 +549,7 @@ impl Game<'_> {
     /// The entity's type key, for the catalog's attribute defaults: the same
     /// set the value and base reads answer for. On a client only the local
     /// player resolves (`native_living_read_target`).
-    pub(in crate::game) fn native_living_attribute_entity(
+    pub(in crate::game::server_side) fn native_living_attribute_entity(
         &self,
         living: LivingRef,
     ) -> Option<&str> {
@@ -562,7 +568,7 @@ impl Game<'_> {
 
     /// The modifiers of `name` on `target`'s attribute map, as
     /// `native_target_attribute` reads its value.
-    pub(in crate::game) fn native_target_attribute_modifiers(
+    pub(in crate::game::server_side) fn native_target_attribute_modifiers(
         &self,
         target: Target,
         name: &str,
@@ -622,7 +628,7 @@ impl Game<'_> {
         )
     }
 
-    pub(in crate::game) fn native_target_attribute(
+    pub(in crate::game::server_side) fn native_target_attribute(
         &self,
         target: Target,
         name: &str,
@@ -939,7 +945,10 @@ impl Game<'_> {
     }
 
     /// The holder's `lastHurtMob` id and `lastHurtMobTimestamp`, its target unresolved.
-    pub(in crate::game) fn living_last_hurt_record(&self, living: LivingRef) -> Option<(u32, i32)> {
+    pub(in crate::game::server_side) fn living_last_hurt_record(
+        &self,
+        living: LivingRef,
+    ) -> Option<(u32, i32)> {
         match self.native_living_target(living)? {
             Target::Player => self.player.as_ref()?.health.last_hurt_mob,
             Target::Guest(conn) => {
@@ -965,7 +974,7 @@ impl Game<'_> {
     /// `EntityReference.getEntity` for a kill credit, which looks through
     /// every level (`getEntityInAnyDimension`): the entity `id` in the level
     /// in place, else [`Self::credited_elsewhere`].
-    pub(in crate::game) fn credited_entity(&self, id: u32) -> Option<EntityRef> {
+    pub(in crate::game::server_side) fn credited_entity(&self, id: u32) -> Option<EntityRef> {
         self.entity(id).or_else(|| self.credited_elsewhere(id))
     }
 
@@ -973,7 +982,7 @@ impl Game<'_> {
     /// id in another loaded level (a vehicle keeps it), or the id the
     /// dimension changes since gave that same mob (`Levels::travelled`), in
     /// whichever loaded level it is now. Never another entity holding its UUID.
-    pub(in crate::game) fn credited_elsewhere(&self, id: u32) -> Option<EntityRef> {
+    pub(in crate::game::server_side) fn credited_elsewhere(&self, id: u32) -> Option<EntityRef> {
         let epoch = self.native_lifecycle.epoch()?;
         let mut id = id;
         loop {
@@ -1183,7 +1192,7 @@ impl Game<'_> {
     /// transaction — an abort stays quiet — while the equipment and the
     /// attribute map change at once, as later steps of the same transaction
     /// read them.
-    pub(in crate::game) fn write_living_equipment(
+    pub(in crate::game::server_side) fn write_living_equipment(
         &mut self,
         living: LivingRef,
         slot: EquipmentSlot,
@@ -1376,7 +1385,7 @@ impl Game<'_> {
         Some(sunrise_client::lan::playerdata::ints_uuid(owner))
     }
     /// The mob a handle names, when it is a `TamableAnimal` or an `AbstractHorse`.
-    pub(in crate::game) fn native_tamable(&self, living: LivingRef) -> Option<&Mob> {
+    pub(in crate::game::server_side) fn native_tamable(&self, living: LivingRef) -> Option<&Mob> {
         let Target::Mob(id) = self.native_living_target(living)? else {
             return None;
         };
@@ -1385,7 +1394,7 @@ impl Game<'_> {
     /// Runs `f` as the player `target` names: the one acting now, or a guest
     /// in the level in place through `as_guest` (`native_as_player`). False
     /// when it didn't run.
-    pub(in crate::game) fn native_as_living_player(
+    pub(in crate::game::server_side) fn native_as_living_player(
         &mut self,
         target: Target,
         f: impl FnOnce(&mut Self),
@@ -1400,7 +1409,7 @@ impl Game<'_> {
         self.native_as_player(uuid, f)
     }
     /// The acting player's half of `living_drop`: the id of the item entity.
-    pub(in crate::game) fn native_player_drop(
+    pub(in crate::game::server_side) fn native_player_drop(
         &mut self,
         stack: ItemStack,
         randomly: bool,
@@ -1416,7 +1425,7 @@ impl Game<'_> {
         }
     }
     /// A mob's half of `living_drop`: the id of the item entity.
-    pub(in crate::game) fn native_mob_drop(
+    pub(in crate::game::server_side) fn native_mob_drop(
         &mut self,
         id: u32,
         stack: ItemStack,
@@ -1982,7 +1991,11 @@ pub(in crate::game) mod tests {
     pub(in crate::game) const ZOMBIE_UUID: [i32; 4] = [7, 8, 9, 10];
     pub(in crate::game) const ZOMBIE_NBT: &str = "{NoAI:1b,UUID:[I;7,8,9,10]}";
 
-    pub(in crate::game) fn summon_mob(game: &mut super::Game<'_>, kind: &str, nbt: &str) -> u32 {
+    pub(in crate::game::server_side) fn summon_mob(
+        game: &mut super::Game<'_>,
+        kind: &str,
+        nbt: &str,
+    ) -> u32 {
         match game
             .summon_with_nbt(kind, [0.5, 70.0, 0.5], nbt)
             .unwrap()
@@ -1995,7 +2008,7 @@ pub(in crate::game) mod tests {
 
     /// A pig hurt by a zombie of [`ZOMBIE_UUID`] in the Overworld, with the
     /// Nether's spawn chunk forced loaded so it stays parked beside it.
-    pub(in crate::game) fn hurt_pig(game: &mut super::Game<'_>) -> (u32, u32) {
+    pub(in crate::game::server_side) fn hurt_pig(game: &mut super::Game<'_>) -> (u32, u32) {
         use crate::game::Dim;
         use std::sync::Arc;
         game.server.world_root = game.save.0.root.clone();
@@ -2018,7 +2031,7 @@ pub(in crate::game) mod tests {
         (pig, zombie)
     }
 
-    pub(in crate::game) fn send_to_the_nether(game: &mut super::Game<'_>, mob: u32) {
+    pub(in crate::game::server_side) fn send_to_the_nether(game: &mut super::Game<'_>, mob: u32) {
         use crate::game::{Dim, vehicle_teleport::TeleportMotion};
         assert!(
             game.teleport_vehicle_across(

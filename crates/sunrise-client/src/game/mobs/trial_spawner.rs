@@ -123,7 +123,7 @@ impl Game<'_> {
     /// the mods' hook (`api_block_entity_update_tag`), and the block
     /// states with `trial_spawner_state=active`, the only ones whose tag
     /// holds `next_mob_spawns_at` (`TrialSpawnerStateData.getUpdateTag`).
-    pub(in crate::game) fn lan_update_tag_sources(
+    pub(in crate::game::server_side) fn lan_update_tag_sources(
         &self,
         encoder: &mut sunrise_client::lan::chunks::ChunkEncoder,
     ) {
@@ -168,7 +168,7 @@ impl Game<'_> {
             block.properties.get("ominous").is_some_and(|v| v == "true"),
         ))
     }
-    pub(in crate::game) fn server_tick_trial_spawner(
+    pub(in crate::game::server_side) fn server_tick_trial_spawner(
         &mut self,
         key: Pos,
         spawner: &mut TrialSpawner,

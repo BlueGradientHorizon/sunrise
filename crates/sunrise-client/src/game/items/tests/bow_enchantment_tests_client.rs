@@ -1,6 +1,4 @@
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::use_hand::bow_enchantment_tests::heading;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::use_hand::bow_enchantment_tests::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::{

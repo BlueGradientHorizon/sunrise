@@ -66,17 +66,23 @@ pub(in crate::game) struct FangState {
     pub(in crate::game) model: Option<Arc<Part>>,
 }
 impl FangState {
-    pub(in crate::game) fn perf_count(&self) -> usize {
+    pub(in crate::game::server_side) fn perf_count(&self) -> usize {
         self.list.len()
     }
 }
 impl Game<'_> {
-    pub(in crate::game) fn add_fangs(&mut self, at: [f64; 3], yaw: f32, delay: i32, owner: u32) {
+    pub(in crate::game::server_side) fn add_fangs(
+        &mut self,
+        at: [f64; 3],
+        yaw: f32,
+        delay: i32,
+        owner: u32,
+    ) {
         self.server.next_entity += 1;
         self.insert_fangs(self.server.next_entity, at, yaw, delay, owner);
     }
 
-    pub(in crate::game) fn fangs_to_nbt(
+    pub(in crate::game::server_side) fn fangs_to_nbt(
         &self,
         f: &Fangs,
         uuid: [i32; 4],
@@ -92,7 +98,10 @@ impl Game<'_> {
             self.persist.raw.get(&f.id),
         )
     }
-    pub(in crate::game) fn loaded_fangs_owner(&self, tag: &sunrise_core::nbt::Tag) -> u32 {
+    pub(in crate::game::server_side) fn loaded_fangs_owner(
+        &self,
+        tag: &sunrise_core::nbt::Tag,
+    ) -> u32 {
         match tag.get("Owner") {
             Some(sunrise_core::nbt::Tag::IntArray(v)) => v.as_slice().try_into().ok(),
             _ => None,
@@ -147,7 +156,7 @@ impl Game<'_> {
     }
     /// `Entity.baseTick`'s `updateFluidInteraction` for fangs (0.5F x 0.8F): the
     /// currents of the water and lava the box touches add to the motion.
-    pub(in crate::game) fn fangs_fluid_step(&self, f: &mut Fangs) {
+    pub(in crate::game::server_side) fn fangs_fluid_step(&self, f: &mut Fangs) {
         let at = Vec3::new(f.pos[0], f.pos[1], f.pos[2]);
         let bounds = sunrise_core::geometry::Aabb::new(
             Vec3::new(at.x - 0.25, at.y, at.z - 0.25),
@@ -167,7 +176,7 @@ impl Game<'_> {
     }
     /// `dealDamageTo` everything alive in the fangs' box (0.5 x 0.8,
     /// inflated 0.2 sideways) but the evoker's allies.
-    pub(in crate::game) fn fangs_bite(&mut self, f: &Fangs) {
+    pub(in crate::game::server_side) fn fangs_bite(&mut self, f: &Fangs) {
         let half = 0.25 + 0.2;
         let lo = Vec3::new(f.pos[0] - half, f.pos[1], f.pos[2] - half);
         let hi = Vec3::new(f.pos[0] + half, f.pos[1] + 0.8, f.pos[2] + half);
@@ -364,7 +373,7 @@ impl Game<'_> {
     }
 }
 /// `EntityTypeTags.ILLAGER` members, the types of `ILLAGER_FRIENDS`.
-pub(in crate::game) fn is_illager(s: Species) -> bool {
+pub(in crate::game::server_side) fn is_illager(s: Species) -> bool {
     matches!(
         s,
         Species::Evoker | Species::Illusioner | Species::Pillager | Species::Vindicator
@@ -378,7 +387,7 @@ pub(in crate::game) struct Party<'a> {
 }
 /// `AbstractIllager.considersEntityAsAlly(other)`: the base rule (the teams
 /// are allied), or an illager friend while both have no team.
-pub(in crate::game) fn illager_considers(me: Party, other: Party) -> bool {
+pub(in crate::game::server_side) fn illager_considers(me: Party, other: Party) -> bool {
     sunrise_client::scoreboard::teams_allied(me.team, other.team)
         || other.illager && me.team.is_none() && other.team.is_none()
 }
@@ -386,7 +395,7 @@ pub(in crate::game) fn illager_considers(me: Party, other: Party) -> bool {
 /// either way round. `vex_root` is the root owner of a vex target (whether it
 /// is the owner itself, and its party); the owner treats such a vex as an ally
 /// when its root owner is.
-pub(in crate::game) fn fangs_allied(
+pub(in crate::game::server_side) fn fangs_allied(
     owner: Party,
     other: Party,
     vex_root: Option<(bool, Party)>,
@@ -396,7 +405,7 @@ pub(in crate::game) fn fangs_allied(
         || !other.illager && sunrise_client::scoreboard::teams_allied(other.team, owner.team)
         || vex_root.is_some_and(|(is_owner, root)| is_owner || illager_considers(owner, root))
 }
-pub(in crate::game) fn p_zrot(p: &mut Poses, part: &str, v: f32) {
+pub(in crate::game::server_side) fn p_zrot(p: &mut Poses, part: &str, v: f32) {
     p.zrot(part, v);
 }
 #[cfg(test)]

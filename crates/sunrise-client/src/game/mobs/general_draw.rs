@@ -41,7 +41,7 @@ pub(in crate::game) struct GeneralDrawFrame<'a> {
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn begin_general_geometry(
+    pub(in crate::game::client_side) fn begin_general_geometry(
         &self,
         camera: DVec3,
         alpha: f64,
@@ -60,7 +60,7 @@ impl Game<'_> {
         })
     }
 
-    pub(in crate::game) fn general_run_geometry(
+    pub(in crate::game::client_side) fn general_run_geometry(
         &self,
         frame: &GeneralDrawFrame<'_>,
         range: std::ops::Range<usize>,

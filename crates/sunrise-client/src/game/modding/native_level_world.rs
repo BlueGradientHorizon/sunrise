@@ -38,7 +38,7 @@ fn weather_flags((rain, thunder): (f32, f32)) -> (bool, bool) {
 }
 
 /// `Level.isRainingAt` over `world`, the column of the level in dimension `dim`.
-pub(in crate::game) fn rain_at(
+pub(in crate::game::server_side) fn rain_at(
     world: &World,
     facts: &sunrise_client::blocks::BlockFacts,
     biomes: &sunrise_client::biome::Biomes,

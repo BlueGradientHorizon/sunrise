@@ -31,14 +31,6 @@ pub(in crate::game) mod tests {
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::native_entity_riding::tests::add_mob;
     #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_riding::tests::assert_near;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_riding::tests::get_off;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_riding::tests::lay_floor;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_entity_riding::tests::stale;
-    #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::native_entity_riding::tests::take_one_lead;
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::native_entity_riding::tests::*;

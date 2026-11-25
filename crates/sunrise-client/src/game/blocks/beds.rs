@@ -38,7 +38,11 @@ impl Game<'_> {
     }
     /// `setBlockAndUpdate(head, state.setValue(OCCUPIED, occupied))`, when
     /// the block at `head` is still a bed and not already so.
-    pub(in crate::game) fn set_bed_occupied(&mut self, head: [i32; 3], occupied: bool) {
+    pub(in crate::game::server_side) fn set_bed_occupied(
+        &mut self,
+        head: [i32; 3],
+        occupied: bool,
+    ) {
         let registry = &self.pack.assets.registry;
         let Some(mut state) = registry
             .state(self.world.block(head[0], head[1], head[2]))
@@ -61,7 +65,7 @@ impl Game<'_> {
 
     /// `LivingEntity.startSleeping` for the player in place (the host, or
     /// a guest during its turn): the bed it lies in is occupied.
-    pub(in crate::game) fn occupy_bed(&mut self, head: [i32; 3]) {
+    pub(in crate::game::server_side) fn occupy_bed(&mut self, head: [i32; 3]) {
         self.set_bed_occupied(head, true);
         if !self.server.player_beds.contains(&(self.dim, head)) {
             self.server.player_beds.push((self.dim, head));
@@ -83,7 +87,7 @@ impl Game<'_> {
     /// this level nobody sleeps in any more are free again. Runs in each
     /// level's tick, after the players' packets and sleep ticks, never inside
     /// a guest's turn.
-    pub(in crate::game) fn free_left_beds(&mut self) {
+    pub(in crate::game::server_side) fn free_left_beds(&mut self) {
         let dim = self.dim;
         let left: Vec<[i32; 3]> = self
             .server
@@ -110,7 +114,7 @@ impl Game<'_> {
 
     /// The levels with a bed a player marked occupied: they tick until the
     /// bed is freed.
-    pub(in crate::game) fn player_bed_levels(&self) -> impl Iterator<Item = Dim> + '_ {
+    pub(in crate::game::server_side) fn player_bed_levels(&self) -> impl Iterator<Item = Dim> + '_ {
         self.server.player_beds.iter().map(|(d, _)| *d)
     }
 
@@ -148,7 +152,7 @@ impl Game<'_> {
     /// lies on, measured from the head's own y - a straw bed's head from its
     /// foot's - or `None` when there is no such shape, in which case the
     /// player does not lie down at all.
-    pub(in crate::game) fn sleep_height(&self, head: [i32; 3]) -> Option<f64> {
+    pub(in crate::game::server_side) fn sleep_height(&self, head: [i32; 3]) -> Option<f64> {
         let state = self.world.block(head[0], head[1], head[2]);
         if !self.is_bed(state) {
             return None;

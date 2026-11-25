@@ -73,7 +73,7 @@ impl Game<'_> {
         self.rebind_native_commands();
     }
     /// Rebind against the new node IDs. True if the display report changed too.
-    pub(in crate::game) fn rebind_native_commands(&mut self) -> bool {
+    pub(in crate::game::server_side) fn rebind_native_commands(&mut self) -> bool {
         let state = &mut self.native_commands.0;
         let Some(commands) = &state.registered else {
             return false;
@@ -109,7 +109,7 @@ impl Game<'_> {
         self.send_native_command_report(refresh);
     }
     /// Restore mod nodes (and rebind their executors) after vanilla replaces the tree.
-    pub(in crate::game) fn restore_native_commands(&mut self) {
+    pub(in crate::game::server_side) fn restore_native_commands(&mut self) {
         if self.rebind_native_commands() {
             let revision = &mut self.native_commands.0.display_revision;
             *revision = revision.wrapping_add(1);
@@ -117,7 +117,7 @@ impl Game<'_> {
     }
     /// Send accepted display data, without rebuilding usages or exposing executor slots.
     /// Forced when vanilla itself changes, even if the accepted mod report did not.
-    pub(in crate::game) fn send_native_command_report(&mut self, force_resend: bool) {
+    pub(in crate::game::server_side) fn send_native_command_report(&mut self, force_resend: bool) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };

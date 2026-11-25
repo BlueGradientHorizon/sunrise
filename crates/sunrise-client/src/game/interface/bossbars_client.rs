@@ -12,14 +12,6 @@ pub(in crate::game::client_side) use crate::game::server_side::bossbars::Scope;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::bossbars::Viewer;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::bossbars::color_index;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::bossbars::num;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::bossbars::style_index;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::bossbars::translate_tag;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::bossbars::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use std::collections::{HashMap, HashSet};
@@ -45,7 +37,7 @@ pub(in crate::game::client_side) use sunrise_protocol::packets::play::{
 
 impl Game<'_> {
     /// `ClientPacketListener.handleBossUpdate`.
-    pub(in crate::game) fn apply_boss_event(&mut self, packet: &play::BossEvent) {
+    pub(in crate::game::client_side) fn apply_boss_event(&mut self, packet: &play::BossEvent) {
         self.client
             .boss_overlay
             .apply(packet, boss_overlay::now_millis());

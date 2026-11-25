@@ -4,7 +4,7 @@ pub(in crate::game::client_side) use super::*;
 pub(in crate::game::client_side) use crate::game::remote::menu_interactions::*;
 
 impl Game<'_> {
-    pub(in crate::game) fn creative_drop_features(&self) -> Option<&Arc<[String]>> {
+    pub(in crate::game::client_side) fn creative_drop_features(&self) -> Option<&Arc<[String]>> {
         // Screen::Inventory covers the non-creative AbstractContainerScreens.
         (self.creative && self.remote.is_some() && self.client.screen != Screen::Inventory)
             .then(|| self.enabled_feature_ids())
@@ -13,7 +13,7 @@ impl Game<'_> {
     /// a stack picked from the creative screen, so the carried stack (an item tab's right click:
     /// one of it) is dropped through `handleCreativeModeItemDrop`, a SetCreativeModeSlot to slot
     /// -1, and the hand swings as `Player.drop` predicts.
-    pub(in crate::game) fn remote_creative_drop(&mut self, right: bool) {
+    pub(in crate::game::client_side) fn remote_creative_drop(&mut self, right: bool) {
         if !self.client.drop_spam_throttler.is_under_threshold() {
             return;
         }
@@ -41,7 +41,10 @@ impl Game<'_> {
     }
     /// `ClientPacketListener.handleMountScreenOpen`: only horses and nautiluses
     /// open a menu. A missing or different entity leaves the current menu alone.
-    pub(in crate::game) fn remote_open_mount(&mut self, p: play::MountScreenOpen) -> Result<()> {
+    pub(in crate::game::client_side) fn remote_open_mount(
+        &mut self,
+        p: play::MountScreenOpen,
+    ) -> Result<()> {
         use crate::game::{inventory_slots::MOD_MENU_SLOT_BASE, mount_menu::CHEST};
         // `new SimpleContainer(getInventorySize(inventoryColumns))` is built before
         // the entity is looked at, so it throws for any entity: a size that comes
@@ -91,7 +94,7 @@ impl Game<'_> {
         Ok(())
     }
     /// ClientboundOpenScreenPacket for the menus Sunrise draws.
-    pub(in crate::game) fn remote_open_screen(&mut self, p: play::OpenScreen) {
+    pub(in crate::game::client_side) fn remote_open_screen(&mut self, p: play::OpenScreen) {
         let menu = self
             .remote
             .as_ref()
@@ -283,7 +286,10 @@ impl Game<'_> {
     /// Single admission path for `MultiPlayerGameMode.handleCreativeModeItemDrop`:
     /// resolves mode/screen/feature checks, `client_packet_send`, and transport acceptance
     /// before charging `drop_spam_throttler`.
-    pub(in crate::game) fn try_send_creative_drop_packet(&self, thrown: &ItemStack) -> bool {
+    pub(in crate::game::client_side) fn try_send_creative_drop_packet(
+        &self,
+        thrown: &ItemStack,
+    ) -> bool {
         let Some(flags) = self.creative_drop_features() else {
             return false;
         };

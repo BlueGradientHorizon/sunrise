@@ -15,7 +15,7 @@ impl Game<'_> {
         dead_code,
         reason = "the first knob readers come with the features that move out"
     )]
-    pub(crate) fn look(&mut self) -> &Look {
+    pub(in crate::game::client_side) fn look(&mut self) -> &Look {
         let generation = look::engine::generation();
         if self.client.look.generation != generation {
             self.client.look.look = look::engine::get(sunrise_hooks::seat());

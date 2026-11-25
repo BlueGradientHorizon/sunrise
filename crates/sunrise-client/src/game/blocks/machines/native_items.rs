@@ -68,7 +68,7 @@ impl super::Containers<'_> {
         }
     }
 
-    pub(in crate::game) fn capability_site(
+    pub(in crate::game::server_side) fn capability_site(
         &self,
         at: BlockSide,
         state: BlockStateId,
@@ -122,10 +122,10 @@ impl super::Containers<'_> {
             ItemTarget::Container => self.view(pos, false),
         }
     }
-    pub(in crate::game) fn capability_size(&self, at: BlockSide) -> Option<usize> {
+    pub(in crate::game::server_side) fn capability_size(&self, at: BlockSide) -> Option<usize> {
         Some(self.capability_view(at)?.capability_slots(at.side).count())
     }
-    pub(in crate::game) fn capability_stack(
+    pub(in crate::game::server_side) fn capability_stack(
         &self,
         at: BlockSide,
         slot: usize,
@@ -139,7 +139,7 @@ impl super::Containers<'_> {
 impl Game<'_> {
     /// Vanilla containers and `WorldlyContainerHolder`s keep their direct automation path.
     /// This owner check borrows storage; it never builds a container view on the tick path.
-    pub(in crate::game) fn vanilla_automation_container(&self, pos: Pos) -> bool {
+    pub(in crate::game::server_side) fn vanilla_automation_container(&self, pos: Pos) -> bool {
         use sunrise_client::containers::BlockEntity;
         match self.world.block_entities.get(&pos) {
             Some(
@@ -161,7 +161,7 @@ impl Game<'_> {
         }
     }
     /// `HopperBlockEntity.inventoryFull`: every slot holds exactly a full item stack.
-    pub(in crate::game) fn hopper_is_stacked(&self, view: &View) -> bool {
+    pub(in crate::game::server_side) fn hopper_is_stacked(&self, view: &View) -> bool {
         let c = self.containers();
         (0..view.len()).all(|slot| {
             c.get(view, slot)
@@ -170,7 +170,7 @@ impl Game<'_> {
     }
     /// `DropperBlock.dispenseFrom`: always commit a storage attempt, including refusal.
     /// Accepted source removal precedes root-commit callbacks that can re-enter the source.
-    pub(in crate::game) fn dropper_into_part(
+    pub(in crate::game::server_side) fn dropper_into_part(
         &mut self,
         part: &mod_api::Capability<dyn mod_api::ResourceHandler<mod_api::ItemResource>>,
         stack: &ItemStack,
@@ -213,7 +213,7 @@ impl Game<'_> {
     }
     /// Whether this game simulates a world, as `native_set_block` asks
     /// (the fluid helpers ask it too).
-    pub(in crate::game) fn native_simulates(&self) -> bool {
+    pub(in crate::game::server_side) fn native_simulates(&self) -> bool {
         self.is_logical_server()
     }
     /// The level in place, as a handle: where the game's capability lookups (a hopper's) are.
@@ -309,7 +309,7 @@ impl Game<'_> {
     }
     /// Keeps what a capability write to slot `slot` of `view` changes: that slot alone where a
     /// write there changes nothing else, else each block entity of the view whole.
-    pub(in crate::game) fn journal_view_slot(&mut self, view: &View, slot: usize) {
+    pub(in crate::game::server_side) fn journal_view_slot(&mut self, view: &View, slot: usize) {
         match view.kind {
             Kind::Composter(_) => return,
             Kind::Pot => return self.journal_saved_pot(view.parts[0].0),

@@ -13,12 +13,6 @@ pub(in crate::game::server_side) use crate::game::client_side::hand_part_tests::
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::hand_part_tests::Stick;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::hand_part_tests::close;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::hand_part_tests::dip;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::hand_part_tests::settle;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::hand_part_tests::with_stick_part;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::hand_part_tests::*;

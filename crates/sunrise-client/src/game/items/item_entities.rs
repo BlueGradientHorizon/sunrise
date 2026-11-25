@@ -426,7 +426,7 @@ impl Game<'_> {
     /// list's write stamp didn't move), the list comes back as it went and `removed` and `cells`
     /// stay as they are; otherwise they are rebuilt for the list taken back. The loop goes on
     /// right after item `i`, or, when it is gone, after where it stood in the list's join order.
-    pub(in crate::game) fn give_items_back(
+    pub(in crate::game::server_side) fn give_items_back(
         &mut self,
         mut items: sunrise_client::join_seq::JoinList<ItemEntity>,
         removed: &mut Vec<bool>,
@@ -469,7 +469,10 @@ impl Game<'_> {
     }
     /// `ItemUtils.onContainerDestroyed`: spilled stacks use their own constructor
     /// motion (0.2 up and ±0.1 sideways), leaving the level random untouched.
-    pub(in crate::game) fn spawn_destroyed_contents(&mut self, destroyed: Vec<(ItemStack, Vec3)>) {
+    pub(in crate::game::server_side) fn spawn_destroyed_contents(
+        &mut self,
+        destroyed: Vec<(ItemStack, Vec3)>,
+    ) {
         for (stack, at) in destroyed {
             self.spawn_item_own(stack, [at.x, at.y, at.z], 0);
         }
@@ -482,7 +485,7 @@ impl Game<'_> {
     }
     /// `ExperienceOrb.awardWithDirection`: `award` whose fresh orbs start
     /// `roughly` that way (`new ExperienceOrb(level, pos, roughly, value)`).
-    pub(in crate::game) fn spawn_orbs_toward(
+    pub(in crate::game::server_side) fn spawn_orbs_toward(
         &mut self,
         at: [f64; 3],
         roughly: [f64; 3],
@@ -507,7 +510,7 @@ impl Game<'_> {
         }
     }
     /// `tryMergeToExisting`: true when an orb took the new one.
-    pub(in crate::game) fn merge_new_orb(
+    pub(in crate::game::server_side) fn merge_new_orb(
         &mut self,
         at: [f64; 3],
         value: u32,
@@ -550,7 +553,7 @@ impl Game<'_> {
     }
     /// Puts back what a merge hook may have written to the orb `join`: a refused merge
     /// leaves both orbs as they were.
-    pub(in crate::game) fn restore_orb(
+    pub(in crate::game::server_side) fn restore_orb(
         &mut self,
         join: crate::join_seq::JoinSeq,
         value: i32,
@@ -565,7 +568,7 @@ impl Game<'_> {
     /// Whether orb `into` takes orb `from` (0: a spawning orb of `from_value`),
     /// given vanilla's `canMerge` answer: the mods may flip it, then cancel the merge.
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::game) fn orb_merges(
+    pub(in crate::game::server_side) fn orb_merges(
         &mut self,
         into: u32,
         into_value: i32,
@@ -665,7 +668,7 @@ impl Game<'_> {
     /// `Entity.unstuckIfPossible`, which `ExperienceOrb`'s constructor runs on an
     /// orb whose box is in a block: the free spot nearest its box's centre. An
     /// orb in open air keeps its position.
-    pub(in crate::game) fn unstuck_orb(&self, at: [f64; 3]) -> [f64; 3] {
+    pub(in crate::game::server_side) fn unstuck_orb(&self, at: [f64; 3]) -> [f64; 3] {
         let b = self.res.behaviours();
         let border = self.border_bounds();
         ExperienceOrb::unstuck(Vec3::new(at[0], at[1], at[2]), &border, |p| {
@@ -682,7 +685,12 @@ impl Game<'_> {
     /// `new ExperienceOrb(level, pos, roughly, value)`: a random motion that
     /// points against `roughly` is turned round, and the orb starts half its
     /// size (0.25) along `roughly`, unstuck if it collides there.
-    pub(in crate::game) fn add_orb_toward(&mut self, at: [f64; 3], roughly: [f64; 3], value: u32) {
+    pub(in crate::game::server_side) fn add_orb_toward(
+        &mut self,
+        at: [f64; 3],
+        roughly: [f64; 3],
+        value: u32,
+    ) {
         let len_sqr = roughly.iter().map(|v| v * v).sum::<f64>();
         // Vec3.normalize: a vector shorter than 1e-5 has no direction.
         let len = len_sqr.sqrt();
@@ -732,7 +740,7 @@ impl Game<'_> {
     }
     /// The orbs' tick, but for the movement: that is `run_ordered_ticks`'s,
     /// in join order with the other kinds.
-    pub(in crate::game) fn tick_experience(&mut self) {
+    pub(in crate::game::server_side) fn tick_experience(&mut self) {
         if self.server.xp_delay > 0 {
             self.server.xp_delay -= 1;
         }
@@ -828,7 +836,7 @@ impl Game<'_> {
     /// `at` (the eyes less 0.3): slots 0..36, armor feet to head (36..39),
     /// the off hand (40), each thrown in a random direction. The mods hear
     /// the drops (`native_living_drops`) before they join the level.
-    pub(in crate::game) fn drop_inventory(
+    pub(in crate::game::server_side) fn drop_inventory(
         &mut self,
         at: [f64; 3],
         dying: &creatures::DyingDrops<'_>,
@@ -912,7 +920,7 @@ impl Game<'_> {
         self.add_item_entity_prepared(stack, position, Some(velocity), 0, Some(random));
     }
 
-    pub(in crate::game) fn add_item_entity(
+    pub(in crate::game::server_side) fn add_item_entity(
         &mut self,
         stack: ItemStack,
         position: [f64; 3],
@@ -936,7 +944,11 @@ impl Game<'_> {
     /// `Containers.dropItemStack`: a crafting remainder leaves from inside the
     /// block, split by the level random, and can be picked up at once. Unlike
     /// `Block.popResource` it has no `block_drops` test.
-    pub(in crate::game) fn drop_item_stack_containers(&mut self, pos: [i32; 3], stack: ItemStack) {
+    pub(in crate::game::server_side) fn drop_item_stack_containers(
+        &mut self,
+        pos: [i32; 3],
+        stack: ItemStack,
+    ) {
         let count = stack.count;
         let at = [f64::from(pos[0]), f64::from(pos[1]), f64::from(pos[2])];
         for piece in
@@ -955,7 +967,7 @@ impl Game<'_> {
 
     /// `Block.popResourceFromFace`: the loot leaves the clicked face with the
     /// face's own motion instead of the item's random one.
-    pub(in crate::game) fn pop_resource_from_face(
+    pub(in crate::game::server_side) fn pop_resource_from_face(
         &mut self,
         pos: [i32; 3],
         face: [i32; 3],

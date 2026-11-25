@@ -8,7 +8,7 @@ pub(in crate::game::client_side) use crate::game::native_hooks::system_helpers::
 #[allow(dead_code)]
 impl Game<'_> {
     /// A line in chat from the client.
-    pub(in crate::game) fn native_chat(&mut self, text: &str) {
+    pub(in crate::game::client_side) fn native_chat(&mut self, text: &str) {
         let focused = self.client.screen == Screen::Chat;
         let line = Text::literal(text);
         let ticks = self.visual_ticks();
@@ -35,7 +35,10 @@ impl Game<'_> {
     }
     /// The areas the game itself draws beside the open screen's window: the
     /// container build's, or the frame's own arithmetic with no build yet.
-    pub(in crate::game) fn screen_own_exclusion(&self, batch: &HudBatch) -> Vec<[f32; 4]> {
+    pub(in crate::game::client_side) fn screen_own_exclusion(
+        &self,
+        batch: &HudBatch,
+    ) -> Vec<[f32; 4]> {
         if !matches!(self.client.screen, Screen::Inventory | Screen::Creative) {
             return Vec::new();
         }

@@ -5,7 +5,7 @@ pub(in crate::game::client_side) use crate::game::remote::packets_object::*;
 
 impl Game<'_> {
     /// `C::AddEntity`: admit the entity before replacing an old ID.
-    pub(in crate::game) fn apply_add_entity_packet(&mut self, p: play::AddEntity) {
+    pub(in crate::game::client_side) fn apply_add_entity_packet(&mut self, p: play::AddEntity) {
         let kind = self
             .remote
             .as_ref()
@@ -112,7 +112,10 @@ impl Game<'_> {
         self.native_constructed_size(p.id as u32, constructed);
     }
     /// `C::SetEntityLink`: its arms of `apply_packet`, guard and order kept.
-    pub(in crate::game) fn apply_set_entity_link_packet(&mut self, p: play::SetEntityLink) {
+    pub(in crate::game::client_side) fn apply_set_entity_link_packet(
+        &mut self,
+        p: play::SetEntityLink,
+    ) {
         // ClientPacketListener.handleEntityLinkPacket: who holds a mob's
         // lead (this player, another player, a mob or a fence knot), for
         // the rope.
@@ -139,7 +142,10 @@ impl Game<'_> {
         }
     }
     /// `C::TakeItemEntity`: its arms of `apply_packet`, guard and order kept.
-    pub(in crate::game) fn apply_take_item_entity_packet(&mut self, p: play::TakeItemEntity) {
+    pub(in crate::game::client_side) fn apply_take_item_entity_packet(
+        &mut self,
+        p: play::TakeItemEntity,
+    ) {
         // ClientPacketListener.handleTakeItemEntity: the pickup sound at
         // the orb, item or arrow, whoever collects it (the server sends
         // none); an entity this client doesn't track sounds at this player.
@@ -235,7 +241,7 @@ impl Game<'_> {
         }
     }
     /// `C::TeleportEntity`: its arms of `apply_packet`, guard and order kept.
-    pub(in crate::game) fn apply_teleport_entity_packet(
+    pub(in crate::game::client_side) fn apply_teleport_entity_packet(
         &mut self,
         p: play::TeleportEntity,
     ) -> Result<()> {

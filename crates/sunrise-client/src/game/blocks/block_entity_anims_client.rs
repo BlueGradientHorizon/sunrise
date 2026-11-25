@@ -5,8 +5,6 @@ pub(in crate::game::client_side) use crate::game::server_side::block_entity_anim
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::block_entity_anims::PLAYER;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::block_entity_anims::rain_positions;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::block_entity_anims::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::{
@@ -39,7 +37,7 @@ impl Game<'_> {
     /// the player head at `pos`. The skin download is started here; while it
     /// is in flight (or when it cannot be got) the profile's default skin
     /// stands in. A head with no profile answers None: `SKIN_BY_TYPE`.
-    pub(in crate::game) fn skull_skin_at(&self, pos: [i32; 3]) -> Option<String> {
+    pub(in crate::game::client_side) fn skull_skin_at(&self, pos: [i32; 3]) -> Option<String> {
         let Some(BlockEntity::Skull(skull)) =
             self.world.block_entities.get(&(pos[0], pos[1], pos[2]))
         else {

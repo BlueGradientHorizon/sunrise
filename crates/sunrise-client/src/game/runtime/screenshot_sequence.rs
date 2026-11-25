@@ -28,7 +28,7 @@ pub(in crate::game) struct Sequence {
 }
 
 impl Sequence {
-    pub(in crate::game) fn timing(&self) -> FrameTiming {
+    pub(in crate::game::client_side) fn timing(&self) -> FrameTiming {
         FrameTiming::nth(self.next, self.step_ms)
     }
 }
@@ -122,7 +122,7 @@ impl Game<'_> {
     }
 
     /// `screenshot-sequence ...`; `None` while the reply waits for the PNG.
-    pub(in crate::game) fn screenshot_sequence_command(
+    pub(in crate::game::client_side) fn screenshot_sequence_command(
         &mut self,
         line: &str,
         reply: &Sender<String>,
@@ -172,7 +172,7 @@ impl Game<'_> {
 
     /// While a sequence runs, the control commands that would change what it draws are
     /// refused; `quit` ends it first.
-    pub(in crate::game) fn screenshot_sequence_gate(
+    pub(in crate::game::client_side) fn screenshot_sequence_gate(
         &mut self,
         command: Option<&str>,
     ) -> Result<()> {
@@ -190,7 +190,7 @@ impl Game<'_> {
     }
 
     /// Ends the running sequence, if any, and sends its reply.
-    pub(in crate::game) fn end_screenshot_sequence(&mut self, outcome: Result<Value>) {
+    pub(in crate::game::client_side) fn end_screenshot_sequence(&mut self, outcome: Result<Value>) {
         let Some(sequence) = self.screenshot_sequence.0.take() else {
             return;
         };
@@ -210,7 +210,7 @@ impl Game<'_> {
 
     /// One frame of the running sequence: the next one, on its clock. A frame the surface
     /// refused is drawn again; the last is saved, and the reply sent.
-    pub(in crate::game) fn render_sequence_frame(&mut self) -> Result<bool> {
+    pub(in crate::game::client_side) fn render_sequence_frame(&mut self) -> Result<bool> {
         let sequence = self
             .screenshot_sequence
             .0

@@ -100,7 +100,7 @@ impl Game<'_> {
     /// `Bogged`), and a shearable mob fires `player_shear_entity`. `Some(consumed)` ends the
     /// interaction: a part's refusal (false), the hook's cancel or a part's shearing (true);
     /// none leaves the shearing to the species' own interaction.
-    pub(in crate::game) fn player_shear(&mut self, mut index: usize) -> Option<bool> {
+    pub(in crate::game::server_side) fn player_shear(&mut self, mut index: usize) -> Option<bool> {
         let shears = self.held().cloned()?;
         let player = self.native_acting_player();
         let part = self.part_shearable(index, player, &shears);

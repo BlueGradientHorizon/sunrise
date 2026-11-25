@@ -64,7 +64,7 @@ impl Game<'_> {
             .retain(|_, crack| now.saturating_sub(crack.updated_at) <= 400);
     }
 
-    pub(in crate::game) fn reset_client_world(&mut self, seed: i64) {
+    pub(in crate::game::client_side) fn reset_client_world(&mut self, seed: i64) {
         self.client.destroying.clear();
         self.mining = None;
         self.world = Game::world_for_mods(self.res.facts().air, seed);

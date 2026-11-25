@@ -350,7 +350,7 @@ impl Game<'_> {
 
 /// Farthest first (the uploader pops from the back). Returns the number of
 /// elements passed to a sort and to the merge, respectively.
-pub(in crate::game) fn order_uploads<T, K: Ord>(
+pub(in crate::game::client_side) fn order_uploads<T, K: Ord>(
     waiting: &mut Vec<T>,
     fresh: &mut Vec<T>,
     scratch: &mut Vec<T>,
@@ -400,7 +400,7 @@ pub(in crate::game) fn order_uploads<T, K: Ord>(
 }
 
 /// Squared section-grid distance in `i128` so extreme camera coordinates cannot overflow.
-pub(in crate::game) fn section_distance_sq(
+pub(in crate::game::client_side) fn section_distance_sq(
     key: (i32, i32, i32),
     centre: (i32, i32),
     cam_y: i32,
@@ -427,7 +427,7 @@ impl Game<'_> {
             renderer.clear_lods();
         }
     }
-    pub(in crate::game) fn prepare_lod(&mut self) {
+    pub(in crate::game::client_side) fn prepare_lod(&mut self) {
         let enabled = self.far_terrain_choice().0 > 0
             && self.renderer.0.is_some()
             && self.player.is_some()

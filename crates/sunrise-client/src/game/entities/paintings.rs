@@ -20,7 +20,10 @@ pub(in crate::game) use sunrise_gameplay::painting_variants::{
 };
 /// Whether the camera, at the origin of `corners`' space, is on the side of the quad
 /// that `normal` points to.
-pub(in crate::game) fn faces_camera(corners: &[glam::DVec3; 4], normal: glam::DVec3) -> bool {
+pub(in crate::game::server_side) fn faces_camera(
+    corners: &[glam::DVec3; 4],
+    normal: glam::DVec3,
+) -> bool {
     let centre = (corners[0] + corners[1] + corners[2] + corners[3]) / 4.0;
     normal.dot(-centre) > 0.0
 }
@@ -28,7 +31,7 @@ pub(in crate::game) fn faces_camera(corners: &[glam::DVec3; 4], normal: glam::DV
 impl Game<'_> {
     /// `HangingEntity.survives`: no block collision in the box, solid blocks
     /// (or diodes) behind it and no conflicting hanging entity overlapping it.
-    pub(in crate::game) fn painting_survives(&self, p: &Painting) -> bool {
+    pub(in crate::game::server_side) fn painting_survives(&self, p: &Painting) -> bool {
         let (lo, hi) = p.bounds();
         let bounds = Aabb::new(
             Vec3::new(lo[0], lo[1], lo[2]),
@@ -110,7 +113,11 @@ impl Game<'_> {
         true
     }
     /// `HangingEntityItem.useOn` for a painting against `hit`'s face.
-    pub(in crate::game) fn place_painting(&mut self, hit: &Hit, stack: &ItemStack) -> bool {
+    pub(in crate::game::server_side) fn place_painting(
+        &mut self,
+        hit: &Hit,
+        stack: &ItemStack,
+    ) -> bool {
         if &*stack.item != "minecraft:painting" {
             return false;
         }
@@ -247,7 +254,11 @@ impl Game<'_> {
     }
     /// `BlockAttachedEntity.hurtServer` -> `kill` and `dropItem`. False when a mod kept it
     /// (`native_hanging_break`): it stays at `index`.
-    pub(in crate::game) fn break_painting(&mut self, index: usize, by_player: bool) -> bool {
+    pub(in crate::game::server_side) fn break_painting(
+        &mut self,
+        index: usize,
+        by_player: bool,
+    ) -> bool {
         self.break_painting_by(
             index,
             by_player,
@@ -281,7 +292,7 @@ impl Game<'_> {
     }
     /// `BlockAttachedEntity.tick`: a painting whose `survives()` failed is
     /// `discard()`ed and drops its item, with no game event.
-    pub(in crate::game) fn discard_painting(&mut self, index: usize) -> bool {
+    pub(in crate::game::server_side) fn discard_painting(&mut self, index: usize) -> bool {
         let Some((p, at)) = self.remove_painting(index, false) else {
             return false;
         };
@@ -290,7 +301,7 @@ impl Game<'_> {
     }
     /// The removal `kill` and `discard` share: the mod hook, the entity, its
     /// chunk's save mark and the centre of its box.
-    pub(in crate::game) fn remove_painting(
+    pub(in crate::game::server_side) fn remove_painting(
         &mut self,
         index: usize,
         by_player: bool,
@@ -312,7 +323,7 @@ impl Game<'_> {
         Some((p, at))
     }
     /// BlockAttachedEntity.tick: check survival every 100 ticks.
-    pub(in crate::game) fn tick_paintings(&mut self) {
+    pub(in crate::game::server_side) fn tick_paintings(&mut self) {
         // ServerLevel.tick: only entities in entity-ticking chunks tick.
         let ticking = self.entity_ticking_area();
         let mut i = 0;

@@ -29,14 +29,14 @@ pub(in crate::game) struct Ammo {
 
 /// `ProjectileWeaponItem.ARROW_ONLY`: `stack.is(ItemTags.ARROWS)`, the loaded
 /// `#minecraft:arrows` tag (a data pack may add its own item to it).
-pub(in crate::game) fn is_arrow(items: &Items, stack: &ItemStack) -> bool {
+pub(in crate::game::server_side) fn is_arrow(items: &Items, stack: &ItemStack) -> bool {
     items.item_in_tag("minecraft:arrows", &stack.item)
 }
 
 /// `Player.getProjectile`: what `weapon` supports in the off hand, then in
 /// the main hand (`getHeldProjectile`; crossbows also take firework rockets
 /// there), else the first arrows in the inventory. The slot of the stack.
-pub(in crate::game) fn projectile_slot(
+pub(in crate::game::server_side) fn projectile_slot(
     weapon: &str,
     hands: [(usize, Option<&ItemStack>); 2],
     inventory: &[Option<ItemStack>],
@@ -61,7 +61,7 @@ pub(in crate::game) fn projectile_slot(
 /// that jumped the charge past a point still plays that point's sound, as
 /// vanilla's two flags do. Returns the flags for the next tick and the
 /// sounds to play now.
-pub(in crate::game) fn charge_sounds(
+pub(in crate::game::server_side) fn charge_sounds(
     charge: f32,
     played: [bool; 2],
     sounds: [&'static str; 3],
@@ -83,7 +83,7 @@ impl Game<'_> {
         let seconds = 1.25 - 0.25 * stack.enchantment_level("minecraft:quick_charge") as f32;
         (seconds.max(0.0) * 20.0).floor() as u32
     }
-    pub(in crate::game) fn charging_sounds(stack: &ItemStack) -> [&'static str; 3] {
+    pub(in crate::game::server_side) fn charging_sounds(stack: &ItemStack) -> [&'static str; 3] {
         match stack.enchantment_level("minecraft:quick_charge") {
             0 => [
                 "minecraft:item.crossbow.loading_start",
@@ -147,7 +147,7 @@ impl Game<'_> {
     }
     /// `AbstractSkeleton.performRangedAttack`'s `getProjectile`: the arrow
     /// `mob` shot becomes the replaced ammunition's (`ProjectileUtil.getMobArrow`).
-    pub(in crate::game) fn mob_bow_ammo(
+    pub(in crate::game::server_side) fn mob_bow_ammo(
         &mut self,
         mob: u32,
         weapon: &ItemStack,
@@ -172,7 +172,7 @@ impl Game<'_> {
     }
     /// `Monster.getProjectile`: the projectile `weapon` supports in the off
     /// hand, then the main hand (`getHeldProjectile`), else a new arrow.
-    pub(in crate::game) fn mob_vanilla_ammo(
+    pub(in crate::game::server_side) fn mob_vanilla_ammo(
         extra: &sunrise_client::mobs::Extra,
         weapon: &ItemStack,
         items: &Items,
@@ -189,7 +189,7 @@ impl Game<'_> {
             .unwrap_or_else(|| ItemStack::new(ARROW, 1))
     }
     /// `ProjectileUtil.getMobArrow`: `arrow` carries `ammo`'s item and effect.
-    pub(in crate::game) fn arrow_from_ammo(ammo: &ItemStack, arrow: &mut Projectile) {
+    pub(in crate::game::server_side) fn arrow_from_ammo(ammo: &ItemStack, arrow: &mut Projectile) {
         if let ProjectileKind::Arrow { effect, .. } = &mut arrow.kind {
             if &*ammo.item == "minecraft:spectral_arrow" {
                 *effect = Some(("minecraft:glowing", 200));
@@ -208,7 +208,11 @@ impl Game<'_> {
     /// charging `weapon` (pillagers and piglins: `Monster.getProjectile`). The
     /// replaced ammunition is what the crossbow holds; none leaves it uncharged
     /// and returns false (`tryLoadProjectiles`).
-    pub(in crate::game) fn mob_crossbow_ammo(&mut self, mob: u32, weapon: &ItemStack) -> bool {
+    pub(in crate::game::server_side) fn mob_crossbow_ammo(
+        &mut self,
+        mob: u32,
+        weapon: &ItemStack,
+    ) -> bool {
         let Some(shooter) = self.mobs.iter().find(|m| m.id == mob) else {
             return false;
         };

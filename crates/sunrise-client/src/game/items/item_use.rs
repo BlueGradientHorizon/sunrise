@@ -302,7 +302,7 @@ impl Game<'_> {
     /// (`UseRemainder.convertIntoRemainder`). Neither in creative mode. A
     /// remainder of a stack that is not emptied goes to the inventory on the
     /// server and arrives with its inventory update.
-    pub(in crate::game) fn finish_result(
+    pub(in crate::game::server_side) fn finish_result(
         &self,
         stack: &ItemStack,
         info: &ItemInfo,
@@ -417,14 +417,18 @@ impl Game<'_> {
         })
     }
     /// The stack in the hand of mob `id`.
-    pub(in crate::game) fn mob_hand_stack(&self, id: u32, off_hand: bool) -> Option<ItemStack> {
+    pub(in crate::game::server_side) fn mob_hand_stack(
+        &self,
+        id: u32,
+        off_hand: bool,
+    ) -> Option<ItemStack> {
         use sunrise_items::equipment::{MAINHAND, OFFHAND};
         let slot = if off_hand { OFFHAND } else { MAINHAND };
         let mob = self.mobs.iter().find(|m| m.id == id)?;
         mob.extra.slot_stack(slot).cloned()
     }
     /// `ItemStack.causeUseVibration` for `stack` used by mob `id`.
-    pub(in crate::game) fn mob_use_vibration(
+    pub(in crate::game::server_side) fn mob_use_vibration(
         &mut self,
         id: u32,
         stack: &ItemStack,
@@ -443,7 +447,11 @@ impl Game<'_> {
     /// as for a player. True when the use started. A mob's use is its
     /// `using_item` counter: its goals run that, and nothing counts a use down
     /// to `finishUsingItem` for it.
-    pub(in crate::game) fn start_mob_using_item(&mut self, id: u32, hand: Hand) -> bool {
+    pub(in crate::game::server_side) fn start_mob_using_item(
+        &mut self,
+        id: u32,
+        hand: Hand,
+    ) -> bool {
         let off_hand = hand == Hand::Off;
         let free = |m: &sunrise_client::mobs::Mob| {
             !spear_use::is_using_item(m) && !spear_use::counts_own_timer(m)
@@ -481,7 +489,7 @@ impl Game<'_> {
     /// `LivingEntity.getUseItemRemainingTicks` of mob `id`: the use's duration
     /// less the ticks its counter has run, 0 when it uses nothing (an admiring
     /// piglin and a drinking witch use none). None for a mob that is gone.
-    pub(in crate::game) fn mob_item_use_remaining(&self, id: u32) -> Option<i32> {
+    pub(in crate::game::server_side) fn mob_item_use_remaining(&self, id: u32) -> Option<i32> {
         let mob = self.mobs.iter().find(|m| m.id == id)?;
         if !spear_use::is_using_item(mob) {
             return Some(0);
@@ -497,7 +505,11 @@ impl Game<'_> {
     /// `LivingEntity.useItemRemaining` of mob `id` set to `remaining`: its use
     /// counter moves to where that many ticks are left. A mob's use never
     /// runs out, so nothing else changes. False when it uses nothing.
-    pub(in crate::game) fn mob_set_item_use_remaining(&mut self, id: u32, remaining: i32) -> bool {
+    pub(in crate::game::server_side) fn mob_set_item_use_remaining(
+        &mut self,
+        id: u32,
+        remaining: i32,
+    ) -> bool {
         let Some(mob) = self.mobs.iter().find(|m| m.id == id) else {
             return false;
         };
@@ -517,7 +529,7 @@ impl Game<'_> {
     /// `Item.releaseUsing`, the use over before them as for a player. A bow's
     /// and a trident's own release ask for a player, and a use cooldown too
     /// (`UseCooldown.apply`). False when no use runs.
-    pub(in crate::game) fn release_mob_using_item(&mut self, id: u32) -> bool {
+    pub(in crate::game::server_side) fn release_mob_using_item(&mut self, id: u32) -> bool {
         let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id) else {
             return false;
         };
@@ -1255,7 +1267,7 @@ pub(in crate::game) mod interact_vibration_tests {
         static RECORDING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     }
 
-    pub(in crate::game) fn record_event(
+    pub(in crate::game::server_side) fn record_event(
         event: &'static str,
         pos: [f64; 3],
         source: Option<sunrise_client::mobs::Who>,

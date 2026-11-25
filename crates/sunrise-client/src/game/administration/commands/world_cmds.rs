@@ -1829,8 +1829,6 @@ pub(in crate::game) mod vehicle_damage_command_tests {
             assert_eq!(game.world.game_time, clock);
         });
     }
-    #[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::commands_server::world_cmds::vehicle_damage_command_tests::attribute_guests;
     pub(in crate::game) fn attribute_chat_count(
         rx: &std::sync::mpsc::Receiver<sunrise_client::lan::Out>,
     ) -> usize {

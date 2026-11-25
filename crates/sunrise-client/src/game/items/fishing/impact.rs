@@ -5,7 +5,11 @@ use sunrise_client::{mobs::Who, projectiles::Hit};
 impl Game<'_> {
     /// Expose the actual cast hook to the listener, then resume only that same
     /// cast. Cancellation skips hooking and redirection, never Entity.move.
-    pub(in crate::game) fn fishing_impact(&mut self, h: Hook, hit: Hit) -> Option<(Hook, bool)> {
+    pub(in crate::game::server_side) fn fishing_impact(
+        &mut self,
+        h: Hook,
+        hit: Hit,
+    ) -> Option<(Hook, bool)> {
         if matches!(hit, Hit::None) || !self.native_hears_impacts() {
             return Some((h, false));
         }

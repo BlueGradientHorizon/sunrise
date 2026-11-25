@@ -39,6 +39,3 @@ pub(in crate::game) fn sting(game: &mut Game<'_>, bee_id: u32, who: Who) {
         .restore(mobs, sunrise_client::join_seq::RestoreOrder::SpawnsFirst);
     game.handle_mob_events(events).unwrap();
 }
-
-#[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::combat_client::bee_sting_tests::sting_sounds;

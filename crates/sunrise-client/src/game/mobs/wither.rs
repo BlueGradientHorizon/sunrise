@@ -32,7 +32,7 @@ impl Game<'_> {
     }
     /// `LivingEntity.createWitherRose` for a dying player (`ServerPlayer.die`),
     /// whose kill credit is `killer`.
-    pub(in crate::game) fn create_wither_rose_by(
+    pub(in crate::game::server_side) fn create_wither_rose_by(
         &mut self,
         position: [f64; 3],
         killer: Option<u32>,
@@ -83,7 +83,7 @@ impl Game<'_> {
     /// `pattern.find(level, pos)` for the wither patterns: '^' a wither
     /// skeleton skull, '#' a summon base block, '~' air. `at_origin` can
     /// substitute a proposed state without putting it in the world.
-    pub(in crate::game) fn find_wither_pattern(
+    pub(in crate::game::server_side) fn find_wither_pattern(
         &self,
         pattern: BlockPattern,
         pos: [i32; 3],
@@ -186,7 +186,7 @@ impl Game<'_> {
     /// skull with an owner (healing a wither owner 5 when it kills), else 5
     /// `magic`, withering on a living target that took it (10 seconds on
     /// Normal, 40 on Hard, none on Easy), then a power 1 blast.
-    pub(in crate::game) fn wither_skull_hit(
+    pub(in crate::game::server_side) fn wither_skull_hit(
         &mut self,
         p: &Projectile,
         hit: sunrise_client::projectiles::Hit,
@@ -421,7 +421,11 @@ impl Game<'_> {
 }
 /// `!target.isAlive()` after a hit that landed: a totem that fired keeps the
 /// player alive.
-pub(in crate::game) fn killed(hurt: bool, dead_or_dying: bool, totem_used: bool) -> bool {
+pub(in crate::game::server_side) fn killed(
+    hurt: bool,
+    dead_or_dying: bool,
+    totem_used: bool,
+) -> bool {
     hurt && dead_or_dying && !totem_used
 }
 /// `WitherSkull.onHitEntity`'s damage source.
@@ -435,7 +439,10 @@ pub(in crate::game) struct SkullSource {
 }
 /// 8 `wither_skull` from a skull with a living owner, else 5 `magic`.
 /// `skull` is where the skull is.
-pub(in crate::game) fn skull_source(owner: Option<Who>, skull: [f64; 3]) -> SkullSource {
+pub(in crate::game::server_side) fn skull_source(
+    owner: Option<Who>,
+    skull: [f64; 3],
+) -> SkullSource {
     match owner {
         Some(_) => SkullSource {
             amount: 8.0,

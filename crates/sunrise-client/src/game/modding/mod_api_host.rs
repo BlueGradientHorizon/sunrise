@@ -98,7 +98,9 @@ impl Game<'_> {
     }
 
     /// Object ownership for persistence cleanup, never a level-query membership set.
-    pub(in crate::game) fn retained_entity_ids(&self) -> std::collections::HashSet<u32> {
+    pub(in crate::game::server_side) fn retained_entity_ids(
+        &self,
+    ) -> std::collections::HashSet<u32> {
         let mut retained = self.live_entity_ids();
         retained.extend(self.persist.off_level.keys().copied());
         retained
@@ -107,7 +109,7 @@ impl Game<'_> {
     /// The attachments of entities that left the level, dropped: each tick
     /// while any entity has some. Only those entities are looked at, and
     /// nothing else of the entities' memory changes.
-    pub(in crate::game) fn prune_entity_attachments(&mut self) {
+    pub(in crate::game::server_side) fn prune_entity_attachments(&mut self) {
         let alive = self.retained_entity_ids();
         let gone: Vec<u32> = self
             .persist
@@ -129,7 +131,7 @@ impl Game<'_> {
     /// Access a holder's attachment map, to lend to a mod: a server's, whose
     /// synced changes are sent at the pass's end, or a client's copy of what
     /// its server synced.
-    pub(in crate::game) fn attachment_map(
+    pub(in crate::game::server_side) fn attachment_map(
         &mut self,
         holder: mod_api::Holder,
         access: AttachmentAccess,
@@ -166,7 +168,7 @@ impl Game<'_> {
 
     /// Bind first-store contents to their real owner, including writes made before
     /// insertion by EntityConstructing listeners. Never invent a temporary owner.
-    pub(in crate::game) fn bind_resident_entity_attachments(
+    pub(in crate::game::server_side) fn bind_resident_entity_attachments(
         &mut self,
         id: u32,
     ) -> Result<(), mod_api::AttachmentError> {
@@ -214,7 +216,7 @@ impl Game<'_> {
 
     /// Where `holder`'s attachment map lives now: an entity's by its object ID, a player's where
     /// their state is (swapped in for a guest's turn, or kept beside), the world's others.
-    pub(in crate::game) fn attachment_slot(
+    pub(in crate::game::server_side) fn attachment_slot(
         &mut self,
         holder: mod_api::Holder,
         access: AttachmentAccess,

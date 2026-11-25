@@ -8,7 +8,7 @@ use sunrise_world::registry::BlockStateId;
 impl Game<'_> {
     /// Record that the falling block `id` (`join`) of `state` ended its tick still falling,
     /// when a part listens to its state.
-    pub(in crate::game) fn note_falling_tick(
+    pub(in crate::game::server_side) fn note_falling_tick(
         &mut self,
         id: u32,
         join: JoinSeq,

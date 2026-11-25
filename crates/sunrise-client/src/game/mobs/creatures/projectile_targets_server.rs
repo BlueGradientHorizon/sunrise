@@ -38,7 +38,7 @@ pub(in crate::game::server_side) use sunrise_core::{
 
 impl<'r> Game<'r> {
     /// `AbstractArrow.canHitEntity`: player-on-player check (`owner.canHarmPlayer(target)`).
-    pub(in crate::game) fn can_arrow_harm_player(
+    pub(in crate::game::server_side) fn can_arrow_harm_player(
         &self,
         owner: Who,
         owner_guest: Option<u32>,
@@ -75,7 +75,7 @@ impl<'r> Game<'r> {
         self.player_may_harm(attacker, victim, attacker_team, victim_team)
     }
     /// Vanilla entity type id for any projectile-hittable `Who`.
-    pub(in crate::game) fn entity_kind_for_who(&self, who: Who) -> Option<String> {
+    pub(in crate::game::server_side) fn entity_kind_for_who(&self, who: Who) -> Option<String> {
         match who {
             Who::Player => Some("minecraft:player".to_owned()),
             Who::Mob(id) => {
@@ -135,7 +135,7 @@ impl<'r> Game<'r> {
         }
     }
     /// Whether `Entity.isInvulnerableToBase` / native hook refuses a projectile hit on `id`.
-    pub(in crate::game) fn object_refuses_projectile(
+    pub(in crate::game::server_side) fn object_refuses_projectile(
         &mut self,
         info: &ProjectileHitInfo,
         id: u32,
@@ -158,7 +158,7 @@ impl<'r> Game<'r> {
     }
     /// All non-mob pickable entities (`Entity::can_be_hit_by_projectile` plus `BlockAttachedEntity`).
     #[cfg(test)]
-    pub(in crate::game) fn pickable_object_targets(&self) -> Vec<(Who, Aabb)> {
+    pub(in crate::game::server_side) fn pickable_object_targets(&self) -> Vec<(Who, Aabb)> {
         let mut out = Vec::new();
         for b in self.boats.iter() {
             if b.can_be_hit_by_projectile() {
@@ -206,7 +206,7 @@ impl<'r> Game<'r> {
         out
     }
     /// Unified `hurtServer` dispatch for every non-mob pickable target.
-    pub(in crate::game) fn projectile_hurts_non_mob(
+    pub(in crate::game::server_side) fn projectile_hurts_non_mob(
         &mut self,
         info: &ProjectileHitInfo,
         id: u32,
@@ -453,7 +453,7 @@ impl<'r> Game<'r> {
         NonMobHit::NotObject
     }
     /// Resolve a projectile's causing target, creative flag, and entity id.
-    pub(in crate::game) fn projectile_source_info(
+    pub(in crate::game::server_side) fn projectile_source_info(
         &self,
         info: &ProjectileHitInfo,
     ) -> (Option<Target>, bool, bool, i32) {

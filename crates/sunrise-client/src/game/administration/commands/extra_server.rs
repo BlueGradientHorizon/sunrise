@@ -90,7 +90,7 @@ impl Game<'_> {
             }
         }
     }
-    pub(in crate::game) fn cmd_debug(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_debug(&mut self, ctx: &Context) -> R<i32> {
         if ctx.literals.iter().any(|l| l == "function") {
             return self.cmd_debug_function(ctx);
         }
@@ -129,7 +129,7 @@ impl Game<'_> {
     }
     /// `DebugCommand.TraceCustomExecutor`: run the functions with a tracer
     /// writing to `debug/debug-trace-<time>.txt`.
-    pub(in crate::game) fn cmd_debug_function(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_debug_function(&mut self, ctx: &Context) -> R<i32> {
         if !self.exec.0.functions.is_empty() {
             return Err(err("commands.debug.function.noRecursion", &[]));
         }
@@ -190,7 +190,7 @@ impl Game<'_> {
     /// background threads (`Util.nonCriticalIoPool`, here the cached profile
     /// resolver's), and the answer is reported by a later tick;
     /// `printForEntity` reports the player's own profile at once.
-    pub(in crate::game) fn cmd_fetchprofile(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_fetchprofile(&mut self, ctx: &Context) -> R<i32> {
         if ctx.literals.iter().any(|l| l == "name") {
             let name = match ctx.get("name") {
                 Some(Arg::Str(s)) => s.clone(),
@@ -242,7 +242,7 @@ impl Game<'_> {
     }
     /// `/jfr start|stop` (JfrCommand). Sunrise has no JVM flight recorder:
     /// the recording is its own tick timing, dumped as JSON.
-    pub(in crate::game) fn cmd_jfr(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_jfr(&mut self, ctx: &Context) -> R<i32> {
         if ctx.literals.iter().any(|l| l == "start") {
             if self.cmds.0.jfr.is_some() {
                 return Err(err("commands.jfr.start.failed", &[]));
@@ -283,7 +283,7 @@ impl Game<'_> {
         Ok(1)
     }
     /// `SpectateCommand.spectate`.
-    pub(in crate::game) fn cmd_spectate(&mut self, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_spectate(&mut self, ctx: &Context) -> R<i32> {
         let target = if ctx.get("target").is_some() {
             Some(self.one_entity(ctx, "target", false)?)
         } else {
@@ -338,7 +338,7 @@ impl Game<'_> {
         Ok(1)
     }
     /// `VersionCommand`.
-    pub(in crate::game) fn cmd_version(&mut self) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_version(&mut self) -> R<i32> {
         if !self.server.command_source.is_some_and(|s| s.silent) {
             self.system_message(Text::translate("commands.version.header", &[]));
             for line in self.version_lines() {
@@ -367,7 +367,7 @@ impl Game<'_> {
     /// (`server.execute(() -> result.ifPresentOrElse(...))`).
     /// Whether a `/fetchprofile` lookup is still in flight (the command
     /// harness waits for them, as vanilla's oracle resolves at once).
-    pub(in crate::game) fn profile_fetches_pending(&mut self) -> bool {
+    pub(in crate::game::server_side) fn profile_fetches_pending(&mut self) -> bool {
         self.profile_fetches_pending_client(&self.cmds.0.profile_fetches)
     }
     /// `ServerPlayer.openDialog` for each target: the packet to a guest, the
@@ -392,7 +392,7 @@ impl Game<'_> {
         }
     }
     /// `ServerPlayer.setCamera`: a new camera moves the player to it.
-    pub(in crate::game) fn set_camera(&mut self, target: Option<Target>) {
+    pub(in crate::game::server_side) fn set_camera(&mut self, target: Option<Target>) {
         let target = target.filter(|t| *t != Target::Player);
         if self.cmds.0.camera == target {
             return;
@@ -438,7 +438,7 @@ impl Game<'_> {
     }
     /// The camera part of `ServerPlayer.tick`: follow a living camera, drop a
     /// removed one, and stop when the player sneaks or leaves spectator mode.
-    pub(in crate::game) fn tick_camera(&mut self) {
+    pub(in crate::game::server_side) fn tick_camera(&mut self) {
         let Some(t) = self.cmds.0.camera else {
             return;
         };
@@ -461,7 +461,7 @@ impl Game<'_> {
     }
     /// Per-tick server work of these commands: the delayed tick profiler
     /// start, queued messages and the spectator camera.
-    pub(in crate::game) fn tick_command_extras(&mut self) {
+    pub(in crate::game::server_side) fn tick_command_extras(&mut self) {
         if self.cmds.0.profiler_delay {
             self.cmds.0.profiler_delay = false;
             self.cmds.0.profiler = Some((Instant::now(), self.ticks));
@@ -470,7 +470,7 @@ impl Game<'_> {
         self.tick_camera();
         self.tick_waypoints();
     }
-    pub(in crate::game) fn tick_profile_fetches(&mut self) {
+    pub(in crate::game::server_side) fn tick_profile_fetches(&mut self) {
         let fetches = std::mem::take(&mut self.cmds.0.profile_fetches);
         for fetch in fetches {
             let state = self.tick_profile_fetches_client(&fetch.key);
@@ -496,7 +496,7 @@ impl Game<'_> {
     }
     /// The waypoint part of a living entity's tick: dirty transmit ranges
     /// track or untrack it.
-    pub(in crate::game) fn tick_waypoints(&mut self) {
+    pub(in crate::game::server_side) fn tick_waypoints(&mut self) {
         let dirty = std::mem::take(&mut self.cmds.0.waypoint_dirty);
         if dirty.is_empty() {
             return;
@@ -564,7 +564,7 @@ impl Game<'_> {
     }
     /// A guest's body is only `Player` during its turn; retained command state
     /// must use its connection so the next server tick still finds that body.
-    pub(in crate::game) fn waypoint_target(&self, t: Target) -> Target {
+    pub(in crate::game::server_side) fn waypoint_target(&self, t: Target) -> Target {
         match t {
             Target::Player => self.server.lan_acting.map_or(t, Target::Guest),
             _ => t,

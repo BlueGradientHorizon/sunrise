@@ -5,8 +5,6 @@ pub(in crate::game::client_side) use crate::game::server_side::potent_sulfur::GE
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::potent_sulfur::GEYSER_ERUPTION_ACTIVE;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::potent_sulfur::apply_nausea_effect_to_mob;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::potent_sulfur::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::{
@@ -95,7 +93,11 @@ impl Game<'_> {
     }
     /// `PotentSulfurBlockEntity.spawnGeyserParticle`: the eruption particle at
     /// the bottom of the source block, as high as the water column is deep.
-    pub(in crate::game) fn spawn_geyser_particle(&mut self, sulfur: Pos, source: [i32; 3]) {
+    pub(in crate::game::client_side) fn spawn_geyser_particle(
+        &mut self,
+        sulfur: Pos,
+        source: [i32; 3],
+    ) {
         let water_blocks = source[1] - sulfur.1 - 1;
         self.particles.0.add(
             &ParticleOptions::geyser(T::Geyser, water_blocks),
@@ -109,7 +111,10 @@ impl Game<'_> {
     }
     /// `PotentSulfurBlockEntity.spawnNoxiousGasCloudParticle` at the centre of
     /// the source block.
-    pub(in crate::game) fn spawn_noxious_gas_cloud_particle(&mut self, source: [i32; 3]) {
+    pub(in crate::game::client_side) fn spawn_noxious_gas_cloud_particle(
+        &mut self,
+        source: [i32; 3],
+    ) {
         self.particles.0.add(
             &ParticleOptions::simple(T::NoxiousGasCloud),
             source.map(|c| f64::from(c) + 0.5),

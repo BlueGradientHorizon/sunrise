@@ -228,7 +228,7 @@ impl Game<'_> {
         Some(ItemStack::new("minecraft:bone_meal", 1))
     }
 
-    pub(in crate::game) fn commit_composter_effects(&mut self, effects: Effects) {
+    pub(in crate::game::client_side) fn commit_composter_effects(&mut self, effects: Effects) {
         self.with_level(|b, level, ticks| match effects {
             Effects::Insert { pos, before, after } => {
                 b.composter_insert_effects(

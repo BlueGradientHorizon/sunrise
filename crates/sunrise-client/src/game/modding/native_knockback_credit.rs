@@ -40,7 +40,10 @@ pub(in crate::game) struct CreditLoan<'a> {
 }
 
 impl CreditPlan {
-    pub(in crate::game) fn lend(self, players: &mut HashMap<u32, PlayerCredit>) -> CreditLoan<'_> {
+    pub(in crate::game::server_side) fn lend(
+        self,
+        players: &mut HashMap<u32, PlayerCredit>,
+    ) -> CreditLoan<'_> {
         CreditLoan {
             plan: self,
             players,
@@ -130,7 +133,7 @@ impl KnockbackCredit for CreditLoan<'_> {
 
 impl Game<'_> {
     /// The attacking entity's canonical UUID, already assigned on creation or admission.
-    pub(in crate::game) fn known_attacker_uuid(&self, id: u32) -> Option<[i32; 4]> {
+    pub(in crate::game::server_side) fn known_attacker_uuid(&self, id: u32) -> Option<[i32; 4]> {
         self.known_resident_entity_uuid_at(self.dim.key(), id)
             .or_else(|| self.persist.uuids.get(&id).copied())
     }
@@ -163,7 +166,7 @@ impl Game<'_> {
 
     /// Capture only this victim's possible credit holders, not a table of every entity.
     /// UUID responsibility is committed by the loan at the accepted-hit memory point.
-    pub(in crate::game) fn prepare_knockback_credit(
+    pub(in crate::game::server_side) fn prepare_knockback_credit(
         &self,
         victim: i32,
         attacker: Option<Who>,

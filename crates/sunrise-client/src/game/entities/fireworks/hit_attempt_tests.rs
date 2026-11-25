@@ -38,6 +38,3 @@ impl Hooks for Probe {
         Flow::Continue
     }
 }
-
-#[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::fireworks_server::hit_attempt_tests::fresh_player;

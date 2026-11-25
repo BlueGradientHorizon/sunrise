@@ -2,7 +2,7 @@ use super::*;
 
 impl Game<'_> {
     /// Draws the open station or brewing stand screen; false when none is open.
-    pub(in crate::game) fn draw_station(&mut self, batch: &mut HudBatch) -> bool {
+    pub(in crate::game::client_side) fn draw_station(&mut self, batch: &mut HudBatch) -> bool {
         if self
             .station
             .as_ref()

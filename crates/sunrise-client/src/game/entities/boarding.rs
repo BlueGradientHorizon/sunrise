@@ -9,7 +9,10 @@ use sunrise_client::mobs::Mob;
 /// `Entity.getIndirectPassengersStream` for `vehicle`: the vehicle and every
 /// vehicle riding it, directly or through another rider. `mounts` holds
 /// `(vehicle, its vehicle)` for every mob.
-pub(in crate::game) fn passenger_vehicles(vehicle: u32, mounts: &[(u32, Option<u32>)]) -> Vec<u32> {
+pub(in crate::game::server_side) fn passenger_vehicles(
+    vehicle: u32,
+    mounts: &[(u32, Option<u32>)],
+) -> Vec<u32> {
     let mut ids = vec![vehicle];
     let mut i = 0;
     while i < ids.len() {
@@ -36,7 +39,7 @@ impl Game<'_> {
 
     /// The player riding through `riding` and its place: the acting guest (its kept place, if
     /// any, comes from the hub's list) or, outside a guest turn, this game's own player.
-    pub(in crate::game) fn riding_player(&self) -> Option<(u32, i64)> {
+    pub(in crate::game::server_side) fn riding_player(&self) -> Option<(u32, i64)> {
         match (self.server.lan_acting_entity, self.server.lan_acting) {
             (Some(id), _) if self.server.lan_acting_uuid.is_some() => Some((id, i64::MIN)),
             (_, None) => self
@@ -61,7 +64,10 @@ impl Game<'_> {
     }
 
     /// The first seat, preserving enumeration order on a tie without sorting or allocating.
-    pub(in crate::game) fn first_seated_passenger(&self, vehicle: u32) -> Option<(i64, u32, bool)> {
+    pub(in crate::game::server_side) fn first_seated_passenger(
+        &self,
+        vehicle: u32,
+    ) -> Option<(i64, u32, bool)> {
         let mut first: Option<(i64, u32, bool)> = None;
         self.any_passenger_seat(vehicle, &[], |seat| {
             if first.is_none_or(|old| seat.0 < old.0) {
@@ -78,7 +84,7 @@ impl Game<'_> {
     }
 
     /// The same check while the mob tick holds the resident list out of `Game`.
-    pub(in crate::game) fn has_seated_passengers_with_lent_mobs(
+    pub(in crate::game::server_side) fn has_seated_passengers_with_lent_mobs(
         &self,
         vehicle: u32,
         lent_mobs: &[Mob],
@@ -156,7 +162,12 @@ impl Game<'_> {
     }
     /// `Entity.addPassenger`: the place of `rider` getting on `vehicle`. On a server a player
     /// goes ahead of a first passenger that is no player; everything else goes last.
-    pub(in crate::game) fn boarding_order(&self, vehicle: u32, rider: u32, player: bool) -> i64 {
+    pub(in crate::game::server_side) fn boarding_order(
+        &self,
+        vehicle: u32,
+        rider: u32,
+        player: bool,
+    ) -> i64 {
         let mut aboard = self.seated_passengers(vehicle);
         aboard.retain(|&(_, id, _)| id != rider);
         match (aboard.first(), aboard.last()) {
@@ -178,7 +189,7 @@ impl Game<'_> {
     }
     /// `addPassenger` for the player riding through `riding`, now in `vehicle`: the acting
     /// guest's place goes to the hub, this game's own player's to `riding_order`.
-    pub(in crate::game) fn seat_player(&mut self, vehicle: u32) {
+    pub(in crate::game::server_side) fn seat_player(&mut self, vehicle: u32) {
         match (self.server.lan_acting, self.server.lan_acting_entity) {
             (Some(conn), Some(me)) => {
                 let order = self.boarding_order(vehicle, me, true);
@@ -207,7 +218,7 @@ impl Game<'_> {
     }
 
     /// Fires the queued `started_riding` triggers with every player in place.
-    pub(in crate::game) fn flush_started_riding(&mut self) {
+    pub(in crate::game::server_side) fn flush_started_riding(&mut self) {
         for vehicle in std::mem::take(&mut self.server.started_riding) {
             self.trigger_started_riding(vehicle);
         }

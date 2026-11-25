@@ -42,7 +42,7 @@ impl Game<'_> {
     /// the poofs from `create_fireworks`), on the stream a client Part
     /// holds as `event.random`: the engine's random is that stream for `f`, and
     /// `f`'s draws stay in it.
-    pub(in crate::game) fn with_lent_level_random<R>(
+    pub(in crate::game::client_side) fn with_lent_level_random<R>(
         &mut self,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {

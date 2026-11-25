@@ -3,16 +3,15 @@ pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::world_entry::BIOME_KEYS_SESSION;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::world_entry::level_suffocation_of;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::world_entry::next_biome_keys_session;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::world_entry::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use std::sync::atomic::{AtomicU64, Ordering};
 
 impl Game<'_> {
-    pub(in crate::game) fn defer_world_entry(&mut self, entry: PendingWorldEntry) -> Result<bool> {
+    pub(in crate::game::client_side) fn defer_world_entry(
+        &mut self,
+        entry: PendingWorldEntry,
+    ) -> Result<bool> {
         self.poll_world_rest()?;
         if self.rest_loader.0.is_none() {
             return Ok(false);
@@ -51,7 +50,7 @@ impl Game<'_> {
     /// `CreateWorldScreen.openCreateWorldScreen`: read the world generation
     /// data the create screen describes, on a worker, then open the screen
     /// (`title.preparing`).
-    pub(in crate::game) fn poll_world_creation(&mut self) {
+    pub(in crate::game::client_side) fn poll_world_creation(&mut self) {
         let Some(title) = self.title.0.as_ref() else {
             return;
         };
@@ -138,7 +137,7 @@ impl Game<'_> {
             }
         }
     }
-    pub(in crate::game) fn poll_world_rest(&mut self) -> Result<()> {
+    pub(in crate::game::client_side) fn poll_world_rest(&mut self) -> Result<()> {
         if let Some(loader) = &self.rest_loader.0
             && loader.ready()?
         {
@@ -150,7 +149,7 @@ impl Game<'_> {
         }
         Ok(())
     }
-    pub(in crate::game) fn resume_world_entry(&mut self) -> Result<()> {
+    pub(in crate::game::client_side) fn resume_world_entry(&mut self) -> Result<()> {
         self.poll_integrated_start()?;
         self.poll_world_rest()?;
         self.poll_world_creation();

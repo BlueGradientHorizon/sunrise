@@ -10,7 +10,7 @@ pub(in crate::game) struct FrameVisuals {
 }
 
 impl FrameVisuals {
-    pub(in crate::game) fn finish(
+    pub(in crate::game::client_side) fn finish(
         self,
         game: &Game<'_>,
         camera: glam::DVec3,
@@ -50,7 +50,7 @@ fn rim_target_valid(
 
 impl Game<'_> {
     /// Frame-local requests never persist after a mod is removed or a world changes.
-    pub(in crate::game) fn native_frame_visuals(
+    pub(in crate::game::client_side) fn native_frame_visuals(
         &self,
         alpha: f64,
         lines: &mut Vec<gizmos::Line>,

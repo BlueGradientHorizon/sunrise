@@ -26,7 +26,7 @@ impl Game<'_> {
 
     /// Sets the player in place's `attackStrengthTicker` to the fewest ticks for which
     /// `getAttackStrengthScale(0.5)` is 1.0 with the main hand's attack speed.
-    pub(in crate::game) fn charge_attack_fully(&mut self) {
+    pub(in crate::game::server_side) fn charge_attack_fully(&mut self) {
         let delay = sunrise_client::attack_strength::delay(self.main_hand_attack_speed());
         // The cast saturates: with no attack speed the delay is infinite and no ticker reaches it.
         self.server.attack_ticks = (delay - 0.5).ceil() as u32;
@@ -152,7 +152,7 @@ impl Game<'_> {
 
 impl Game<'_> {
     /// Whether the ray picked a general row and consumed the click.
-    pub(in crate::game) fn attack_general_row(&mut self) -> bool {
+    pub(in crate::game::server_side) fn attack_general_row(&mut self) -> bool {
         let Some((eye, direction)) = self.aim() else {
             return false;
         };
@@ -417,7 +417,7 @@ impl Game<'_> {
     /// strength and whether it is a critical hit): the weapon and effects
     /// scaled by the attack strength, a mace's smash, the critical hit, then
     /// enchantments.
-    pub(in crate::game) fn melee_damage(
+    pub(in crate::game::server_side) fn melee_damage(
         &mut self,
         target_kind: &str,
         living: bool,
@@ -428,7 +428,7 @@ impl Game<'_> {
     }
     /// Player.attack admits its hurt/tail before the item's damage bonus. Keep
     /// that predicate with the one damage evaluation, including its RNG draws.
-    pub(in crate::game) fn melee_damage_with_admission(
+    pub(in crate::game::server_side) fn melee_damage_with_admission(
         &mut self,
         target_kind: &str,
         living: bool,

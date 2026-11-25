@@ -11,7 +11,7 @@ pub(in crate::game::server_side) use std::cell::RefCell;
 impl Game<'_> {
     /// [`Self::native_player_bed_leave`] for the player acting now, who sleeps
     /// in `self.sleeping`; its name is copied only when a mod listens.
-    pub(in crate::game) fn native_acting_bed_leave(
+    pub(in crate::game::server_side) fn native_acting_bed_leave(
         &mut self,
         wake_immediately: bool,
         update_level: bool,

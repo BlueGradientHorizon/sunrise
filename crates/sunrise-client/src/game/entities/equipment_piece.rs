@@ -24,10 +24,10 @@ pub(in crate::game) enum ArmorSlot {
     Feet,
 }
 impl ArmorSlot {
-    pub(in crate::game) fn index(self) -> usize {
+    pub(in crate::game::client_side) fn index(self) -> usize {
         self as usize
     }
-    pub(in crate::game) fn shows(self, name: &str) -> bool {
+    pub(in crate::game::client_side) fn shows(self, name: &str) -> bool {
         match name {
             "head" | "hat" => matches!(self, Self::Head),
             "body" => matches!(self, Self::Chest | Self::Legs),
@@ -39,7 +39,7 @@ impl ArmorSlot {
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn equipment_piece<'a>(
+    pub(in crate::game::client_side) fn equipment_piece<'a>(
         &'a self,
         item: &str,
         stack: Option<&ItemStack>,
@@ -124,7 +124,7 @@ fn resolve_piece<'a>(
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn mob_equipment_layers(
+    pub(in crate::game::client_side) fn mob_equipment_layers(
         &self,
         mob: &Mob,
         pass: EquipmentPass,
@@ -205,7 +205,7 @@ pub(in crate::game) struct ResolvedEquipmentLayer<'a> {
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn equipment_materials<'a>(
+    pub(in crate::game::client_side) fn equipment_materials<'a>(
         &'a self,
         piece: &EquipmentPiece<'_>,
         stack: Option<&ItemStack>,
@@ -277,7 +277,7 @@ impl EquipmentPiece<'_> {
         )
     }
 
-    pub(in crate::game) fn resolved_materials<'a>(
+    pub(in crate::game::client_side) fn resolved_materials<'a>(
         &self,
         trim: Option<MaterialBinding<'a>>,
         mut resolve: impl FnMut(usize, &EquipmentAssetLayer) -> Option<ResolvedEquipmentLayer<'a>>,

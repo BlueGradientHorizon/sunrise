@@ -10,15 +10,9 @@ pub(in crate::game::client_side) use crate::game::server_side::dispense_fixture:
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::dispense_fixture::Target;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dispense_fixture::event_sound;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::dispense_fixture::floor_pos;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dispense_fixture::num;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::dispense_fixture::record;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::dispense_fixture::record_events;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::dispense_fixture::start_recording;
 #[allow(unused_imports)]

@@ -11,45 +11,15 @@ pub(in crate::game::server_side) use crate::game::client_side::perspective::Ridd
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::perspective::VisualRays;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::perspective::body_visible;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::perspective::emit_preview;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::perspective::entity_in_ui_shade;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::perspective::entity_light_block;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::perspective::load_player_type;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::perspective::outline_offset;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::perspective::own_invisible;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::perspective::player_model_positions;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::perspective::player_preview_quads;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::perspective::player_preview_quads_no_cull;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::perspective::player_type;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::perspective::player_type_with_document;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::perspective::player_walk_distance;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::perspective::preview_glint_quads;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::perspective::ray_interaction_shape;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::perspective::ray_shape_from_boxes;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::perspective::rope_old_after_turn;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::perspective::shadow_pass_takes_own_model;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::perspective::turn_rotation;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::perspective::wrap;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::perspective::*;
 #[allow(unused_imports)]

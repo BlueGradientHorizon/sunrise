@@ -53,7 +53,7 @@ use sunrise_world::{
 
 /// Assign a stored owner's delayed id at its existing allocation point.
 /// Kinds without a lifetime slot pass None; a bound owner must keep its id.
-pub(in crate::game) fn assign_stored_id(
+pub(in crate::game::server_side) fn assign_stored_id(
     next: &mut u32,
     id: &mut u32,
     lifetime: Option<&sunrise_mod_runtime::attachments::AttachmentLifetime>,
@@ -591,7 +591,7 @@ impl RenderEntityBounds for Minecart {
     }
 }
 
-pub(in crate::game) fn aabb_from_extents(bounds: ([f64; 3], [f64; 3])) -> Aabb {
+pub(in crate::game::server_side) fn aabb_from_extents(bounds: ([f64; 3], [f64; 3])) -> Aabb {
     Aabb::new(
         Vec3::new(bounds.0[0], bounds.0[1], bounds.0[2]),
         Vec3::new(bounds.1[0], bounds.1[1], bounds.1[2]),
@@ -640,7 +640,7 @@ impl RenderEntityBounds for Cushion {
 /// Whether this projectile still lives its list's tick: an arrow's state was
 /// not removed. A thrown projectile leaves its list through the batch's own
 /// keep flags, not a field of its own.
-pub(in crate::game) fn shot_alive(shot: &Projectile) -> bool {
+pub(in crate::game::server_side) fn shot_alive(shot: &Projectile) -> bool {
     shot.arrow.as_ref().is_none_or(|a| !a.removed)
 }
 
@@ -941,7 +941,7 @@ pub(in crate::game) fn apply_contact_writes(
 
 impl Game<'_> {
     /// Finish a body bounce before the caller changes the live entity's delta movement.
-    pub(in crate::game) fn finish_body_restitution(
+    pub(in crate::game::server_side) fn finish_body_restitution(
         &mut self,
         (id, kind): (u32, &str),
         feet: Vec3,
@@ -1045,7 +1045,7 @@ impl Game<'_> {
 
     /// Apply a contact Part's write to the moving item. Items hold a multiplier
     /// for the next move (`makeStuckInBlock`), but keep no active effects.
-    pub(in crate::game) fn apply_item_write(
+    pub(in crate::game::server_side) fn apply_item_write(
         &mut self,
         item: &mut ItemEntity,
         write: mod_api::EntityWrite,
@@ -1127,7 +1127,7 @@ impl Game<'_> {
     /// projectile takes no effects, no damage table and keeps no stuck
     /// multiplier: `Hurt` and `AddEffect` are skipped, `StuckIn` scales the
     /// movement once, as vanilla's projectiles keep none of the three.
-    pub(in crate::game) fn apply_projectile_write(
+    pub(in crate::game::server_side) fn apply_projectile_write(
         &mut self,
         shot: &mut Projectile,
         write: mod_api::EntityWrite,
@@ -1157,7 +1157,7 @@ impl Game<'_> {
     /// the batch's rows and the level as they were. The level is lent and given
     /// back per contact, as `item_fall_on` lends its own (#2194's carrier
     /// discipline).
-    pub(in crate::game) fn fire_batch_inside(
+    pub(in crate::game::server_side) fn fire_batch_inside(
         &mut self,
         entity: i32,
         kind: &'static str,
@@ -1490,12 +1490,12 @@ macro_rules! define_entity_handles {
 
         impl Game<'_> {
             /// Moves every list out; give it back with `restore_entities`.
-            pub(in crate::game) fn take_entities(&mut self) -> TakenEntities {
+            pub(in crate::game::server_side) fn take_entities(&mut self) -> TakenEntities {
                 TakenEntities {
                     $($field: self$(.$list)+.lift(),)*
                 }
             }
-            pub(in crate::game) fn restore_entities(&mut self, taken: TakenEntities) {
+            pub(in crate::game::server_side) fn restore_entities(&mut self, taken: TakenEntities) {
                 $({
                     let expected = self$(.$list)+.len() + taken.$field.len();
                     self$(.$list)+.restore(taken.$field, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
@@ -1509,7 +1509,7 @@ macro_rules! define_entity_handles {
                     $(.chain((0..self$(.$list)+.len()).map(EntityHandle::$kind)))*
             }
 
-            pub(in crate::game) fn entity_id_cursor(&self) -> EntityIdCursor {
+            pub(in crate::game::server_side) fn entity_id_cursor(&self) -> EntityIdCursor {
                 EntityIdCursor {
                     before: JoinSeq::upcoming(),
                     $($field: (self$(.$list)+.first().map(|e| (e.id(), e.join_seq())), 0, self$(.$list)+.len()),)*
@@ -1519,7 +1519,7 @@ macro_rules! define_entity_handles {
             /// Verify a stable identity before returning any index-bearing handle.
             /// Removed next identities resume at the next surviving original join.
             /// The captured join ceiling excludes entities spawned by callbacks.
-            pub(in crate::game) fn next_entity_id(&self, cursor: &mut EntityIdCursor) -> Option<(u32, EntityHandle)> {
+            pub(in crate::game::server_side) fn next_entity_id(&self, cursor: &mut EntityIdCursor) -> Option<(u32, EntityHandle)> {
                 $({
                     let (next, hint, remaining) = &mut cursor.$field;
                     if *remaining > 0 {
@@ -1555,7 +1555,7 @@ macro_rules! define_entity_handles {
             }
 
             /// Takes the entity out of its list (`Entity.discard` before it ever ticked).
-            pub(in crate::game) fn discard_entity(&mut self, handle: EntityHandle) {
+            pub(in crate::game::server_side) fn discard_entity(&mut self, handle: EntityHandle) {
                 match handle {
                     $(EntityHandle::$kind(i) => {
                         self$(.$list)+.remove(i);
@@ -1565,7 +1565,7 @@ macro_rules! define_entity_handles {
 
             /// [`Self::entity_handles`], last of each list first, so the
             /// caller can remove the entity it is on.
-            pub(in crate::game) fn entity_handles_rev(&self) -> impl Iterator<Item = EntityHandle> + use<> {
+            pub(in crate::game::server_side) fn entity_handles_rev(&self) -> impl Iterator<Item = EntityHandle> + use<> {
                 std::iter::empty()
                     $(.chain((0..self$(.$list)+.len()).rev().map(EntityHandle::$kind)))*
             }
@@ -1620,7 +1620,7 @@ pub(in crate::game) struct DrawRun {
 impl DrawFamily {
     /// The drawn family of an entity and its index in that family's list; `None` for the
     /// entities the pass does not draw.
-    pub(in crate::game) fn of(handle: EntityHandle) -> Option<(Self, usize)> {
+    pub(in crate::game::server_side) fn of(handle: EntityHandle) -> Option<(Self, usize)> {
         use EntityHandle as H;
         Some(match handle {
             H::Mob(i) => (Self::Mob, i),
@@ -1649,7 +1649,7 @@ pub(in crate::game) struct DrawExtras<'a> {
 
 /// The drawn entities as runs in the order they joined the level. Keep the next draw-only
 /// entity cached, so the existing body walk only compares its join with that one head.
-pub(in crate::game) fn draw_runs(
+pub(in crate::game::server_side) fn draw_runs(
     lists: EntityLists<'_>,
     mut extra: DrawExtras<'_>,
     runs: &mut Vec<DrawRun>,
@@ -2142,26 +2142,26 @@ macro_rules! load_entity_of_any_kind {
 pub(in crate::game) use load_entity_of_any_kind;
 
 /// The type ids the minecart kind loads.
-pub(in crate::game) fn loads_as_cart(kind: &str) -> bool {
+pub(in crate::game::server_side) fn loads_as_cart(kind: &str) -> bool {
     super::minecarts::CartKind::from_id(kind).is_some()
 }
 /// The type id the primed TNT kind loads.
-pub(in crate::game) fn loads_as_tnt(kind: &str) -> bool {
+pub(in crate::game::server_side) fn loads_as_tnt(kind: &str) -> bool {
     kind == "minecraft:tnt"
 }
 
 impl Game<'_> {
     /// The type ids the mob kind loads.
-    pub(in crate::game) fn loads_as_mob(&self, kind: &str) -> bool {
+    pub(in crate::game::server_side) fn loads_as_mob(&self, kind: &str) -> bool {
         self.res.mob_types().contains_key(kind)
     }
     /// The type ids the boat kind loads.
-    pub(in crate::game) fn loads_as_boat(&self, kind: &str) -> bool {
+    pub(in crate::game::server_side) fn loads_as_boat(&self, kind: &str) -> bool {
         super::boats::registered_boat(kind, &self.res.items().component_registry).is_some()
     }
     /// Whether `load_listed` loads `kind` as a vehicle that takes its mob
     /// riders (`take_mob_passengers`): a mob, boat, minecart or primed TNT.
-    pub(in crate::game) fn listed_kind_takes_riders(&self, kind: &str) -> bool {
+    pub(in crate::game::server_side) fn listed_kind_takes_riders(&self, kind: &str) -> bool {
         self.loads_as_mob(kind)
             || self.loads_as_boat(kind)
             || loads_as_cart(kind)
@@ -2181,7 +2181,7 @@ impl Game<'_> {
     /// Restore a live portal object with its explicitly captured runtime ownership.
     /// This dispatch covers only reconstructible portal kinds; ordinary disk loads
     /// continue through the canonical kind walk without transfer state.
-    pub(in crate::game) fn load_listed_transferred(
+    pub(in crate::game::server_side) fn load_listed_transferred(
         &mut self,
         kind: &str,
         uuid: Option<[i32; 4]>,
@@ -2209,7 +2209,9 @@ impl Game<'_> {
     }
 
     /// The ids of the entities that are not on the walk of `entity_lists!`.
-    pub(in crate::game) fn entity_ids_off_walk(&self) -> impl Iterator<Item = u32> + '_ {
+    pub(in crate::game::server_side) fn entity_ids_off_walk(
+        &self,
+    ) -> impl Iterator<Item = u32> + '_ {
         self.cushions
             .iter()
             .map(|e| e.id)
@@ -2238,7 +2240,7 @@ impl Game<'_> {
             .chain(self.natural_knot_id_iter())
     }
     /// The ids of every entity in the level that is not removed: one walk.
-    pub(in crate::game) fn live_entity_ids(&self) -> HashSet<u32> {
+    pub(in crate::game::server_side) fn live_entity_ids(&self) -> HashSet<u32> {
         let mut alive: HashSet<u32> = self.entity_ids_off_walk().collect();
         for_each_entity!(entity_lists_of!(self), entity => {
             if !entity.is_removed() {

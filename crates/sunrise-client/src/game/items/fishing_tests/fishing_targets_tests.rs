@@ -68,7 +68,7 @@ pub(in crate::game) struct FishingExtraCase {
     pub(in crate::game) ticks: Vec<FishingTick>,
 }
 
-pub(in crate::game) fn load_witness() -> FishingWitness {
+pub(in crate::game::server_side) fn load_witness() -> FishingWitness {
     let dir = std::env::var_os("SUNRISE_PROJECTILE_WITNESS_DIR").unwrap_or_else(|| {
         panic!(
             "SUNRISE_PROJECTILE_WITNESS_DIR is unset; run tools/test_projectile_targets_parity.py"
@@ -86,11 +86,11 @@ pub(in crate::game) fn load_witness() -> FishingWitness {
     witness
 }
 
-pub(in crate::game) fn bits(v: f64) -> String {
+pub(in crate::game::server_side) fn bits(v: f64) -> String {
     format!("{:016x}", v.to_bits())
 }
 
-pub(in crate::game) fn fbits(v: f32) -> String {
+pub(in crate::game::server_side) fn fbits(v: f32) -> String {
     format!("{:08x}", v.to_bits())
 }
 
@@ -104,7 +104,7 @@ pub(in crate::game) fn align_next_entity_mod4(game: &mut Game<'_>, want_mod4: u3
     }
 }
 
-pub(in crate::game) fn setup_game<'a>(
+pub(in crate::game::server_side) fn setup_game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
 ) -> Game<'a> {
     let mut game = crate::game::game_tests::tests::server_game(resources);
@@ -156,9 +156,6 @@ pub(in crate::game) fn clear_entities(game: &mut Game<'_>) {
     game.reset_entity_residency();
     game.bind_local_player_residency();
 }
-
-#[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::fishing_client::fishing_targets_tests::reset_arena;
 
 #[derive(Clone, Copy)]
 pub(in crate::game) enum TrackedTarget {
@@ -417,7 +414,7 @@ fn witness_fishing_bobber_targets() {
     run_witness_fishing_bobber_targets();
 }
 
-pub(in crate::game) fn run_witness_fishing_bobber_targets() {
+pub(in crate::game::server_side) fn run_witness_fishing_bobber_targets() {
     let witness = load_witness();
     let mut resources = None;
     let mut game = setup_game(&mut resources);

@@ -18,7 +18,10 @@ struct Case {
     event: i8,
 }
 impl Game<'_> {
-    pub(in crate::game) fn run_boat_rider_fixture(&mut self, directory: &Path) -> Result<()> {
+    pub(in crate::game::client_side) fn run_boat_rider_fixture(
+        &mut self,
+        directory: &Path,
+    ) -> Result<()> {
         let cases: Vec<Case> =
             serde_json::from_str(&std::fs::read_to_string(directory.join("inputs.json"))?)?;
         let (client, peer) = Pipe::pair();

@@ -72,7 +72,7 @@ pub(in crate::game) struct Pickups {
     made: std::collections::BTreeMap<&'static str, u64>,
 }
 impl Pickups {
-    pub fn clear(&mut self) {
+    pub(in crate::game::client_side) fn clear(&mut self) {
         self.live.clear();
         self.added.clear();
     }
@@ -84,7 +84,7 @@ impl Pickups {
 /// `ItemPickupParticleGroup.ParticleInstance.fromParticle`: the position at
 /// `partial`, from the taken entity's to the collector's (lerped between ticks)
 /// along the square of the particle's age.
-pub(in crate::game) fn position(p: &Pickup, partial: f64) -> [f64; 3] {
+pub(in crate::game::client_side) fn position(p: &Pickup, partial: f64) -> [f64; 3] {
     let time = (p.life as f32 + partial as f32) / LIFE_TIME as f32;
     let time = f64::from(time * time);
     let from = p.taken.position();
@@ -127,7 +127,7 @@ impl Game<'_> {
         }
     }
     /// [`Self::add_pickup`] with the collector's first target given.
-    pub(in crate::game) fn add_pickup_toward(
+    pub(in crate::game::client_side) fn add_pickup_toward(
         &mut self,
         taken: Taken,
         collector: Collector,
@@ -150,7 +150,7 @@ impl Game<'_> {
     }
     /// `ParticleEngine.tick` for the ITEM_PICKUP group: age (removed at
     /// `LIFE_TIME`), follow the collector, then let the new particles in.
-    pub(in crate::game) fn tick_pickups(&mut self) {
+    pub(in crate::game::client_side) fn tick_pickups(&mut self) {
         let mut live = std::mem::take(&mut self.pickups.0.live);
         live.retain_mut(|p| {
             p.life += 1;

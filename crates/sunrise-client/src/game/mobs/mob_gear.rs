@@ -77,7 +77,12 @@ impl Game<'_> {
     }
     /// `EnchantmentsByCostWithDifficulty.enchant` on the stack the mob holds
     /// in a `finalize` slot: nothing is drawn when the slot is empty.
-    pub(in crate::game) fn enchant_item(&mut self, id: u32, slot: usize, special: f32) {
+    pub(in crate::game::server_side) fn enchant_item(
+        &mut self,
+        id: u32,
+        slot: usize,
+        special: f32,
+    ) {
         let Some(stack) = self
             .mobs
             .iter()
@@ -103,7 +108,7 @@ impl Game<'_> {
     }
     /// `Pillager` / `Vindicator.applyRaidBuffs`: Quick Charge on a fresh
     /// crossbow after waves 3 and 5, Sharpness on a fresh axe.
-    pub(in crate::game) fn apply_raid_buffs(
+    pub(in crate::game::server_side) fn apply_raid_buffs(
         &mut self,
         id: u32,
         kind: RaiderType,

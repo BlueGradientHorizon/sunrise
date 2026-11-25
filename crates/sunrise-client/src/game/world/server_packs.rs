@@ -207,7 +207,7 @@ impl PackNotifier {
         (title, message)
     }
 }
-pub(in crate::game) fn saves() -> PathBuf {
+pub(in crate::game::client_side) fn saves() -> PathBuf {
     std::env::current_dir().unwrap_or_default().join("saves")
 }
 
@@ -218,7 +218,7 @@ impl Game<'_> {
     /// `WorldOpenFlows.loadBundledResourcePack`: a world's own
     /// `resourcepacks/resources.zip` is pushed as a local pack before the world
     /// connects, after `configureForLocalWorld` so the pack is accepted at once.
-    pub(in crate::game) fn server_packs_world_pack(&mut self, folder: &str) {
+    pub(in crate::game::client_side) fn server_packs_world_pack(&mut self, folder: &str) {
         let path = saves()
             .join(folder)
             .join("resourcepacks")
@@ -231,7 +231,7 @@ impl Game<'_> {
     /// `ConnectScreen`: the server's setting decides what its packs do
     /// (`configureForServerControl`); single player's own server takes them
     /// all, quietly (`configureForLocalWorld`).
-    pub(in crate::game) fn server_packs_connect(
+    pub(in crate::game::client_side) fn server_packs_connect(
         &mut self,
         address: Option<&str>,
         list_name: Option<&str>,
@@ -263,7 +263,7 @@ impl Game<'_> {
         }
     }
     /// `Minecraft.clearDownloadedResourcePacks`: every server pack goes at once.
-    pub(in crate::game) fn server_packs_disconnect(&mut self) {
+    pub(in crate::game::client_side) fn server_packs_disconnect(&mut self) {
         self.server_packs.0.prompt = None;
         self.server_packs.0.notifiers.clear();
         self.server_packs.0.packs.disconnect();
@@ -271,7 +271,7 @@ impl Game<'_> {
     }
 
     /// `handleResourcePackPush`.
-    pub(in crate::game) fn handle_pack_push(&mut self, p: ResourcePackPush) {
+    pub(in crate::game::client_side) fn handle_pack_push(&mut self, p: ResourcePackPush) {
         if !valid_url(&p.url) {
             self.send_pack_status(p.id, action::INVALID_URL);
             return;
@@ -314,7 +314,7 @@ impl Game<'_> {
         self.capture(false);
     }
     /// `handleResourcePackPop`: one pack, or all of them.
-    pub(in crate::game) fn handle_pack_pop(&mut self, id: Option<u128>) {
+    pub(in crate::game::client_side) fn handle_pack_pop(&mut self, id: Option<u128>) {
         match id {
             Some(id) => self.server_packs.0.packs.pop(id),
             None => self.server_packs.0.packs.pop_all(),
@@ -340,7 +340,7 @@ impl Game<'_> {
 
     /// `PackConfirmScreen`'s callback: push every pending pack and save the server list.
     /// Declining a required pack closes the connection without changing its stored policy.
-    pub(in crate::game) fn answer_pack_prompt(&mut self, yes: bool) -> Result<()> {
+    pub(in crate::game::client_side) fn answer_pack_prompt(&mut self, yes: bool) -> Result<()> {
         let Some(prompt) = self.server_packs.0.prompt.take() else {
             return Ok(());
         };
@@ -368,7 +368,7 @@ impl Game<'_> {
     /// Runs what the packs need (`createUpdateScheduler`): the downloads
     /// that finished, the ones to start, a resource reload when the active
     /// packs change, and the statuses for the server.
-    pub(in crate::game) fn tick_server_packs(&mut self) {
+    pub(in crate::game::client_side) fn tick_server_packs(&mut self) {
         let mut notifiers = std::mem::take(&mut self.server_packs.0.notifiers);
         notifiers.retain_mut(|n| {
             let id = SystemToastId::PackDownload(n.id);
@@ -477,13 +477,13 @@ impl Game<'_> {
         }
     }
     /// `ServerPacks::reloaded` and the recovery reload it can ask for.
-    pub(in crate::game) fn finish_pack_reload(&mut self, ok: bool) {
+    pub(in crate::game::client_side) fn finish_pack_reload(&mut self, ok: bool) {
         if let Some(recovery) = self.server_packs.0.packs.reloaded(ok) {
             self.start_pack_reload(&recovery);
         }
     }
 
-    pub(in crate::game) fn draw_pack_prompt(&self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_pack_prompt(&self, batch: &mut HudBatch) {
         let Some(prompt) = &self.server_packs.0.prompt else {
             return;
         };
@@ -515,7 +515,7 @@ impl Game<'_> {
 
     /// Admit new server reports in the receiving window. `SystemToast.addOrUpdate`
     /// resets an existing chunk toast instead of admitting a second one.
-    pub(in crate::game) fn add_server_report_toasts(&mut self) {
+    pub(in crate::game::client_side) fn add_server_report_toasts(&mut self) {
         let pending = self.client_reports.0.take();
         let toasts = [
             pending
@@ -550,7 +550,7 @@ impl Game<'_> {
     /// client toast queue rather than through `toast_add` so a mod cannot veto
     /// or rewrite its own failure notice; headless servers log the error and do
     /// not drain the client queue.
-    pub(in crate::game) fn add_hook_panic_toasts(&mut self) {
+    pub(in crate::game::client_side) fn add_hook_panic_toasts(&mut self) {
         if self.serving.is_some() || self.options.dedicated.is_some() {
             return;
         }
@@ -576,7 +576,7 @@ impl Game<'_> {
     }
 
     /// A left click on the prompt: its answer when it hit a button.
-    pub(in crate::game) fn pack_prompt_click(&mut self) -> Result<bool> {
+    pub(in crate::game::client_side) fn pack_prompt_click(&mut self) -> Result<bool> {
         let Some(prompt) = &self.server_packs.0.prompt else {
             return Ok(false);
         };

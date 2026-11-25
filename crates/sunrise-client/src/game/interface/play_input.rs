@@ -32,7 +32,7 @@ fn studio_freecam_movement_key(key: KeyCode) -> bool {
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn toggle_options(&self) -> [bool; 4] {
+    pub(in crate::game::client_side) fn toggle_options(&self) -> [bool; 4] {
         [
             self.settings.toggle_crouch,
             self.settings.toggle_sprint,
@@ -40,11 +40,11 @@ impl Game<'_> {
             self.settings.toggle_use,
         ]
     }
-    pub(in crate::game) fn reset_toggle_keys(&mut self) {
+    pub(in crate::game::client_side) fn reset_toggle_keys(&mut self) {
         self.client.vanilla_mappings.reset_toggle_keys();
     }
 
-    pub(in crate::game) fn smooth_camera_action(&mut self) {
+    pub(in crate::game::client_side) fn smooth_camera_action(&mut self) {
         self.client.smooth_camera = !self.client.smooth_camera;
     }
 
@@ -96,7 +96,10 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn update_modifiers(&mut self, state: winit::keyboard::ModifiersState) {
+    pub(in crate::game::client_side) fn update_modifiers(
+        &mut self,
+        state: winit::keyboard::ModifiersState,
+    ) {
         self.client.modifiers = state;
         if let Some(title) = &mut self.title.0 {
             title.set_alt_down(state.alt_key());
@@ -138,11 +141,11 @@ impl Game<'_> {
     /// drop. Those do not care what sneak and sprint are bound to. A modifier
     /// says nothing about which side is down, so one being up means both
     /// Shifts, or both Controls, are.
-    pub(in crate::game) fn heal_hold_latches(&mut self) {
+    pub(in crate::game::client_side) fn heal_hold_latches(&mut self) {
         self.update_modifiers(self.client.modifiers);
     }
     /// Whether the other device still holds the sneak or sprint mapping `source` released.
-    pub(in crate::game) fn toggle_held_elsewhere(
+    pub(in crate::game::client_side) fn toggle_held_elsewhere(
         &self,
         slot: usize,
         key: KeyCode,
@@ -174,7 +177,7 @@ impl Game<'_> {
     }
     /// Apply a physical key edge from `source` to every mapping bound to it, once per binding
     /// (`KeyboardHandler.keyPress` -> `KeyMapping.set` / `KeyMapping.click`).
-    pub(in crate::game) fn mapped_key_event_from(
+    pub(in crate::game::client_side) fn mapped_key_event_from(
         &mut self,
         key: KeyCode,
         pressed: bool,
@@ -215,7 +218,7 @@ impl Game<'_> {
         Ok(())
     }
     /// Apply a physical mouse button to every mapping bound to it.
-    pub(in crate::game) fn mapped_mouse_event(
+    pub(in crate::game::client_side) fn mapped_mouse_event(
         &mut self,
         button: MouseButton,
         input: &str,
@@ -225,7 +228,7 @@ impl Game<'_> {
     }
     /// Apply a physical mouse button edge from `source` to every mapping bound to `input`,
     /// once per binding (`MouseHandler.onButton` -> `KeyMapping.set` / `KeyMapping.click`).
-    pub(in crate::game) fn mapped_mouse_event_from(
+    pub(in crate::game::client_side) fn mapped_mouse_event_from(
         &mut self,
         button: MouseButton,
         input: &str,
@@ -252,7 +255,7 @@ impl Game<'_> {
     /// `key`, the vanilla default the mapping translated to, may itself be
     /// another mapping's rebound key. `source` is the device the event came
     /// from: a key stays held while any device holds it.
-    pub(in crate::game) fn mapped_key(
+    pub(in crate::game::client_side) fn mapped_key(
         &mut self,
         key: KeyCode,
         pressed: bool,
@@ -347,7 +350,7 @@ impl Game<'_> {
     }
     /// `KeyMapping.releaseAll` when a screen opens and
     /// `restoreToggleStatesOnScreenClosed` when it closes.
-    pub(in crate::game) fn track_toggle_screens(&mut self) {
+    pub(in crate::game::client_side) fn track_toggle_screens(&mut self) {
         let playing = !self.mod_mappings_screen_open();
         if playing == self.client.was_playing {
             return;
@@ -364,7 +367,7 @@ impl Game<'_> {
     }
     /// Immediately release gameplay mappings when a screen opens, even if it closes
     /// again before the redraw's screen tracking.
-    pub(in crate::game) fn release_screen_mappings(&mut self) {
+    pub(in crate::game::client_side) fn release_screen_mappings(&mut self) {
         self.client.was_playing = false;
         self.client.keys.clear();
         let options = self.toggle_options();
@@ -372,14 +375,14 @@ impl Game<'_> {
     }
     /// `MouseHandler.onScroll`: the hotbar (or the spectator menu) takes the wheel only when no
     /// screen is open; a book, lectern, sign or prompt drawn over gameplay is one.
-    pub(in crate::game) fn hotbar_takes_wheel(&self) -> bool {
+    pub(in crate::game::client_side) fn hotbar_takes_wheel(&self) -> bool {
         self.client.screen == Screen::Playing
             && !self.screen_over_playing()
             && self.sleeping.is_none()
             && self.player.is_some()
     }
     /// A mod's `MouseScrolling` cancels the step about to turn the hotbar.
-    pub(in crate::game) fn hotbar_scroll_canceled(
+    pub(in crate::game::client_side) fn hotbar_scroll_canceled(
         &mut self,
         scroll: [f64; 2],
         steps: [i32; 2],
@@ -401,7 +404,11 @@ impl Game<'_> {
     }
     /// What one whole wheel step does in play (`MouseHandler.onScroll`): a spectator's menu or
     /// flying speed, else the selected hotbar slot.
-    pub(in crate::game) fn hotbar_wheel_step(&mut self, wheel: i32, vertical_steps: i32) {
+    pub(in crate::game::client_side) fn hotbar_wheel_step(
+        &mut self,
+        wheel: i32,
+        vertical_steps: i32,
+    ) {
         if self.own_player_is_spectator() && self.client.spectator_gui.is_menu_active() {
             self.spectator_scroll(-wheel);
         } else if self.own_player_is_spectator() {
@@ -425,7 +432,7 @@ impl Game<'_> {
     }
     /// A step of the hotbar from a controller's bumper: one wheel notch, down for the next slot,
     /// through everything the wheel goes through.
-    pub(in crate::game) fn hotbar_step(&mut self, next: bool) {
+    pub(in crate::game::client_side) fn hotbar_step(&mut self, next: bool) {
         let wheel = if next { -1 } else { 1 };
         if self.hotbar_takes_wheel()
             && !self.hotbar_scroll_canceled([0.0, f64::from(wheel)], [0, wheel])
@@ -436,7 +443,7 @@ impl Game<'_> {
     /// A mouse mapping pressed or let go by `source`. A release waits while another device holds
     /// the mapping, so letting go of one can't end what the other still presses, as for keys
     /// (`HeldKeys`).
-    pub(in crate::game) fn mouse_mapping(
+    pub(in crate::game::client_side) fn mouse_mapping(
         &mut self,
         button: MouseButton,
         pressed: bool,
@@ -471,7 +478,7 @@ impl Game<'_> {
     /// live state rather than keeping a count: a screen takes a mouse release without telling the
     /// mappings, and a count would then hold the attack for good. A script keeps no such state, so
     /// nothing waits for a script's mouse hold.
-    pub(in crate::game) fn mouse_mapping_held_elsewhere(
+    pub(in crate::game::client_side) fn mouse_mapping_held_elsewhere(
         &self,
         button: MouseButton,
         source: Source,
@@ -529,7 +536,7 @@ impl Game<'_> {
     /// Asks the mods about each gameplay mapping a physical input (a key's or a mouse button's
     /// name) is bound to, before the game acts on it: true when one cancels a press. Only while
     /// playing, and nothing is asked with no mod listening.
-    pub(in crate::game) fn key_mapping_canceled(
+    pub(in crate::game::client_side) fn key_mapping_canceled(
         &mut self,
         input: Option<&str>,
         pressed: bool,
@@ -587,7 +594,7 @@ impl Game<'_> {
 /// never the controller modules; today `pad` answers.
 impl Game<'_> {
     /// The analog move vector (`[left, forward]`), after direct mapping writes.
-    pub(in crate::game) fn input_move(&self) -> Option<[f32; 2]> {
+    pub(in crate::game::client_side) fn input_move(&self) -> Option<[f32; 2]> {
         self.pad_move()
             .map(|stick| self.apply_movement_writes(stick))
     }
@@ -609,7 +616,7 @@ impl Game<'_> {
 
     /// KeyboardInput.tick: classify the original stick first; a direct write changes only
     /// its own flag and analog component, never a different direction's classification.
-    pub(in crate::game) fn sample_movement_keys(
+    pub(in crate::game::client_side) fn sample_movement_keys(
         &self,
         stick: Option<[f32; 2]>,
     ) -> sunrise_client::sprint::Keys {
@@ -640,24 +647,24 @@ impl Game<'_> {
     }
 
     /// Whether a device holds the key mapping named `mapping` (`key.use`).
-    pub(in crate::game) fn input_holds(&self, mapping: &str) -> bool {
+    pub(in crate::game::client_side) fn input_holds(&self, mapping: &str) -> bool {
         self.pad.0.holds_action(mapping)
     }
 
     /// Turns the view by what the devices give this frame (`Entity.turn`).
-    pub(in crate::game) fn input_look(&mut self, seconds: f32) {
+    pub(in crate::game::client_side) fn input_look(&mut self, seconds: f32) {
         self.pad_look(seconds);
     }
 
     /// The keyboard or mouse acted in play (a key or button pressed): it has control again, though
     /// only moving the mouse takes a pad out of use.
-    pub(in crate::game) fn input_keyboard_used(&mut self) {
+    pub(in crate::game::client_side) fn input_keyboard_used(&mut self) {
         self.pad.0.keyboard_took_over = true;
     }
 
     /// Whether the pointer event being handled is one a device made (a pad's menu cursor
     /// clicking), not the mouse's.
-    pub(in crate::game) fn input_made_pointer_event(&self) -> bool {
+    pub(in crate::game::client_side) fn input_made_pointer_event(&self) -> bool {
         self.pad.0.menu.synthetic
     }
 
@@ -668,12 +675,12 @@ impl Game<'_> {
 
     /// Whether the drop about to happen is a device's whole-stack drop (it has no Control key to
     /// hold). Asking answers once.
-    pub(in crate::game) fn input_takes_stack_drop(&mut self) -> bool {
+    pub(in crate::game::client_side) fn input_takes_stack_drop(&mut self) -> bool {
         std::mem::take(&mut self.pad.0.drop_stack)
     }
 
     /// The HUD starts a frame: what a device drew on the last one is gone.
-    pub(in crate::game) fn input_hud_begin(&mut self) {
+    pub(in crate::game::client_side) fn input_hud_begin(&mut self) {
         self.pad.0.guide_shown.clear();
     }
 
@@ -688,7 +695,7 @@ impl Game<'_> {
     /// Whether `key` is held, a movement key by the analog move vector too: as the keys it holds
     /// (`eight_direction_keys`), whatever moves the player. For readers of the keys that aren't
     /// the movement itself.
-    pub(in crate::game) fn movement_key_held(&self, key: KeyCode) -> bool {
+    pub(in crate::game::client_side) fn movement_key_held(&self, key: KeyCode) -> bool {
         if let Some(down) = self.client.keys.override_for(&key) {
             return down;
         }

@@ -12,7 +12,10 @@ use sunrise_client::{
     server::user_lists::{BanList, IpBanList, OpList, WhiteList},
 };
 
-pub(in crate::game) fn with_save_game(root: &std::path::Path, test: impl FnOnce(&mut Game<'_>)) {
+pub(in crate::game::server_side) fn with_save_game(
+    root: &std::path::Path,
+    test: impl FnOnce(&mut Game<'_>),
+) {
     native_guest_turn_tests::with_guests(|game| {
         game.server.world_root = root.to_path_buf();
         game.save.0 = Arc::new(SaveDir::new(

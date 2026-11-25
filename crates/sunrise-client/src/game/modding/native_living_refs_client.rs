@@ -9,27 +9,9 @@ pub(in crate::game::client_side) use super::commands::{Target, items::Owner};
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::living_attributes::AttributeWrite;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_living_refs::alive_at;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_living_refs::api_modifier;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_living_refs::armor_index;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_living_refs::attribute_modifiers;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_living_refs::equipment_stack;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::native_living_refs::hand_slot;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::native_living_refs::lend_equipment;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_living_refs::player_slot;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_living_refs::slot_name;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_living_refs::with_equipment_view;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::native_living_refs::world_equipment_slot;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::native_living_refs::*;
 #[allow(unused_imports)]
@@ -92,12 +74,6 @@ pub(in crate::game) mod tests {
     pub(in crate::game::client_side) use crate::game::server_side::native_living_refs::tests::ZOMBIE_NBT;
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::native_living_refs::tests::ZOMBIE_UUID;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_living_refs::tests::hurt_pig;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_living_refs::tests::send_to_the_nether;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_living_refs::tests::summon_mob;
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::native_living_refs::tests::*;
     #[allow(unused_imports)]

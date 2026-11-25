@@ -7,7 +7,7 @@ use sunrise_client::{Result, cauldron, items::ItemStack, mobs::Who};
 use sunrise_core::{position::BlockPos, random::RandomSource};
 
 /// The two ordered float draws of `Entity.playEntityOnFireExtinguishedSound`.
-pub(in crate::game) fn extinguish_pitch(random: &mut impl RandomSource) -> f32 {
+pub(in crate::game::client_side) fn extinguish_pitch(random: &mut impl RandomSource) -> f32 {
     1.6 + (random.next_float() - random.next_float()) * 0.4
 }
 

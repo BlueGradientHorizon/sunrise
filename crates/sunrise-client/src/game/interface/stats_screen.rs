@@ -315,7 +315,7 @@ fn tabs(w: f32) -> (f32, f32) {
 const TAB_H: f32 = 24.0;
 const FOOTER: f32 = 33.0;
 impl Game<'_> {
-    pub(in crate::game) fn open_stats(&mut self) {
+    pub(in crate::game::client_side) fn open_stats(&mut self) {
         self.load_stats();
         // StatsScreen.init: a server's client asks for its statistics.
         if self.remote.is_some() {
@@ -439,7 +439,7 @@ impl Game<'_> {
         );
         (name, k, b, colors)
     }
-    pub(in crate::game) fn draw_stats(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_stats(&mut self, batch: &mut HudBatch) {
         sunrise_client::widgets::begin_screen(|| {
             sunrise_client::widgets::ScreenInfo::new(
                 "stats",
@@ -744,7 +744,7 @@ impl Game<'_> {
     /// `StatsScreen.keyPressed`: the tab bar sees the key first
     /// (`MenuTabBar.keyPressed`), and the rest of `Screen.keyPressed` is
     /// Escape, which the screens' keys already handle.
-    pub(in crate::game) fn stats_key(&mut self, key: KeyCode) {
+    pub(in crate::game::client_side) fn stats_key(&mut self, key: KeyCode) {
         let active = [true, self.stats_tab_active(1), self.stats_tab_active(2)];
         let ctrl = self.has_control_down_with_quirk();
         let shift = self.has_shift_down();
@@ -757,7 +757,7 @@ impl Game<'_> {
                 .play("minecraft:ui.button.click", None, 0.25, 1.0);
         }
     }
-    pub(in crate::game) fn stats_click(&mut self, size: [u32; 2]) -> bool {
+    pub(in crate::game::client_side) fn stats_click(&mut self, size: [u32; 2]) -> bool {
         // A press on the scrollbar holds it and clicks nothing else.
         if self.stats_press_scrollbar(size) {
             return true;
@@ -813,7 +813,7 @@ impl Game<'_> {
         }
         handled
     }
-    pub(in crate::game) fn stats_scroll(&mut self, amount: f32) -> bool {
+    pub(in crate::game::client_side) fn stats_scroll(&mut self, amount: f32) -> bool {
         let (row_h, _) = self.stats_rows();
         let h = self.gui_size().1;
         if !(TAB_H..h - FOOTER).contains(&self.client.cursor.1) {
@@ -828,7 +828,7 @@ impl Game<'_> {
     }
     /// A press on the statistics list's scrollbar holds it
     /// (`AbstractSelectionList.updateScrolling`).
-    pub(in crate::game) fn stats_press_scrollbar(&mut self, size: [u32; 2]) -> bool {
+    pub(in crate::game::client_side) fn stats_press_scrollbar(&mut self, size: [u32; 2]) -> bool {
         let b = HudBatch::new(size, self.settings.gui_scale_inputs());
         let (w, h) = (b.width, b.height);
         let content = self.stats_content();
@@ -841,7 +841,7 @@ impl Game<'_> {
         )
     }
     /// The pointer moved while the scrollbar is held.
-    pub(in crate::game) fn stats_drag(&mut self) -> bool {
+    pub(in crate::game::client_side) fn stats_drag(&mut self) -> bool {
         if !self.client.stats_ui.scroll.held() {
             return false;
         }
@@ -854,7 +854,7 @@ impl Game<'_> {
         true
     }
     /// The button came up: the scrollbar lets go.
-    pub(in crate::game) fn stats_release(&mut self) -> bool {
+    pub(in crate::game::client_side) fn stats_release(&mut self) -> bool {
         let handled = self.client.stats_ui.scroll.held();
         self.client.stats_ui.scroll.release();
         handled

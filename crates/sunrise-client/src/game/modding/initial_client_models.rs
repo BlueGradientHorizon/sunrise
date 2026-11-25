@@ -18,7 +18,7 @@ pub(in crate::game) struct PendingClientStart {
 impl Game<'_> {
     /// AtlasManager.apply: adopt the uploaded textures and the GUI sprites, without
     /// admitting the new model store or its GPU buffers.
-    pub(in crate::game) fn publish_client_atlases(
+    pub(in crate::game::client_side) fn publish_client_atlases(
         &mut self,
         atlas: &Arc<super::RenderAssets>,
         gui: UiResources,
@@ -42,14 +42,17 @@ impl Game<'_> {
         prepared
     }
 
-    pub(in crate::game) fn install_model_upload(&mut self, prepared: Option<PreparedModels>) {
+    pub(in crate::game::client_side) fn install_model_upload(
+        &mut self,
+        prepared: Option<PreparedModels>,
+    ) {
         self.stitching_block_atlas.0 = None;
         if let Some(renderer) = &mut self.renderer.0 {
             renderer.publish_prepared_models(prepared);
         }
     }
 
-    pub(in crate::game) fn apply_initial_model_generation(
+    pub(in crate::game::client_side) fn apply_initial_model_generation(
         &mut self,
         models: InitialModelGeneration,
         client_applies: Vec<client_reload::PreparedClientReload>,

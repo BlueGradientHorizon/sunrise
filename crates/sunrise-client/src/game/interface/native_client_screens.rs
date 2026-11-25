@@ -329,7 +329,8 @@ pub(in crate::game) mod client_screen_tests {
         run_done_on_an_unedited_book_sends_it_and_drops_its_filtered_text();
     }
 
-    pub(in crate::game) fn run_done_on_an_unedited_book_sends_it_and_drops_its_filtered_text() {
+    pub(in crate::game::client_side) fn run_done_on_an_unedited_book_sends_it_and_drops_its_filtered_text()
+     {
         use std::fmt::Write as _;
         #[derive(serde::Deserialize)]
         struct Witness {

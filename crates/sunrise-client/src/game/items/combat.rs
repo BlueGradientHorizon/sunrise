@@ -53,23 +53,30 @@ impl From<PlayerCredit> for u128 {
 impl CombatTracker {
     /// `LivingEntity.lastHurtByPlayer`, remembered for 100 ticks (taken, as a
     /// dead player's memory goes with them).
-    pub(in crate::game) fn take_hurt_by_player(&mut self, now: i64) -> Option<PlayerCredit> {
+    pub(in crate::game::server_side) fn take_hurt_by_player(
+        &mut self,
+        now: i64,
+    ) -> Option<PlayerCredit> {
         let credit = self.player_credit(now);
         self.last_hurt_by_player = None;
         credit
     }
     /// Whether a player hurt this body within the last 100 ticks
     /// (`lastHurtByPlayerMemoryTime > 0`), without forgetting them.
-    pub(in crate::game) fn recently_hit_by_player(&self, now: i64) -> bool {
+    pub(in crate::game::server_side) fn recently_hit_by_player(&self, now: i64) -> bool {
         self.player_credit(now).is_some()
     }
     /// The player reference while its 100-tick memory is active.
-    pub(in crate::game) fn player_credit(&self, now: i64) -> Option<PlayerCredit> {
+    pub(in crate::game::server_side) fn player_credit(&self, now: i64) -> Option<PlayerCredit> {
         self.last_hurt_by_player
             .and_then(|(credit, at)| (now - at < 100).then_some(credit))
     }
     /// `LivingEntity.setLastHurtByPlayer(player, 100)`.
-    pub(in crate::game) fn note_hurt_by_player(&mut self, credit: PlayerCredit, now: i64) {
+    pub(in crate::game::server_side) fn note_hurt_by_player(
+        &mut self,
+        credit: PlayerCredit,
+        now: i64,
+    ) {
         self.last_hurt_by_player = Some((credit, now));
     }
 }
@@ -206,18 +213,20 @@ impl CombatTracker {
     /// Whether the blast now hurting entities visits `id`: the storages are
     /// the walk, unless a listening `explosion_detonate` left a list, and
     /// then only what that list names is.
-    pub(in crate::game) fn visits(&self, id: u32) -> bool {
+    pub(in crate::game::server_side) fn visits(&self, id: u32) -> bool {
         self.blast_hit_list.is_none() || self.blast_hit_ids.contains(&id)
     }
 
     /// The attack lent by the enclosing [`Game::with_attack`] (`damage_level_of!(game, game.combat.attack(), .., ..)`).
-    pub(in crate::game) fn attack(&self) -> &Attack {
+    pub(in crate::game::server_side) fn attack(&self) -> &Attack {
         &self.attack
     }
 
     /// The newest damage of this fight for `events`: when it landed (game
     /// time), its damage type, the amount and the name of what dealt it.
-    pub(in crate::game) fn last_hit(&self) -> Option<(i64, String, Option<f32>, Option<String>)> {
+    pub(in crate::game::server_side) fn last_hit(
+        &self,
+    ) -> Option<(i64, String, Option<f32>, Option<String>)> {
         let e = self.entries.last()?;
         let by = e
             .attacker
@@ -227,11 +236,11 @@ impl CombatTracker {
         Some((self.last_damage, e.damage_type.clone(), Some(e.damage), by))
     }
     /// The scalar death-tail/death-message fallback, not the full accepted killing source.
-    pub(in crate::game) fn last_blow(&self) -> Option<(&str, u32)> {
+    pub(in crate::game::server_side) fn last_blow(&self) -> Option<(&str, u32)> {
         let e = self.entries.last()?;
         Some((&e.damage_type, e.attacker.as_ref().map_or(0, |a| a.0)))
     }
-    pub(in crate::game) fn mark(&mut self) {
+    pub(in crate::game::server_side) fn mark(&mut self) {
         let marks = (self.pending.len(), self.pending_direct.len());
         self.noted_since.get_or_insert(marks);
     }
@@ -243,7 +252,7 @@ impl CombatTracker {
     }
     /// `LivingEntity.getLastDamageSource` for an advancement's
     /// `killing_blow`: the newest combat entry's type and causing entity.
-    pub(in crate::game) fn killing_blow(&self) -> Option<(String, Option<u32>)> {
+    pub(in crate::game::server_side) fn killing_blow(&self) -> Option<(String, Option<u32>)> {
         self.entries.last().map(|e| {
             (
                 e.damage_type.clone(),
@@ -254,7 +263,7 @@ impl CombatTracker {
     /// The player's hurt is over: when a native mod canceled it, the
     /// attackers noted for it go, as no combat entry takes them and the next
     /// hit of the same damage type must not be credited to them.
-    pub(in crate::game) fn forget_noted(&mut self, canceled: bool) {
+    pub(in crate::game::server_side) fn forget_noted(&mut self, canceled: bool) {
         if let Some((attackers, directs)) = self.noted_since.take()
             && canceled
         {
@@ -325,7 +334,7 @@ impl Game<'_> {
         false
     }
     /// A mob's drowning tick (`MobEvent::Drown`).
-    pub(in crate::game) fn mob_drown(&mut self, mob: u32, at: [f64; 3], bubbles: i32) {
+    pub(in crate::game::server_side) fn mob_drown(&mut self, mob: u32, at: [f64; 3], bubbles: i32) {
         let v = self
             .mobs
             .iter()
@@ -337,7 +346,7 @@ impl Game<'_> {
         }
     }
     /// The display name of a mob: its custom name or its type's name.
-    pub(in crate::game) fn mob_display_name(&self, id: u32) -> Option<Text> {
+    pub(in crate::game::server_side) fn mob_display_name(&self, id: u32) -> Option<Text> {
         let m = self.mobs.iter().find(|m| m.id == id)?;
         Some(match &m.custom_name {
             Some(name) => Text::literal(name.clone()),
@@ -345,12 +354,14 @@ impl Game<'_> {
         })
     }
     /// `getLastHurtByMob`: the last mob to hurt the player, for 100 ticks.
-    pub(in crate::game) fn player_hurt_by(&self) -> Option<(sunrise_client::mobs::Who, i64)> {
+    pub(in crate::game::server_side) fn player_hurt_by(
+        &self,
+    ) -> Option<(sunrise_client::mobs::Who, i64)> {
         let ((id, _), at) = self.combat.0.last_hurt_by.as_ref()?;
         (self.world.game_time - at <= 100).then_some((sunrise_client::mobs::Who::Mob(*id), *at))
     }
     /// Remember who deals the next `damage_type` damage to the player.
-    pub(in crate::game) fn note_attacker(&mut self, damage_type: &str, mob: u32) {
+    pub(in crate::game::server_side) fn note_attacker(&mut self, damage_type: &str, mob: u32) {
         if let Some(name) = self.mob_display_name(mob) {
             self.note_named_attacker(damage_type, mob, name);
         }
@@ -380,7 +391,7 @@ impl Game<'_> {
     }
     /// A non-living or already removed cause remains in the damage source,
     /// but cannot resolve as an EntityReference for kill credit.
-    pub(in crate::game) fn note_uncredited_attacker(
+    pub(in crate::game::server_side) fn note_uncredited_attacker(
         &mut self,
         damage_type: &str,
         id: u32,
@@ -411,7 +422,7 @@ impl Game<'_> {
     /// hit by entity `id`, which only a native mod reads: a player's hit names
     /// them, a tame wolf's its owner (no one without one), and other mobs leave
     /// it as it was.
-    pub(in crate::game) fn resolve_player_responsible_for_player(
+    pub(in crate::game::server_side) fn resolve_player_responsible_for_player(
         &mut self,
         id: u32,
         captured_player: Option<[i32; 4]>,
@@ -446,7 +457,7 @@ impl Game<'_> {
     }
     /// Commit accepted hurt memories while its source is still in the pending queue.
     /// Knockback needs this before the later event drain consumes RecordedDamage.
-    pub(in crate::game) fn commit_pending_hurt_memories(
+    pub(in crate::game::server_side) fn commit_pending_hurt_memories(
         &mut self,
         damage_type: &str,
         attack: Option<&Attack>,
@@ -582,7 +593,7 @@ impl Game<'_> {
         self.combat.0.fall_before = self.player.as_ref().map_or(0.0, |p| p.fall_distance);
     }
     /// `FallLocation.getCurrentFallLocation` and the fall distance so far.
-    pub(in crate::game) fn fall_location(&self) -> (Option<&'static str>, f32) {
+    pub(in crate::game::server_side) fn fall_location(&self) -> (Option<&'static str>, f32) {
         let Some(p) = self.player.as_ref() else {
             return (None, 0.0);
         };
@@ -609,7 +620,7 @@ impl Game<'_> {
         (location, distance)
     }
     /// `CombatTracker.recheckStatus`: forget old fights.
-    pub(in crate::game) fn recheck_combat(&mut self) {
+    pub(in crate::game::server_side) fn recheck_combat(&mut self) {
         let reset = if self.combat.0.in_combat { 300 } else { 100 };
         if !self.combat.0.entries.is_empty()
             && self.world.game_time - self.combat.0.last_damage > reset
@@ -620,14 +631,14 @@ impl Game<'_> {
     }
     /// Whether damage type `name` is in `tag` (with or without its `minecraft:`) in the
     /// world's frozen registry, the one that holds the world's datapack types and tags.
-    pub(in crate::game) fn damage_in_tag(&self, name: &str, tag: &str) -> bool {
+    pub(in crate::game::server_side) fn damage_in_tag(&self, name: &str, tag: &str) -> bool {
         let damage = &self.health_resources.damage;
         damage.id(name).is_some_and(|id| {
             damage.in_tag(id, tag) || damage.in_tag(id, &format!("minecraft:{tag}"))
         })
     }
     /// `CombatTracker.getMostSignificantFall`.
-    pub(in crate::game) fn most_significant_fall(&self) -> Option<usize> {
+    pub(in crate::game::server_side) fn most_significant_fall(&self) -> Option<usize> {
         let (mut result, mut alternative) = (None, None);
         let (mut best_fall, mut alt_damage) = (0.0f32, 0.0f32);
         for (i, e) in self.combat.0.entries.iter().enumerate() {
@@ -654,7 +665,7 @@ impl Game<'_> {
         }
     }
     /// The display component of a custom-named held stack.
-    pub(in crate::game) fn mob_main_hand_name(&self, id: u32) -> Option<Text> {
+    pub(in crate::game::server_side) fn mob_main_hand_name(&self, id: u32) -> Option<Text> {
         let m = self.mobs.iter().find(|m| m.id == id)?;
         let mut stack = m.extra.main_hand_stack()?.clone();
         if !has_custom_name(&stack) {
@@ -667,14 +678,14 @@ impl Game<'_> {
     }
     /// `getMainHandItem().getDisplayName()` of the player in place, when the
     /// stack has a custom name.
-    pub(in crate::game) fn main_hand_custom_name(&self) -> Option<Text> {
+    pub(in crate::game::server_side) fn main_hand_custom_name(&self) -> Option<Text> {
         let stack = self.inventory.get(self.selected)?.as_ref()?;
         has_custom_name(stack).then(|| self.stack_display_name(stack))
     }
     /// `main_hand_custom_name` of a player who is not in place: the guest
     /// `conn` between turns, or none for the host while a guest acts (their
     /// hotbar slot is kept by the swap).
-    pub(in crate::game) fn player_main_hand_custom_name(
+    pub(in crate::game::server_side) fn player_main_hand_custom_name(
         &self,
         player: Option<u32>,
     ) -> Option<Text> {
@@ -687,14 +698,14 @@ impl Game<'_> {
     }
     /// The killer's item for `getLocalizedDeathMessage` and
     /// `getMessageForAssistedFall`: a player's as recorded, a mob's now.
-    pub(in crate::game) fn entry_item(&self, e: &Entry) -> Option<Text> {
+    pub(in crate::game::server_side) fn entry_item(&self, e: &Entry) -> Option<Text> {
         e.item
             .clone()
             .or_else(|| self.mob_main_hand_name(e.attacker.as_ref()?.0))
     }
     /// `CombatTracker.getDeathMessage` for a player whose display name is
     /// `me`: a server's guest is not `PLAYER_NAME`.
-    pub(in crate::game) fn combat_death_message_for(&mut self, me: Text) -> Text {
+    pub(in crate::game::server_side) fn combat_death_message_for(&mut self, me: Text) -> Text {
         self.recheck_combat();
         let entries = std::mem::take(&mut self.combat.0.entries);
         self.combat.0.in_combat = false;
@@ -782,7 +793,11 @@ impl Game<'_> {
     /// (`EntityReference.getEntity` looks through every level), is sent how it
     /// died. `killer` is the player who last hurt it (`None` inside for the
     /// host), from `last_hurt_by_player`.
-    pub(in crate::game) fn tell_owner_pet_died(&mut self, m: &Mob, killer: Option<Option<u32>>) {
+    pub(in crate::game::server_side) fn tell_owner_pet_died(
+        &mut self,
+        m: &Mob,
+        killer: Option<Option<u32>>,
+    ) {
         let tamable = matches!(
             m.species(),
             Species::Wolf
@@ -832,7 +847,7 @@ impl Game<'_> {
     }
     /// `CombatTracker.getDeathMessage` for a mob, from the hits it recorded
     /// (`Mob::combat`), told the way the player's own tracker tells them.
-    pub(in crate::game) fn mob_death_message(
+    pub(in crate::game::server_side) fn mob_death_message(
         &mut self,
         m: &Mob,
         killer: Option<Option<u32>>,
@@ -927,14 +942,16 @@ impl Game<'_> {
 
 /// `!stack.isEmpty() && stack.has(DataComponents.CUSTOM_NAME)`: the held
 /// item that turns a death message into its `.item` form.
-pub(in crate::game) fn has_custom_name(stack: &sunrise_client::items::ItemStack) -> bool {
+pub(in crate::game::server_side) fn has_custom_name(
+    stack: &sunrise_client::items::ItemStack,
+) -> bool {
     &*stack.item != "minecraft:air"
         && stack.count > 0
         && stack.data().is_some_and(|d| d.custom_name.is_some())
 }
 
 /// `Entity.getDisplayName` of a mob: its custom name or its type's name.
-pub(in crate::game) fn mob_name(m: &Mob) -> Text {
+pub(in crate::game::server_side) fn mob_name(m: &Mob) -> Text {
     match (&m.custom_name_text, &m.custom_name) {
         (Some(text), _) => text.clone(),
         (None, Some(name)) => Text::literal(name.clone()),
@@ -946,13 +963,13 @@ pub(in crate::game) fn mob_name(m: &Mob) -> Text {
 /// rounds a float (`jmath::round_f32`), only for damage under 3.4028235E37F.
 /// A huge hit (`/damage @s 3.4e38`) awards nothing, not a saturated count
 /// (#11339).
-pub(in crate::game) fn damage_taken_award(amount: f32) -> Option<i32> {
+pub(in crate::game::server_side) fn damage_taken_award(amount: f32) -> Option<i32> {
     (amount < 3.402_823_5e37).then(|| sunrise_core::jmath::round_f32(amount * 10.0))
 }
 
 /// `FallLocation.blockToFallLocation`: what a climbable block stands for in a fall's death message.
 /// `trapdoor` is whether the block is in `#minecraft:trapdoors`, which counts as a ladder.
-pub(in crate::game) fn fall_location_of(name: &str, trapdoor: bool) -> &'static str {
+pub(in crate::game::server_side) fn fall_location_of(name: &str, trapdoor: bool) -> &'static str {
     match name {
         _ if trapdoor => "ladder",
         "minecraft:ladder" => "ladder",
@@ -1032,7 +1049,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn last_hurt_target_alive(&self, id: u32) -> bool {
+    pub(in crate::game::server_side) fn last_hurt_target_alive(&self, id: u32) -> bool {
         use super::lan_actions::CombatPlayer;
         if let Some(player) = self.combat_player(id) {
             return match player {
@@ -1075,7 +1092,7 @@ impl Game<'_> {
 /// Hits one mob's tick deals another, handled after the mob loop.
 impl Game<'_> {
     /// A melee hit on another mob, then `postAttack`; whether it landed.
-    pub(in crate::game) fn mob_attacks_mob(
+    pub(in crate::game::server_side) fn mob_attacks_mob(
         &mut self,
         target: u32,
         amount: f32,
@@ -1095,7 +1112,7 @@ impl Game<'_> {
     /// `Bee.doHurtTarget`: the sting, then, only when it landed, the stinger
     /// in the victim, the poison and the sting sound. A refused sting gives
     /// the bee back the stinger and the anger `sting` set inside its tick.
-    pub(in crate::game) fn sting(
+    pub(in crate::game::server_side) fn sting(
         &mut self,
         target: Who,
         amount: f32,
@@ -1151,7 +1168,7 @@ impl Game<'_> {
     /// rest of that tick (its movement, its own goals) still ran before the hit.
     /// The caller compensates only newly reset timers: a stronger hit during
     /// cooldown leaves timers that already counted down this tick unchanged.
-    pub(in crate::game) fn catch_up_countdowns(
+    pub(in crate::game::server_side) fn catch_up_countdowns(
         &self,
         attacker: Option<sunrise_client::mobs::Who>,
         target: u32,

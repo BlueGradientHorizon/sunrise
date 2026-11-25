@@ -115,12 +115,6 @@ impl Hooks for Register {
     }
 }
 
-#[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::native_hooks_client::block_particle_effects_tests::with_effects;
-
-#[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::native_hooks_client::block_particle_effects_tests::admit;
-
 pub(in crate::game) fn fresh(name: &str) -> bool {
     run_fresh_cases(
         &format!("{}::{name}", module_path!().split_once("::").unwrap().1),

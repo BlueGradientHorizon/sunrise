@@ -7,7 +7,7 @@ use sunrise_client::motion::MotionEvent;
 impl Game<'_> {
     /// Run equipment continuations with the acting player installed on the real host.
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::game) fn hurt_player_equipment(
+    pub(in crate::game::server_side) fn hurt_player_equipment(
         &mut self,
         source: sunrise_world::damage_source::DamageTypeId,
         amount: f32,
@@ -120,7 +120,7 @@ impl Game<'_> {
         }
     }
     /// `Player.hurtArmor`: every armor slot wears.
-    pub(in crate::game) fn hurt_armor(
+    pub(in crate::game::server_side) fn hurt_armor(
         &mut self,
         source: &sunrise_client::health::HurtSource<'_>,
         damage: f32,
@@ -129,7 +129,7 @@ impl Game<'_> {
     }
 
     /// `Player.hurtHelmet`: the head slot alone wears.
-    pub(in crate::game) fn hurt_helmet(
+    pub(in crate::game::server_side) fn hurt_helmet(
         &mut self,
         source: &sunrise_client::health::HurtSource<'_>,
         damage: f32,
@@ -140,7 +140,7 @@ impl Game<'_> {
     /// `LivingEntity.doHurtEquipment` of the `slots` of `armor`: each worn piece that
     /// wears when its wearer is hurt loses max(1, damage / 4) durability, except
     /// to a fire source when the piece resists fire (`ItemStack.canBeHurtBy`).
-    pub(in crate::game) fn hurt_equipment(
+    pub(in crate::game::server_side) fn hurt_equipment(
         &mut self,
         source: &sunrise_client::health::HurtSource<'_>,
         damage: f32,
@@ -250,7 +250,7 @@ impl Game<'_> {
     }
     /// Hurt the acting hand's stack through ordinary wear/criterion/break handling,
     /// reporting its break in the caller's explicit equipment slot.
-    pub(in crate::game) fn damage_held_in_slot(
+    pub(in crate::game::server_side) fn damage_held_in_slot(
         &mut self,
         amount: u32,
         break_slot: sunrise_core::equipment_slot::EquipmentSlot,
@@ -298,7 +298,7 @@ impl Game<'_> {
     }
     /// `ItemStack.hurtWithoutBreaking`: Unbreaking applies, but the stack stops at
     /// one point of durability left instead of breaking.
-    pub(in crate::game) fn hurt_held_without_breaking(&mut self, amount: u32) {
+    pub(in crate::game::server_side) fn hurt_held_without_breaking(&mut self, amount: u32) {
         if self.creative {
             return;
         }

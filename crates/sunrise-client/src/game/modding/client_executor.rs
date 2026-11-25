@@ -11,7 +11,7 @@ impl Game<'_> {
         self.client_tasks.0.executor(crash::current_native_mod()?)
     }
 
-    pub(in crate::game) fn close_client_tasks(&mut self) {
+    pub(in crate::game::client_side) fn close_client_tasks(&mut self) {
         self.client_tasks.0.close();
         self.pending_client_tasks.0.clear();
     }

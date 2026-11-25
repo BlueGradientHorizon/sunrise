@@ -60,7 +60,7 @@ impl Game<'_> {
     /// `Witch.handleEntityEvent(15)`: `nextInt(35) + 10` purple puffs about
     /// half a block over its head; the count is drawn again every pass, as
     /// the Java loop condition does.
-    pub(in crate::game) fn witch_magic_particles(&mut self, id: u32) {
+    pub(in crate::game::client_side) fn witch_magic_particles(&mut self, id: u32) {
         let Some(m) = self
             .mobs
             .iter_mut()
@@ -89,7 +89,7 @@ impl Game<'_> {
     /// `Ravager.handleEntityEvent(69)`: forty puffs of smoke from the middle
     /// of its box, then `applyRoarKnockbackClient`: this client's own player
     /// within 4 blocks is thrown away from it.
-    pub(in crate::game) fn remote_ravager_roar(&mut self, id: i32) {
+    pub(in crate::game::client_side) fn remote_ravager_roar(&mut self, id: i32) {
         let Some(m) = self
             .mobs
             .iter()

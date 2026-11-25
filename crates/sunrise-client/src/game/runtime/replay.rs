@@ -49,7 +49,7 @@ impl Replay {
     }
     /// How far the replay's player is between its last two ticks, while a replay plays: it
     /// moves on the replay's clock, not the game's.
-    pub(in crate::game) fn player_alpha(&self) -> Option<f64> {
+    pub(in crate::game::client_side) fn player_alpha(&self) -> Option<f64> {
         self.playing()
             .then(|| (f64::from(self.virtual_tick_ms) / 50.0).clamp(0.0, 1.0))
     }
@@ -58,7 +58,7 @@ impl Replay {
 impl Game<'_> {
     /// How far the window's own player model is between two ticks: on the replay's clock while a
     /// replay plays, else the game's.
-    pub(in crate::game) fn own_player_alpha(&self) -> f64 {
+    pub(in crate::game::client_side) fn own_player_alpha(&self) -> f64 {
         self.replay
             .player_alpha()
             .unwrap_or_else(|| self.clock.camera_fraction())
@@ -307,7 +307,7 @@ impl Game<'_> {
     }
 
     /// Reset playback tick accumulator and align positions on seek.
-    pub(in crate::game) fn reset_studio_playback_ticks(&mut self) {
+    pub(in crate::game::client_side) fn reset_studio_playback_ticks(&mut self) {
         self.replay.virtual_tick_ms = 0.0;
         if let Some(player) = &self.player {
             self.previous_position = player.position;
@@ -323,7 +323,10 @@ impl Game<'_> {
     /// Reconstruct replay state at a target timestamp. Standalone replays can
     /// safely reset their synthetic remote; an in-world replay can only seek
     /// forward because its pre-replay world must remain intact.
-    pub(in crate::game) fn seek_studio_replay(&mut self, target_ms: u32) -> std::io::Result<()> {
+    pub(in crate::game::client_side) fn seek_studio_replay(
+        &mut self,
+        target_ms: u32,
+    ) -> std::io::Result<()> {
         let current_ms = self
             .replay
             .driver
@@ -394,7 +397,7 @@ impl Game<'_> {
     }
 
     /// Advance active replay playback by elapsed frame time and dispatch ready packets.
-    pub(in crate::game) fn advance_studio_replay(&mut self) -> Result<()> {
+    pub(in crate::game::client_side) fn advance_studio_replay(&mut self) -> Result<()> {
         let Some(driver) = self.replay.driver.as_mut() else {
             self.replay.last_tick = None;
             return Ok(());
@@ -490,7 +493,10 @@ impl Game<'_> {
     }
 
     /// Control socket command handler for `studio`.
-    pub(in crate::game) fn studio_control(&mut self, words: &[&str]) -> Result<Option<Value>> {
+    pub(in crate::game::client_side) fn studio_control(
+        &mut self,
+        words: &[&str],
+    ) -> Result<Option<Value>> {
         if words.first().copied() != Some("studio") {
             return Ok(None);
         }
@@ -585,7 +591,10 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn start_studio_recording(&mut self, name: Option<&str>) -> Result<Value> {
+    pub(in crate::game::client_side) fn start_studio_recording(
+        &mut self,
+        name: Option<&str>,
+    ) -> Result<Value> {
         let Some(r) = self.remote.as_ref() else {
             return Ok(json!({ "ok": false, "error": "no active world session" }));
         };
@@ -624,7 +633,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn stop_studio_recording(&mut self) -> Result<Value> {
+    pub(in crate::game::client_side) fn stop_studio_recording(&mut self) -> Result<Value> {
         let Some(r) = self.remote.as_ref() else {
             return Ok(json!({ "ok": false, "error": "no active world session" }));
         };
@@ -635,7 +644,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn studio_recording_status(&self) -> Value {
+    pub(in crate::game::client_side) fn studio_recording_status(&self) -> Value {
         if let Some(r) = self.remote.as_ref()
             && let Some(status) = r.session.recorder_status()
         {
@@ -652,7 +661,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn open_studio_replay(&mut self, path: &str) -> Result<Value> {
+    pub(in crate::game::client_side) fn open_studio_replay(&mut self, path: &str) -> Result<Value> {
         if let Err(error) = self.save_studio_camera_track() {
             return Ok(json!({ "ok": false, "error": error.to_string() }));
         }
@@ -709,7 +718,7 @@ impl Game<'_> {
             "packet_count": packets,
         }))
     }
-    pub(in crate::game) fn close_studio_replay(&mut self) -> bool {
+    pub(in crate::game::client_side) fn close_studio_replay(&mut self) -> bool {
         self.studio_replay_closing();
         let closed = self.replay.driver.take().is_some();
         if !closed {
@@ -758,7 +767,7 @@ impl Game<'_> {
     }
     /// Dump current player pose, dimension login, center chunk, and resident loaded chunks
     /// into the recording stream at timestamp 0ms so replays accurately reconstruct the world.
-    pub(in crate::game) fn dump_world_snapshot_to_recorder(
+    pub(in crate::game::client_side) fn dump_world_snapshot_to_recorder(
         &self,
         recorder: &sunrise_client::studio::StudioRecorder,
     ) {

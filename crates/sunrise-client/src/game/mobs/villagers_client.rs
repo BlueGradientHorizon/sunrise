@@ -1,8 +1,6 @@
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::Game;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::villagers::block_of;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::villagers::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::{

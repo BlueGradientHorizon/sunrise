@@ -51,7 +51,7 @@ impl Game<'_> {
     }
     /// The frusta of the frame's camera `[fov_degrees, yaw, pitch]` and its world views, which are
     /// asked for here: each view's level handle is resolved once, first, against the player's own.
-    pub(in crate::game) fn world_view_frustum(
+    pub(in crate::game::client_side) fn world_view_frustum(
         &mut self,
         camera: glam::DVec3,
         [fov_degrees, yaw, pitch]: [f32; 3],

@@ -15,7 +15,7 @@ impl Game<'_> {
     /// Run the prepared click with the LAN host lifted out of the game, the game lent to it as
     /// the mods' `menu_slot_rules` (their read-only `Host`; what it reads of the LAN host answers
     /// as if none were open) and the mods' answer to the pickup, if they gave one.
-    pub(in crate::game) fn hub_click_run(
+    pub(in crate::game::server_side) fn hub_click_run(
         &mut self,
         p: &play::ContainerClick,
         prepared: &RefCell<Option<sunrise_client::lan::containers::PreparedClick>>,

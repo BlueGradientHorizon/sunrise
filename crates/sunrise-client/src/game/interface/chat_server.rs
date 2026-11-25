@@ -27,37 +27,7 @@ pub(in crate::game::server_side) use crate::game::client_side::chat::UiState;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::chat::block_properties;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::chat_tree;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::chat::command_export;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::ids_in;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::json_ids_in;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::json_ids_of_every_namespace;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::overworld_timelines;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::owner_permission;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::resource_ids;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::screenshot_cancel_line;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::screenshot_name;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::should_discard_draft;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::summonable_entities;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::sunrise_profiler_args;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::templates_under;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::with_native_commands;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::chat::with_studio_commands;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::chat::*;
 #[allow(unused_imports)]
@@ -92,7 +62,7 @@ impl Game<'_> {
     /// Overworld state when a world opens; clear the other command-state cache.
     /// The carrier store's open-time state settles here too, before the
     /// first tick and any player: a refusal fails the open.
-    pub(in crate::game) fn load_world_state(&mut self) -> crate::Result<()> {
+    pub(in crate::game::server_side) fn load_world_state(&mut self) -> crate::Result<()> {
         self.ui.dispatcher = SessionDispatcher(Arc::new(
             sunrise_client::command::vanilla::session_dispatcher(
                 &self.level.rule_registry,
@@ -157,7 +127,7 @@ impl Game<'_> {
     /// checks `canReceivePlayerMessages` for these, so Commands Only and
     /// Hidden drop them; command feedback (`/list`, `/tp`) is a system
     /// message and takes the system-message permission instead.
-    pub(in crate::game) fn player_message(&mut self, text: Text) {
+    pub(in crate::game::server_side) fn player_message(&mut self, text: Text) {
         if let Some(capture) = self.server.chat_capture.as_mut() {
             capture.push(text);
             return;
@@ -171,7 +141,7 @@ impl Game<'_> {
     /// Save the clock beside level.dat (Level.write saves the game rules: a
     /// second writer of game_rules.dat could leave it with the rules loaded
     /// when the world opened).
-    pub(in crate::game) fn save_world_state(&mut self) {
+    pub(in crate::game::server_side) fn save_world_state(&mut self) {
         if self.server.world_root.as_os_str().is_empty() {
             return;
         }
@@ -239,7 +209,7 @@ impl Game<'_> {
         }
     }
     /// Command suggestions include the world's currently named random sequences.
-    pub(in crate::game) fn suggestion_registries(&mut self) -> &mut Registries {
+    pub(in crate::game::server_side) fn suggestion_registries(&mut self) -> &mut Registries {
         self.ui.registries.random_sequences = self.server.rand_sequences.ids();
         &mut self.ui.registries
     }

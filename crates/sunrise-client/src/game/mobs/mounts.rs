@@ -61,7 +61,10 @@ impl MountState {
 /// nothing else), and the horse food tag carries no red mushrooms; a skeleton
 /// horse inherits the horse food tag but only a tamed one gets that far
 /// (`SkeletonHorse.mobInteract` passes for an untamed one).
-pub(in crate::game) fn eating(species: Species, item: &str) -> Option<(f32, i32, u8, bool)> {
+pub(in crate::game::server_side) fn eating(
+    species: Species,
+    item: &str,
+) -> Option<(f32, i32, u8, bool)> {
     let camel = species == Species::Camel;
     // CamelHusk.isFood: rabbit's feet (and it never falls in love).
     if species == Species::CamelHusk && item != "minecraft:rabbit_foot" {
@@ -98,7 +101,10 @@ pub(in crate::game) fn eating(species: Species, item: &str) -> Option<(f32, i32,
 }
 /// `EntityTypeTags.DISMOUNTS_UNDERWATER` (`Entity.dismountsUnderwater`): the mounts that throw their
 /// riders off when the rider's eyes are in water.
-pub(in crate::game) fn dismounts_underwater(tags: &EntityTypeTags, mount: &Mob) -> bool {
+pub(in crate::game::server_side) fn dismounts_underwater(
+    tags: &EntityTypeTags,
+    mount: &Mob,
+) -> bool {
     tags.has_bit(
         mount.kind.flags.entity_tag_slot,
         EntityTypeTags::DISMOUNTS_UNDERWATER,
@@ -107,14 +113,17 @@ pub(in crate::game) fn dismounts_underwater(tags: &EntityTypeTags, mount: &Mob) 
 
 /// `EntityAttachments.transformPoint`: `Vec3.yRot(-yRot * (float) (Math.PI / 180.0))`,
 /// an attachment point turned with the vehicle.
-pub(in crate::game) fn turned(a: [f64; 3], yaw: f32) -> Vec3 {
+pub(in crate::game::server_side) fn turned(a: [f64; 3], yaw: f32) -> Vec3 {
     Vec3::new(a[0], a[1], a[2]).rotate_y(-yaw * (std::f64::consts::PI / 180.0) as f32)
 }
 
 /// `Entity.getPassengerRidingPosition` for a player on `m`: the vehicle's
 /// attachment point, turned with it, less the player's own vehicle attachment
 /// (`Avatar.DEFAULT_VEHICLE_ATTACHMENT`, a `Vec3(0.0, 0.6, 0.0)` of doubles).
-pub(in crate::game) fn seat_of(m: &sunrise_client::mobs::Mob, attachment: [f64; 3]) -> Vec3 {
+pub(in crate::game::server_side) fn seat_of(
+    m: &sunrise_client::mobs::Mob,
+    attachment: [f64; 3],
+) -> Vec3 {
     let at = turned(attachment, m.yaw);
     Vec3::new(
         m.position.x + at.x,
@@ -284,7 +293,7 @@ impl Game<'_> {
     }
     /// Whether the rider's eyes are in water (`Entity.updateFluidOnEyes` then `isEyeInFluid(WATER)`),
     /// and not in a bubble column, as `LivingEntity.baseTick` asks before it lets a rider stay.
-    pub(in crate::game) fn rider_eyes_in_water(&self) -> bool {
+    pub(in crate::game::server_side) fn rider_eyes_in_water(&self) -> bool {
         let Some([x, y, z]) = self.eye_position() else {
             return false;
         };
@@ -362,7 +371,7 @@ impl Game<'_> {
     }
     /// `LivingEntity.baseTick` for the mobs that ride a mount of the `dismounts_underwater` tag (a baby
     /// zombie on a chicken): with their eyes in water they get off it.
-    pub(in crate::game) fn dismount_underwater_mob_riders(&mut self) {
+    pub(in crate::game::server_side) fn dismount_underwater_mob_riders(&mut self) {
         let blocked = self.mobs_below_off_level();
         let tags = &self.items().entity_type_tags;
         let swimmers: Vec<u32> = self
@@ -380,7 +389,7 @@ impl Game<'_> {
         }
     }
     /// This player's index in `vehicle`'s `getPassengers`, 0 when it is not listed.
-    pub(in crate::game) fn own_passenger_index(&self, vehicle: u32) -> usize {
+    pub(in crate::game::server_side) fn own_passenger_index(&self, vehicle: u32) -> usize {
         let own = self.riding_player().map(|(id, _)| id);
         self.seated_passengers(vehicle)
             .iter()
@@ -435,7 +444,7 @@ impl Game<'_> {
     }
     /// `removePassenger` + `getDismountLocationForPassenger`: where the mount
     /// lets the rider out.
-    pub(in crate::game) fn dismount_mount(&mut self) {
+    pub(in crate::game::server_side) fn dismount_mount(&mut self) {
         let Some(id) = self.riding else {
             return;
         };
@@ -472,7 +481,7 @@ impl Game<'_> {
         }
     }
     /// Where `mount` lets a player in `p` facing `yaw` off, and the pose they take there.
-    pub(in crate::game) fn mount_player_dismount(
+    pub(in crate::game::server_side) fn mount_player_dismount(
         &self,
         mount: &Mount,
         yaw: f32,
@@ -488,7 +497,7 @@ impl Game<'_> {
     }
 
     /// The same player search when the mount is lent out during a mob tick.
-    pub(in crate::game) fn player_dismount_from_lent_mob(
+    pub(in crate::game::server_side) fn player_dismount_from_lent_mob(
         &self,
         mount: &Mob,
         yaw: f32,
@@ -502,7 +511,7 @@ impl Game<'_> {
     }
     /// Where `stop_riding` sets a player in `p` facing `yaw` down off `vehicle`: None when
     /// `vehicle` is no boat, cart or mob.
-    pub(in crate::game) fn player_dismount_point(
+    pub(in crate::game::server_side) fn player_dismount_point(
         &self,
         vehicle: u32,
         yaw: f32,
@@ -522,7 +531,7 @@ impl Game<'_> {
     }
     /// `AbstractHorse.tameWithName`: the acting player owns `mob`, then gets
     /// the `tame_animal` trigger.
-    pub(in crate::game) fn tame_mount(&mut self, mob: u32) {
+    pub(in crate::game::server_side) fn tame_mount(&mut self, mob: u32) {
         // RunAroundLikeCrazyGoal.tick: tameWithName by the player on its
         // back, unless AnimalTameEvent is cancelled, which fails the roll
         // instead. Inside a guest's turn the acting ids are the guest's.
@@ -566,7 +575,7 @@ impl Game<'_> {
             self.native_entity_tame(mob, &kind, Some(owner));
         }
     }
-    pub(in crate::game) fn mount_event(&mut self, e: &MobEvent) {
+    pub(in crate::game::server_side) fn mount_event(&mut self, e: &MobEvent) {
         match *e {
             MobEvent::Tamed { mob } => {
                 // tameWithName(player): the rider, a server's player in its turn.
@@ -652,7 +661,12 @@ impl Game<'_> {
     /// `causeFallDamage` of its fall, as the mount's own damage does. The local
     /// player, the server players and the mob on its back each get it, with
     /// their own safe distance and armour.
-    pub(in crate::game) fn fall_to_passengers(&mut self, mob: u32, distance: f64, modifier: f32) {
+    pub(in crate::game::server_side) fn fall_to_passengers(
+        &mut self,
+        mob: u32,
+        distance: f64,
+        modifier: f32,
+    ) {
         let seats = self.seated_passengers(mob);
         for (_, id, player) in seats {
             if player {
@@ -722,7 +736,7 @@ impl Game<'_> {
     /// landing code's own fall damage for the player: creative flight is
     /// exempt, and the statistic, the sounds and the damage records wait in the
     /// player's events for its next tick, as a landing of its own leaves them.
-    pub(in crate::game) fn rider_fall_damage(&mut self, distance: f64, modifier: f32) {
+    pub(in crate::game::server_side) fn rider_fall_damage(&mut self, distance: f64, modifier: f32) {
         let Some(player) = self.player.as_mut() else {
             return;
         };
@@ -747,7 +761,7 @@ impl Game<'_> {
         }
     }
     /// `PlayerRideableJumping`: horses, camels and nautili (the dash).
-    pub(in crate::game) fn jumps(species: Species) -> bool {
+    pub(in crate::game::server_side) fn jumps(species: Species) -> bool {
         equine::is_equine(species) || sunrise_client::mobs::nautilus::is_nautilus(species)
     }
     /// `LocalPlayer.jumpableVehicle`: the vehicle the player controls (`getControlledVehicle`:
@@ -800,7 +814,7 @@ pub(in crate::game) struct Mount {
     pub(in crate::game) yaw: f32,
 }
 impl Mount {
-    pub(in crate::game) fn of(m: &Mob) -> Self {
+    pub(in crate::game::server_side) fn of(m: &Mob) -> Self {
         Self {
             species: m.species(),
             position: m.position,
@@ -830,7 +844,7 @@ pub(in crate::game) struct Rider {
 pub(in crate::game) const DISMOUNT_POSES: [Pose; 3] =
     [Pose::Standing, Pose::Crouching, Pose::Swimming];
 /// The rider's box in each dismount pose, at their `minecraft:scale`.
-pub(in crate::game) fn rider_poses(p: &PlayerMotion) -> Vec<(Pose, Dimensions)> {
+pub(in crate::game::server_side) fn rider_poses(p: &PlayerMotion) -> Vec<(Pose, Dimensions)> {
     // EntityDimensions.scale: every player pose scales alike, so the
     // standing width gives the scale without a mutable attribute lookup.
     let scale = p.dimensions.width / Pose::Standing.dimensions(1.0).width;
@@ -867,7 +881,7 @@ impl DismountWorld for GameDismountWorld<'_, '_> {
 }
 /// `getDismountLocationForPassenger`, and the pose the rider takes there: each
 /// vehicle class's own rule, and `Entity`'s on top of the mount for the rest.
-pub(in crate::game) fn dismount_location(
+pub(in crate::game::server_side) fn dismount_location(
     mount: &Mount,
     rider: &Rider,
     world: &impl DismountWorld,
@@ -894,7 +908,7 @@ pub(in crate::game) fn dismount_location(
 }
 /// `AbstractHorse.getDismountLocationForPassenger`: out of the horse's box to
 /// the main hand's side first, then the other, then its own position.
-pub(in crate::game) fn horse_dismount_location(
+pub(in crate::game::server_side) fn horse_dismount_location(
     mount: &Mount,
     rider: &Rider,
     world: &impl DismountWorld,
@@ -915,7 +929,7 @@ pub(in crate::game) fn horse_dismount_location(
 }
 /// `AbstractHorse.getDismountLocationInDirection`: from the horse's feet up to
 /// 0.75 above its box, in each of the rider's dismount poses.
-pub(in crate::game) fn horse_side(
+pub(in crate::game::server_side) fn horse_side(
     mount: &Mount,
     rider: &Rider,
     world: &impl DismountWorld,
@@ -951,7 +965,7 @@ pub(in crate::game) fn horse_side(
 }
 /// `Animal.getDismountLocationForPassenger`: the eight blocks around the
 /// mount, its own facing's right side first, at the mount's own height.
-pub(in crate::game) fn animal_dismount_location(
+pub(in crate::game::server_side) fn animal_dismount_location(
     mount: &Mount,
     rider: &Rider,
     world: &impl DismountWorld,
@@ -1011,7 +1025,7 @@ pub(in crate::game) fn animal_dismount_location(
 /// with no lava, a valid floor (`DismountHelper.isBlockFloorValid`) and room
 /// for one of the rider's dismount poses (`canDismountTo`) wins, with that
 /// pose; without one, on top of the strider with the pose unchanged.
-pub(in crate::game) fn strider_dismount_location(
+pub(in crate::game::server_side) fn strider_dismount_location(
     strider: &Mount,
     rider: &Rider,
     world: &impl DismountWorld,
@@ -1194,7 +1208,7 @@ pub(in crate::game) mod tests {
     }
 
     /// A mob of the prepared resources' type `kind` (None without them).
-    pub(in crate::game) fn mob(kind: &str) -> Option<sunrise_client::mobs::Mob> {
+    pub(in crate::game::server_side) fn mob(kind: &str) -> Option<sunrise_client::mobs::Mob> {
         let root = std::env::var_os("SUNRISE_RESOURCES")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| {
@@ -1369,12 +1383,12 @@ pub(in crate::game) mod tests {
         pub(in crate::game) blocks: HashMap<[i32; 3], ()>,
     }
     impl Sea {
-        pub(in crate::game) fn with(blocks: &[[i32; 3]]) -> Self {
+        pub(in crate::game::server_side) fn with(blocks: &[[i32; 3]]) -> Self {
             Self {
                 blocks: blocks.iter().map(|&b| (b, ())).collect(),
             }
         }
-        pub(in crate::game) fn solid(&self, p: [i32; 3]) -> bool {
+        pub(in crate::game::server_side) fn solid(&self, p: [i32; 3]) -> bool {
             self.blocks.contains_key(&p)
         }
     }
@@ -1402,7 +1416,7 @@ pub(in crate::game) mod tests {
     /// The top of a lava source at y 30 (`FlowingFluid.getOwnHeight`, 8/9).
     pub(in crate::game) const SURFACE: f64 = 30.0 + 8.0 / 9.0;
     /// A strider (0.9 by 1.7) standing on the lava at x, z, facing south.
-    pub(in crate::game) fn strider_at(x: f64, z: f64) -> Mount {
+    pub(in crate::game::server_side) fn strider_at(x: f64, z: f64) -> Mount {
         Mount {
             species: Species::Strider,
             position: Vec3::new(x, SURFACE, z),
@@ -1414,7 +1428,7 @@ pub(in crate::game) mod tests {
             yaw: 0.0,
         }
     }
-    pub(in crate::game) fn rider(yaw: f32) -> Rider {
+    pub(in crate::game::server_side) fn rider(yaw: f32) -> Rider {
         Rider {
             yaw,
             width: 0.6,
@@ -1425,7 +1439,7 @@ pub(in crate::game) mod tests {
             main_arm_left: false,
         }
     }
-    pub(in crate::game) fn block_of(at: Vec3) -> [i32; 3] {
+    pub(in crate::game::server_side) fn block_of(at: Vec3) -> [i32; 3] {
         [
             at.x.floor() as i32,
             at.y.floor() as i32,
@@ -1552,7 +1566,7 @@ pub(in crate::game) mod tests {
 
     /// `AbstractHorse.handleEating`'s growth particle position draws:
     /// `getRandomX(1.0)`, `getRandomY()` and `getRandomZ(1.0)` take a double each.
-    pub(in crate::game) fn sparkle_draws(r: &mut sunrise_core::random::LegacyRandom) {
+    pub(in crate::game::server_side) fn sparkle_draws(r: &mut sunrise_core::random::LegacyRandom) {
         for _ in 0..3 {
             r.next_double();
         }

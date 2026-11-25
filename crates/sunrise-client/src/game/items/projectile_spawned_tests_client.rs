@@ -27,7 +27,7 @@ pub(in crate::game::client_side) use sunrise_core::{
 };
 
 /// The sounds played since capture began, as (event, volume, pitch).
-pub(in crate::game) fn played(game: &mut super::Game<'_>) -> Vec<(String, f32, f32)> {
+pub(in crate::game::client_side) fn played(game: &mut super::Game<'_>) -> Vec<(String, f32, f32)> {
     game.audio
         .0
         .capture

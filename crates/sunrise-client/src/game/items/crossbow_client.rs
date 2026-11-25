@@ -9,12 +9,6 @@ pub(in crate::game::client_side) use crate::game::server_side::crossbow::CROSSBO
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::crossbow::FIREWORK_ROCKET;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::crossbow::charge_sounds;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::crossbow::is_arrow;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::crossbow::projectile_slot;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::crossbow::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::{

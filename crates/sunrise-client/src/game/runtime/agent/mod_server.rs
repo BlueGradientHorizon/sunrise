@@ -33,28 +33,6 @@ pub(in crate::game::server_side) use crate::game::client_side::agent::TaskKind;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::agent::VALUE_FLAGS;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::agent::add;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::agent::command_reply;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::agent::counts;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::agent::delta;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::agent::dist;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::agent::face_dir;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::agent::face_name;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::agent::namespaced;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::agent::parse_args;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::agent::whole;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::agent::yaw_pitch;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::agent::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use navigation::{Cell, Node, Plan, Progress};

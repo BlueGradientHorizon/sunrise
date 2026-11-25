@@ -101,7 +101,7 @@ impl mod_api::TooltipLinesAccess for EngineTooltipLines<'_> {
     }
 }
 
-pub(in crate::game) fn tooltip_position(
+pub(in crate::game::client_side) fn tooltip_position(
     (x, y): (f32, f32),
     (width, height): (f32, f32),
     (w, h): (f32, f32),
@@ -162,7 +162,7 @@ pub(in crate::game) struct EnchantBook {
     pub(in crate::game) random: LegacyRandom,
 }
 impl EnchantBook {
-    pub(in crate::game) fn new(random: LegacyRandom) -> Self {
+    pub(in crate::game::client_side) fn new(random: LegacyRandom) -> Self {
         Self {
             time: 0,
             flip: 0.0,
@@ -177,7 +177,11 @@ impl EnchantBook {
     }
     /// `EnchantmentScreen.tickBook`: a new item in the enchanting slot picks a
     /// new page to turn to; the book opens while any offer has a cost.
-    pub(in crate::game) fn tick(&mut self, input: Option<&ItemStack>, costs: [i32; 3]) {
+    pub(in crate::game::client_side) fn tick(
+        &mut self,
+        input: Option<&ItemStack>,
+        costs: [i32; 3],
+    ) {
         if input != self.last.as_ref() {
             self.last = input.cloned();
             loop {
@@ -199,7 +203,7 @@ impl EnchantBook {
         self.flip += self.flip_a;
     }
     /// `EnchantmentScreen.extractBook`'s `open` and `flip` at the partial tick.
-    pub(in crate::game) fn at(&self, partial: f32) -> (f32, f32) {
+    pub(in crate::game::client_side) fn at(&self, partial: f32) -> (f32, f32) {
         (
             self.o_open + (self.open - self.o_open) * partial,
             self.o_flip + (self.flip - self.o_flip) * partial,
@@ -228,7 +232,7 @@ pub(in crate::game) enum Kind {
     Loom,
 }
 impl Kind {
-    pub(in crate::game) fn from_block(name: &str) -> Option<Self> {
+    pub(in crate::game::client_side) fn from_block(name: &str) -> Option<Self> {
         Some(match name {
             "minecraft:enchanting_table" => Self::Enchanting,
             "minecraft:anvil" | "minecraft:chipped_anvil" | "minecraft:damaged_anvil" => {
@@ -250,7 +254,7 @@ impl Kind {
             _ => 2,
         }
     }
-    pub(in crate::game) fn texture(self) -> &'static str {
+    pub(in crate::game::client_side) fn texture(self) -> &'static str {
         match self {
             Self::Enchanting => "gui/container/enchanting_table",
             Self::Anvil => "gui/container/anvil",
@@ -263,7 +267,7 @@ impl Kind {
             Self::Loom => "gui/container/loom",
         }
     }
-    pub(in crate::game) fn title_key(self) -> &'static str {
+    pub(in crate::game::client_side) fn title_key(self) -> &'static str {
         match self {
             Self::Enchanting => "container.enchant",
             Self::Anvil => "container.repair",
@@ -277,7 +281,7 @@ impl Kind {
         }
     }
     /// (titleLabelX, titleLabelY).
-    pub(in crate::game) fn title_pos(self) -> (f32, f32) {
+    pub(in crate::game::client_side) fn title_pos(self) -> (f32, f32) {
         match self {
             Self::Anvil => (60.0, 6.0),
             Self::Smithing => (44.0, 15.0),
@@ -286,7 +290,7 @@ impl Kind {
             _ => (8.0, 6.0),
         }
     }
-    pub(in crate::game) fn input_pos(self, i: usize) -> (f32, f32) {
+    pub(in crate::game::client_side) fn input_pos(self, i: usize) -> (f32, f32) {
         let table: &[(f32, f32)] = match self {
             Self::Enchanting => &[(15.0, 47.0), (35.0, 47.0)],
             Self::Anvil => &[(27.0, 47.0), (76.0, 47.0)],
@@ -304,7 +308,7 @@ impl Kind {
     pub(in crate::game) fn has_result(self) -> bool {
         self.result_pos().is_some()
     }
-    pub(in crate::game) fn result_pos(self) -> Option<(f32, f32)> {
+    pub(in crate::game::client_side) fn result_pos(self) -> Option<(f32, f32)> {
         match self {
             Self::Enchanting => None,
             Self::Anvil => Some((134.0, 47.0)),
@@ -334,7 +338,7 @@ impl CyclingSlot {
     pub(in crate::game) const CHANGE_TICKS: u32 = 30;
     pub(in crate::game) const FADE_TICKS: f32 = 4.0;
     /// `CyclingSlotBackground.tick(newIcons)` for each client tick since the last call.
-    pub(in crate::game) fn advance(&mut self, now: u64, icons: &[&'static str]) {
+    pub(in crate::game::client_side) fn advance(&mut self, now: u64, icons: &[&'static str]) {
         let ticks = self.at.map_or(0, |at| now.saturating_sub(at).min(600));
         self.at = Some(now);
         if self.icons != icons {
@@ -352,7 +356,7 @@ impl CyclingSlot {
     }
     /// What `CyclingSlotBackground.extractRenderState` draws for an empty slot: the icon before
     /// this one fading out while this one fades in, with their alphas.
-    pub(in crate::game) fn shown(&self, partial: f32) -> Vec<(&'static str, f32)> {
+    pub(in crate::game::client_side) fn shown(&self, partial: f32) -> Vec<(&'static str, f32)> {
         if self.icons.is_empty() {
             return Vec::new();
         }
@@ -454,7 +458,7 @@ impl Station {
         self.scroll = 0.0;
     }
     /// Clear state tied to the previous `UpdateRecipes` table.
-    pub(in crate::game) fn reset_stonecutter_generation(&mut self) {
+    pub(in crate::game::client_side) fn reset_stonecutter_generation(&mut self) {
         self.stone = Default::default();
         self.selected = None;
         self.result = None;
@@ -462,19 +466,23 @@ impl Station {
         self.stonecutter_changed();
     }
     /// `StonecutterScreen.isScrollBarActive`.
-    pub(in crate::game) fn stonecutter_scrolls(&self) -> bool {
+    pub(in crate::game::client_side) fn stonecutter_scrolls(&self) -> bool {
         self.inputs[0].is_some() && self.stone.recipes.len() > 12
     }
     /// Moves the stonecutter's scroller to `offs`, and its first shown
     /// recipe (`startIndex`) with it.
-    pub(in crate::game) fn stonecutter_scroll_to(&mut self, offs: f32) {
+    pub(in crate::game::client_side) fn stonecutter_scroll_to(&mut self, offs: f32) {
         self.scroll = offs.clamp(0.0, 1.0);
         self.start = stonecutter_start(self.stone.recipes.len(), self.scroll);
     }
 }
 
 /// `at` is on one of a list's `rows`, with no row further that way.
-pub(in crate::game) fn off_visible_rows(rows: &[[f32; 4]], at: (f32, f32), up: bool) -> bool {
+pub(in crate::game::client_side) fn off_visible_rows(
+    rows: &[[f32; 4]],
+    at: (f32, f32),
+    up: bool,
+) -> bool {
     let inside =
         |r: &[f32; 4]| at.0 >= r[0] && at.0 < r[0] + r[2] && at.1 >= r[1] && at.1 < r[1] + r[3];
     let Some(on) = rows.iter().find(|r| inside(r)) else {
@@ -486,24 +494,24 @@ pub(in crate::game) fn off_visible_rows(rows: &[[f32; 4]], at: (f32, f32), up: b
 }
 
 /// `StonecutterScreen.getOffscreenRows`: the recipe rows below the 4x3 grid.
-pub(in crate::game) fn stonecutter_offscreen_rows(recipes: usize) -> i32 {
+pub(in crate::game::client_side) fn stonecutter_offscreen_rows(recipes: usize) -> i32 {
     recipes.div_ceil(4) as i32 - 3
 }
 /// `startIndex` for a scroller position: the first recipe of the nearest row.
-pub(in crate::game) fn stonecutter_start(recipes: usize, offs: f32) -> usize {
+pub(in crate::game::client_side) fn stonecutter_start(recipes: usize, offs: f32) -> usize {
     ((offs * stonecutter_offscreen_rows(recipes) as f32 + 0.5) as i32).max(0) as usize * 4
 }
 /// `StonecutterScreen.mouseDragged`: the scroller position under the cursor,
 /// `y` relative to the GUI origin (the 54-px track starts at 14).
-pub(in crate::game) fn stonecutter_drag_offs(y: f32) -> f32 {
+pub(in crate::game::client_side) fn stonecutter_drag_offs(y: f32) -> f32 {
     ((y - 14.0 - 7.5) / (54.0 - 15.0)).clamp(0.0, 1.0)
 }
 
 /// The 108x19 enchantment button `i` (relative to the GUI origin).
-pub(in crate::game) fn enchant_button(i: usize) -> (f32, f32, f32, f32) {
+pub(in crate::game::client_side) fn enchant_button(i: usize) -> (f32, f32, f32, f32) {
     (60.0, 14.0 + 19.0 * i as f32, 108.0, 19.0)
 }
-pub(in crate::game) fn inside(p: (f32, f32), x: f32, y: f32, w: f32, h: f32) -> bool {
+pub(in crate::game::client_side) fn inside(p: (f32, f32), x: f32, y: f32, w: f32, h: f32) -> bool {
     p.0 >= x && p.1 >= y && p.0 < x + w && p.1 < y + h
 }
 /// `EnchantmentNames` word list.
@@ -572,7 +580,7 @@ pub(in crate::game) const WORDS: &[&str] = &[
     "baguette",
 ];
 pub(in crate::game) const GREY: u32 = 0xFF40_4040;
-pub(in crate::game) fn argb(c: i32) -> u32 {
+pub(in crate::game::client_side) fn argb(c: i32) -> u32 {
     let c = c as u32;
     rgba(
         (c >> 16 & 255) as u8,
@@ -583,12 +591,12 @@ pub(in crate::game) fn argb(c: i32) -> u32 {
 }
 
 /// A text style's `0xRRGGBB` colour from a HUD colour (`rgba`).
-pub(in crate::game) fn rgb_of(rgba: u32) -> u32 {
+pub(in crate::game::client_side) fn rgb_of(rgba: u32) -> u32 {
     (rgba & 0xFF) << 16 | (rgba >> 8 & 0xFF) << 8 | (rgba >> 16 & 0xFF)
 }
 impl Game<'_> {
     /// `EnchantmentScreen.containerTick`'s `tickBook` for an open enchanting table.
-    pub(in crate::game) fn tick_enchanting_book(&mut self) {
+    pub(in crate::game::client_side) fn tick_enchanting_book(&mut self) {
         if let Some(s) = self.station.as_mut().filter(|s| s.kind == Kind::Enchanting) {
             let costs = s.offers.costs;
             s.book.tick(s.inputs[0].as_ref(), costs);
@@ -599,7 +607,7 @@ impl Game<'_> {
     pub(in crate::game) fn translate_with_fallback(&self, key: &str, fallback: &str) -> String {
         sunrise_client::lang::get_or(key, fallback)
     }
-    pub(in crate::game) fn brewing_open(&self) -> bool {
+    pub(in crate::game::client_side) fn brewing_open(&self) -> bool {
         matches!(self.container_kind(), Some(BlockEntity::Brewing(_)))
     }
     /// Opens a workstation menu for the block; false when it is not one.
@@ -661,7 +669,7 @@ impl Game<'_> {
             self.give_or_drop(stack);
         }
     }
-    pub(in crate::game) fn station_slots(&self) -> Option<Vec<usize>> {
+    pub(in crate::game::client_side) fn station_slots(&self) -> Option<Vec<usize>> {
         let mut v: Vec<usize> = (0..36).collect();
         if self.brewing_open() {
             v.extend(300..305);
@@ -676,14 +684,17 @@ impl Game<'_> {
     }
     /// How many slots `station_slots` lists, counted without building it
     /// (`Game::slot_count` asks every frame): same branches, same order.
-    pub(in crate::game) fn station_slot_count(&self) -> Option<usize> {
+    pub(in crate::game::client_side) fn station_slot_count(&self) -> Option<usize> {
         if self.brewing_open() {
             return Some(36 + 5);
         }
         let s = self.station.as_ref()?;
         Some(36 + s.inputs.len() + usize::from(s.kind.result_pos().is_some()))
     }
-    pub(in crate::game) fn station_slot_position(&self, i: usize) -> Option<(f32, f32)> {
+    pub(in crate::game::client_side) fn station_slot_position(
+        &self,
+        i: usize,
+    ) -> Option<(f32, f32)> {
         if self.brewing_open() && (300..305).contains(&i) {
             return Some(
                 [
@@ -708,14 +719,17 @@ impl Game<'_> {
             _ => None,
         }
     }
-    pub(in crate::game) fn station_slot(&self, i: usize) -> &Option<ItemStack> {
+    pub(in crate::game::client_side) fn station_slot(&self, i: usize) -> &Option<ItemStack> {
         match self.station.as_ref() {
             Some(s) if i == RESULT => &s.result,
             Some(s) if i >= INPUT && i < INPUT + s.inputs.len() => &s.inputs[i - INPUT],
             _ => &self.scratch_slot,
         }
     }
-    pub(in crate::game) fn station_slot_mut(&mut self, i: usize) -> &mut Option<ItemStack> {
+    pub(in crate::game::client_side) fn station_slot_mut(
+        &mut self,
+        i: usize,
+    ) -> &mut Option<ItemStack> {
         match self.station.as_mut() {
             Some(s) if i == RESULT => &mut s.result,
             Some(s) if i >= INPUT && i < INPUT + s.inputs.len() => &mut s.inputs[i - INPUT],
@@ -739,7 +753,11 @@ impl Game<'_> {
         }
     }
     /// Apply the client anvil hook after vanilla `createResult`.
-    pub(in crate::game) fn update_anvil_answer(&mut self, s: &mut Station, name: &str) {
+    pub(in crate::game::client_side) fn update_anvil_answer(
+        &mut self,
+        s: &mut Station,
+        name: &str,
+    ) {
         if !mod_api::__private::listened(mod_api::HookId::AnvilUpdate) {
             return;
         }
@@ -840,14 +858,18 @@ impl Game<'_> {
         }
         self.station = Some(s);
     }
-    pub(in crate::game) fn max_stack(&self, stack: &ItemStack) -> u32 {
+    pub(in crate::game::client_side) fn max_stack(&self, stack: &ItemStack) -> u32 {
         self.res
             .items()
             .get(&stack.item)
             .map_or(64, |i| i.max_stack)
     }
     /// `Slot.mayPlace` and `getMaxStackSize` for station slots.
-    pub(in crate::game) fn slot_rules(&self, slot: usize, stack: &ItemStack) -> (bool, u32) {
+    pub(in crate::game::client_side) fn slot_rules(
+        &self,
+        slot: usize,
+        stack: &ItemStack,
+    ) -> (bool, u32) {
         if (super::mount_menu::SADDLE..crate::game::inventory_slots::MOD_MENU_SLOT_BASE)
             .contains(&slot)
         {
@@ -875,7 +897,7 @@ impl Game<'_> {
         (s.kind != Kind::Loom, 64)
     }
     /// `AbstractContainerMenu.doClick` PICKUP on a filtered slot.
-    pub(in crate::game) fn click_filtered(&mut self, slot: usize, right: bool) {
+    pub(in crate::game::client_side) fn click_filtered(&mut self, slot: usize, right: bool) {
         let carried = self.carried.take();
         let current = self.slot_mut(slot).take();
         let (new_slot, new_carried) = match (carried, current) {
@@ -927,7 +949,7 @@ impl Game<'_> {
         self.carried = new_carried;
     }
     /// `moveItemStackTo` over `targets` (menu order), merging first, then empty slots.
-    pub(in crate::game) fn move_to(
+    pub(in crate::game::client_side) fn move_to(
         &mut self,
         stack: &mut ItemStack,
         targets: &[usize],
@@ -974,7 +996,10 @@ impl Game<'_> {
     /// After a live client anvil session (`anvil_menu_session`): copy the final anvil state
     /// from `menu` into `self.station` and sync the rename box without re-running `createResult`
     /// or `anvil_update` a second time.
-    pub(in crate::game) fn anvil_session_end(&mut self, menu: &sunrise_client::menu::Menu) {
+    pub(in crate::game::client_side) fn anvil_session_end(
+        &mut self,
+        menu: &sunrise_client::menu::Menu,
+    ) {
         let Some(s) = self.station.as_mut() else {
             return;
         };
@@ -1007,7 +1032,7 @@ impl Game<'_> {
     /// input (`AnvilScreen.slotChanged`), then the rest of a taken result's
     /// `onTake` (the levels, the anvil's wear, the use sound) unless a
     /// server does it.
-    pub(in crate::game) fn combiner_session_end(
+    pub(in crate::game::client_side) fn combiner_session_end(
         &mut self,
         menu: &sunrise_client::menu::Menu,
         anvil_created: bool,
@@ -1078,13 +1103,13 @@ impl Game<'_> {
     /// `getExperienceAmount` sum): the orbs at the block's centre
     /// (`ExperienceOrb.award`), then level event 1042, the grindstone's sound
     /// for everyone around.
-    pub(in crate::game) fn grindstone_taken(&mut self, pos: [i32; 3], amount: i32) {
+    pub(in crate::game::client_side) fn grindstone_taken(&mut self, pos: [i32; 3], amount: i32) {
         let xp = stations::grindstone_xp_roll(amount, &mut self.world.random);
         self.grindstone_award(pos, xp);
     }
     /// The rest of `onTake` with the experience `xp` decided: the orbs and
     /// level event 1042.
-    pub(in crate::game) fn grindstone_award(&mut self, pos: [i32; 3], xp: u32) {
+    pub(in crate::game::client_side) fn grindstone_award(&mut self, pos: [i32; 3], xp: u32) {
         if xp > 0 {
             self.spawn_orbs(pos.map(|v| f64::from(v) + 0.5), xp);
         }
@@ -1114,13 +1139,13 @@ impl Game<'_> {
     }
     /// `Player.onEnchantmentPerformed`: the cost leaves the level directly, not
     /// through `giveExperienceLevels`, and the mods hear of the level change.
-    pub(in crate::game) fn enchantment_performed(&mut self, cost: i32) {
+    pub(in crate::game::client_side) fn enchantment_performed(&mut self, cost: i32) {
         let old_level = self.experience.level;
         self.experience.add_levels(-cost);
         self.native_player_level_changed(old_level);
     }
     /// Whether the result slot may be taken (`mayPickup`).
-    pub(in crate::game) fn may_take_result(&self) -> bool {
+    pub(in crate::game::client_side) fn may_take_result(&self) -> bool {
         let Some(s) = self.station.as_ref() else {
             return false;
         };
@@ -1132,7 +1157,7 @@ impl Game<'_> {
         }
     }
     /// `EnchantmentMenu.clickMenuButton`.
-    pub(in crate::game) fn click_enchant(&mut self, button: usize) {
+    pub(in crate::game::client_side) fn click_enchant(&mut self, button: usize) {
         let Some(s) = self.station.as_ref() else {
             return;
         };
@@ -1184,7 +1209,7 @@ impl Game<'_> {
     /// A station's own buttons a controller can focus besides its slots
     /// (GUI origin relative): offers, patterns, effects, enchantments and
     /// stonecutter recipes.
-    pub(in crate::game) fn station_targets(&self) -> Vec<[f32; 4]> {
+    pub(in crate::game::client_side) fn station_targets(&self) -> Vec<[f32; 4]> {
         let Some(s) = self.station.as_ref() else {
             return Vec::new();
         };
@@ -1274,7 +1299,7 @@ impl Game<'_> {
         true
     }
     /// Recompute after slot changes; the anvil box follows its input item.
-    pub(in crate::game) fn station_after_input(&mut self) {
+    pub(in crate::game::client_side) fn station_after_input(&mut self) {
         let Some(s) = self.station.as_ref() else {
             return;
         };
@@ -1301,7 +1326,7 @@ impl Game<'_> {
     /// with the cell's index (an empty cell's too), and the select sound when
     /// the menu took it.
     /// Beside the grid, a press on the scroller's track holds it (`scrolling`).
-    pub(in crate::game) fn stonecutter_click(&mut self, local: (f32, f32)) -> bool {
+    pub(in crate::game::client_side) fn stonecutter_click(&mut self, local: (f32, f32)) -> bool {
         let Some(s) = self.station.as_mut() else {
             return false;
         };
@@ -1320,7 +1345,7 @@ impl Game<'_> {
         }
         false
     }
-    pub(in crate::game) fn stonecutter_recipe_click(
+    pub(in crate::game::client_side) fn stonecutter_recipe_click(
         &mut self,
         local: (f32, f32),
         start: usize,
@@ -1350,7 +1375,7 @@ impl Game<'_> {
     /// A D-pad step off the visible rows of a station's list, from the row
     /// under the cursor: the list scrolls a row, if it can, and the cursor
     /// stays. False leaves the step to go on to whatever is that way.
-    pub(in crate::game) fn station_list_step(&mut self, up: bool) -> bool {
+    pub(in crate::game::client_side) fn station_list_step(&mut self, up: bool) -> bool {
         let Some(batch) = self.gui_batch() else {
             return false;
         };
@@ -1370,7 +1395,7 @@ impl Game<'_> {
         shown(self) != before
     }
     /// `StonecutterScreen.mouseScrolled`.
-    pub(in crate::game) fn station_scroll(&mut self, d: f32) -> bool {
+    pub(in crate::game::client_side) fn station_scroll(&mut self, d: f32) -> bool {
         let mut handled = self.merchant_scroll(d);
         handled |= self.loom_scroll(d);
         let Some(s) = self.station.as_mut() else {
@@ -1385,7 +1410,7 @@ impl Game<'_> {
     }
     /// The mouse moved with a button held on a station: the loom's,
     /// stonecutter's and merchant's scrollers follow it.
-    pub(in crate::game) fn station_drag(&mut self) -> bool {
+    pub(in crate::game::client_side) fn station_drag(&mut self) -> bool {
         let mut handled = self.loom_drag();
         handled |= self.merchant_drag();
         let Some(size) = self
@@ -1410,7 +1435,7 @@ impl Game<'_> {
         handled
     }
     /// A mouse button let go: no scroller is held any more.
-    pub(in crate::game) fn station_release(&mut self) -> bool {
+    pub(in crate::game::client_side) fn station_release(&mut self) -> bool {
         let mut handled = self.loom_release();
         if let Some(s) = self.station.as_mut() {
             handled |= std::mem::take(&mut s.scrolling);
@@ -1421,14 +1446,18 @@ impl Game<'_> {
         handled
     }
     /// Whether keyboard text goes to the anvil rename box.
-    pub(in crate::game) fn station_typing(&self) -> bool {
+    pub(in crate::game::client_side) fn station_typing(&self) -> bool {
         self.client.screen == Screen::Inventory
             && self
                 .station
                 .as_ref()
                 .is_some_and(|s| s.kind == Kind::Anvil && s.inputs[0].is_some())
     }
-    pub(in crate::game) fn station_text(&mut self, text: Option<&str>, backspace: bool) {
+    pub(in crate::game::client_side) fn station_text(
+        &mut self,
+        text: Option<&str>,
+        backspace: bool,
+    ) {
         // The recipe book's search box takes scripted typing too.
         if self.recipe_search_focused() {
             self.recipe_text(text, backspace);
@@ -1459,7 +1488,10 @@ impl Game<'_> {
         self.remote_anvil_rename();
     }
     /// `AnvilScreen.keyPressed`: the rename box handles the key.
-    pub(in crate::game) fn station_key(&mut self, key: winit::keyboard::KeyCode) -> bool {
+    pub(in crate::game::client_side) fn station_key(
+        &mut self,
+        key: winit::keyboard::KeyCode,
+    ) -> bool {
         let (ctrl, shift) = (self.has_control_down(), self.has_shift_down());
         let before = self
             .station
@@ -1486,7 +1518,7 @@ impl Game<'_> {
     }
     /// Ctrl+A/C/V/X in the anvil's rename box (an `EditBox` of 50) or the
     /// recipe book's search box.
-    pub(in crate::game) fn station_shortcut(
+    pub(in crate::game::client_side) fn station_shortcut(
         &mut self,
         shortcut: sunrise_client::clipboard::EditShortcut,
     ) {
@@ -1516,7 +1548,7 @@ impl Game<'_> {
         }
     }
     /// A click in the anvil's name box (`EditBox.onClick`).
-    pub(in crate::game) fn anvil_name_click(&mut self, ox: f32, oy: f32) -> bool {
+    pub(in crate::game::client_side) fn anvil_name_click(&mut self, ox: f32, oy: f32) -> bool {
         let open = self.station.as_ref().is_some_and(|s| s.kind == Kind::Anvil);
         if !open {
             return false;
@@ -1537,7 +1569,12 @@ impl Game<'_> {
         true
     }
     /// AnvilScreen's name box, drawn after the station picture.
-    pub(in crate::game) fn draw_anvil_name(&mut self, batch: &mut HudBatch, ox: f32, oy: f32) {
+    pub(in crate::game::client_side) fn draw_anvil_name(
+        &mut self,
+        batch: &mut HudBatch,
+        ox: f32,
+        oy: f32,
+    ) {
         let Some(s) = self.station.as_mut() else {
             return;
         };
@@ -1555,7 +1592,7 @@ impl Game<'_> {
 
     // ---------------------------------------------------------------- drawing
 
-    pub(in crate::game) fn part(
+    pub(in crate::game::client_side) fn part(
         batch: &mut HudBatch,
         atlas: &sunrise_client::hud::HudAtlas,
         name: &str,
@@ -1573,7 +1610,7 @@ impl Game<'_> {
         }
     }
     /// Text in the Standard Galactic alphabet (`minecraft:alt`), cut to `max` pixels.
-    pub(in crate::game) fn galactic(
+    pub(in crate::game::client_side) fn galactic(
         &self,
         batch: &mut HudBatch,
         text: &str,
@@ -1625,7 +1662,7 @@ impl Game<'_> {
             cursor += advance;
         }
     }
-    pub(in crate::game) fn galactic_deferred(
+    pub(in crate::game::client_side) fn galactic_deferred(
         &self,
         batch: &mut HudBatch,
         text: &str,
@@ -1636,7 +1673,7 @@ impl Game<'_> {
     ) {
         self.galactic(batch, text, x, y, max, color);
     }
-    pub(in crate::game) fn slot_position_any(&self, i: usize) -> Option<(f32, f32)> {
+    pub(in crate::game::client_side) fn slot_position_any(&self, i: usize) -> Option<(f32, f32)> {
         self.station_slot_position(i)
             .or_else(|| (i < 36).then(|| self.slot_position(i)))
     }
@@ -1666,7 +1703,7 @@ impl Game<'_> {
         }
     }
     /// The same rarity colour in the GUI batch's packed RGBA format.
-    pub(in crate::game) fn rarity_color(&self, stack: &ItemStack) -> u32 {
+    pub(in crate::game::client_side) fn rarity_color(&self, stack: &ItemStack) -> u32 {
         let c = self.stack_rarity_color(stack);
         rgba((c >> 16) as u8, (c >> 8) as u8, c as u8, 255)
     }
@@ -1678,7 +1715,7 @@ impl Game<'_> {
     /// projectile: `ChargedProjectiles.addProjectileTooltip` takes its details
     /// without the name, the player and the advanced flag. `creative` is
     /// `TooltipFlag.isCreative`: a creative tab's own slot.
-    pub(in crate::game) fn stack_tooltip_lines(
+    pub(in crate::game::client_side) fn stack_tooltip_lines(
         &self,
         stack: &ItemStack,
         nested: bool,
@@ -1707,7 +1744,7 @@ impl Game<'_> {
         )
     }
 
-    pub(in crate::game) fn tooltip_lines(
+    pub(in crate::game::client_side) fn tooltip_lines(
         &self,
         stack: &ItemStack,
         nested: bool,
@@ -1723,7 +1760,7 @@ impl Game<'_> {
         self.build_stack_tooltip_lines(stack, nested, creative, advanced, guard.is_some())
     }
 
-    pub(in crate::game) fn build_stack_tooltip_lines(
+    pub(in crate::game::client_side) fn build_stack_tooltip_lines(
         &self,
         stack: &ItemStack,
         nested: bool,
@@ -2257,7 +2294,7 @@ impl Game<'_> {
         )
     }
 
-    pub(in crate::game) fn draw_tooltip_lines_positioned<
+    pub(in crate::game::client_side) fn draw_tooltip_lines_positioned<
         T: Clone + Into<sunrise_client::text::Text>,
     >(
         &self,
@@ -2273,7 +2310,7 @@ impl Game<'_> {
         self.draw_prepared_tooltip(batch, None, &mut components, anchor, positioner, true)
     }
     /// A tooltip's lines with their legacy codes resolved and their colours.
-    pub(in crate::game) fn resolved<T: Clone + Into<sunrise_client::text::Text>>(
+    pub(in crate::game::client_side) fn resolved<T: Clone + Into<sunrise_client::text::Text>>(
         lines: &[(T, u32)],
     ) -> Vec<(sunrise_client::text::Text, u32)> {
         lines
@@ -2349,7 +2386,7 @@ impl Game<'_> {
     /// name in a box of its own, centred over the grid (less 12) and 15 above
     /// the component, placed by `DefaultTooltipPositioner` (+12, -12, kept on
     /// screen). `x`, `y` and `w` are the component's.
-    pub(in crate::game) fn draw_bundle_selected_name(
+    pub(in crate::game::client_side) fn draw_bundle_selected_name(
         &self,
         batch: &mut HudBatch,
         layout: &sunrise_client::bundle::TooltipLayout,
@@ -2376,7 +2413,7 @@ impl Game<'_> {
     }
     /// `ClientBundleTooltip.extractImage`: the slots, the count past them and
     /// the progress bar.
-    pub(in crate::game) fn draw_bundle_tooltip(
+    pub(in crate::game::client_side) fn draw_bundle_tooltip(
         &self,
         batch: &mut HudBatch,
         layout: &sunrise_client::bundle::TooltipLayout,
@@ -2490,14 +2527,14 @@ impl Game<'_> {
     /// `AbstractContainerScreen.showTooltipWithItemInHand`: a hovered stack's
     /// tooltip shows while a stack is carried only when its prepared tooltip
     /// component says so, as a bundle's contents do (`ClientBundleTooltip`).
-    pub(in crate::game) fn tooltip_with_carried(&self, stack: &ItemStack) -> bool {
+    pub(in crate::game::client_side) fn tooltip_with_carried(&self, stack: &ItemStack) -> bool {
         if self.carried.is_none() {
             return true;
         }
         self.tooltip_image_shows_with_carried(stack)
     }
     /// Hovered-slot tooltip on the plain inventory, crafting and container screens.
-    pub(in crate::game) fn draw_slot_tooltip(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_slot_tooltip(&mut self, batch: &mut HudBatch) {
         // An item dragged off the item panel covers the slot under it.
         if self.mod_browser_dragging() {
             return;

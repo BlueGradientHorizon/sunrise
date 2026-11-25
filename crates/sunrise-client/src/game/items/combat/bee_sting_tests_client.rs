@@ -113,7 +113,7 @@ fn a_refused_sting_leaves_the_bee_alone() {
     assert!(sting_sounds(&mut game).is_empty());
 }
 
-pub(in crate::game) fn sting_sounds(game: &mut Game<'_>) -> Vec<(f32, [f64; 3])> {
+pub(in crate::game::client_side) fn sting_sounds(game: &mut Game<'_>) -> Vec<(f32, [f64; 3])> {
     game.audio
         .0
         .capture

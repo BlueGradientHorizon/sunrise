@@ -25,7 +25,7 @@ pub(in crate::game) static NEXT_EPOCH: AtomicU64 = AtomicU64::new(1);
 
 /// A process-wide epoch no handle has carried yet: a server open's, or a
 /// client level's (`native_entity_refs.rs`), so a handle never crosses sides.
-pub(in crate::game) fn fresh_epoch() -> WorldEpoch {
+pub(in crate::game::server_side) fn fresh_epoch() -> WorldEpoch {
     WorldEpoch::new(NEXT_EPOCH.fetch_add(1, Ordering::Relaxed))
 }
 
@@ -49,7 +49,7 @@ pub(in crate::game) struct OpenAttempt {
 }
 
 impl OpenAttempt {
-    pub(in crate::game) fn context(&self) -> LifecycleContext {
+    pub(in crate::game::server_side) fn context(&self) -> LifecycleContext {
         LifecycleContext::from(mod_api::__private::built::LifecycleContext {
             authority: self.authority,
             epoch: WorldEpoch::new(self.epoch),
@@ -57,7 +57,7 @@ impl OpenAttempt {
         })
     }
 
-    pub(in crate::game) fn server_context(&self) -> Option<LifecycleContext> {
+    pub(in crate::game::server_side) fn server_context(&self) -> Option<LifecycleContext> {
         (self.authority != Authority::RemoteClient).then(|| self.context())
     }
 }
@@ -87,7 +87,7 @@ pub(in crate::game) struct NativeLifecycle {
 
 impl NativeLifecycle {
     /// A read is valid only during a tick hook with its current tick context.
-    pub(in crate::game) fn permits_read(&self, context: &LifecycleContext) -> bool {
+    pub(in crate::game::server_side) fn permits_read(&self, context: &LifecycleContext) -> bool {
         self.read_scope
             && self
                 .attempt
@@ -123,14 +123,14 @@ impl NativeLifecycle {
         attempt.server_context()
     }
 
-    pub(in crate::game) fn is_opening(&self) -> bool {
+    pub(in crate::game::server_side) fn is_opening(&self) -> bool {
         self.attempt
             .as_ref()
             .is_some_and(|attempt| attempt.session == OpenState::Opening)
     }
 
     /// `WorldOpenFailed`: only while opening; the attempt is invalidated.
-    pub(in crate::game) fn world_open_failed(&mut self) -> Option<LifecycleContext> {
+    pub(in crate::game::server_side) fn world_open_failed(&mut self) -> Option<LifecycleContext> {
         let attempt = self.attempt.as_mut()?;
         if attempt.session != OpenState::Opening {
             return None;
@@ -148,7 +148,7 @@ impl NativeLifecycle {
     }
 
     /// A failure after readiness retires the epoch, including during shutdown.
-    pub(in crate::game) fn world_close_failed(&mut self) -> Option<LifecycleContext> {
+    pub(in crate::game::server_side) fn world_close_failed(&mut self) -> Option<LifecycleContext> {
         let attempt = self.attempt.as_ref()?;
         if attempt.session == OpenState::Opening {
             return None;
@@ -172,7 +172,7 @@ impl NativeLifecycle {
     }
 
     /// Non-paused ready ticks only; a paused pass observes nothing, does not count.
-    pub(in crate::game) fn server_tick_start(
+    pub(in crate::game::server_side) fn server_tick_start(
         &mut self,
         world_running: bool,
     ) -> Option<(LifecycleContext, ServerTickPhase)> {
@@ -192,14 +192,14 @@ impl NativeLifecycle {
     }
 
     /// Discard the pending end when a tick fails.
-    pub(in crate::game) fn cancel_server_tick(&mut self) {
+    pub(in crate::game::server_side) fn cancel_server_tick(&mut self) {
         if let Some(attempt) = &mut self.attempt {
             attempt.tick_open = false;
         }
     }
 
     /// Pairs the last start; an errored tick never reaches it.
-    pub(in crate::game) fn server_tick_end(
+    pub(in crate::game::server_side) fn server_tick_end(
         &mut self,
         paused: bool,
     ) -> Option<(LifecycleContext, ServerTickPhase)> {
@@ -219,7 +219,7 @@ impl NativeLifecycle {
 
 impl Game<'_> {
     /// The role is fixed at construction; a mirror `Game` is remote whatever it is.
-    pub(in crate::game) fn native_lifecycle_authority(&self) -> Authority {
+    pub(in crate::game::server_side) fn native_lifecycle_authority(&self) -> Authority {
         if self.remote.is_some() {
             return Authority::RemoteClient;
         }
@@ -254,7 +254,7 @@ impl Game<'_> {
     }
 
     /// `error_text` is the engine's own error text, unchanged.
-    pub(in crate::game) fn native_lifecycle_world_failed(&mut self, error_text: &str) {
+    pub(in crate::game::server_side) fn native_lifecycle_world_failed(&mut self, error_text: &str) {
         // The server levels that opened before the failure close first.
         if self.remote.is_none() {
             self.native_levels_closing();
@@ -268,7 +268,7 @@ impl Game<'_> {
     }
 
     /// Report a server-loop or shutdown failure once and retire its epoch.
-    pub(in crate::game) fn native_lifecycle_close_failed(&mut self, error_text: &str) {
+    pub(in crate::game::server_side) fn native_lifecycle_close_failed(&mut self, error_text: &str) {
         if self.remote.is_none() {
             self.native_levels_closing();
         }
@@ -280,7 +280,9 @@ impl Game<'_> {
         self.resident_entities.table.get_mut().reset();
     }
 
-    pub(in crate::game) fn drain_due_tasks(&mut self) -> Option<Box<dyn std::any::Any + Send>> {
+    pub(in crate::game::server_side) fn drain_due_tasks(
+        &mut self,
+    ) -> Option<Box<dyn std::any::Any + Send>> {
         run_all(
             self,
             |game| game.native_lifecycle.tasks.pop_due(),

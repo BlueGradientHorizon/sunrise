@@ -34,7 +34,7 @@ pub(in crate::game::client_side) use sunrise_core::{
     random::{LegacyRandom, RandomSource as _},
 };
 
-pub(in crate::game) fn admit(game: &mut Game<'_>) -> usize {
+pub(in crate::game::client_side) fn admit(game: &mut Game<'_>) -> usize {
     game.particles.0.tick(&ParticleLevel {
         world: &game.world,
         facts: game.res.facts(),
@@ -240,7 +240,7 @@ fn hit_effect_replaces_the_crumb_but_not_the_sound_or_level_random() {
     });
 }
 
-pub(in crate::game) fn with_effects(test: impl FnOnce(&mut Game<'_>, &Calls)) {
+pub(in crate::game::client_side) fn with_effects(test: impl FnOnce(&mut Game<'_>, &Calls)) {
     let calls = Calls::default();
     let mods = vec![ModEntry::new("debris", Box::new(Register(calls.clone())))];
     mod_platform::testing::with_mods(mods.into(), || {

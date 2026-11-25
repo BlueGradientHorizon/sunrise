@@ -299,7 +299,7 @@ fn bake_model(name: &str, model: &ModelPart) -> std::result::Result<Part, &'stat
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn prepare_client_item_extensions(
+    pub(in crate::game::client_side) fn prepare_client_item_extensions(
         gui: &UiResources,
     ) -> std::result::Result<ArmorExtensions, String> {
         use mod_api::__private::game::RegistrationContextNew;
@@ -337,7 +337,7 @@ impl Game<'_> {
     ///
     /// Returns `minecraft:default` when no extension is registered, the provider returns `None`,
     /// the stack cannot cross the API boundary, or the provider panics.
-    pub(in crate::game) fn item_tooltip_font(
+    pub(in crate::game::client_side) fn item_tooltip_font(
         &self,
         stack: &sunrise_client::items::ItemStack,
     ) -> Cow<'static, mod_api::Identifier> {
@@ -369,7 +369,7 @@ impl Game<'_> {
             .map_or(default, Cow::Owned)
     }
 
-    pub(in crate::game) fn extended_equipment_materials<'a>(
+    pub(in crate::game::client_side) fn extended_equipment_materials<'a>(
         &'a self,
         piece: &super::equipment_piece::EquipmentPiece<'_>,
         stack: &sunrise_client::items::ItemStack,

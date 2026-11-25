@@ -73,7 +73,7 @@ pub(in crate::game) struct Info {
 }
 
 impl Info {
-    pub(in crate::game) fn new(
+    pub(in crate::game::server_side) fn new(
         id: u32,
         key: String,
         def: TestDef,
@@ -104,7 +104,7 @@ impl Info {
         }
     }
 
-    pub(in crate::game) fn with_retry(mut self, retry: Retry) -> Self {
+    pub(in crate::game::server_side) fn with_retry(mut self, retry: Retry) -> Self {
         self.retry = retry;
         self
     }
@@ -197,7 +197,7 @@ pub(in crate::game) struct RunnerOptions {
 }
 
 impl RunnerOptions {
-    pub(in crate::game) fn new(
+    pub(in crate::game::server_side) fn new(
         halt_on_error: bool,
         grid: Option<Grid>,
         from_command: bool,
@@ -215,7 +215,7 @@ impl RunnerOptions {
 
     /// `/test verify`: `batcher(fromGameTestInfo(100))`, the grid for
     /// existing tests too, `haltOnError`, `clearBetweenBatches`.
-    pub(in crate::game) fn verify(grid: Grid) -> Self {
+    pub(in crate::game::server_side) fn verify(grid: Grid) -> Self {
         Self {
             halt_on_error: true,
             batch_size: 100,
@@ -382,7 +382,7 @@ pub(in crate::game) struct Grid {
 }
 
 impl Grid {
-    pub(in crate::game) fn new(around: (i32, i32), per_row: i32) -> Self {
+    pub(in crate::game::server_side) fn new(around: (i32, i32), per_row: i32) -> Self {
         Self {
             around,
             per_row,
@@ -392,7 +392,7 @@ impl Grid {
     }
 
     /// `clearOnBatch = true`.
-    pub(in crate::game) fn clearing(mut self) -> Self {
+    pub(in crate::game::server_side) fn clearing(mut self) -> Self {
         self.clear_on_batch = true;
         self
     }
@@ -472,7 +472,7 @@ pub(in crate::game) struct GameTests {
 
 impl GameTests {
     /// A test of the runner (placed or still to place) is in `dim`.
-    pub(in crate::game) fn has_tests_in(&self, dim: Dim) -> bool {
+    pub(in crate::game::server_side) fn has_tests_in(&self, dim: Dim) -> bool {
         self.ticker.iter().any(|i| i.dim == dim)
             || self.runner.as_ref().is_some_and(|r| {
                 r.batches
@@ -483,7 +483,7 @@ impl GameTests {
             })
     }
 
-    pub(in crate::game) fn next_id(&mut self) -> u32 {
+    pub(in crate::game::server_side) fn next_id(&mut self) -> u32 {
         self.next_id += 1;
         self.next_id
     }
@@ -492,7 +492,11 @@ impl GameTests {
 impl Game<'_> {
     /// `TestCommand.trackAndStartRunner`: command summaries retain their
     /// original source. Test-block actions and verify keep their existing path.
-    pub(in crate::game) fn track_and_start_command_runner(&mut self, infos: Vec<Info>, grid: Grid) {
+    pub(in crate::game::server_side) fn track_and_start_command_runner(
+        &mut self,
+        infos: Vec<Info>,
+        grid: Grid,
+    ) {
         let mut source = self
             .server
             .command_source
@@ -535,7 +539,7 @@ impl Game<'_> {
     /// `TestCommand.trackAndStartRunner` for tests already built (batched by
     /// environment, 50 to a batch): the tracker and its listeners, then
     /// `GameTestRunner.start`.
-    pub(in crate::game) fn track_and_start_runner(
+    pub(in crate::game::server_side) fn track_and_start_runner(
         &mut self,
         infos: Vec<Info>,
         halt_on_error: bool,
@@ -550,7 +554,7 @@ impl Game<'_> {
     }
 
     /// `TestCommand.trackAndStartRunner` for batches already made.
-    pub(in crate::game) fn track_and_start_batches(
+    pub(in crate::game::server_side) fn track_and_start_batches(
         &mut self,
         batches: Vec<Batch>,
         options: RunnerOptions,
@@ -731,7 +735,7 @@ impl Game<'_> {
 
     /// `GameTestServer`'s per-tick call: `MinecraftServer.tickServer`'s
     /// `GameTestTicker.SINGLETON.tick()`, for the tests of the level in place.
-    pub(in crate::game) fn tick_game_tests(&mut self) {
+    pub(in crate::game::server_side) fn tick_game_tests(&mut self) {
         self.flush_game_test_output();
         if self.game_tests.0.runner.is_none() {
             return;
@@ -835,7 +839,7 @@ impl Game<'_> {
     /// Run `f` with `dim`'s level in place (`enter_level`, as a command
     /// whose source is there), then put the level back. None when the level
     /// cannot be entered.
-    pub(in crate::game) fn in_test_level<R>(
+    pub(in crate::game::server_side) fn in_test_level<R>(
         &mut self,
         dim: Dim,
         f: impl FnOnce(&mut Self) -> R,

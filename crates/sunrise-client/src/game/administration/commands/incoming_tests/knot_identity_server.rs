@@ -72,7 +72,7 @@ fn a_server_that_starts_tracking_later_shows_the_same_knot() {
     );
 }
 
-pub(in crate::game) fn host(game: &mut Game<'_>) {
+pub(in crate::game::server_side) fn host(game: &mut Game<'_>) {
     let net = NetConfig {
         announce: false,
         ..NetConfig::lan(0, "knot-identity-test".into(), 2)

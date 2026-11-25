@@ -56,7 +56,7 @@ pub(in crate::game) fn valid_untrusted_uri(uri: &str) -> bool {
 }
 /// `ClientCommonPacketListenerImpl.handleServerLinks`: keep only the links
 /// that validate, warning about the dropped ones.
-pub(in crate::game) fn trusted(links: Vec<ServerLink>) -> Vec<ServerLink> {
+pub(in crate::game::client_side) fn trusted(links: Vec<ServerLink>) -> Vec<ServerLink> {
     links
         .into_iter()
         .filter(|l| {
@@ -136,14 +136,14 @@ fn back_button(w: f32, h: f32) -> (f32, f32) {
 impl Game<'_> {
     /// `connection.serverLinks()`: the links the open server sent (empty for
     /// a world without a connection or one that sent none).
-    pub(in crate::game) fn server_links(&self) -> &[ServerLink] {
+    pub(in crate::game::client_side) fn server_links(&self) -> &[ServerLink] {
         self.remote
             .as_ref()
             .map_or(&[], |r| r.server_links.as_slice())
     }
     /// DialogScreen over the pause menu: `menu.server_links.title`, the
     /// scrollable link buttons and `gui.back` in the footer.
-    pub(in crate::game) fn draw_server_links(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_server_links(&mut self, batch: &mut HudBatch) {
         // ServerLinksDialogScreen: the dialog's title.
         sunrise_client::widgets::begin_screen(|| {
             sunrise_client::widgets::ScreenInfo::new(
@@ -252,7 +252,7 @@ impl Game<'_> {
         }
     }
     /// A click on `Screen::ServerLinks`: a link, the warning button or Back.
-    pub(in crate::game) fn server_links_click(&mut self) -> Result<bool> {
+    pub(in crate::game::client_side) fn server_links_click(&mut self) -> Result<bool> {
         let (w, h) = self.gui_size();
         let links = self.server_links().to_vec();
         let top = list_top(h, links.len()) - self.client.links_ui.scroll.trunc();
@@ -299,7 +299,7 @@ impl Game<'_> {
     }
     /// `ConfirmLinkScreen.confirmLinkNow(parent, uri, true)`: ask about a link
     /// Mojang's own button names, whatever the "Web Links" options say.
-    pub(in crate::game) fn confirm_trusted_link(&mut self, url: &str, parent: Screen) {
+    pub(in crate::game::client_side) fn confirm_trusted_link(&mut self, url: &str, parent: Screen) {
         self.client.links_ui.confirm = Some(url.to_owned());
         self.client.links_ui.trusted = true;
         self.client.links_ui.back = Some(parent);
@@ -307,28 +307,32 @@ impl Game<'_> {
     }
     /// `ConfirmLinkScreen.confirmLinkNow(parent, uri, false)`: ask about a link that is not
     /// Mojang's, with the warning, whatever the "Web Links" options say.
-    pub(in crate::game) fn confirm_untrusted_link(&mut self, url: &str, parent: Screen) {
+    pub(in crate::game::client_side) fn confirm_untrusted_link(
+        &mut self,
+        url: &str,
+        parent: Screen,
+    ) {
         self.client.links_ui.confirm = Some(url.to_owned());
         self.client.links_ui.trusted = false;
         self.client.links_ui.back = Some(parent);
         self.set_screen(Screen::ConfirmLink);
     }
     /// The screen `ConfirmLinkScreen`'s callback returns to (`setScreen(parent)`).
-    pub(in crate::game) fn confirm_link_back(&self) -> Screen {
+    pub(in crate::game::client_side) fn confirm_link_back(&self) -> Screen {
         self.client.links_ui.back.unwrap_or(Screen::ServerLinks)
     }
     /// `ConfirmScreen.onClose`, which every button and Escape call: back to the
     /// parent. For the demo intro's Buy that parent is the HUD, and `Gui.setScreen(null)`
     /// ends in `MouseHandler.grabMouse`, so the close asks for the grab when it
     /// lands there.
-    pub(in crate::game) fn close_confirm_link(&mut self) {
+    pub(in crate::game::client_side) fn close_confirm_link(&mut self) {
         self.set_screen(self.confirm_link_back());
         if self.client.screen == Screen::Playing {
             self.capture(true);
         }
     }
     /// `ScrollableLayout`'s mouse wheel over the links.
-    pub(in crate::game) fn server_links_scroll(&mut self, delta: f32) -> bool {
+    pub(in crate::game::client_side) fn server_links_scroll(&mut self, delta: f32) -> bool {
         let (_, h) = self.gui_size();
         if !(HEADER..h - FOOTER).contains(&self.client.cursor.1) {
             return false;
@@ -340,7 +344,7 @@ impl Game<'_> {
     /// `ConfirmLinkScreen` (untrusted): "Are you sure you want to open the
     /// following website?", the link, the red warning, and Yes / Copy Link to
     /// Clipboard / No.
-    pub(in crate::game) fn draw_confirm_link(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_confirm_link(&mut self, batch: &mut HudBatch) {
         let atlas = &self.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         ui::menu_background(batch, atlas, 0.0, 0.0, w, h, true);
@@ -390,7 +394,7 @@ impl Game<'_> {
     }
     /// ConfirmLinkScreen's answer: yes opens the browser, the middle button
     /// copies the link, no closes; all return to Server Links.
-    pub(in crate::game) fn confirm_link_click(&mut self) -> bool {
+    pub(in crate::game::client_side) fn confirm_link_click(&mut self) -> bool {
         let (w, h) = self.gui_size();
         let url = self.client.links_ui.confirm.clone().unwrap_or_default();
         let layout =
@@ -414,7 +418,7 @@ impl Game<'_> {
     }
     /// `DialogScreen.WarningScreen`: the custom-screens note, a disconnect
     /// button ("Custom screen rejected" is the shown reason) and Back.
-    pub(in crate::game) fn draw_dialog_warning(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_dialog_warning(&mut self, batch: &mut HudBatch) {
         sunrise_client::widgets::begin_screen(|| {
             super::screen_info::confirm(
                 "dialog_warning",
@@ -459,7 +463,7 @@ impl Game<'_> {
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
     }
     /// WarningScreen's answer: disconnect, or back to Server Links.
-    pub(in crate::game) fn dialog_warning_click(&mut self) -> Result<bool> {
+    pub(in crate::game::client_side) fn dialog_warning_click(&mut self) -> Result<bool> {
         let (w, h) = self.gui_size();
         let layout = dialog_warning_layout(&self.gui.atlas, (w, h));
         for (i, (x, y)) in layout.buttons.iter().enumerate() {

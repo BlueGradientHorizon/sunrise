@@ -42,35 +42,7 @@ pub(in crate::game) mod tests {
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::native_item_places::tests::guest;
     #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_item_places::tests::hopper_slot;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_item_places::tests::hopper_with;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_item_places::tests::inventories;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_item_places::tests::menu_of;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_item_places::tests::offers;
-    #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::native_item_places::tests::open_to_lan;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_item_places::tests::pig;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_item_places::tests::saved_mob_attribute;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_item_places::tests::trade;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_item_places::tests::traders;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_item_places::tests::with_bin_pigs;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_item_places::tests::with_cauldron;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_item_places::tests::with_crafted_by_handler_map;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_item_places::tests::write;
-    #[allow(unused_imports)]
-    pub(in crate::game::client_side) use crate::game::server_side::native_item_places::tests::zombie;
     #[allow(unused_imports)]
     pub(in crate::game::client_side) use crate::game::server_side::native_item_places::tests::*;
     #[allow(unused_imports)]

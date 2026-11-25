@@ -4,7 +4,7 @@
 use super::{Game, commands::Target, native_hooks::mob_kind};
 
 impl Game<'_> {
-    pub(in crate::game) fn retire_vehicle_registration(&self, target: Target) {
+    pub(in crate::game::server_side) fn retire_vehicle_registration(&self, target: Target) {
         match target {
             Target::Boat(id) => {
                 if let Some(boat) = self.boats.iter().find(|boat| boat.id == id) {
@@ -22,7 +22,7 @@ impl Game<'_> {
 
     /// Run effects before `Entity.setRemoved`. Keep the entity accessible to
     /// callbacks, but refuse another removal of it while the effects run.
-    pub(in crate::game) fn with_removal_preparation(
+    pub(in crate::game::server_side) fn with_removal_preparation(
         &mut self,
         target: Target,
         effects: impl FnOnce(&mut Self),
@@ -38,7 +38,7 @@ impl Game<'_> {
         Some(())
     }
 
-    pub(in crate::game) fn with_vehicle_removal_effects<R>(
+    pub(in crate::game::server_side) fn with_vehicle_removal_effects<R>(
         &mut self,
         target: Target,
         effects: impl FnOnce(&mut Self),
@@ -50,7 +50,7 @@ impl Game<'_> {
 
     /// `Entity.setRemoved` makes a vehicle invisible before notifying riders.
     /// The owning list is kept stable while callbacks run.
-    pub(in crate::game) fn with_destroying_vehicle<R>(
+    pub(in crate::game::server_side) fn with_destroying_vehicle<R>(
         &mut self,
         target: Target,
         action: impl FnOnce(&mut Self) -> R,

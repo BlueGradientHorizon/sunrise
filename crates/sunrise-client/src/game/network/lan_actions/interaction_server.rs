@@ -68,7 +68,7 @@ impl Game<'_> {
     /// `ServerGamePacketListenerImpl.handlePlayerAction` for STAB: the spear in
     /// the guest's main hand jabs once its charge allows it (with five ticks
     /// of tolerance). The guest's client is sent the dash Lunge gave them.
-    pub(in crate::game) fn guest_jab(&mut self, conn: u32) {
+    pub(in crate::game::server_side) fn guest_jab(&mut self, conn: u32) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -101,7 +101,7 @@ impl Game<'_> {
     /// the packet rotation (`absSnapRotationTo`), then `ServerPlayerGameMode.useItem`.
     /// True when the use consumed (`InteractionResult` a success or a consume). A fake player's
     /// `PlayerRef::perform_action` runs it as the packet does, with no rotation.
-    pub(in crate::game) fn guest_use_item(
+    pub(in crate::game::server_side) fn guest_use_item(
         &mut self,
         conn: u32,
         gi: usize,

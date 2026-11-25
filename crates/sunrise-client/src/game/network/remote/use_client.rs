@@ -53,7 +53,7 @@ impl Game<'_> {
     /// `Consumable.onConsumeTick` for another player using a consumable: the
     /// crumbs at their mouth every 4 ticks once 21.875% of its use has passed
     /// (`shouldEmitParticlesAndSounds`; the sounds come from the server).
-    pub(in crate::game) fn remote_player_eating(
+    pub(in crate::game::client_side) fn remote_player_eating(
         &mut self,
         item: &str,
         ticks: u32,

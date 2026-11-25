@@ -25,47 +25,11 @@ pub(in crate::game::client_side) use crate::game::server_side::fishing::WARNED_T
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::fishing::bite_impulse;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::bounds;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::cast_direction;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::cast_velocity;
-#[cfg(test)]
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::entity_hit_margin;
-#[cfg(test)]
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::first_entity_hit;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::fishing_loot;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::hook_params;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::hook_rotation;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::inside_medium;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::lure_wait;
-#[cfg(test)]
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::minecart_hook_targets;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::fishing::near_plane_hand;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::pull_hooked;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::pull_item;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::fishing::push_remote_hook;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::rebound;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::fishing::remove_remote_hook_from;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::resting;
-#[cfg(test)]
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::fishing::segment_entry;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::fishing::synchronized_random;
 #[allow(unused_imports)]
@@ -97,14 +61,14 @@ pub(in crate::game::client_side) use sunrise_core::{
 pub(in crate::game::client_side) use sunrise_protocol::entity_data::{Value, serializer};
 
 impl Game<'_> {
-    pub(in crate::game) fn clear_remote_hooks(&mut self) {
+    pub(in crate::game::client_side) fn clear_remote_hooks(&mut self) {
         if self.remote.is_some() {
             self.hook.discard();
         }
         self.client.remote_hooks.clear();
     }
     /// The hooks drawn here, with their owners' ids (0 for this player's own).
-    pub(in crate::game) fn hooks_status(&self) -> Vec<serde_json::Value> {
+    pub(in crate::game::client_side) fn hooks_status(&self) -> Vec<serde_json::Value> {
         let at = |p: Vec3| [p.x, p.y, p.z];
         let own = self.hook.iter().map(|h| (h.id, 0, h.position));
         let others = self
@@ -120,7 +84,11 @@ impl Game<'_> {
     }
     /// `FishingHook.onSyncedDataUpdated`: this player's hook is biting
     /// (DATA_BITING), which `status` shows as a nibble.
-    pub(in crate::game) fn remote_hook_data(&mut self, id: u32, values: &[(u8, i32, Value)]) {
+    pub(in crate::game::client_side) fn remote_hook_data(
+        &mut self,
+        id: u32,
+        values: &[(u8, i32, Value)],
+    ) {
         // DATA_HOOKED_ENTITY (the hooked id plus one, 0 for none): a hook on a
         // client follows what it hooked (`FishingHook.onSyncedDataUpdated`).
         let time = self.world.game_time;
@@ -213,7 +181,7 @@ impl Game<'_> {
         }
         true
     }
-    pub(in crate::game) fn remove_remote_hook(&mut self, id: u32) {
+    pub(in crate::game::client_side) fn remove_remote_hook(&mut self, id: u32) {
         if self.remote.is_some() && self.hook.as_ref().is_some_and(|h| h.id == id) {
             self.hook.discard();
         }
@@ -284,7 +252,7 @@ impl Game<'_> {
     }
     /// `handleAddEntity` for a fishing bobber: this player's own becomes its
     /// hook (`Player.fishing`), another player's is drawn on its line to them.
-    pub(in crate::game) fn spawn_remote_hook(
+    pub(in crate::game::client_side) fn spawn_remote_hook(
         &mut self,
         id: u32,
         uuid: [i32; 4],
@@ -312,7 +280,7 @@ impl Game<'_> {
     /// server's last update, then its own movement between the tracker's
     /// updates (every five ticks), floating in water and riding what it
     /// hooked, as the server's does.
-    pub(in crate::game) fn tick_remote_hooks(&mut self) {
+    pub(in crate::game::client_side) fn tick_remote_hooks(&mut self) {
         if self.remote.is_none() {
             return;
         }

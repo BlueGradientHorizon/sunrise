@@ -152,7 +152,7 @@ impl Game<'_> {
     /// the server, else their file's. Err while they are logging in, dead,
     /// swapped in or displaced by an inner turn, or when they have never
     /// played here. Other guests' live inventories remain available.
-    pub(in crate::game) fn native_inventory(
+    pub(in crate::game::server_side) fn native_inventory(
         &self,
         uuid: u128,
         kind: NativeInventoryKind,
@@ -208,7 +208,7 @@ impl Game<'_> {
     /// (`native_inventory`); at most one may be a file, which is written
     /// before the live side changes. Their screens follow with the tick's
     /// sync.
-    pub(in crate::game) fn native_move_stack(
+    pub(in crate::game::server_side) fn native_move_stack(
         &mut self,
         from: (u128, NativeInventoryKind, usize),
         expected: &ItemStack,

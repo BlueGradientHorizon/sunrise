@@ -9,23 +9,9 @@ pub(in crate::game::client_side) use crate::game::server_side::lan_particles::Qu
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::lan_particles::decode_mod_particle;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_particles::explosion_packet;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::lan_particles::particle_position_source;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_particles::powder_snow_velocity;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_particles::rgb;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_particles::rgba;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_particles::send_hub_level_particles;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_particles::send_native_nearby;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::lan_particles::send_snowflake_particle;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::lan_particles::send_soul_particle;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::lan_particles::*;
 #[allow(unused_imports)]
@@ -138,7 +124,7 @@ impl Game<'_> {
     /// `ClientPacketListener.handleExplosion`: the blast's particles (its
     /// block particles as the packet lists them) and its sound, when the
     /// packet carries it, then the player's push.
-    pub(in crate::game) fn remote_explode(&mut self, p: &play::Explode) {
+    pub(in crate::game::client_side) fn remote_explode(&mut self, p: &play::Explode) {
         if p.play_sound {
             let pitch = (1.0
                 + (self.particles.0.random().next_float()
@@ -199,7 +185,10 @@ impl Game<'_> {
     /// `ClientPacketListener.handleParticleEvent`: no count is one particle
     /// moving by speed times spread; otherwise each is spread and sped up by
     /// gaussians on each axis.
-    pub(in crate::game) fn remote_level_particles(&mut self, p: &play::LevelParticles) {
+    pub(in crate::game::client_side) fn remote_level_particles(
+        &mut self,
+        p: &play::LevelParticles,
+    ) {
         let Some(options) = self.received_particle(&p.particle, p.pos) else {
             return;
         };

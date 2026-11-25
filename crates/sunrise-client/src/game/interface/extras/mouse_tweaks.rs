@@ -34,7 +34,7 @@ pub(in crate::game) struct Tweaks {
 /// A server's menu the tweaks run in: their clicks are vanilla's in these,
 /// and the menu engine knows which slot takes what. Not the menus whose slots
 /// cost or trigger something (anvils, enchanting, merchants, beacons, crafters).
-pub(in crate::game) fn tweak_menu(name: &str) -> bool {
+pub(in crate::game::client_side) fn tweak_menu(name: &str) -> bool {
     name == "inventory"
         || name.starts_with("minecraft:generic_9x")
         || matches!(
@@ -64,7 +64,7 @@ struct Drag {
 
 impl Game<'_> {
     /// The open screen is one the tweaks run in, with the extra on.
-    pub(in crate::game) fn tweaks_on(&self) -> bool {
+    pub(in crate::game::client_side) fn tweaks_on(&self) -> bool {
         if !self.settings.extras.mouse_tweaks
             || self.client.screen != Screen::Inventory
             || self.station.is_some()
@@ -80,7 +80,7 @@ impl Game<'_> {
     }
     /// A press on `slot`: true when the tweaks took it (a right-drag
     /// placing), else vanilla's press runs and the tweaks watch the drag.
-    pub(in crate::game) fn tweak_press(
+    pub(in crate::game::client_side) fn tweak_press(
         &mut self,
         slot: Option<usize>,
         right: bool,
@@ -138,7 +138,7 @@ impl Game<'_> {
     }
     /// The cursor moved while a button is held: true when the tweaks own
     /// the drag (vanilla's quick craft drag doesn't grow).
-    pub(in crate::game) fn tweak_drag_move(&mut self, slot: Option<usize>) -> bool {
+    pub(in crate::game::client_side) fn tweak_drag_move(&mut self, slot: Option<usize>) -> bool {
         let Some(mut drag) = self.client.tweaks.drag.take() else {
             return false;
         };
@@ -201,11 +201,15 @@ impl Game<'_> {
         owned
     }
     /// The button went up: the drag ends.
-    pub(in crate::game) fn tweak_release(&mut self) -> bool {
+    pub(in crate::game::client_side) fn tweak_release(&mut self) -> bool {
         self.client.tweaks.drag.take().is_some()
     }
     /// The wheel over an inventory screen: true when the tweaks used it.
-    pub(in crate::game) fn tweak_scroll(&mut self, delta: f32, slot: Option<usize>) -> bool {
+    pub(in crate::game::client_side) fn tweak_scroll(
+        &mut self,
+        delta: f32,
+        slot: Option<usize>,
+    ) -> bool {
         if !self.settings.extras.mouse_tweaks_wheel || !self.tweaks_on() || self.carried.is_some() {
             return false;
         }

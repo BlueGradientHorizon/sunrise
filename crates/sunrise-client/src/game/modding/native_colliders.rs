@@ -57,16 +57,24 @@ impl std::ops::DerefMut for EntityMaps {
 }
 
 impl EntityMaps {
-    pub fn collider(&self, id: u32) -> Option<&ColliderEntry> {
+    pub(in crate::game::server_side) fn collider(&self, id: u32) -> Option<&ColliderEntry> {
         self.colliders.get(&id)
     }
 
-    pub fn collider_mut(&mut self, id: u32) -> Option<&mut ColliderEntry> {
+    pub(in crate::game::server_side) fn collider_mut(
+        &mut self,
+        id: u32,
+    ) -> Option<&mut ColliderEntry> {
         self.colliders.get_mut(&id)
     }
 
     /// Gives the entity `id`, which stands in `level`, this collider.
-    pub fn insert_collider(&mut self, id: u32, level: Dim, entry: ColliderEntry) {
+    pub(in crate::game::server_side) fn insert_collider(
+        &mut self,
+        id: u32,
+        level: Dim,
+        entry: ColliderEntry,
+    ) {
         if self.colliders.insert(id, entry).is_some() {
             self.unindex(id);
         }
@@ -74,7 +82,7 @@ impl EntityMaps {
     }
 
     /// Takes the collider off the entity, wherever it stands.
-    pub fn remove_collider(&mut self, id: u32) -> bool {
+    pub(in crate::game::server_side) fn remove_collider(&mut self, id: u32) -> bool {
         let had = self.colliders.remove(&id).is_some();
         if had {
             self.unindex(id);
@@ -83,7 +91,7 @@ impl EntityMaps {
     }
 
     /// The entity `id` arrived in `level` with its collider.
-    pub fn move_collider(&mut self, id: u32, level: Dim) {
+    pub(in crate::game::server_side) fn move_collider(&mut self, id: u32, level: Dim) {
         if self.colliders.contains_key(&id) {
             self.unindex(id);
             self.by_level.entry(level).or_default().insert(id);
@@ -98,12 +106,15 @@ impl EntityMaps {
     }
 
     /// The ids of the colliders in `level`.
-    pub fn colliders_in(&self, level: Dim) -> impl Iterator<Item = u32> + '_ {
+    pub(in crate::game::server_side) fn colliders_in(
+        &self,
+        level: Dim,
+    ) -> impl Iterator<Item = u32> + '_ {
         self.by_level.get(&level).into_iter().flatten().copied()
     }
 
     /// Writes the entity's collider into its saved compound.
-    pub(in crate::game) fn write_collider(&self, root: &mut Compound, id: u32) {
+    pub(in crate::game::server_side) fn write_collider(&self, root: &mut Compound, id: u32) {
         match self.colliders.get(&id) {
             Some(entry) => {
                 root.insert(SAVE_KEY.into(), Tag::Compound(entry.saved.clone()));
@@ -260,7 +271,7 @@ impl Game<'_> {
     }
 
     /// Reads the collider a saved entity carried. A malformed one is dropped with a log line.
-    pub(in crate::game) fn load_saved_collider(&mut self, id: u32, tag: &Tag) {
+    pub(in crate::game::server_side) fn load_saved_collider(&mut self, id: u32, tag: &Tag) {
         let Some(saved) = tag.get(SAVE_KEY) else {
             return;
         };
@@ -295,7 +306,7 @@ impl Game<'_> {
     /// Every entity in the vehicle stack the entity `id` is in: its root vehicle and each
     /// passenger at any depth, `id` and the vehicles under it included
     /// (`Entity.isPassengerOfSameVehicle`). On a client, the riding graph its server told.
-    pub(in crate::game) fn vehicle_stack(&self, id: u32) -> Vec<u32> {
+    pub(in crate::game::server_side) fn vehicle_stack(&self, id: u32) -> Vec<u32> {
         if self.is_logical_server() {
             let Some(epoch) = self.native_lifecycle.epoch() else {
                 return vec![id];
@@ -456,7 +467,7 @@ impl Game<'_> {
 
     /// The history the level keeps of its colliders, if it has any.
     #[cfg(test)]
-    pub(in crate::game) fn level_collider_history(
+    pub(in crate::game::server_side) fn level_collider_history(
         &self,
     ) -> Option<std::rc::Rc<std::cell::RefCell<sunrise_client_render::moving_colliders::History>>>
     {
@@ -501,7 +512,7 @@ impl Game<'_> {
 
     /// Records the level's colliders as its tick begins into the level's history and answers it,
     /// for a server; a client keeps none. A level with no collider keeps nothing.
-    pub(in crate::game) fn collider_history(
+    pub(in crate::game::server_side) fn collider_history(
         &mut self,
         placed: &sunrise_client_render::moving_colliders::Prepared,
     ) -> Option<std::rc::Rc<std::cell::RefCell<sunrise_client_render::moving_colliders::History>>>

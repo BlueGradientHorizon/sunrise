@@ -47,7 +47,7 @@ fn inside(p: (f32, f32), x: f32, y: f32, w: f32, h: f32) -> bool {
 impl Game<'_> {
     /// `LoomScreen.containerChanged`: the error flag, whether the pattern
     /// buttons show (only when an input changed), and the scroller reset.
-    pub(in crate::game) fn loom_screen_changed(&mut self) {
+    pub(in crate::game::client_side) fn loom_screen_changed(&mut self) {
         let Some(s) = self.station.as_mut().filter(|s| s.kind == Kind::Loom) else {
             return;
         };
@@ -70,7 +70,7 @@ impl Game<'_> {
     }
     /// A sound the loom or stonecutter menu played: the result's once per
     /// tick (`lastSoundTime`).
-    pub(in crate::game) fn station_sound(&mut self, sound: &str) {
+    pub(in crate::game::client_side) fn station_sound(&mut self, sound: &str) {
         let ticks = self.ticks;
         let Some(s) = self.station.as_mut() else {
             return;
@@ -105,7 +105,7 @@ impl Game<'_> {
         taken
     }
     /// A left click inside the loom's pattern grid or scroller.
-    pub(in crate::game) fn loom_click(&mut self, local: (f32, f32)) -> bool {
+    pub(in crate::game::client_side) fn loom_click(&mut self, local: (f32, f32)) -> bool {
         let Some(start_row) = self
             .station
             .as_ref()
@@ -132,7 +132,7 @@ impl Game<'_> {
         false
     }
     /// The pattern buttons a controller can focus (GUI origin relative).
-    pub(in crate::game) fn loom_targets(&self) -> Vec<[f32; 4]> {
+    pub(in crate::game::client_side) fn loom_targets(&self) -> Vec<[f32; 4]> {
         let Some(loom) = self.station.as_ref().map(|s| &s.loom).filter(|l| l.display) else {
             return Vec::new();
         };
@@ -150,7 +150,7 @@ impl Game<'_> {
             .collect()
     }
     /// `LoomScreen.mouseDragged` on the scroller.
-    pub(in crate::game) fn loom_drag(&mut self) -> bool {
+    pub(in crate::game::client_side) fn loom_drag(&mut self) -> bool {
         let Some(size) = self
             .renderer
             .0
@@ -172,13 +172,13 @@ impl Game<'_> {
         }
         false
     }
-    pub(in crate::game) fn loom_release(&mut self) -> bool {
+    pub(in crate::game::client_side) fn loom_release(&mut self) -> bool {
         self.station
             .as_mut()
             .is_some_and(|s| std::mem::take(&mut s.loom.scrolling))
     }
     /// `LoomScreen.mouseScrolled`.
-    pub(in crate::game) fn loom_scroll(&mut self, d: f32) -> bool {
+    pub(in crate::game::client_side) fn loom_scroll(&mut self, d: f32) -> bool {
         let Some(l) = self.station.as_mut().map(|s| &mut s.loom) else {
             return false;
         };
@@ -314,7 +314,7 @@ impl Game<'_> {
     }
     /// `LoomScreen.extractBackground` after the background (the verified
     /// `screen_layout::loom`); returns the hovered pattern's tooltip.
-    pub(in crate::game) fn draw_loom(
+    pub(in crate::game::client_side) fn draw_loom(
         &mut self,
         batch: &mut HudBatch,
         ox: f32,

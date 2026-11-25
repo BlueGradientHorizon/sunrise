@@ -9,8 +9,6 @@ pub(in crate::game::client_side) use crate::game::server_side::decorated_pot::WO
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::decorated_pot::pot_data_in;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::decorated_pot::unpack_loot;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::decorated_pot::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::{

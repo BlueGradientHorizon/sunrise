@@ -83,7 +83,7 @@ impl Game<'_> {
     /// the acting player, and a game without a hub keeps its single
     /// player's the same way), any other guest's are their hub record's.
     /// None for another kind.
-    pub(in crate::game) fn native_living_player_effects(
+    pub(in crate::game::server_side) fn native_living_player_effects(
         &self,
         t: Target,
     ) -> Option<&PlayerEffects> {
@@ -350,7 +350,11 @@ pub(in crate::game) mod tests {
     #[allow(unused_imports)]
     use sunrise_core::geometry::Vec3;
 
-    pub(in crate::game) fn effect(id: &'static str, duration: i32, amplifier: i32) -> ActiveEffect {
+    pub(in crate::game::server_side) fn effect(
+        id: &'static str,
+        duration: i32,
+        amplifier: i32,
+    ) -> ActiveEffect {
         ActiveEffect::from(mod_api::__private::built::ActiveEffect {
             id: mod_platform::__private::part_tests::effect_key(id),
             duration,

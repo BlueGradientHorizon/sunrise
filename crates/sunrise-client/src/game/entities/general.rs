@@ -87,7 +87,7 @@ pub enum GeneralRecordError {
 
 impl GeneralRecordError {
     /// The refusal's diagnostic, for the load summary.
-    pub fn message(&self) -> String {
+    pub(in crate::game::server_side) fn message(&self) -> String {
         match self {
             GeneralRecordError::PayloadTooLarge { size } => format!(
                 "general entity payload {size} exceeds {}",
@@ -140,7 +140,7 @@ pub enum GeneralRecordCheck {
 /// stack. Nothing is written, allocated beyond the walk's own bookkeeping, or
 /// panicked on; a refused tree leaves no partial state, and the next valid
 /// record checks cleanly.
-pub fn check_general_record(
+pub(in crate::game::server_side) fn check_general_record(
     record: &GeneralEntityRecord,
     is_known_type: impl Fn(&str) -> bool,
 ) -> Result<GeneralRecordCheck, GeneralRecordError> {
@@ -330,7 +330,7 @@ fn data_nesting(tag: &Tag, passengers_key: &sunrise_core::nbt::JavaString) -> u3
 /// The encoded NBT size of a tag, as its writer emits it (name payloads
 /// included, strings counted as their UTF-8 bytes): the measure the
 /// quarantine record bound applies.
-pub(in crate::game) fn nbt_size(tag: &Tag) -> u64 {
+pub(in crate::game::server_side) fn nbt_size(tag: &Tag) -> u64 {
     match tag {
         Tag::End => 1,
         Tag::Byte(_) => 1,
@@ -538,7 +538,10 @@ impl GeneralTypeCatalog {
     }
 
     /// The range and update interval of the already-resolved type.
-    pub(in crate::game) fn tracking(&self, slot: usize) -> sunrise_client::lan::tracking::General {
+    pub(in crate::game::server_side) fn tracking(
+        &self,
+        slot: usize,
+    ) -> sunrise_client::lan::tracking::General {
         (&self.entries[slot]).into()
     }
 
@@ -553,7 +556,7 @@ impl GeneralTypeCatalog {
     }
 
     /// The type's local passenger point, defaulting to the top center of its box.
-    pub(in crate::game) fn passenger_attachment(&self, slot: usize) -> [f64; 3] {
+    pub(in crate::game::server_side) fn passenger_attachment(&self, slot: usize) -> [f64; 3] {
         let entry = &self.entries[slot];
         entry
             .passenger_attachment
@@ -564,7 +567,7 @@ impl GeneralTypeCatalog {
         self.entries[slot].pickable
     }
 
-    pub(in crate::game) fn piston_push_reaction(
+    pub(in crate::game::server_side) fn piston_push_reaction(
         &self,
         slot: usize,
     ) -> sunrise_world::level::PushReaction {
@@ -572,13 +575,16 @@ impl GeneralTypeCatalog {
     }
 
     /// The type's declared payload schema version, the one a fresh row starts at.
-    pub fn payload_version(&self, slot: usize) -> u16 {
+    pub(in crate::game::server_side) fn payload_version(&self, slot: usize) -> u16 {
         self.entries[slot].payload_version
     }
 
     /// The type's declared save policy, the writer of a record consults: a
     /// `noSave` type's rows produce zero persisted records.
-    pub fn save_policy(&self, slot: usize) -> mod_api::GeneralSavePolicy {
+    pub(in crate::game::server_side) fn save_policy(
+        &self,
+        slot: usize,
+    ) -> mod_api::GeneralSavePolicy {
         self.entries[slot].save_policy
     }
 }
@@ -734,7 +740,7 @@ impl RiderIndex {
     /// Re-derive the adjacency unless nothing changed since the last pass:
     /// one pass over the rows, each edge written once, no allocation while
     /// the row count and the mounts hold still.
-    pub fn refresh(&mut self, rows: &GeneralRows, mounts: u64) {
+    pub(in crate::game::server_side) fn refresh(&mut self, rows: &GeneralRows, mounts: u64) {
         let stamp = rows.stamp();
         if self.is_fresh(rows, mounts) {
             return;
@@ -805,7 +811,7 @@ impl Game<'_> {
         store.rows.iter().find(|row| row.id == id)
     }
 
-    pub(in crate::game) fn general_passengers(
+    pub(in crate::game::server_side) fn general_passengers(
         &self,
         vehicle: u32,
     ) -> impl Iterator<Item = &GeneralRow> {
@@ -837,7 +843,7 @@ impl Game<'_> {
     }
 
     /// Change a general row's seat. The caller owns mount notifications.
-    pub(in crate::game) fn set_general_mount(
+    pub(in crate::game::server_side) fn set_general_mount(
         &mut self,
         id: u32,
         mount: Option<(u32, i64)>,
@@ -885,14 +891,22 @@ impl Game<'_> {
 
     /// A general row and its passengers. A dimension transfer includes live
     /// objects even when their `EntityType` does not serialize to disk.
-    pub(in crate::game) fn general_tree_nbt(&mut self, id: u32, transferring: bool) -> Option<Tag> {
+    pub(in crate::game::server_side) fn general_tree_nbt(
+        &mut self,
+        id: u32,
+        transferring: bool,
+    ) -> Option<Tag> {
         let mut tag = self.general_own_nbt(id, transferring)?;
         self.put_passengers_for(&mut tag, id, transferring);
         Some(tag)
     }
 
     /// A general row's own compound with its attachments, before its passengers.
-    pub(in crate::game) fn general_own_nbt(&mut self, id: u32, transferring: bool) -> Option<Tag> {
+    pub(in crate::game::server_side) fn general_own_nbt(
+        &mut self,
+        id: u32,
+        transferring: bool,
+    ) -> Option<Tag> {
         let mut tag = self.general_row_record(id, transferring)?.to_tag();
         crate::game::persist::write_attachments(&mut tag, id, &self.entity_attachments);
         Some(tag)
@@ -913,7 +927,7 @@ impl Game<'_> {
     /// unknown-kind path holds the compound untouched (`persist.raw`),
     /// never ticks it (an `OtherEntity` has no tick) and writes it back
     /// from that store.
-    pub(in crate::game) fn general_quarantine_admits(
+    pub(in crate::game::server_side) fn general_quarantine_admits(
         &self,
         tag: &Tag,
         kind: &str,
@@ -973,7 +987,7 @@ impl Game<'_> {
 
     /// A retained object in the destination must not cause mixed transfer to
     /// drop a general row after the source tree has already been removed.
-    pub(in crate::game) fn general_transfer_conflicts(
+    pub(in crate::game::server_side) fn general_transfer_conflicts(
         &self,
         root: u32,
         destination: super::Dim,
@@ -1003,7 +1017,7 @@ impl Game<'_> {
     /// in the source, at its place and with the join identity it had; a
     /// failure before leaves the tree untouched. The root lands at `at`, and
     /// each rider takes its own vehicle's transition on arrival.
-    pub(in crate::game) fn teleport_general_tree_across(
+    pub(in crate::game::server_side) fn teleport_general_tree_across(
         &mut self,
         root_id: u32,
         destination: crate::game::Dim,
@@ -1109,7 +1123,7 @@ impl Game<'_> {
     /// the existing unknown-kind path; every other refusal — a malformed
     /// envelope, a structural fault, a UUID a live level entity already
     /// owns — drops the whole tree with a warning and publishes nothing.
-    pub(in crate::game) fn load_general_tree(
+    pub(in crate::game::server_side) fn load_general_tree(
         &mut self,
         tag: Tag,
         transferred: Option<TransferredEntityState>,
@@ -1120,7 +1134,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn load_general_passenger(
+    pub(in crate::game::server_side) fn load_general_passenger(
         &mut self,
         tag: &Tag,
         mount: Option<u32>,
@@ -1144,7 +1158,7 @@ impl Game<'_> {
     /// id; `Ok(None)` for a tree refused with a warning (a structural fault,
     /// a UUID a live level entity already owns), `Err` for a sound tree of
     /// types the frozen registry doesn't hold.
-    pub(in crate::game) fn admit_general_record(
+    pub(in crate::game::server_side) fn admit_general_record(
         &mut self,
         record: GeneralEntityRecord,
         tag: &Tag,
@@ -1193,7 +1207,7 @@ impl Game<'_> {
     /// Read one spawner passenger without its riders. The spawner loads
     /// those separately and resolves UUID residency in preorder, not with
     /// the saved general tree's structural checks.
-    pub(in crate::game) fn decode_general_spawn_passenger(
+    pub(in crate::game::server_side) fn decode_general_spawn_passenger(
         tag: &Tag,
         kind: &str,
     ) -> Option<(usize, GeneralEntityRecord)> {
@@ -1240,7 +1254,7 @@ impl Game<'_> {
     }
 
     /// Publish one validated record; the caller owns its passenger traversal.
-    pub(in crate::game) fn insert_general_row(
+    pub(in crate::game::server_side) fn insert_general_row(
         &mut self,
         slot: usize,
         record: GeneralEntityRecord,
@@ -1291,7 +1305,7 @@ fn mod_namespace_loaded(namespace: &str) -> bool {
 
 /// Whether a kind is a namespaced non-`minecraft` one — the shape a
 /// quarantined (missing-mod) record's kind has.
-pub(in crate::game) fn quarantined_kind(kind: &str) -> bool {
+pub(in crate::game::server_side) fn quarantined_kind(kind: &str) -> bool {
     kind.split_once(':')
         .is_some_and(|(namespace, _)| namespace != "minecraft")
 }

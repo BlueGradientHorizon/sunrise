@@ -66,7 +66,7 @@ pub(in crate::game) enum Local {
 }
 
 /// Vanilla's menu type id for a world's own container: what a server would send for the same.
-pub(in crate::game) fn local_menu_id(local: Local) -> Option<String> {
+pub(in crate::game::client_side) fn local_menu_id(local: Local) -> Option<String> {
     let id = match local {
         Local::Inventory => "inventory".into(),
         Local::Crafting => "minecraft:crafting".into(),
@@ -301,7 +301,7 @@ impl<'g> Game<'g> {
         })
     }
     /// What a game slot is for in the open menu.
-    pub(in crate::game) fn container_role(&self, slot: usize) -> Role {
+    pub(in crate::game::client_side) fn container_role(&self, slot: usize) -> Role {
         if let Some(role) = self
             .shown_mod_menu_type()
             .and_then(|menu| mod_menu_role(menu, slot))
@@ -387,13 +387,16 @@ impl<'g> Game<'g> {
     }
     /// A mouse button's release clears the latch of a press a hook took: true when the press was
     /// the hooks', so the release is too. Called for every real button-up, before any hook.
-    pub(in crate::game) fn container_button_up(&mut self, button: MouseButton) -> bool {
+    pub(in crate::game::client_side) fn container_button_up(
+        &mut self,
+        button: MouseButton,
+    ) -> bool {
         self.client.container_buttons.remove(&button)
     }
     /// A mouse button down or up on a menu screen, once the mods' pre hooks let it through: true
     /// when a hook took it, or for the release of a press a hook took (`owned`). A release a hook
     /// takes from vanilla's own press ends vanilla's quick craft drag without a click.
-    pub(in crate::game) fn container_mouse(
+    pub(in crate::game::client_side) fn container_mouse(
         &mut self,
         button: MouseButton,
         pressed: bool,
@@ -427,7 +430,7 @@ impl<'g> Game<'g> {
     }
     /// The cursor moved with a button held, once the mods' pre hook let it through: true when a
     /// hook took it. A drag taken from vanilla's own press ends its quick craft drag.
-    pub(in crate::game) fn container_drag(&mut self) -> bool {
+    pub(in crate::game::client_side) fn container_drag(&mut self) -> bool {
         if !api::engine::any() {
             return false;
         }
@@ -450,7 +453,7 @@ impl<'g> Game<'g> {
     }
     /// The wheel over a menu screen, once the mods' pre hook let it through: true when a hook
     /// took it.
-    pub(in crate::game) fn container_wheel(&mut self, steps: f32) -> bool {
+    pub(in crate::game::client_side) fn container_wheel(&mut self, steps: f32) -> bool {
         if !api::engine::any() {
             return false;
         }
@@ -462,7 +465,7 @@ impl<'g> Game<'g> {
     }
     /// A key press on a menu screen, once the mods' pre hook let it through, unless a text field
     /// has the focus: true when a hook took it.
-    pub(in crate::game) fn container_key(&mut self, key: KeyCode) -> bool {
+    pub(in crate::game::client_side) fn container_key(&mut self, key: KeyCode) -> bool {
         if !api::engine::any() || self.text_input_focused() {
             return false;
         }
@@ -476,7 +479,7 @@ impl<'g> Game<'g> {
         api::engine::key(&mut open, slot, name)
     }
     /// What the hooks draw over the open menu screen, at its foreground phase.
-    pub(in crate::game) fn draw_container_hooks(&self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_container_hooks(&self, batch: &mut HudBatch) {
         if !api::engine::any() {
             return;
         }
@@ -505,7 +508,12 @@ impl<'g> Game<'g> {
 
 impl Game<'_> {
     /// One ordinary click on a game slot. False when nothing took it.
-    pub(in crate::game) fn slot_click(&mut self, slot: usize, button: i32, input: Input) -> bool {
+    pub(in crate::game::client_side) fn slot_click(
+        &mut self,
+        slot: usize,
+        button: i32,
+        input: Input,
+    ) -> bool {
         if self.remote.is_some() {
             return self.remote_menu_ops(&[(Some(slot), button, input)]);
         }
@@ -521,7 +529,7 @@ impl Game<'_> {
     /// drag (`QUICK_CRAFT`) and not a click: a server that has the hand empty
     /// (the stack it was to come from just burned as fuel) ignores a drag, but
     /// a click would pick up what's in `slot`.
-    pub(in crate::game) fn slot_put(&mut self, slot: usize, right: bool) -> bool {
+    pub(in crate::game::client_side) fn slot_put(&mut self, slot: usize, right: bool) -> bool {
         let kind = i32::from(right) << 2;
         let ops = [
             (None, kind, Input::QuickCraft),
@@ -540,7 +548,11 @@ impl Game<'_> {
         true
     }
     /// `slot` takes one more of `stack`, by the open menu's rules.
-    pub(in crate::game) fn slot_takes_one(&mut self, slot: usize, stack: &ItemStack) -> bool {
+    pub(in crate::game::client_side) fn slot_takes_one(
+        &mut self,
+        slot: usize,
+        stack: &ItemStack,
+    ) -> bool {
         let mut takes = false;
         self.menu_session(|menu, env, to_menu| {
             takes = to_menu(slot).is_some_and(|i| menu.takes_one(env, i, stack));
@@ -550,7 +562,7 @@ impl Game<'_> {
     }
     /// Where vanilla's quick move would put `slot`'s items, tried on a copy
     /// of the menu that's dropped (`Some(false)` keeps nothing).
-    pub(in crate::game) fn slot_landing(&mut self, slot: usize) -> Vec<usize> {
+    pub(in crate::game::client_side) fn slot_landing(&mut self, slot: usize) -> Vec<usize> {
         let slots = self.slots();
         let mut landing = Vec::new();
         self.menu_session(|menu, env, to_menu| {

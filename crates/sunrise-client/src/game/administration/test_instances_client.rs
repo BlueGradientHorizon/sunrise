@@ -25,8 +25,6 @@ pub(in crate::game::client_side) use crate::game::server_side::test_instances::S
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::test_instances::TestDefSample;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::test_instances::red;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::test_instances::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::{
@@ -71,7 +69,7 @@ impl Game<'_> {
     /// the beacon's view distance of the block: each marked block in a
     /// translucent red box (`out`, blending) and its text as a billboard over
     /// everything (`see_through`).
-    pub(in crate::game) fn test_instance_marker_geometry(
+    pub(in crate::game::client_side) fn test_instance_marker_geometry(
         &mut self,
         camera: glam::DVec3,
         out: &mut Vec<Vertex>,

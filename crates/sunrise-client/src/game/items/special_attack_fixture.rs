@@ -15,7 +15,10 @@ use sunrise_client::{
 use sunrise_core::geometry::Vec3;
 
 impl Game<'_> {
-    pub(in crate::game) fn fixture_special_attack(&mut self, op: &Value) -> Result<Vec<String>> {
+    pub(in crate::game::server_side) fn fixture_special_attack(
+        &mut self,
+        op: &Value,
+    ) -> Result<Vec<String>> {
         let kind = op["target"]
             .as_str()
             .ok_or("special attack target missing")?;
@@ -195,7 +198,7 @@ pub(in crate::game) mod tests {
         run_special_attack_cases_without_world_startup();
     }
 
-    pub(in crate::game) fn run_special_attack_cases_without_world_startup() {
+    pub(in crate::game::server_side) fn run_special_attack_cases_without_world_startup() {
         let spec = std::env::var("SUNRISE_SPECIAL_ATTACK_CASES").expect("case paths required");
         let mut resources = None;
         let mut game = crate::game::game_tests::tests::server_game(&mut resources);

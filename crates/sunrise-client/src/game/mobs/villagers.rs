@@ -13,7 +13,7 @@ use sunrise_client::{
 #[allow(unused_imports)]
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 
-pub(in crate::game) fn block_of(p: Vec3) -> [i32; 3] {
+pub(in crate::game::server_side) fn block_of(p: Vec3) -> [i32; 3] {
     [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
 }
 impl villager_brain::TradingPlayers for Game<'_> {
@@ -42,18 +42,18 @@ impl villager_brain::TradingPlayers for Game<'_> {
 }
 
 impl Game<'_> {
-    pub(in crate::game) fn villager_index(&self, id: u32) -> Option<usize> {
+    pub(in crate::game::server_side) fn villager_index(&self, id: u32) -> Option<usize> {
         self.mobs
             .iter()
             .position(|m| m.id == id && m.species() == Species::Villager)
     }
-    pub(in crate::game) fn item_max_stack(&self, item: &str) -> u32 {
+    pub(in crate::game::server_side) fn item_max_stack(&self, item: &str) -> u32 {
         self.items().get(item).map_or(64, |i| i.max_stack)
     }
     /// `UseBonemeal.tick`'s `BoneMealItem.growCrop`: villager `id`'s first
     /// bone meal on `pos`, with level event 1505 and the next crop to work
     /// on when it grew.
-    pub(in crate::game) fn villager_bonemeal(&mut self, id: u32, pos: BlockPos) {
+    pub(in crate::game::server_side) fn villager_bonemeal(&mut self, id: u32, pos: BlockPos) {
         let Some(i) = self.villager_index(id) else {
             return;
         };
@@ -100,7 +100,11 @@ impl Game<'_> {
     }
     /// `WorkAtComposter.useWorkstation`: at a composter the farmer makes
     /// bread, then composts seeds.
-    pub(in crate::game) fn villager_work_at_composter(&mut self, id: u32, pos: [i32; 3]) {
+    pub(in crate::game::server_side) fn villager_work_at_composter(
+        &mut self,
+        id: u32,
+        pos: [i32; 3],
+    ) {
         let Some(i) = self.villager_index(id) else {
             return;
         };
@@ -112,7 +116,7 @@ impl Game<'_> {
     }
     /// `WorkAtComposter.makeBread`: up to three loaves from nine wheat while
     /// the villager holds at most 36 bread; what does not fit drops.
-    pub(in crate::game) fn villager_make_bread(&mut self, i: usize) {
+    pub(in crate::game::server_side) fn villager_make_bread(&mut self, i: usize) {
         let max_stack = self.item_max_stack("minecraft:bread");
         let e = villager::ext_mut(&mut self.mobs[i]);
         if e.count_item("minecraft:bread") > 36 {
@@ -132,7 +136,7 @@ impl Game<'_> {
     }
     /// `BehaviorUtils.throwItem`: toss a stack from a villager's hand toward
     /// a point.
-    pub(in crate::game) fn villager_throw(
+    pub(in crate::game::server_side) fn villager_throw(
         &mut self,
         from: Vec3,
         eye: f64,
@@ -148,7 +152,7 @@ impl Game<'_> {
 
     /// `TradeWithVillager.tick` for one pair: gossip (at most once in 1200
     /// ticks for both), then surplus food and wanted wares tossed over.
-    pub(in crate::game) fn villager_meet(&mut self, a: u32, b: u32) {
+    pub(in crate::game::server_side) fn villager_meet(&mut self, a: u32, b: u32) {
         let (Some(ia), Some(ib)) = (self.villager_index(a), self.villager_index(b)) else {
             return;
         };
@@ -166,7 +170,7 @@ impl Game<'_> {
 
     /// `Villager.spawnGolemIfNeeded`: when enough villagers nearby that
     /// slept recently and saw no golem agree, an iron golem appears.
-    pub(in crate::game) fn villager_golem_check(&mut self, id: u32, needed: usize) {
+    pub(in crate::game::server_side) fn villager_golem_check(&mut self, id: u32, needed: usize) {
         let Some(i) = self.villager_index(id) else {
             return;
         };
@@ -182,7 +186,7 @@ impl Game<'_> {
     }
     /// `SpawnUtil.trySpawnMob(IRON_GOLEM, ...)`: a golem near `start`, with
     /// the ambient sound `trySpawnMob` plays.
-    pub(in crate::game) fn try_spawn_iron_golem(&mut self, start: [i32; 3]) -> bool {
+    pub(in crate::game::server_side) fn try_spawn_iron_golem(&mut self, start: [i32; 3]) -> bool {
         let Some(kind) = self.res.mob_types().get("minecraft:iron_golem").cloned() else {
             return false;
         };
@@ -216,7 +220,7 @@ impl Game<'_> {
     /// `VillagerMakeLove.tryToGiveBirth`: both eat, a free bed within 48
     /// blocks is taken for the child, who is a baby villager of one of
     /// three villager types.
-    pub(in crate::game) fn villager_birth(
+    pub(in crate::game::server_side) fn villager_birth(
         &mut self,
         parent: u32,
         partner: u32,
@@ -304,7 +308,7 @@ impl Game<'_> {
     /// `NearestItemSensor.doTick` for the villagers whose sensor is due: the
     /// nearest dropped item within 32 blocks that `Villager.wantsToPickUp`
     /// accepts and the villager sees, or none.
-    pub(in crate::game) fn villager_item_sense(&mut self) {
+    pub(in crate::game::server_side) fn villager_item_sense(&mut self) {
         if self.dropped.is_empty() {
             for m in &mut self.mobs {
                 if m.species() == Species::Villager
@@ -390,7 +394,7 @@ impl Game<'_> {
     }
     /// `Mob.aiStep` item pickup for villagers (`InventoryCarrier`): food,
     /// seeds and what their profession wants, from within a block.
-    pub(in crate::game) fn villager_pickups(&mut self) {
+    pub(in crate::game::server_side) fn villager_pickups(&mut self) {
         let griefing = self
             .ui
             .rules
@@ -485,7 +489,10 @@ impl Game<'_> {
     }
 
     /// The UUID of a player by connection (None for the host).
-    pub(in crate::game) fn player_uuid_of(&self, who: Option<u32>) -> Option<[i32; 4]> {
+    pub(in crate::game::server_side) fn player_uuid_of(
+        &self,
+        who: Option<u32>,
+    ) -> Option<[i32; 4]> {
         let uuid = match who {
             None => return self.level.player_uuid,
             // While that guest acts its own UUID is swapped in.
@@ -497,7 +504,7 @@ impl Game<'_> {
     /// Complete this hit before another hit can publish its effects. In
     /// `LivingEntity.hurtServer`, reputation and anger precede the damage
     /// broadcast, then `playHurtSound` and `playSecondaryHurtSound`.
-    pub(in crate::game) fn settle_villager_hurt(&mut self, index: usize) {
+    pub(in crate::game::server_side) fn settle_villager_hurt(&mut self, index: usize) {
         let Some(mob) = self.mobs.get_mut(index) else {
             return;
         };
@@ -540,7 +547,7 @@ impl Game<'_> {
     /// `Villager.tellWitnessesThatIWasMurdered`: the villagers that saw a
     /// player kill one remember it as a major wrong.
     /// `killer` is the guest connection that last hurt it (None: the host).
-    pub(in crate::game) fn villager_murdered(
+    pub(in crate::game::server_side) fn villager_murdered(
         &mut self,
         victim: &Mob,
         by_player: bool,
@@ -572,7 +579,7 @@ impl Game<'_> {
     }
     /// Retain the accepted trade's actual player until the eligible mob AI
     /// phase, including across menu close. XP and rewards stay in the session.
-    pub(in crate::game) fn villager_trade_pending(&mut self, id: u32) {
+    pub(in crate::game::server_side) fn villager_trade_pending(&mut self, id: u32) {
         let Some(player) = self.player_uuid_of(self.server.lan_acting) else {
             return;
         };
@@ -582,7 +589,7 @@ impl Game<'_> {
         villager::ext_mut(&mut self.mobs[i]).last_traded_player = Some(player);
     }
     /// The TRADE reputation event from the player `uuid` (a guest's too).
-    pub(in crate::game) fn villager_traded_by(&mut self, id: u32, uuid: [i32; 4]) {
+    pub(in crate::game::server_side) fn villager_traded_by(&mut self, id: u32, uuid: [i32; 4]) {
         let Some(i) = self.villager_index(id) else {
             return;
         };
@@ -598,7 +605,7 @@ impl Game<'_> {
     }
     /// `Villager.updateSpecialPrices` for the players trading with villager `id`
     /// (only the player `only`, when given).
-    pub(in crate::game) fn villager_prices_changed(
+    pub(in crate::game::server_side) fn villager_prices_changed(
         &mut self,
         id: u32,
         only: Option<[i32; 4]>,
@@ -627,7 +634,10 @@ impl Game<'_> {
     /// brain's work step: the live offers on the screen take the step, priced
     /// for the player as the work step saw them; `updateSellItem` then picks
     /// the result and the yes/no voice. Later edits are the last write.
-    pub(in crate::game) fn villager_offers_open(&mut self, restock: villager_brain::RestockNotice) {
+    pub(in crate::game::server_side) fn villager_offers_open(
+        &mut self,
+        restock: villager_brain::RestockNotice,
+    ) {
         let villager_brain::RestockNotice {
             mob: id,
             step,
@@ -659,14 +669,18 @@ impl Game<'_> {
         }
     }
     /// `Villager.getPlayerReputation` of the local player.
-    pub(in crate::game) fn villager_reputation(&self, id: u32) -> i32 {
+    pub(in crate::game::server_side) fn villager_reputation(&self, id: u32) -> i32 {
         let Some(uuid) = self.level.player_uuid else {
             return 0;
         };
         self.villager_reputation_of(id, uuid)
     }
     /// `Villager.getPlayerReputation` of the player `uuid`.
-    pub(in crate::game) fn villager_reputation_of(&self, id: u32, uuid: [i32; 4]) -> i32 {
+    pub(in crate::game::server_side) fn villager_reputation_of(
+        &self,
+        id: u32,
+        uuid: [i32; 4],
+    ) -> i32 {
         self.villager_index(id)
             .and_then(|i| villager::ext(&self.mobs[i]))
             .map_or(0, |e| e.gossips.reputation(uuid))
@@ -678,7 +692,10 @@ impl Game<'_> {
     /// `AbstractBedBlock.kickVillagerOutOfBed`: the first sleeping villager
     /// whose box touches the bed's head block wakes up
     /// (`Villager.stopSleeping`). Whether one did.
-    pub(in crate::game) fn kick_villager_out_of_bed(&mut self, head: [i32; 3]) -> bool {
+    pub(in crate::game::server_side) fn kick_villager_out_of_bed(
+        &mut self,
+        head: [i32; 3],
+    ) -> bool {
         let min = Vec3::new(f64::from(head[0]), f64::from(head[1]), f64::from(head[2]));
         let max = Vec3::new(min.x + 1.0, min.y + 1.0, min.z + 1.0);
         let Some(i) = self.mobs.iter().position(|m| {
@@ -693,7 +710,7 @@ impl Game<'_> {
         true
     }
     /// Ask after this mob's tick Pre; its living tick applies the answer.
-    pub(in crate::game) fn sync_sleeping_mob(&mut self, index: usize) {
+    pub(in crate::game::server_side) fn sync_sleeping_mob(&mut self, index: usize) {
         if self.remote.is_some()
             || !mod_api::__private::listened(mod_api::HookId::CanContinueSleeping)
         {
@@ -718,7 +735,7 @@ impl Game<'_> {
     }
     /// `LivingEntity.stopSleeping` for the villager `id`, outside its own
     /// tick: it stands up and its bed is no longer occupied.
-    pub(in crate::game) fn wake_villager(&mut self, id: u32) {
+    pub(in crate::game::server_side) fn wake_villager(&mut self, id: u32) {
         let Some(i) = self.mobs.iter().position(|m| m.id == id) else {
             return;
         };

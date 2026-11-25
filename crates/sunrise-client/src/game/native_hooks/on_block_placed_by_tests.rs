@@ -173,9 +173,6 @@ impl Hooks for Probe {
     }
 }
 
-#[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::native_hooks_server::on_block_placed_by_tests::place;
-
 pub(in crate::game) fn crate_stack() -> ItemStack {
     let mut stack = ItemStack::new(CRATE, 3);
     stack.data_mut().custom_name = Some(Tag::String("Crate name".into()));

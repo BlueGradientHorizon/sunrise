@@ -1338,7 +1338,7 @@ pub(in crate::game) fn setup_interaction_guest(
     rx
 }
 
-pub(in crate::game) fn use_block(game: &mut Game<'_>, client: bool) -> bool {
+pub(in crate::game::server_side) fn use_block(game: &mut Game<'_>, client: bool) -> bool {
     if client {
         game.remote_use_item_on(Hand::Main, mod_api::InteractionAttempt::Press, None)
     } else {

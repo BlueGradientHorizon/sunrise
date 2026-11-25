@@ -84,19 +84,19 @@ pub(in crate::game) struct Loading {
 pub(in crate::game) const TITLE_FRAME_WAIT: Duration = Duration::from_secs(1);
 impl Loading {
     /// Reconstitute the main-thread error without erasing declaration refusals.
-    pub(in crate::game) fn take_worker_result(&mut self) -> Option<Result<Loaded>> {
+    pub(in crate::game::client_side) fn take_worker_result(&mut self) -> Option<Result<Loaded>> {
         self.loaded.take().map(|result| result.map_err(Into::into))
     }
 
     /// The world renderer is built on the main thread, so building it before
     /// the title is on the screen holds the title back by that build. Wait for
     /// one title frame first, unless a world is waiting to open.
-    pub(in crate::game) fn ready_for_handoff(&self) -> bool {
+    pub(in crate::game::client_side) fn ready_for_handoff(&self) -> bool {
         self.title_drawn
             || self.menu.pending.is_some()
             || self.ui_at.is_none_or(|at| at.elapsed() >= TITLE_FRAME_WAIT)
     }
-    pub(in crate::game) fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+    pub(in crate::game::client_side) fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
             return;
         }
@@ -194,7 +194,7 @@ impl Loading {
 
         self.window = Some(window);
     }
-    pub(in crate::game) fn window_event(
+    pub(in crate::game::client_side) fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
         id: WindowId,
@@ -211,7 +211,7 @@ impl Loading {
     }
     /// The menu bundle arrived: rebuild the loading screen with the real atlas
     /// and title panorama.
-    pub(in crate::game) fn set_ui(&mut self, gui: UiResources, root: PathBuf) {
+    pub(in crate::game::client_side) fn set_ui(&mut self, gui: UiResources, root: PathBuf) {
         log::info!(
             "Sunrise: loading the title artwork after {} ms",
             self.started.elapsed().as_millis()
@@ -251,7 +251,7 @@ impl Loading {
         // The title frame's wait starts once its renderer is built.
         self.ui_at = Some(Instant::now());
     }
-    pub(in crate::game) fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+    pub(in crate::game::client_side) fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         // The loop may run once more after exit(): keep the first error, the
         // one that ended loading.
         if self.error.is_some() {
@@ -278,7 +278,7 @@ impl Loading {
         }
         event_loop.set_control_flow(ControlFlow::Poll);
     }
-    pub(in crate::game) fn draw(&mut self) {
+    pub(in crate::game::client_side) fn draw(&mut self) {
         let Some(size) = self
             .renderer
             .as_ref()
@@ -312,7 +312,10 @@ impl Loading {
             );
         }
     }
-    pub(in crate::game) fn finish(&mut self, mut loaded: Loaded) -> Result<Option<Game<'static>>> {
+    pub(in crate::game::client_side) fn finish(
+        &mut self,
+        mut loaded: Loaded,
+    ) -> Result<Option<Game<'static>>> {
         let handoff_at = Instant::now();
         let mut options = self.options.take().ok_or("loading already finished")?;
         options.resources = loaded.root.clone();

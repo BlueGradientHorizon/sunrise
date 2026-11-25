@@ -45,7 +45,7 @@ pub(in crate::game) struct VehicleWinds {
 }
 impl VehicleWinds {
     /// `p` before its tick, when it may come to need a second one.
-    pub(in crate::game) fn before(&self, p: &Projectile) -> Option<Projectile> {
+    pub(in crate::game::server_side) fn before(&self, p: &Projectile) -> Option<Projectile> {
         let wind = matches!(
             p.kind,
             ProjectileKind::WindCharge | ProjectileKind::BreezeWindCharge
@@ -53,7 +53,11 @@ impl VehicleWinds {
         (wind && p.guest.is_none() && !self.vehicles.is_empty()).then(|| p.clone())
     }
     /// Keeps `before` when the tick's `hit` is a boat or a minecart.
-    pub(in crate::game) fn met(&mut self, before: Option<Projectile>, hit: Hit) -> bool {
+    pub(in crate::game::server_side) fn met(
+        &mut self,
+        before: Option<Projectile>,
+        hit: Hit,
+    ) -> bool {
         if let Hit::Entity {
             who: Who::Mob(id), ..
         } = hit
@@ -120,7 +124,7 @@ impl Source {
     }
     /// `WindCharge.explode` and `BreezeWindCharge.explode`: the charge itself
     /// is the source, and a breeze's charge's indirect source is its breeze.
-    pub(in crate::game) fn charge(breeze: bool, silent: bool) -> Self {
+    pub(in crate::game::server_side) fn charge(breeze: bool, silent: bool) -> Self {
         Self {
             sound: if breeze {
                 BREEZE_BURST
@@ -170,7 +174,7 @@ impl Source {
 /// Whether a wind push must wait for the entity's own tick: it joined before
 /// the charge (`id` below the charge's), so vanilla has ticked it already this
 /// game tick, and its kind ticks after the projectiles here.
-pub(in crate::game) fn push_waits_for_tick<T: PartialOrd>(
+pub(in crate::game::server_side) fn push_waits_for_tick<T: PartialOrd>(
     ticks_after_projectiles: bool,
     joined: T,
     charge: Option<T>,
@@ -181,7 +185,7 @@ pub(in crate::game) fn push_waits_for_tick<T: PartialOrd>(
 /// deflection, through the one engine path (`Projectile::deflect`). The turn's
 /// float comes from the projectile's random. The owner stays; a hurting
 /// projectile's acceleration power halves (`onDeflection`).
-pub(in crate::game) fn reverse(p: &mut Projectile) {
+pub(in crate::game::server_side) fn reverse(p: &mut Projectile) {
     let owner = (p.owner, p.owner_uuid, p.guest);
     p.deflect(
         sunrise_client::projectiles::Turn::Reverse,
@@ -199,7 +203,7 @@ pub(in crate::game) fn above_the_top(shape: LevelShape, y: f64) -> bool {
     y >= f64::from(shape.max_y() + 30)
 }
 /// Whether a block reacts to a wind charge's burst by being used.
-pub(in crate::game) fn triggers(name: &str) -> bool {
+pub(in crate::game::server_side) fn triggers(name: &str) -> bool {
     let n = name.trim_start_matches("minecraft:");
     // Doors and trapdoors open unless iron; buttons, levers and bells react.
     (n.ends_with("_door") || n.ends_with("_trapdoor")) && !n.starts_with("iron_")
@@ -210,7 +214,7 @@ pub(in crate::game) fn triggers(name: &str) -> bool {
 impl Game<'_> {
     /// `Player.itemAttackInteraction` applies trigger-only held-item effects
     /// after an EnderDragonPart is successfully hit.
-    pub(in crate::game) fn post_attack_dragon_burst(&mut self) {
+    pub(in crate::game::server_side) fn post_attack_dragon_burst(&mut self) {
         if let Some(held) = self.held().cloned() {
             self.post_attack_bursts(&held, "minecraft:ender_dragon");
         }
@@ -219,7 +223,7 @@ impl Game<'_> {
     /// `ServerExplosion.hurtEntities` knockback for a trigger-only blast such
     /// as Wind Burst. The dragon is not in the normal entity lists, but its
     /// body still receives the blast impulse (without taking damage).
-    pub(in crate::game) fn wind_burst_knockback(
+    pub(in crate::game::server_side) fn wind_burst_knockback(
         &mut self,
         center: [f64; 3],
         radius: f32,
@@ -309,7 +313,7 @@ impl Game<'_> {
         burst
     }
     /// The boats and minecarts of this tick's projectile pass.
-    pub(in crate::game) fn vehicle_winds(&self) -> VehicleWinds {
+    pub(in crate::game::server_side) fn vehicle_winds(&self) -> VehicleWinds {
         VehicleWinds {
             vehicles: (self.boats.iter().map(|b| b.id))
                 .chain(self.carts.iter().map(|c| c.id))
@@ -356,7 +360,7 @@ impl Game<'_> {
         (again, keep, hit)
     }
     /// `AbstractWindCharge.onHitEntity`: one point of damage.
-    pub(in crate::game) fn wind_charge_damage(&mut self, p: &Projectile, who: Who) {
+    pub(in crate::game::server_side) fn wind_charge_damage(&mut self, p: &Projectile, who: Who) {
         let owner_breeze = matches!(p.owner, Some(Who::Mob(id))
             if self.mobs.iter().any(|m| m.id == id && m.species() == Species::Breeze));
         match who {
@@ -450,7 +454,7 @@ impl Game<'_> {
     }
     /// The exploded positions: rays through everything but the blocks that
     /// stop wind (`blocks_wind_charge_explosions`).
-    pub(in crate::game) fn wind_positions(
+    pub(in crate::game::server_side) fn wind_positions(
         &mut self,
         center: [f64; 3],
         radius: f32,
@@ -515,7 +519,7 @@ impl Game<'_> {
     /// knockback scaled by distance, exposure and the multiplier. Returns the
     /// guests it pushed and by how much (`hitPlayers`), which their clients
     /// apply from the burst's packet.
-    pub(in crate::game) fn wind_knockback(
+    pub(in crate::game::server_side) fn wind_knockback(
         &mut self,
         center: [f64; 3],
         radius: f32,
@@ -629,7 +633,7 @@ impl Game<'_> {
     }
     /// The pushes `wind_knockback` held for entities that tick after the
     /// projectiles, applied once those entities have ticked.
-    pub(in crate::game) fn apply_late_wind_pushes(&mut self) {
+    pub(in crate::game::server_side) fn apply_late_wind_pushes(&mut self) {
         let late = std::mem::take(&mut self.creatures.late_wind_pushes);
         if late.is_empty() {
             return;
@@ -647,7 +651,7 @@ impl Game<'_> {
     /// `ServerExplosion.hurtEntities` for the player: the push, less
     /// explosion knockback resistance, and `ServerPlayer.onExplosionHit`.
     /// Returns the push for players eligible for the explosion packet.
-    pub(in crate::game) fn wind_push_player(
+    pub(in crate::game::server_side) fn wind_push_player(
         &mut self,
         center: [f64; 3],
         radius: f32,
@@ -848,7 +852,7 @@ impl Game<'_> {
     }
     /// `BlockBehaviour.onExplosionHit` for `TRIGGER_BLOCK`: doors, gates,
     /// buttons, levers and bells react as if used; candles go out.
-    pub(in crate::game) fn wind_trigger_block(&mut self, pos: [i32; 3]) -> Result<()> {
+    pub(in crate::game::server_side) fn wind_trigger_block(&mut self, pos: [i32; 3]) -> Result<()> {
         let state = self.world.block(pos[0], pos[1], pos[2]);
         // FenceGateBlock.onExplosionHit tests power and toggles the gate
         // without turning it towards anyone, as a click would.

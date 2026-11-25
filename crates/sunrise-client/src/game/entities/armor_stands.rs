@@ -28,7 +28,7 @@ use sunrise_core::{
 };
 pub(in crate::game) const TYPE_ID: &str = "minecraft:armor_stand";
 /// Build the living-drops input at the loot-source boundary, before equipment pops.
-pub(in crate::game) fn armor_stand_dying_drops<'a>(
+pub(in crate::game::server_side) fn armor_stand_dying_drops<'a>(
     stand: &ArmorStand,
     mob_drops: bool,
     dying: super::creatures::DyingDrops<'a>,
@@ -116,7 +116,7 @@ pub(in crate::game) struct CartShove {
 /// plain rideable kind, the boxes miss, `distanceToSqr` is past 0.2, the
 /// stand is a passenger of the cart, or the horizontal gap is under
 /// `1.0E-4F` (where `AbstractMinecart.push` does nothing).
-pub(in crate::game) fn armor_stand_cart_shove(
+pub(in crate::game::server_side) fn armor_stand_cart_shove(
     stand_pos: Vec3,
     stand_box: Aabb,
     cart_pos: Vec3,
@@ -323,7 +323,7 @@ impl Game<'_> {
         self.stack_armor_layers(&self.armor)
     }
     /// `HumanoidArmorLayer` for worn stacks (head to feet), trims included.
-    pub(in crate::game) fn stack_armor_layers(
+    pub(in crate::game::server_side) fn stack_armor_layers(
         &self,
         armor: &[Option<ItemStack>; 4],
     ) -> Vec<(&Part, [f32; 4], u32, u32, bool)> {
@@ -402,7 +402,7 @@ impl Game<'_> {
         }
         Some((pos, stand))
     }
-    pub(in crate::game) fn place_armor_stand(
+    pub(in crate::game::server_side) fn place_armor_stand(
         &mut self,
         hit: &super::Hit,
         stack: &ItemStack,
@@ -496,7 +496,7 @@ impl Game<'_> {
         }
         best
     }
-    pub(in crate::game) fn equipment_slot(&self, stack: &ItemStack) -> usize {
+    pub(in crate::game::server_side) fn equipment_slot(&self, stack: &ItemStack) -> usize {
         match self
             .res
             .items()
@@ -682,7 +682,7 @@ impl Game<'_> {
         true
     }
     /// `ArmorStand.hurtServer` from a player attack.
-    pub(in crate::game) fn attack_armor_stand(&mut self) -> bool {
+    pub(in crate::game::server_side) fn attack_armor_stand(&mut self) -> bool {
         let Some((i, d, _)) = self.armor_stand_hit() else {
             return false;
         };
@@ -730,7 +730,7 @@ impl Game<'_> {
     /// stand's box and id) and `Player.itemAttackInteraction`, which treats
     /// the stand as a living target: the held weapon's hit and post-attack
     /// effects.
-    pub(in crate::game) fn hit_armor_stand(
+    pub(in crate::game::server_side) fn hit_armor_stand(
         &mut self,
         i: usize,
         before_weapon: impl FnOnce(&mut Self, Aabb, u32),
@@ -751,7 +751,7 @@ impl Game<'_> {
     /// `ArmorStand.hurtServer` for a player's attack (also a sweep's): a
     /// creative player breaks it, otherwise the first hit wobbles it and a
     /// second within five ticks breaks it.
-    pub(in crate::game) fn punch_armor_stand(&mut self, i: usize) -> bool {
+    pub(in crate::game::server_side) fn punch_armor_stand(&mut self, i: usize) -> bool {
         // `Entity.isInvulnerableTo` before ArmorStand's own branches (#916):
         // the saved flag or window refuses the hit — past only for
         // #bypasses_invulnerability damage and a creative player's hit
@@ -796,7 +796,7 @@ impl Game<'_> {
     }
     /// Run stand turns that precede the level's first shulker. The mob tick
     /// interleaves the remaining turns with shulkers before applying each lid push.
-    pub(in crate::game) fn begin_armor_stand_ticks(&mut self) -> Result<()> {
+    pub(in crate::game::server_side) fn begin_armor_stand_ticks(&mut self) -> Result<()> {
         self.server.ordered.armor_stands.extend(
             self.armor_stands
                 .iter()
@@ -820,7 +820,10 @@ impl Game<'_> {
         self.tick_armor_stands_before(first_shulker.unwrap_or(JoinSeq::MAX))
     }
 
-    pub(in crate::game) fn tick_armor_stands_before(&mut self, cut: JoinSeq) -> Result<()> {
+    pub(in crate::game::server_side) fn tick_armor_stands_before(
+        &mut self,
+        cut: JoinSeq,
+    ) -> Result<()> {
         if self
             .server
             .ordered
@@ -845,7 +848,7 @@ impl Game<'_> {
         self.tick_armor_stand_turns(joins)
     }
 
-    pub(in crate::game) fn tick_armor_stand_turns(
+    pub(in crate::game::server_side) fn tick_armor_stand_turns(
         &mut self,
         joins: impl IntoIterator<Item = JoinSeq>,
     ) -> Result<()> {
@@ -1226,7 +1229,11 @@ impl Game<'_> {
     /// ravager's box grown by 4) takes `strongKnockback` from the ravager at
     /// `from`. Its `mobAttack` leaves the stand whole (`ArmorStand.hurtServer`:
     /// not a damage type that breaks one).
-    pub(in crate::game) fn roar_pushes_armor_stands(&mut self, area: Aabb, from: [f64; 3]) {
+    pub(in crate::game::server_side) fn roar_pushes_armor_stands(
+        &mut self,
+        area: Aabb,
+        from: [f64; 3],
+    ) {
         for a in self.armor_stands.iter_mut() {
             let (width, height) = stand_box(a);
             let half = f64::from(width) / 2.0;
@@ -1253,7 +1260,7 @@ impl Game<'_> {
     /// (`Entity.push(double)` does not consult `isPushable`). A stand with no
     /// physics (`Marker` or `NoGravity`, `ArmorStand.hasPhysics` / `noPhysics`)
     /// or one riding that cart does not shove it.
-    pub(in crate::game) fn push_rideable_minecarts(&mut self, i: usize) {
+    pub(in crate::game::server_side) fn push_rideable_minecarts(&mut self, i: usize) {
         let stand = &self.armor_stands[i];
         if stand.marker || stand.no_gravity {
             return;
@@ -1297,7 +1304,7 @@ impl Game<'_> {
     /// in 100 while it is on the ground (`LivingEntity.aiStep`'s
     /// `applyEffectsFromBlocks`, after `travel`, so a marker that has landed
     /// still steps). `canDestroyEgg` wants mob griefing before the level's roll.
-    pub(in crate::game) fn armor_stand_turtle_eggs(
+    pub(in crate::game::server_side) fn armor_stand_turtle_eggs(
         &mut self,
         i: usize,
         landed: bool,
@@ -1552,7 +1559,7 @@ impl Game<'_> {
     /// `EnchantmentHelper.isImmuneToDamage` for the stand at `i`: whether an
     /// enchantment on an active equipment slot has a `minecraft:damage_immunity`
     /// effect whose requirements hold for `damage_type` and `causing`.
-    pub(in crate::game) fn stand_immune_to_damage(
+    pub(in crate::game::server_side) fn stand_immune_to_damage(
         &mut self,
         i: usize,
         damage_type: &str,
@@ -1618,7 +1625,7 @@ impl Game<'_> {
     }
     /// `ArmorStand.causeDamage`: the health less `amount`, broken by anything
     /// at 0.5 or less.
-    pub(in crate::game) fn cause_stand_damage(
+    pub(in crate::game::server_side) fn cause_stand_damage(
         &mut self,
         i: usize,
         amount: f32,
@@ -1701,7 +1708,7 @@ pub(in crate::game) fn preview_slot(equip: Option<&str>) -> usize {
 }
 /// The `Pose` rotations on the parts of an armor stand model or its armor
 /// (`ArmorStandArmorModel.setupAnim`); the body also turns the sticks.
-pub(in crate::game) fn apply_pose(poses: &mut Poses, pose: &[[f32; 3]; 6]) {
+pub(in crate::game::server_side) fn apply_pose(poses: &mut Poses, pose: &[[f32; 3]; 6]) {
     let parts: [&[&str]; 6] = [
         &["head"],
         &[
@@ -1726,7 +1733,7 @@ pub(in crate::game) fn apply_pose(poses: &mut Poses, pose: &[[f32; 3]; 6]) {
         }
     }
 }
-pub(in crate::game) fn overlaps(a: Aabb, b: Aabb) -> bool {
+pub(in crate::game::server_side) fn overlaps(a: Aabb, b: Aabb) -> bool {
     let (a0, a1, b0, b1) = (
         a.min_position(),
         a.max_position(),
@@ -1750,7 +1757,7 @@ pub(in crate::game) struct ArmorSwap {
 /// (`copy` instead of `copyAndClear`). From a larger stack one item is worn
 /// (`consumeAndReturn`, which takes none in creative) and the worn piece goes
 /// to the inventory.
-pub(in crate::game) fn swap_with_equipment_slot(
+pub(in crate::game::server_side) fn swap_with_equipment_slot(
     stack: &ItemStack,
     current: Option<ItemStack>,
     creative: bool,
@@ -1902,7 +1909,7 @@ pub(in crate::game) fn skull_kind(item: &str) -> Option<&'static str> {
 
 /// `ArmorStand.ignoreExplosion` (an invisible stand), and `hurtServer`
 /// refusing an invisible or marker stand: such a stand outlasts any blast.
-pub(in crate::game) fn spared_by_blast(a: &ArmorStand) -> bool {
+pub(in crate::game::server_side) fn spared_by_blast(a: &ArmorStand) -> bool {
     a.invisible || a.marker
 }
 

@@ -5,21 +5,15 @@ pub(in crate::game::client_side) use crate::game::server_side::frames::FrameMode
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::frames::FramedItem;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::frames::bake_frame;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::frames::bake_frames;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::frames::center;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::frames::facing_of;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::frames::frame_owner;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::frames::hanging_drop_position;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::frames::sound;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::frames::visual_rotation_y_degrees;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::frames::*;
 #[allow(unused_imports)]

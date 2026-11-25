@@ -124,7 +124,7 @@ impl Game<'_> {
     }
     /// `hear` with a copy of the focused box, `None` with no box to offer; what it leaves of
     /// the copy goes back to the box. `hear`'s answer is handed back.
-    pub(in crate::game) fn with_focused_text_edit(
+    pub(in crate::game::client_side) fn with_focused_text_edit(
         &mut self,
         hear: impl FnOnce(&Self, &mut Option<TextEdit>) -> bool,
     ) -> bool {

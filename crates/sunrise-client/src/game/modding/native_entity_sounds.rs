@@ -11,7 +11,7 @@ use sunrise_client::mobs::Species;
 /// `Monster`'s sound source is hostile, and so are a few mobs that are not
 /// `Monster`s: `Hoglin`, `Ghast`, `Phantom`, `Shulker` and the slimes
 /// (`AbstractCubeMob`).
-pub(in crate::game) fn hostile_species(species: Species) -> bool {
+pub(in crate::game::server_side) fn hostile_species(species: Species) -> bool {
     sunrise_client::mobs::ai::is_monster(species)
         || matches!(
             species,
@@ -27,7 +27,7 @@ pub(in crate::game) fn hostile_species(species: Species) -> bool {
 impl Game<'_> {
     /// The level in place holds the entity: events and game events are
     /// queued in it.
-    pub(in crate::game) fn native_entity_here(&self, entity: EntityRef) -> bool {
+    pub(in crate::game::server_side) fn native_entity_here(&self, entity: EntityRef) -> bool {
         self.entity_level(entity)
             .is_some_and(|level| level.dimension() == self.native_level_key())
     }
@@ -158,7 +158,7 @@ impl Game<'_> {
     /// mutation takes effect immediately even inside an open transaction (such as non-player
     /// `living_hurt_and_break`), keeping the write and its notification on the same side of the
     /// rollback boundary.
-    pub(in crate::game) fn broadcast_entity_event_immediate(
+    pub(in crate::game::server_side) fn broadcast_entity_event_immediate(
         &mut self,
         entity: EntityRef,
         id: u8,

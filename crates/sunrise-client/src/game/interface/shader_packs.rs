@@ -33,7 +33,7 @@ use std::collections::{BTreeMap, HashMap};
 use sunrise_client_render::render_geometry::EntitySpan;
 
 /// The values the player chose for pack `name`'s options (`shaderpacks/<name>.txt`).
-pub(in crate::game) fn chosen_shader_options(name: &str) -> BTreeMap<String, String> {
+pub(in crate::game::client_side) fn chosen_shader_options(name: &str) -> BTreeMap<String, String> {
     let file = Game::shader_packs_dir().join(sunrise_shaders::chosen_file(name));
     std::fs::read_to_string(file)
         .map(|text| sunrise_shaders::parse_chosen(&text))
@@ -41,7 +41,7 @@ pub(in crate::game) fn chosen_shader_options(name: &str) -> BTreeMap<String, Str
 }
 
 /// Pack `name`'s options, screens and names in `language`, with the values the player chose.
-pub(in crate::game) fn read_shader_options(
+pub(in crate::game::client_side) fn read_shader_options(
     name: &str,
     language: &str,
     macros: &Macros,
@@ -74,7 +74,7 @@ pub(in crate::game) fn read_shader_options(
 }
 
 /// Saves the values chosen on the Shader Options page; none chosen removes the file.
-pub(in crate::game) fn write_shader_options(options: &ShaderOptions) {
+pub(in crate::game::client_side) fn write_shader_options(options: &ShaderOptions) {
     let file = Game::shader_packs_dir().join(sunrise_shaders::chosen_file(&options.pack));
     let saved = if options.chosen.is_empty() {
         std::fs::remove_file(&file).or_else(|e| match e.kind() {
@@ -91,14 +91,16 @@ pub(in crate::game) fn write_shader_options(options: &ShaderOptions) {
 
 /// The pack that runs over the world ("": none): `SUNRISE_SHADER_PACK`, else the pick
 /// (`active_pack`).
-pub(in crate::game) fn dev_pack() -> Option<&'static str> {
+pub(in crate::game::client_side) fn dev_pack() -> Option<&'static str> {
     static DEV_PACK: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
     DEV_PACK
         .get_or_init(|| std::env::var("SUNRISE_SHADER_PACK").ok())
         .as_deref()
 }
 
-pub(in crate::game) fn picked_pack(settings: &sunrise_client::settings::Settings) -> &str {
+pub(in crate::game::client_side) fn picked_pack(
+    settings: &sunrise_client::settings::Settings,
+) -> &str {
     active_pack(
         dev_pack().unwrap_or(&settings.sunrise.shader_pack),
         &settings.mods,
@@ -128,7 +130,7 @@ pub(in crate::game) enum TogglePlan {
 /// `dev_pack()` (the `SUNRISE_SHADER_PACK` override wins over the pick), `present` says
 /// whether the last pick is still installed, and `active` whether its owning mod lets it
 /// run (`active_pack`). Pure so tests cover every branch without a game.
-pub(in crate::game) fn plan_shader_toggle(
+pub(in crate::game::client_side) fn plan_shader_toggle(
     pick: &str,
     last: &str,
     dev_override: bool,
@@ -157,7 +159,7 @@ pub(in crate::game) fn plan_shader_toggle(
 /// the bound one, so a rebind never becomes another mapping's default (Replay Studio's
 /// camera-keyframe shortcut stays physical K's).
 impl Game<'_> {
-    pub(in crate::game) fn shader_pack_key_press(&mut self, name: &str) -> bool {
+    pub(in crate::game::client_side) fn shader_pack_key_press(&mut self, name: &str) -> bool {
         if self.client.screen != Screen::Playing
             || name == "key.keyboard.unknown"
             || self.settings.extras.shader_pack_key != name
@@ -185,7 +187,7 @@ pub(crate) struct PickedPack {
 }
 impl PickedPack {
     /// What it asks of the renderer's frame.
-    pub(crate) fn frame(self) -> sunrise_client::gfx::FrameRequest {
+    pub(in crate::game::client_side) fn frame(self) -> sunrise_client::gfx::FrameRequest {
         sunrise_client::gfx::FrameRequest::new()
             .with_linear_pack(self.linear.is_some())
             .with_linear_blend(self.linear == Some(sunrise_shader_api::Blend::Linear))
@@ -193,7 +195,7 @@ impl PickedPack {
     }
 }
 
-pub(in crate::game) fn picked_pack_shape(
+pub(in crate::game::client_side) fn picked_pack_shape(
     settings: &sunrise_client::settings::Settings,
 ) -> PickedPack {
     let picked = picked_pack(settings);
@@ -225,7 +227,7 @@ pub(in crate::game) fn picked_pack_shape(
 /// Whether the pack at `path` has passes that draw the terrain flat where the device can,
 /// reading translucent quads beside their section's solid ones: a `shaders/` pack, taken to
 /// draw terrain, or one of Sunrise's own with a `[shadow]` pass.
-pub(in crate::game) fn pack_draws_flat(path: &std::path::Path) -> bool {
+pub(in crate::game::client_side) fn pack_draws_flat(path: &std::path::Path) -> bool {
     !sunrise_shader_api::package::is_pack(path)
         || sunrise_shader_api::Pack::read_manifest(path).is_ok_and(|m| m.shadow.is_some())
 }
@@ -233,12 +235,12 @@ pub(in crate::game) fn pack_draws_flat(path: &std::path::Path) -> bool {
 /// Whether the pack at `path` reads the solid quads as vertices, not their compact records: a
 /// `shaders/` pack, taken to draw terrain. Sunrise's own read the records, `[displacement]`
 /// too (gfx/displace.rs).
-pub(in crate::game) fn pack_reads_vertices(path: &std::path::Path) -> bool {
+pub(in crate::game::client_side) fn pack_reads_vertices(path: &std::path::Path) -> bool {
     !sunrise_shader_api::package::is_pack(path)
 }
 
 // A native mod can bundle a pack as `native-<mod-id>`; its Mods toggle controls it too.
-pub(in crate::game) fn active_pack<'a>(picked: &'a str, mods: &ModList) -> &'a str {
+pub(in crate::game::client_side) fn active_pack<'a>(picked: &'a str, mods: &ModList) -> &'a str {
     if picked.strip_prefix("native-").is_some_and(|id| {
         mods.installed
             .iter()
@@ -302,7 +304,7 @@ pub(in crate::game) struct PackIds {
 
 #[cfg(test)]
 impl PackIds {
-    pub(in crate::game) fn with_entity_ids<'a>(
+    pub(in crate::game::client_side) fn with_entity_ids<'a>(
         ids: impl IntoIterator<Item = (&'a str, i32)>,
     ) -> Self {
         Self {
@@ -318,7 +320,7 @@ impl PackIds {
 impl Game<'_> {
     /// Loads the pack for the current dimension when it changed, and returns this frame's
     /// inputs to the pack's uniforms.
-    pub(in crate::game) fn shader_pack_inputs(
+    pub(in crate::game::client_side) fn shader_pack_inputs(
         &mut self,
         camera: glam::DVec3,
         eye: glam::DVec3,
@@ -712,7 +714,7 @@ impl Game<'_> {
 
     /// `Entity.isCurrentlyGlowing`, `Entity.isVehicle` and `Entity.isInWaterOrRain` of the
     /// window's player, as a client answers them, read without changing anything.
-    pub(in crate::game) fn pack_player_booleans(&self) -> (bool, bool, bool) {
+    pub(in crate::game::client_side) fn pack_player_booleans(&self) -> (bool, bool, bool) {
         let id = self.own_entity_id() as u32;
         // `Entity.isCurrentlyGlowing` on a client: shared flag 6 from a server, else the
         // Glowing effect `LivingEntity.isCurrentlyGlowing` sets it from.
@@ -733,7 +735,7 @@ impl Game<'_> {
     }
 
     /// The Shader Options page opened: the picked pack's options, screens and names.
-    pub(in crate::game) fn open_shader_options(&mut self) {
+    pub(in crate::game::client_side) fn open_shader_options(&mut self) {
         let mut macros = Macros::standard();
         if let Some(renderer) = &self.renderer.0 {
             renderer.define_pack_macros(&mut macros);
@@ -743,7 +745,7 @@ impl Game<'_> {
     }
 
     /// The Shader Options page closed with changes: they are saved, and the pack loads again.
-    pub(in crate::game) fn save_shader_options(&mut self) {
+    pub(in crate::game::client_side) fn save_shader_options(&mut self) {
         let Some(options) = self.settings.shader_options.take() else {
             return;
         };
@@ -757,7 +759,12 @@ impl Game<'_> {
     /// Turns off the pack `name` after loading it panicked or failed: nothing runs in its place,
     /// it is no longer the picked pack (so the next start does not load it again), and the chat
     /// says so.
-    pub(in crate::game) fn shader_pack_failed(&mut self, name: &str, dimension: i32, error: &str) {
+    pub(in crate::game::client_side) fn shader_pack_failed(
+        &mut self,
+        name: &str,
+        dimension: i32,
+        error: &str,
+    ) {
         let path = Self::shader_packs_dir().join(name);
         remember(&path, fingerprint(&path), None);
         log::error!("shader pack {name}: turned off: {error}");
@@ -778,12 +785,12 @@ impl Game<'_> {
     }
 
     /// Whether the game's vignette draws: the option, unless the loaded pack turns it off.
-    pub(in crate::game) fn vignette_shown(&self) -> bool {
+    pub(in crate::game::client_side) fn vignette_shown(&self) -> bool {
         self.settings.vignette && self.client.pack_ids.as_ref().is_none_or(|ids| ids.vignette)
     }
 
     /// `currentRenderedItemId` of a held `item`, [`rendered_item_id`]'s; 0 without a pack.
-    pub(in crate::game) fn rendered_item_id(&self, item: &str) -> i32 {
+    pub(in crate::game::client_side) fn rendered_item_id(&self, item: &str) -> i32 {
         self.client.pack_ids.as_ref().map_or(0, |ids| {
             rendered_item_id(
                 ids.block_items.get(item).copied(),
@@ -794,7 +801,7 @@ impl Game<'_> {
     }
 
     /// `heldItemId(2)` and `heldBlockLightValue(2)`: main hand, then off hand (5.2, 5.3).
-    pub(in crate::game) fn held_for_pack(&mut self) -> ([i32; 2], [i32; 2]) {
+    pub(in crate::game::client_side) fn held_for_pack(&mut self) -> ([i32; 2], [i32; 2]) {
         if self.client.pack_ids.is_none() {
             return ([0; 2], [0; 2]);
         }
@@ -827,11 +834,16 @@ impl Game<'_> {
     }
 
     /// Starts a span for entity geometry that blends (name tags, shadows).
-    pub(in crate::game) fn mark_translucent_entity(&self, start: usize, name: &str) {
+    pub(in crate::game::client_side) fn mark_translucent_entity(&self, start: usize, name: &str) {
         self.mark_entity_part(start, name, true);
     }
 
-    pub(in crate::game) fn mark_entity_part(&self, start: usize, name: &str, translucent: bool) {
+    pub(in crate::game::client_side) fn mark_entity_part(
+        &self,
+        start: usize,
+        name: &str,
+        translucent: bool,
+    ) {
         let id = match &self.client.pack_ids {
             Some(ids) => ids
                 .entities
@@ -851,7 +863,7 @@ impl Game<'_> {
     }
 
     /// Starts a span for the block entity of block state `state`.
-    pub(in crate::game) fn mark_block_entity(&self, start: usize, state: u32) {
+    pub(in crate::game::client_side) fn mark_block_entity(&self, start: usize, state: u32) {
         let Some(ids) = &self.client.pack_ids else {
             if native_spans() {
                 self.push_span(start, "BLOCK_ENTITIES", state as i32);
@@ -889,7 +901,7 @@ impl Game<'_> {
     /// Starts a span for mod model copies (`WorldDrawContext::draw_model_instances`) under a
     /// pack: block entities, as `BlockEntityDrawContext::model` draws the same model, with the
     /// id of a block the pack doesn't list, since no block owns them. Nothing without a pack.
-    pub(in crate::game) fn mark_model_copies(&self, start: usize) {
+    pub(in crate::game::client_side) fn mark_model_copies(&self, start: usize) {
         if let Some(ids) = &self.client.pack_ids {
             self.push_span(start, "BLOCK_ENTITIES", ids.missing_block);
         }
@@ -897,7 +909,7 @@ impl Game<'_> {
 
     /// Starts the span of the local player's model; `hidden` in first person, where only a
     /// pack's shadow pass draws it.
-    pub(in crate::game) fn mark_player(&self, start: usize, hidden: bool) {
+    pub(in crate::game::client_side) fn mark_player(&self, start: usize, hidden: bool) {
         self.mark_entity(start, "minecraft:player");
         if (self.client.pack_ids.is_some() || native_spans())
             && let Some(last) = self.client.entity_spans.borrow_mut().last_mut()
@@ -913,7 +925,7 @@ impl Game<'_> {
 
     /// Marks vertices `start..end` (one entity) as hidden from the camera, for an entity
     /// Sunrise's culling would drop but a pack's shadow pass still draws (`EntitySpan::hide`).
-    pub(in crate::game) fn hide_spans_from(&self, start: usize, end: usize) -> bool {
+    pub(in crate::game::client_side) fn hide_spans_from(&self, start: usize, end: usize) -> bool {
         EntitySpan::hide(&mut self.client.entity_spans.borrow_mut(), start, end)
     }
 
@@ -924,7 +936,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn push_span(&self, start: usize, stage: &str, id: i32) {
+    pub(in crate::game::client_side) fn push_span(&self, start: usize, stage: &str, id: i32) {
         let mut spans = self.client.entity_spans.borrow_mut();
         let span = EntitySpan {
             start: start as u32,
@@ -955,7 +967,7 @@ impl Game<'_> {
 /// (`block`: its block's `block.properties` id, 0 when the file lacks it) reads that, whatever
 /// `item.properties` says of it; any other item its `item.properties` id (`item`), and one the
 /// file lacks 65535, or 0 when the pack has no `item.properties` (`item_file`).
-pub(in crate::game) fn rendered_item_id(
+pub(in crate::game::client_side) fn rendered_item_id(
     block: Option<i32>,
     item: Option<i32>,
     item_file: bool,
@@ -966,7 +978,7 @@ pub(in crate::game) fn rendered_item_id(
 /// The block items' `currentRenderedItemId`: for each block's default state, the item it gives
 /// (`StateFacts::item`) takes the state's id in `ids`, or 0. A block named as its item wins over
 /// another block giving that item.
-pub(in crate::game) fn block_item_ids(
+pub(in crate::game::client_side) fn block_item_ids(
     facts: &sunrise_client::blocks::BlockFacts,
     registry: &sunrise_world::registry::BlockRegistry,
     ids: &BlockIds,
@@ -991,13 +1003,13 @@ pub(in crate::game) fn block_item_ids(
 }
 
 /// Spans for a native mod (`native_render::RenderNeeds::entity_spans`), without a pack.
-pub(in crate::game) fn native_spans() -> bool {
+pub(in crate::game::client_side) fn native_spans() -> bool {
     sunrise_client_render::render_slots::needs().entity_spans
 }
 
 /// A span's id for entity type `name` without a pack: stable, so a mod can match runs from one
 /// frame to the next.
-pub(in crate::game) fn name_id(name: &str) -> i32 {
+pub(in crate::game::client_side) fn name_id(name: &str) -> i32 {
     // FNV-1a.
     let mut hash: u32 = 0x811c_9dc5;
     for byte in name.bytes() {
@@ -1009,7 +1021,7 @@ pub(in crate::game) fn name_id(name: &str) -> i32 {
 /// Model/fluid material ids by the original state, independent of sprite sharing and
 /// multipart model selection. Waterlogged model faces retain their model id; emitted
 /// fluid faces use the fluid's state (the source state itself for liquid blocks).
-pub(in crate::game) fn terrain_state_ids(
+pub(in crate::game::client_side) fn terrain_state_ids(
     registry: &sunrise_world::registry::BlockRegistry,
     ids: &BlockIds,
 ) -> Vec<i32> {
@@ -1088,7 +1100,7 @@ pub(in crate::game) struct BlockIdVotes<'a>(
 );
 
 impl<'a> BlockIdVotes<'a> {
-    pub(in crate::game) fn add(
+    pub(in crate::game::client_side) fn add(
         &mut self,
         layer: u32,
         id: i32,
@@ -1110,7 +1122,7 @@ impl<'a> BlockIdVotes<'a> {
         v.1.insert(name);
     }
 
-    pub(in crate::game) fn write(self, table: &mut [i32]) {
+    pub(in crate::game::client_side) fn write(self, table: &mut [i32]) {
         let mut best = BTreeMap::new();
         for ((layer, id), (named, blocks)) in self.0 {
             let candidate = (named, blocks.len(), -id);
@@ -1181,7 +1193,10 @@ pub(in crate::game) mod block_id_tests {
 /// (`block/oak_leaves` for `oak_leaves`, and still/flow sprites for their fluid), else the id
 /// most blocks drawing it share (ties: the lowest); -1 when no block drawing it has one.
 /// y is 1 for the fluid sprites, 0 otherwise (`fluid_pairs`).
-pub(in crate::game) fn block_id_table(pack: &super::PackResources, ids: &BlockIds) -> Vec<i32> {
+pub(in crate::game::client_side) fn block_id_table(
+    pack: &super::PackResources,
+    ids: &BlockIds,
+) -> Vec<i32> {
     let layers = pack
         .render
         .sprite_layers
@@ -1242,7 +1257,7 @@ pub(in crate::game) fn block_id_table(pack: &super::PackResources, ids: &BlockId
 /// `fluids` layers, 0 for the others. Iris 1.11.7, with probe packs of ours (#10452), gave
 /// terrain y 1 on water and lava, and 0 on every other block, whether `block.properties`
 /// maps it or not.
-pub(in crate::game) fn fluid_pairs(
+pub(in crate::game::client_side) fn fluid_pairs(
     layers: usize,
     fluids: impl IntoIterator<Item = u32>,
 ) -> Vec<i32> {

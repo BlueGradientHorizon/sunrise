@@ -9,21 +9,9 @@ pub(in crate::game::server_side) use crate::game::client_side::hand::HarvestDisp
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::hand::OFFHAND;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::hand::attack_range_contains;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::hand::attack_reach;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::hand::in_attack_range;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::hand::interact_location;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::hand::matches_for_swap;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::hand::reach_pick;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::hand::shows_held_stack;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::hand::v3;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::hand::*;
 #[allow(unused_imports)]
@@ -38,7 +26,9 @@ pub(in crate::game::server_side) use sunrise_core::geometry::{Aabb, Vec3};
 
 impl Game<'_> {
     /// The item whose attack damage and speed modifiers the player has (`attack_item`).
-    pub(in crate::game) fn attack_item_info(&self) -> Option<&sunrise_client::items::ItemInfo> {
+    pub(in crate::game::server_side) fn attack_item_info(
+        &self,
+    ) -> Option<&sunrise_client::items::ItemInfo> {
         self.items().get(self.server.attack_item.as_deref()?)
     }
     /// `Attributes.ATTACK_SPEED` with the main-hand item's modifier and the
@@ -126,7 +116,7 @@ impl Game<'_> {
     }
     /// `swing_arm` for a use whose result is `SwingSource.PREDICTED`: the
     /// player's client swings by itself, so a server keeps it to the others.
-    pub(in crate::game) fn swing_arm_predicted(&mut self) {
+    pub(in crate::game::server_side) fn swing_arm_predicted(&mut self) {
         let before = self.swings_started;
         self.swing_arm();
         if self.swings_started != before {

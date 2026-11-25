@@ -282,6 +282,3 @@ pub(in crate::game) fn key(game: &mut Game<'_>, key: KeyCode, state: ElementStat
         |_| false,
     );
 }
-
-#[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::native_hooks_client::base::screen_widgets_tests::input_routing::publish_frame;

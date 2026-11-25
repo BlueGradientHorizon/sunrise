@@ -33,27 +33,13 @@ pub(in crate::game::server_side) use crate::game::client_side::sculk::Tables;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::sculk::block_of;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::sculk::center;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::sculk::darkness_blend_added;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::sculk::darkness_blend_at;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::sculk::darkness_blend_tick;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::sculk::darkness_target;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::sculk::dist_sqr;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::sculk::dist_sqr_f;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::sculk::event_cause;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::sculk::flaps;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::sculk::index_cell;
-#[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::sculk::night_vision_scale;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::sculk::sensor_signal;
 #[allow(unused_imports)]
@@ -428,7 +414,7 @@ impl Game<'_> {
     }
     /// The block entity phase for sculk: vibration tickers and catalysts, in
     /// the order the block entities were added (`Level.tickBlockEntities`).
-    pub(in crate::game) fn tick_sculk_blocks(&mut self) -> Result<()> {
+    pub(in crate::game::server_side) fn tick_sculk_blocks(&mut self) -> Result<()> {
         self.sculk_prepare();
         self.sculk_sync_index();
         // `ServerLevel.shouldTickBlocksAt` in a block-ticking chunk, from

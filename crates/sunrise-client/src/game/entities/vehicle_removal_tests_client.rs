@@ -13,10 +13,6 @@ pub(in crate::game::client_side) use crate::game::server_side::vehicle_removal_t
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::vehicle_removal_tests::push_pig;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::vehicle_removal_tests::run_mob_removal_order_witness;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::vehicle_removal_tests::tick_area;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::vehicle_removal_tests::with_removal_test_hooks;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::vehicle_removal_tests::*;

@@ -59,7 +59,7 @@ fn glyph_at(
 impl Game<'_> {
     /// A key row waits for its key: B is Escape, which unbinds; its buttons aren't pressed. A
     /// prompt over the row has the buttons first.
-    pub(in crate::game) fn pad_binding(&self) -> bool {
+    pub(in crate::game::client_side) fn pad_binding(&self) -> bool {
         !self.prompt_open()
             && self.client.screen == Screen::Options
             && (self.options_waiting_for_key() || self.ui.options.selected_pad_action.is_some())
@@ -75,7 +75,10 @@ impl Game<'_> {
 
     /// The job `button` does here, on the target that does it. `None` while it isn't on screen,
     /// so B still falls back to Escape.
-    pub(in crate::game) fn pad_action_target(&self, button: Button) -> Option<(Action, Target)> {
+    pub(in crate::game::client_side) fn pad_action_target(
+        &self,
+        button: Button,
+    ) -> Option<(Action, Target)> {
         let declared = action_for_job(MenuJob::of(button)?, &self.pad_actions())?;
         let [x, y, w, h] = declared.rect;
         let at = (x + w / 2.0, y + h / 2.0);
@@ -95,7 +98,7 @@ impl Game<'_> {
     }
 
     /// Declared buttons show their glyph: the pad drives, and a menu is open. Focus or crosshair.
-    pub(in crate::game) fn pad_action_glyphs_on(&self) -> bool {
+    pub(in crate::game::client_side) fn pad_action_glyphs_on(&self) -> bool {
         self.pad.0.in_use
             && !self.pad.0.menu.keyboard
             && !self.pad_keyboard_captures()
@@ -141,7 +144,7 @@ impl Game<'_> {
         glyphs
     }
 
-    pub(in crate::game) fn draw_pad_action_glyphs(&self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_pad_action_glyphs(&self, batch: &mut HudBatch) {
         let atlas = &self.gui.atlas;
         for (glyph, x, y) in self.pad_glyphs((batch.width, batch.height)) {
             pad_glyph::draw(batch, atlas, glyph, x, y);
@@ -150,7 +153,7 @@ impl Game<'_> {
 
     /// `pad status`: the glyphs drawn now and where: the part each is for, its label, its text's
     /// place, what it covers, and its sprite (none: the label on a key).
-    pub(in crate::game) fn pad_glyphs_status(&self) -> Vec<serde_json::Value> {
+    pub(in crate::game::client_side) fn pad_glyphs_status(&self) -> Vec<serde_json::Value> {
         let view = self.gui_batch().map_or((0.0, 0.0), |b| (b.width, b.height));
         let atlas = &self.gui.atlas;
         self.pad_glyphs(view)
@@ -168,7 +171,7 @@ impl Game<'_> {
     }
 
     /// `pad status`: what this screen declared.
-    pub(in crate::game) fn pad_actions_status(&self) -> Vec<serde_json::Value> {
+    pub(in crate::game::client_side) fn pad_actions_status(&self) -> Vec<serde_json::Value> {
         self.pad_actions()
             .iter()
             .map(|d| {
@@ -182,7 +185,7 @@ impl Game<'_> {
     }
 
     /// `pad status`: buttons labelled Done, Back or Cancel that didn't declare their job.
-    pub(in crate::game) fn pad_undeclared_buttons(&self) -> Vec<String> {
+    pub(in crate::game::client_side) fn pad_undeclared_buttons(&self) -> Vec<String> {
         let names = [
             ("gui.done", "Done"),
             ("gui.back", "Back"),

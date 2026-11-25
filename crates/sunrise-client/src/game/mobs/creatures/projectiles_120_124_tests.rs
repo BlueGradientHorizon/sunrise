@@ -1146,9 +1146,6 @@ pub(in crate::game) enum Target124 {
     Stand(u32),
 }
 
-#[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::creatures_server::projectiles_120_124_tests::alive_124;
-
 #[test]
 #[ignore = "run by tools/test_projectile_targets_parity.py"]
 fn witness_firework_rocket_targets_124() {

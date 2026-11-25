@@ -45,7 +45,7 @@ impl Game<'_> {
     }
     /// A click on an item tab's display slot: the screen's own handling
     /// (`creative::click_display`), never the menu's.
-    pub(in crate::game) fn creative_display_click(
+    pub(in crate::game::client_side) fn creative_display_click(
         &mut self,
         slot: usize,
         button: i32,
@@ -953,7 +953,10 @@ impl Game<'_> {
     }
     /// `CrafterBlockEntity.setSlotState`: the menu's slot states land on the
     /// block entity, whose `setChanged` marks the chunk for saving.
-    pub(in crate::game) fn apply_crafter_slot_states(&mut self, menu: &sunrise_client::menu::Menu) {
+    pub(in crate::game::client_side) fn apply_crafter_slot_states(
+        &mut self,
+        menu: &sunrise_client::menu::Menu,
+    ) {
         let Some(key) = self.container else {
             return;
         };
@@ -990,7 +993,7 @@ impl Game<'_> {
 
     /// A sound a menu click made the player play (a bundle's insert or
     /// remove): `Entity.playSound` at the player.
-    pub(in crate::game) fn player_menu_sound(&mut self, sound: &str) {
+    pub(in crate::game::client_side) fn player_menu_sound(&mut self, sound: &str) {
         let Some(p) = self.player.as_ref() else {
             return;
         };

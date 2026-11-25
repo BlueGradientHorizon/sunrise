@@ -95,7 +95,10 @@ impl Game<'_> {
             && self.res.block_entity_render().renders(state)
     }
     /// Runs before with_level returns: no menu, ticker, save or packet sees an old owner.
-    pub(in crate::game) fn finish_piston_position_changes(&mut self, changes: Vec<PositionChange>) {
+    pub(in crate::game::server_side) fn finish_piston_position_changes(
+        &mut self,
+        changes: Vec<PositionChange>,
+    ) {
         if changes.is_empty() {
             return;
         }

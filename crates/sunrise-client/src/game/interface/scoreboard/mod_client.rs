@@ -7,23 +7,9 @@ pub(in crate::game::client_side) use crate::game::server_side::scoreboard::Recor
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::scoreboard::ScoreState;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::scoreboard::feedback_name;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::scoreboard::gives_uuid;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::scoreboard::in_range;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::scoreboard::local_tab_players;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::scoreboard::pet_team;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::scoreboard::root_owner;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::scoreboard::tab_players_needed;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::scoreboard::tame_owner;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::scoreboard::trigger_objectives_for;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::scoreboard::*;
 #[allow(unused_imports)]
@@ -56,7 +42,7 @@ impl Game<'_> {
     /// `Hud.extractTabList`: the player list while the player-list key is
     /// held. A local world shows it with a joined LAN guest or a `list`
     /// objective.
-    pub(in crate::game) fn draw_tab_list(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_tab_list(&mut self, batch: &mut HudBatch) {
         use sunrise_client::tab_list::{self, TabInputs};
         // Player heads and the player list both draw from the same skin
         // slots: a new frame, with what the last one drew.
@@ -146,7 +132,7 @@ impl Game<'_> {
     }
     /// Advance the skin slots to a new frame with what the last one drew, and
     /// store any finished skin downloads into the atlas.
-    pub(in crate::game) fn flush_skin_slots(&mut self) {
+    pub(in crate::game::client_side) fn flush_skin_slots(&mut self) {
         let (ready, drawn) = {
             let mut downloads = self.skin_downloads.0.borrow_mut();
             (downloads.take_ready(), downloads.take_drawn())

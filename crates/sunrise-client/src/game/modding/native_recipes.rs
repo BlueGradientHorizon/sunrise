@@ -122,7 +122,7 @@ impl Index {
 
 /// A stack's components beyond its item's, as vanilla's item syntax writes
 /// them (`[minecraft:potion_contents={potion:"minecraft:swiftness"}]`), or "".
-pub(in crate::game) fn components(s: &ItemStack) -> String {
+pub(in crate::game::client_side) fn components(s: &ItemStack) -> String {
     use sunrise_core::nbt::Tag;
     let Some(Tag::Compound(entries)) = sunrise_client::item_data::component_snapshot(s) else {
         return String::new();
@@ -567,14 +567,16 @@ impl Game<'_> {
     }
     /// The display numbers the recipe book reads: the server's recipes',
     /// once a server sent them, else the world's own.
-    pub(in crate::game) fn display_index(&self) -> &sunrise_client::recipe_book::RecipeIndex {
+    pub(in crate::game::client_side) fn display_index(
+        &self,
+    ) -> &sunrise_client::recipe_book::RecipeIndex {
         match &self.recipe_tables.synced_index {
             Some(index) => index,
             None => &self.stations().recipe_index,
         }
     }
     /// A new play session (`Login`): what the last server sent is gone.
-    pub(in crate::game) fn forget_synced_recipes(&mut self) {
+    pub(in crate::game::client_side) fn forget_synced_recipes(&mut self) {
         self.recipe_tables.synced = None;
         self.recipe_tables.synced_index = None;
         self.recipe_tables.incoming = IncomingRecipes::default();
@@ -585,7 +587,7 @@ impl Game<'_> {
     /// `native_recipes_received` for the types that came, once the window
     /// has its player: the recipes of a join come before it, and the helpers
     /// answer nothing until then. Once a frame.
-    pub(in crate::game) fn recipes_received_now(&mut self) {
+    pub(in crate::game::client_side) fn recipes_received_now(&mut self) {
         if self.player.is_some()
             && let Some(types) = self.recipe_tables.received.take()
         {
@@ -596,7 +598,7 @@ impl Game<'_> {
     /// A `sunrise:recipe_content` part the server sent the window. On the
     /// last, the window's tables take the server's recipes of those types in
     /// place of its own, and the mods hear of it (`RecipesReceivedEvent`).
-    pub(in crate::game) fn remote_recipe_content(&mut self, data: &[u8]) {
+    pub(in crate::game::client_side) fn remote_recipe_content(&mut self, data: &[u8]) {
         let part = match sunrise_client::lan::recipes::ContentPart::decode(data) {
             Ok(part) => part,
             Err(e) => {

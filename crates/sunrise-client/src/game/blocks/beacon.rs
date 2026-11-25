@@ -48,7 +48,7 @@ const PAYMENT_ROW: [(&str, f32); 5] = [
     ("minecraft:iron_ingot", 108.0),
 ];
 /// `BeaconMenu.PaymentSlot` and the player inventory, relative to the 176 origin.
-pub(in crate::game) fn slot_position(i: usize) -> Option<(f32, f32)> {
+pub(in crate::game::client_side) fn slot_position(i: usize) -> Option<(f32, f32)> {
     Some(match i {
         0..9 => (36.0 + SHIFT + i as f32 * 18.0, 195.0),
         9..36 => (
@@ -168,7 +168,7 @@ impl Game<'_> {
     /// `IBlockStateExtension.getBeaconColorMultiplier` of `state` (named `name`) at `pos`
     /// for the beacon at `beacon`: the beam colour of a `BeaconBeamBlock`, unless a part of the
     /// state answers. The beam keeps the answer's red, green and blue.
-    pub(in crate::game) fn beacon_color(
+    pub(in crate::game::client_side) fn beacon_color(
         &self,
         state: BlockStateId,
         name: &str,
@@ -308,7 +308,7 @@ impl Game<'_> {
             self.trigger_construct_beacon(levels);
         }
     }
-    pub(in crate::game) fn beacon_sound(&mut self, p: [i32; 3], sound: &str) {
+    pub(in crate::game::client_side) fn beacon_sound(&mut self, p: [i32; 3], sound: &str) {
         let at = [
             f64::from(p[0]) + 0.5,
             f64::from(p[1]) + 0.5,
@@ -387,7 +387,7 @@ impl Game<'_> {
         }
     }
     /// Opening the menu shows the beacon's current powers.
-    pub(in crate::game) fn beacon_opened(&mut self) {
+    pub(in crate::game::client_side) fn beacon_opened(&mut self) {
         let Some(s) = self.station.as_ref().filter(|s| s.kind == Kind::Beacon) else {
             return;
         };
@@ -418,7 +418,7 @@ impl Game<'_> {
     /// Clicks on the power, confirm and cancel buttons.
     /// The effect, upgrade, confirm and cancel buttons a controller can
     /// focus (GUI origin relative).
-    pub(in crate::game) fn beacon_targets(&self) -> Vec<[f32; 4]> {
+    pub(in crate::game::client_side) fn beacon_targets(&self) -> Vec<[f32; 4]> {
         let (ux, uy) = upgrade_button();
         buttons()
             .into_iter()
@@ -427,7 +427,7 @@ impl Game<'_> {
             .map(|(x, y)| [x + SHIFT, y, 22.0, 22.0])
             .collect()
     }
-    pub(in crate::game) fn beacon_click(&mut self, local: (f32, f32)) -> bool {
+    pub(in crate::game::client_side) fn beacon_click(&mut self, local: (f32, f32)) -> bool {
         let l = (local.0 - SHIFT, local.1);
         let levels = self.beacon_levels();
         let Some(sel) = self.station.as_ref().map(|s| s.beacon) else {
@@ -532,7 +532,7 @@ impl Game<'_> {
         self.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
     }
     /// `BeaconScreen`: background, labels, payment icons, power buttons.
-    pub(in crate::game) fn draw_beacon(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_beacon(&mut self, batch: &mut HudBatch) {
         let (ox, oy) = self.inventory_origin(batch);
         let (bx, by) = (ox + SHIFT, oy);
         let local = (self.client.cursor.0 - bx, self.client.cursor.1 - by);

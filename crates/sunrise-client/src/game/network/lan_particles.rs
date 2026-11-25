@@ -49,14 +49,14 @@ pub(in crate::game) struct QueuedParticle {
 
 /// `PowderSnowBlock.entityInside`'s server roll. The branch and both float
 /// draws follow Java's `getKnownMovement`/`randomBetween` order.
-pub(in crate::game) fn powder_snow_velocity(
+pub(in crate::game::server_side) fn powder_snow_velocity(
     known: Vec3,
     random: &mut impl RandomSource,
 ) -> Option<[f64; 3]> {
     sunrise_client::powder_snow::particle_velocity(known, random)
 }
 
-pub(in crate::game) fn send_native_nearby(
+pub(in crate::game::server_side) fn send_native_nearby(
     host: &LanHost,
     dimension: &str,
     packet: Vec<u8>,
@@ -100,17 +100,17 @@ pub(in crate::game) fn particle_position_source(source: &NetworkPositionSource) 
 }
 
 /// An ARGB colour as the options' RGBA.
-pub(in crate::game) fn rgba(argb: i32) -> [f32; 4] {
+pub(in crate::game::server_side) fn rgba(argb: i32) -> [f32; 4] {
     let c = |shift: i32| ((argb >> shift) & 255) as f32 / 255.0;
     [c(16), c(8), c(0), c(24)]
 }
-pub(in crate::game) fn rgb(c: [f32; 4]) -> [f32; 3] {
+pub(in crate::game::server_side) fn rgb(c: [f32; 4]) -> [f32; 3] {
     [c[0], c[1], c[2]]
 }
 
 /// `ServerLevel.sendParticles` of one soul particle moving by `velocity`
 /// (Soul Speed's `spawn_particles`): sent to the players within 32 blocks.
-pub(in crate::game) fn send_soul_particle(
+pub(in crate::game::server_side) fn send_soul_particle(
     host: &super::lan::LanHost,
     at: [f64; 3],
     velocity: [f64; 3],
@@ -143,7 +143,7 @@ pub(in crate::game) fn send_soul_particle(
 
 impl Game<'_> {
     /// A snowflake from a vehicle (`PowderSnowBlock.entityInside`), to every player around.
-    pub(in crate::game) fn lan_snowflake(&self, at: [f64; 3], velocity: [f64; 3]) {
+    pub(in crate::game::server_side) fn lan_snowflake(&self, at: [f64; 3], velocity: [f64; 3]) {
         if let Some(host) = self.lan.as_ref() {
             send_snowflake_particle(host, at, velocity);
         }
@@ -184,7 +184,7 @@ pub(in crate::game) fn send_snowflake_particle(
 }
 
 /// `ServerLevel.sendParticles`: sends a `ClientboundLevelParticlesPacket` to each player within 32 blocks.
-pub(in crate::game) fn send_hub_level_particles(
+pub(in crate::game::server_side) fn send_hub_level_particles(
     hub: &Hub,
     options: &ParticleOptions,
     at: [f64; 3],
@@ -247,7 +247,11 @@ pub(in crate::game) fn send_hub_level_particles(
 impl Game<'_> {
     /// `SonicBoom.tick` uses `ServerLevel.sendParticles` for each ray point.
     /// Keep the local event's rendering; connected players receive one at rest.
-    pub(in crate::game) fn lan_sonic_boom(&self, options: &ParticleOptions, at: [f64; 3]) {
+    pub(in crate::game::server_side) fn lan_sonic_boom(
+        &self,
+        options: &ParticleOptions,
+        at: [f64; 3],
+    ) {
         let (Some(host), Some(particle)) = (&self.lan, self.network_particle(options, None)) else {
             return;
         };
@@ -332,7 +336,7 @@ impl Game<'_> {
     /// network id and the data it carries (`state` for the block particles).
     /// None while not serving, or for a particle whose data isn't sent from
     /// here (items, trails).
-    pub(in crate::game) fn network_particle(
+    pub(in crate::game::server_side) fn network_particle(
         &self,
         options: &ParticleOptions,
         state: Option<BlockStateId>,
@@ -413,7 +417,7 @@ impl Game<'_> {
     /// raised by the option's offset. An entity this client does not have is
     /// no destination at all: vanilla makes the particle and removes it on its
     /// first tick, so nothing of it is ever drawn.
-    pub(in crate::game) fn vibration_destination(
+    pub(in crate::game::server_side) fn vibration_destination(
         &self,
         source: &NetworkPositionSource,
     ) -> Option<[f64; 3]> {
@@ -496,7 +500,7 @@ impl Game<'_> {
     /// (`skip_hooks` or active `asking_level_sound`) skip re-dispatching the hooks and undergo
     /// registry validation only. Returns the sound ready for pure packet delivery, or `None` if
     /// canceled/dropped.
-    pub(in crate::game) fn resolve_native_sound(
+    pub(in crate::game::server_side) fn resolve_native_sound(
         &mut self,
         mut sound: super::creatures::NativeSound,
     ) -> Option<super::creatures::NativeSound> {
@@ -544,7 +548,7 @@ impl Game<'_> {
 
     /// Pure packet delivery for a native sound that has already passed `resolve_native_sound`
     /// (runs no mod hooks and does not touch `self.creatures.lan_sounds`).
-    pub(in crate::game) fn send_resolved_native_sound(
+    pub(in crate::game::server_side) fn send_resolved_native_sound(
         &self,
         sound: &super::creatures::NativeSound,
     ) {
@@ -616,7 +620,7 @@ impl Game<'_> {
     /// creative player, whom nothing hurt), and the blast's `effects`. The
     /// sound reaches them on its own (the level's sounds), and so does a hurt
     /// player's push (the motion they are sent).
-    pub(in crate::game) fn lan_explode(
+    pub(in crate::game::server_side) fn lan_explode(
         &mut self,
         center: [f64; 3],
         small: bool,
@@ -673,7 +677,7 @@ impl Game<'_> {
     /// no block particles, and for each player it pushed the push
     /// (`ServerExplosion.hitPlayers`), which only that client applies, as
     /// nothing hurt them.
-    pub(in crate::game) fn lan_wind_burst(
+    pub(in crate::game::server_side) fn lan_wind_burst(
         &self,
         center: [f64; 3],
         radius: f32,
@@ -696,7 +700,7 @@ impl Game<'_> {
 
     /// `packet` to each player within 64 blocks of its centre, with the push
     /// `pushed` holds for them.
-    pub(in crate::game) fn send_explosion(
+    pub(in crate::game::server_side) fn send_explosion(
         &self,
         mut packet: play::Explode,
         pushed: &[(u32, [f64; 3])],
@@ -725,7 +729,7 @@ impl Game<'_> {
 /// `ClientboundExplodePacket` without a push, or None while not serving.
 /// The sound is the level's, which the players hear already, so it isn't
 /// played from the packet.
-pub(in crate::game) fn explosion_packet(
+pub(in crate::game::server_side) fn explosion_packet(
     hub: &Hub,
     center: [f64; 3],
     radius: f32,

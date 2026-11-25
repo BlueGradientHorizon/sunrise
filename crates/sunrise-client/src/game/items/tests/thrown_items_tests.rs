@@ -21,7 +21,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 /// A game with the player standing at 8.5 70 8.5 in a ticking chunk, with the
 /// positional sounds it plays recorded.
-pub(in crate::game) fn standing_game<'a>(
+pub(in crate::game::server_side) fn standing_game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
 ) -> Game<'a> {
     let mut game = server_game(resources);

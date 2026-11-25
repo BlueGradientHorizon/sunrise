@@ -9,10 +9,6 @@ pub(in crate::game::client_side) use crate::game::server_side::ominous_item_spaw
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::ominous_item_spawner::TICKS_SCALING;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::ominous_item_spawner::block;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::ominous_item_spawner::projectile;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::ominous_item_spawner::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_assets::item_model::DisplayContext;

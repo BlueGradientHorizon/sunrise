@@ -293,7 +293,7 @@ impl Game<'_> {
 
     /// `Animal.spawnChildFromBreeding` once `baby` is constructed: lends it to the listeners and
     /// applies the remaining baby (or its replacement) before publishing the action's effects.
-    pub(in crate::game) fn breed_with_listeners<T>(
+    pub(in crate::game::server_side) fn breed_with_listeners<T>(
         &mut self,
         parent: u32,
         partner: u32,

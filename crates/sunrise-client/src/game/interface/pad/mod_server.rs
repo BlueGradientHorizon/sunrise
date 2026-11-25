@@ -19,8 +19,6 @@ pub(in crate::game::server_side) use crate::game::client_side::pad::RadialRuns;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::pad::UI_CLICK_VOLUME;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::client_side::pad::style_named;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::pad::*;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use serde_json::{Value, json};

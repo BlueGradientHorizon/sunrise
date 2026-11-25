@@ -242,7 +242,7 @@ impl Game<'_> {
         self.native_firework_explode(r.id, at, r.explosions.len());
     }
     /// FireworkRocketEntity.handleEntityEvent: use the synchronized item data.
-    pub(in crate::game) fn remote_firework_explosion(&mut self, id: i32) {
+    pub(in crate::game::client_side) fn remote_firework_explosion(&mut self, id: i32) {
         let camera = self.eye_position();
         if let Some(r) = self.rockets.iter().find(|r| r.id == id as u32) {
             let at = [r.position.x, r.position.y, r.position.z];
@@ -258,7 +258,7 @@ impl Game<'_> {
     }
     /// The trail (`FireworkRocketEntity.tick` on a client): a spark each tick
     /// at the rocket, drifting against its motion.
-    pub(in crate::game) fn rocket_spark(&mut self, r: &Rocket) {
+    pub(in crate::game::client_side) fn rocket_spark(&mut self, r: &Rocket) {
         let g = |g: &mut sunrise_core::random::LegacyRandom| g.next_gaussian() * 0.05;
         let v = [
             g(&mut self.world.random),

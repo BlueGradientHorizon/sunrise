@@ -7,8 +7,6 @@ pub(in crate::game::client_side) use crate::game::server_side::cushions::Placeme
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::cushions::aabb;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::cushions::overlaps;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::cushions::snap_yaw;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::cushions::*;
@@ -27,7 +25,7 @@ pub(in crate::game::client_side) use sunrise_core::geometry::{Aabb, Vec3};
 
 impl Game<'_> {
     /// `Cushion.showBreakingParticles`: ten of the matching wool block.
-    pub(in crate::game) fn cushion_break_particles(&mut self, c: &Cushion) {
+    pub(in crate::game::client_side) fn cushion_break_particles(&mut self, c: &Cushion) {
         let name = format!("minecraft:{}_wool", c.color_name());
         let Some(state) = self.pack.assets.registry.default_state(&name) else {
             return;
@@ -55,7 +53,7 @@ impl Game<'_> {
     }
     /// `CushionRenderer`: the coloured model, rotated to the nearest
     /// direction, with its bottom on the cushion's position.
-    pub(in crate::game) fn cushion_geometry(
+    pub(in crate::game::client_side) fn cushion_geometry(
         &self,
         camera: glam::DVec3,
         out: &mut Vec<sunrise_client_render::render_geometry::Vertex>,

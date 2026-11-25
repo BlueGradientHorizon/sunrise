@@ -46,7 +46,7 @@ pub(in crate::game) struct Devices {
 
 /// `pad status`'s line for a controller. `uuid` is the id an SDL mapping row starts with, so a
 /// report says which row a pad needs; `mapping_source` says whether one was found.
-pub(in crate::game) fn controller_status(
+pub(in crate::game::client_side) fn controller_status(
     id: gilrs::GamepadId,
     pad: &gilrs::Gamepad,
     active: Option<gilrs::GamepadId>,
@@ -69,7 +69,7 @@ pub(in crate::game) fn controller_status(
 
 impl Devices {
     /// The hardware part of `pad status`.
-    pub(in crate::game) fn status(&self) -> Value {
+    pub(in crate::game::client_side) fn status(&self) -> Value {
         let pads: Vec<Value> = match &self.gilrs {
             Some(g) => g
                 .gamepads()
@@ -86,7 +86,7 @@ impl Devices {
     }
 }
 
-pub(in crate::game) fn gilrs_button(button: Button) -> gilrs::Button {
+pub(in crate::game::client_side) fn gilrs_button(button: Button) -> gilrs::Button {
     use gilrs::Button as G;
     match button {
         Button::South => G::South,
@@ -108,7 +108,7 @@ pub(in crate::game) fn gilrs_button(button: Button) -> gilrs::Button {
     }
 }
 
-pub(in crate::game) fn is_dualsense(pad: &gilrs::Gamepad) -> bool {
+pub(in crate::game::client_side) fn is_dualsense(pad: &gilrs::Gamepad) -> bool {
     matches!((pad.vendor_id(), pad.product_id()),
         (Some(vendor), Some(product)) if sunrise_dualsense::is_dualsense(vendor, product))
 }
@@ -125,7 +125,7 @@ pub(in crate::game) const EXTRA_SDL_MAPPINGS: &str = concat!(
 
 /// A vibration on pad `id` through gilrs' force feedback, kept alive until its end. Platforms
 /// without it (gilrs on macOS) skip it.
-pub(in crate::game) fn play_pulse(
+pub(in crate::game::client_side) fn play_pulse(
     gilrs: &mut gilrs::Gilrs,
     id: gilrs::GamepadId,
     pulse: gamepad::Pulse,
@@ -170,14 +170,14 @@ pub(in crate::game) fn play_pulse(
 }
 
 /// The one way to open gilrs: each reader needs the extra rows.
-pub(in crate::game) fn gilrs_builder() -> gilrs::GilrsBuilder {
+pub(in crate::game::client_side) fn gilrs_builder() -> gilrs::GilrsBuilder {
     gilrs::GilrsBuilder::new().add_mappings(EXTRA_SDL_MAPPINGS)
 }
 
 impl Pads {
     /// Open gilrs on first use. A platform without it (or a Linux without
     /// udev) leaves controllers off; the game runs as before.
-    pub(in crate::game) fn start(&mut self) {
+    pub(in crate::game::client_side) fn start(&mut self) {
         if self.devices.started {
             return;
         }
@@ -199,7 +199,7 @@ impl Pads {
     }
 
     /// Drain gilrs' events and read the active pad (opening gilrs the first time).
-    pub(in crate::game) fn read(&mut self) -> PadState {
+    pub(in crate::game::client_side) fn read(&mut self) -> PadState {
         self.start();
         let Some(gilrs) = self.devices.gilrs.as_mut() else {
             return PadState::default();
@@ -274,7 +274,7 @@ impl Pads {
 }
 
 /// The furthest each stick leant: `sticks` (left, right) where they lean further than `peaks`.
-pub(in crate::game) fn keep_peaks(peaks: &mut [[f32; 2]; 2], sticks: [[f32; 2]; 2]) {
+pub(in crate::game::client_side) fn keep_peaks(peaks: &mut [[f32; 2]; 2], sticks: [[f32; 2]; 2]) {
     use sunrise_client_input::radial::stick_length;
     for (peak, stick) in peaks.iter_mut().zip(sticks) {
         if stick_length(stick) > stick_length(*peak) {
@@ -287,7 +287,7 @@ pub(in crate::game) fn keep_peaks(peaks: &mut [[f32; 2]; 2], sticks: [[f32; 2]; 
 pub(in crate::game) const TAKEOVER: f32 = 0.5;
 
 /// Whether this pad has a stick on Z, where most pads have triggers.
-pub(in crate::game) fn z_is_a_stick(pad: &gilrs::Gamepad) -> bool {
+pub(in crate::game::client_side) fn z_is_a_stick(pad: &gilrs::Gamepad) -> bool {
     hid_layout::right_stick_on_z(pad)
         || (pad.mapping_source() != gilrs::MappingSource::SdlMappings
             && (pad.vendor_id(), pad.product_id())
@@ -300,7 +300,11 @@ pub(in crate::game) fn z_is_a_stick(pad: &gilrs::Gamepad) -> bool {
 /// Whether an axis this far along means someone is using its pad. Z and axes gilrs has no name for
 /// can be triggers, which rest at -1, so only their pulled end counts: touching an idle pad's
 /// trigger mustn't take over from the pad in use.
-pub(in crate::game) fn axis_takes_over(axis: gilrs::Axis, value: f32, z_is_a_stick: bool) -> bool {
+pub(in crate::game::client_side) fn axis_takes_over(
+    axis: gilrs::Axis,
+    value: f32,
+    z_is_a_stick: bool,
+) -> bool {
     use gilrs::Axis as A;
     match axis {
         A::LeftZ | A::RightZ if z_is_a_stick => value.abs() > TAKEOVER,
@@ -310,7 +314,7 @@ pub(in crate::game) fn axis_takes_over(axis: gilrs::Axis, value: f32, z_is_a_sti
 }
 
 /// What the controller settings say about a pad.
-pub(in crate::game) fn device_of(pad: &gilrs::Gamepad) -> Device {
+pub(in crate::game::client_side) fn device_of(pad: &gilrs::Gamepad) -> Device {
     Device {
         name: pad.name().to_owned(),
         vendor: pad.vendor_id(),
@@ -319,7 +323,7 @@ pub(in crate::game) fn device_of(pad: &gilrs::Gamepad) -> Device {
 }
 
 /// A pad's buttons, sticks and triggers now.
-pub(in crate::game) fn state_of(pad: &gilrs::Gamepad) -> PadState {
+pub(in crate::game::client_side) fn state_of(pad: &gilrs::Gamepad) -> PadState {
     let mut state = PadState::default();
     let crossed = face_buttons::crossed(pad);
     for button in Button::ALL {
@@ -334,7 +338,7 @@ pub(in crate::game) fn state_of(pad: &gilrs::Gamepad) -> PadState {
 }
 
 /// A pad's sticks now (left, right).
-pub(in crate::game) fn sticks_of(pad: &gilrs::Gamepad) -> [[f32; 2]; 2] {
+pub(in crate::game::client_side) fn sticks_of(pad: &gilrs::Gamepad) -> [[f32; 2]; 2] {
     let axis = |a| pad.value(a);
     use gilrs::Axis as A;
     let sdl_mapped = pad.mapping_source() == gilrs::MappingSource::SdlMappings;
@@ -357,14 +361,14 @@ pub(in crate::game) fn sticks_of(pad: &gilrs::Gamepad) -> [[f32; 2]; 2] {
 
 impl Game<'_> {
     /// Controllers are turned off: dropping the DualSense's output frees its triggers.
-    pub(in crate::game) fn pad_output_off(&mut self) {
+    pub(in crate::game::client_side) fn pad_output_off(&mut self) {
         self.pad.0.devices.output = None;
         self.pad.0.devices.shown = None;
     }
 
     /// After each poll: the DualSense's output opens once this window has the pad in hand, then
     /// shows what the game is doing; vibrations that are over stop.
-    pub(in crate::game) fn pad_output_frame(&mut self) {
+    pub(in crate::game::client_side) fn pad_output_frame(&mut self) {
         if self.pad.0.devices.dualsense
             && self.pad.0.in_use
             && self.pad_has_window()
@@ -380,7 +384,7 @@ impl Game<'_> {
 
     /// The DualSense's HID output, while it is the active pad, open, and this window has focus
     /// (another game on the same pad keeps it otherwise).
-    pub(in crate::game) fn pad_output(&self) -> Option<&sunrise_dualsense::Link> {
+    pub(in crate::game::client_side) fn pad_output(&self) -> Option<&sunrise_dualsense::Link> {
         let output = self.pad.0.devices.output.as_ref()?;
         (self.pad.0.devices.dualsense && self.pad_has_window() && output.open().is_some())
             .then_some(output)
@@ -388,7 +392,7 @@ impl Game<'_> {
 
     /// What the DualSense shows: while playing, its triggers feel what their actions do; in
     /// menus, paused, unfocused or with another pad active, they are free.
-    pub(in crate::game) fn pad_show(&mut self) {
+    pub(in crate::game::client_side) fn pad_show(&mut self) {
         if self.pad.0.devices.output.is_none() {
             return;
         }
@@ -431,7 +435,7 @@ impl Game<'_> {
     }
 
     /// What `key.use` and `key.attack` are doing, for the triggers bound to them.
-    pub(in crate::game) fn trigger_feels(&self) -> (TriggerFeel, TriggerFeel) {
+    pub(in crate::game::client_side) fn trigger_feels(&self) -> (TriggerFeel, TriggerFeel) {
         let using = match self.using {
             Some((slot, ticks)) => match self.stack_in(slot) {
                 Some(s) if &*s.item == "minecraft:bow" => {
@@ -463,7 +467,7 @@ impl Game<'_> {
     /// Open the pad's haptics once its output is open over USB (its audio device is there
     /// only then); close them when it goes. Opt-in with `SUNRISE_DUALSENSE_HAPTICS=1` until
     /// they are proven on a pad (docs/controllers.md); never for games without sound (tests).
-    pub(in crate::game) fn pad_haptics(&mut self) {
+    pub(in crate::game::client_side) fn pad_haptics(&mut self) {
         let usb = self.pad.0.devices.output.as_ref().and_then(|o| o.open())
             == Some(sunrise_dualsense::Transport::Usb);
         if !usb {
@@ -480,14 +484,18 @@ impl Game<'_> {
     }
 
     /// Release the DualSense's output (the game is quitting).
-    pub(in crate::game) fn pad_close_output(&mut self) {
+    pub(in crate::game::client_side) fn pad_close_output(&mut self) {
         self.pad.0.devices.haptics = None;
         self.pad.0.devices.output = None;
     }
 
     /// Play a vibration on the active pad: a DualSense through its own report, else gilrs' force
     /// feedback, which platforms without it (gilrs on macOS) skip.
-    pub(in crate::game) fn pad_vibrate(&mut self, rumble: Rumble, pulse: gamepad::Pulse) {
+    pub(in crate::game::client_side) fn pad_vibrate(
+        &mut self,
+        rumble: Rumble,
+        pulse: gamepad::Pulse,
+    ) {
         let level = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
         if let Some(haptics) = self
             .pad
@@ -525,7 +533,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn pad_devices_status(&self) -> Value {
+    pub(in crate::game::client_side) fn pad_devices_status(&self) -> Value {
         self.pad.0.devices.status()
     }
 }

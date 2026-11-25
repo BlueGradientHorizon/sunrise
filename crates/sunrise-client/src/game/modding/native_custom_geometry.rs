@@ -41,7 +41,7 @@ impl Game<'_> {
     }
     /// `DebugRenderer.refreshRendererList`: replace the active callbacks with newly collected
     /// ones whose entries are on. Runs at start, at login and when the selection changes.
-    pub(in crate::game) fn refresh_debug_renderers(&mut self) {
+    pub(in crate::game::client_side) fn refresh_debug_renderers(&mut self) {
         struct EntryStates<'a> {
             selection: &'a sunrise_client::debug_entries::DebugEntries,
             entries: &'a [sunrise_client::debug_entries::RegisteredDebugEntry],
@@ -73,7 +73,7 @@ impl Game<'_> {
     }
     /// One view's geometry, the last view's gone first. `title` views draw no world: the
     /// title and connect screens have no mod geometry, so none outlives leaving a world.
-    pub(in crate::game) fn fill_world_geometry(
+    pub(in crate::game::client_side) fn fill_world_geometry(
         &mut self,
         title: bool,
         camera: [f64; 3],
@@ -237,7 +237,7 @@ impl Game<'_> {
             .reserve(instances.len().min(16_384));
         self.draw_validated_model_instances(draw, model, instances)
     }
-    pub(in crate::game) fn draw_validated_model_instances(
+    pub(in crate::game::client_side) fn draw_validated_model_instances(
         &self,
         draw: &mut WorldGeometry,
         model: ModelRef,
@@ -245,7 +245,7 @@ impl Game<'_> {
     ) -> Result<(), InstanceError> {
         self.draw_cached_model_instances(draw, model, instances, None)
     }
-    pub(in crate::game) fn draw_cached_model_instances(
+    pub(in crate::game::client_side) fn draw_cached_model_instances(
         &self,
         draw: &mut WorldGeometry,
         model: ModelRef,
@@ -345,7 +345,7 @@ impl Game<'_> {
     /// with a colour alpha below `0xFF`, of a translucent model or of a block state go through
     /// the terrain materials (`terrain_model::draw_model`), after them; the renderer sorts their
     /// quads far to near.
-    pub(in crate::game) fn commit_model_instances(
+    pub(in crate::game::client_side) fn commit_model_instances(
         &mut self,
         draw: &mut WorldGeometry,
         camera: DVec3,

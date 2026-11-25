@@ -5,7 +5,7 @@ use super::{Game, Vertex};
 use sunrise_client::{mobs::Mob, scoreboard as sb};
 
 /// `Entity.getTeamColor`: the team's colour, else white.
-pub(in crate::game) fn team_color(team: Option<&sb::Team>) -> u32 {
+pub(in crate::game::client_side) fn team_color(team: Option<&sb::Team>) -> u32 {
     team.and_then(|t| t.color.as_deref())
         .and_then(sb::team_color_rgb)
         .unwrap_or(0xFF_FFFF)
@@ -24,7 +24,7 @@ impl Game<'_> {
 
     /// The outline an entity is drawn with: vanilla's (`Some` team colour when it glows),
     /// then what mods made of it (`native_entity_outline`).
-    pub(in crate::game) fn entity_outline(
+    pub(in crate::game::client_side) fn entity_outline(
         &self,
         id: u32,
         kind: &str,
@@ -36,7 +36,7 @@ impl Game<'_> {
     }
 
     /// The outline of a dropped item or projectile: its `Glowing` flag, in its team's colour.
-    pub(in crate::game) fn thing_outline(&self, id: u32, kind: &str) -> Option<u32> {
+    pub(in crate::game::client_side) fn thing_outline(&self, id: u32, kind: &str) -> Option<u32> {
         let vanilla = self
             .tracked_entity_glowing(id)
             .then(|| team_color(self.mob_team(id)));
@@ -45,7 +45,7 @@ impl Game<'_> {
 
     /// `Minecraft.shouldEntityAppearGlowing` of a mob or another player, with its outline
     /// colour (`getTeamColor`; another player's team goes by name).
-    pub(in crate::game) fn mob_outline(&self, m: &Mob) -> Option<u32> {
+    pub(in crate::game::client_side) fn mob_outline(&self, m: &Mob) -> Option<u32> {
         let vanilla = m.is_currently_glowing().then(|| {
             let team = if &*m.kind.id == "minecraft:player" {
                 let names = self.remote_player_names();
@@ -61,7 +61,7 @@ impl Game<'_> {
 
     /// Adds one glowing entity's geometry to the outline pass in `rgb`, the textures'
     /// alpha kept (`OutlineBufferSource`'s team-coloured copy of each draw).
-    pub(in crate::game) fn mark_outline(&self, vertices: &[Vertex], rgb: u32) {
+    pub(in crate::game::client_side) fn mark_outline(&self, vertices: &[Vertex], rgb: u32) {
         let color = sunrise_client::mobs::render::abgr(rgb);
         self.client
             .glowing_vertices

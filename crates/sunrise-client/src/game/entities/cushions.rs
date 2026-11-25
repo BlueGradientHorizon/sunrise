@@ -31,7 +31,7 @@ pub(in crate::game) fn aabb(bounds: ([f64; 3], [f64; 3])) -> Aabb {
     )
 }
 
-pub(in crate::game) fn overlaps(a: Aabb, b: Aabb) -> bool {
+pub(in crate::game::server_side) fn overlaps(a: Aabb, b: Aabb) -> bool {
     a.intersects(b)
 }
 #[allow(unused_imports)]
@@ -82,7 +82,7 @@ impl Game<'_> {
     /// `BlockBehaviour.Properties.isSuffocating` of a state: the block's
     /// explicit predicate, else `causes_suffocation` with a full collision
     /// shape.
-    pub(in crate::game) fn state_suffocating(
+    pub(in crate::game::server_side) fn state_suffocating(
         &self,
         state: sunrise_world::registry::BlockStateId,
     ) -> bool {
@@ -174,12 +174,12 @@ impl Game<'_> {
         best
     }
 
-    pub(in crate::game) fn cushion_survives(&self, c: &Cushion) -> bool {
+    pub(in crate::game::server_side) fn cushion_survives(&self, c: &Cushion) -> bool {
         sunrise_client::cushion::survives(&PlacementWorld(self), aabb(c.bounds()))
     }
 
     /// `Cushion.destroyIfInFire`: a fire-tagged block inside the deflated box.
-    pub(in crate::game) fn cushion_in_fire(&self, c: &Cushion) -> bool {
+    pub(in crate::game::server_side) fn cushion_in_fire(&self, c: &Cushion) -> bool {
         let bounds = aabb(c.bounds()).next_deflated();
         blocks_in(bounds).any(|p| {
             let facts = self.res.facts().get(self.world.block(p[0], p[1], p[2]));
@@ -248,7 +248,11 @@ impl Game<'_> {
 
     /// `CushionItem.useOn`: spawn the cushion where `cushion_spawn` allows,
     /// unless another cushion is in the way.
-    pub(in crate::game) fn place_cushion(&mut self, hit: &Hit, stack: &ItemStack) -> bool {
+    pub(in crate::game::server_side) fn place_cushion(
+        &mut self,
+        hit: &Hit,
+        stack: &ItemStack,
+    ) -> bool {
         let Some(info) = self.items().get(&stack.item).cloned() else {
             return false;
         };
@@ -324,7 +328,7 @@ impl Game<'_> {
     }
 
     /// `Cushion.hurtServer` from a player: killed, then the item dropped.
-    pub(in crate::game) fn attack_cushion(&mut self) -> bool {
+    pub(in crate::game::server_side) fn attack_cushion(&mut self) -> bool {
         let Some((i, d, _)) = self.cushion_hit() else {
             return false;
         };
@@ -343,7 +347,7 @@ impl Game<'_> {
 
     /// `BlockAttachedEntity.hurtServer`: `kill` (the `entity_die` event), then
     /// `Cushion.dropItem`.
-    pub(in crate::game) fn break_cushion(&mut self, index: usize, by_player: bool) {
+    pub(in crate::game::server_side) fn break_cushion(&mut self, index: usize, by_player: bool) {
         self.break_cushion_by(index, by_player.then_some(super::commands::Target::Player));
     }
     pub(in crate::game) fn break_cushion_by(
@@ -355,7 +359,7 @@ impl Game<'_> {
     }
     /// `BlockAttachedEntity.tick` on lost support: `discard()` and then
     /// `dropItem(level, null)`, which posts no game event.
-    pub(in crate::game) fn discard_cushion(&mut self, index: usize) {
+    pub(in crate::game::server_side) fn discard_cushion(&mut self, index: usize) {
         self.remove_cushion(index, None, false);
     }
     /// `Player.hasInfiniteMaterials` of a hurt's cause: the mode of the body in
@@ -395,7 +399,7 @@ impl Game<'_> {
     }
 
     /// `BlockAttachedEntity.tick`: survive and burn checks after the post-increment reaches 100.
-    pub(in crate::game) fn tick_cushions(&mut self) {
+    pub(in crate::game::server_side) fn tick_cushions(&mut self) {
         let ticking = self.entity_ticking_area();
         let mut i = 0;
         while i < self.cushions.len() {
@@ -418,7 +422,7 @@ impl Game<'_> {
     }
 
     /// `Cushion.tickAtCheckInterval` plus the survive check; true when the cushion broke.
-    pub(in crate::game) fn check_cushion(&mut self, i: usize) -> bool {
+    pub(in crate::game::server_side) fn check_cushion(&mut self, i: usize) -> bool {
         let c = self.cushions[i].clone();
         let p = c.position;
         let (x, y, z) = (p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
@@ -555,7 +559,7 @@ impl Game<'_> {
     }
 
     /// `Player.rideTick` on a cushion: hold the seat, and get up on sneak.
-    pub(in crate::game) fn tick_cushion_riding(&mut self, keys: Keys) -> bool {
+    pub(in crate::game::server_side) fn tick_cushion_riding(&mut self, keys: Keys) -> bool {
         let Some(c) = self
             .cushions
             .iter()

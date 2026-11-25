@@ -34,7 +34,9 @@ pub(in crate::game) type ItemConsumable = Consumable<String, ConsumeEffect>;
 /// Capture once per effect, not once per attempted destination. If the stack
 /// cannot cross the API boundary (for example, an unregistered saved item), skip
 /// the listener for this consumption and let the vanilla teleport proceed.
-pub(in crate::game) fn consumed_snapshot(stack: &ItemStack) -> Option<mod_api::ItemStack> {
+pub(in crate::game::server_side) fn consumed_snapshot(
+    stack: &ItemStack,
+) -> Option<mod_api::ItemStack> {
     if !mod_api::__private::listened(mod_api::HookId::ItemConsumptionTeleport) {
         return None;
     }
@@ -47,7 +49,7 @@ pub(in crate::game) const USE_ITEM_COMPLETE_EVENT: i8 = 9;
 impl Game<'_> {
     /// The consuming player, including the local player outside a guest action.
     /// Before a world is published the handle is stale, but the effect still runs.
-    pub(in crate::game) fn consuming_player_entity(&self) -> mod_api::EntityRef {
+    pub(in crate::game::server_side) fn consuming_player_entity(&self) -> mod_api::EntityRef {
         mod_api::EntityRef::new(
             self.native_lifecycle
                 .epoch()
@@ -109,7 +111,7 @@ impl Game<'_> {
             .map(|p| [p.position.x, p.position.y, p.position.z])
     }
     /// `TeleportRandomlyConsumeEffect.apply` for the local player.
-    pub(in crate::game) fn teleport_randomly(
+    pub(in crate::game::server_side) fn teleport_randomly(
         &mut self,
         teleport: &TeleportConsume,
         consumed: &ItemStack,
@@ -277,7 +279,7 @@ impl Game<'_> {
 
     /// A witch or trader applied its ordinary drink behavior during AI. The
     /// owning game now runs the list with the living host, before clearing the hand.
-    pub(in crate::game) fn finish_mob_drink(&mut self, id: u32, stack: &ItemStack) {
+    pub(in crate::game::server_side) fn finish_mob_drink(&mut self, id: u32, stack: &ItemStack) {
         let usage = MobConsumption::Drink(stack);
         if !self
             .mobs
@@ -345,7 +347,7 @@ impl Game<'_> {
     }
     /// `LivingEntity.checkPositionAndTeleport`, then `ServerPlayer.teleportTo`
     /// (the motion and rotation kept) and entity event 46.
-    pub(in crate::game) fn check_position_and_teleport(
+    pub(in crate::game::server_side) fn check_position_and_teleport(
         &mut self,
         at: Vec3,
         ground: sunrise_world::registry::BlockStateId,
@@ -408,7 +410,7 @@ impl Game<'_> {
         }
         true
     }
-    pub(in crate::game) fn state_in_tag(
+    pub(in crate::game::server_side) fn state_in_tag(
         &self,
         tag: &str,
         state: sunrise_world::registry::BlockStateId,
@@ -490,7 +492,11 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn stop_riding_from_removed_vehicle(&mut self, vehicle: u32, y: f64) {
+    pub(in crate::game::server_side) fn stop_riding_from_removed_vehicle(
+        &mut self,
+        vehicle: u32,
+        y: f64,
+    ) {
         if self.native_may_leave(vehicle) && self.riding == Some(vehicle) {
             self.dismount_removed_vehicle(y);
             self.release_removed_vehicle(vehicle);
@@ -548,7 +554,7 @@ pub(in crate::game) struct Teleporter<'a, 'g>(
     pub(in crate::game) Option<&'a mod_api::ItemStack>,
 );
 impl Teleporter<'_, '_> {
-    pub(in crate::game) fn at(&self) -> Vec3 {
+    pub(in crate::game::server_side) fn at(&self) -> Vec3 {
         self.0.player.as_ref().map_or(Vec3::ZERO, |p| p.position)
     }
 }
@@ -782,7 +788,7 @@ pub(in crate::game) mod teleport_hook_tests {
         run_consumption_hook_keeps_the_stack_before_use_and_cancellation_stops_attempts();
     }
 
-    pub(in crate::game) fn run_consumption_hook_keeps_the_stack_before_use_and_cancellation_stops_attempts()
+    pub(in crate::game::server_side) fn run_consumption_hook_keeps_the_stack_before_use_and_cancellation_stops_attempts()
      {
         let heard = Arc::new(Mutex::new(Vec::new()));
         let moved = Arc::new(AtomicBool::new(false));
@@ -1003,7 +1009,7 @@ pub(in crate::game) mod fox_consumption_hook_tests {
         run_fox_consumption_adapter_uses_full_host_and_preserves_listener_writes();
     }
 
-    pub(in crate::game) fn run_fox_consumption_adapter_uses_full_host_and_preserves_listener_writes()
+    pub(in crate::game::server_side) fn run_fox_consumption_adapter_uses_full_host_and_preserves_listener_writes()
      {
         let mode = Arc::new(AtomicU8::new(0));
         let heard = Arc::new(Mutex::new(Vec::new()));
@@ -1126,7 +1132,7 @@ pub(in crate::game) mod fox_consumption_hook_tests {
         run_fox_tick_pauses_before_movement_and_next_actor_and_preserves_full_host_writes();
     }
 
-    pub(in crate::game) fn run_fox_tick_pauses_before_movement_and_next_actor_and_preserves_full_host_writes()
+    pub(in crate::game::server_side) fn run_fox_tick_pauses_before_movement_and_next_actor_and_preserves_full_host_writes()
      {
         let heard = Arc::new(Mutex::new(Vec::new()));
         let spawned = Arc::new(Mutex::new(Vec::new()));

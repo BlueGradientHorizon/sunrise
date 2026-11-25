@@ -3,16 +3,6 @@ pub(in crate::game::client_side) use super::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::game_tests::tests::server_game;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::extinguish::extinguish_tests::block;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::extinguish::extinguish_tests::burn_in;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::extinguish::extinguish_tests::outside_the_border;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::extinguish::extinguish_tests::server;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::extinguish::extinguish_tests::state;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::extinguish::extinguish_tests::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::motion::{MotionWorld, PlayerMotion};

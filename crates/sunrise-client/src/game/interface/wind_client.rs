@@ -23,12 +23,6 @@ pub(in crate::game::client_side) use crate::game::server_side::wind::WIND_CHARGE
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::wind::above_the_top;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::wind::push_waits_for_tick;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::wind::reverse;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::wind::triggers;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::wind::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use std::collections::BTreeSet;
@@ -84,7 +78,7 @@ impl Game<'_> {
         Ok(true)
     }
     /// `WindChargeRenderer`: the spinning charge and its wind.
-    pub(in crate::game) fn wind_charge_geometry(
+    pub(in crate::game::client_side) fn wind_charge_geometry(
         &self,
         p: &Projectile,
         at: glam::Vec3,

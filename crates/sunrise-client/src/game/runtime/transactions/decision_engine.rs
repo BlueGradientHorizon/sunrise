@@ -34,7 +34,10 @@ pub(super) struct KeptOwner {
 impl Target {
     /// Check the active action before looking in a slot that an outer action
     /// might have lifted. A missing menu is never the reentrancy mechanism.
-    pub(in crate::game) fn admit(game: &Game<'_>, conn: u32) -> Result<Self, Admission> {
+    pub(in crate::game::server_side) fn admit(
+        game: &Game<'_>,
+        conn: u32,
+    ) -> Result<Self, Admission> {
         if game.transactions.iter().any(|level| {
             level
                 .action
@@ -56,7 +59,7 @@ impl Target {
     }
 
     /// The owner's stable identity, which no take, restore or lift changes.
-    pub(in crate::game) fn owner_id(&self) -> MenuId {
+    pub(in crate::game::server_side) fn owner_id(&self) -> MenuId {
         self.id
     }
 
@@ -68,7 +71,7 @@ impl Target {
 
     /// Every route must use this boundary before taking or mutating its owner.
     /// First-write snapshots merge into the existing Host transaction journal.
-    pub(in crate::game) fn edit<R>(
+    pub(in crate::game::server_side) fn edit<R>(
         &self,
         game: &mut Game<'_>,
         edit: impl FnOnce(&mut EngineMenu) -> R,

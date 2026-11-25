@@ -143,7 +143,7 @@ impl Game<'_> {
         Some((sprite, tint))
     }
 
-    pub(in crate::game) fn terrain_particle_tint(
+    pub(in crate::game::server_side) fn terrain_particle_tint(
         &self,
         state: BlockStateId,
         pos: [i32; 3],

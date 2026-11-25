@@ -56,17 +56,17 @@ pub(in crate::game) struct ViewedEntities {
 
 impl ViewedEntities {
     /// Entity `id`, if the world holds it: where a sound bound to it is heard (`sounds`).
-    pub(in crate::game) fn get(&self, id: i32) -> Option<&ViewedEntity> {
+    pub(in crate::game::client_side) fn get(&self, id: i32) -> Option<&ViewedEntity> {
         self.entities.get(&id)
     }
     #[cfg(test)]
-    pub(in crate::game) fn len(&self) -> usize {
+    pub(in crate::game::client_side) fn len(&self) -> usize {
         self.entities.len()
     }
 
     /// An entity packet of the level; other kinds change nothing. A packet about an entity the
     /// world does not hold is dropped, as the vanilla client drops it.
-    pub(in crate::game) fn apply(&mut self, packet: C) -> Result<(), RouteError> {
+    pub(in crate::game::client_side) fn apply(&mut self, packet: C) -> Result<(), RouteError> {
         match packet {
             // `handleAddEntity`: an entity of an id held already replaces it.
             C::AddEntity(p) => {

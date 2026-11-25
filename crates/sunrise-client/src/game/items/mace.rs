@@ -25,7 +25,7 @@ use sunrise_core::{
 pub(in crate::game) mod player_armor_weapon_tests;
 
 /// `CombatRules.getDamageAfterAbsorb`: the attacking weapon's armor effectiveness.
-pub(in crate::game) fn breach_modifier<'a>(
+pub(in crate::game::server_side) fn breach_modifier<'a>(
     weapon: Option<&'a ItemStack>,
     target: &'a str,
     source: DamageKind,
@@ -69,7 +69,7 @@ pub(in crate::game) const KNOCKBACK_POWER: f32 = 0.7;
 /// `Entity.isAlliedTo` between the player (`player` its UUID) and a mob
 /// without teams: `TamableAnimal.considersEntityAsAlly` (a pet it tamed) and
 /// `Allay.considersEntityAsAlly` (an allay that likes it).
-pub(in crate::game) fn ally_of_player(m: &Mob, player: Option<[i32; 4]>) -> bool {
+pub(in crate::game::server_side) fn ally_of_player(m: &Mob, player: Option<[i32; 4]>) -> bool {
     let tamable = matches!(
         m.species(),
         Species::Wolf
@@ -95,7 +95,11 @@ pub(in crate::game) enum Spared {
 
 /// `Player.doSweepAttack`'s `1 + ratio * f`, where `f` is the attack damage
 /// after `baseDamageScaleFactor` (0.2 + strength^2 * 0.8).
-pub(in crate::game) fn sweep_base_damage(ratio: f32, attack_damage: f32, scale: f32) -> f32 {
+pub(in crate::game::server_side) fn sweep_base_damage(
+    ratio: f32,
+    attack_damage: f32,
+    scale: f32,
+) -> f32 {
     1.0 + ratio * attack_damage * (0.2 + scale * scale * 0.8)
 }
 /// A smash's knockback on the players, put off while a guest's turn holds
@@ -108,7 +112,7 @@ pub(in crate::game) struct SmashPush {
 }
 /// `MaceItem.getKnockbackPower` and the push of one entity at `at`, `heavy`
 /// being 2 after a fall of more than five blocks.
-pub(in crate::game) fn smash_push(
+pub(in crate::game::server_side) fn smash_push(
     center: Vec3,
     heavy: f64,
     at: Vec3,
@@ -192,20 +196,20 @@ impl Game<'_> {
             "minecraft:mob_attack".into()
         }
     }
-    pub(in crate::game) fn holds_mace(&self) -> bool {
+    pub(in crate::game::server_side) fn holds_mace(&self) -> bool {
         self.inventory[self.selected]
             .as_ref()
             .is_some_and(|s| &*s.item == "minecraft:mace")
     }
     /// `MaceItem.canSmashAttack` for the player: falling and not gliding.
-    pub(in crate::game) fn can_smash_attack(&self) -> bool {
+    pub(in crate::game::server_side) fn can_smash_attack(&self) -> bool {
         self.player
             .as_ref()
             .is_some_and(|p| can_smash(p.fall_distance, p.fall_flying))
     }
     /// A held mace about to smash (`MaceItem.getItemDamageSource`: the attack
     /// is `mace_smash` damage).
-    pub(in crate::game) fn smash_attack(&self) -> bool {
+    pub(in crate::game::server_side) fn smash_attack(&self) -> bool {
         self.holds_mace() && self.can_smash_attack()
     }
     /// The damage source of the player's hit from `from` with the held item.
@@ -271,7 +275,7 @@ impl Game<'_> {
     /// `source.getEntity()` of a blow as `SulfurCube.knockback` reads it: its eye position
     /// (`getEyePosition`), view direction (`getLookAngle`, `calculateViewVector(xRot, yRot)`)
     /// and feet (`position`). The player is the one acting, a mob one in the list.
-    pub(in crate::game) fn attacker_aim(
+    pub(in crate::game::server_side) fn attacker_aim(
         &self,
         who: Option<sunrise_client::mobs::Who>,
     ) -> Option<sunrise_client::mobs::Aim> {
@@ -300,7 +304,7 @@ impl Game<'_> {
     /// stack the mob that swung holds, and the registry its effects are read
     /// from. A projectile's weapon (an arrow's `firedFromWeapon`) is not
     /// passed: no vanilla bow carries the component.
-    pub(in crate::game) fn player_armor_weapon(
+    pub(in crate::game::server_side) fn player_armor_weapon(
         &self,
         attacker: Option<u32>,
         projectile: bool,
@@ -432,7 +436,7 @@ impl Game<'_> {
     /// at `index`: the item's `hurtEnemy` (the "used" statistic of a weapon),
     /// the post-attack enchantments, then `postHurtEnemy` with the weapon's
     /// wear.
-    pub(in crate::game) fn weapon_hit(&mut self, index: usize) {
+    pub(in crate::game::server_side) fn weapon_hit(&mut self, index: usize) {
         let Some(stack) = self.held().cloned() else {
             // An empty hand still meets the victim's own post-attack
             // enchantments (Thorns).
@@ -460,7 +464,7 @@ impl Game<'_> {
     }
     /// `ItemStack.postHurtEnemy`: `hurtAndBreak(weapon.itemDamagePerAttack)` of
     /// the weapon in the acting hand.
-    pub(in crate::game) fn weapon_wear(&mut self, stack: &ItemStack) {
+    pub(in crate::game::server_side) fn weapon_wear(&mut self, stack: &ItemStack) {
         let items = self.res.items();
         let weapon = items
             .weapon_damage(stack)
@@ -475,7 +479,7 @@ impl Game<'_> {
     /// `MaceItem.hurtEnemy` for a smash: the fall stops and its damage is
     /// waived from where the hit landed, the ground or air smash sounds, and
     /// the knockback around the target.
-    pub(in crate::game) fn mace_hurt_enemy(&mut self, index: usize) {
+    pub(in crate::game::server_side) fn mace_hurt_enemy(&mut self, index: usize) {
         let target_on_ground = self.mobs[index].ground.on_ground;
         if let Some(fall) = self.mace_smash_self(target_on_ground) {
             let target = &self.mobs[index];
@@ -508,7 +512,7 @@ impl Game<'_> {
     /// player: the weapon's side of it, as `weapon_hit` does for a mob. A
     /// smash stops the fall and its Wind Burst (a `post_attack` explosion on
     /// the attacker) launches the attacker.
-    pub(in crate::game) fn weapon_hit_player(&mut self, victim_on_ground: bool) {
+    pub(in crate::game::server_side) fn weapon_hit_player(&mut self, victim_on_ground: bool) {
         let Some(stack) = self.held().cloned() else {
             return;
         };
@@ -531,7 +535,12 @@ impl Game<'_> {
     /// mob, a smash stops the fall and knocks the creatures around the stand
     /// away, and the Wind Burst (a `post_attack` explosion on the attacker)
     /// launches the attacker.
-    pub(in crate::game) fn weapon_hit_stand(&mut self, id: u32, center: Vec3, on_ground: bool) {
+    pub(in crate::game::server_side) fn weapon_hit_stand(
+        &mut self,
+        id: u32,
+        center: Vec3,
+        on_ground: bool,
+    ) {
         let Some(stack) = self.held().cloned() else {
             return;
         };
@@ -559,7 +568,12 @@ impl Game<'_> {
     /// pets and the allays that like it), marker armor stands and creative
     /// flyers are spared; the predicate's own tamed-animal test asks whether
     /// the target owns the animal, which a mob never does.
-    pub(in crate::game) fn smash_knockback(&mut self, center: Vec3, target: Spared, fall: f64) {
+    pub(in crate::game::server_side) fn smash_knockback(
+        &mut self,
+        center: Vec3,
+        target: Spared,
+        fall: f64,
+    ) {
         // Entity.getOnPos without a supporting block.
         let on_pos = [
             center.x.floor() as i32,
@@ -598,14 +612,14 @@ impl Game<'_> {
     }
     /// `MaceItem.knockback` on the players but the attacker: the host unless
     /// it attacked, and every guest but the attacker.
-    pub(in crate::game) fn smash_push_players(&mut self, push: &SmashPush) {
+    pub(in crate::game::server_side) fn smash_push_players(&mut self, push: &SmashPush) {
         if push.attacker.is_some() {
             self.smash_push_player(push);
         }
         self.each_guest_hit_except(push.attacker, |g| g.smash_push_player(push));
     }
     /// The pushes guests' smashes put off.
-    pub(in crate::game) fn flush_smash_pushes(&mut self) {
+    pub(in crate::game::server_side) fn flush_smash_pushes(&mut self) {
         for push in std::mem::take(&mut self.creatures.smash_pushes) {
             self.smash_push_players(&push);
         }
@@ -613,7 +627,7 @@ impl Game<'_> {
     /// `MaceItem.knockback` on the player here (the host, or the guest swapped
     /// in): not a spectator, an ally of the attacker (`isAlliedTo`: the same
     /// team) or a creative player flying.
-    pub(in crate::game) fn smash_push_player(&mut self, push: &SmashPush) {
+    pub(in crate::game::server_side) fn smash_push_player(&mut self, push: &SmashPush) {
         if self.spectator()
             || sunrise_client::scoreboard::teams_allied(push.team.as_ref(), self.player_team())
         {

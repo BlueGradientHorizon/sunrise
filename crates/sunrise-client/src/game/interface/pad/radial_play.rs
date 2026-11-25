@@ -30,7 +30,7 @@ pub(in crate::game) enum PollStep {
 /// The order a poll acts on its changes in: the releases held back first, then this poll's
 /// presses and releases. While the radial menu is open its presses come before every release, the
 /// held-back ones too: B in the same poll as the opener's release (however late) still cancels.
-pub(in crate::game) fn poll_order(
+pub(in crate::game::client_side) fn poll_order(
     late: Vec<Button>,
     edges: Vec<(Button, bool)>,
     radial_open: bool,
@@ -48,7 +48,7 @@ pub(in crate::game) fn poll_order(
 impl Game<'_> {
     /// Whether the radial menu selects with this stick (0 left, 1 right): while it is open that
     /// stick neither walks nor turns the view.
-    pub(in crate::game) fn pad_radial_selects(&self, stick: usize) -> bool {
+    pub(in crate::game::client_side) fn pad_radial_selects(&self, stick: usize) -> bool {
         match self.settings.controller.radial_stick {
             RadialStick::Right => stick == 1,
             RadialStick::Left => stick == 0,
@@ -107,7 +107,7 @@ impl Game<'_> {
 
     /// Screens, the on-screen keyboard and the prompts over gameplay come first. It isn't a
     /// screen: the world goes on behind it, here and on a server.
-    pub(in crate::game) fn pad_radial_can_open(&self) -> bool {
+    pub(in crate::game::client_side) fn pad_radial_can_open(&self) -> bool {
         !self.pad_in_menu()
             && !self.pad_keyboard_captures()
             && !self.screen_over_playing()
@@ -117,7 +117,7 @@ impl Game<'_> {
     }
 
     /// The opener went down: always on the first page.
-    pub(in crate::game) fn pad_radial_open(&mut self) {
+    pub(in crate::game::client_side) fn pad_radial_open(&mut self) {
         let tilts = self.pad_radial_tilts();
         let sticks = [self.pad.0.state.left, self.pad.0.state.right];
         self.pad.0.radial_rested =
@@ -130,7 +130,7 @@ impl Game<'_> {
 
     /// The opener came up: held, it commits; in toggle mode the menu stays open, until A, the
     /// opener again or B.
-    pub(in crate::game) fn pad_radial_release(&mut self) -> Result<()> {
+    pub(in crate::game::client_side) fn pad_radial_release(&mut self) -> Result<()> {
         if !self.pad.0.radial.is_open() {
             return Ok(());
         }
@@ -162,7 +162,7 @@ impl Game<'_> {
 
     /// Which of the page's slots would run now: the overlay dims the others. A missing action
     /// never runs.
-    pub(in crate::game) fn pad_radial_available(&self) -> [bool; radial::SLOTS] {
+    pub(in crate::game::client_side) fn pad_radial_available(&self) -> [bool; radial::SLOTS] {
         self.pad_radial_available_on(self.pad.0.radial.page())
     }
 
@@ -189,7 +189,7 @@ impl Game<'_> {
     /// Each poll, before its presses: the selecting stick, the D-pad's settle, a second page
     /// tick due; and while it's open, the stick, or the end of it if something took over (a bed,
     /// a death) in a way the context doesn't see.
-    pub(in crate::game) fn pad_radial_frame(&mut self) {
+    pub(in crate::game::client_side) fn pad_radial_frame(&mut self) {
         let now = Instant::now();
         self.pad_radial_poll(now);
         let menu = &self.pad.0.radial;
@@ -260,7 +260,10 @@ impl Game<'_> {
     /// A press while it's open: bumpers turn the page, B and Start cancel; in toggle mode A or
     /// the opener again commits. A trigger cancels and goes on to its own action (`false`: not
     /// used up), so a fight goes on; no other press reaches a mapping.
-    pub(in crate::game) fn pad_radial_button(&mut self, button: Button) -> Result<bool> {
+    pub(in crate::game::client_side) fn pad_radial_button(
+        &mut self,
+        button: Button,
+    ) -> Result<bool> {
         let settings = &self.settings.controller;
         let opener = settings.binding(gamepad::RADIAL);
         let toggle = settings.radial_mode == RadialMode::Toggle;
@@ -364,7 +367,7 @@ impl Game<'_> {
     /// B, Start, a trigger, a key or a click, a takeover the context doesn't see: the menu closes
     /// and nothing runs. (The window's focus is in the context: losing it cancels in
     /// `pad_cancel_inputs`.)
-    pub(in crate::game) fn pad_radial_cancel(&mut self) {
+    pub(in crate::game::client_side) fn pad_radial_cancel(&mut self) {
         if self.pad.0.radial.is_open() {
             let selecting = self.pad_radial_selector().0;
             self.pad.0.radial.cancel();
@@ -414,7 +417,7 @@ impl Game<'_> {
 
     /// A D-pad press in play starting just after the menu closed on a D-pad opener: a thumb
     /// rolling off it. It is ignored, and so is its release; the opener's own isn't.
-    pub(in crate::game) fn pad_radial_settling(&self, button: Button) -> bool {
+    pub(in crate::game::client_side) fn pad_radial_settling(&self, button: Button) -> bool {
         let opener = self.settings.controller.binding(gamepad::RADIAL);
         let held = opener.is_some_and(|opener| self.pad.0.state.held(opener));
         DPAD.contains(&button)
@@ -426,7 +429,7 @@ impl Game<'_> {
     }
 
     /// A button came up: the opener's release starts the D-pad's settle again.
-    pub(in crate::game) fn pad_radial_button_up(&mut self, button: Button) {
+    pub(in crate::game::client_side) fn pad_radial_button_up(&mut self, button: Button) {
         if self.settings.controller.binding(gamepad::RADIAL) == Some(button) {
             self.pad.0.radial_settle.opener_up(Instant::now());
         }
@@ -435,12 +438,12 @@ impl Game<'_> {
     /// A new player entity (spawn, respawn, a server joined, a dimension change): its health is
     /// not compared with the old one's, and the radial menu closes as for a cancel, as a commit
     /// would run on the new body (a death with immediate respawn, the End's exit).
-    pub(in crate::game) fn pad_player_replaced(&mut self) {
+    pub(in crate::game::client_side) fn pad_player_replaced(&mut self) {
         self.pad.0.player_replaced();
         self.pad_radial_cancel();
     }
 
-    pub(in crate::game) fn pad_radial_status(&self) -> Value {
+    pub(in crate::game::client_side) fn pad_radial_status(&self) -> Value {
         let menu = &self.pad.0.radial;
         let pages = &self.settings.controller.radial;
         let page = pages.page(menu.page());
@@ -473,7 +476,10 @@ impl Game<'_> {
 
     /// What the pad draws over the HUD, last: the radial menu, then the pad's cursor or focus
     /// highlight and the on-screen keyboard over everything else (`draw_pad_cursor`).
-    pub(in crate::game) fn draw_pad_over_hud(&self, batch: &mut sunrise_client::hud::HudBatch) {
+    pub(in crate::game::client_side) fn draw_pad_over_hud(
+        &self,
+        batch: &mut sunrise_client::hud::HudBatch,
+    ) {
         self.draw_pad_radial(batch);
         self.draw_pad_cursor(batch);
     }
@@ -517,7 +523,7 @@ impl Game<'_> {
     }
 
     /// The overlay is showing (not only fading out): it holds the view (`overlay_holds_view`).
-    pub(in crate::game) fn pad_radial_shown(&self) -> bool {
+    pub(in crate::game::client_side) fn pad_radial_shown(&self) -> bool {
         self.pad.0.radial_look.open()
     }
 

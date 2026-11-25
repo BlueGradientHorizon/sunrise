@@ -31,13 +31,9 @@ pub(in crate::game::client_side) use crate::game::server_side::entity::THROWN_TR
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::entity::ThunderHit;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::entity::aabb_from_extents;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::entity::apply_contact_writes;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::entity::armor_stand_size;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::entity::assign_stored_id;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::entity::causer_decision;
 #[allow(unused_imports)]
@@ -46,8 +42,6 @@ pub(in crate::game::client_side) use crate::game::server_side::entity::damage_le
 pub(in crate::game::client_side) use crate::game::server_side::entity::define_entity_handles;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::entity::direct_entity_edit;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::entity::draw_runs;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::entity::entity_access;
 #[allow(unused_imports)]
@@ -73,10 +67,6 @@ pub(in crate::game::client_side) use crate::game::server_side::entity::load_list
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::entity::load_with_transfer;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::entity::loads_as_cart;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::entity::loads_as_tnt;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::entity::match_entity;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::entity::player_resolver;
@@ -86,8 +76,6 @@ pub(in crate::game::client_side) use crate::game::server_side::entity::player_vi
 pub(in crate::game::client_side) use crate::game::server_side::entity::save_entities_of_every_kind;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::entity::save_lists;
-#[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::entity::shot_alive;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::entity::stored_ground;
 #[allow(unused_imports)]

@@ -17,7 +17,7 @@ impl Game<'_> {
     }
 
     /// At startup: open the socket if the game was started for an agent or Agent Control is on.
-    pub(in crate::game) fn start_agent_control(&mut self) -> Result<()> {
+    pub(in crate::game::client_side) fn start_agent_control(&mut self) -> Result<()> {
         self.client.agent_control_on = self.settings.extras.agent_control;
         if self.options.benchmark.is_some() && self.options.control.is_none() {
             return Ok(());
@@ -58,7 +58,7 @@ impl Game<'_> {
 
     /// After a settings change: No AI closes the socket; Agent Control turned on or off opens or
     /// closes it.
-    pub(in crate::game) fn sync_agent_control(&mut self) {
+    pub(in crate::game::client_side) fn sync_agent_control(&mut self) {
         let wanted = self.settings.extras.agent_control;
         let changed = wanted != self.client.agent_control_on;
         self.client.agent_control_on = wanted;
@@ -77,12 +77,12 @@ impl Game<'_> {
     }
 
     /// An agent's command arrived.
-    pub(in crate::game) fn agent_command_seen(&mut self) {
+    pub(in crate::game::client_side) fn agent_command_seen(&mut self) {
         self.client.agent_last = Some(std::time::Instant::now());
     }
 
     /// The AI Agent page's lines: the state, then where agents connect.
-    pub(in crate::game) fn agent_status_lines(&self) -> Vec<String> {
+    pub(in crate::game::client_side) fn agent_status_lines(&self) -> Vec<String> {
         let server = self
             .control
             .as_ref()
@@ -109,7 +109,7 @@ impl Game<'_> {
 
     /// What Copy Connection Details puts on the clipboard: the socket, a sunrise-ctl line to try,
     /// and an MCP client's config for this game.
-    pub(in crate::game) fn agent_details(&self) -> String {
+    pub(in crate::game::client_side) fn agent_details(&self) -> String {
         let socket = self.agent_socket_path();
         let ctl = std::env::current_exe()
             .unwrap_or_default()

@@ -24,10 +24,6 @@ pub(in crate::game) mod tests {
     #[allow(unused_imports)]
     pub(in crate::game::server_side) use crate::game::client_side::remote_tags::tests::login;
     #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::client_side::remote_tags::tests::power_update;
-    #[allow(unused_imports)]
-    pub(in crate::game::server_side) use crate::game::client_side::remote_tags::tests::update;
-    #[allow(unused_imports)]
     pub(in crate::game::server_side) use crate::game::client_side::remote_tags::tests::*;
     #[allow(unused_imports)]
     pub(in crate::game::server_side) use crate::game::native_entity_refs::tests::with_client_game;

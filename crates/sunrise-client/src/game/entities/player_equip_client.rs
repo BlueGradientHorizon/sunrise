@@ -5,8 +5,6 @@ pub(in crate::game::client_side) use crate::game::server_side::player_equip::ARM
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::player_equip::OFFHAND;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::player_equip::same;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::player_equip::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use sunrise_client::items::ItemStack;

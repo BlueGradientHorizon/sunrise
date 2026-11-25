@@ -25,7 +25,7 @@ pub(in crate::game) struct PreparedServerReload {
     pub(in crate::game) loot: std::sync::Arc<mod_api::GlobalLootModifierManager>,
 }
 impl PreparedServerReload {
-    pub(in crate::game) fn bind_loot(&self, world: &super::PreparedWorldReload) {
+    pub(in crate::game::server_side) fn bind_loot(&self, world: &super::PreparedWorldReload) {
         if let Some(tables) = &world.tables {
             self.loot.bind_from(&tables.loot_modifier_manager);
         }
@@ -86,7 +86,7 @@ impl Game<'_> {
             loot,
         })
     }
-    pub(in crate::game) fn apply_server_reload(
+    pub(in crate::game::server_side) fn apply_server_reload(
         &mut self,
         prepared: PreparedServerReload,
         stack: &PackStack,

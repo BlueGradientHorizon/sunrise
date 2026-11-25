@@ -30,7 +30,7 @@ pub(in crate::game::server_side) use sunrise_core::{position::ChunkPos, random::
 impl Game<'_> {
     /// `LootCommand.dropBlockLoot`: copy the actual block entity's components
     /// into the mine result without removing the source block or its contents.
-    pub(in crate::game) fn cmd_loot(&mut self, id: &str, ctx: &Context) -> R<i32> {
+    pub(in crate::game::server_side) fn cmd_loot(&mut self, id: &str, ctx: &Context) -> R<i32> {
         let keep_empty = ctx.literals.iter().any(|literal| literal == "replace");
         // The drops.
         let (drops, table): (Vec<ItemStack>, Option<String>) = match id {
@@ -389,7 +389,10 @@ impl Game<'_> {
         self.feedback(message);
         Ok(total)
     }
-    pub(in crate::game) fn tool_stack(&mut self, ctx: &Context) -> R<Option<ItemStack>> {
+    pub(in crate::game::server_side) fn tool_stack(
+        &mut self,
+        ctx: &Context,
+    ) -> R<Option<ItemStack>> {
         if let Some(Arg::Item(p)) = ctx.get("tool") {
             let (damage, extra) = match p
                 .components

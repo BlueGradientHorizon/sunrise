@@ -24,7 +24,7 @@ const POS: (i32, i32, i32) = (0, 0, 0);
 
 impl Game<'_> {
     /// Run every case of `spec` ("CASES,OUTPUT") and write the results.
-    pub(in crate::game) fn screen_build_fixture(&mut self, spec: &str) -> Result<()> {
+    pub(in crate::game::client_side) fn screen_build_fixture(&mut self, spec: &str) -> Result<()> {
         let (input, output) = spec
             .split_once(',')
             .ok_or("SUNRISE_SCREEN_BUILD_FIXTURE=CASES,OUTPUT")?;

@@ -11,8 +11,6 @@ pub(in crate::game::client_side) use crate::game::server_side::passengers::TRAP_
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::passengers::player_box_top;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::server_side::passengers::trap_horse_scatter;
-#[allow(unused_imports)]
 pub(in crate::game::client_side) use crate::game::server_side::passengers::*;
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use std::collections::HashMap;

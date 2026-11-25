@@ -66,7 +66,7 @@ pub(in crate::game) static ASKED: Mutex<Vec<Asked>> = Mutex::new(Vec::new());
 pub(in crate::game) static EXTRACTED: Mutex<Vec<(BlockScreenEffect, f32)>> = Mutex::new(Vec::new());
 
 /// The mod's colour for what it draws over `effect`.
-pub(in crate::game) fn marker(effect: BlockScreenEffect) -> u32 {
+pub(in crate::game::client_side) fn marker(effect: BlockScreenEffect) -> u32 {
     match effect {
         Block => 0xFF010000,
         Water => 0xFF020000,
@@ -113,7 +113,7 @@ impl BlockScreenEffectRenderer for PlannedRenderer {
 }
 
 /// A player on fire in first person, with their eye in block (0, 65, 0).
-pub(in crate::game) fn burning_player(game: &mut Game<'_>) {
+pub(in crate::game::client_side) fn burning_player(game: &mut Game<'_>) {
     game.world.chunks.insert(
         (0, 0),
         Arc::new(Chunk::with_layout(0, 0, game.world.layout())),
@@ -127,12 +127,12 @@ pub(in crate::game) fn burning_player(game: &mut Game<'_>) {
 pub(in crate::game) use crate::game::server_side::block_screen_effect_draw_tests_server::sample_eye_in_water;
 
 /// The frame's quads at 2:1 with the hand's usual 70 degrees.
-pub(in crate::game) fn quads(game: &Game<'_>) -> Vec<ScreenQuad> {
+pub(in crate::game::client_side) fn quads(game: &Game<'_>) -> Vec<ScreenQuad> {
     let projection = hand_projection(70.0, 1000.0, 500.0, 1000.0);
     game.screen_quads(0.25, [1000, 500], 1.0, projection)
 }
 /// Names the block overlays' quads in draw order, the HUD's camera overlays left out.
-pub(in crate::game) fn names(quads: &[ScreenQuad]) -> Vec<&'static str> {
+pub(in crate::game::client_side) fn names(quads: &[ScreenQuad]) -> Vec<&'static str> {
     quads
         .iter()
         .filter(|quad| quad.blend == Blend::Alpha)
@@ -150,11 +150,11 @@ pub(in crate::game) fn names(quads: &[ScreenQuad]) -> Vec<&'static str> {
         })
         .collect()
 }
-pub(in crate::game) fn asked() -> Vec<BlockScreenEffect> {
+pub(in crate::game::client_side) fn asked() -> Vec<BlockScreenEffect> {
     let mut asked = ASKED.lock().unwrap();
     asked.drain(..).map(|ask| ask.effect).collect()
 }
-pub(in crate::game) fn close_to(actual: [f32; 4], expected: [f32; 4]) {
+pub(in crate::game::client_side) fn close_to(actual: [f32; 4], expected: [f32; 4]) {
     for (a, e) in actual.iter().zip(expected) {
         assert!((a - e).abs() < 1e-4, "{actual:?} is not {expected:?}");
     }
@@ -516,7 +516,7 @@ impl Hooks for ObserveOverlay {
     }
 }
 
-pub(in crate::game) fn observe_overlay(
+pub(in crate::game::client_side) fn observe_overlay(
     effect: BlockScreenEffect,
     run: impl FnOnce(),
 ) -> Option<OverlayInput> {
@@ -897,7 +897,7 @@ fn only_the_last_eligible_renderer_submits() {
 }
 
 /// A frame's pixels, RGBA.
-pub(in crate::game) fn drawn_frame(game: &mut Game<'_>) -> (Vec<u8>, usize) {
+pub(in crate::game::client_side) fn drawn_frame(game: &mut Game<'_>) -> (Vec<u8>, usize) {
     game.renderer.0.as_mut().unwrap().screenshot = Some(ScreenshotRequest {
         path: "unused.png".into(),
         size: None,

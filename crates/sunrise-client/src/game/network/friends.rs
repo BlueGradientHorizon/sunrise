@@ -56,7 +56,7 @@ fn env_flag(name: &str, default: bool) -> bool {
 
 impl Game<'_> {
     /// Start sharing the open world.
-    pub(in crate::game) fn friends_start(&mut self) -> Result<()> {
+    pub(in crate::game::client_side) fn friends_start(&mut self) -> Result<()> {
         if self.friends.is_some() {
             return Ok(());
         }
@@ -115,7 +115,7 @@ impl Game<'_> {
 
     /// Stop sharing: the code ends (direct port closed, router mapping
     /// deleted); the world closes to LAN again if sharing opened it.
-    pub(in crate::game) fn friends_stop(&mut self) {
+    pub(in crate::game::client_side) fn friends_stop(&mut self) {
         let Some(mut sharing) = self.friends.take() else {
             return;
         };
@@ -188,7 +188,7 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn friends_copy(&mut self) {
+    pub(in crate::game::client_side) fn friends_copy(&mut self) {
         let Some(code) = self.friends.as_ref().and_then(|s| s.code.clone()) else {
             return;
         };
@@ -201,7 +201,7 @@ impl Game<'_> {
 
     /// Play with Friends. The world is paused under it in singleplayer, so
     /// new codes and sessions are read while it is drawn.
-    pub(in crate::game) fn draw_friends_screen(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game::client_side) fn draw_friends_screen(&mut self, batch: &mut HudBatch) {
         self.tick_friends();
         let view = self.friends_view();
         sunrise_client::widgets::begin_screen(|| {
@@ -216,7 +216,7 @@ impl Game<'_> {
             &mut |phase, batch| self.draw_screen_phase(batch, phase),
         );
     }
-    pub(in crate::game) fn friends_screen_click(&mut self) -> bool {
+    pub(in crate::game::client_side) fn friends_screen_click(&mut self) -> bool {
         let view = self.friends_view();
         let Some(action) =
             friends_screen::click(&self.gui.atlas, self.gui_size(), self.client.cursor, &view)
@@ -250,12 +250,12 @@ impl Game<'_> {
     }
 
     /// Whether the pause menu offers Play with Friends (a singleplayer world).
-    pub(in crate::game) fn friends_shown(&self) -> bool {
+    pub(in crate::game::client_side) fn friends_shown(&self) -> bool {
         self.friends_view().shown
     }
 
     /// What Play with Friends shows.
-    pub(in crate::game) fn friends_view(&self) -> FriendsView {
+    pub(in crate::game::client_side) fn friends_view(&self) -> FriendsView {
         let guests = match &self.lan {
             Some(h) => h.hub.guests.iter().map(|g| g.name.clone()).collect(),
             // On the server thread: the other players the server lists.
@@ -309,7 +309,7 @@ impl Game<'_> {
     }
 
     /// `sunrise-ctl friends ...`.
-    pub(in crate::game) fn friends_control(
+    pub(in crate::game::client_side) fn friends_control(
         &mut self,
         words: &[&str],
     ) -> Result<Option<serde_json::Value>> {

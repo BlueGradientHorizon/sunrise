@@ -27,7 +27,7 @@ pub(in crate::game) struct PreparedComponentEdit {
 
 impl PreparedComponentEdit {
     /// Write only admitted fields named by the pruned batch, not validation-only overrides.
-    pub(in crate::game) fn apply(self, resident: &mut EngineStack) {
+    pub(in crate::game::server_side) fn apply(self, resident: &mut EngineStack) {
         resident.apply_component_fields_from(self.fields, self.edits.names());
     }
 }

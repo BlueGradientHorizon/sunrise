@@ -5,7 +5,10 @@ pub(in crate::game::client_side) use crate::game::remote::packets_world::*;
 
 impl Game<'_> {
     /// `C::BlockEvent`: its arms of `apply_packet`, guard and order kept.
-    pub(in crate::game) fn apply_block_event_packet(&mut self, p: play::BlockEvent) -> Result<()> {
+    pub(in crate::game::client_side) fn apply_block_event_packet(
+        &mut self,
+        p: play::BlockEvent,
+    ) -> Result<()> {
         // Level.blockEvent on the client level: the block's triggerEvent
         // runs on the client's copy of whatever is at pos (a piston's
         // moveBlocks builds the moving block entities it animates, a note
@@ -33,7 +36,7 @@ impl Game<'_> {
         Ok(())
     }
     /// `C::GameEvent`: its arms of `apply_packet`, guard and order kept.
-    pub(in crate::game) fn apply_game_event_packet(&mut self, p: play::GameEvent) {
+    pub(in crate::game::client_side) fn apply_game_event_packet(&mut self, p: play::GameEvent) {
         match p.event {
             // NO_RESPAWN_BLOCK_AVAILABLE: ClientPacketListener.handleGameEvent
             // sends the player this system message.

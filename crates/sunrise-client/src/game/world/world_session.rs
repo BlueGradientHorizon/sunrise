@@ -6,7 +6,7 @@ use sunrise_client::save::level_mods;
 impl Game<'_> {
     /// `onAbort`: the confirm screen's Back or Escape reopens the Data
     /// Packs screen with the selection it had.
-    pub(in crate::game) fn reopen_data_packs(&mut self) -> Result<()> {
+    pub(in crate::game::client_side) fn reopen_data_packs(&mut self) -> Result<()> {
         let action = self
             .title
             .0
@@ -19,7 +19,7 @@ impl Game<'_> {
     }
 
     /// What the title screen asked for, from a click or Enter.
-    pub(in crate::game) fn title_action(&mut self, action: Action) -> Result<()> {
+    pub(in crate::game::client_side) fn title_action(&mut self, action: Action) -> Result<()> {
         match action {
             Action::Quit => self.begin_closing_save(true)?,
             Action::Options => self.open_options(true),
@@ -80,7 +80,7 @@ impl Game<'_> {
     }
 
     /// Enter a local world from the client: it runs on the client's server thread.
-    pub(in crate::game) fn open_world(
+    pub(in crate::game::client_side) fn open_world(
         &mut self,
         folder: &str,
         name: Option<&str>,
@@ -192,7 +192,7 @@ impl Game<'_> {
     /// Leaving the game with a world open (window closed, Quit, `quit`):
     /// menu items go back (Player.closeContainer), then the world is saved,
     /// once.
-    pub(in crate::game) fn finish_perf(&mut self) {
+    pub(in crate::game::client_side) fn finish_perf(&mut self) {
         let s = &self.settings;
         let settings = sunrise_telemetry::payload::Settings {
             render_distance: s.render_distance.clamp(0, 255) as u8,
@@ -215,7 +215,7 @@ impl Game<'_> {
             .finish(&sunrise_client::logging::game_home(), settings);
     }
 
-    pub(in crate::game) fn save_for_exit(&mut self) -> Result<()> {
+    pub(in crate::game::client_side) fn save_for_exit(&mut self) -> Result<()> {
         // Native application termination can bypass CloseRequested. Finish any
         // save screen synchronously here, before the process can go away.
         while self.pending_save.0.is_some() {
@@ -259,7 +259,7 @@ impl Game<'_> {
         Ok(())
     }
 
-    pub(in crate::game) fn close_world(&mut self) -> Result<()> {
+    pub(in crate::game::client_side) fn close_world(&mut self) -> Result<()> {
         self.client.destroying.clear();
         self.mining = None;
         // Pause-menu and death-screen exits use the normal world-close action.

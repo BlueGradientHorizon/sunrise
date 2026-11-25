@@ -114,7 +114,7 @@ pub(in crate::game::client_side) use sunrise_world::registry::BlockStateId;
 impl Game<'_> {
     /// `AbstractMinecartRenderer` (old render): on the rail between the
     /// front and back points, pitched on slopes, with the display block.
-    pub(in crate::game) fn cart_geometry(
+    pub(in crate::game::client_side) fn cart_geometry(
         &self,
         camera: glam::DVec3,
         alpha: f64,
@@ -316,7 +316,9 @@ impl Game<'_> {
     /// joined the level since the last tick, and `LocalPlayer.startRiding`'s
     /// two inside sounds when the player got in one; then what the sound
     /// instances read this tick (the ridden cart and every cart).
-    pub(in crate::game) fn start_cart_sounds(&mut self) -> (Option<u32>, Vec<CartSound>) {
+    pub(in crate::game::client_side) fn start_cart_sounds(
+        &mut self,
+    ) -> (Option<u32>, Vec<CartSound>) {
         let improved = self.minecart_improvements();
         let carts: Vec<CartSound> = self
             .carts

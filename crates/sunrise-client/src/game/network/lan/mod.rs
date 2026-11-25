@@ -122,7 +122,7 @@ impl Game<'_> {
     }
 
     #[inline(always)]
-    pub(in crate::game) fn lan_acting_uuid(&self) -> Option<u128> {
+    pub(in crate::game::server_side) fn lan_acting_uuid(&self) -> Option<u128> {
         self.server.lan_acting_uuid
     }
 
@@ -148,7 +148,12 @@ impl Game<'_> {
     /// `PlayerList.remove`: `player.awardStat(Stats.LEAVE_GAME)` before the
     /// player is saved, heard by native mods first. Once per guest, however
     /// often they are saved.
-    pub(in crate::game) fn award_leave_game(&mut self, conn: u32, player: u128, name: &str) {
+    pub(in crate::game::server_side) fn award_leave_game(
+        &mut self,
+        conn: u32,
+        player: u128,
+        name: &str,
+    ) {
         let Some(play) = self.lan.as_mut().and_then(|host| host.play.get_mut(&conn)) else {
             return;
         };
@@ -170,7 +175,7 @@ impl Game<'_> {
     }
 
     /// `PlayerList.removeAll`: every player who joined leaves with the world.
-    pub(in crate::game) fn award_leave_game_to_all(&mut self) {
+    pub(in crate::game::server_side) fn award_leave_game_to_all(&mut self) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -197,7 +202,7 @@ pub(in crate::game) struct Owner {
 }
 
 /// A stable UUID for an entity that has none.
-pub(in crate::game) fn entity_uuid(id: u32) -> u128 {
+pub(in crate::game::server_side) fn entity_uuid(id: u32) -> u128 {
     0x4856_5a4e_0000_0000_0000_0000_0000_0000u128 | u128::from(id)
 }
 
@@ -222,7 +227,7 @@ pub(in crate::game) fn baby_index(species: Species) -> Option<u8> {
 /// The variant and look entries of `mob_meta`'s mobs (registry holders, the
 /// fish's, the bee's, the copper golem's weathering...), in a match of their
 /// own: `mob_meta`'s arms hold these mobs' other entries.
-pub(in crate::game) fn mob_variant_meta(
+pub(in crate::game::server_side) fn mob_variant_meta(
     m: &Mob,
     hub: &Hub,
     meta: &mut Vec<(u8, i32, Value)>,
@@ -1028,7 +1033,7 @@ pub(in crate::game) fn mob_meta(
 use super::villager_client::unhappy_counter;
 
 /// A mob's effects as its swirls are computed from.
-pub(in crate::game) fn mob_effects(m: &Mob) -> impl Iterator<Item = ShownEffect> + '_ {
+pub(in crate::game::server_side) fn mob_effects(m: &Mob) -> impl Iterator<Item = ShownEffect> + '_ {
     (m.extra.effects.iter()).map(|e| ShownEffect {
         effect: e.id,
         amplifier: e.amplifier,
@@ -1090,7 +1095,7 @@ pub(in crate::game) fn mob_freeze_meta(
 
 /// The equipment a mob shows (ClientboundSetEquipmentPacket slots: main hand,
 /// off hand, feet, legs, chest, head, body, saddle).
-pub(in crate::game) fn mob_equipment(
+pub(in crate::game::server_side) fn mob_equipment(
     m: &Mob,
     hub: &mut Hub,
     out: &mut Vec<(u8, Option<sunrise_protocol::item::Stack>)>,
@@ -1112,7 +1117,7 @@ pub const HELP: &[&str] = &[
 /// (setting a mode does nothing when it is already theirs). A world open to
 /// LAN is an integrated server, which leaves out the players who have game
 /// master permission; a dedicated server does not.
-pub(in crate::game) fn enforce_guest_game_mode(
+pub(in crate::game::server_side) fn enforce_guest_game_mode(
     host: &mut LanHost,
     world: &World,
     collision: &BlockCollisionRegistry<'_>,
@@ -1377,7 +1382,7 @@ impl Game<'_> {
 
     /// The transport close, separate from player callbacks and saves so that
     /// server shutdown can still disconnect after one of those unwinds.
-    pub(in crate::game) fn lan_disconnect(&mut self, announce: bool) {
+    pub(in crate::game::server_side) fn lan_disconnect(&mut self, announce: bool) {
         let Some(mut host) = self.lan.take() else {
             return;
         };
@@ -1404,7 +1409,7 @@ impl Game<'_> {
 
     /// `PlayerList.removeAll`: every guest leaves in turn, the vehicle it
     /// alone rides with it (`PlayerList.remove`), and is saved.
-    pub(in crate::game) fn save_leaving_guests(&mut self) {
+    pub(in crate::game::server_side) fn save_leaving_guests(&mut self) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -1455,7 +1460,10 @@ impl Game<'_> {
     /// `take_parent_vehicle`, `PlayerList.save`): an integrated server's owner
     /// into the level (`/data`) and both its files (`playerdata::save_owner`),
     /// anyone else into their own file.
-    pub(in crate::game) fn save_guest(&mut self, guest: &mut sunrise_client::lan::guest::Guest) {
+    pub(in crate::game::server_side) fn save_guest(
+        &mut self,
+        guest: &mut sunrise_client::lan::guest::Guest,
+    ) {
         if !guest.participates_in_player_simulation() {
             return;
         }
@@ -1491,7 +1499,7 @@ impl Game<'_> {
     /// The vehicles the other players in level `dim` ride, all but the
     /// guest `but` (`Entity.hasExactlyOnePlayerPassenger`); `host` adds the
     /// host's own player, in the level in place.
-    pub(in crate::game) fn ridden_by_others(
+    pub(in crate::game::server_side) fn ridden_by_others(
         &self,
         guests: &[sunrise_client::lan::guest::Guest],
         dim: &str,
@@ -1511,7 +1519,7 @@ impl Game<'_> {
     /// `ServerPlayer.saveParentVehicle` of a player riding `vehicle` in level
     /// `dim`, put in place for it if need be; with `remove`, the vehicle tree
     /// leaves the world with the player (`PlayerList.remove`).
-    pub(in crate::game) fn parent_vehicle_in(
+    pub(in crate::game::server_side) fn parent_vehicle_in(
         &mut self,
         dim: &str,
         vehicle: Option<u32>,
@@ -1544,7 +1552,7 @@ impl Game<'_> {
     /// a persistent tree as `RootVehicle` (`saved` holds it until the next ride).
     /// A guest the crash save excludes keeps the vehicle in the world: its file
     /// is not written, so nothing would hold it.
-    pub(in crate::game) fn take_parent_vehicle(
+    pub(in crate::game::server_side) fn take_parent_vehicle(
         &mut self,
         guest: &mut sunrise_client::lan::guest::Guest,
     ) {
@@ -1577,7 +1585,7 @@ impl Game<'_> {
     }
     /// `ServerPlayer.loadAndSpawnParentVehicle`: a guest whose file names the
     /// vehicle it rode rides it again, once the vehicle is in the world.
-    pub(in crate::game) fn restore_guest_vehicles(&mut self) {
+    pub(in crate::game::server_side) fn restore_guest_vehicles(&mut self) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -1626,7 +1634,11 @@ impl Game<'_> {
     }
     /// The file name of a player's advancements and statistics: an
     /// integrated server's owner keeps single player's.
-    pub(in crate::game) fn records_uuid(&self, host: &LanHost, uuid: u128) -> Option<[i32; 4]> {
+    pub(in crate::game::server_side) fn records_uuid(
+        &self,
+        host: &LanHost,
+        uuid: u128,
+    ) -> Option<[i32; 4]> {
         if host.owner.as_ref().is_some_and(|o| o.uuid == uuid) {
             self.level.player_uuid
         } else {
@@ -1635,7 +1647,7 @@ impl Game<'_> {
     }
     /// `PlayerList.saveAll`: statistics belong to each connected player's
     /// live record, independently of the dirty entries sent to their client.
-    pub(in crate::game) fn save_connected_guest_statistics(&self, host: &LanHost) {
+    pub(in crate::game::server_side) fn save_connected_guest_statistics(&self, host: &LanHost) {
         for guest in &host.hub.guests {
             if !guest.joined() || guest.released || self.server.crash_save.excludes(guest.conn) {
                 continue;
@@ -1656,7 +1668,7 @@ impl Game<'_> {
     /// The advancements and statistics files of a held arrival, before it is placed
     /// (`player-confirm`): each through a new file, synced and renamed into place
     /// (`save::write_durable`), so the reply's `ok` means both are on the disk whole.
-    pub(in crate::game) fn write_arrival_records(
+    pub(in crate::game::server_side) fn write_arrival_records(
         &self,
         host: &LanHost,
         guest: &sunrise_client::lan::guest::Guest,
@@ -1687,7 +1699,7 @@ impl Game<'_> {
     /// `PlayerAdvancements.load` and `ServerStatsCounter.parseLocal` of a
     /// network player who joined; every statistic goes out on the first
     /// request (`PlayerList.placeNewPlayer`'s `markAllDirty`).
-    pub(in crate::game) fn load_guest_records(&mut self, conn: u32) {
+    pub(in crate::game::server_side) fn load_guest_records(&mut self, conn: u32) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -1729,7 +1741,7 @@ impl Game<'_> {
     }
     /// The integrated server's owner into the world's player, for `Level::write`.
     /// Returns the owner's uuid and name when they were stored.
-    pub(in crate::game) fn store_owner(&mut self) -> Option<(u128, String)> {
+    pub(in crate::game::server_side) fn store_owner(&mut self) -> Option<(u128, String)> {
         let uuid = self.lan.as_ref().and_then(|h| h.owner.as_ref())?.uuid;
         let (riding, dim, others) = self.lan.as_ref().and_then(|h| {
             let g = h.hub.online_players().find(|g| g.uuid == uuid)?;
@@ -1781,7 +1793,7 @@ impl Game<'_> {
     }
 
     /// Apply the default mode to connected players when forcing it is enabled.
-    pub(in crate::game) fn set_force_game_mode(&mut self, force: bool) {
+    pub(in crate::game::server_side) fn set_force_game_mode(&mut self, force: bool) {
         if let Some(host) = self.lan.as_mut() {
             host.settings.force_game_mode = force;
             host.hub.config.force_game_mode = force;
@@ -1811,28 +1823,31 @@ impl Game<'_> {
     }
 
     /// Update the live entity tracking range percentage.
-    pub(in crate::game) fn set_entity_broadcast_range_percentage(&mut self, percentage: i32) {
+    pub(in crate::game::server_side) fn set_entity_broadcast_range_percentage(
+        &mut self,
+        percentage: i32,
+    ) {
         if let Some(host) = self.lan.as_mut() {
             host.hub.entity_range_percent = percentage;
         }
     }
 
     /// Update the live movement check's flight policy.
-    pub(in crate::game) fn set_allow_flight(&mut self, allow: bool) {
+    pub(in crate::game::server_side) fn set_allow_flight(&mut self, allow: bool) {
         if let Some(host) = self.lan.as_mut() {
             host.hub.config.allow_flight = allow;
         }
     }
 
     /// Update whether status responses include online player names.
-    pub(in crate::game) fn set_hide_online_players(&mut self, hide: bool) {
+    pub(in crate::game::server_side) fn set_hide_online_players(&mut self, hide: bool) {
         if let Some(host) = self.lan.as_ref() {
             host.hub.lan.shared.set_hide_online_players(hide);
         }
     }
 
     /// Update whether the server answers connection status requests.
-    pub(in crate::game) fn set_status_replies(&mut self, enable: bool) {
+    pub(in crate::game::server_side) fn set_status_replies(&mut self, enable: bool) {
         if let Some(host) = self.lan.as_ref() {
             host.hub.lan.shared.set_enable_status(enable);
         }
@@ -2010,7 +2025,7 @@ impl Game<'_> {
     /// `effectsDirty`) are asked again, and what they leave is kept and sent
     /// until the next change. An entity whose effects are gone has none
     /// (`removeEffectParticles`).
-    pub(in crate::game) fn lan_effect_particles(&mut self) {
+    pub(in crate::game::server_side) fn lan_effect_particles(&mut self) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -2057,7 +2072,9 @@ impl Game<'_> {
     /// its effects are unchanged, else the mods' answers for them
     /// (`effect_particle_modification`, once per effect), or none when it has
     /// no effects.
-    pub(in crate::game) fn modified_effect_particles<I: Iterator<Item = ShownEffect>>(
+    pub(in crate::game::server_side) fn modified_effect_particles<
+        I: Iterator<Item = ShownEffect>,
+    >(
         &self,
         hub: &Hub,
         entity: u32,
@@ -2695,7 +2712,7 @@ impl Game<'_> {
 
     /// `player_login_profile` for one admitted login: the mods' list when the packet can carry
     /// it, else the login's own, sent back to its connection.
-    pub(in crate::game) fn answer_login_profile(
+    pub(in crate::game::server_side) fn answer_login_profile(
         &mut self,
         request: lan::login_profile::LoginProfileRequest,
     ) {
@@ -2736,7 +2753,10 @@ impl Game<'_> {
         let _ = reply.send(chosen);
     }
 
-    pub(in crate::game) fn tick_lan_player_handshakes(&mut self, handoffs: Vec<lan::Handoff>) {
+    pub(in crate::game::server_side) fn tick_lan_player_handshakes(
+        &mut self,
+        handoffs: Vec<lan::Handoff>,
+    ) {
         for mut handoff in handoffs {
             let peer_ip = handoff.peer_ip.map(|ip| ip.to_string());
             let mut cancel = false;
@@ -2776,7 +2796,7 @@ impl Game<'_> {
 
     /// The entity id counter, once the entities Sunrise keeps without one
     /// have theirs, while guests track the level (None otherwise).
-    pub(in crate::game) fn lan_ids_so_far(&mut self) -> Option<i32> {
+    pub(in crate::game::server_side) fn lan_ids_so_far(&mut self) -> Option<i32> {
         if self.lan.as_ref().is_none_or(|h| h.hub.guests.is_empty()) {
             return None;
         }
@@ -2792,14 +2812,14 @@ impl Game<'_> {
     /// after the scheduled and random ticks, before the block events, so the
     /// players get the blocks as they are then. What the tick writes from
     /// there on goes out with the next tick's.
-    pub(in crate::game) fn lan_broadcast_changes(&mut self) -> Option<usize> {
+    pub(in crate::game::server_side) fn lan_broadcast_changes(&mut self) -> Option<usize> {
         if let Some(host) = self.lan.as_mut() {
             host.hub.broadcast_changes(&mut self.world);
         }
         self.world.block_log.as_ref().map(Vec::len)
     }
 
-    pub(in crate::game) fn lan_mark_synced(&mut self) {
+    pub(in crate::game::server_side) fn lan_mark_synced(&mut self) {
         if let Some(next) = self.lan_ids_so_far()
             && let Some(host) = self.lan.as_mut()
         {
@@ -2809,7 +2829,7 @@ impl Game<'_> {
 
     /// The end of such a phase: what joined during it is first updated in
     /// this tick's pass too.
-    pub(in crate::game) fn lan_synced_since(&mut self, from: Option<i32>) {
+    pub(in crate::game::server_side) fn lan_synced_since(&mut self, from: Option<i32>) {
         if let Some(from) = from
             && let Some(next) = self.lan_ids_so_far()
             && next > from
@@ -2825,7 +2845,7 @@ impl Game<'_> {
     /// (`Hub::note_joined`). Only they are
     /// described (their ids are above the counter the states were taken at),
     /// and nothing when the counter has not moved or no guest is in the level.
-    pub(in crate::game) fn lan_note_joined(&mut self) {
+    pub(in crate::game::server_side) fn lan_note_joined(&mut self) {
         let Some(host) = self.lan.take() else {
             return;
         };
@@ -2838,7 +2858,10 @@ impl Game<'_> {
     /// Deliver start/stop callbacks before sounds and attachment snapshots.
     /// A callback can spawn another entity, whose pairing is part of the same
     /// operation, as a nested ChunkMap.addEntity would be in vanilla.
-    pub(in crate::game) fn lan_flush_tracking(&mut self, mut host: LanHost) -> LanHost {
+    pub(in crate::game::server_side) fn lan_flush_tracking(
+        &mut self,
+        mut host: LanHost,
+    ) -> LanHost {
         loop {
             self.lan_pair_joined(&mut host);
             host.hub.collect_tracking();
@@ -2856,7 +2879,7 @@ impl Game<'_> {
 
     /// Pair late arrivals before a sound flush as well as at the end of the
     /// tick. The counter prevents taking or draining an entity's state twice.
-    pub(in crate::game) fn lan_pair_joined(&mut self, host: &mut LanHost) {
+    pub(in crate::game::server_side) fn lan_pair_joined(&mut self, host: &mut LanHost) {
         if let Some(next) = host.states_next_entity
             && host.hub.guests.iter().any(|g| host.hub.watches(g))
         {
@@ -3216,7 +3239,7 @@ impl Game<'_> {
         self.lan_living_flags();
     }
 
-    pub(in crate::game) fn lan_guest_joined(
+    pub(in crate::game::server_side) fn lan_guest_joined(
         &mut self,
         conn: u32,
         entities: &[EntityState],
@@ -3432,7 +3455,12 @@ impl Game<'_> {
     }
     /// Deliver one committed entity event immediately to tracking guests and the entity itself,
     /// without touching unrelated entries in `self.lan_entity_events`.
-    pub(in crate::game) fn deliver_entity_event(&mut self, id: i32, event: i8, at: [f64; 3]) {
+    pub(in crate::game::server_side) fn deliver_entity_event(
+        &mut self,
+        id: i32,
+        event: i8,
+        at: [f64; 3],
+    ) {
         if let Some(host) = self.lan.as_ref() {
             host.hub.entity_event(id, event);
         } else if self.audio_capture_active() {
@@ -3440,7 +3468,12 @@ impl Game<'_> {
         }
         self.lan_entity_event_local(id, event, at);
     }
-    pub(in crate::game) fn lan_entity_event_local(&mut self, id: i32, event: i8, at: [f64; 3]) {
+    pub(in crate::game::server_side) fn lan_entity_event_local(
+        &mut self,
+        id: i32,
+        event: i8,
+        at: [f64; 3],
+    ) {
         // Event 16: zombie villagers play their cure sound on each client.
         if event == 16 && self.options.execution_role.is_client() {
             self.zombie_villager_cure_sound(id as u32);
@@ -3481,7 +3514,7 @@ impl Game<'_> {
     /// is, else the host): the broken statistic, then `level.broadcastEntityEvent` of the
     /// slot's break event, which each client answers with `breakItem` (the sound and the
     /// crumbs, `remote_equipment_break`). Without a hub to tell, they are played here.
-    pub(in crate::game) fn player_equipment_broke(
+    pub(in crate::game::server_side) fn player_equipment_broke(
         &mut self,
         slot: sunrise_core::equipment_slot::EquipmentSlot,
         stack: &sunrise_client::items::ItemStack,
@@ -3519,7 +3552,7 @@ impl Game<'_> {
     /// `ServerPlayer.crit` (or `magicCrit` when `magic`): this window's
     /// emitter, and an animation for the attacker's client and observers once
     /// the hub is back in place.
-    pub(in crate::game) fn critical_hit(
+    pub(in crate::game::server_side) fn critical_hit(
         &mut self,
         attacker: Option<u32>,
         id: i32,
@@ -3717,7 +3750,7 @@ impl Game<'_> {
     }
 
     /// Keep the chunks around every guest loaded.
-    pub(in crate::game) fn lan_update_streaming(&mut self) {
+    pub(in crate::game::server_side) fn lan_update_streaming(&mut self) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -3753,7 +3786,7 @@ impl Game<'_> {
     /// `villager::sleep_pose`): its `facing`.
     /// `Entity.setPose` for the server's players: the mods hear each placed
     /// guest's change of pose. Nothing is kept while no mod listens.
-    pub(in crate::game) fn lan_guest_poses(&mut self) {
+    pub(in crate::game::server_side) fn lan_guest_poses(&mut self) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -3792,7 +3825,7 @@ impl Game<'_> {
 impl Game<'_> {
     /// After a player's chat was broadcast: the dedicated server's event
     /// log, and `detectRateSpam`.
-    pub(in crate::game) fn lan_player_chatted(&mut self, sender: u128, text: &str) {
+    pub(in crate::game::server_side) fn lan_player_chatted(&mut self, sender: u128, text: &str) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -3813,7 +3846,7 @@ impl Game<'_> {
     /// A hub's chat and log lines: a dedicated server logs them
     /// (MinecraftServer.logChatMessage, `[Not Secure]` for unsigned or
     /// expired messages); a LAN host shows the chat.
-    pub(in crate::game) fn lan_log_event(&mut self, event: HostEvent) {
+    pub(in crate::game::server_side) fn lan_log_event(&mut self, event: HostEvent) {
         let dedicated = self.is_dedicated_server();
         match event {
             HostEvent::Chat { line, secure } if dedicated => {
@@ -3846,7 +3879,7 @@ pub(in crate::game) fn living_flags(using: Option<(usize, u32)>, spinning: bool)
 
 /// Tracker updates go between the two groups. Partition preserves the
 /// enqueue order within each group.
-pub(in crate::game) fn partition_lan_entity_events(
+pub(in crate::game::server_side) fn partition_lan_entity_events(
     events: Vec<(i32, i8)>,
     mut live_ids: impl Iterator<Item = i32>,
 ) -> (Vec<(i32, i8)>, Vec<(i32, i8)>) {
@@ -3911,7 +3944,7 @@ pub(in crate::game) fn client_info(
 
 /// `HumanoidArm.BY_ID`: 1 is the right arm, and every other id the left (0, and the id an
 /// unknown one reads as).
-pub(in crate::game) fn main_hand(id: i32) -> mod_api::MainHand {
+pub(in crate::game::server_side) fn main_hand(id: i32) -> mod_api::MainHand {
     if id == 1 {
         mod_api::MainHand::Right
     } else {
@@ -3922,7 +3955,7 @@ pub(in crate::game) fn main_hand(id: i32) -> mod_api::MainHand {
 impl Game<'_> {
     /// For a slow tick's note (#8669): the item a `UseItemOn` or `UseItem` uses and the block
     /// it aims at. None for other events.
-    pub(in crate::game) fn event_detail(
+    pub(in crate::game::server_side) fn event_detail(
         &self,
         host: &LanHost,
         event: &HostEvent,
@@ -4635,7 +4668,8 @@ pub(in crate::game) mod tests {
         run_datapack_damage_world_open_reuses_the_no_pack_preload();
     }
 
-    pub(in crate::game) fn run_datapack_damage_world_open_reuses_the_no_pack_preload() {
+    pub(in crate::game::server_side) fn run_datapack_damage_world_open_reuses_the_no_pack_preload()
+    {
         use super::{
             SyncData,
             sync::{SyncCache, cached_sync_data, initialize_world_sync_data},
@@ -4697,7 +4731,8 @@ pub(in crate::game) mod tests {
         run_datapack_damage_world_open_replaces_preload_atomically();
     }
 
-    pub(in crate::game) fn run_datapack_damage_world_open_replaces_preload_atomically() {
+    pub(in crate::game::server_side) fn run_datapack_damage_world_open_replaces_preload_atomically()
+    {
         use super::{
             SyncData,
             sync::{SyncCache, cached_sync_data, initialize_world_sync_data},
@@ -4811,7 +4846,8 @@ pub(in crate::game) mod tests {
         run_datapack_damage_unrelated_packs_do_not_load_sync_data_at_open();
     }
 
-    pub(in crate::game) fn run_datapack_damage_unrelated_packs_do_not_load_sync_data_at_open() {
+    pub(in crate::game::server_side) fn run_datapack_damage_unrelated_packs_do_not_load_sync_data_at_open()
+     {
         use super::{
             SyncData,
             sync::{SyncCache, initialize_world_sync_data},
@@ -4883,8 +4919,8 @@ pub(in crate::game) mod tests {
         run_datapack_damage_lazy_wire_snapshot_survives_reload_before_first_hub();
     }
 
-    pub(in crate::game) fn run_datapack_damage_lazy_wire_snapshot_survives_reload_before_first_hub()
-    {
+    pub(in crate::game::server_side) fn run_datapack_damage_lazy_wire_snapshot_survives_reload_before_first_hub()
+     {
         use super::sync::{
             SyncCache, cached_sync_data, initialize_world_sync_data, prepare_sync_reload,
         };
@@ -5001,7 +5037,8 @@ pub(in crate::game) mod tests {
         run_datapack_damage_lazy_wire_load_caches_after_all_packs_are_removed();
     }
 
-    pub(in crate::game) fn run_datapack_damage_lazy_wire_load_caches_after_all_packs_are_removed() {
+    pub(in crate::game::server_side) fn run_datapack_damage_lazy_wire_load_caches_after_all_packs_are_removed()
+     {
         if crate::game::native_entity_refs::tests::run_fresh_cases(
             "game::server_side::lan::tests::datapack_damage_lazy_wire_load_caches_after_all_packs_are_removed",
             "SUNRISE_LAZY_DAMAGE_CUSTOM_COMPONENTS",
@@ -5924,7 +5961,9 @@ impl super::Dim {
     /// The level `level`'s world spawn is in (MinecraftServer.findRespawnDimension), the
     /// Overworld when the world has no such level. It borrows only the level data, so a
     /// `TickCtx` can name it beside the world it borrows mutably.
-    pub(in crate::game) fn of_world_spawn(level: &sunrise_client::save::Level) -> Self {
+    pub(in crate::game::server_side) fn of_world_spawn(
+        level: &sunrise_client::save::Level,
+    ) -> Self {
         level
             .world_spawn_dimension
             .as_deref()
@@ -6024,7 +6063,8 @@ pub(in crate::game) mod world_spawn_sync_tests {
         run_join_and_respawn_contexts_use_world_spawn_not_a_personal_spawn();
     }
 
-    pub(in crate::game) fn run_join_and_respawn_contexts_use_world_spawn_not_a_personal_spawn() {
+    pub(in crate::game::server_side) fn run_join_and_respawn_contexts_use_world_spawn_not_a_personal_spawn()
+     {
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.level.world_spawn = Some([100, 140, -20]);
             game.spawn = Some(sunrise_core::geometry::Vec3::new(96.5, 145.0, -31.5));
@@ -6046,7 +6086,8 @@ pub(in crate::game) mod world_spawn_sync_tests {
         run_setworldspawn_reaches_guests_with_the_dimension_it_ran_in();
     }
 
-    pub(in crate::game) fn run_setworldspawn_reaches_guests_with_the_dimension_it_ran_in() {
+    pub(in crate::game::server_side) fn run_setworldspawn_reaches_guests_with_the_dimension_it_ran_in()
+     {
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.build_registries();
             game.level.world_spawn = None;
@@ -6171,7 +6212,7 @@ pub(in crate::game) mod world_spawn_sync_tests {
         run_guest_respawn_without_a_known_world_spawn_never_advertises_the_hosts_personal_point();
     }
 
-    pub(in crate::game) fn run_guest_respawn_without_a_known_world_spawn_never_advertises_the_hosts_personal_point()
+    pub(in crate::game::server_side) fn run_guest_respawn_without_a_known_world_spawn_never_advertises_the_hosts_personal_point()
      {
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.level.world_spawn = None;
