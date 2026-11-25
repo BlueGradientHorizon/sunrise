@@ -263,9 +263,9 @@ impl Game<'_> {
         )
     }
     /// The layers mods added to `mob`'s type or player model (`register_entity_layers`), drawn
-    /// after its vanilla model and layers: `layers`, looked up once for the mob by `mod_layers`,
-    /// whose answer also decided whether the draw kept its model. `who` is set for a player, and
-    /// `model` lends the final model as the vanilla draw posed it, if one ran.
+    /// after its vanilla model and unhidden layers: `layers`, looked up once for the mob by
+    /// `entity_layers`, whose answer also decided whether the draw kept its model. `who` is set
+    /// for a player, and `model` lends the final model as the vanilla draw posed it, if one ran.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn mod_layer_geometry(
         &self,
@@ -273,16 +273,20 @@ impl Game<'_> {
         who: Option<PlayerRender<'_>>,
         model: Option<&dyn FrameModel>,
         layers: Option<super::native_entity_layers::Layers>,
+        stock_ctx: &super::native_entity_layers::StockLayerContext<'_>,
         partial: f32,
         camera: DVec3,
         light: u32,
         out: &mut Vec<Vertex>,
-    ) {
+    ) -> Option<std::ops::Range<usize>> {
         if let Some(layers) = layers {
             let local = who.as_ref().is_some_and(|who| who.local);
             let id = render_id(mob.id, local, self.own_entity_id());
-            self.registered_layer_geometry(mob, id, &layers, model, partial, camera, light, out);
+            return self.registered_layer_geometry(
+                mob, id, &layers, model, stock_ctx, partial, camera, light, out,
+            );
         }
+        None
     }
     /// The mods' post hooks for `mob`, whose pre hooks weren't canceled: `render_living_post`,
     /// then, for a player (`who`), `render_player_post`. Asked whether or not its layers drew (a

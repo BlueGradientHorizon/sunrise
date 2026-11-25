@@ -12,7 +12,7 @@ use sunrise_render_core::entity::{QuadSort, TEXT_POLYGON_OFFSET_SOLID_OVERLAY};
 use sunrise_shaders::render_stage;
 
 use sunrise_render_core::{
-    EntitySpan, EntityVertex as Vertex, FLUID_OVERLAY, OIT_ENTITY,
+    ARMOR_GLINT_ONLY_OVERLAY, EntitySpan, EntityVertex as Vertex, FLUID_OVERLAY, OIT_ENTITY,
     TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY, TERRAIN_MODEL_CUTOUT_OVERLAY, TERRAIN_MODEL_SOLID_OVERLAY,
     TERRAIN_MODEL_TRANSLUCENT_OVERLAY, TRANSLUCENT_GLINT_ITEM_OVERLAY, TRANSLUCENT_ITEM_OVERLAY,
     TRANSLUCENT_PARTICLE_OVERLAY, WATER_MASK_OVERLAY, is_native_terrain, skin_runs,
@@ -543,12 +543,15 @@ impl PackEntities {
             // A native terrain quad carries sprite-array UVs, not shared-atlas UVs. A run of them
             // the block atlas holds is placed in that atlas below; any other goes to Sunrise,
             // even when a shader pack draws the model in the same run. Do not corrupt either UV
-            // space.
+            // space. Standalone armor glint also needs its native material: exposing it to
+            // gbuffers would draw the hidden armor texture.
+            let native_material =
+                |layer| is_native_terrain(layer) || (layer & 0xffff) == ARMOR_GLINT_ONLY_OVERLAY;
             let whole: &[Vertex] =
-                if !block_atlas && whole.chunks(4).any(|q| is_native_terrain(q[0].layer)) {
+                if !block_atlas && whole.chunks(4).any(|q| native_material(q[0].layer)) {
                     without_fluids.clear();
                     for quad in whole.chunks(4) {
-                        if is_native_terrain(quad[0].layer) {
+                        if native_material(quad[0].layer) {
                             if !span.hidden {
                                 rest.extend_from_slice(quad);
                             }

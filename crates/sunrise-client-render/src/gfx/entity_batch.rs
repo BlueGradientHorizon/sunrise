@@ -4,7 +4,7 @@ use sunrise_render_core::entity::QuadSort;
 #[cfg(test)]
 use sunrise_render_core::entity::quad_distance_sq;
 pub use sunrise_render_core::entity::{
-    TEXT_NORMAL_SOLID_OVERLAY, TEXT_POLYGON_OFFSET_SOLID_OVERLAY,
+    ARMOR_GLINT_ONLY_OVERLAY, TEXT_NORMAL_SOLID_OVERLAY, TEXT_POLYGON_OFFSET_SOLID_OVERLAY,
 };
 
 /// Device-derived vertex and index byte capacities governing the combined entity batch.
@@ -222,6 +222,8 @@ pub(super) struct EntityBatchCounts {
 /// (`SubmitNodeCollection.canRenderAsSolid`).
 /// Material storage order is independent of their draw stages.
 const MATERIALS: usize = 21;
+// A subrange of the energy swirl pass, also drawn by secondary world views.
+const ARMOR_FOIL: usize = MATERIALS;
 const _: () = assert!(
     TEXT_POLYGON_OFFSET_SOLID_OVERLAY != super::EXPLICIT_PARTICLE_OVERLAY
         && TEXT_POLYGON_OFFSET_SOLID_OVERLAY != GLINT_ONLY_OVERLAY
@@ -353,6 +355,7 @@ fn material(layer: u32, oit: bool) -> usize {
         GLINT_ONLY_OVERLAY => return 18,
         TEXT_POLYGON_OFFSET_SOLID_OVERLAY => return 19,
         TEXT_NORMAL_SOLID_OVERLAY => return 20,
+        ARMOR_GLINT_ONLY_OVERLAY => return ARMOR_FOIL,
         _ => {}
     }
     if layer & 0xffff == FLUID_OVERLAY {
@@ -381,8 +384,10 @@ pub(crate) struct EntityBatch {
     // Runs of consecutive quads of one material (first quad, quad count): a
     // model's quads share one, so whole runs are copied at once. Cleared each
     // frame, keeping their storage.
-    runs: [Vec<(usize, usize)>; MATERIALS],
+    runs: [Vec<(usize, usize)>; MATERIALS + 1],
     pub(super) combined: Vec<Vertex>,
+    /// Foil-only quads in `combined`, immediately after the energy swirls.
+    pub(super) armor_foil: std::ops::Range<u32>,
     sort: QuadSort,
     /// Additive quads tagged `OIT_ENTITY` that the last `update` moved into the
     /// last material (improved transparency on): the dragon's eyes, which share
@@ -484,7 +489,7 @@ impl EntityBatch {
         for runs in &mut self.runs {
             runs.clear();
         }
-        let mut counts = [0usize; MATERIALS];
+        let mut counts = [0usize; MATERIALS + 1];
         let mut start = 0;
         while start < quads.len() {
             let key = run_key(quads[start][0].layer, oit);
@@ -518,7 +523,16 @@ impl EntityBatch {
                         .extend_from_slice(&entities[first * 4..(first + count) * 4]);
                 }
             }
+            if kind == 5 {
+                let start = self.combined.len() as u32 / 4;
+                for &(first, count) in &self.runs[ARMOR_FOIL] {
+                    self.combined
+                        .extend_from_slice(&entities[first * 4..(first + count) * 4]);
+                }
+                self.armor_foil = start..self.combined.len() as u32 / 4;
+            }
         }
+        counts[5] += counts[ARMOR_FOIL];
         // `RenderTypes.eyes` is blended like the other entities, not added: with
         // improved transparency on, tagged additive quads join the last
         // material, drawn without the additive overlay and the baked shading.
@@ -553,7 +567,7 @@ impl EntityBatch {
         append_sorted(&mut self.sort, &mut self.combined, entities, &self.runs[16]);
         // Classic `RenderTypes.textPolygonOffset` sorts on upload. `RenderTypes.text`,
         // banner patterns and glint keep their submission order in either mode.
-        for (kind, runs) in self.runs.iter().enumerate().skip(17) {
+        for (kind, runs) in self.runs[..MATERIALS].iter().enumerate().skip(17) {
             if kind == 19 && !oit {
                 append_sorted(&mut self.sort, &mut self.combined, entities, runs);
             } else {
@@ -580,7 +594,7 @@ impl EntityBatch {
         self.combined
             .extend_from_slice(&shadow_only[..shadow_only_admitted.len() * 4]);
         EntityBatchCounts {
-            materials: counts.map(|count| count as u32),
+            materials: std::array::from_fn(|i| counts[i] as u32),
             admitted_entity_vertices,
             additive: additive_admitted.len() as u32 - self.moved_additive,
             hand: hand_admitted.len() as u32,

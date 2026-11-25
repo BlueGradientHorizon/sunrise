@@ -40,6 +40,8 @@ pub const BANNER_PATTERN_OVERLAY: u32 = 49;
 pub const TEXT_POLYGON_OFFSET_SOLID_OVERLAY: u32 = 50;
 /// Opaque `Font.DisplayMode.NORMAL` text, including the outline behind a sign's offset fill.
 pub const TEXT_NORMAL_SOLID_OVERLAY: u32 = 51;
+/// Armor foil without its color material: additive, with no depth or outline writes.
+pub const ARMOR_GLINT_ONLY_OVERLAY: u32 = 52;
 pub const WATER_MASK_OVERLAY: u32 = 13;
 pub const TRANSLUCENT_PARTICLE_OVERLAY: u32 = 15;
 pub const OIT_ENTITY: u32 = 1 << 24;
