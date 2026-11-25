@@ -71,6 +71,10 @@ pub struct Inputs<'a> {
     /// Extra std430 storage buffer blocks by name: `(name, binding, read_only)` in
     /// [`Self::extra_set`]. The block's `readonly` qualifier must agree with `read_only`.
     pub extra_storage_buffers: &'a [(&'a str, u32, bool)],
+    /// Extra `image2D` storage images by name: `(name, binding, access)` in
+    /// [`Self::extra_set`]. The declaration's `readonly`/`writeonly` qualifiers must agree with
+    /// `access`, and its `layout(<format>)` names the texel format.
+    pub extra_storage_images: &'a [(&'a str, u32, ImageAccess)],
     /// Optional binding in [`Self::extra_set`] onto which `layout(push_constant) uniform ...`
     /// blocks are translated as a std140 uniform buffer. `None` refuses `layout(push_constant)`.
     pub push_constant_binding: Option<u32>,
@@ -864,6 +868,127 @@ impl Translated {
     }
 }
 
+/// A compute shader, expanded, translated and validated ([`translate_compute`]).
+#[derive(Debug)]
+pub struct ComputeTranslated {
+    pub module: naga::Module,
+    /// The `local_size_x`, `local_size_y` and `local_size_z` the entry point declares.
+    pub workgroup_size: [u32; 3],
+    /// Bytes of `shared` (workgroup address space) variables the entry point uses
+    /// (`max_compute_workgroup_storage_size` bounds them).
+    pub workgroup_storage_bytes: u32,
+    /// Whether the shader uses subgroup operations (`GL_KHR_shader_subgroup_*`, `subgroupAdd` and
+    /// the like): a device without `Features::SUBGROUP` must refuse it.
+    pub uses_subgroup: bool,
+    /// The bindings of group 0 the entry point reads or writes.
+    pub read: Vec<u32>,
+}
+
+/// One GLSL 450 compute shader under `inputs`, whose extra bindings are in
+/// [`Inputs::extra_set`] (a compute pipeline has one bind group, the mod's, so callers use set
+/// `0`). `layout(local_size_x = ..., local_size_y = ..., local_size_z = ...) in;` declares the
+/// workgroup size; the caller checks it, [`ComputeTranslated::workgroup_storage_bytes`] and
+/// [`ComputeTranslated::uses_subgroup`] against the device's limits and features, as only it
+/// knows them. `in` and `out` variables are refused: a compute shader has no stage interface.
+pub fn translate_compute(
+    text: &str,
+    file: &str,
+    dir: &str,
+    inputs: &Inputs,
+    interface: InterfaceLimits,
+) -> Result<ComputeTranslated, Vec<Error>> {
+    let mut expanded = expand_includes(text, file, dir, inputs.includes, Some(inputs.defines))
+        .map_err(|e| vec![Error::from(e)])?;
+    expanded.lines = glsl_fixups::fixups(expanded.lines);
+    texel_fetches(&mut expanded.lines);
+    let glue = Glue {
+        inputs: &[],
+        prelude: "",
+        setup: "",
+        finish: "",
+        vertex_id: "0",
+        fragment_finish: None,
+        interface,
+    };
+    let mut names = Names::new(other_binding_base(inputs).map_err(|message| {
+        vec![Error {
+            file: file.to_owned(),
+            line: 0,
+            message,
+        }]
+    })?);
+    let code =
+        rewrite(&expanded, ShaderStage::Compute, inputs, &glue, &mut names).map_err(|e| vec![e])?;
+    // The directives run on the rewritten stage, the program's defines first, as for the other
+    // stages.
+    let parsed = run_directives(&code, inputs.defines).map_err(|e| vec![e])?;
+    let (module, info) = compile(ShaderStage::Compute, &parsed, &names, &|_| false, interface)?;
+    let Some(entry) = module.entry_points.first() else {
+        return Err(vec![Error {
+            file: file.to_owned(),
+            line: 0,
+            message: "the compute shader has no `main`".to_owned(),
+        }]);
+    };
+    let workgroup_size = entry.workgroup_size;
+    let uses_subgroup = module_uses_subgroup(&module);
+    let used = info.get_entry_point(0);
+    let mut workgroup_storage_bytes = 0u32;
+    let mut read = Vec::new();
+    for (handle, global) in module.global_variables.iter() {
+        if used[handle].is_empty() {
+            continue;
+        }
+        if global.space == naga::AddressSpace::WorkGroup {
+            workgroup_storage_bytes = workgroup_storage_bytes
+                .saturating_add(module.types[global.ty].inner.size(module.to_ctx()));
+        }
+        if let Some(binding) = global.binding.as_ref().filter(|b| b.group == 0) {
+            read.push(binding.binding);
+        }
+    }
+    Ok(ComputeTranslated {
+        module,
+        workgroup_size,
+        workgroup_storage_bytes,
+        uses_subgroup,
+        read,
+    })
+}
+
+/// Whether `module` has a subgroup operation (each of the ballot, gather and collective
+/// statements yields a result expression, which is what is looked for, so no statement walk is
+/// needed) or an entry point that reads a subgroup built-in.
+fn module_uses_subgroup(module: &naga::Module) -> bool {
+    let operation = |expression: &naga::Expression| {
+        matches!(
+            expression,
+            naga::Expression::SubgroupBallotResult
+                | naga::Expression::SubgroupOperationResult { .. }
+        )
+    };
+    let built_in = |argument: &naga::FunctionArgument| {
+        matches!(
+            argument.binding,
+            Some(naga::Binding::BuiltIn(
+                naga::BuiltIn::SubgroupSize
+                    | naga::BuiltIn::SubgroupInvocationId
+                    | naga::BuiltIn::NumSubgroups
+                    | naga::BuiltIn::SubgroupId
+            ))
+        )
+    };
+    module
+        .functions
+        .iter()
+        .map(|(_, function)| function)
+        .chain(module.entry_points.iter().map(|entry| &entry.function))
+        .any(|function| {
+            function.expressions.iter().any(|(_, e)| operation(e))
+                || function.arguments.iter().any(built_in)
+        })
+}
+
 /// A bound on a program's includes, which are pasted every time.
 const MAX_PASTES: u32 = 1024;
 pub const MAX_EXPANDED: usize = 1 << 20;
@@ -1285,8 +1410,56 @@ fn is_ident(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
 }
 
+/// How a shader uses a storage image, as its `readonly`/`writeonly` qualifiers say.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ImageAccess {
+    /// `readonly`.
+    ReadOnly,
+    /// `writeonly`.
+    WriteOnly,
+    /// Neither qualifier.
+    ReadWrite,
+}
+
+impl ImageAccess {
+    /// The access the memory `qualifiers` of an `image2D` declaration say.
+    pub fn of_qualifiers(qualifiers: &[&str]) -> Self {
+        match (
+            qualifiers.contains(&"readonly"),
+            qualifiers.contains(&"writeonly"),
+        ) {
+            (true, false) => Self::ReadOnly,
+            (false, true) => Self::WriteOnly,
+            _ => Self::ReadWrite,
+        }
+    }
+}
+
+/// A `[layout(<format>)] [memory qualifiers] uniform image2D Name;` line: a storage image.
+#[derive(Debug, PartialEq, Eq)]
+pub struct StorageImage<'a> {
+    /// The image's name.
+    pub name: &'a str,
+    /// Its memory qualifiers (`readonly`, `writeonly`, `coherent`, `volatile`, `restrict`).
+    pub qualifiers: Vec<&'a str>,
+    /// What stood inside `layout(...)`: the texel format, e.g. `rgba8`, `r32f`.
+    pub layout: &'a str,
+}
+
+/// The storage image a line declares, if it declares one.
+pub fn storage_image(line: &str) -> Option<StorageImage<'_>> {
+    let decl = declaration(line)?;
+    (decl.storage == "uniform" && decl.ty == "image2D").then_some(StorageImage {
+        name: decl.name,
+        qualifiers: decl.qualifiers,
+        layout: decl.layout,
+    })
+}
+
 /// A global declaration on one line: `layout(...) qualifiers storage type name;`.
 struct Decl<'a> {
+    /// What stood inside `layout(...)`, empty without one.
+    layout: &'a str,
     /// `layout(location = N)`'s N.
     location: Option<u32>,
     qualifiers: Vec<&'a str>,
@@ -1298,9 +1471,11 @@ struct Decl<'a> {
 fn declaration(line: &str) -> Option<Decl<'_>> {
     let mut rest = line.trim();
     let mut location = None;
+    let mut layout = "";
     if let Some(after) = rest.strip_prefix("layout") {
         let after = after.trim_start().strip_prefix('(')?;
         let close = after.find(')')?;
+        layout = after[..close].trim();
         location = after[..close].split(',').find_map(|q| {
             let (key, value) = q.split_once('=')?;
             (key.trim() == "location").then(|| value.trim().parse().ok())?
@@ -1312,15 +1487,28 @@ fn declaration(line: &str) -> Option<Decl<'_>> {
     let storage_at = words
         .iter()
         .position(|w| matches!(*w, "in" | "out" | "uniform"))?;
-    let [ty, name] = words[storage_at + 1..] else {
+    // Memory qualifiers may follow the storage word too: `uniform readonly image2D img;`.
+    let mut qualifiers = words[..storage_at].to_vec();
+    let mut tail = &words[storage_at + 1..];
+    while let [word, others @ ..] = tail
+        && matches!(
+            *word,
+            "readonly" | "writeonly" | "coherent" | "volatile" | "restrict"
+        )
+    {
+        qualifiers.push(*word);
+        tail = others;
+    }
+    let [ty, name] = *tail else {
         return None;
     };
     if !name.chars().all(is_ident) || !ty.chars().all(is_ident) {
         return None;
     }
     Some(Decl {
+        layout,
         location,
-        qualifiers: words[..storage_at].to_vec(),
+        qualifiers,
         storage: words[storage_at],
         ty,
         name,
@@ -1472,6 +1660,12 @@ fn other_binding_base(inputs: &Inputs) -> Result<u32, String> {
             let next = b
                 .checked_add(1)
                 .ok_or_else(|| "storage buffer binding index overflow".to_owned())?;
+            base = base.max(next);
+        }
+        for &(_, b, _) in inputs.extra_storage_images {
+            let next = b
+                .checked_add(1)
+                .ok_or_else(|| "storage image binding index overflow".to_owned())?;
             base = base.max(next);
         }
         if let Some(b) = inputs.push_constant_binding {
@@ -1655,6 +1849,12 @@ fn rewrite(
                 write(&mut out, "\n");
                 continue;
             };
+            if stage == ShaderStage::Compute && matches!(decl.storage, "in" | "out") {
+                return Err(at(format!(
+                    "{} {} is not allowed in a compute shader, which has no stage interface",
+                    decl.storage, decl.name
+                )));
+            }
             let qualifiers = decl.qualifiers.join(" ");
             match decl.storage {
                 "uniform" if matches!(decl.ty, "isamplerBuffer" | "usamplerBuffer") => {
@@ -1677,6 +1877,38 @@ fn rewrite(
                         &format!(
                             "layout(std430, set = {set}, binding = {binding}) readonly buffer hz_buffer_{name} {{ {scalar} hz_data_{name}[]; }};\n\
                              {vector} hz_fetch_{name}(int i) {{ return {vector}(hz_data_{name}[i], 0, 0, 1); }}\n"
+                        ),
+                    );
+                }
+                "uniform" if decl.ty == "image2D" => {
+                    let Some(&(_, binding, access)) = inputs
+                        .extra_storage_images
+                        .iter()
+                        .find(|(image, _, _)| *image == decl.name)
+                    else {
+                        return Err(at(format!(
+                            "storage image {} is not declared on this pipeline",
+                            decl.name
+                        )));
+                    };
+                    if ImageAccess::of_qualifiers(&decl.qualifiers) != access {
+                        return Err(at(format!(
+                            "storage image {} is declared {access:?} in the layout but its qualifiers say {:?}",
+                            decl.name,
+                            ImageAccess::of_qualifiers(&decl.qualifiers),
+                        )));
+                    }
+                    if decl.layout.is_empty() || decl.layout.contains(['=', ',']) {
+                        return Err(at(format!(
+                            "storage image {} needs exactly `layout(<texel format>)`, such as `layout(rgba8)`",
+                            decl.name
+                        )));
+                    }
+                    let (set, format, name) = (inputs.extra_set, decl.layout, decl.name);
+                    write(
+                        &mut out,
+                        &format!(
+                            "layout({format}, set = {set}, binding = {binding}) {qualifiers} uniform image2D {name};\n"
                         ),
                     );
                 }
@@ -1965,6 +2197,7 @@ mod tests {
             extra_samplers: &[],
             extra_texel_buffers: &[],
             extra_storage_buffers: &[],
+            extra_storage_images: &[],
             push_constant_binding: None,
             loose: &LOOSE,
             defines,
@@ -2700,6 +2933,7 @@ mod tests {
             extra_samplers: &[],
             extra_texel_buffers: &[],
             extra_storage_buffers: &[("Data", 0, true)],
+            extra_storage_images: &[],
             push_constant_binding: None,
             loose: &LOOSE,
             defines: &[],
@@ -2749,6 +2983,29 @@ mod tests {
             let errors = translate_storage(&vsh).expect_err(packing);
             assert!(!errors.is_empty(), "got: {errors:?}");
         }
+    }
+
+    /// Only an `image2D` declaration names a storage image, with its format and qualifiers in
+    /// either order around `uniform`.
+    #[test]
+    fn storage_images_are_read_from_image2d_declarations_only() {
+        let image = storage_image("layout(rgba16f) writeonly uniform image2D Out;").unwrap();
+        assert_eq!(
+            (image.name, image.layout, image.qualifiers),
+            ("Out", "rgba16f", vec!["writeonly"])
+        );
+        let image = storage_image("layout(r32f) uniform readonly image2D In;").unwrap();
+        assert_eq!(
+            (image.layout, ImageAccess::of_qualifiers(&image.qualifiers)),
+            ("r32f", ImageAccess::ReadOnly)
+        );
+        assert_eq!(
+            ImageAccess::of_qualifiers(&storage_image("uniform image2D Both;").unwrap().qualifiers),
+            ImageAccess::ReadWrite
+        );
+        assert_eq!(storage_image("uniform sampler2D Tex;"), None);
+        assert_eq!(storage_image("uniform image3D Volume;"), None);
+        assert_eq!(storage_image("layout(rgba8) uniform Block {"), None);
     }
 
     /// An array too large to lay out (#4134) is the shader's error at its line, not a panic.
@@ -3011,6 +3268,7 @@ mod tests {
             extra_samplers: &[],
             extra_texel_buffers: &[],
             extra_storage_buffers: &[],
+            extra_storage_images: &[],
             push_constant_binding: None,
             loose: &[],
             defines: &[],
@@ -3112,6 +3370,7 @@ mod tests {
             extra_samplers: &[("ModTex", 1)],
             extra_texel_buffers: &[("ModLut", 3)],
             extra_storage_buffers: &[],
+            extra_storage_images: &[],
             push_constant_binding: Some(4),
             loose: &[],
             defines: &[],
@@ -3184,6 +3443,43 @@ mod tests {
         let err = translate(&stages, &no_pc, &glue, &|_| false)
             .expect_err("undeclared push_constant must fail");
         assert!(describe(&err).contains("push_constant"), "got: {err:?}");
+    }
+
+    fn compute_uses_subgroup(source: &str) -> bool {
+        let read = |_: &str| -> Result<Option<String>, String> { Ok(None) };
+        let includes = includes(&read);
+        let inputs = Inputs {
+            blocks: &[],
+            samplers: &[],
+            extra_set: 0,
+            extra_blocks: &[],
+            extra_samplers: &[],
+            extra_texel_buffers: &[],
+            extra_storage_buffers: &[("Out", 0, false)],
+            extra_storage_images: &[],
+            push_constant_binding: None,
+            loose: &[],
+            defines: &[],
+            includes: &includes,
+        };
+        translate_compute(source, "t:test.csh", "", &inputs, LIMITS)
+            .unwrap_or_else(|e| panic!("{e:?}"))
+            .uses_subgroup
+    }
+
+    /// Subgroup use is read from the translated module, not the source text: an identifier that
+    /// merely starts with `subgroup` is not an operation.
+    #[test]
+    fn only_a_real_subgroup_operation_sets_uses_subgroup() {
+        let body = "layout(local_size_x = 8) in;\nlayout(std430) buffer Out { uint values[]; };\n";
+        let named = format!(
+            "#version 450\n{body}void main() {{ uint subgroupCount = 3u; values[gl_GlobalInvocationID.x] = subgroupCount; }}\n"
+        );
+        assert!(!compute_uses_subgroup(&named));
+        let built_in = format!(
+            "#version 450\n#extension GL_KHR_shader_subgroup_basic : enable\n{body}void main() {{ values[gl_GlobalInvocationID.x] = gl_SubgroupSize; }}\n"
+        );
+        assert!(compute_uses_subgroup(&built_in));
     }
 }
 

@@ -273,6 +273,41 @@ the device's `max_storage_buffer_binding_size` bytes and at least `min_size`
 vertex stage needs `VERTEX_WRITABLE_STORAGE`; a device without it refuses such a pipeline. Every
 refusal is a `BufferError` or `PipelineDrawError`, never a panic.
 
+## Mip chains and storage images on render targets
+
+A render target made with `host.create_render_target(&desc)` can carry a mip chain, the way a
+vanilla `GpuTexture` has `getMipLevels()`: `RenderTargetDescriptor::new(size)
+.color_target(RenderTargetFormat::R32Float).mip_levels(n)`, with `n` from 1 to
+`RenderTargetDescriptor::max_mip_levels(size)` (`32 - max(width, height).leading_zeros()`). A depth
+attachment keeps one level.
+`TextureSource::RenderTargetColorMip(RenderTargetMipView::new(target, attachment, base_mip,
+mip_levels))` samples a range of levels, as vanilla's `GpuTextureView` has `baseMipLevel()` and
+`mipLevels()`. A render pass gives each level one usage, so a level a draw writes as a storage
+image cannot also be sampled, or bound with another storage access, by any draw of that pass:
+a draw that does so itself is refused with `PipelineDrawError::TargetReadWriteHazard`, and the
+conflicting draws of one pass are skipped with one warning per target. Sample level `k` in a draw
+of a different pass than the one that writes level `k + 1`, or sample only levels the pass does not
+write.
+
+For a shader that writes a level directly (a depth pyramid, a blur chain), create the target with
+`.storage(StorageImageAccess::WriteOnly)`, declare the image in the layout with
+`BindEntry::new("Next", BindingKind::StorageImage { access: StorageImageAccess::WriteOnly })`, write
+`layout(r32f) writeonly uniform image2D Next;` in GLSL (`rgba8`, `rgba16f` and `r32f` are the
+formats a target can have; the shader's `readonly`/`writeonly` qualifiers must agree with the
+access), and bind one level with `DrawBindings::new().storage_image("Next",
+StorageImageBinding::new(target, 0, level))`. A target can be used as a storage image only in the
+access it was created for (`ReadWrite` covers both others). A storage image format needs the
+adapter's `TextureFormatFeatures::allowed_usages` to include `STORAGE_BINDING`, and its `flags` to
+include `STORAGE_WRITE_ONLY`, `STORAGE_READ_ONLY` or `STORAGE_READ_WRITE` for the access; a format
+or access the adapter lacks is refused when the target is created, with
+`RenderTargetError::UnsupportedStorage`. `host.render_capabilities()` lists the formats with
+read-write storage in `read_write_storage`, and `float32_filterable` says whether an `R32Float`
+target can be sampled with `SamplerFilter::Linear`. A device refusal of the allocation itself is
+`RenderTargetError::Device`.
+
+A render target survives a resource reload and a world close, and is freed by
+`target.release(host)` or when its mod unloads.
+
 ## Participating in translated shader packs
 
 When an Iris/OptiFine shader pack is active and owns terrain rendering, a mod pipeline without a
@@ -533,3 +568,87 @@ or one without `.order_independent()` to `OitTranslucent` returns
 `PipelineDrawError::Pipeline(RenderPipelineError::Invalid)` and logs once per mod and pipeline.
 `cargo sunrise-mod check` validates all three OIT variants using prepared resources or Sunrise's
 interface-only `oit.glsl` stub.
+
+## Compute pipelines
+
+A compute shader runs a grid of workgroups with no render pass: it reads and writes storage buffers,
+storage images and texel buffers, which suits culling, reductions and mip building (for example a
+depth-pyramid reduction that writes a mip chain and a visibility count). It is registered on the
+same `register_render_pipelines` hook as a draw pipeline.
+
+1. Write `assets/<namespace>/shaders/compute/<path>.csh` in GLSL 450. Declare
+   `layout(local_size_x = 8, local_size_y = 8) in;` and bind every resource by the name its
+   `BindGroupLayout` entry gives it. A compute shader has no `in` or `out` variables, no push
+   constants and one bind group, so a binding is the entry you declared and nothing else.
+2. Register it:
+
+   ```rust,ignore
+   event.compute_pipeline(
+       ComputePipeline::builder(id("mymod:reduce"), id("mymod:reduce"))
+           .bind_group_layout(layout)
+           .define_value("TILE", "8")
+           .build(),
+   );
+   ```
+
+3. Resolve `host.render_assets().compute_pipeline(&id)` in `client_setup` and again in
+   `client_resources_reloaded`; a handle from before a reload is `Stale`.
+4. In `frame_graph_setup`, add a compute node and dispatch from its callback:
+
+   ```rust,ignore
+   graph.add_compute_pass(
+       ComputePassDescriptor::new("reduce")
+           .reads(FrameTarget::Mod(depth))
+           .writes(FrameTarget::Mod(pyramid))
+           .after_stage(RenderLevelStage::AfterLevel),
+       &mut |ctx| {
+           let _ = ctx.dispatch(pipeline, &bindings, [8, 8, 1]);
+       },
+   )?;
+   ```
+
+   The node runs outside any render pass, in the order its reads, writes and `after`/`before`
+   give it, and is never culled. `dispatch_indirect` reads the three counts from a storage buffer
+   created with `indirect: true`.
+
+Everything a mod can get wrong comes back as an `Err`: a workgroup size, workgroup storage or
+binding count over the device's limits makes the pipeline resolve `Invalid`, a shader that needs
+subgroup operations resolves `UnsupportedFeature` when `RenderCapabilities::subgroup` is false,
+and a dispatch over `max_compute_workgroups_per_dimension` is `TooManyWorkgroups`. Your GPU
+objects survive a resource reload and a world close; free them with `release`.
+
+## Indirect draws
+
+A compute shader that culls can write what to draw, and the draw reads it with no CPU readback.
+Create a storage buffer with `StorageBufferDescriptor::new(size).indirect(true)`, fill it from a
+compute pass, and draw it from a world stage, an offscreen pass or a translated shader pack's slot:
+
+```rust,ignore
+let bindings = DrawBindings::new().storage_buffer("Pages", pages.slice(0, pages_len));
+ctx.draw_indirect(
+    &IndirectDraw::new(pipeline, commands, max_count, &bindings).with_mesh(mesh),
+)?;
+```
+
+`draw_indirect` is on `WorldDrawContext`, `PrepareRenderBuffersContext` (with the stage, as
+`draw_mesh` is) and `OffscreenDrawContext`. It draws exactly `max_count` commands from
+`indirect_offset`, the same on every backend, as vanilla's `RenderPass.drawIndexedIndirect(commands,
+drawCount)` does. There is no GPU-written count: have the culling shader write `instance_count = 0`
+into each slot it drops, which draws nothing. A `max_count` of zero is a legal no-op.
+
+- **Layout.** With a `MeshRef` that has an index buffer, each command is five 4-byte words
+  (`index_count, instance_count, first_index, base_vertex, first_instance`; `INDIRECT_INDEXED_DRAW_SIZE`
+  bytes) and the index format is the mesh's own. Without a mesh, or with a mesh that has no indices,
+  each command is four words (`vertex_count, instance_count, first_vertex, first_instance`;
+  `INDIRECT_DRAW_SIZE` bytes), and the pipeline's topology cannot be `Quads`, `Lines` or `TriangleFan`.
+  A pipeline that pulls its vertices from a storage buffer passes no mesh and declares no vertex
+  bindings.
+- **First instance.** A command's `first_instance` is honoured only where
+  `RenderCapabilities::indirect_first_instance` is true; keep it zero otherwise.
+- **Base vertex.** An indexed command's `base_vertex` offsets the vertex fetch and `gl_VertexID`;
+  the engine's daily GPU test draws a command with a non-zero `base_vertex` on the CI adapter.
+
+The command buffer must have been created with `indirect: true`, its offset be a multiple of 4, and
+`indirect_offset + max_count * stride` lie inside it. A stale or foreign buffer is
+`PipelineDrawError::Buffer`, any other misuse `PipelineDrawError::InvalidIndirect`, and nothing is
+recorded.

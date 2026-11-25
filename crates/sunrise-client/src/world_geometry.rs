@@ -1,8 +1,8 @@
 //! Per-view custom geometry; buffers pre-reserve initial space and grow dynamically.
 use crate::gfx::mod_meshes::ResolvedMeshDraw;
 use crate::gfx::mod_pipelines::{
-    self, PipelineDraw, PipelineDrawSource, PipelineRun, PipelineVertex, ResolvedDrawBindings,
-    ResolvedSet1Entry,
+    self, IndirectSource, PipelineDraw, PipelineDrawSource, PipelineRun, PipelineVertex,
+    ResolvedDrawBindings, ResolvedSet1Entry,
 };
 use crate::gfx::world_primitives::{
     Batch, DEFAULT_CAPACITY as CAPACITY, DrawRanges, OIT_STAGES, OitBatch,
@@ -95,6 +95,14 @@ enum ActiveTarget {
     Oit,
 }
 
+/// Borrowed frame-graph setup surface passed into `native_frame_graph_setup`.
+#[derive(Default)]
+pub struct FrameGraphSurface {
+    pub graph: crate::gfx::mod_frame_graph::RecordedFrameGraph,
+    pub oit_on: bool,
+    pub camera: [f64; 3],
+}
+
 /// Borrowed stage surface passed into `native_render_level_stage`.
 pub struct StageSurface<'a> {
     geometry: &'a mut WorldGeometry,
@@ -124,6 +132,7 @@ pub struct WorldGeometry {
     view_id: Option<u64>,
     prepared: Vec<(RenderLevelStage, DrawRanges)>,
     stage_draws: Vec<DrawRanges>,
+    frame_graph: FrameGraphSurface,
     camera: [f64; 3],
     view: Mat4,
     white: [f32; 2],
@@ -193,6 +202,7 @@ impl Default for WorldGeometry {
             view_id: None,
             prepared: Vec::new(),
             stage_draws: Vec::new(),
+            frame_graph: FrameGraphSurface::default(),
             camera: [0.0; 3],
             view: Mat4::IDENTITY,
             white: [0.0; 2],
@@ -242,6 +252,8 @@ impl WorldGeometry {
         self.view_id = None;
         self.prepared.clear();
         self.stage_draws.clear();
+        self.frame_graph.graph.clear();
+        self.frame_graph.oit_on = false;
         self.camera = camera;
         self.view = view;
         self.white = white;
@@ -280,6 +292,21 @@ impl WorldGeometry {
         self.oit_stage_ends = [[0; 4]; OIT_STAGES - 1];
         self.active = ActiveTarget::Primary;
         self.finalized = false;
+    }
+    /// Borrow the frame-graph setup surface for `native_frame_graph_setup`.
+    pub fn frame_graph_surface(&mut self, oit_on: bool) -> &mut FrameGraphSurface {
+        self.frame_graph.graph.clear();
+        self.frame_graph.oit_on = oit_on;
+        self.frame_graph.camera = self.camera;
+        &mut self.frame_graph
+    }
+    /// Take any recorded frame graph passes for compilation and execution.
+    pub fn take_frame_graph(&mut self) -> Option<crate::gfx::mod_frame_graph::RecordedFrameGraph> {
+        if self.frame_graph.graph.is_empty() {
+            None
+        } else {
+            Some(std::mem::take(&mut self.frame_graph.graph))
+        }
     }
     /// Borrow a stage-scoped surface for `native_render_level_stage`.
     pub fn stage_surface(&mut self, stage: RenderLevelStage) -> StageSurface<'_> {
@@ -946,6 +973,30 @@ impl WorldGeometry {
         draw: mod_api::MeshDraw,
         bindings: Option<ResolvedDrawBindings>,
     ) {
+        self.draw_source_slot(slot, draw, PipelineDrawSource::Retained(resolved), bindings);
+    }
+    /// Record a GPU-driven draw command. Caller has already validated the pipeline, the mesh,
+    /// the command buffer and the bindings.
+    pub fn draw_indirect_slot(
+        &mut self,
+        slot: u32,
+        indirect: IndirectSource,
+        bindings: Option<ResolvedDrawBindings>,
+    ) {
+        self.draw_source_slot(
+            slot,
+            mod_api::MeshDraw::vertices(0..0).with_instances(0..1),
+            PipelineDrawSource::Indirect(indirect),
+            bindings,
+        );
+    }
+    fn draw_source_slot(
+        &mut self,
+        slot: u32,
+        draw: mod_api::MeshDraw,
+        source: PipelineDrawSource,
+        bindings: Option<ResolvedDrawBindings>,
+    ) {
         let modifier_stack = self.active_modifier_stack();
         let (draws, stage) = match self.active {
             ActiveTarget::Primary => (&mut self.pipeline_draws, self.stage as u32),
@@ -960,7 +1011,7 @@ impl WorldGeometry {
             stage,
             modifier_stack,
             draw,
-            source: PipelineDrawSource::Retained(resolved),
+            source,
             bindings,
         });
     }

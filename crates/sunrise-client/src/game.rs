@@ -1272,6 +1272,11 @@ mod native_entity_move_tests;
 mod native_entity_moves;
 #[path = "game/modding/native_entity_physics.rs"]
 mod native_entity_physics;
+#[path = "game/modding/native_entity_previous.rs"]
+mod native_entity_previous;
+#[cfg(test)]
+#[path = "game/modding/native_entity_previous_tests.rs"]
+mod native_entity_previous_tests;
 #[path = "game/modding/native_entity_refs.rs"]
 mod native_entity_refs;
 #[path = "game/modding/native_entity_remove.rs"]
@@ -5121,8 +5126,7 @@ impl Game<'_> {
     ) {
         let lid = |p: [i32; 3]| self.chest_lid(p, partial);
         let anim = |p: [i32; 3]| self.block_anim(p, partial);
-        let substitute =
-            |text: &sunrise_client::text::Text| self.substitute_inline_images(text, false);
+        let substitute = |text: &sunrise_client::text::Text| self.substitute_inline_images(text);
         let inline_sprite = |atlas: &str, sprite: &str| self.gui.atlas.inline_sprite(atlas, sprite);
         use block_entity_render::SignOutline;
         let sign_outline =

@@ -19,6 +19,9 @@ pub struct ThrownTrident {
     pub needs_sync: bool,
     pub yaw: f32,
     pub pitch: f32,
+    /// `Entity.yRotO` and `xRotO`: the yaw and pitch when its tick began (`setOldPosAndRot`).
+    pub previous_yaw: f32,
+    pub previous_pitch: f32,
     pub in_ground: bool,
     /// `AbstractArrow.inGroundTime`: the ticks it has been stuck, from 0 on
     /// load; past 4, Loyalty calls the trident back.
@@ -92,6 +95,9 @@ impl ThrownTrident {
         self.previous = n.position;
         self.yaw = n.yaw;
         self.pitch = n.pitch;
+        // Entity.load ends with setOldPosAndRot.
+        self.previous_yaw = n.yaw;
+        self.previous_pitch = n.pitch;
         // The server resolves Loyalty against its current enchantment table after this read.
         self.loyalty = 0;
         self.stack = n.item;
@@ -172,6 +178,8 @@ impl ThrownTrident {
             needs_sync: false,
             yaw,
             pitch,
+            previous_yaw: yaw,
+            previous_pitch: pitch,
             in_ground: false,
             in_ground_time: 0,
             life: 0,

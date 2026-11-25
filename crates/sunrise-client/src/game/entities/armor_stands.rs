@@ -550,6 +550,7 @@ impl Game<'_> {
             loaded.previous_yaw = stand.previous_yaw;
             loaded.previous_body_yaw = stand.previous_body_yaw;
             loaded.pitch = 0.0;
+            loaded.previous_pitch = 0.0;
             loaded.previous = loaded.position;
             stand = loaded;
         }
@@ -1116,6 +1117,7 @@ impl Game<'_> {
             let a = &mut self.armor_stands[i];
             a.previous = a.position;
             a.previous_yaw = a.yaw;
+            a.previous_pitch = a.pitch;
             a.previous_head_yaw = a.head_yaw;
             // aiStep's freezing step (removeFrost) makes the speed instance.
             a.speed_instance = true;

@@ -71,6 +71,7 @@ pub enum RegistrationError {
         id: Identifier,
         pipeline: Identifier,
     },
+    InvalidComputePipeline(String),
     AlreadyPublished,
 }
 
@@ -130,6 +131,7 @@ impl std::fmt::Display for RegistrationError {
                 f,
                 "mod {owner}: render type {id} references unknown pipeline {pipeline}"
             ),
+            Self::InvalidComputePipeline(reason) => f.write_str(reason),
             Self::AlreadyPublished => f.write_str("pipeline registrations were already published"),
         }
     }
@@ -929,7 +931,7 @@ impl Built {
     }
 }
 
-fn mod_bindings_from_layout(
+pub(crate) fn mod_bindings_from_layout(
     layout: &mod_api::BindGroupLayout,
 ) -> Vec<sunrise_mod_pipeline::ModBinding<'_>> {
     layout
@@ -948,6 +950,22 @@ fn mod_bindings_from_layout(
                 }
                 mod_api::BindingKind::StorageBuffer { read_only, .. } => {
                     sunrise_mod_pipeline::ModBindingKind::StorageBuffer { read_only }
+                }
+                mod_api::BindingKind::StorageImage { access } => {
+                    sunrise_mod_pipeline::ModBindingKind::StorageImage {
+                        access: match access {
+                            mod_api::StorageImageAccess::WriteOnly => {
+                                sunrise_glsl::ImageAccess::WriteOnly
+                            }
+                            mod_api::StorageImageAccess::ReadOnly => {
+                                sunrise_glsl::ImageAccess::ReadOnly
+                            }
+                            mod_api::StorageImageAccess::ReadWrite => {
+                                sunrise_glsl::ImageAccess::ReadWrite
+                            }
+                            _ => return None,
+                        },
+                    }
                 }
                 _ => return None,
             };
@@ -979,6 +997,8 @@ pub struct Pipelines {
     oit_ineligible_logged: std::sync::Arc<std::sync::Mutex<Vec<usize>>>,
     /// The texture-taking built-in render types made so far, shared by clones of this set.
     textured: std::sync::Arc<std::sync::Mutex<TexturedRenderTypes>>,
+    /// The registered compute pipelines of the same load (`mod_compute`).
+    compute: crate::mod_compute::ComputeSet,
 }
 
 /// The texture-taking built-in render types of one load (`RenderTypes.entitySolid(Identifier)`,
@@ -998,13 +1018,18 @@ impl Pipelines {
         source: &crate::resource_source::ResourceSource,
         generation: u64,
     ) -> Result<Self, String> {
-        Self::build(registered(), generation, |file| {
-            match source.read_to_string(file) {
-                Ok(text) => Ok(Some(text)),
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-                Err(e) => Err(e.to_string()),
-            }
-        })
+        let read = |file: &str| match source.read_to_string(file) {
+            Ok(text) => Ok(Some(text)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e.to_string()),
+        };
+        let mut set = Self::build(registered(), generation, read)?;
+        set.compute = crate::mod_compute::ComputeSet::build(
+            crate::mod_compute::registered(),
+            generation,
+            read,
+        );
+        Ok(set)
     }
 
     /// Build every registered pipeline, reading `.vsh`, `.fsh`, and include files via `read`
@@ -1183,7 +1208,14 @@ impl Pipelines {
             invalid: Default::default(),
             oit_ineligible_logged: Default::default(),
             textured: Default::default(),
+            compute: Default::default(),
         })
+    }
+
+    /// The compute pipelines of this load: what `RenderAssets::compute_pipeline` resolves in and
+    /// the renderer builds on its device.
+    pub fn compute(&self) -> &crate::mod_compute::ComputeSet {
+        &self.compute
     }
 
     /// The registered [`PrimitiveTopology`] of `slot`, or `None` if `slot` is out of range or
@@ -2260,9 +2292,11 @@ void main() {
             mod_platform::testing::with_mods(mods.into(), || {
                 let mut staged = Vec::new();
                 let mut staged_render_types = Vec::new();
+                let mut staged_compute = Vec::new();
                 mod_api::dispatch_register_render_pipelines(
                     &RegistrationContext::new(),
                     &mut staged_render_types,
+                    &mut staged_compute,
                     &mut staged,
                 );
                 result = validate_pack_bindings(&staged).map(|()| staged);

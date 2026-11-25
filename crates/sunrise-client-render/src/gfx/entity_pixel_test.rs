@@ -3285,4 +3285,60 @@ mod dynamic_quads {
         assert_eq!(pixel(&frames[1], 16, 16), BLACK);
         assert_eq!(pixel(&frames[1], 48, 16), [248, 0, 248, 255]);
     }
+
+    /// A sign line's inline dynamic texture, laid out by the sign text path (`push_text`), reads
+    /// back as the texture's four texels where the glyph is, with no sign geometry changing when
+    /// a region is written; released after submit it is vanilla's missing texture.
+    #[test]
+    #[ignore = "daily"]
+    fn a_sign_lines_inline_dynamic_texture_draws_where_the_glyph_is() {
+        let call = crate::block_entity_render::TextCall {
+            // One font pixel is 1/8 of the target's half width; y runs down as the font's does.
+            matrix: Mat4::from_scale(glam::Vec3::new(0.125, -0.125, 1.0))
+                * Mat4::from_translation(glam::Vec3::new(0.0, 0.0, 0.5)),
+            x: 0.0,
+            y: 0.0,
+            text: "\u{fffc}".into(),
+            inline_sprite: None,
+            inline_dynamic: Some(HANDLE),
+            style: Default::default(),
+            color: 0xFFFF_FFFF,
+            outline: 0,
+            light: 0xF0F0,
+            tier: 0,
+        };
+        let mut vertices = Vec::new();
+        crate::block_entity_render::push_text(
+            &|_| Default::default(),
+            None,
+            &call.run(),
+            &mut vertices,
+        );
+        assert_eq!(vertices.len(), 4);
+        let frames = render_frames(
+            &vertices,
+            &[
+                vec![create(texels([RED, GREEN, BLUE, YELLOW]))],
+                vec![Command::Write {
+                    handle: HANDLE,
+                    origin: [1, 1],
+                    size: [1, 1],
+                    rgba: WHITE.to_vec(),
+                }],
+                vec![Command::Release { handle: HANDLE }],
+            ],
+        )
+        .expect("software Vulkan draw");
+        // The glyph spans x 0..8 and y -1..7 font pixels: pixels 32..64 across, 28..60 down.
+        let glyph = [(40, 36), (56, 36), (40, 52), (56, 52)];
+        assert_eq!(
+            glyph.map(|(x, y)| pixel(&frames[0], x, y)),
+            [RED, GREEN, BLUE, YELLOW]
+        );
+        assert_eq!(pixel(&frames[0], 16, 16), BLACK);
+        assert_eq!(pixel(&frames[1], 56, 52), WHITE);
+        assert_eq!(pixel(&frames[1], 40, 36), RED);
+        assert_eq!(pixel(&frames[2], 40, 36), BLACK);
+        assert_eq!(pixel(&frames[2], 56, 36), [248, 0, 248, 255]);
+    }
 }

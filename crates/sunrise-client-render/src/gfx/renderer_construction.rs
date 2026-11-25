@@ -2426,6 +2426,13 @@ impl Renderer {
             mod_meshes: std::sync::Mutex::new(mod_meshes::ModMeshes::default()),
             mod_uniforms: std::sync::Mutex::new(mod_uniforms::ModUniformBuffers::default()),
             mod_storage: std::sync::Mutex::new(mod_storage::ModStorageBuffers::default()),
+            mod_render_targets: std::sync::Mutex::new(
+                mod_render_targets::ModRenderTargets::default(),
+            ),
+            transient_targets: std::sync::Mutex::new(
+                mod_frame_graph::TransientTargetPool::default(),
+            ),
+            warned_frame_graph_cycles: std::sync::Mutex::new(std::collections::HashSet::new()),
             text_polygon_offset_pipeline,
             world_text_pipeline,
             text_mark_pipelines,

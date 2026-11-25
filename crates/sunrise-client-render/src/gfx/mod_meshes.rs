@@ -255,6 +255,38 @@ impl ModMeshes {
         })
     }
 
+    /// Validate `handle` against the pipeline's vertex `bindings` for an indirect draw and return
+    /// its buffers. The draw's commands are indexed iff the mesh has an index buffer. A vertex
+    /// range is the GPU's to choose, so only the strides are checked.
+    pub fn resolve_indirect(
+        &self,
+        owner: Option<&'static str>,
+        handle: MeshRef,
+        bindings: &[(u8, VertexFormat)],
+    ) -> Result<ResolvedMeshDraw, PipelineDrawError> {
+        let mesh = self
+            .get_owned(owner, handle)
+            .map_err(PipelineDrawError::Mesh)?;
+        let mut vertex_buffers = Vec::with_capacity(bindings.len());
+        for (binding_idx, fmt) in bindings {
+            let vb = mesh
+                .vertex_buffers
+                .get(usize::from(*binding_idx))
+                .ok_or(PipelineDrawError::VertexFormatMismatch)?;
+            if vb.stride != fmt.stride {
+                return Err(PipelineDrawError::VertexFormatMismatch);
+            }
+            vertex_buffers.push((u32::from(*binding_idx), vb.buffer.clone(), vb.byte_len));
+        }
+        Ok(ResolvedMeshDraw {
+            vertex_buffers,
+            index_buffer: mesh
+                .index_buffer
+                .as_ref()
+                .map(|ib| (ib.buffer.clone(), wgpu_index_format(ib.format))),
+        })
+    }
+
     fn get_owned(
         &self,
         owner: Option<&'static str>,
@@ -461,6 +493,19 @@ impl super::Renderer {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .retire_disabled(disabled);
+    }
+
+    /// Resolve a retained [`MeshRef`] for an indirect draw (see [`ModMeshes::resolve_indirect`]).
+    pub fn resolve_mod_mesh_indirect(
+        &self,
+        owner: Option<&'static str>,
+        mesh: MeshRef,
+        bindings: &[(u8, VertexFormat)],
+    ) -> Result<ResolvedMeshDraw, PipelineDrawError> {
+        self.mod_meshes
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .resolve_indirect(owner, mesh, bindings)
     }
 
     /// Validate and resolve a retained [`MeshRef`] draw call into zero-copy GPU buffer handles.
