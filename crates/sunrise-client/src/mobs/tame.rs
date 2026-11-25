@@ -1336,19 +1336,11 @@ impl Goal for CatTempt {
     #[inline]
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         // Cat.tick: a wild cat being tempted begs every 100 ticks.
-        if m.age.is_multiple_of(100) {
-            if let Some(sound) = super::ai::cat_sound(m, cx.w.side.variant_tables(), "beg_for_food")
-            {
-                cx.events
-                    .push(MobEvent::SoundId(sound.to_owned(), m.center(), 1.0, 1.0));
-            } else {
-                cx.events.push(MobEvent::Sound(
-                    "entity.cat.beg_for_food",
-                    m.center(),
-                    1.0,
-                    1.0,
-                ));
-            }
+        if m.age.is_multiple_of(100)
+            && let Some(sound) = super::ai::cat_sound(m, cx.w.side.variant_tables(), "beg_for_food")
+        {
+            cx.events
+                .push(MobEvent::SoundId(sound.to_owned(), m.center(), 1.0, 1.0));
         }
         self.0.tick(m, cx);
         // CatTemptGoal.tick: pick the tempting player with a 1 in 600 chance a
@@ -1777,8 +1769,6 @@ pub fn cat_ai_step(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
         let volume = 0.6 + 0.4 * (m.random.next_float() - m.random.next_float());
         if let Some(sound) = super::ai::cat_sound(m, w.side.variant_tables(), "purr") {
             events.push(MobEvent::SoundId(sound.to_owned(), m.center(), volume, 1.0));
-        } else {
-            events.push(MobEvent::Sound("entity.cat.purr", m.center(), volume, 1.0));
         }
     }
 }
@@ -2177,6 +2167,26 @@ mod tests {
         k.id = "minecraft:cat".into();
         k.species = Species::Cat;
         Mob::new(1, kind, Vec3::new(0.5, 64.0, 0.5), 0.0)
+    }
+    /// `Wolf.getSoundSet` always has a bound variant; with no sound variant table there is no
+    /// sound to play, and no built-in one stands in.
+    #[test]
+    fn a_wolf_with_no_sound_variant_table_makes_no_ambient_sound() {
+        let mut m = wolf();
+        let mut events = Vec::new();
+        super::super::ai::play_wolf_ambient(&mut m, None, &mut events);
+        assert!(events.is_empty());
+    }
+    /// `Cat.getSoundSet`: likewise for a cat's ambient sound, tame or wild.
+    #[test]
+    fn a_cat_with_no_sound_variant_table_makes_no_ambient_sound() {
+        let mut events = Vec::new();
+        for tame in [false, true] {
+            let mut m = cat();
+            m.extra.tame = tame;
+            super::super::ai::play_cat_ambient(&mut m, None, &mut events);
+        }
+        assert!(events.is_empty());
     }
     #[test]
     fn a_cat_lying_near_a_sleeper_lies_on_top_of_them() {

@@ -586,36 +586,36 @@ pub(super) fn mob_meta(
             if kind == "minecraft:cat" {
                 // Cat.DATA_VARIANT_ID and DATA_SOUND_VARIANT_ID carry the world
                 // table's network id directly (`RegistryRef<K>`).
-                let variant_id = e
-                    .cat_variant
-                    .map(|r| r.network_id() as i32)
-                    .or_else(|| id("minecraft:cat_variant", "black"));
-                if let Some(v) = variant_id {
-                    meta.push((20, serializer::CAT_VARIANT, Value::Id(v)));
+                if let Some(r) = e.cat_variant {
+                    meta.push((
+                        20,
+                        serializer::CAT_VARIANT,
+                        Value::Id(r.network_id() as i32),
+                    ));
                 }
-                let sound_id = e
-                    .cat_sound_variant
-                    .map(|r| r.network_id() as i32)
-                    .or_else(|| id("minecraft:cat_sound_variant", "classic"));
-                if let Some(v) = sound_id {
-                    meta.push((24, serializer::CAT_SOUND_VARIANT, Value::Id(v)));
+                if let Some(r) = e.cat_sound_variant {
+                    meta.push((
+                        24,
+                        serializer::CAT_SOUND_VARIANT,
+                        Value::Id(r.network_id() as i32),
+                    ));
                 }
             } else {
                 // Wolf.DATA_VARIANT_ID and DATA_SOUND_VARIANT_ID carry the world
                 // table's network id directly (`RegistryRef<K>`).
-                let variant_id = e
-                    .wolf_variant
-                    .map(|r| r.network_id() as i32)
-                    .or_else(|| id("minecraft:wolf_variant", "pale"));
-                if let Some(v) = variant_id {
-                    meta.push((23, serializer::WOLF_VARIANT, Value::Id(v)));
+                if let Some(r) = e.wolf_variant {
+                    meta.push((
+                        23,
+                        serializer::WOLF_VARIANT,
+                        Value::Id(r.network_id() as i32),
+                    ));
                 }
-                let sound_id = e
-                    .wolf_sound_variant
-                    .map(|r| r.network_id() as i32)
-                    .or_else(|| id("minecraft:wolf_sound_variant", "classic"));
-                if let Some(v) = sound_id {
-                    meta.push((24, serializer::WOLF_SOUND_VARIANT, Value::Id(v)));
+                if let Some(r) = e.wolf_sound_variant {
+                    meta.push((
+                        24,
+                        serializer::WOLF_SOUND_VARIANT,
+                        Value::Id(r.network_id() as i32),
+                    ));
                 }
             }
             // Cat.IS_LYING and RELAX_STATE_ONE.

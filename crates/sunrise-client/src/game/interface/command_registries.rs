@@ -69,7 +69,7 @@ impl Game<'_> {
         command_markers.sort();
         command_markers.dedup();
         reg.time_markers = command_markers;
-        let clocks: Vec<String> = if let Some(tables) = &self.world_tables {
+        let mut clocks: Vec<String> = if let Some(tables) = &self.world_tables {
             tables
                 .packed_registries
                 .entries()
@@ -85,15 +85,11 @@ impl Game<'_> {
                     entries.iter().map(|(name, _)| name.clone()).collect()
                 })
         } else {
-            return;
+            Vec::new()
         };
-        for id in clocks {
-            if !reg.clocks.contains(&id) {
-                reg.clocks.push(id);
-            }
-        }
-        reg.clocks.sort();
-        reg.clocks.dedup();
+        clocks.sort();
+        clocks.dedup();
+        reg.clocks = clocks;
         reg.by_registry
             .entry("minecraft:world_clock".into())
             .or_default()
