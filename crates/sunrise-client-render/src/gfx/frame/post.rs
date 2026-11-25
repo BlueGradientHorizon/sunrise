@@ -326,7 +326,7 @@ impl Renderer {
                                     &self.queue,
                                     encoder,
                                     world_primitives.as_mut(),
-                                    &self.mod_render_targets,
+                                    &self.mod_gpu.render_targets,
                                     &self.transient_targets,
                                 );
                                 return false;
@@ -342,7 +342,7 @@ impl Renderer {
                                     &self.queue,
                                     encoder,
                                     world_primitives.as_mut(),
-                                    &self.mod_render_targets,
+                                    &self.mod_gpu.render_targets,
                                     &self.transient_targets,
                                 );
                                 return false;
@@ -385,7 +385,7 @@ impl Renderer {
                             &self.queue,
                             encoder,
                             world_primitives.as_mut(),
-                            &self.mod_render_targets,
+                            &self.mod_gpu.render_targets,
                             &self.transient_targets,
                         );
                         return drew;
