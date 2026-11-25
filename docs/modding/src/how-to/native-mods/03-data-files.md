@@ -103,9 +103,8 @@ packs follow vanilla's symlink behavior: linked resource files are read through 
 
 ## Embedded data
 
-Generate code-only tables as Rust source before packaging and include them under `src/`.
-The launcher refuses mod build scripts with `E_NATIVE_BUILD_SCRIPT`. Embedded tables do not
-participate in resource reloads.
+Generate code-only tables as Rust source before packaging and include them under `src/`, or have a
+build script generate them. Embedded tables do not participate in resource reloads.
 
 ## Package contents
 
