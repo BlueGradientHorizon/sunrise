@@ -64,6 +64,11 @@ impl Game<'_> {
             .retain(|_, crack| now.saturating_sub(crack.updated_at) <= 400);
     }
 
+    #[inline(always)]
+    pub(in crate::game) fn client_expire_cracks(&mut self) {
+        self.expire_client_cracks();
+    }
+
     pub(in crate::game::client_side) fn reset_client_world(&mut self, seed: i64) {
         self.client.destroying.clear();
         self.mining = None;

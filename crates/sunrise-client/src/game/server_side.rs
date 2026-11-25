@@ -440,6 +440,16 @@ pub(in crate::game) mod native_entity_moves;
 pub(in crate::game) mod native_entity_physics;
 #[path = "modding/native_entity_refs.rs"]
 pub(in crate::game) mod native_entity_refs;
+#[path = "player_server.rs"]
+pub(in crate::game) mod player_server;
+#[path = "modding/native_merchant_refs.rs"]
+pub(in crate::game) mod native_merchant_refs;
+#[path = "modding/native_mob_navigation.rs"]
+pub(in crate::game) mod native_mob_navigation;
+#[path = "modding/native_mob_wanted_position.rs"]
+pub(in crate::game) mod native_mob_wanted_position;
+#[path = "modding/native_ride_player.rs"]
+pub(in crate::game) mod native_ride_player;
 #[path = "modding/native_entity_remove.rs"]
 pub(in crate::game) mod native_entity_remove;
 #[path = "modding/native_entity_riding.rs"]

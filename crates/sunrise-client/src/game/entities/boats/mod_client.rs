@@ -62,6 +62,38 @@ pub(in crate::game::client_side) use sunrise_core::{
 pub(in crate::game::client_side) use sunrise_world::collision_context::CollisionContext;
 
 impl Game<'_> {
+    /// `AbstractBoat.tick` advances the oars even when this client does not move the hull.
+    pub(in crate::game) fn tick_boat_paddles(b: &mut Boat, audio: &mut super::Audio) {
+        // Paddle sounds at the top of each stroke.
+        for i in 0..2 {
+            if b.paddle_state(i) {
+                let p = b.paddles[i] % (2.0 * PI);
+                if p <= PI / 4.0 && (b.paddles[i] + PI / 8.0) % (2.0 * PI) >= PI / 4.0 {
+                    let sound = match b.status {
+                        Status::InWater | Status::UnderWater | Status::UnderFlowingWater => {
+                            Some("minecraft:entity.boat.paddle_water")
+                        }
+                        Status::OnLand => Some("minecraft:entity.boat.paddle_land"),
+                        Status::InAir => None,
+                    };
+                    if let Some(sound) = sound {
+                        let v = view_vector(b.yaw, 0.0);
+                        let (dx, dz) = if i == 1 { (-v[2], v[0]) } else { (v[2], -v[0]) };
+                        let pitch = 0.8 + 0.4 * b.random.next_float();
+                        audio.play(
+                            sound,
+                            Some([b.position.x + dx, b.position.y, b.position.z + dz]),
+                            1.0,
+                            pitch,
+                        );
+                    }
+                }
+                b.paddles[i] += PI / 8.0;
+            } else {
+                b.paddles[i] = 0.0;
+            }
+        }
+    }
     /// `AbstractBoat.onAboveBubbleColumn`: the client's half after the roll,
     /// the splash sound and particle at the boat.
     pub(in crate::game) fn boat_bubble_splash(&mut self, i: usize) {

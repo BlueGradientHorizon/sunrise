@@ -21,7 +21,7 @@ pub(in crate::game) struct ClientPick {
     pub entity_metadata: (bool, bool),
     pub rider_candidates: Vec<crate::game::pick_ray::PickCandidate>,
     #[cfg(test)]
-    pub(in crate::game::client_side) test_forced_hit: Option<crate::game::Hit>,
+    pub(in crate::game) test_forced_hit: Option<crate::game::Hit>,
     pub sections: std::cell::RefCell<crate::game::pick_entity::pick_sections::PickSectionStorage>,
     pub(in crate::game) dispatching: bool,
     /// How many picks have been taken.

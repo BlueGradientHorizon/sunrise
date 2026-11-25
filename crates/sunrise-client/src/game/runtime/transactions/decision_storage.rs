@@ -49,7 +49,7 @@ impl Journal {
     }
 
     /// Keep the oldest snapshot when a nested listener or action commits.
-    pub(in crate::game::server_side) fn merge(&mut self, child: Self) {
+    pub(in crate::game) fn merge(&mut self, child: Self) {
         for (id, kept) in child.menus {
             self.menus.entry(id).or_insert(kept);
         }
@@ -60,7 +60,7 @@ impl Journal {
         self.after.extend(child.after);
     }
 
-    pub(in crate::game::server_side) fn rollback(self) {
+    pub(in crate::game) fn rollback(self) {
         assert!(self.owners.is_empty(), "game menu undo needs its owner");
         // No success effect, drop, or retirement escapes an aborted action.
         #[cfg(test)]
@@ -72,7 +72,7 @@ impl Journal {
         }
     }
 
-    pub(in crate::game::server_side) fn rollback_in(mut self, game: &mut crate::game::Game<'_>) {
+    pub(in crate::game) fn rollback_in(mut self, game: &mut crate::game::Game<'_>) {
         for kept in std::mem::take(&mut self.owners).into_values() {
             kept.rollback(game);
         }

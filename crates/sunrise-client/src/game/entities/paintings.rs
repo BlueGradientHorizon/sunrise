@@ -20,10 +20,7 @@ pub(in crate::game) use sunrise_gameplay::painting_variants::{
 };
 /// Whether the camera, at the origin of `corners`' space, is on the side of the quad
 /// that `normal` points to.
-pub(in crate::game::server_side) fn faces_camera(
-    corners: &[glam::DVec3; 4],
-    normal: glam::DVec3,
-) -> bool {
+pub(in crate::game) fn faces_camera(corners: &[glam::DVec3; 4], normal: glam::DVec3) -> bool {
     let centre = (corners[0] + corners[1] + corners[2] + corners[3]) / 4.0;
     normal.dot(-centre) > 0.0
 }
@@ -227,30 +224,6 @@ impl Game<'_> {
         // HangingEntityItem.useOn returns SUCCESS: the hand swings.
         self.swing_arm();
         true
-    }
-    /// The painting under the crosshair within reach and its distance.
-    pub(in crate::game) fn painting_hit(&self) -> Option<(usize, f64)> {
-        if let Some(hit) = self.cached_entity_pick() {
-            let (entity, distance, _) = hit?;
-            let index = self.paintings.iter().position(|f| f.id == entity.id())?;
-            return Some((index, distance));
-        }
-        let (eye, dir) = self.aim()?;
-        let reach: f64 = self.entity_reach;
-        let (from, to) = super::pick_accumulator::pick_ray_segment(eye, dir, reach);
-        let mut pick = super::pick_accumulator::PickAccumulator::new(reach * reach);
-        let mut best: Option<(usize, f64)> = None;
-        for (i, p) in self.paintings.iter().enumerate() {
-            let (lo, hi) = p.bounds();
-            let bb = Aabb::new(
-                Vec3::new(lo[0], lo[1], lo[2]),
-                Vec3::new(hi[0], hi[1], hi[2]),
-            );
-            if pick.consider_box(self, p.id, from, to, bb) {
-                best = Some((i, pick.hovered.unwrap().distance_sq.sqrt()));
-            }
-        }
-        best
     }
     /// `BlockAttachedEntity.hurtServer` -> `kill` and `dropItem`. False when a mod kept it
     /// (`native_hanging_break`): it stays at `index`.

@@ -6173,6 +6173,43 @@ impl Game<'_> {
         self.consume_held();
         Ok(true)
     }
+    pub(in crate::game) fn finish_creature_entities(
+        &mut self,
+        laps: &mut sunrise_client::spans::Laps,
+        primable: &[(u32, i32)],
+    ) -> Result<()> {
+        self.drain_entity_inside();
+        laps.lap("creature_events");
+        self.ordered_before(super::ordered_tick::Batch::Projectiles)?;
+        self.tick_projectiles()?;
+        self.drain_entity_inside();
+        self.tick_fangs();
+        laps.lap("creature_projectiles");
+        self.tick_allays();
+        self.tick_pandas();
+        self.tick_foxes();
+        self.tick_dolphins();
+        self.tick_mob_looting();
+        self.tick_breeze_effects();
+        self.tick_sniffer_server();
+        self.piglin_pickups();
+        self.sulfur_cube_pickups();
+        self.sulfur_cube_power_priming(primable);
+        laps.lap("creature_systems");
+        // Hurt and death sounds of damage dealt outside the mob ticks.
+        let mut queued = Vec::new();
+        for m in &mut self.mobs {
+            queued.append(&mut m.outbox);
+        }
+        self.handle_mob_events(queued)?;
+        // The enderman teleports those hurts asked for (`Enderman.hurtServer`).
+        self.settle_hurt_teleports()?;
+        laps.lap("creature_outbox");
+        // And for the sizes the ticks changed (a pose, a baby grown, a scale).
+        self.native_mob_sizes();
+        self.native_entity_sizes();
+        Ok(())
+    }
 }
 
 #[cfg(test)]

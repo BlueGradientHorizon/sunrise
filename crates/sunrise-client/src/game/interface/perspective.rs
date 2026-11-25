@@ -524,7 +524,7 @@ impl Game<'_> {
         let using = self.using.map(|(_, ticks)| ticks as i32 + 1).unwrap_or(0);
         let using_off_hand = self
             .using
-            .is_some_and(|(slot, _)| slot == super::shield::OFFHAND_SLOT);
+            .is_some_and(|(slot, _)| slot == super::held_items::OFFHAND_SLOT);
         let use_animation = self
             .using
             .and_then(|(slot, _)| self.stack_in(slot))
@@ -690,7 +690,7 @@ impl Game<'_> {
         let poses = self.held_arm_poses_with_stacks(
             self.own_entity_id() as u32,
             self.client.player_model.as_ref().unwrap(),
-            [self.selected, super::shield::OFFHAND_SLOT].map(|slot| self.stack_in(slot)),
+            [self.selected, super::held_items::OFFHAND_SLOT].map(|slot| self.stack_in(slot)),
         );
         self.client
             .player_model

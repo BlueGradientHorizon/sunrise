@@ -13,7 +13,7 @@ use sunrise_protocol::packets::play::{self, Serverbound as S};
 
 impl Game<'_> {
     /// The server opened workstation menu `menu` in window `container`.
-    pub(super) fn remote_open_station(
+    pub(in crate::game) fn remote_open_station(
         &mut self,
         container: i32,
         menu: String,
@@ -30,7 +30,7 @@ impl Game<'_> {
     }
 
     /// Window `container` is the server's workstation menu, open here.
-    pub(super) fn remote_station_open(&self, container: i32) -> bool {
+    pub(in crate::game) fn remote_station_open(&self, container: i32) -> bool {
         self.station.is_some()
             && self
                 .remote
@@ -44,7 +44,7 @@ impl Game<'_> {
     /// The server set station slot `internal`: the client menu's
     /// `Slot.set` runs its container's `setChanged`, so the loom lists the
     /// patterns its inputs allow and the stonecutter the recipes of its input.
-    pub(super) fn remote_station_slot_changed(&mut self, internal: usize) {
+    pub(in crate::game) fn remote_station_slot_changed(&mut self, internal: usize) {
         if !self.station.as_ref().is_some_and(|s| {
             matches!(
                 s.kind,
@@ -107,7 +107,7 @@ impl Game<'_> {
     }
 
     /// `AbstractContainerMenu.setData` from the server.
-    pub(super) fn remote_station_data(&mut self, id: usize, value: i16) {
+    pub(in crate::game) fn remote_station_data(&mut self, id: usize, value: i16) {
         let Some(s) = self.station.as_mut() else {
             return;
         };
@@ -154,7 +154,7 @@ impl Game<'_> {
 
     /// `sunrise:anvil_cost`, after the anvil's `ContainerSetData` short: the
     /// signed level cost when that short cannot hold it.
-    pub(super) fn remote_anvil_wide_cost(&mut self, data: &[u8]) {
+    pub(in crate::game) fn remote_anvil_wide_cost(&mut self, data: &[u8]) {
         let Ok(cost) = sunrise_protocol::anvil_cost::decode(data) else {
             log::debug!("Sunrise: a bad anvil cost payload");
             return;
@@ -172,7 +172,7 @@ impl Game<'_> {
     /// `AnvilScreen.onNameChanged` on a server: the rename box's text (blank
     /// when it is the input's own name) goes to the server when the menu's
     /// `setItemName` takes it.
-    pub(super) fn remote_anvil_rename(&mut self) {
+    pub(in crate::game) fn remote_anvil_rename(&mut self) {
         if self.remote.is_none() {
             return;
         }
@@ -195,7 +195,7 @@ impl Game<'_> {
 
     /// `MultiPlayerGameMode.handleInventoryButtonClick`: the screen already
     /// ran `clickMenuButton` on its own menu.
-    pub(super) fn remote_station_button(&self, button: i32) {
+    pub(in crate::game) fn remote_station_button(&self, button: i32) {
         if let Some((container, _)) = self.remote.as_ref().and_then(|r| r.menu.as_ref())
             && self.remote_station_open(*container)
         {

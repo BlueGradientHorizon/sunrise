@@ -2,7 +2,7 @@
 use super::*;
 use crate::game::{
     Game, Hit,
-    commands::Target,
+    commands_common::Target,
     dragon::{SPECIAL, dragon_part_index},
     entity::Entity as _,
     game_mode_common::mode_from_id,

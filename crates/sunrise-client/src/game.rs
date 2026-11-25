@@ -383,31 +383,31 @@ pub(in crate::game) use client_side::command_blocks;
 pub(in crate::game) use server_side::combat;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::command_harness;
+#[allow(unused_imports)]
 pub(in crate::game) use client_side::command_minecarts;
-#[path = "game/side_ops/mod.rs"]
-mod side_ops;
 #[path = "game/world/clocks.rs"]
-mod clocks;
+pub(in crate::game) mod clocks;
 #[path = "game/interface/chat_common.rs"]
-mod chat_common;
+pub(in crate::game) mod chat_common;
 #[path = "game/world/integrated_common.rs"]
-mod integrated_common;
+pub(in crate::game) mod integrated_common;
 #[path = "game/world/world_entry_common.rs"]
-mod world_entry_common;
+pub(in crate::game) mod world_entry_common;
 #[path = "game/runtime/memory_common.rs"]
-mod memory_common;
+pub(in crate::game) mod memory_common;
 #[path = "game/items/stack_names.rs"]
-mod stack_names;
+pub(in crate::game) mod stack_names;
 #[path = "game/interface/books_common.rs"]
-mod books_common;
+pub(in crate::game) mod books_common;
 #[path = "game/blocks/machines/crafter_common.rs"]
-mod crafter_common;
+pub(in crate::game) mod crafter_common;
 #[path = "game/administration/commands_common.rs"]
-mod commands_common;
+pub(in crate::game) mod commands_common;
 #[path = "game/administration/command_blocks_common.rs"]
-mod command_blocks_common;
+pub(in crate::game) mod command_blocks_common;
 #[path = "game/interface/command_registries.rs"]
 mod command_registries;
+#[allow(unused_imports)]
 pub(in crate::game) use server_side::commands;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::composter;
@@ -628,6 +628,8 @@ pub(in crate::game) mod tables;
 pub(in crate::game) use tables::level_suffocation_of;
 #[path = "game/side_ops/mod.rs"]
 pub(in crate::game) mod side_ops;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::game_client::WindowKeyInput;
 #[allow(dead_code)]
 pub(in crate::game) type ServerGame<'a> = Game<'a>;
 #[allow(dead_code)]
@@ -765,8 +767,16 @@ pub(in crate::game) use client_side::hand_part_tests;
 mod hanging_refind_tests;
 #[path = "game/runtime/headless.rs"]
 mod headless;
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::held_items;
+#[path = "game/items/held_items.rs"]
+pub(in crate::game) mod held_items;
+#[path = "game/interface/game_mode_common.rs"]
+pub(in crate::game) mod game_mode_common;
+#[path = "game/player_identity.rs"]
+pub(in crate::game) mod player_identity;
+#[path = "game/entities/pick_ray.rs"]
+pub(in crate::game) mod pick_ray;
+#[path = "game/modding/native_entity_refs_common.rs"]
+pub(in crate::game) mod native_entity_refs_common;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::highlight_tip_tests;
@@ -886,6 +896,7 @@ mod item_use_stacks;
 pub(in crate::game) use server_side::item_void_tests;
 #[path = "game/administration/jigsaw_blocks.rs"]
 mod jigsaw_blocks;
+#[allow(unused_imports)]
 pub(in crate::game) use client_side::jigsaw_edit;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::jukebox;
@@ -1169,9 +1180,11 @@ pub(in crate::game) use server_side::native_book_invalidation;
 pub(in crate::game) use server_side::native_book_net;
 #[path = "game/modding/native_book_placement.rs"]
 mod native_book_placement;
+#[allow(unused_imports)]
 pub(in crate::game) use client_side::native_book_receive;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_book_scope;
+#[allow(unused_imports)]
 pub(in crate::game) use server_side::native_book_settings;
 #[path = "game/modding/native_book_transport.rs"]
 mod native_book_transport;
@@ -1234,6 +1247,7 @@ pub(in crate::game) use server_side::native_config_files;
 mod native_configs;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_connection_groups;
+#[allow(unused_imports)]
 pub(in crate::game) use server_side::native_console;
 #[cfg(test)]
 #[allow(unused_imports)]
@@ -1560,6 +1574,7 @@ pub(in crate::game) use server_side::native_menu_inventory_tests;
 pub(in crate::game) use server_side::native_menu_places;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_menus;
+#[allow(unused_imports)]
 pub(in crate::game) use server_side::native_merchant_refs;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::native_mob_draw;
@@ -1567,12 +1582,14 @@ pub(in crate::game) use client_side::native_mob_draw;
 pub(in crate::game) use server_side::native_minecart_refs;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_mob_goals;
+#[allow(unused_imports)]
 pub(in crate::game) use server_side::native_mob_navigation;
 #[cfg(test)]
 #[path = "game/modding/native_mob_navigation_flags_tests.rs"]
 mod native_mob_navigation_flags_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_mob_refs;
+#[allow(unused_imports)]
 pub(in crate::game) use server_side::native_mob_wanted_position;
 #[cfg(test)]
 #[allow(unused_imports)]
@@ -1929,7 +1946,9 @@ pub(in crate::game) use server_side::part_shearing;
 pub(in crate::game) use server_side::passengers;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::pending_births;
+#[allow(unused_imports)]
 pub(in crate::game) use client_side::perf_link;
+#[allow(unused_imports)]
 pub(in crate::game) use server_side::perf_remote;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::perspective;
@@ -2081,6 +2100,7 @@ mod remote_chunks;
 pub(in crate::game) use client_side::remote_mob_data;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::remote_mob_particles;
+#[allow(unused_imports)]
 pub(in crate::game) use client_side::remote_mob_use;
 #[cfg(test)]
 #[path = "game/network/remote_mob_use_tests.rs"]
@@ -2094,6 +2114,7 @@ pub(in crate::game) use client_side::remote_removal;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::remote_save_tests;
+#[allow(unused_imports)]
 pub(in crate::game) use client_side::remote_stations;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::remote_tags;
@@ -2173,6 +2194,7 @@ pub(in crate::game) use client_side::screen_widgets;
 pub(in crate::game) use client_side::screens;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::screenshot_sequence;
+#[allow(unused_imports)]
 pub(in crate::game) use client_side::screenshot_writer;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::sculk;
@@ -2183,6 +2205,8 @@ pub(in crate::game) use client_side::server_packs;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::sculk_fixture;
 #[allow(unused_imports)]
+pub(in crate::game) use server_side::sculk_server;
+#[allow(unused_imports)]
 pub(in crate::game) use server_side::seats;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::server_lifecycle;
@@ -2190,9 +2214,10 @@ pub(in crate::game) use server_side::server_lifecycle;
 pub(in crate::game) use server_side::server_reload;
 #[path = "game/server_side.rs"]
 pub(in crate::game) mod server_side;
-#[path = "game/side_ops/mod.rs"] pub(in crate::game) mod side_ops;
-#[path = "game/world/light_emission.rs"] pub(in crate::game) mod light_emission;
-#[path = "game/blocks/block_entity_anims_common.rs"] pub(in crate::game) mod block_entity_anims_common;
+#[path = "game/world/light_emission.rs"]
+pub(in crate::game) mod light_emission;
+#[path = "game/blocks/block_entity_anims_common.rs"]
+pub(in crate::game) mod block_entity_anims_common;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side as server_state;
 #[allow(unused_imports)]
@@ -2321,6 +2346,7 @@ pub(in crate::game) use server_side::stats;
 pub(in crate::game) use server_side::storage_alias_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::structure_blocks;
+#[allow(unused_imports)]
 pub(in crate::game) use client_side::structure_edit;
 #[path = "game/administration/structures.rs"]
 mod structures;
@@ -2343,6 +2369,7 @@ mod sulfur_prime_phase_tests;
 pub(in crate::game) use client_side::sync_background_tests;
 #[path = "game/items/table_enchant.rs"]
 mod table_enchant;
+#[allow(unused_imports)]
 pub(in crate::game) use client_side::test_block_edit;
 #[path = "game/administration/test_blocks.rs"]
 mod test_blocks;
@@ -2350,6 +2377,7 @@ mod test_blocks;
 pub(in crate::game) use server_side::test_entities;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::test_environments;
+#[allow(unused_imports)]
 pub(in crate::game) use client_side::test_instance_edit;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::text_displays;
@@ -2384,7 +2412,8 @@ pub(in crate::game) use server_side::trading;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::transaction_entities_tests;
-#[path = "game/runtime/transactions.rs"] pub(in crate::game) mod transactions;
+#[path = "game/runtime/transactions.rs"]
+pub(in crate::game) mod transactions;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::trial_spawner;
 #[allow(unused_imports)]
@@ -2434,6 +2463,7 @@ pub(in crate::game) use server_side::villagers;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::visibility_unwind_tests;
+#[allow(unused_imports)]
 pub(in crate::game) use server_side::wake_time;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::wandering_trader;
@@ -4128,9 +4158,9 @@ mod billboard_axes_tests {
 }
 /// What the falling blocks of one frame share: the depth-only view (none under a pack) and the
 /// camera's forward axis.
-struct FallingSetup<'a> {
-    view: Option<&'a sunrise_client::gfx::JoinedFrusta>,
-    forward: glam::Vec3,
+pub(in crate::game) struct FallingSetup<'a> {
+    pub(in crate::game) view: Option<&'a sunrise_client::gfx::JoinedFrusta>,
+    pub(in crate::game) forward: glam::Vec3,
 }
 
 /// What the experience orbs of one frame share: their sprite and the camera's axes.
@@ -4587,7 +4617,7 @@ impl Game<'_> {
         flags: i32,
     ) -> Result<()> {
         self.set_block_live(pos, state, flags, false);
-        self.process_level_events()
+        self.side_process_level_events()
     }
 
     /// `Level.setBlock` with the full server available at the block-entity drop site.
@@ -4653,7 +4683,7 @@ impl Game<'_> {
         if note {
             self.side_award_custom_stat("play_noteblock", 1);
         }
-        self.process_level_events()
+        self.side_process_level_events()
     }
     /// `AbstractCandleBlock.getParticleOffsets`, in sixteenths of a block:
     /// `CandleBlock.PARTICLE_OFFSETS` by its `candles` (one to four wicks),
@@ -4896,7 +4926,7 @@ impl Game<'_> {
                 position,
                 data,
             } => {
-                self.level_event_at(event, [position.x, position.y, position.z], data);
+                self.side_level_event_at(event, [position.x, position.y, position.z], data);
                 return None;
             }
             _ => return None,
@@ -4908,7 +4938,7 @@ impl Game<'_> {
             return None;
         }
         if matches!(event, FallEvent::Destroy { .. }) {
-            self.level_event_at(2001, [position.x, position.y, position.z], from.0 as i32);
+            self.side_level_event_at(2001, [position.x, position.y, position.z], from.0 as i32);
         }
         self.with_level(|b, level, ticks| b.notify_written(level, ticks, position, flags));
         vibration

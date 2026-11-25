@@ -925,20 +925,20 @@ impl Game<'_> {
             | DebugAction::CopyLocation => false,
         }
     }
-    /// `ServerboundChangeGameModePacket` handled by the integrated server:
-    /// `GameModeCommand.setGameMode` with its feedback.
+    /// Send `ServerboundChangeGameModePacket` to the server.
     pub(in crate::game) fn change_game_mode(&mut self, mode: GameMode) {
-        if self.remote.is_some() {
-            use sunrise_protocol::packets::play::ChangeGameMode;
-            let mode = match mode {
-                GameMode::Survival => 0,
-                GameMode::Creative => 1,
-                GameMode::Adventure => 2,
-                GameMode::Spectator => 3,
-            };
-            self.send(Serverbound::ChangeGameMode(ChangeGameMode { mode }));
-            return;
-        }
+        debug_assert!(
+            !self.is_logical_server(),
+            "change_game_mode called on Server role"
+        );
+        use sunrise_protocol::packets::play::ChangeGameMode;
+        let mode = match mode {
+            GameMode::Survival => 0,
+            GameMode::Creative => 1,
+            GameMode::Adventure => 2,
+            GameMode::Spectator => 3,
+        };
+        self.send(Serverbound::ChangeGameMode(ChangeGameMode { mode }));
     }
     /// `KeyboardHandler.copyRecreateCommand`: the targeted block or mob as a
     /// `/setblock` or `/summon` command. The server's data (no Shift) comes

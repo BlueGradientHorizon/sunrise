@@ -785,8 +785,6 @@ pub(in crate::game) mod vehicle_removal_tests_client;
 pub(in crate::game) mod wind_client;
 #[path = "world/world_entry_client.rs"]
 pub(in crate::game) mod world_entry_client;
-#[path = "blocks/composter_client.rs"]
-pub(in crate::game) mod composter_client;
 #[path = "mobs/zombie_villagers_client.rs"]
 pub(in crate::game) mod zombie_villagers_client;
 #[path = "mobs/creatures/world_view_client.rs"]

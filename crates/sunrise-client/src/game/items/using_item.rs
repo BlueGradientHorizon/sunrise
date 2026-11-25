@@ -19,10 +19,11 @@ impl UseStart {
 }
 
 impl Game<'_> {
-    /// `Consumable.startConsuming` for a held consumable: food needs
-    /// `Player.canEat` (`Consumable.canConsume`), anything else is always
-    /// consumed. The right click is held for `consume_seconds`.
-    pub(in crate::game) fn start_eating(&mut self, info: &sunrise_client::items::ItemInfo) -> bool {
+    /// `Consumable.startConsuming` on the server for a held consumable.
+    pub(in crate::game) fn server_start_eating(
+        &mut self,
+        info: &sunrise_client::items::ItemInfo,
+    ) -> bool {
         let Some(stack) = self.held().cloned() else {
             return false;
         };
@@ -38,14 +39,11 @@ impl Game<'_> {
         {
             return false;
         }
-        // as Consumable.startConsuming does, no time is eaten at once, without a use
-        // (the server's eating reaches a client through the inventory).
+        // Instant consumables finish at once without starting a use countdown.
         if item_use::consumes_at_once(consumable.ticks()) {
-            if self.is_logical_server() {
-                // the cooldown of ItemStack.use's applyAfterUseComponentSideEffects.
-                self.apply_use_cooldown(&stack);
-                self.finish_consuming(info, &consumable, &stack);
-            }
+            // Cooldown from ItemStack.use's applyAfterUseComponentSideEffects.
+            self.apply_use_cooldown(&stack);
+            self.finish_consuming(info, &consumable, &stack);
             return true;
         }
         self.start_using_item();

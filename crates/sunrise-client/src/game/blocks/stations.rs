@@ -1106,9 +1106,9 @@ impl Game<'_> {
         };
         let cost = s.offers.costs[button];
         let lapis_needed = button as u32 + 1;
-        let Some(item) = s.inputs[0].clone() else {
+        if s.inputs[0].is_none() {
             return;
-        };
+        }
         let lapis = s.inputs[1].as_ref().map_or(0, |l| l.count);
         if lapis < lapis_needed && !self.creative {
             return;
@@ -1122,31 +1122,7 @@ impl Game<'_> {
         if self.remote.is_some() {
             // EnchantmentScreen.mouseClicked: the client menu took it, the server enchants.
             self.remote_station_button(button as i32);
-            return;
         }
-        let Some(enchanted) = self.table_enchant(self.level.xp_seed, button, cost, &item) else {
-            return;
-        };
-        let pos = s.pos;
-        let enchanted_item = enchanted.clone();
-        self.enchantment_performed(lapis_needed as i32);
-        self.level.xp_seed = self.world.random.next_int();
-        if let Some(s) = self.station.as_mut() {
-            s.inputs[0] = Some(enchanted);
-            if !self.creative
-                && let Some(l) = s.inputs[1].as_mut()
-            {
-                l.count -= lapis_needed;
-                if l.count == 0 {
-                    s.inputs[1] = None;
-                }
-            }
-        }
-        let pitch = self.world.random.next_float() * 0.1 + 0.9;
-        self.award_custom_stat("enchant_item", 1);
-        self.trigger_enchanted_item(&enchanted_item, lapis_needed as i32);
-        self.play_at("minecraft:block.enchantment_table.use", pos, 1.0, pitch);
-        self.station_changed();
     }
     /// Mouse click while a station or the brewing stand is open. True when handled.
     /// A station's own buttons a controller can focus besides its slots

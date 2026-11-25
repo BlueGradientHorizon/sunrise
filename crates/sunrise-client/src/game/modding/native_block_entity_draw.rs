@@ -1193,6 +1193,22 @@ impl KeptGeometry {
 }
 
 impl Game<'_> {
+    pub(in crate::game) fn api_block_entity_render_bounding_box(
+        &self,
+        pos: [i32; 3],
+        block: &str,
+        state: sunrise_world::registry::BlockStateId,
+        entity: &crate::containers::ModBlockEntity,
+        bounds: &mut [f32; 6],
+    ) {
+        use crate::game::api_values::TryIntoApi;
+        if !mod_api::__private::has_part_hook(mod_api::HookId::BlockEntityRenderBoundingBox) {
+            return;
+        }
+        if let Ok(api) = entity.try_into_api() {
+            self.native_block_entity_render_bounding_box(pos, block, state, &api, bounds);
+        }
+    }
     /// The client's mod animation clock: level-running texture ticks plus a phase that holds
     /// across pauses and freezes. Server time updates never change it.
     pub(in crate::game) fn animation_time(&self) -> f64 {

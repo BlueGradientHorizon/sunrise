@@ -1,11 +1,32 @@
-//! Client-side composter level event feedback (`ComposterBlock.handleFill`).
+//! Client-side composter level event feedback (`ComposterBlock.handleFill`) and use check.
 use super::Game;
-use sunrise_client::particles::{ParticleOptions, ParticleType};
+use sunrise_client::{
+    items::ItemStack,
+    particles::{ParticleOptions, ParticleType},
+};
 use sunrise_core::{position::BlockPos, random::RandomSource};
 
+fn composter_level(game: &Game<'_>, pos: [i32; 3]) -> Option<i32> {
+    let state = game.world.block(pos[0], pos[1], pos[2]);
+    let s = game.pack.assets.registry.state(state)?;
+    if &*s.name != "minecraft:composter" {
+        return None;
+    }
+    s.properties.get("level")?.parse().ok()
+}
+
 impl Game<'_> {
-    /// `ComposterBlock.handleFill` (level event 1500) on the client: the
-    /// fill sound and ten composter particles above the compost.
+    /// `ComposterBlock.useItemOn` on a client level: compostable item and level below 8.
+    pub(in crate::game) fn composter_takes(&self, pos: [i32; 3], held: Option<&ItemStack>) -> bool {
+        composter_level(self, pos).is_some_and(|level| level < 8)
+            && held.is_some_and(|stack| {
+                self.res
+                    .items()
+                    .get(&stack.item)
+                    .is_some_and(|i| i.compostable.is_some())
+            })
+    }
+    /// `ComposterBlock.handleFill` (level event 1500) on the client: sound and 10 particles.
     pub(in crate::game) fn composter_fill_event(&mut self, pos: BlockPos, success: bool) {
         let center = [
             f64::from(pos.x) + 0.5,
@@ -17,11 +38,10 @@ impl Game<'_> {
         } else {
             "minecraft:block.composter.fill"
         };
-        // `handleFill` is `playLocalSound`: the client that receives event 1500
-        // plays it. Capturing it here would also send a sound packet.
+        // `handleFill` is `playLocalSound`: capture would echo a sound packet.
         self.audio.0.play_unshared(sound, Some(center), 1.0, 1.0);
         // getShape(..).max(Y, 0.5, 0.5): the compost surface (SHAPES[8] = SHAPES[7]).
-        let level = self.composter_level([pos.x, pos.y, pos.z]).unwrap_or(0);
+        let level = composter_level(self, [pos.x, pos.y, pos.z]).unwrap_or(0);
         let height = f64::from((1 + level.min(7) * 2).clamp(2, 16)) / 16.0 + 0.03125;
         let options = ParticleOptions::simple(ParticleType::Composter);
         for _ in 0..10 {

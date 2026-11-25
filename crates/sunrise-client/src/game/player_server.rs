@@ -2,7 +2,7 @@
 use super::*;
 use crate::game::{
     Game, Hit,
-    commands::Target,
+    commands_common::Target,
     entity::Entity as _,
     held_items::attack_reach,
     pick_entity::{AttackRangePickResult, CrosshairDecision, aabb_extents},

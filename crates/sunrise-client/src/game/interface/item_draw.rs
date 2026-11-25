@@ -469,7 +469,7 @@ impl Game<'_> {
             banners: &self.stations().banners,
             sprites: &self.gui.atlas.sprites,
             skins: &self.skin_downloads.0,
-            profiles: &self.skin_profiles.0,
+            profiles: &self.skin_profiles,
         }
     }
     /// The client level as item models read it: worked out once a frame (a

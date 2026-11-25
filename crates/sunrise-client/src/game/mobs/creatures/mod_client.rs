@@ -993,6 +993,41 @@ impl Game<'_> {
             .as_ref()
             .is_some_and(|r| r.skins_entities() && r.skinned_models().is_some())
     }
+    #[cfg(test)]
+    pub(in crate::game) fn mob_geometry(
+        &self,
+        camera: glam::DVec3,
+        alpha: f64,
+        out: &mut Vec<Vertex>,
+    ) {
+        let frame = self.begin_mob_geometry(camera, alpha);
+        self.mob_run_geometry(&frame, 0..self.mobs.len(), out);
+        self.mark_motion(out.len(), 0);
+        self.other_creature_geometry(camera, alpha, out);
+    }
+    pub(in crate::game) fn other_creature_geometry(
+        &self,
+        camera: glam::DVec3,
+        alpha: f64,
+        out: &mut Vec<Vertex>,
+    ) {
+        self.elder_apparition_geometry(alpha, out);
+        self.spawner_geometry(camera, alpha, out);
+        let live = self
+            .creatures
+            .projectiles
+            .iter()
+            .filter(|a| !self.hides_as_camera(a.id))
+            .map(|a| {
+                let at = [
+                    a.previous.x + (a.position.x - a.previous.x) * alpha,
+                    a.previous.y + (a.position.y - a.previous.y) * alpha,
+                    a.previous.z + (a.position.z - a.previous.z) * alpha,
+                ];
+                (a, at)
+            });
+        self.projectile_geometry(camera, alpha, live, out);
+    }
 }
 
 #[cfg(test)]

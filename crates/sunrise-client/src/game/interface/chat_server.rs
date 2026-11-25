@@ -48,7 +48,12 @@ pub(in crate::game::server_side) use winit::keyboard::KeyCode;
 
 impl Game<'_> {
     pub(in crate::game) fn server_sound_event_names(&self) -> Vec<String> {
-        // Empty on purpose: build_registries loads sounds from command-registries.json.
+        // Server sound events come from command-registries.json, not client audio.
+        for dir in [&self.options.resources, &self.ui.vanilla_root] {
+            if let Some(export) = command_export(dir, self.options.dedicated.is_none()) {
+                return export.sounds.clone();
+            }
+        }
         Vec::new()
     }
     pub(in crate::game) fn server_sync_pack_tag_ids(&mut self) {

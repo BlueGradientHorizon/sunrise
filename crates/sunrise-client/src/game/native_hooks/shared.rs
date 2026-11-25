@@ -116,8 +116,9 @@ pub(in crate::game) fn observed_overlay_id(
     overlays.iter().find_map(|(open, id)| open.then_some(*id))
 }
 
-impl Game<'_> {
-}
+#[cfg(test)]
+#[allow(unused_imports)]
+use crate::game::client_side::native_hooks_client::posed_camera;
 
 /// `Level.setBlock`'s flags, for the `native_set_block_property` helpers:
 /// `flags::UPDATE_CLIENTS` as a vanilla crop grows, `flags::UPDATE_ALL` as a

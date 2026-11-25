@@ -290,8 +290,6 @@ pub(in crate::game::server_side) use crate::game::native_hooks::title_target_id;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::native_hooks::observed_overlay_id;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::native_hooks::posed_camera;
-#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::native_hooks::SHAKE_MAX_DEGREES;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::native_hooks::SHAKE_MAX_OFFSET;

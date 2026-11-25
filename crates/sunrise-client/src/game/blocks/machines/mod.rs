@@ -19,7 +19,6 @@ pub(in crate::game) mod crafter;
 pub(in crate::game) mod native_energy;
 pub(in crate::game) mod native_fluids;
 pub(in crate::game) mod native_items;
-pub(in crate::game) mod screen;
 #[cfg(test)]
 pub(in crate::game) mod tank_reopen_tests;
 #[allow(unused_imports)]
@@ -942,6 +941,10 @@ impl Game<'_> {
         self.container_changed_without_hook(pos);
     }
 
+    pub(in crate::game) fn server_container_changed(&mut self, pos: Pos) {
+        self.container_changed(pos);
+    }
+
     /// `BlockEntity.setChanged` updates without dispatching `contents_changed` again.
     pub(in crate::game) fn container_changed_without_hook(&mut self, pos: Pos) {
         if pos.1 == super::minecarts::CART_KEY_Y {
@@ -1326,7 +1329,7 @@ impl Game<'_> {
         });
     }
     /// `HopperBlockEntity.tryMoveItems` with `suckInItems`.
-    pub(in crate::game::server_side) fn hopper_try_move_items(&mut self, pos: Pos) {
+    pub(in crate::game) fn hopper_try_move_items(&mut self, pos: Pos) {
         let state = self.world.block(pos.0, pos.1, pos.2);
         self.hopper_try_move_items_with_state(pos, state);
     }

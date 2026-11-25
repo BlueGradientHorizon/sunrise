@@ -20,13 +20,12 @@ impl Game<'_> {
         };
         self.open_edit_screen((0, 0, 0), Some(id), block, Mode::Redstone, false);
     }
-    /// The edit screen's Done for a cart (`populateAndSendPacket`, then
-    /// `onDone` clears the last output of a cart that no longer tracks it): a
-    /// server's client sends the packet, the window's own world applies it.
+    /// Edit screen's Done for a cart: updates local track flag and sends `SetCommandMinecart`.
     pub(in crate::game) fn set_command_minecart(&mut self, id: u32, s: &CommandBlockScreen) {
-        if self.remote.is_none() {
-            return;
-        }
+        debug_assert!(
+            !self.is_logical_server(),
+            "set_command_minecart called on Server role"
+        );
         if !self.can_use_game_master_blocks() {
             self.client_system_message(Text::translate("advMode.notAllowed", &[]));
             return;

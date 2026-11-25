@@ -490,6 +490,35 @@ pub(in crate::game) fn start_client_game<'a>(
 }
 
 impl Game<'_> {
+    /// Pump the client connection without movement prediction until the harness server stops.
+    pub(in crate::game) fn wait_command_harness(&mut self) -> Result<()> {
+        let server = self.integrated.take().ok_or("command harness: no server")?;
+        let client_config = std::env::var_os("SUNRISE_HARNESS_CLIENT_CONFIG");
+        let mut wrote_config = false;
+        while !server.stopped() {
+            self.poll_stationary_client()?;
+            if !wrote_config
+                && let Some(path) = &client_config
+                && let Some(remote) = self.remote.as_ref().filter(|r| r.logged_in && r.joined)
+            {
+                std::fs::write(
+                    path,
+                    serde_json::json!({
+                        "view_distance": remote.view_distance,
+                        "simulation_distance": remote.simulation_distance,
+                        "render_setting": self.settings.render_distance,
+                        "simulation_setting": self.settings.simulation_distance,
+                        "logged_in": remote.logged_in, "joined": remote.joined,
+                    })
+                    .to_string(),
+                )?;
+                wrote_config = true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        server.stop()
+    }
+
     pub(in crate::game::client_side) fn apply_pending_client_start(
         &mut self,
         pending: initial_client_models::PendingClientStart,

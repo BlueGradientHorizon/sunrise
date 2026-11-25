@@ -14,22 +14,3 @@ impl Game<'_> {
         self.fire_recipe_book_categories(categories);
     }
 }
-
-/// Helpers for native mods, kept as stable as the hook points.
-// Native mods use these; nothing in Sunrise does.
-impl Game<'_> {
-    /// The validated category and icon of a custom recipe type, or None for
-    /// an undeclared/invalid type, before resources load, or outside a world.
-    /// Returns the first category in category-id order when a type has several.
-    /// Any invalid declaration refuses the complete generation.
-    /// Rebuilt when the recipe table changes. Does not unlock any recipes.
-    pub(in crate::game) fn recipe_book_category(
-        &mut self,
-        kind: &str,
-    ) -> Option<RecipeBookCategory> {
-        if self.outside_world() || self.res.rest.get().is_none() {
-            return None;
-        }
-        self.registered_recipe_book_category(kind)
-    }
-}

@@ -1,4 +1,4 @@
-use crate::game::{Game, Hit, commands::Target, remote::movement::MovePacket};
+use crate::game::{Game, Hit, commands_common::Target, remote::movement::MovePacket};
 use mod_api::{EntityRef, LevelRef, PlayerAbilities, PlayerRef};
 use sunrise_client::{command::args::GameMode, items::ItemStack};
 use sunrise_core::geometry::{Aabb, Vec3};

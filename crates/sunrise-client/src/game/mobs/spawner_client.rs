@@ -121,6 +121,9 @@ impl Game<'_> {
         }
         true
     }
+    pub(in crate::game) fn client_update_spawner_display(&mut self, key: Pos) -> bool {
+        self.update_spawner_display(key)
+    }
     /// The type of the mob a spawner shows: its next data's id, when the game
     /// knows the mob.
     /// A trial spawner shows one only in the states with a spinning mob.

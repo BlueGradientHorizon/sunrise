@@ -169,6 +169,15 @@ pub(in crate::game::client_side) use {
     },
 };
 
+/// Window key parts used by IME and preset editor dispatch.
+pub(in crate::game) struct WindowKeyInput<'a> {
+    pub(in crate::game) physical: PhysicalKey,
+    pub(in crate::game) state: ElementState,
+    pub(in crate::game) repeat: bool,
+    pub(in crate::game) text: Option<&'a str>,
+    pub(in crate::game) shortcut: Option<sunrise_client::clipboard::EditShortcut>,
+}
+
 impl Game<'_> {
     /// `Entity.doWaterSplashEffect` for a dropped item. The client draws the
     /// bubble and splash particles (`Level.addParticle` is empty on a server).
@@ -285,6 +294,130 @@ impl Game<'_> {
     #[inline(always)]
     pub(in crate::game) fn clear_entities_client_transient_blocks(&mut self) {
         self.client.transient_blocks.clear();
+    }
+    #[inline(always)]
+    pub(in crate::game) fn client_clear_render_caches(&mut self) {
+        self.clear_entities_client_transient_blocks();
+        self.clear_entities_client_render_caches();
+    }
+    /// Reject obsolete mesh entries even if an old asynchronous upload arrives after a move.
+    pub(in crate::game) fn live_block_entity_render(&self, pos: [i32; 3], state: u32) -> bool {
+        self.world.block(pos[0], pos[1], pos[2]).0 == state
+            && self.res.block_entity_render().renders(state)
+    }
+    /// Route a winit key event and its text independently (`KeyboardHandler.charTyped`).
+    pub(in crate::game) fn dispatch_window_keyboard(
+        &mut self,
+        event_loop: &dyn EventLoopCtl,
+        key: Option<KeyCode>,
+        pressed: bool,
+        repeat: bool,
+        shortcut: Option<sunrise_client::clipboard::EditShortcut>,
+        text: Option<&str>,
+    ) -> Result<()> {
+        let has_screen = self.observed_screen_view().is_some();
+        if let Some(key) = key
+            && !self.dispatch_screen_key(
+                event_loop,
+                key,
+                pressed,
+                repeat,
+                shortcut,
+                Source::Keyboard,
+            )?
+            && !self.key_press_canceled(key, pressed, repeat)
+        {
+            self.native_panel_key_event(key, pressed, repeat);
+            self.mapped_key_event(key, pressed, repeat)?;
+        }
+        // GLFW's character event follows the key, even if KeyPressed.Pre canceled.
+        if pressed && has_screen {
+            self.settle_title_mode();
+            self.screen_chars_typed(text);
+        }
+        Ok(())
+    }
+    /// `FallingBlockRenderer` for the falling blocks of `run`, drawn with their baked model.
+    pub(in crate::game) fn falling_geometry(
+        &self,
+        camera: glam::DVec3,
+        alpha: f64,
+        setup: &FallingSetup<'_>,
+        run: std::ops::Range<usize>,
+        out: &mut Vec<Vertex>,
+    ) {
+        let FallingSetup {
+            view: falling_view,
+            forward: falling_forward,
+        } = *setup;
+        let tables = &self.pack.context.tables;
+        for f in &self.falling[run] {
+            if self.hides_as_camera(f.id) {
+                continue;
+            }
+            let p = f.model_origin(alpha, |state, x, z| tables.offset(state, x, z)) - camera;
+            let o = p.as_vec3();
+            // Only rear-origin models pay for the envelope/depth check before full frustum culling.
+            if falling_forward.dot(o) < 0.0
+                && falling_view.is_some_and(|view| {
+                    self.pack
+                        .render
+                        .model_catalog
+                        .render_bounds(f.state)
+                        .is_some_and(|[lo, hi]| {
+                            let lo = glam::Vec3::from_array(lo) + o;
+                            let hi = glam::Vec3::from_array(hi) + o;
+                            let magnitude = o
+                                .abs()
+                                .max_element()
+                                .max(lo.abs().max_element())
+                                .max(hi.abs().max_element());
+                            let padding =
+                                glam::Vec3::splat(1.0e-4 + magnitude * f32::EPSILON * 4.0);
+                            !view.intersects_depth(lo - padding, hi + padding)
+                        })
+                })
+            {
+                continue;
+            }
+            // `FallingBlockEntity.blockPosition()`: the cell its feet are in.
+            let (x, y, z) = (
+                f.position.x.floor() as i32,
+                f.position.y.floor() as i32,
+                f.position.z.floor() as i32,
+            );
+            if !crate::game::falling_block_visible(f.state, self.world.block(x, y, z)) {
+                continue;
+            }
+            let Some((_, tint)) = self.falling_block_face_sprite(f.state) else {
+                continue;
+            };
+            let light = self.world.light(x, y + 1, z);
+            let packed = (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8);
+            let start = out.len();
+            self.mark_motion(start, crate::game::MOTION_OBJECT | u64::from(f.id));
+            self.falling_model_vertices(f.state, f.start_pos, o, packed, out);
+            let tint = sunrise_client::mobs::render::abgr(tint);
+            for vertex in &mut out[start..] {
+                vertex.color = sunrise_client::hud_layout::multiply(vertex.color, tint);
+            }
+        }
+    }
+    pub(in crate::game) fn pointer_projection(
+        &self,
+        framebuffer: [u32; 2],
+    ) -> sunrise_client::window::PointerProjection {
+        use sunrise_client::window::{GuiSize, PointerProjection};
+        let inputs = self.settings.gui_scale_inputs();
+        PointerProjection {
+            gui: GuiSize::new(framebuffer, inputs.requested, inputs.unicode),
+            window: self.pointer_space(framebuffer),
+        }
+    }
+    pub(in crate::game) fn render_frame(&mut self) -> Result<bool> {
+        self.render_with(|renderer, frame| {
+            sunrise_client::spans::time("renderer", || renderer.render(frame))
+        })
     }
     /// Extract every particle group after the frame's entity, screen and hand callbacks.
     /// Item model callbacks can clear during extraction too: roll back only this tail of
@@ -2967,10 +3100,8 @@ impl Game<'_> {
         }
         false
     }
-    pub(in crate::game) fn process_client_level_events(
-        &mut self,
-        events: Vec<LevelEvent>,
-    ) -> Result<()> {
+    pub(in crate::game) fn client_process_level_events(&mut self) -> Result<()> {
+        let events = std::mem::take(&mut self.level_events);
         for event in events {
             match event {
                 LevelEvent::LevelEvent {
@@ -3352,12 +3483,7 @@ impl Game<'_> {
                     state,
                     kind: "push_entities_up",
                 } => {
-                    self.push_entities_up(
-                        pos,
-                        state,
-                        self.world.block(pos.x, pos.y, pos.z),
-                        |_| true,
-                    );
+                    self.client_push_entities_up(pos, state, self.world.block(pos.x, pos.y, pos.z));
                 }
                 // Client piston replay emits notification-only GameEvents (block_destroy).
                 LevelEvent::GameEvent { .. }
@@ -3367,23 +3493,111 @@ impl Game<'_> {
                     kind: "note_custom_sound",
                     ..
                 } => {}
-                (LevelEvent::ContainerLootTable { .. }
+                LevelEvent::ContainerLootTable { .. }
                 | LevelEvent::FallingBlock { .. }
                 | LevelEvent::Player { .. }
                 | LevelEvent::PrimeTnt { .. }
                 | LevelEvent::BlockEvent {
-                    kind:
-                        "dispense" | "golem" | "command_block" | "structure_block" | "test_block"
-                        | "test_block_tick" | "brushable" | "hatch" | "hatch_sniffer" | "hatch_turtles"
-                        | "portal_spawn" | "spawn_ghastling" | "shrieker_respond",
+                    kind: "dispense"
+                        | "golem"
+                        | "command_block"
+                        | "structure_block"
+                        | "test_block"
+                        | "test_block_tick"
+                        | "brushable"
+                        | "hatch"
+                        | "hatch_sniffer"
+                        | "hatch_turtles"
+                        | "portal_spawn"
+                        | "spawn_ghastling"
+                        | "shrieker_respond",
                     ..
-                }) => {}
-                LevelEvent::GrowTree { .. }
+                }
+                | LevelEvent::GrowTree { .. }
                 | LevelEvent::PlaceFeature { .. }
                 | LevelEvent::BlockEvent { .. } => {}
             }
         }
         Ok(())
+    }
+    /// Client-only `Block.pushEntitiesUp` for piston/block replay without server guest tracking.
+    pub(in crate::game::client_side) fn client_push_entities_up(
+        &mut self,
+        pos: BlockPos,
+        old: BlockStateId,
+        new: BlockStateId,
+    ) {
+        use sunrise_client::collisions::SceneCollisions;
+        use sunrise_core::geometry::{Axis, ShapeOp};
+
+        let at = [pos.x, pos.y, pos.z];
+        let shape = |state| {
+            let mut scene = SceneCollisions {
+                world: &self.world,
+                binding: self.collision,
+                subject: None,
+            };
+            self.collision.collision_shape(&mut scene, state, at).ok()
+        };
+        let (Some(old_shape), Some(new_shape)) = (shape(old), shape(new)) else {
+            return;
+        };
+        let Ok(added) = old_shape.join_unoptimized(&new_shape, ShapeOp::ONLY_SECOND) else {
+            return;
+        };
+        let added = added.moved(Vec3::new(
+            f64::from(pos.x),
+            f64::from(pos.y),
+            f64::from(pos.z),
+        ));
+        let Some(bounds) = added.bounds() else {
+            return;
+        };
+        let lift_dy = |body: Aabb| {
+            1.0 + added.collide(Axis::Y, body.move_by(Vec3::new(0.0, 1.0, 0.0)), -1.0)
+        };
+        if let Some(p) = self.player.as_mut().filter(|p| !p.spectator) {
+            let body = p.bounds();
+            if body.intersects(bounds) {
+                p.position.y += lift_dy(body);
+            }
+        }
+        for m in &mut self.mobs {
+            if !m.removed {
+                let body = m.bounds();
+                if body.intersects(bounds) {
+                    m.position.y += lift_dy(body);
+                }
+            }
+        }
+        for i in 0..self.dropped.len() {
+            let body = self.dropped[i].bounds();
+            if body.intersects(bounds) {
+                let dy = lift_dy(body);
+                self.dropped.update(i, |item| item.position.y += dy);
+            }
+        }
+        for i in 0..self.boats.len() {
+            let body = self.boats[i].bounds();
+            if body.intersects(bounds) {
+                let dy = lift_dy(body);
+                self.boats.update(i, |boat| boat.position.y += dy);
+            }
+        }
+        for i in 0..self.carts.len() {
+            let body = self.carts[i].bounds();
+            if body.intersects(bounds) {
+                let dy = lift_dy(body);
+                self.carts.update(i, |cart| cart.position.y += dy);
+            }
+        }
+        for i in 0..self.armor_stands.len() {
+            let body = self.armor_stands[i].bounds();
+            if body.intersects(bounds) {
+                let dy = lift_dy(body);
+                self.armor_stands.update(i, |stand| stand.position.y += dy);
+            }
+        }
     }
     #[inline(always)]
     pub(in crate::game) fn process_level_events_end_gateway_client(&mut self, pos: BlockPos) {
@@ -4990,8 +5204,11 @@ impl Game<'_> {
     pub(in crate::game) fn set_client_message(&mut self, text: String) {
         self.client.message = Some((text, Instant::now()));
     }
+    #[inline(always)]
     pub(in crate::game) fn client_award_stat(&mut self, _: &str, _: &str, _: i32) {}
+    #[inline(always)]
     pub(in crate::game) fn client_award_custom_stat(&mut self, _: &str, _: i32) {}
+    #[inline(always)]
     pub(in crate::game) fn client_container_changed(&mut self, _: (i32, i32, i32)) {}
     pub(in crate::game::client_side) fn set_window_cursor(
         &mut self,

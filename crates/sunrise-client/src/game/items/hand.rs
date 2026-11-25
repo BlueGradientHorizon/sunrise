@@ -152,7 +152,7 @@ impl Game<'_> {
         if slot == self.selected {
             self.client.hands_replaced[0] = true;
         }
-        if slot == super::shield::OFFHAND_SLOT {
+        if slot == super::held_items::OFFHAND_SLOT {
             self.client.hands_replaced[1] = true;
         }
     }
@@ -933,7 +933,7 @@ impl Game<'_> {
                 .map(|s| &*s.item),
         );
         sunrise_client::first_person::hands_to_render(
-            [held(self.selected), held(super::shield::OFFHAND_SLOT)],
+            [held(self.selected), held(super::held_items::OFFHAND_SLOT)],
             using,
         )
     }

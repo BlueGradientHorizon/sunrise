@@ -474,17 +474,26 @@ impl Game<'_> {
         self.levels.0.clear();
         self.side_clear_render_caches();
     }
+    #[inline(always)]
     pub(in crate::game) fn server_clear_render_caches(&mut self) {}
+    #[inline(always)]
     pub(in crate::game) fn server_expire_cracks(&mut self) {}
+    #[inline(always)]
     pub(in crate::game) fn server_pick_camera_id(&self) -> Option<u32> {
-        self.player.as_ref().map(|p| p.entity_id as u32).filter(|&id| id != 0)
+        self.player
+            .as_ref()
+            .map(|p| p.entity_id as u32)
+            .filter(|&id| id != 0)
     }
+    #[inline(always)]
     pub(in crate::game) fn server_is_pick_camera(&self, id: u32) -> bool {
         self.server_pick_camera_id() == Some(id)
     }
+    #[inline(always)]
     pub(in crate::game) fn server_live_remote_camera_id(&self) -> Option<u32> {
         None
     }
+    #[inline(always)]
     pub(in crate::game) fn server_outline_camera_kind(
         &self,
     ) -> sunrise_world::collision_context::EntityContextKind {

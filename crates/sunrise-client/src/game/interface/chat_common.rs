@@ -439,14 +439,6 @@ impl Game<'_> {
                 break;
             }
         }
-        if self.ui.registries.sounds.is_empty()
-            && let Ok(builtin) = super::mods::builtin_registries(&self.options.resources)
-            && let Some(events) = builtin.get("minecraft:sound_event")
-        {
-            let mut names = events.names.clone();
-            names.sort();
-            self.ui.registries.sounds = names;
-        }
         let reg = &mut self.ui.registries;
         let particles: Vec<_> = mod_api::__private::particle_ids()
             .map(str::to_owned)

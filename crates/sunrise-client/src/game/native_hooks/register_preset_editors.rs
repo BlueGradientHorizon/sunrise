@@ -1,9 +1,6 @@
 #[allow(unused_imports)]
 use super::*;
 
-impl Game<'_> {
-}
-
 /// Collect attributed world-preset editor factories once at client startup
 /// (NeoForge's `RegisterPresetEditorsEvent`).
 pub(in crate::game) fn native_register_preset_editors(
