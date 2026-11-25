@@ -32,7 +32,7 @@ impl Game<'_> {
             .ok_or(ModelError::UnknownModel)?;
         let layers = &self.pack.render.sprite_layers;
         let color = options.color;
-        draw_terrain_model_with_special(
+        draw_terrain_model(
             draw,
             faces,
             |name| {
@@ -89,20 +89,9 @@ fn engine_options(options: TerrainModelOptions<'_>) -> NativeModelRenderOptions<
     }
 }
 
-/// Appends each valid quad of `faces` under `draw`'s pose within `draw`'s device-derived batch
-/// capacity.
-pub(super) fn draw_terrain_model(
-    draw: &mut BlockEntityDraw,
-    faces: &[BakedFace],
-    sprite_layer: impl Fn(&str) -> Option<u32>,
-    options: TerrainModelOptions<'_>,
-) {
-    draw_terrain_model_with_special(draw, faces, sprite_layer, options, |_, _, _, _, _| {});
-}
-
 /// Appends each valid quad of `faces` under `draw`'s pose, then `special`'s vertices under the
 /// same pose and light, within `draw`'s device-derived batch capacity.
-fn draw_terrain_model_with_special(
+pub(super) fn draw_terrain_model(
     draw: &mut BlockEntityDraw,
     faces: &[BakedFace],
     sprite_layer: impl Fn(&str) -> Option<u32>,
@@ -203,7 +192,7 @@ mod tests {
             Vec::new(),
         )
         .with_quad_budget(capacity, reserved_quads);
-        draw_terrain_model(&mut draw, faces, sprite, options);
+        draw_terrain_model(&mut draw, faces, sprite, options, |_, _, _, _, _| {});
         draw.into_vertices()
     }
 
@@ -300,7 +289,7 @@ mod tests {
             );
             draw.unlit(unlit);
             let options = TerrainModelOptions::default().with_shade(TerrainShade::Model);
-            draw_terrain_model(&mut draw, &faces, sprite, options);
+            draw_terrain_model(&mut draw, &faces, sprite, options, |_, _, _, _, _| {});
             draw.into_vertices()
         };
         let unlit = drawn(true);

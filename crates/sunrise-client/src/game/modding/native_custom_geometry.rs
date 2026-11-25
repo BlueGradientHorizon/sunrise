@@ -2557,6 +2557,7 @@ mod tests {
             &[make_baked()],
             |_| Some(7),
             TerrainModelOptions::default(),
+            |_, _, _, _, _| {},
         );
         let mut entities = draw.into_vertices();
         assert_eq!(entities.len(), 4, "1 terrain model quad admitted");
