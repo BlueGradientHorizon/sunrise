@@ -33,10 +33,12 @@ struct ItemEntityDraw<'a> {
 }
 
 /// The game's painter for the HUD kit's icons (`hud_kit::icon`): items by their models.
+#[cfg(feature = "client")]
 pub(in crate::game) struct IconPainter<'g, 'a> {
     pub(in crate::game) game: &'g Game<'a, crate::game::client_side::ClientState>,
 }
 
+#[cfg(feature = "client")]
 impl sunrise_client::hud_kit::icon::IconPainter for IconPainter<'_, '_> {
     fn item(&self, batch: &mut HudBatch, id: &str, [x, y, size]: [f32; 3]) -> bool {
         let start = batch.vertices.len();
@@ -49,6 +51,7 @@ impl sunrise_client::hud_kit::icon::IconPainter for IconPainter<'_, '_> {
 }
 
 /// The game's answers to what the resolver cannot read from the stack.
+#[cfg(feature = "client")]
 pub(in crate::game) struct Env<'a, 'g> {
     game: &'a Game<'g, crate::game::client_side::ClientState>,
 }
@@ -60,6 +63,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 }
 
+#[cfg(feature = "client")]
 impl item_render::ItemDrawEnv for Env<'_, '_> {
     fn special_model_input(
         &self,
@@ -78,6 +82,7 @@ impl item_render::ItemDrawEnv for Env<'_, '_> {
     }
 }
 
+#[cfg(feature = "client")]
 fn item_model_context(ctx: &sunrise_assets::item_model::Context<'_>) -> mod_api::ItemModelContext {
     let Ok(display) = ctx.display.try_into_api();
     mod_api::ItemModelContext::new(
@@ -88,6 +93,7 @@ fn item_model_context(ctx: &sunrise_assets::item_model::Context<'_>) -> mod_api:
     )
 }
 
+#[cfg(feature = "client")]
 impl ItemEnv for Env<'_, '_> {
     fn item_model_property(&self, property: &str, stack: &StackView) -> bool {
         if !mod_api::__private::listened(mod_api::HookId::ItemModelProperty) {

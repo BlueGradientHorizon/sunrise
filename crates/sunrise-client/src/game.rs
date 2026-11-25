@@ -7,11 +7,11 @@ use key_codes::drop_held_behind_dialog;
 use key_codes::{
     follow_named_keymap, gameplay_has_keyboard, glfw_button, glfw_modifiers, keyboard_button,
 };
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
-use loading_screen::{
-    App, Loading, leave_fullscreen_after, preflight_resources, run_event_loop,
-    unclean_start_recovery,
-};
+use loading_screen::{App, Loading, leave_fullscreen_after, run_event_loop};
+#[allow(unused_imports)]
+use loading_screen::{preflight_resources, unclean_start_recovery};
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 use motion_ids::{motion_at, motion_block_entity};
@@ -724,6 +724,7 @@ pub(in crate::game) use client_side::game_client::WindowKeyInput;
 #[allow(dead_code)]
 pub(in crate::game) type ServerGame<'a> = Game<'a, server_side::ServerState>;
 #[allow(dead_code)]
+#[cfg(feature = "client")]
 pub(in crate::game) type ClientGame<'a> = Game<'a, client_side::ClientState>;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
@@ -2387,6 +2388,7 @@ pub(in crate::game) use server_side::save_pass_tests;
 mod saving;
 #[path = "game/modding/scheduled_tasks.rs"]
 mod scheduled_tasks;
+#[cfg(feature = "client")]
 #[path = "game/interface/screen_backgrounds.rs"]
 pub(in crate::game) mod screen_backgrounds;
 #[allow(unused_imports)]
@@ -2627,6 +2629,7 @@ pub(in crate::game) use server_side::table_enchant;
 pub(in crate::game) use server_side::test_blocks;
 #[path = "game/administration/test_entities.rs"]
 pub(in crate::game) mod test_entities;
+#[cfg(feature = "client")]
 #[path = "game/interface/toast_manager.rs"]
 pub(in crate::game) mod toast_manager;
 #[allow(unused_imports)]
@@ -2993,9 +2996,10 @@ use loading_window::{
     build_renderer, loading_frame, loading_renderer, prepare_renderer_textures, start_client_game,
 };
 #[allow(unused_imports)]
+#[cfg(feature = "client")]
+use resource_loader::{run_loading, write_report};
 use resource_loader::{
     EntityModels, GameCpuResources, Loaded, LoaderMsg, PendingWorldEntry, WorldRestLoader,
-    run_loading, write_report,
 };
 #[allow(unused_imports)]
 use server_side::loading_server::start_dedicated_game;
@@ -5784,6 +5788,7 @@ struct ServerConstructPrep {
     streaming: Streaming,
 }
 
+#[cfg(feature = "client")]
 struct ClientConstructPrep {
     level: Level,
     painting_variants: paintings::PaintingVariants,
@@ -5814,6 +5819,7 @@ struct ServerConstructEffects {
     ui: chat::UiState,
 }
 
+#[cfg(feature = "client")]
 struct ClientConstructEffectsBundle {
     clock: FixedStep,
     tick: sunrise_client::parallel::TickThread,
@@ -5826,6 +5832,7 @@ struct ClientConstructEffectsBundle {
     client: Box<client_state::ClientConstructEffects>,
 }
 
+#[cfg(feature = "client")]
 pub(in crate::game) struct ClientSidePrep {
     pub(in crate::game) audio: client_side::ClientShared<Audio>,
     pub(in crate::game) particles:
@@ -5842,6 +5849,7 @@ pub(in crate::game) struct ClientSidePrep {
 }
 
 // Out-of-line init bundles for wrapped Game fields so finish_construct's unoptimised stack stays small.
+#[cfg(feature = "client")]
 pub(in crate::game) struct WrappedClientInit {
     pending_entry: client_side::ClientOnly<Option<PendingWorldEntry>>,
     pack_reload: client_side::ClientOnly<Option<packs::PackReload>>,
@@ -5933,6 +5941,7 @@ pub(in crate::game) struct WrappedServerInit {
     exec: server_side::ServerOnly<commands::execute::ExecState>,
 }
 
+#[cfg(feature = "client")]
 pub(in crate::game) struct WrappedRendererInit {
     renderer: client_side::ClientShared<Option<Box<Renderer>>>,
 }
@@ -5959,6 +5968,7 @@ struct WrappedPrepInit {
 struct ConstructInit<const NO_SLOT: bool>;
 
 impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
+    #[cfg(feature = "client")]
     #[inline(never)]
     fn build_wrapped_client() -> Box<WrappedClientInit> {
         Box::new(WrappedClientInit {
@@ -6012,6 +6022,7 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
             adv_ui: client_side::ClientOnly::new(Default::default()),
         })
     }
+    #[cfg(feature = "client")]
     #[inline(never)]
     fn build_wrapped_renderer() -> Box<WrappedRendererInit> {
         Box::new(WrappedRendererInit {
@@ -6093,6 +6104,7 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
         });
         (wp, server)
     }
+    #[cfg(feature = "client")]
     #[cfg(feature = "client")]
     #[inline(never)]
     fn wrap_client_prep_and_effects(
@@ -6777,8 +6789,11 @@ pub(crate) fn run_with(
                     .is_file()
             {
                 log::error!("Sunrise: {error}");
-                let settings = Settings::load(&crate::game::options_path());
-                return no_resources::show(&vanilla_root, &settings);
+                #[cfg(feature = "client")]
+                {
+                    let settings = Settings::load(&crate::game::options_path());
+                    return no_resources::show(&vanilla_root, &settings);
+                }
             }
             return Err(error.into());
         }
@@ -6869,6 +6884,7 @@ pub(crate) fn run_with(
         early_settings.save(&crate::game::options_path());
     }
     // Minecraft's constructor opens the narrator; a server has none.
+    #[cfg(feature = "client")]
     if options.execution_role.is_client() {
         narrator::start(&early_settings);
     }
@@ -6882,12 +6898,18 @@ pub(crate) fn run_with(
         sunrise_hooks::engine::started(&sunrise_hooks::Started::new(&version, &game_dir));
     }
     // A game window's hooks (Discord's presence): never for a server.
+    #[cfg(feature = "client")]
     activity::client_started(&options);
     // Snapshots of derived tables live in the game folder, never beside the
     // shared resources.
     Behaviours::set_cache_dir(std::env::current_dir()?.join(".sunrise-cache"));
+    #[cfg(feature = "client")]
     if !synchronous_startup(&options) {
         return run_loading(options, early_settings, vanilla_root, None, started);
+    }
+    #[cfg(not(feature = "client"))]
+    if !options.execution_role.is_dedicated_server() {
+        return Err("this binary was built without the `client` feature; pass --dedicated".into());
     }
     let roots = if options.execution_role.is_dedicated_server() {
         // Dedicated startup sees enabled mod assets but no client's resource packs.
@@ -6905,6 +6927,7 @@ pub(crate) fn run_with(
             &options.mods,
         )?
     };
+    #[cfg_attr(not(feature = "client"), allow(unused_mut))]
     let mut loaded = load_resources_sync(
         roots,
         pack_finders::data_packs(&options.mods),
@@ -6932,39 +6955,47 @@ pub(crate) fn run_with(
             None,
         );
     }
-    let audio = if !options.execution_role.is_client() || options.headless {
-        Audio::silent(&loaded.pack.source)
-    } else {
-        Audio::with_device(&loaded.pack.source, &early_settings.sound_device)
-    };
-    let game = start_client_game(
-        &resources,
-        loaded.pack,
-        gui,
-        options,
-        loaded.pack_error,
-        audio,
-        vanilla_root,
-        started,
-        loaded.rest_loader,
-        early_settings,
-        None,
-        std::mem::take(&mut loaded.client_applies),
-        loaded.entity_models,
-        None,
-    )?;
-    if let Some(mut game) = game {
-        // Minecraft.onGameLoadFinished: a start that made it this far is clean.
-        if game.options.is_client_start() && game.options.headless {
-            game.settings.file.set(
-                "startedCleanly",
-                sunrise_client::options_file::V::Bool(true),
-            );
-            game.settings.save(&crate::game::options_path());
-        }
-        run_event_loop(game)?;
+    #[cfg(not(feature = "client"))]
+    {
+        let _ = (resources, gui, options, early_settings, vanilla_root, started);
+        Err("this binary was built without the `client` feature; pass --dedicated".into())
     }
-    Ok(())
+    #[cfg(feature = "client")]
+    {
+        let audio = if !options.execution_role.is_client() || options.headless {
+            Audio::silent(&loaded.pack.source)
+        } else {
+            Audio::with_device(&loaded.pack.source, &early_settings.sound_device)
+        };
+        let game = start_client_game(
+            &resources,
+            loaded.pack,
+            gui,
+            options,
+            loaded.pack_error,
+            audio,
+            vanilla_root,
+            started,
+            loaded.rest_loader,
+            early_settings,
+            None,
+            std::mem::take(&mut loaded.client_applies),
+            loaded.entity_models,
+            None,
+        )?;
+        if let Some(mut game) = game {
+            // Minecraft.onGameLoadFinished: a start that made it this far is clean.
+            if game.options.is_client_start() && game.options.headless {
+                game.settings.file.set(
+                    "startedCleanly",
+                    sunrise_client::options_file::V::Bool(true),
+                );
+                game.settings.save(&crate::game::options_path());
+            }
+            run_event_loop(game)?;
+        }
+        Ok(())
+    }
 }
 
 /// The right and left arms of a player model layer (`PlayerModel.rightArm`
@@ -7211,9 +7242,11 @@ pub(in crate::game) use client_side::sign_outline_tests;
 mod sign_use_tests;
 
 #[allow(unused_imports)]
+#[cfg(feature = "client")]
+pub(in crate::game) use native_client_particles::particle_block_states;
+#[allow(unused_imports)]
 pub(in crate::game) use {
     copper_golems::golem_preserved_equipment,
-    native_client_particles::particle_block_states,
     native_datafix::upgrade_nbt,
     native_hooks::{
         another_mods, authoritative_world_for_mods, mod_data_root, native_config_dir,

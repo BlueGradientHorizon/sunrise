@@ -3,7 +3,9 @@
 //! `getMaxZoom`), and the local player drawn as a model: in third person
 //! and in the inventory (`InventoryScreen.extractEntityInInventoryFollowsMouse`).
 #[allow(unused_imports)]
-use super::{Game, Screen, native_mob_draw::PlayerRender};
+#[cfg(feature = "client")]
+use super::native_mob_draw::PlayerRender;
+use super::{Game, Screen};
 #[allow(unused_imports)]
 use mod_api::Hand;
 #[allow(unused_imports)]

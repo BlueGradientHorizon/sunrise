@@ -37,6 +37,7 @@ pub(crate) fn capture(launch: &LaunchArguments) {
         .expect("process runtime environment captured once");
 }
 
+#[cfg_attr(not(feature = "client"), allow(dead_code))]
 pub(crate) fn try_get() -> Option<&'static RuntimeEnvironment> {
     ENVIRONMENT.get()
 }

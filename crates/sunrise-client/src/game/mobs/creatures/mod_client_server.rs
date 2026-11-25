@@ -4,11 +4,13 @@ pub(in crate::game::server_side) use super::api_values::{TryIntoApi, TryIntoEngi
 pub(in crate::game::server_side) use super::level_sounds::LevelSound;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::piston_push::Lid;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use super::native_mob_draw::PlayerRender;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::{
     Dim, Game, InteractTarget,
     entity_culling::EntityCullDecision,
-    native_mob_draw::PlayerRender,
     native_projectiles::{Impact, PendingImpact, ProjectileHit, projectile_impact_event},
     view_vector,
 };

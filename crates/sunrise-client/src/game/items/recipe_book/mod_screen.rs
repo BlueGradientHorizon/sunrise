@@ -10,6 +10,7 @@ mod placement;
 #[path = "mod_screen/predicate.rs"]
 mod predicate;
 #[path = "mod_screen/resolve.rs"]
+#[cfg(feature = "client")]
 mod resolve;
 
 #[derive(Default)]

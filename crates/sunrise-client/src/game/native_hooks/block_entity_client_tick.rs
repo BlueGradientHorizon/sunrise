@@ -54,11 +54,13 @@ impl ResidentBlockEntityReadOnly for ResidentReadBlockEntity<'_> {
 }
 
 /// Shared sequential client block-entity view + mutable `ClientHost` backend.
+#[cfg(feature = "client")]
 pub(in crate::game) struct ClientBlockEntityAccess<'g, 'w> {
     pub game: &'g mut crate::game::ClientGame<'w>,
     pub subject: BlockEntityRef,
 }
 
+#[cfg(feature = "client")]
 impl BlockEntityClientAccess for ClientBlockEntityAccess<'_, '_> {
     fn route_kind(&self) -> Option<&str> {
         use mod_api::__private::game::Fields;

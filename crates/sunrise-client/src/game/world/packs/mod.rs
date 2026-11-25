@@ -1,9 +1,9 @@
 //! Resource pack selection bound to the game: the pack screen lists, and a
 //! full resource reload after a change, while playing.
 #[allow(unused_imports)]
-use super::{
-    Game, PackResources, Resources, UiResources, build_renderer, prepare_renderer_textures,
-};
+#[cfg(feature = "client")]
+use super::{build_renderer, prepare_renderer_textures};
+use super::{Game, PackResources, Resources, UiResources};
 #[allow(unused_imports)]
 use mod_api::__private::game::*;
 #[allow(unused_imports)]
@@ -777,6 +777,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 /// `apply_staged_pack` does the GPU half and the swap): the overlay
 /// root, the models and sprites, the menu bundle, the pack's tables and its
 /// CPU mip chains.
+#[cfg(feature = "client")]
 pub(in crate::game) fn stage_pack(
     vanilla_root: &Path,
     selected: &[String],
@@ -890,6 +891,7 @@ pub(in crate::game) fn stage_pack(
 
 /// Everything a pack reload builds on the CPU (`apply_staged_pack` finishes
 /// it on the render thread).
+#[cfg(feature = "client")]
 pub(in crate::game) struct StagedPack {
     pub root: PathBuf,
     pub waypoint_styles: sunrise_client::locator_bar::WaypointStyles,
@@ -932,9 +934,11 @@ pub(in crate::game) enum ReloadKind {
     /// A server's packs (`DownloadedPackSource.startReload`).
     Server,
 }
+#[cfg(feature = "client")]
 pub(in crate::game) type StageResult = std::result::Result<StagedPack, String>;
 /// A pack reload whose CPU half runs on a worker while `progress` feeds the
 /// loading overlay; `Game::drive_pack_reload` applies it on the render thread.
+#[cfg(feature = "client")]
 pub(in crate::game) struct PackReload {
     pub(in crate::game) progress: super::Progress,
     pub(in crate::game) kind: ReloadKind,
@@ -948,6 +952,7 @@ pub(in crate::game) struct PackReload {
 /// `LoadingOverlay` over a pack reload, from its first frame until it has
 /// faded out (`Minecraft.setOverlay(null)`), two seconds after the reload.
 #[derive(Default)]
+#[cfg(feature = "client")]
 pub(in crate::game) struct ReloadOverlay {
     /// `fadeInStart`: the overlay's first frame.
     pub(in crate::game) fade_in: Option<Instant>,
@@ -961,6 +966,7 @@ pub(in crate::game) struct ReloadOverlay {
 /// a pack that stages in a few frames still shows its overlay for a second
 /// instead of flashing.
 pub(in crate::game) const OVERLAY_HOLD: Duration = Duration::from_millis(1000);
+#[cfg(feature = "client")]
 impl PackReload {
     /// Starts `stage` on its own thread and returns at once.
     pub(in crate::game::client_side) fn spawn(

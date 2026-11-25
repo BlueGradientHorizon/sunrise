@@ -1,6 +1,9 @@
 //! The game's implementations of the mod API's service traits.
 #[allow(unused_imports)]
-use crate::game::{ClientGame, ServerGame, api_values::TryIntoEngine};
+#[cfg(feature = "client")]
+use crate::game::ClientGame;
+#[allow(unused_imports)]
+use crate::game::{ServerGame, api_values::TryIntoEngine};
 #[allow(unused_imports)]
 use mod_api::*;
 #[allow(unused_imports)]

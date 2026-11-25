@@ -18,6 +18,7 @@ pub(in crate::game::server_side) use sunrise_client::{
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use winit::keyboard::KeyCode;
 
+#[cfg(feature = "client")]
 impl Default for Social {
     fn default() -> Self {
         let mut search = EditBox::new(0.0, 0.0, 200.0, 15.0);

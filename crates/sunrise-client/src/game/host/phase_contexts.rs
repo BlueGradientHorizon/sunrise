@@ -1,5 +1,7 @@
 //! Phase-scoped context trait implementations for [`Game`].
-use super::{ClientGame, ServerGame};
+#[cfg(feature = "client")]
+use super::ClientGame;
+use super::ServerGame;
 use mod_api::*;
 use std::sync::Arc;
 

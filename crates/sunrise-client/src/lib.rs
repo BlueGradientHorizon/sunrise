@@ -24,6 +24,7 @@ static ALLOCATOR: sunrise_threads::GameAllocator = sunrise_threads::GAME_ALLOCAT
     sunrise_parity_fixtures,
     allow(dead_code, unused_imports, unused_macros)
 )]
+#[cfg_attr(not(feature = "client"), allow(dead_code, unused_imports))]
 pub mod game;
 pub mod orb_limits;
 #[cfg(test)]

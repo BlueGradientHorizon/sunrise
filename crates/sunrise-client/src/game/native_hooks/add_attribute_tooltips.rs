@@ -27,11 +27,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
 /// `add_attribute_tooltips` for item tooltip line builds and the recipe book's search text.
 /// `player` is the local player's uuid and entity id, none for the search
 /// text and for a nested stack (a crossbow's projectile).
+#[cfg(feature = "client")]
 pub(in crate::game) struct HookedAttributeTooltips<'a, 'g> {
     game: &'a Game<'g, crate::game::client_side::ClientState>,
     player: Option<(u128, i32)>,
 }
 
+#[cfg(feature = "client")]
 impl<'a, 'g> HookedAttributeTooltips<'a, 'g> {
     #[cfg(feature = "client")]
     pub(in crate::game) fn new(
@@ -42,6 +44,7 @@ impl<'a, 'g> HookedAttributeTooltips<'a, 'g> {
     }
 }
 
+#[cfg(feature = "client")]
 impl AttributeTooltipListener for HookedAttributeTooltips<'_, '_> {
     fn skipped(&self, stack: &ItemStack, ctx: &AttributeTooltipContext) -> AttributeFilter {
         let Ok(stack) = stack.try_into_api() else {

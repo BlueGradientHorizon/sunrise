@@ -1,5 +1,7 @@
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use super::{Game, loading_frame};
+#[cfg(feature = "client")]
+pub(in crate::game::server_side) use super::loading_frame;
+pub(in crate::game::server_side) use super::Game;
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::saving::CLOSING_SNAPSHOT_BUDGET;
 #[allow(unused_imports)]

@@ -39,10 +39,12 @@ pub(in crate::game::client_side) fn warm_debug_cpu() {
 }
 
 /// The game as `KeyboardHandler` sees it while it runs one key event.
+#[cfg(feature = "client")]
 struct Host<'g, 'a> {
     game: &'g mut Game<'a, crate::game::client_side::ClientState>,
 }
 
+#[cfg(feature = "client")]
 impl DebugHost for Host<'_, '_> {
     fn screen(&self) -> OpenScreen {
         self.game.open_screen()

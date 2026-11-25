@@ -360,6 +360,7 @@ pub(in crate::game) mod chat_queue;
 #[path = "dry_level_client.rs"]
 pub(in crate::game) mod dry_level;
 
+#[cfg(feature = "client")]
 impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_, '_> {
     fn pick_hit_result(&mut self) {
         self.0.pick_tick_targets();
@@ -1347,15 +1348,18 @@ impl Game<'_, crate::game::client_side::ClientState> {
 }
 
 /// The game as the tick's input sees it.
+#[cfg(feature = "client")]
 pub(in crate::game) struct RemoteInputWorld<'g, 'a>(
     pub(in crate::game) &'g mut Game<'a, crate::game::client_side::ClientState>,
 );
 
+#[cfg(feature = "client")]
 pub(in crate::game) struct RemoteUseWorld<'g, 'a>(
     pub(in crate::game) &'g mut Game<'a, crate::game::client_side::ClientState>,
     pub(in crate::game) mod_api::InteractionAttempt,
 );
 
+#[cfg(feature = "client")]
 impl sunrise_client::interaction_input::TargetUseWorld for RemoteUseWorld<'_, '_> {
     fn use_entity(&mut self) -> bool {
         self.0.remote_use_entity(Hand::Main)

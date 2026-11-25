@@ -1,6 +1,8 @@
 //! Whole-aggregate block-state boundaries. No partial snapshot or draw is admitted.
 use super::{TryIntoApi, block_state};
-use crate::game::{native_scene::SceneBlock, native_structures::TemplateSnapshot};
+#[cfg(feature = "client")]
+use crate::game::native_scene::SceneBlock;
+use crate::game::native_structures::TemplateSnapshot;
 use mod_api::{BlockStateError, StructureTemplateBlock, StructureTemplateSnapshot};
 
 impl TryIntoApi for TemplateSnapshot<'_> {
@@ -26,6 +28,7 @@ impl TryIntoApi for TemplateSnapshot<'_> {
 /// Prepare borrowed scene blocks, with a refusal naming the invalid block.
 /// Conversion allocates one engine vector per scene draw, but never clones entity
 /// identifiers or saved fields, and never resolves names.
+#[cfg(feature = "client")]
 pub(in crate::game) fn scene_blocks(
     blocks: &[mod_api::SceneBlock],
 ) -> Result<Vec<SceneBlock<'_>>, mod_api::SceneError> {

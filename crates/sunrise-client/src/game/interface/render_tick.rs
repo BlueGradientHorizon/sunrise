@@ -1,8 +1,8 @@
 //! Per-tick client visuals: the particle engine, `ClientLevel.animateTick`,
 //! campfire smoke and rain splashes (`ClientLevel.tickWeatherEffects`).
-use super::{
-    Dim, Game, api_values::TryIntoApi, host::draw::GameCameraDrawContext, weather::precipitation_at,
-};
+#[cfg(feature = "client")]
+use super::host::draw::GameCameraDrawContext;
+use super::{Dim, Game, api_values::TryIntoApi, weather::precipitation_at};
 use mod_api::{
     __private::{SelectedBlockScreenEffectRenderer, block_screen_effect_render},
     BlockScreenEffect,

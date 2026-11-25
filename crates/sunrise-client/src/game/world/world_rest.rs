@@ -149,6 +149,7 @@ pub(in crate::game) fn load_world_rest(
             .install_spawn_placements(mod_api::__private::spawn_placement_declarations(), |id| {
                 spawner_types.contains_key(id)
             })?;
+        #[cfg(feature = "client")]
         crate::game::entity_part_state::refuse_entity_part_state_kinds(|kind| {
             mob_types.contains_key(kind)
         })?;

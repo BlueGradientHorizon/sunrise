@@ -24,6 +24,7 @@ pub(in crate::game) struct EngineTooltipFont<'a> {
 }
 
 /// [`DrawContext`] on the game's `crate::hud::HudBatch`: one per hook call.
+#[cfg(feature = "client")]
 pub(crate) struct GameDrawContext<'a, 'g> {
     pub(crate) game: &'a crate::game::ClientGame<'g>,
     pub(crate) surface: &'a mut crate::hud::HudBatch,
@@ -31,6 +32,7 @@ pub(crate) struct GameDrawContext<'a, 'g> {
     pub(in crate::game) clips: crate::game::gui_clips::GuiClips,
     pub(in crate::game) tooltip_font: Option<&'a EngineTooltipFont<'a>>,
 }
+#[cfg(feature = "client")]
 impl DrawContext for GameDrawContext<'_, '_> {
     fn size(&self) -> [f32; 2] {
         self.game.native_size(&*self.surface)
@@ -281,17 +283,20 @@ pub(in crate::game) fn label_layout_with(
     Ok(TextLines::new(lines, width, height))
 }
 /// [`BlockEntityDrawContext`] on the game's `crate::game::native_block_entity_draw::BlockEntityDraw`.
+#[cfg(feature = "client")]
 pub(crate) struct GameBlockEntityDrawContext<'a, 'g> {
     pub(crate) game: &'a crate::game::ClientGame<'g>,
     pub(crate) surface: &'a mut crate::game::native_block_entity_draw::BlockEntityDraw,
 }
 
 /// [`CameraDrawContext`] on the game's `crate::screen_effects::CameraQuads`.
+#[cfg(feature = "client")]
 pub(crate) struct GameCameraDrawContext<'a, 'g> {
     pub(crate) game: &'a crate::game::ClientGame<'g>,
     pub(crate) surface: &'a mut crate::screen_effects::CameraQuads,
 }
 /// [`WorldDrawContext`] on the game's `crate::world_geometry::WorldGeometry`.
+#[cfg(feature = "client")]
 pub(crate) struct GameWorldDrawContext<'a, 'g> {
     pub(crate) game: &'a crate::game::ClientGame<'g>,
     pub(crate) surface: &'a mut crate::world_geometry::WorldGeometry,

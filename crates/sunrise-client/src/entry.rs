@@ -1,4 +1,5 @@
 //! Startup shared by the gameplay library and its executable.
+#[cfg(feature = "client")]
 #[path = "sunrise_look.rs"]
 mod sunrise_look;
 use crate::{crash, game, logging};
@@ -79,6 +80,7 @@ pub fn start(
     } = startup;
     runtime_environment::capture(&launch);
     sunrise_threads::configure_allocator();
+    #[cfg(feature = "client")]
     sunrise_look::give();
     // OptiFine's and Polytone's pack formats (platform, docs/layers.md), before any pack loads.
     sunrise_client::pack_formats::install();

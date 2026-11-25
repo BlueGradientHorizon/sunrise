@@ -740,18 +740,23 @@ pub(in crate::game) fn load_resources_for_mods(
     };
     let root = base.prepared().to_path_buf();
     let headless = !role.is_client();
+    #[cfg(feature = "client")]
     let texture_atlases = if headless {
         Vec::new()
     } else {
         client_reload::collect_texture_atlases()
     };
+    #[cfg(feature = "client")]
     let stage = |root| client_reload::stage_texture_atlases(root, &texture_atlases);
+    #[cfg(not(feature = "client"))]
+    let stage = |root: sunrise_assets::resource_source::ResourceRoot| root;
     let mut resolved = stage(resolved);
     let threads = settings.sunrise.worker_threads();
     // One pool of workers for every level's streaming, the client's and the
     // server thread's (sunrise_threads::jobs), sized before any world opens.
     sunrise_threads::jobs::configure(threads);
     sunrise_client::sprites::set_texture_budget(settings.sunrise.texture_budget_mib);
+    #[cfg(feature = "client")]
     sunrise_client::sprites::set_labpbr_maps(shader_packs::picks_material_pack(settings));
     // Stage A: the menu bundle (atlas and panorama). With a loading screen it is
     // published at once so the title screen can appear while the world bundle
@@ -793,7 +798,9 @@ pub(in crate::game) fn load_resources_for_mods(
     };
     let inventory = sunrise_mod_package::enabled::EnabledMods::read(&root)?;
     let conditions = super::load_conditions::conditions_for_mods(mod_sources, &inventory)?;
+    #[cfg_attr(not(feature = "client"), allow(unused_variables))]
     let (core, loaded_gui, resolved, client_applies) = loop {
+        #[cfg(feature = "client")]
         let listeners = (!headless)
             .then(|| client_reload::register_startup_client_reload_listeners(Some(settings)));
         let (ui, core) = std::thread::scope(|scope| {
@@ -817,15 +824,22 @@ pub(in crate::game) fn load_resources_for_mods(
                     .map_err(CoreLoadError::Fatal)?
                     .map_err(CoreLoadError::Pack)
                 };
-                if let Some(listeners) = listeners {
-                    client_reload::stage_client_reload(resolved.source(), listeners, build)
-                } else {
-                    build().map(|core| (core, Vec::new()))
+                #[cfg(feature = "client")]
+                {
+                    if let Some(listeners) = listeners {
+                        client_reload::stage_client_reload(resolved.source(), listeners, build)
+                    } else {
+                        build().map(|core| (core, Vec::new()))
+                    }
+                }
+                #[cfg(not(feature = "client"))]
+                {
+                    build().map(|core| (core, ()))
                 }
             };
             #[cfg(test)]
             let core = mod_api::testing::inherit_mods(core);
-            let core = Step::spawn(scope, parallel, "core", || core(&()));
+            let core = Step::spawn(scope, parallel, "core", move || core(&()));
             let ui = load_ui(resolved.source()).map(|ui| offer(ui, &root));
             (ui, core.join())
         });
@@ -1045,8 +1059,10 @@ pub(in crate::game) fn load_resources_for_mods(
     // waits for the tail, so no tail worker outlives its pack-loader generation.
     let prepared_at = Instant::now();
     let (game_cpu, renderer_cpu) = if menu {
+        #[cfg_attr(not(feature = "client"), allow(unused_variables))]
         let (game_cpu, renderer_cpu) = std::thread::scope(|scope| {
             // A server read no sprite pixels (`reload_for_server`), so it has no window textures to mip.
+            #[cfg(feature = "client")]
             let textures = (!headless).then(|| {
                 Step::spawn(scope, parallel, "textures", || {
                     startup::time("handoff.renderer_textures", || {
@@ -1054,6 +1070,8 @@ pub(in crate::game) fn load_resources_for_mods(
                     })
                 })
             });
+            #[cfg(not(feature = "client"))]
+            let textures: Option<Step<'_, sunrise_client::gfx::PreparedTextures>> = None;
             let game_cpu = startup::time("handoff.game_cpu", || {
                 GameCpuResources::load(
                     &resolved,
@@ -1089,6 +1107,7 @@ pub(in crate::game) fn load_resources_for_mods(
         pack_error,
         resources,
         rest_loader,
+        #[cfg(feature = "client")]
         client_applies,
         pack,
         gui: loaded_gui,

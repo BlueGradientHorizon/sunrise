@@ -14,15 +14,19 @@ pub(in crate::game::server_side) use crate::game::native_hooks::fire::{
 pub(in crate::game::server_side) use mod_api::{BlockEntityDataSource, BlockEntityRef, ClockAdjustment};
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::native_data_maps::DataMapType;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use super::{
+    native_block_entity_draw::BlockEntityDraw,
+    native_mob_draw::{MobRender, PlayerRender},
+    native_panel_recipes::RecipePage,
+};
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::{
     Game, GameLevel, LevelDimension, Screen,
     execution_role::{self, ExecutionRole},
     mod_api_host,
-    native_block_entity_draw::BlockEntityDraw,
     native_configs::ConfigFile,
-    native_mob_draw::{MobRender, PlayerRender},
-    native_panel_recipes::RecipePage,
 };
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use mod_api::__private::game::{

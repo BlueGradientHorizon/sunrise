@@ -1,7 +1,10 @@
 //! The save screen freezes simulation, but keeps pumping window events while
 //! snapshots are prepared in small batches and the region workers drain.
 #[allow(unused_imports)]
-use super::{Game, loading_frame};
+#[cfg(feature = "client")]
+use super::loading_frame;
+#[allow(unused_imports)]
+use super::Game;
 #[allow(unused_imports)]
 use std::{
     collections::{HashSet, VecDeque},

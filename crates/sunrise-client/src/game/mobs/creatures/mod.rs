@@ -41,11 +41,13 @@ use super::api_values::{TryIntoApi, TryIntoEngine};
 use super::level_sounds::LevelSound;
 #[allow(unused_imports)]
 use super::piston_push::Lid;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+use super::native_mob_draw::PlayerRender;
 #[allow(unused_imports)]
 use super::{
     Dim, Game, InteractTarget,
     entity_culling::EntityCullDecision,
-    native_mob_draw::PlayerRender,
     native_projectiles::{Impact, PendingImpact, ProjectileHit, projectile_impact_event},
     view_vector,
 };

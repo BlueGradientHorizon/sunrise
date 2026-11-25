@@ -6,6 +6,7 @@ use super::*;
 /// The window system ended the event loop with a failure (on Linux, a compositor dropping the
 /// connection after a protocol error) while fullscreen was on: the next start opens windowed, so a
 /// fullscreen the system can't show doesn't crash every launch (#2904).
+#[cfg(feature = "client")]
 pub(in crate::game) fn leave_fullscreen_after(
     result: &std::result::Result<(), EventLoopError>,
     settings: &mut Settings,
@@ -50,6 +51,7 @@ pub(in crate::game) fn run_event_loop(
 }
 
 /// The loading screen's state while the worker loads the resources.
+#[cfg(feature = "client")]
 pub(in crate::game) struct Loading {
     pub(in crate::game) window: Option<Arc<Window>>,
     pub(in crate::game) renderer: Option<Renderer>,
@@ -85,6 +87,7 @@ pub(in crate::game) struct Loading {
 /// How long the handoff waits for the first title frame before building the
 /// world renderer anyway (a hidden window may never be asked to redraw).
 pub(in crate::game) const TITLE_FRAME_WAIT: Duration = Duration::from_secs(1);
+#[cfg(feature = "client")]
 impl Loading {
     /// Reconstitute the main-thread error without erasing declaration refusals.
     pub(in crate::game::client_side) fn take_worker_result(&mut self) -> Option<Result<Loaded>> {
@@ -424,10 +427,12 @@ impl Loading {
 
 /// The application: the loading screen until the resources are ready, then
 /// the game itself, on the same event loop and window.
+#[cfg(feature = "client")]
 pub(in crate::game) enum App {
     Loading(Box<Loading>),
     Ready(Box<Game<'static, crate::game::client_side::ClientState>>),
 }
+#[cfg(feature = "client")]
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         match self {

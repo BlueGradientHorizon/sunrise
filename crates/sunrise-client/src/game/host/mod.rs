@@ -6,8 +6,11 @@
 #![allow(clippy::useless_conversion, clippy::unit_arg)]
 #[allow(unused_imports)]
 use super::api_values::{ItemBoundary, TryIntoApi, TryIntoEnginePreservingCount};
+#[cfg(feature = "client")]
 #[allow(unused_imports)]
-use super::{ClientGame, ServerGame};
+use super::ClientGame;
+#[allow(unused_imports)]
+use super::ServerGame;
 #[allow(unused_imports)]
 use mod_api::__private::game::*;
 #[allow(unused_imports)]

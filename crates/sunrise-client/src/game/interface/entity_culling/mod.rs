@@ -1,9 +1,11 @@
 //! Entity mesh occlusion and view-distance checks.
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+use super::particle_culling::section_scene;
 use super::{
     Game, Vertex,
     entity_client::RenderEntityBounds,
     occlusion_culling::{AsyncOcclusionCuller, opaque},
-    particle_culling::section_scene,
 };
 use sunrise_client::graphics::EntityCullingMode;
 use sunrise_client::voxel_occlusion::Culler as OcclusionCuller;

@@ -25,15 +25,19 @@ use mod_api::{BlockEntityDataSource, BlockEntityRef, ClockAdjustment};
 
 #[allow(unused_imports)]
 use super::native_data_maps::DataMapType;
+#[cfg(feature = "client")]
+#[allow(unused_imports)]
+use super::{
+    native_block_entity_draw::BlockEntityDraw,
+    native_mob_draw::{MobRender, PlayerRender},
+    native_panel_recipes::RecipePage,
+};
 #[allow(unused_imports)]
 use super::{
     Game, GameLevel, LevelDimension, Screen,
     execution_role::{self, ExecutionRole},
     mod_api_host,
-    native_block_entity_draw::BlockEntityDraw,
     native_configs::ConfigFile,
-    native_mob_draw::{MobRender, PlayerRender},
-    native_panel_recipes::RecipePage,
 };
 #[allow(unused_imports)]
 use mod_api::__private::game::{
@@ -311,6 +315,7 @@ pub(in crate::game) mod block_drops;
 pub(in crate::game) mod block_entity_client_tick;
 #[cfg(test)]
 pub(in crate::game) mod block_entity_client_tick_tests;
+#[cfg(feature = "client")]
 pub(in crate::game) mod block_entity_data_received;
 pub(in crate::game) mod block_entity_load_additional;
 pub(in crate::game) mod block_entity_neighbors;
@@ -386,6 +391,7 @@ pub(in crate::game) mod client_packet;
 pub(in crate::game) mod client_packet_send;
 pub(in crate::game) mod client_pause_change;
 pub(in crate::game) mod client_pause_read;
+#[cfg(feature = "client")]
 pub(in crate::game) mod client_pick;
 pub(in crate::game) mod client_player_change_game_type;
 pub(in crate::game) mod client_player_clone;
@@ -644,6 +650,7 @@ pub(in crate::game) mod register_debug_entries;
 pub(in crate::game) mod register_debug_renderers;
 pub(in crate::game) mod register_dimension_transition_screen;
 pub(in crate::game) mod register_enchantment_damage_effects;
+#[cfg(feature = "client")]
 pub(in crate::game) mod register_entity_layers;
 pub(in crate::game) mod register_entity_renderers;
 pub(in crate::game) mod register_entity_spectator_shaders;

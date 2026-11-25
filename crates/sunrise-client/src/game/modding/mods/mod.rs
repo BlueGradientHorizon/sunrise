@@ -1006,6 +1006,7 @@ pub(in crate::game) fn register_entity_renderers(role: ExecutionRole) {
         &RegistrationContext::new(),
         &mut registry,
     );
+    #[cfg(feature = "client")]
     super::native_entity_renderers::register(registry.into_renderers());
 }
 /// The native mods' particle providers (`native_register_particle_providers`) and render groups

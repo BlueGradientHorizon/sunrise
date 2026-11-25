@@ -27,9 +27,13 @@ pub(in crate::game::server_side) use crate::game::key_codes::{
     follow_named_keymap, gameplay_has_keyboard, glfw_button, glfw_modifiers, keyboard_button,
 };
 #[allow(unused_imports)]
+#[cfg(feature = "client")]
 pub(in crate::game::server_side) use crate::game::loading_screen::{
-    App, Loading, leave_fullscreen_after, preflight_resources, run_event_loop,
-    unclean_start_recovery,
+    App, Loading, leave_fullscreen_after, run_event_loop,
+};
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::loading_screen::{
+    preflight_resources, unclean_start_recovery,
 };
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
@@ -48,9 +52,11 @@ pub(in crate::game::server_side) use crate::game::resource_load::{
     named_scope, synchronous_startup,
 };
 #[allow(unused_imports)]
+#[cfg(feature = "client")]
+pub(in crate::game::server_side) use crate::game::resource_loader::{run_loading, write_report};
+#[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::resource_loader::{
     EntityModels, GameCpuResources, Loaded, LoaderMsg, PendingWorldEntry, WorldRestLoader,
-    run_loading, write_report,
 };
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::server_side::loading_server::start_dedicated_game;

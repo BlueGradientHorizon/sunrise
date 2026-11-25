@@ -306,6 +306,7 @@ pub(in crate::game) struct Loaded {
     pub(in crate::game) rest_loader: Option<WorldRestLoader>,
     /// The client reload listeners' prepared applies, staged by the loader
     /// thread; `start_game` runs them once the game exists.
+    #[cfg(feature = "client")]
     pub(in crate::game) client_applies: Vec<client_reload::PreparedClientReload>,
     pub(in crate::game) pack: PackResources,
     /// The menu bundle, for the synchronous launch; the loading screen receives
@@ -414,6 +415,7 @@ pub(in crate::game) fn write_report(
 
 /// The ordinary launch: load the resources on a worker while the window shows
 /// the loading screen, then swap in the game on the main thread.
+#[cfg(feature = "client")]
 pub(in crate::game) fn run_loading(
     options: Options,
     settings: Settings,

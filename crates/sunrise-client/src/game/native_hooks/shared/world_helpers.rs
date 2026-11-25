@@ -49,9 +49,11 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 }
 
 // The vanilla paint procedure belongs to the caller's frame, not the frozen layer order.
+#[cfg(feature = "client")]
 pub(in crate::game) type VanillaGuiDraw<'p, 'g> =
     dyn FnMut(&mut crate::game::ClientGame<'g>, &mut HudBatch) + 'p;
 
+#[cfg(feature = "client")]
 pub(in crate::game) struct GuiLayerWrapFrame<'a, 'p, 'g> {
     pub(in crate::game) game: &'a mut crate::game::ClientGame<'g>,
     pub(in crate::game) batch: &'a mut HudBatch,
@@ -60,6 +62,7 @@ pub(in crate::game) struct GuiLayerWrapFrame<'a, 'p, 'g> {
     pub(in crate::game) paint: &'a mut HudPaintCheckpoint,
 }
 
+#[cfg(feature = "client")]
 impl GuiLayerWrapContext for GuiLayerWrapFrame<'_, '_, '_> {
     fn host(&self) -> &dyn ClientHost {
         &*self.game

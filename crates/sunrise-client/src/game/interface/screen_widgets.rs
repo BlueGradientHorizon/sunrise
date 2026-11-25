@@ -3,7 +3,9 @@
 //! instances with synchronous callback execution via temporary ownership extraction.
 
 #[allow(unused_imports)]
-use crate::game::{Game, api_values::TryIntoEngine, host::draw::GameDrawContext};
+#[cfg(feature = "client")]
+use crate::game::host::draw::GameDrawContext;
+use crate::game::{Game, api_values::TryIntoEngine};
 #[allow(unused_imports)]
 use mod_api::{
     __private::game::CallbackOwner,

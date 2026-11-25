@@ -19,9 +19,10 @@ pub(in crate::game::server_side) use crate::game::client_side::screen_widgets::w
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use crate::game::client_side::screen_widgets::*;
 #[allow(unused_imports)]
-pub(in crate::game::server_side) use crate::game::{
-    Game, api_values::TryIntoEngine, host::draw::GameDrawContext,
-};
+#[cfg(feature = "client")]
+pub(in crate::game::server_side) use crate::game::host::draw::GameDrawContext;
+#[allow(unused_imports)]
+pub(in crate::game::server_side) use crate::game::{Game, api_values::TryIntoEngine};
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use mod_api::{
     __private::game::CallbackOwner,
