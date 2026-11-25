@@ -32,9 +32,7 @@ impl Game<'_> {
     }
     pub(in crate::game) fn nautilus_sound(&mut self, index: usize, sound: &str) {
         let at = self.mobs[index].center();
-        self.audio
-            .0
-            .play(&format!("minecraft:{sound}"), Some(at), 1.0, 1.0);
+        self.server_play_sound(&format!("minecraft:{sound}"), at, 1.0, 1.0);
     }
     /// `AbstractNautilus.interact` (`super.interact` is `Mob.interact`): any
     /// click on a nautilus, used or not, makes it persistent before its own

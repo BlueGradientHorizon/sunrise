@@ -29,9 +29,7 @@ impl Game<'_> {
                 stack
             });
             self.mobs[index].extra.set_body_stack(held);
-            self.audio
-                .0
-                .play("minecraft:entity.happy_ghast.equip", Some(at), 1.0, 1.0);
+            self.server_play_sound("minecraft:entity.happy_ghast.equip", at, 1.0, 1.0);
             self.consume_held();
             let id = self.mobs[index].id;
             let pos = self.mobs[index].position;
@@ -44,9 +42,7 @@ impl Game<'_> {
             && !sneaking
             && let Some(harness) = self.mobs[index].take_body_equipment()
         {
-            self.audio
-                .0
-                .play("minecraft:entity.happy_ghast.unequip", Some(at), 1.0, 1.0);
+            self.server_play_sound("minecraft:entity.happy_ghast.unequip", at, 1.0, 1.0);
             self.spawn_item(harness, at, [0.0, 0.2, 0.0], 10);
             self.damage_held_tool();
             let id = self.mobs[index].id;

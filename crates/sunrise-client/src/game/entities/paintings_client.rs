@@ -28,9 +28,7 @@ impl Game<'_> {
         {
             return;
         }
-        self.audio
-            .0
-            .play("minecraft:entity.painting.break", Some(at), 1.0, 1.0);
+        self.server_play_sound("minecraft:entity.painting.break", at, 1.0, 1.0);
         if creative {
             return;
         }

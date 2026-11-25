@@ -81,9 +81,9 @@ impl Game<'_> {
                         .player
                         .as_ref()
                         .map(|p| [p.position.x, p.position.y, p.position.z]);
-                    self.audio
-                        .0
-                        .play(sound, at, float("volume"), float("pitch"));
+                    if let Some(at) = at {
+                        self.server_play_sound(sound, at, float("volume"), float("pitch"));
+                    }
                 }
             }
             _ => {}

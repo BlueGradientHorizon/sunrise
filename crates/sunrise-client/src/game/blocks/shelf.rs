@@ -204,9 +204,7 @@ impl Game<'_> {
                 (false, true) => "minecraft:block.shelf.take_item",
                 (true, true) => "minecraft:block.shelf.single_swap",
             };
-            self.audio
-                .0
-                .play(sound, Some(pos.map(|n| f64::from(n) + 0.5)), 1.0, 1.0);
+            self.server_play_sound(sound, pos.map(|n| f64::from(n) + 0.5), 1.0, 1.0);
             Some(true)
         }
     }

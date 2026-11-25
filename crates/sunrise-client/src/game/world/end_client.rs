@@ -217,9 +217,7 @@ impl Game<'_> {
         });
         let r = self.world.random.next_float();
         let pitch = 0.33 + r * (0.5 - 0.33);
-        self.audio
-            .0
-            .play("minecraft:entity.ender_eye.launch", Some(at), 1.0, pitch);
+        self.server_play_sound("minecraft:entity.ender_eye.launch", at, 1.0, pitch);
         // CriteriaTriggers.USED_ENDER_EYE, against the feature's block.
         let (dx, dz) = (
             at[0] - f64::from(nearest.x * 16),
@@ -271,9 +269,7 @@ impl Game<'_> {
                 return true;
             }
             let at = eye.position.to_array();
-            self.audio
-                .0
-                .play("minecraft:entity.ender_eye.death", Some(at), 1.0, 1.0);
+            self.server_play_sound("minecraft:entity.ender_eye.death", at, 1.0, 1.0);
             if eye.survive {
                 // new ItemEntity(level, x, y, z, item): random spread, 0.2 up.
                 let vx = self.world.random.next_double() * 0.2 - 0.1;

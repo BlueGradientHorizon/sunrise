@@ -21,7 +21,7 @@ impl Game<'_> {
     /// `BoneMealItem.addGrowthParticles` (event 1505, `count` the data):
     /// happy villager sparks over a spreading block's neighbourhood (grass,
     /// nylium, netherrack, moss) or water, or inside a growing block.
-    pub(in crate::game::server_side) fn growth_particles(&mut self, pos: BlockPos, count: i32) {
+    pub(in crate::game) fn growth_particles(&mut self, pos: BlockPos, count: i32) {
         let p = [pos.x, pos.y, pos.z];
         let state = self.world.block(p[0], p[1], p[2]);
         let facts = self.res.facts();
@@ -80,7 +80,7 @@ impl Game<'_> {
     /// `LevelEventHandler` 2011 (a bee grew a crop) and 2012 (a turtle egg
     /// laid on sand): `ParticleUtils.spawnParticleInBlock` with happy villager
     /// sparks.
-    pub(in crate::game::server_side) fn turtle_egg_particles(&mut self, pos: BlockPos, count: i32) {
+    pub(in crate::game) fn turtle_egg_particles(&mut self, pos: BlockPos, count: i32) {
         let at = [pos.x, pos.y, pos.z];
         let height = self.block_shape_top(at);
         self.spawn_particles(at, count, 0.5, height, true, ParticleType::HappyVillager);

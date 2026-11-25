@@ -498,9 +498,7 @@ impl Game<'_> {
         for d in stacks {
             self.spawn_at_location(at, 0.0, d);
         }
-        self.audio
-            .0
-            .play("minecraft:entity.armadillo.brush", Some(feet), 1.0, 1.0);
+        self.server_play_sound("minecraft:entity.armadillo.brush", feet, 1.0, 1.0);
         let ctx = self.who_context(Some(Who::Mob(id)), None);
         self.post_game_event("minecraft:entity_interact", feet, ctx);
         // ItemStack.hurtAndBreak(16).

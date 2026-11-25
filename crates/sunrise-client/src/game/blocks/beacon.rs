@@ -314,7 +314,7 @@ impl Game<'_> {
             f64::from(p[1]) + 0.5,
             f64::from(p[2]) + 0.5,
         ];
-        self.audio.0.play(sound, Some(at), 1.0, 1.0);
+        self.server_play_sound(sound, at, 1.0, 1.0);
     }
     /// `updateBase`: complete layers of `beacon_base_blocks` below.
     fn beacon_base(&self, x: i32, y: i32, z: i32) -> i32 {

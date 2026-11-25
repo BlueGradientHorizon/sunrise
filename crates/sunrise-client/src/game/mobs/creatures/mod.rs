@@ -1244,13 +1244,12 @@ impl Game<'_> {
         &mut self,
         id: u32,
         at: Vec3,
-        width: f64,
-        height: f64,
+        _width: f64,
+        _height: f64,
         split: Option<Mob>,
     ) {
         let at = at.components();
         self.lan_entity_event(id as i32, 60, at);
-        self.death_poof(at, width, height);
         if let Some(mob) = split {
             self.split_dead_cube(mob);
         }
@@ -1953,9 +1952,7 @@ impl Game<'_> {
                 }
                 continue;
             }
-            if super::remote_projectiles::has_smoke_trail(&p.kind) {
-                self.smoke_trails(vec![p.position]);
-            }
+            // Clients generate projectile smoke trails from synced entity state.
             for bpos in bubble_tops {
                 self.bubble_column_particles(bpos);
             }
@@ -2048,7 +2045,6 @@ impl Game<'_> {
             self.creatures.bounced_followers.clear();
             result?;
         }
-        self.dragon_breath_trails();
         self.flush_lan_explosions();
         let flushed = self.flush_wind_bursts();
         self.native_tick_post_batch(round);

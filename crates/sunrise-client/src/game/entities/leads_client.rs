@@ -83,9 +83,7 @@ impl Game<'_> {
             self.drop_boat_leashes(&boats);
             if dropped {
                 self.lead_game_event("minecraft:shear", at);
-                self.audio
-                    .0
-                    .play("minecraft:item.shears.snip", Some(at), 1.0, 1.0);
+                self.server_play_sound("minecraft:item.shears.snip", at, 1.0, 1.0);
                 self.damage_held_tool();
                 return Some(LeashInteraction::WithItem);
             }
@@ -127,9 +125,7 @@ impl Game<'_> {
         None
     }
     pub(in crate::game) fn lead_sound(&mut self, sound: &str, at: [f64; 3]) {
-        self.audio
-            .0
-            .play(&format!("minecraft:item.lead.{sound}"), Some(at), 1.0, 1.0);
+        self.server_play_sound(&format!("minecraft:item.lead.{sound}"), at, 1.0, 1.0);
     }
     /// `LeashFeatureRenderer` for every lead and `LeashKnotRenderer` for the knots.
     pub(in crate::game::client_side) fn leash_geometry(
@@ -491,9 +487,7 @@ impl Game<'_> {
                 self.break_leash_used(id, true);
             }
             self.drop_boat_leashes(&existing_boats);
-            self.audio
-                .0
-                .play("minecraft:item.shears.snip", Some(at), 1.0, 1.0);
+            self.server_play_sound("minecraft:item.shears.snip", at, 1.0, 1.0);
             self.damage_held_tool();
             return true;
         }

@@ -250,9 +250,7 @@ impl Game<'_> {
         }
         let at = [x, y, z].map(|v| f64::from(v) + 0.5);
         self.trigger_block("minecraft:item_used_on_block", hit.pos, before);
-        self.audio
-            .0
-            .play("minecraft:item.lodestone_compass.lock", Some(at), 1.0, 1.0);
+        self.server_play_sound("minecraft:item.lodestone_compass.lock", at, 1.0, 1.0);
         let target = Tag::compound([
             (
                 "target",

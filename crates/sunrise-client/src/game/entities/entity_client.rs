@@ -146,9 +146,7 @@ impl Game<'_> {
             "minecraft:honey_block" => {
                 let at = [feet.x, feet.y, feet.z];
                 if !self.entity_silent(id) {
-                    self.audio
-                        .0
-                        .play("minecraft:block.honey_block.slide", Some(at), 1.0, 1.0);
+                    self.server_play_sound("minecraft:block.honey_block.slide", at, 1.0, 1.0);
                 }
                 self.lan_entity_event(id as i32, 54, at);
             }

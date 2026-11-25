@@ -1149,9 +1149,9 @@ impl Game<'_> {
                         center(relative),
                         ctx,
                     );
-                    self.audio.0.play(
+                    self.server_play_sound(
                         "minecraft:block.amethyst_block.resonate",
-                        Some(center(relative)),
+                        center(relative),
                         1.0,
                         sculk::resonance_pitch(frequency),
                     );
@@ -1347,7 +1347,7 @@ impl Game<'_> {
             f64::from(offset(key.1)),
             f64::from(offset(key.2)),
         ];
-        self.audio.0.play(sound, Some(at), 5.0, 1.0);
+        self.server_play_sound(sound, at, 5.0, 1.0);
     }
     /// `SpawnUtil.moveToPossibleSpawnPosition` with `ON_TOP_OF_COLLIDER`.
     pub(in crate::game) fn spawn_position(
@@ -1545,21 +1545,18 @@ impl Game<'_> {
         self.native_sculk_bloom(self.dim.id(), [key.0, key.1, key.2]);
         let _ = self.process_level_events();
         let c = center(key);
-        let options = ParticleOptions::simple(ParticleType::SculkSoul);
-        for _ in 0..2 {
-            // Client-side (LevelEventHandler / particles): the client random.
-            let r = self.particles.0.random();
-            let p = [
-                c[0] + r.next_gaussian() * 0.2,
-                c[1] + 0.65,
-                c[2] + r.next_gaussian() * 0.2,
-            ];
-            self.particles.0.add(&options, p, [0.0; 3]);
-        }
+        self.server_send_particles(crate::lan::server_effects::ServerQueuedParticle {
+            dimension: self.dim.id(),
+            particle: crate::lan::server_effects::ServerParticle::simple(ParticleType::SculkSoul),
+            at: [c[0], c[1] + 0.65, c[2]],
+            spread: [0.2, 0.0, 0.2],
+            speed: [0.0; 3],
+            count: 2,
+            randomization: 0,
+            except: None,
+        });
         let pitch = 0.6 + self.world.random.next_float() * 0.4;
-        self.audio
-            .0
-            .play("minecraft:block.sculk_catalyst.bloom", Some(c), 2.0, pitch);
+        self.server_play_sound("minecraft:block.sculk_catalyst.bloom", c, 2.0, pitch);
     }
 
     // ---- particles ----

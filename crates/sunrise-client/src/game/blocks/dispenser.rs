@@ -2766,9 +2766,7 @@ impl Game<'_> {
         };
         if let Some(at) = at {
             if let Some(sound) = sound {
-                self.audio
-                    .0
-                    .play(&sound, Some([at.x, at.y, at.z]), 1.0, 1.0);
+                self.server_play_sound(&sound, [at.x, at.y, at.z], 1.0, 1.0);
             }
             let who = match target {
                 Target::Mob(i) => Some(sunrise_client::mobs::Who::Mob(self.mobs[i].id)),
@@ -2872,9 +2870,11 @@ impl Game<'_> {
                 f64::from(pos.1 + 1),
                 f64::from(pos.2) + r.next_double(),
             ];
-            self.particles
-                .0
-                .add(&ParticleOptions::simple(ParticleType::Splash), p, [0.0; 3]);
+            self.server_particle_at(
+                crate::lan::server_effects::ServerParticle::simple(ParticleType::Splash),
+                p,
+                [0.0; 3],
+            );
         }
         self.server_play_sound("minecraft:item.bottle.empty", Self::center(pos), 1.0, 1.0);
         self.post_block_game_event("minecraft:fluid_place", [pos.0, pos.1, pos.2], None, None);
@@ -2976,7 +2976,6 @@ impl Game<'_> {
                 continue;
             }
             let (at, entity_id, kind) = (m.position, m.id, m.kind.id.clone());
-            let sound_at = Some([at.x, at.y, at.z]);
             // shear(level, BLOCKS, tool): level.playSound(null, this, sound, BLOCKS, 1, 1).
             let shear_sound = |name: &'static str| {
                 LevelSound::new(name, [at.x, at.y, at.z], 1.0, 1.0).in_source(SoundSource::Blocks)
@@ -2997,9 +2996,12 @@ impl Game<'_> {
                     let ctx = self.who_context(Some(sunrise_client::mobs::Who::Mob(id)), None);
                     self.post_game_event("minecraft:unequip", [at.x, at.y, at.z], ctx);
                     self.mobs[i].extra.ints[3] = sulfur_cube::PICKUP_TIMER;
-                    self.audio
-                        .0
-                        .play("minecraft:entity.sulfur_cube.eject", sound_at, 1.0, 1.0);
+                    self.server_play_sound(
+                        "minecraft:entity.sulfur_cube.eject",
+                        [at.x, at.y, at.z],
+                        1.0,
+                        1.0,
+                    );
                 }
                 Species::Sheep if !m.extra.sheared && !m.is_baby() => {
                     let color =
@@ -3171,9 +3173,7 @@ impl Game<'_> {
         let ctx = self.who_context(Some(who), None);
         self.post_game_event("minecraft:shear", [at.x, at.y, at.z], ctx);
         let block = [at.x.floor() + 0.5, at.y.floor() + 0.5, at.z.floor() + 0.5];
-        self.audio
-            .0
-            .play("minecraft:item.shears.snip", Some(block), 1.0, 1.0);
+        self.server_play_sound("minecraft:item.shears.snip", block, 1.0, 1.0);
         true
     }
     /// `SulfurCubeBlockDispenseItemBehavior.dispenseBlock`: the first sulfur

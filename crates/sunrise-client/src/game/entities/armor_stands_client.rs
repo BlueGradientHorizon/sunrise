@@ -520,9 +520,7 @@ impl Game<'_> {
             let id = self.armor_stands[i].id;
             let (width, height) = stand_box(&self.armor_stands[i]);
             if !self.remove_armor_stand_after(id, |game| {
-                game.audio
-                    .0
-                    .play("minecraft:entity.armor_stand.break", Some(at), 1.0, 1.0);
+                game.server_play_sound("minecraft:entity.armor_stand.break", at, 1.0, 1.0);
                 game.show_breaking_particles(at, f64::from(width), f64::from(height));
             }) {
                 return false;
@@ -533,9 +531,7 @@ impl Game<'_> {
         }
         if time - self.armor_stands[i].last_hit > 5 && !always_kills {
             // First hit: entity event 32, the wobble and the hit sound, then entity_damage.
-            self.audio
-                .0
-                .play("minecraft:entity.armor_stand.hit", Some(at), 0.3, 1.0);
+            self.server_play_sound("minecraft:entity.armor_stand.hit", at, 0.3, 1.0);
             self.stand_game_event("minecraft:entity_damage", at, by);
             self.armor_stands[i].last_hit = time;
             return true;
@@ -552,9 +548,7 @@ impl Game<'_> {
                     .set_loot_name("minecraft:custom_name", &name.component());
             }
             game.spawn_item(stand, center, [0.0; 3], 10);
-            game.audio
-                .0
-                .play("minecraft:entity.armor_stand.break", Some(at), 1.0, 1.0);
+            game.server_play_sound("minecraft:entity.armor_stand.break", at, 1.0, 1.0);
             game.armor_stand_death_drops(&a, damage_type, causing_id);
             for stack in a.equipment.into_iter().flatten() {
                 let r = &mut game.world.random;

@@ -2782,7 +2782,11 @@ impl Game<'_> {
                     ticks,
                     source,
                 } => self.mob_vibration_particle(source, from, to, ticks),
-                MobEvent::DigParticles { at } => self.warden_dig_particles(at),
+                MobEvent::DigParticles { at } => {
+                    if !self.is_logical_server() {
+                        self.warden_dig_particles(at);
+                    }
+                }
                 MobEvent::BlockBreakEffect { pos, block } => {
                     // Turtle.aiStep broadcasts LevelEvent 2001, not the
                     // particles themselves: the event carries the particles and
@@ -4768,7 +4772,6 @@ impl Game<'_> {
                 }
                 self.projectile_hit_landed_event(p.id, p.owner, hit);
                 self.thrown_break_event(p.id, atp);
-                self.item_burst(atp, "minecraft:snowball");
             }
             // a mod's copy of Snowball: its damage to anything it hits.
             (ProjectileKind::Thrown(t), hit) => {
@@ -4816,7 +4819,6 @@ impl Game<'_> {
                 }
                 self.projectile_hit_landed_event(p.id, p.owner, hit);
                 self.thrown_break_event(p.id, atp);
-                self.item_burst(atp, t.item);
             }
             (ProjectileKind::Egg, hit) => {
                 if let Hit::Entity {
@@ -4865,7 +4867,6 @@ impl Game<'_> {
                     }
                 }
                 self.thrown_break_event(p.id, atp);
-                self.item_burst(atp, "minecraft:egg");
             }
             (ProjectileKind::EnderPearl, hit) => {
                 if let Hit::Entity {
@@ -5666,7 +5667,6 @@ impl Game<'_> {
         let mut arrow_events = Vec::new();
         let mut shoot_events = Vec::new();
         let mut bullet_hurts = Vec::new();
-        let mut trails = Vec::new();
         let mut bubble_tops = Vec::new();
         let mut water_splashes = Vec::new();
         let mut snow_contacts = Vec::new();
@@ -5837,10 +5837,6 @@ impl Game<'_> {
                         };
                         bullet_hurts.push((hurt_at.components(), is_lava, silent, ctx));
                     }
-                    // AbstractHurtingProjectile.tick ends with createParticleTrail.
-                    if super::remote_projectiles::has_smoke_trail(&p.kind) {
-                        trails.push(p.position);
-                    }
                     // ThrownEnderpearl.onAboveBubbleColumn / onInsideBubbleColumn.
                     if keep && hit == Hit::None && matches!(p.kind, ProjectileKind::EnderPearl) {
                         let (at, h) = (p.position, 0.125);
@@ -6003,8 +5999,6 @@ impl Game<'_> {
                 game.lava_hurt_sound(at);
             }
         }
-        game.smoke_trails(trails);
-        game.dragon_breath_trails();
         for pos in bubble_tops {
             game.bubble_column_particles(pos);
         }

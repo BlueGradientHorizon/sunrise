@@ -60,9 +60,7 @@ impl Game<'_> {
                 }
                 self.drop_boat_leashes(&held_boats);
                 self.lead_game_event("minecraft:shear", at);
-                self.audio
-                    .0
-                    .play("minecraft:item.shears.snip", Some(at), 1.0, 1.0);
+                self.server_play_sound("minecraft:item.shears.snip", at, 1.0, 1.0);
                 self.damage_held_tool();
                 return true;
             }

@@ -370,9 +370,7 @@ impl Game<'_> {
             m.previous_head_yaw = yaw;
         }
         self.damage_held(1);
-        self.audio
-            .0
-            .play("minecraft:entity.copper_golem.spawn", Some(at), 1.0, 1.0);
+        self.server_play_sound("minecraft:entity.copper_golem.spawn", at, 1.0, 1.0);
         // Level.removeBlock(pos, false): air, or the water the statue stood in.
         let replacement = registry.default_state(if waterlogged {
             "minecraft:water"
@@ -449,9 +447,7 @@ impl Game<'_> {
         if name == "minecraft:honeycomb" && !waxed {
             self.mobs[index].extra.vector[0] = -2.0;
             self.level_event_at(3003, block, 0);
-            self.audio
-                .0
-                .play("minecraft:item.honeycomb.wax_on", Some(at), 1.0, 1.0);
+            self.server_play_sound("minecraft:item.honeycomb.wax_on", at, 1.0, 1.0);
             self.consume_held();
             return true;
         }

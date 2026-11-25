@@ -16,8 +16,6 @@ pub(in crate::game::client_side) use sunrise_core::position::BlockPos;
 impl Game<'_> {
     pub(in crate::game) fn sulfur_sound(&mut self, index: usize, sound: &str) {
         let at = self.mobs[index].center();
-        self.audio
-            .0
-            .play(&format!("minecraft:{sound}"), Some(at), 1.0, 1.0);
+        self.server_play_sound(&format!("minecraft:{sound}"), at, 1.0, 1.0);
     }
 }

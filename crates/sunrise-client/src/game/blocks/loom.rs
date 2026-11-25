@@ -85,7 +85,11 @@ impl Game<'_> {
             f64::from(pos[1]) + 0.5,
             f64::from(pos[2]) + 0.5,
         ];
-        self.audio.0.play(sound, Some(at), 1.0, 1.0);
+        if self.is_logical_server() {
+            self.server_play_sound(sound, at, 1.0, 1.0);
+        } else {
+            self.audio.0.play(sound, Some(at), 1.0, 1.0);
+        }
     }
     /// `LoomScreen.mouseClicked` on a pattern button: `clickMenuButton`, and
     /// the select sound when the menu took it.
