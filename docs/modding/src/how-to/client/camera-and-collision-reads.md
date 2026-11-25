@@ -313,6 +313,10 @@ These read the local player as the client sees it. They take no mod-controlled n
   `ticks_used + ticks_remaining` is the use duration. It is `None` when no item is in use or no world
   is open. Track intercepted main-hand input through [`ClientItemUseBehavior` callbacks](../../concepts/parts/item-and-tag-parts.md#intercept-main-hand-client-input)
   instead; interception does not make the player use or block with the item.
+- `ClientHost::client_session().client_fishing_hook()` is the local player's fishing hook:
+  `ClientFishingHook { position, biting }`. `position` is the bobber's position as the client
+  tracks it; `biting` is true while a fish is biting. It is `None` outside a world or when
+  no hook is out.
 - `ClientHost::creative_search_items()` returns the built creative search tab's display order,
   for ranking stacks in inventory sorters. It requests the catalog with the local player's permission
   and Operator Items Tab option. A cache miss can fire the creative build hook, so this read needs a

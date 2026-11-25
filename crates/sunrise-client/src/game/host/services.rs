@@ -30,6 +30,9 @@ impl ClientSession for Game<'_> {
     fn client_player_skins(&self) -> Option<ClientPlayerSkins> {
         CallbackOwner::call_host(|| self.native_client_player_skins())
     }
+    fn client_fishing_hook(&self) -> Option<ClientFishingHook> {
+        CallbackOwner::call_host(|| self.native_client_fishing_hook())
+    }
     fn client_frame_stats(&self) -> Option<ClientFrameStats> {
         CallbackOwner::call_host(|| self.native_client_frame_stats())
     }

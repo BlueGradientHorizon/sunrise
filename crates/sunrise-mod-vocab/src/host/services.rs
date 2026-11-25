@@ -99,6 +99,12 @@ pub trait ClientSession {
     fn client_player_skins(&self) -> Option<ClientPlayerSkins> {
         unimplemented!("ClientSession::client_player_skins")
     }
+    /// The local player's fishing hook: its position and whether a fish is biting. What
+    /// this client tracks; None outside a logged-in client world or when no hook is out.
+    /// Sends nothing.
+    fn client_fishing_hook(&self) -> Option<ClientFishingHook> {
+        unimplemented!("ClientSession::client_fishing_hook")
+    }
     /// Side: client.
     /// Existing local frame counters; None outside a logged-in client world.
     /// This read collects no history and sends nothing anywhere.
