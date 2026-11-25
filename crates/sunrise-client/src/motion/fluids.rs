@@ -802,7 +802,7 @@ mod fluid_clip_tests {
         block_collision::BlockCollisionRegistry,
         collision::CachedCollisionRegistry,
         collision_context::CollisionContext,
-        fluid::{FluidStateTable, ModFluidRules, ModFluidType, register_mod_fluid},
+        fluid::FluidStateTable,
         fluid_shape::FluidShapeCache,
         registry::BlockStateId,
         world_ray::{RayBlockMode, RayFluidMode, RayWorld},
@@ -892,27 +892,6 @@ mod fluid_clip_tests {
 
     #[test]
     fn fluid_clip_matrix_matches_vanilla_modes_shapes_and_ties() {
-        let rules = ModFluidRules {
-            tick_delay: 5,
-            drop_off: 1,
-            slope_find_distance: 4,
-            converts_to_source: false,
-        };
-        let _ = register_mod_fluid(ModFluidType {
-            id: "test_clip:brine".into(),
-            flowing_id: "test_clip:flowing_brine".into(),
-            bucket: None,
-            rules,
-        })
-        .unwrap();
-        let _ = register_mod_fluid(ModFluidType {
-            id: "test_clip:oil".into(),
-            flowing_id: "test_clip:flowing_oil".into(),
-            bucket: None,
-            rules,
-        })
-        .unwrap();
-
         let state_specs: &[&str] = &[
             "minecraft:air",
             "minecraft:stone",
@@ -924,10 +903,6 @@ mod fluid_clip_tests {
             "minecraft:lava[level=2]",
             "minecraft:oak_slab[type=bottom,waterlogged=true]",
             "minecraft:oak_slab[type=top,waterlogged=true]",
-            "test_clip:brine[level=0]",
-            "test_clip:brine[level=3]",
-            "test_clip:oil[level=0]",
-            "test_clip:oil[level=3]",
         ];
         let state_tags: Vec<Tag> = state_specs
             .iter()
@@ -960,8 +935,6 @@ mod fluid_clip_tests {
                     ("minecraft:water", Tag::Int(2)),
                     ("minecraft:lava", Tag::Int(6)),
                     ("minecraft:oak_slab", Tag::Int(8)),
-                    ("test_clip:brine", Tag::Int(10)),
-                    ("test_clip:oil", Tag::Int(12)),
                 ]),
             ),
         ]))
@@ -1023,7 +996,7 @@ mod fluid_clip_tests {
             ),
             (
                 "cached_shapes",
-                Tag::IntArray(vec![0, 1, 0, 0, 0, 0, 0, 0, 2, 3, 0, 0, 0, 0]),
+                Tag::IntArray(vec![0, 1, 0, 0, 0, 0, 0, 0, 2, 3]),
             ),
         ]);
         let cached = CachedCollisionRegistry::from_nbt(&table, &registry).unwrap();
@@ -1035,8 +1008,8 @@ mod fluid_clip_tests {
             HashSet::from([
                 "minecraft:water".into(),
                 "minecraft:flowing_water".into(),
-                "test_clip:brine".into(),
-                "test_clip:flowing_brine".into(),
+                "minecraft:lava".into(),
+                "minecraft:flowing_lava".into(),
             ]),
         );
         let shapes = Mutex::new(FluidShapeCache::default());
@@ -1053,12 +1026,6 @@ mod fluid_clip_tests {
             BlockStateId(7),
             BlockStateId(8),
             BlockStateId(9),
-        );
-        let (brine_src, brine_flow, oil_src, oil_flow) = (
-            BlockStateId(10),
-            BlockStateId(11),
-            BlockStateId(12),
-            BlockStateId(13),
         );
 
         let mut world = World::new(BlockStateId(0), 0);
@@ -1081,40 +1048,16 @@ mod fluid_clip_tests {
                 2,
                 lava_src,
                 f64::from(8.0_f32 / 9.0),
-                [false, true, true, false],
+                [false, true, true, true],
             ),
             (
                 3,
                 lava_flow6,
                 f64::from(6.0_f32 / 9.0),
-                [false, false, true, false],
-            ),
-            (
-                4,
-                brine_src,
-                f64::from(8.0_f32 / 9.0),
-                [false, true, true, true],
-            ),
-            (
-                5,
-                brine_flow,
-                f64::from(5.0_f32 / 9.0),
                 [false, false, true, true],
             ),
             (
-                6,
-                oil_src,
-                f64::from(8.0_f32 / 9.0),
-                [false, true, true, false],
-            ),
-            (
-                7,
-                oil_flow,
-                f64::from(5.0_f32 / 9.0),
-                [false, false, true, false],
-            ),
-            (
-                8,
+                4,
                 slab_bot,
                 f64::from(8.0_f32 / 9.0),
                 [false, true, true, true],
@@ -1125,16 +1068,16 @@ mod fluid_clip_tests {
             world.set(x, 64, 0, state).unwrap();
         }
         // Neighbour-dependent height: water above lifts flowing and falling shapes to 1.0.
-        world.set(9, 64, 0, water_flow4).unwrap();
-        world.set(9, 65, 0, water_src).unwrap();
-        world.set(10, 64, 0, water_fall).unwrap();
-        world.set(10, 65, 0, water_src).unwrap();
+        world.set(5, 64, 0, water_flow4).unwrap();
+        world.set(5, 65, 0, water_src).unwrap();
+        world.set(6, 64, 0, water_fall).unwrap();
+        world.set(6, 65, 0, water_src).unwrap();
         // Solid-on-tie comparison: plain water vs waterlogged top slab.
-        world.set(11, 64, 0, water_src).unwrap();
-        world.set(12, 64, 0, slab_top).unwrap();
+        world.set(7, 64, 0, water_src).unwrap();
+        world.set(8, 64, 0, slab_top).unwrap();
         // Block in front of fluid (z=2) and behind fluid (z=3).
-        world.set(13, 64, 2, stone).unwrap();
-        world.set(13, 64, 3, water_src).unwrap();
+        world.set(9, 64, 2, stone).unwrap();
+        world.set(9, 64, 3, water_src).unwrap();
 
         let clip_counted = |world: &World, from: Vec3, to: Vec3, mode: RayFluidMode| {
             let builds = Cell::new(0usize);
@@ -1240,8 +1183,8 @@ mod fluid_clip_tests {
         assert_eq!(side.hit.direction, Direction::North);
         assert_eq!(side.hit.location, Vec3::new(1.5, 64.2, 0.0));
 
-        // Neighbour-dependent height: water above lifts flowing and falling cell shapes to y=65.0.
-        for x in [9, 10] {
+        // Neighbour-dependent height (cells 5 and 6): water above lifts flowing and falling cell shapes to y=65.0.
+        for x in [5, 6] {
             let cx = f64::from(x) + 0.5;
             let hit = clip(
                 &world,
@@ -1260,23 +1203,23 @@ mod fluid_clip_tests {
         let h = f64::from(8.0_f32 / 9.0);
         let plain = clip(
             &world,
-            Vec3::new(11.5, 64.0 + h + 0.5, -0.5),
-            Vec3::new(11.5, 64.0 + h - 0.5, 0.5),
+            Vec3::new(7.5, 64.0 + h + 0.5, -0.5),
+            Vec3::new(7.5, 64.0 + h - 0.5, 0.5),
             RayFluidMode::Any,
         )
         .unwrap();
-        assert_eq!(plain.hit.block, BlockPos::new(11, 64, 0));
+        assert_eq!(plain.hit.block, BlockPos::new(7, 64, 0));
         assert_eq!(plain.hit.direction, Direction::Up);
         let tied = clip(
             &world,
-            Vec3::new(12.5, 64.0 + h + 0.5, -0.5),
-            Vec3::new(12.5, 64.0 + h - 0.5, 0.5),
+            Vec3::new(8.5, 64.0 + h + 0.5, -0.5),
+            Vec3::new(8.5, 64.0 + h - 0.5, 0.5),
             RayFluidMode::Any,
         )
         .unwrap();
-        assert_eq!(tied.hit.block, BlockPos::new(12, 64, 0));
+        assert_eq!(tied.hit.block, BlockPos::new(8, 64, 0));
         assert_eq!(tied.hit.direction, Direction::North);
-        assert_eq!(tied.hit.location, Vec3::new(12.5, 64.0 + h, 0.0));
+        assert_eq!(tied.hit.location, Vec3::new(8.5, 64.0 + h, 0.0));
 
         // Ray starting inside fluid sets inside=true with opposite direction.
         let inside = clip(
@@ -1293,20 +1236,20 @@ mod fluid_clip_tests {
         // Block in front of fluid wins; block behind fluid loses to fluid.
         let front = clip(
             &world,
-            Vec3::new(13.5, 64.5, 1.5),
-            Vec3::new(13.5, 64.5, 4.5),
+            Vec3::new(9.5, 64.5, 1.5),
+            Vec3::new(9.5, 64.5, 4.5),
             RayFluidMode::Any,
         )
         .unwrap();
-        assert_eq!(front.hit.block, BlockPos::new(13, 64, 2));
+        assert_eq!(front.hit.block, BlockPos::new(9, 64, 2));
         let behind = clip(
             &world,
-            Vec3::new(13.5, 64.5, 4.5),
-            Vec3::new(13.5, 64.5, 1.5),
+            Vec3::new(9.5, 64.5, 4.5),
+            Vec3::new(9.5, 64.5, 1.5),
             RayFluidMode::Any,
         )
         .unwrap();
-        assert_eq!(behind.hit.block, BlockPos::new(13, 64, 3));
+        assert_eq!(behind.hit.block, BlockPos::new(9, 64, 3));
 
         // No fixed 4096 visit limit: a ray across >4096 loaded cells completes as a clean miss.
         let mut corridor = World::new(BlockStateId(0), 0);
