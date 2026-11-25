@@ -21,6 +21,11 @@ impl Game<'_> {
             return None;
         }
         Some(match self.player_read_both(player)? {
+            // On a client, the ticker the crosshair's attack indicator reads (`hand_strength`):
+            // `attack_ticks` only counts in a world this game runs itself.
+            PlayerRead::Acting { .. } if !self.is_logical_server() => self
+                .hand_strength
+                .scale(partial, self.main_hand_attack_speed()),
             PlayerRead::Acting { .. } => return self.attack_strength_scale_at(partial),
             PlayerRead::Guest(guest) => {
                 let (ticks, speed) = self.guest_attack_charge(guest)?;
@@ -91,9 +96,9 @@ fn guest_attack_speed(
 
 #[cfg(test)]
 mod tests {
-    /// A client reads its own player's attack charge and full-charge delay from its own ticker
-    /// and main-hand attack speed, as the crosshair's attack indicator does; any other player
-    /// reads None (#5691).
+    /// A client reads its own player's attack charge and full-charge delay from the ticker and
+    /// main-hand attack speed the crosshair's attack indicator reads (`hand_strength`), not the
+    /// local world's `attack_ticks`; any other player reads None (#5691).
     #[test]
     #[ignore = "daily"]
     fn a_client_reads_its_own_players_attack_charge_and_delay() {
@@ -110,16 +115,15 @@ mod tests {
                     mod_api::EntityRef::new(local.entity().epoch(), 99),
                     99,
                 );
-                let delay = sunrise_client::attack_strength::delay(game.main_hand_attack_speed());
-                assert!(delay.is_finite() && delay > 0.0, "{delay}");
-                for ticks in [0, 2, 40] {
-                    game.attack_ticks = ticks;
+                // An empty hand: the base attack speed, 4, so a full charge takes 5 ticks.
+                let delay = 5.0;
+                // `attack_ticks` (full from the start) is not what a client reads.
+                game.attack_ticks = 100;
+                for (ticks, scale) in [(0, 0.0), (2, 0.4), (40, 1.0)] {
+                    game.hand_strength.ticker = ticks;
                     let host = &*game as &dyn mod_api::ClientHost;
                     assert_eq!(local.current_item_attack_strength_delay(host), Some(delay));
-                    assert_eq!(
-                        local.attack_strength_scale(host, 0.0),
-                        Some((ticks as f32 / delay).clamp(0.0, 1.0))
-                    );
+                    assert_eq!(local.attack_strength_scale(host, 0.0), Some(scale));
                     assert_eq!(other.current_item_attack_strength_delay(host), None);
                     assert_eq!(other.attack_strength_scale(host, 0.0), None);
                 }
