@@ -3,14 +3,15 @@ use crate::game::{Game, commands::Target, native_server::PlayerRead};
 use core::ops::ControlFlow;
 use mod_api::{
     BlockCapabilitySite, BlockEntityRef, BlockFace, BlockSide, CollisionFlags, Compound,
-    DatapackRegistrySet, DimensionKey, EntityRef, EntityResidency, EquipmentSlot, ItemEntityRef,
-    LevelReadError, LevelRef, LivingRef, MainHand, MenuRef, PlayerRef, SupportType,
-    client::first_person::Hand,
+    DatapackRegistrySet, DimensionKey, EntityRef, EntityResidency, EntityTypeKey, EquipmentSlot,
+    ItemEntityRef, LevelReadError, LevelRef, LivingRef, MainHand, MenuRef, PlayerRef, SupportType,
+    WorldEpoch, client::first_person::Hand,
 };
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use sunrise_client::{
     items::{ItemStack, Items},
+    lan::PlayerSender,
     mobs::finalize::EquipmentRead,
     world::World,
 };
@@ -72,6 +73,14 @@ impl Game<'_> {
             self.server_entity_is_shift_key_down(entity)
         } else {
             self.client_entity_is_shift_key_down(entity)
+        }
+    }
+
+    pub(in crate::game) fn side_entity_kind(&self, entity: EntityRef) -> Option<EntityTypeKey> {
+        if self.is_logical_server() {
+            self.server_entity_kind(entity)
+        } else {
+            self.client_entity_kind(entity)
         }
     }
 
@@ -526,6 +535,25 @@ impl Game<'_> {
             self.server_world_table_items()
         } else {
             self.client_world_table_items()
+        }
+    }
+
+    pub(in crate::game) fn side_level_ref(&self, epoch: WorldEpoch, key: DimensionKey) -> LevelRef {
+        if self.is_logical_server() {
+            self.level_ref(epoch, key)
+        } else {
+            LevelRef::new(epoch, key)
+        }
+    }
+
+    pub(in crate::game) fn side_online_player_sender(
+        &self,
+        player: PlayerRef,
+    ) -> Option<PlayerSender> {
+        if self.is_logical_server() {
+            self.online_player_record(player).map(|g| g.sender.clone())
+        } else {
+            None
         }
     }
 }

@@ -711,7 +711,7 @@ impl Game<'_> {
     /// The level the online player is in (`ServerPlayer.level`).
     pub(in crate::game) fn player_level(&self, player: PlayerRef) -> Option<LevelRef> {
         let dim = self.player_dimension_key(player)?;
-        Some(self.level_ref(player.fields().entity.epoch(), dim))
+        Some(self.side_level_ref(player.fields().entity.epoch(), dim))
     }
 
     /// The dimension the online player is in (`ServerPlayer.level().dimension()`).

@@ -48,11 +48,24 @@ impl Game<'_> {
         true
     }
 
+    /// Client-side `Entity.getType`: `minecraft:zombie`.
+    pub(in crate::game) fn client_entity_kind(
+        &self,
+        entity: EntityRef,
+    ) -> Option<mod_api::EntityTypeKey> {
+        match self.native_entity_read_target(entity) {
+            Some(target) => self.native_entity_kind_key(target),
+            None => {
+                mod_api::__private::resolved_entity_type_key(self.native_client_tracked(entity)?.0)
+            }
+        }
+    }
+
     /// The level the entity is in on the client (`Entity.level`).
     pub(in crate::game) fn client_entity_level(&self, entity: EntityRef) -> Option<LevelRef> {
         (self.native_client_entity_target(entity).is_some()
             || self.native_client_tracked(entity).is_some())
-        .then(|| self.level_ref(entity.epoch(), self.native_level_key()))
+        .then(|| LevelRef::new(entity.epoch(), self.native_level_key()))
     }
 
     pub(in crate::game) fn client_item_entity(

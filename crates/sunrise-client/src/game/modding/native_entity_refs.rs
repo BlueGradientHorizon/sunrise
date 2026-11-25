@@ -879,9 +879,11 @@ impl Game<'_> {
         let (remote, id) = self.native_client_entity_context(entity)?;
         remote.general.rows.get(&id)
     }
-    /// The entity's type (`Entity.getType`): `minecraft:zombie`. API
-    /// 373.
-    pub(in crate::game) fn entity_kind(&self, entity: EntityRef) -> Option<mod_api::EntityTypeKey> {
+    /// Server-side `Entity.getType`: `minecraft:zombie`. API 373.
+    pub(in crate::game) fn server_entity_kind(
+        &self,
+        entity: EntityRef,
+    ) -> Option<mod_api::EntityTypeKey> {
         match self.native_entity_read_target(entity) {
             Some(target) => self.native_entity_kind_key(target),
             None => {
@@ -890,7 +892,7 @@ impl Game<'_> {
                 {
                     return mob.kind.type_key;
                 }
-                mod_api::__private::resolved_entity_type_key(self.native_client_tracked(entity)?.0)
+                None
             }
         }
     }

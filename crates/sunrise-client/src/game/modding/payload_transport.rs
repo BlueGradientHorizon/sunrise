@@ -29,10 +29,8 @@ impl Game<'_> {
         bytes: PayloadBytes,
     ) -> Result<PayloadAccepted, PayloadSendError> {
         let sender = self
-            .online_player_record(player)
-            .ok_or(PayloadSendError::StaleEpoch)?
-            .sender
-            .clone();
+            .side_online_player_sender(player)
+            .ok_or(PayloadSendError::StaleEpoch)?;
         self.queue_current_payload(Endpoint::server(sender), id, bytes)
     }
     /// `player_send_payload` to each of `players`; a refused send is skipped. The caller crossed

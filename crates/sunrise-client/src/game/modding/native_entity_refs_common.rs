@@ -269,6 +269,11 @@ impl Game<'_> {
         self.side_entity_residency(entity)
     }
 
+    /// The entity's type (`Entity.getType`): `minecraft:zombie`. API 373.
+    pub(in crate::game) fn entity_kind(&self, entity: EntityRef) -> Option<mod_api::EntityTypeKey> {
+        self.side_entity_kind(entity)
+    }
+
     /// The level the entity is in (`Entity.level`).
     pub(in crate::game) fn entity_level(&self, entity: EntityRef) -> Option<LevelRef> {
         self.side_entity_level(entity)
