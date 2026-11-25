@@ -22,6 +22,11 @@ pub use client::render_pipeline::{
     SamplerAddress, SamplerFilter, TexelBufferFormat, TextureSource, UniformBufferBackendRef,
     UniformBufferContext, UniformBufferRef,
 };
+pub use client::render_pipeline::{RenderCapabilities, StorageImageAccess, StorageImageBinding};
+pub use client::render_pipeline::{
+    RenderTargetBackendRef, RenderTargetContext, RenderTargetDepth, RenderTargetDescriptor,
+    RenderTargetError, RenderTargetFormat, RenderTargetMipView, RenderTargetRef,
+};
 pub use client::render_pipeline::{
     UniformValue, VANILLA_BIND_GROUP_LAYOUT_NAMES, VERTEX_ALIGNMENT, VertexAttribute,
     VertexAttributeFormat, VertexFormat, VertexFormatBuilder, VertexFormatError, VertexStepMode,

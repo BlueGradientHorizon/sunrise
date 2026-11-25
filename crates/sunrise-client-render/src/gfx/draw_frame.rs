@@ -1609,6 +1609,11 @@ impl Renderer {
                 .as_mut()
                 .expect("world primitives")
                 .forget_storage(&released);
+            let released_targets = self.take_released_mod_render_targets();
+            self.world_primitives
+                .as_mut()
+                .expect("world primitives")
+                .forget_render_targets(&released_targets);
             let bound = self
                 .pack_post
                 .as_ref()

@@ -552,8 +552,61 @@ impl Game<'_> {
             .ok_or(mod_api::BufferError::Unavailable)?;
         renderer.storage_buffer_release(mod_api::content::crash::current_native_mod(), buffer)
     }
+    /// Allocate a mod-owned offscreen [`mod_api::RenderTargetRef`] on the active renderer.
+    pub(super) fn create_render_target(
+        &self,
+        desc: &mod_api::RenderTargetDescriptor,
+    ) -> Result<mod_api::RenderTargetRef, mod_api::RenderTargetError> {
+        let renderer = self
+            .renderer
+            .as_ref()
+            .ok_or(mod_api::RenderTargetError::Unavailable)?;
+        renderer.create_render_target(mod_api::content::crash::current_native_mod(), desc)
+    }
+    /// Resize mod-owned offscreen `target` (no-op if unchanged).
+    pub(super) fn render_target_resize(
+        &self,
+        target: mod_api::RenderTargetRef,
+        size: [u32; 2],
+    ) -> Result<(), mod_api::RenderTargetError> {
+        let renderer = self
+            .renderer
+            .as_ref()
+            .ok_or(mod_api::RenderTargetError::Unavailable)?;
+        renderer.render_target_resize(mod_api::content::crash::current_native_mod(), target, size)
+    }
+    /// Query pixel dimensions of mod-owned offscreen `target`.
+    pub(super) fn render_target_size(
+        &self,
+        target: mod_api::RenderTargetRef,
+    ) -> Result<[u32; 2], mod_api::RenderTargetError> {
+        let renderer = self
+            .renderer
+            .as_ref()
+            .ok_or(mod_api::RenderTargetError::Unavailable)?;
+        renderer.render_target_size(mod_api::content::crash::current_native_mod(), target)
+    }
+    /// The optional device features of the active renderer; all off without one.
+    pub(super) fn render_capabilities(&self) -> mod_api::RenderCapabilities {
+        self.renderer.as_ref().map_or_else(
+            || mod_api::__private::built::render_capabilities(false, Vec::new()),
+            |renderer| renderer.render_capabilities(),
+        )
+    }
+    /// Free mod-owned offscreen `target` and retire the handle.
+    pub(super) fn render_target_release(
+        &self,
+        target: mod_api::RenderTargetRef,
+    ) -> Result<(), mod_api::RenderTargetError> {
+        let renderer = self
+            .renderer
+            .as_ref()
+            .ok_or(mod_api::RenderTargetError::Unavailable)?;
+        renderer.render_target_release(mod_api::content::crash::current_native_mod(), target)
+    }
     /// Validate and resolve per-draw set-1 [`mod_api::DrawBindings`] against pipeline `slot`'s
-    /// declared `BindGroupLayout` and `push_constant_size`.
+    /// declared `BindGroupLayout` and `push_constant_size`, refusing a mip level bound in ways one
+    /// pass cannot combine with [`PipelineDrawError::TargetReadWriteHazard`].
     fn resolve_draw_bindings(
         &self,
         draw: &mut WorldGeometry,
@@ -599,9 +652,16 @@ impl Game<'_> {
             Texture {
                 view_id: u64,
                 view: wgpu::TextureView,
+                mips: Option<sunrise_client::gfx::mod_render_targets::TargetMips>,
             },
             TexelBytes(Vec<u8>),
             Storage(sunrise_client::gfx::mod_storage::ResolvedStorageRange),
+            StorageImage {
+                view_id: u64,
+                view: wgpu::TextureView,
+                format: wgpu::TextureFormat,
+                mips: sunrise_client::gfx::mod_render_targets::TargetMips,
+            },
         }
         let mut staged = Vec::with_capacity(layout.entries.len());
         for decl in &layout.entries {
@@ -641,9 +701,10 @@ impl Game<'_> {
                     staged.push(StagedEntry::InlineUniform(bytes));
                 }
                 (
-                    mod_api::BindingKind::CombinedImageSampler { .. },
+                    mod_api::BindingKind::CombinedImageSampler { filter, .. },
                     mod_api::BindingValue::Texture(source),
                 ) => {
+                    let mut mips = None;
                     let (view_id, view) = match source {
                         mod_api::TextureSource::AtlasSprite(id) => {
                             let sprite_key = id
@@ -678,9 +739,36 @@ impl Game<'_> {
                             renderer.mod_world_depth_texture_view()
                         }
                         mod_api::TextureSource::Lightmap => renderer.mod_lightmap_texture_view(),
+                        mod_api::TextureSource::RenderTargetColor(target, attachment) => {
+                            let filterable = filter == mod_api::SamplerFilter::Linear;
+                            let (id, view, target_mips) = renderer
+                                .resolve_mod_render_target_color(
+                                    owner,
+                                    *target,
+                                    *attachment,
+                                    filterable,
+                                )?;
+                            mips = Some(target_mips);
+                            (id, view)
+                        }
+                        mod_api::TextureSource::RenderTargetDepth(target) => {
+                            let filterable = filter == mod_api::SamplerFilter::Linear;
+                            renderer.resolve_mod_render_target_depth(owner, *target, filterable)?
+                        }
+                        mod_api::TextureSource::RenderTargetColorMip(view) => {
+                            let filterable = filter == mod_api::SamplerFilter::Linear;
+                            let (id, view, target_mips) = renderer
+                                .resolve_mod_render_target_color_mips(owner, *view, filterable)?;
+                            mips = Some(target_mips);
+                            (id, view)
+                        }
                         _ => return Err(PipelineDrawError::InvalidBinding),
                     };
-                    staged.push(StagedEntry::Texture { view_id, view });
+                    staged.push(StagedEntry::Texture {
+                        view_id,
+                        view,
+                        mips,
+                    });
                 }
                 (
                     mod_api::BindingKind::TexelBuffer { format },
@@ -723,8 +811,38 @@ impl Game<'_> {
                         .map_err(PipelineDrawError::Buffer)?;
                     staged.push(StagedEntry::Storage(range));
                 }
+                (
+                    mod_api::BindingKind::StorageImage { access },
+                    mod_api::BindingValue::StorageImage(image),
+                ) => {
+                    let (view_id, view, format, mips) =
+                        renderer.resolve_mod_storage_image(owner, access, *image)?;
+                    staged.push(StagedEntry::StorageImage {
+                        view_id,
+                        view,
+                        format,
+                        mips,
+                    });
+                }
                 _ => return Err(PipelineDrawError::InvalidBinding),
             }
+        }
+        // One render pass gives a mip level one usage: a draw binds no level both as a storage
+        // image it writes and as anything else (a sampled view, or another storage access).
+        let mips_of = |entry: &StagedEntry<'_>| match entry {
+            StagedEntry::Texture { mips, .. } => *mips,
+            StagedEntry::StorageImage { mips, .. } => Some(*mips),
+            _ => None,
+        };
+        if staged.iter().enumerate().any(|(i, a)| {
+            mips_of(a).is_some_and(|a| {
+                staged[i + 1..]
+                    .iter()
+                    .filter_map(mips_of)
+                    .any(|b| a.conflicts_with(&b))
+            })
+        }) {
+            return Err(PipelineDrawError::TargetReadWriteHazard);
         }
         let pc_slice = if pc_size > 0 {
             let Some(bytes) = bindings.push_constants else {
@@ -766,11 +884,16 @@ impl Game<'_> {
                         },
                     );
                 }
-                StagedEntry::Texture { view_id, view } => {
+                StagedEntry::Texture {
+                    view_id,
+                    view,
+                    mips,
+                } => {
                     resolved_entries.push(
                         sunrise_client::gfx::mod_pipelines::ResolvedSet1Entry::Texture {
                             view_id,
                             view,
+                            mips,
                         },
                     );
                 }
@@ -781,6 +904,21 @@ impl Game<'_> {
                             buffer: range.buffer,
                             offset: range.offset,
                             size: range.length,
+                        },
+                    );
+                }
+                StagedEntry::StorageImage {
+                    view_id,
+                    view,
+                    format,
+                    mips,
+                } => {
+                    resolved_entries.push(
+                        sunrise_client::gfx::mod_pipelines::ResolvedSet1Entry::StorageImage {
+                            view_id,
+                            view,
+                            format,
+                            mips,
                         },
                     );
                 }

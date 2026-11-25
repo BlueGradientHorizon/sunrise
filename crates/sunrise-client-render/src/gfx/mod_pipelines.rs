@@ -13,6 +13,7 @@
 
 use super::expression_blocks::{VANILLA_OFFSETS, VANILLA_SIZES, block_entry};
 use super::mod_meshes::{ResolvedMeshDraw, wgpu_index_format};
+use super::mod_render_targets::{TargetMips, TargetUse};
 use super::world_primitives::{Upload, VertexPages};
 use crate::mod_pipelines::{Built, BuiltTexture, ModifierStacks, Pipelines};
 use glam::Mat4;
@@ -95,6 +96,8 @@ pub enum ResolvedSet1Entry {
     Texture {
         view_id: u64,
         view: wgpu::TextureView,
+        /// The render target mip range the view covers, when it is one.
+        mips: Option<TargetMips>,
     },
     /// Expanded `i32`/`u32` texel buffer byte range in `Batch::texel_data` / `Batch::oit_texel_data`.
     TexelBuffer { byte_range: std::ops::Range<usize> },
@@ -105,6 +108,14 @@ pub enum ResolvedSet1Entry {
         buffer: wgpu::Buffer,
         offset: u64,
         size: u64,
+    },
+    /// One mip level of a render target colour attachment bound as a storage image, already
+    /// checked against the target's storage access, with the texel `format` of its texture.
+    StorageImage {
+        view_id: u64,
+        view: wgpu::TextureView,
+        format: wgpu::TextureFormat,
+        mips: TargetMips,
     },
 }
 
@@ -580,6 +591,17 @@ struct CompiledOit {
 struct CompiledSet1Entry {
     binding: u32,
     kind: BindingKind,
+    /// The texel format the shader declares for a [`BindingKind::StorageImage`] entry.
+    storage_format: Option<wgpu::TextureFormat>,
+}
+
+/// Key of one render target mip level within a pass scope: `(scope, texture, mip level)`.
+type TargetLevel = (u32, u64, u32);
+
+/// Whether a conflicting use was found on a level of `mips` in pass `scope`.
+fn mips_conflict(conflicts: &HashSet<TargetLevel>, scope: u32, mips: &TargetMips) -> bool {
+    mips.levels()
+        .any(|level| conflicts.contains(&(scope, mips.texture, level)))
 }
 
 /// Cache key for one resource slot in a cached set-1 `wgpu::BindGroup`.
@@ -595,6 +617,8 @@ enum Set1ResourceKey {
     TexelBuffer(u64, u64),
     /// Retained storage buffer range `(unique_id, offset, size)`.
     Storage(u64, u64, u64),
+    /// Storage image view `(unique_view_id)`.
+    StorageImage(u64),
 }
 
 /// Cache key for reusing a set-1 `wgpu::BindGroup` while the same resources are drawn.
@@ -679,6 +703,14 @@ pub struct ModPipelines {
     /// Buffer ids already warned about, so a persisting conflict logs once. Cleared on reload
     /// and trimmed when a buffer is released.
     warned_storage_conflicts: HashSet<u64>,
+    /// Scratch for the frame's render-target usage check: how each `(pass scope, texture id,
+    /// mip level)` is used, as [`TargetUse::bit`] sets. Cleared per frame; keeps its capacity.
+    target_uses: HashMap<TargetLevel, u8>,
+    /// Scratch: the levels used in a way one pass cannot combine, whose draws are skipped.
+    target_conflicts: HashSet<TargetLevel>,
+    /// Texture ids already warned about, so a persisting conflict logs once. Cleared on reload
+    /// and trimmed when a render target is released.
+    warned_target_conflicts: HashSet<u64>,
     fan_indices: FanIndices,
     /// The load `pipelines` was built from; 0 before any.
     generation: u64,
@@ -739,6 +771,37 @@ fn create_mod_samplers(device: &wgpu::Device) -> [[wgpu::Sampler; 3]; 2] {
     })
 }
 
+/// The texel format `built`'s shader declares (`layout(rgba8) uniform image2D`) for the storage
+/// image at set-1 `binding`, when it is one a render target can have.
+fn storage_image_format(built: &Built, binding: u32) -> Option<wgpu::TextureFormat> {
+    [&built.program.vertex, &built.program.fragment]
+        .into_iter()
+        .find_map(|module| {
+            module
+                .global_variables
+                .iter()
+                .filter(|(_, var)| {
+                    var.binding.as_ref().is_some_and(|at| {
+                        at.group == sunrise_mod_pipeline::MOD_BIND_GROUP_SET
+                            && at.binding == binding
+                    })
+                })
+                .find_map(|(_, var)| match module.types[var.ty].inner {
+                    naga::TypeInner::Image {
+                        class: naga::ImageClass::Storage { format, .. },
+                        ..
+                    } => Some(format),
+                    _ => None,
+                })
+        })
+        .and_then(|format| match format {
+            naga::StorageFormat::Rgba8Unorm => Some(wgpu::TextureFormat::Rgba8Unorm),
+            naga::StorageFormat::Rgba16Float => Some(wgpu::TextureFormat::Rgba16Float),
+            naga::StorageFormat::R32Float => Some(wgpu::TextureFormat::R32Float),
+            _ => None,
+        })
+}
+
 fn build_set1_layout(
     device: &wgpu::Device,
     built: &Built,
@@ -762,6 +825,7 @@ fn build_set1_layout(
     let mut texture_count = 0u32;
     let mut sampler_count = 0u32;
     let mut storage_count = 0u32;
+    let mut storage_image_count = 0u32;
     for entry in &built.bind_group_layout.entries {
         match entry.kind {
             BindingKind::UniformBuffer { min_size } => {
@@ -786,6 +850,7 @@ fn build_set1_layout(
                 compiled_entries.push(CompiledSet1Entry {
                     binding: next_binding,
                     kind: entry.kind,
+                    storage_format: None,
                 });
                 next_binding += 1;
             }
@@ -816,6 +881,7 @@ fn build_set1_layout(
                 compiled_entries.push(CompiledSet1Entry {
                     binding: next_binding,
                     kind: entry.kind,
+                    storage_format: None,
                 });
                 next_binding += 2;
             }
@@ -834,6 +900,7 @@ fn build_set1_layout(
                 compiled_entries.push(CompiledSet1Entry {
                     binding: next_binding,
                     kind: entry.kind,
+                    storage_format: None,
                 });
                 next_binding += 1;
             }
@@ -876,6 +943,60 @@ fn build_set1_layout(
                 compiled_entries.push(CompiledSet1Entry {
                     binding: next_binding,
                     kind: entry.kind,
+                    storage_format: None,
+                });
+                next_binding += 1;
+            }
+            BindingKind::StorageImage { access } => {
+                storage_image_count += 1;
+                let Some(format) = storage_image_format(built, next_binding) else {
+                    return Err(format!(
+                        "storage image `{}` needs a `layout(rgba8)`, `layout(rgba16f)` or `layout(r32f)` declaration in its shader",
+                        entry.name
+                    ));
+                };
+                let (access, read_only) = match access {
+                    mod_api::StorageImageAccess::WriteOnly => {
+                        (wgpu::StorageTextureAccess::WriteOnly, false)
+                    }
+                    mod_api::StorageImageAccess::ReadOnly => {
+                        (wgpu::StorageTextureAccess::ReadOnly, true)
+                    }
+                    mod_api::StorageImageAccess::ReadWrite => {
+                        (wgpu::StorageTextureAccess::ReadWrite, false)
+                    }
+                    _ => {
+                        return Err(format!(
+                            "unsupported storage image access for `{}`",
+                            entry.name
+                        ));
+                    }
+                };
+                // As for storage buffers, wgpu lets only a device with
+                // `VERTEX_WRITABLE_STORAGE` write a storage texture in the vertex stage.
+                let visibility = if read_only
+                    || device
+                        .features()
+                        .contains(wgpu::Features::VERTEX_WRITABLE_STORAGE)
+                {
+                    wgpu::ShaderStages::VERTEX_FRAGMENT
+                } else {
+                    wgpu::ShaderStages::FRAGMENT
+                };
+                layout_entries.push(wgpu::BindGroupLayoutEntry {
+                    binding: next_binding,
+                    visibility,
+                    ty: wgpu::BindingType::StorageTexture {
+                        access,
+                        format,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                    },
+                    count: None,
+                });
+                compiled_entries.push(CompiledSet1Entry {
+                    binding: next_binding,
+                    kind: entry.kind,
+                    storage_format: Some(format),
                 });
                 next_binding += 1;
             }
@@ -932,6 +1053,12 @@ fn build_set1_layout(
         return Err(format!(
             "set-1 storage/texel buffer count ({storage_count}) exceeds device max_storage_buffers_per_shader_stage ({})",
             limits.max_storage_buffers_per_shader_stage
+        ));
+    }
+    if storage_image_count > limits.max_storage_textures_per_shader_stage {
+        return Err(format!(
+            "set-1 storage image count ({storage_image_count}) exceeds device max_storage_textures_per_shader_stage ({})",
+            limits.max_storage_textures_per_shader_stage
         ));
     }
     let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -1001,6 +1128,9 @@ impl ModPipelines {
             storage_uses: HashMap::new(),
             storage_conflicts: HashSet::new(),
             warned_storage_conflicts: HashSet::new(),
+            target_uses: HashMap::new(),
+            target_conflicts: HashSet::new(),
+            warned_target_conflicts: HashSet::new(),
             fan_indices: FanIndices::default(),
             generation: 0,
             oit_generation: 0,
@@ -1787,6 +1917,7 @@ impl ModPipelines {
         self.pack_pipelines = None;
         self.set1_bind_group_cache.clear();
         self.warned_storage_conflicts.clear();
+        self.warned_target_conflicts.clear();
         Ok(())
     }
 
@@ -2681,6 +2812,39 @@ impl ModPipelines {
             }
         }
 
+        // The same holds for a render target's mip levels: wgpu gives each one usage for the
+        // whole pass, so a level one draw writes as a storage image cannot be sampled, or bound
+        // with another storage access, by any other draw of the pass, nor by the draw itself.
+        // Read-only storage and sampling share a usage and may be combined.
+        self.target_uses.clear();
+        self.target_conflicts.clear();
+        for (sd, bindings) in &staged {
+            for entry in &bindings.entries {
+                let (ResolvedSet1Entry::Texture {
+                    mips: Some(mips), ..
+                }
+                | ResolvedSet1Entry::StorageImage { mips, .. }) = entry
+                else {
+                    continue;
+                };
+                for level in mips.levels() {
+                    let key = (sd.scope, mips.texture, level);
+                    let used = self.target_uses.entry(key).or_default();
+                    *used |= mips.usage.bit();
+                    if TargetUse::conflict(*used) {
+                        self.target_conflicts.insert(key);
+                    }
+                }
+            }
+        }
+        for &(_, texture, _) in &self.target_conflicts {
+            if self.warned_target_conflicts.insert(texture) {
+                log::warn!(
+                    "Sunrise: mod draws using a mip level of render target texture {texture} in conflicting ways (written as a storage image and also sampled or bound with another access) in one pass are skipped"
+                );
+            }
+        }
+
         // Only bind groups the previous frame used survive into this one, so a released
         // uniform buffer, a resized or retired texture and a disabled mod's resources are
         // dropped with the first frame that no longer draws them.
@@ -2718,9 +2882,15 @@ impl ModPipelines {
                         dynamic_offsets.push(offset);
                     }
                     (
-                        ResolvedSet1Entry::Texture { view_id, .. },
+                        ResolvedSet1Entry::Texture { view_id, mips, .. },
                         BindingKind::CombinedImageSampler { .. },
                     ) => {
+                        if mips.as_ref().is_some_and(|mips| {
+                            mips_conflict(&self.target_conflicts, sd.scope, mips)
+                        }) {
+                            valid = false;
+                            break;
+                        }
                         key_resources.push(Set1ResourceKey::Texture(*view_id));
                     }
                     (ResolvedSet1Entry::TexelBuffer { .. }, BindingKind::TexelBuffer { .. }) => {
@@ -2739,6 +2909,23 @@ impl ModPipelines {
                             break;
                         }
                         key_resources.push(Set1ResourceKey::Storage(*id, *offset, *size));
+                    }
+                    (
+                        ResolvedSet1Entry::StorageImage {
+                            view_id,
+                            format,
+                            mips,
+                            ..
+                        },
+                        BindingKind::StorageImage { .. },
+                    ) => {
+                        if spec.storage_format != Some(*format)
+                            || mips_conflict(&self.target_conflicts, sd.scope, mips)
+                        {
+                            valid = false;
+                            break;
+                        }
+                        key_resources.push(Set1ResourceKey::StorageImage(*view_id));
                     }
                     _ => {
                         valid = false;
@@ -2857,6 +3044,15 @@ impl ModPipelines {
                                 }),
                             });
                         }
+                        (
+                            ResolvedSet1Entry::StorageImage { view, .. },
+                            BindingKind::StorageImage { .. },
+                        ) => {
+                            bg_entries.push(wgpu::BindGroupEntry {
+                                binding: spec.binding,
+                                resource: wgpu::BindingResource::TextureView(view),
+                            });
+                        }
                         _ => {
                             valid = false;
                             break;
@@ -2920,6 +3116,12 @@ impl ModPipelines {
                 .iter()
                 .any(|r| matches!(r, Set1ResourceKey::Storage(id, ..) if released.contains(id)))
         });
+    }
+
+    /// Forget the conflict warnings of render target textures `released` since the last frame.
+    pub fn forget_render_targets(&mut self, released: &[u64]) {
+        self.warned_target_conflicts
+            .retain(|texture| !released.contains(texture));
     }
 
     /// Draws the prepared runs and unified draws of stages `first..=last` in the order queued,
@@ -5963,7 +6165,11 @@ void main() {
                 index_range: None,
             },
             bindings: Some(ResolvedDrawBindings {
-                entries: vec![ResolvedSet1Entry::Texture { view_id, view }],
+                entries: vec![ResolvedSet1Entry::Texture {
+                    view_id,
+                    view,
+                    mips: None,
+                }],
                 push_constants: None,
             }),
         };
@@ -5983,5 +6189,168 @@ void main() {
         assert_near(at(24, 32), [0.0, 0.0, 255.0, 255.0], 1.0, "repeat 0 blue");
         assert_near(at(40, 32), [255.0, 0.0, 0.0, 255.0], 1.0, "repeat 1 red");
         assert_near(at(56, 32), [0.0, 0.0, 255.0, 255.0], 1.0, "repeat 1 blue");
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_glsl_image_store_writes_one_mip_level_of_a_render_target() {
+        let _gpu = crate::gfx::test_gpu::lock();
+        let Some((device, queue)) = device() else {
+            return;
+        };
+        let id = Identifier::parse("mod_mips:store").unwrap();
+        let vsh = "#version 330\n\
+            in vec3 Position;\n\
+            in vec2 UV0;\n\
+            in vec4 Color;\n\
+            void main() {\n\
+                vec2 ndc = vec2(Position.x / 32.0 - 1.0, 1.0 - Position.y / 32.0);\n\
+                gl_Position = vec4(ndc, 0.5, 1.0);\n\
+            }\n";
+        let fsh = "#version 330\n\
+            layout(r32f) writeonly uniform image2D Next;\n\
+            out vec4 fragColor;\n\
+            void main() {\n\
+                imageStore(Next, ivec2(0), vec4(0.25));\n\
+                imageStore(Next, ivec2(1, 0), vec4(0.5));\n\
+                fragColor = vec4(1.0);\n\
+            }\n";
+        let pipeline = RenderPipeline::new(
+            id.clone(),
+            id,
+            PipelineBlend::Opaque,
+            mod_api::WorldDepth::ThroughWalls,
+        )
+        .bind_group_layout(
+            mod_api::BindGroupLayout::builder()
+                .entry(mod_api::BindEntry::new(
+                    "Next",
+                    mod_api::BindingKind::StorageImage {
+                        access: mod_api::StorageImageAccess::WriteOnly,
+                    },
+                ))
+                .build()
+                .unwrap(),
+        );
+        let set = Pipelines::build(&[pipeline], 1, |file| {
+            if file.ends_with(".vsh") {
+                Ok(Some(vsh.to_owned()))
+            } else if file.ends_with(".fsh") {
+                Ok(Some(fsh.to_owned()))
+            } else {
+                Ok(stub_asset(file))
+            }
+        })
+        .expect("a write-only storage image pipeline must translate");
+
+        // A 4 x 4 pyramid of three levels: level 1 is 2 x 2.
+        let mut targets = crate::gfx::mod_render_targets::ModRenderTargets::default();
+        let target = targets
+            .create(
+                &device,
+                None,
+                &mod_api::RenderTargetDescriptor::new([4, 4])
+                    .color_target(mod_api::RenderTargetFormat::R32Float)
+                    .mip_levels(3)
+                    .storage(mod_api::StorageImageAccess::WriteOnly),
+            )
+            .expect("a mip-chained R32Float write-only storage target");
+        let (view_id, view, format, mips) = targets
+            .resolve_storage_image(
+                None,
+                mod_api::StorageImageAccess::WriteOnly,
+                mod_api::StorageImageBinding::new(target, 0, 1),
+            )
+            .unwrap();
+
+        let quad =
+            [[0.0, 0.0], [0.0, 64.0], [64.0, 64.0], [64.0, 0.0]].map(|[x, y]| PipelineVertex {
+                pos: [x, y, 0.0],
+                uv: [0.0, 0.0],
+                color: 0xFFFF_FFFF,
+            });
+        let vbytes = bytemuck::cast_slice(&quad);
+        let draw = PipelineDraw {
+            slot: 0,
+            stage: 4,
+            modifier_stack: 0,
+            draw: MeshDraw::vertices(0..4),
+            source: PipelineDrawSource::Transient {
+                vertex_ranges: vec![(0, 0..vbytes.len() as u64)],
+                index_range: None,
+            },
+            bindings: Some(ResolvedDrawBindings {
+                entries: vec![ResolvedSet1Entry::StorageImage {
+                    view_id,
+                    view,
+                    format,
+                    mips,
+                }],
+                push_constants: None,
+            }),
+        };
+        let frame_format = wgpu::TextureFormat::Rgba8Unorm;
+        let mut primitives = WorldPrimitives::new(&device, (frame_format, false));
+        let gpu = (device, queue);
+        let batch = Batch {
+            set: Some(&set),
+            draws: std::slice::from_ref(&draw),
+            transient_vertices: vbytes,
+            time: 0.0,
+            ..Default::default()
+        };
+        let at = render(&gpu, &mut primitives, frame_format, batch, STAGES - 1);
+        assert_near(
+            at(32, 32),
+            [255.0, 255.0, 255.0, 255.0],
+            1.0,
+            "the draw ran",
+        );
+
+        // Read level 1 (2 x 2) and the single texel of level 0 back.
+        let (device, queue) = &gpu;
+        let readback = device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: 1024,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let texture = targets.color_texture(target, 0).unwrap();
+        let mut encoder = device.create_command_encoder(&Default::default());
+        for (mip, offset, size) in [(1, 0, 2), (0, 512, 1)] {
+            encoder.copy_texture_to_buffer(
+                wgpu::TexelCopyTextureInfo {
+                    texture,
+                    mip_level: mip,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::TexelCopyBufferInfo {
+                    buffer: &readback,
+                    layout: wgpu::TexelCopyBufferLayout {
+                        offset,
+                        bytes_per_row: Some(256),
+                        rows_per_image: None,
+                    },
+                },
+                wgpu::Extent3d {
+                    width: size,
+                    height: size,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+        queue.submit([encoder.finish()]);
+        readback.slice(..).map_async(wgpu::MapMode::Read, |_| {});
+        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+        let bytes = readback.slice(..).get_mapped_range().unwrap().to_vec();
+        let texel =
+            |offset: usize| f32::from_ne_bytes(bytes[offset..offset + 4].try_into().unwrap());
+        // The shader wrote two texels of level 1; the others and level 0 keep their zeroes.
+        assert_eq!(texel(0), 0.25, "level 1 texel (0, 0)");
+        assert_eq!(texel(4), 0.5, "level 1 texel (1, 0)");
+        assert_eq!(texel(256), 0.0, "level 1 texel (0, 1)");
+        assert_eq!(texel(260), 0.0, "level 1 texel (1, 1)");
+        assert_eq!(texel(512), 0.0, "level 0 texel (0, 0)");
     }
 }
