@@ -53,6 +53,7 @@ struct Game { orbs: Vec<ExperienceOrb>, remote: Option<()>, dim: Dim, added: Vec
               // and a change to the source's value that makes the decision stale.
               write: Option<(i32, u32)>, stale: bool, seen: Vec<(i32, u32, i32, u32)> }
 impl Game {
+    fn is_logical_server(&self) -> bool { self.remote.is_none() }
     fn native_experience_orb_can_merge(&mut self, _: &str, into: u32, from: u32, iv: i32, fv: i32,
                                        can_merge: &mut bool) {
         self.asked.push((into, from, iv, fv));

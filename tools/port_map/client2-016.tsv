@@ -39,7 +39,7 @@ LoomScreen.init	skip:ui		bakes the banner flag model for the preview; the loom i
 LoomScreen.isScrollBarActive	port	crates/sunrise-client/src/game/blocks/loom.rs::LoomState::offscreen_rows	gap: minor: more than 16 patterns (four rows of four); the displayPatterns check is at the call sites
 LoomScreen.extractBannerOnButton	port	crates/sunrise-client/src/game/blocks/loom.rs::Game::paint_screen	grey square and pattern sprite on each pattern button (Fill and Atlas draws from screen_layout::loom)
 LoomScreen.hasClickedOutside	port	crates/sunrise-client/src/game/interface/inventory_input.rs::Game::clicked_outside	outside test against the container rectangle, plus the recipe book area
-MerchantScreen.postButtonClick	port	crates/sunrise-client/src/game/items/trading.rs::Game::try_move_items	selection hint, move the offer's items, and the SelectTrade packet on a server
+MerchantScreen.postButtonClick	port	crates/sunrise-client/src/game/items/trading_client.rs::Game::try_move_items	selection hint, move the offer's items, and the SelectTrade packet on a server
 MerchantScreen.init	skip:ui		trade buttons are laid out in draw_merchant and hit-tested in merchant_click
 MerchantScreen.extractLabels	inline	crates/sunrise-client/src/game/items/trading_client.rs::Game::draw_merchant	title with the trader level, Trades and Inventory labels
 MerchantScreen.extractBackground	inline	crates/sunrise-client/src/game/items/trading_client.rs::Game::draw_merchant	villager background and the out-of-stock sprite

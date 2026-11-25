@@ -2502,7 +2502,7 @@ sunrise-client game::server_side::tnt::tests::live_data_commands_adopt_into_the_
 sunrise-client game::server_side::tnt::tests::portal_blast_sulfur_cube_uses_only_positive_cooldown lib daily resources
 sunrise-client game::server_side::tnt::tests::portal_transfer_ordinary_nbt_cannot_supply_runtime_immunity lib daily resources
 sunrise-client game::server_side::tnt::tests::portal_transfer_tnt_state_follows_memory_but_not_saved_nbt lib daily resources
-sunrise-client game::server_side::trading::select_on_a_server_tests::picking_a_trade_on_a_server_moves_the_payment_here_too lib daily resources
+sunrise-client game::client_side::trading_client::select_on_a_server_tests::picking_a_trade_on_a_server_moves_the_payment_here_too lib daily resources
 sunrise-client game::transactions::decision::engine::tests::actual_menu_cursor_aba_is_stale_and_undoes_a_nested_commit lib daily resources
 sunrise-client game::transactions::decision::engine::tests::actual_menu_frozen_click_and_outer_abort_use_the_game_journal lib daily resources
 sunrise-client game::transactions::decision::engine::tests::actual_owner_nested_edit_and_panic_roll_back_before_the_next_click lib daily resources

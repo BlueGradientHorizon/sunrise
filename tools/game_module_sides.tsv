@@ -324,6 +324,7 @@ item_particle_send_tests	game	touches neither ClientState nor ServerState fields
 item_particles	client	touches only client-owned fields	game/items/item_particles.rs
 item_pickup_shape_tests	server	touches only ServerState fields	game/items/item_pickup_shape_tests.rs
 item_slot_command_tests	game	touches neither ClientState nor ServerState fields	game/interface/item_slot_command_tests.rs
+item_snapshot	game	common dual-role module	game/modding/item_snapshot.rs
 item_use	server	touches only server-owned fields (opposite-side functions moved to item_use_client)	game/items/item_use.rs
 item_use_stacks	game	touches neither ClientState nor ServerState fields	game/items/item_use_stacks.rs
 item_void_tests	server	touches only ServerState fields	game/entities/item_void_tests.rs
@@ -708,7 +709,6 @@ native_projectile_refs	server	touches only ServerState fields	game/modding/nativ
 native_projectiles	server	touches only ServerState fields	game/modding/native_projectiles.rs
 native_quick_move	server	re-homed server module	game/modding/native_quick_move.rs
 native_raid_refs	server	touches only ServerState fields	game/modding/native_raid_refs.rs
-native_recipe_properties	server	touches only server-owned fields (opposite-side functions moved to native_recipe_properties_client)	game/modding/native_recipe_properties.rs
 native_recipe_sync	game	touches neither ClientState nor ServerState fields	game/modding/native_recipe_sync.rs
 native_recipe_sync_tests	server	touches only ServerState fields	game/modding/native_recipe_sync_tests.rs
 native_recipes	client	touches only client-owned fields	game/modding/native_recipes.rs
