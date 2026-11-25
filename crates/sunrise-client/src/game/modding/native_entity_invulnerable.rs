@@ -36,6 +36,23 @@ impl Game<'_> {
                 vanilla,
             )
     }
+    /// `Entity.isInvulnerableToBase` for lava's `lavaHurt` of a non-living
+    /// entity: `vanilla` (its saved invulnerability, which lava does not
+    /// bypass), as the mods' check answers it.
+    pub(in crate::game) fn refuses_lava_hurt(
+        &mut self,
+        id: u32,
+        kind: &str,
+        vanilla: bool,
+    ) -> bool {
+        let source = sunrise_client::health::HurtSource {
+            damage_type: "minecraft:lava",
+            causing: 0,
+            direct: 0,
+            position: None,
+        };
+        self.native_nonliving_invulnerable(id, kind, source, vanilla)
+    }
     /// A player's body, where it is kept now.
     pub(super) fn native_player_body(
         &self,
@@ -122,7 +139,7 @@ impl Game<'_> {
         };
         let mut compound = match self.persist.raw.get(&id) {
             Some(Tag::Compound(map)) => map.clone(),
-            _ => std::collections::BTreeMap::new(),
+            _ => sunrise_core::nbt::Compound::new(),
         };
         compound.insert("Invulnerable".into(), Tag::Byte(i8::from(invulnerable)));
         self.persist.raw.insert(id, Tag::Compound(compound));
@@ -135,13 +152,21 @@ impl Game<'_> {
     /// Counted down by the base tick; `isTemporarilyInvulnerable` is it above
     /// zero. None for a stale handle or a kind that keeps none.
     pub(super) fn entity_invulnerable_time(&self, entity: EntityRef) -> Option<i32> {
-        match self.native_entity_target(entity)? {
+        match self.timer_read_target(entity)? {
             Target::Mob(id) => Some(self.mobs.iter().find(|m| m.id == id)?.invulnerable_time),
             t @ (Target::Player | Target::Guest(_)) => {
                 Some(self.native_player_body(t)?.health.invulnerable_time)
             }
             t => self.saved_invulnerable_time(t),
         }
+    }
+    /// What a damage timer read names: the server's entity, or on a client the local player
+    /// or a kept entity (a tracked player or mob), the bodies whose timers the client counts
+    /// itself (#5694).
+    fn timer_read_target(&self, entity: EntityRef) -> Option<Target> {
+        let target = self.native_entity_read_target(entity)?;
+        (self.is_logical_server() || matches!(target, Target::Player | Target::Mob(_)))
+            .then_some(target)
     }
     /// `Entity.setInvulnerableTime` (#916): the write side of
     /// [`native_entity_invulnerable_time`](Self::native_entity_invulnerable_time).
@@ -170,7 +195,7 @@ impl Game<'_> {
     /// A non-mob kind's saved invulnerability (#916), the one parse of its
     /// entity data: the `Invulnerable` flag and the `invulnerable_time`
     /// window. `(false, 0)` where its data has neither.
-    fn saved_invulnerability(&self, id: u32) -> (bool, i32) {
+    pub(super) fn saved_invulnerability(&self, id: u32) -> (bool, i32) {
         use sunrise_core::nbt::Tag;
         match self.persist.raw.get(&id) {
             Some(Tag::Compound(map)) => (
@@ -212,6 +237,30 @@ impl Game<'_> {
             .is_some_and(|kind| registry.in_tag(kind, "minecraft:bypasses_invulnerability"));
         !(bypass || creative_source)
     }
+    /// `Entity.isInvulnerableToBase` for resident items and orbs. These bodies
+    /// have no intrinsic fire immunity; item-stack resistance is checked separately.
+    pub(in crate::game) fn resident_item_or_orb_immune(
+        &self,
+        id: u32,
+        entity_type: &str,
+        source: sunrise_world::damage_source::DamageTypeId,
+        creative_source: bool,
+    ) -> bool {
+        let (flag, window) = self.saved_invulnerability(id);
+        sunrise_client::health::BodyImmunity {
+            removed: false,
+            invulnerable: flag || window > 0,
+            creative_source,
+            fire_immune: false,
+            fall_immune: world_items!(self).entity_type_tags.has_flag(
+                entity_type,
+                sunrise_client::items::EntityTypeTags::FALL_DAMAGE_IMMUNE,
+            ),
+            source_has_tag: |tag| self.health_resources.damage.immunity_tag(source, tag),
+        }
+        .vanilla()
+    }
+
     /// `DamageSource.isCreativePlayer` (#916): the causing player's creative
     /// mode, the host's own or a guest's; false for anything else. The one
     /// decision every invulnerability gate shares with `/damage`'s and the
@@ -233,7 +282,7 @@ impl Game<'_> {
         };
         let mut compound = match self.persist.raw.get(&id) {
             Some(Tag::Compound(map)) => map.clone(),
-            _ => std::collections::BTreeMap::new(),
+            _ => sunrise_core::nbt::Compound::new(),
         };
         compound.insert("invulnerable_time".into(), Tag::Int(ticks.max(0)));
         self.persist.raw.insert(id, Tag::Compound(compound));
@@ -252,7 +301,7 @@ impl Game<'_> {
         let ticks = ticks - 1;
         let mut compound = match self.persist.raw.get(&id) {
             Some(Tag::Compound(map)) => map.clone(),
-            _ => std::collections::BTreeMap::new(),
+            _ => sunrise_core::nbt::Compound::new(),
         };
         compound.insert("invulnerable_time".into(), Tag::Int(ticks));
         self.persist.raw.insert(id, Tag::Compound(compound));
@@ -265,9 +314,11 @@ impl Game<'_> {
     /// armor, the cooldown and every hurt hook kept, the damage event the
     /// hit already broadcasts — by kind: the player's and mobs' for the
     /// living, the item, dragon and crystal branches for the damageable
-    /// rest. True when the damage was taken. None for a stale handle, false
-    /// for a kind that cannot be hurt or an unregistered damage type. Stale
-    /// direct/causing handles are treated as absent sources.
+    /// rest. A return value of `true` means the hurt was accepted, not
+    /// necessarily that the entity lost health. `None` means the target handle
+    /// is stale; `false` means the hurt was refused, including for a kind that
+    /// cannot be hurt or an unregistered damage type. Stale direct/causing
+    /// handles are treated as absent sources.
     pub(super) fn entity_hurt(
         &mut self,
         entity: EntityRef,
@@ -282,7 +333,14 @@ impl Game<'_> {
         // `DamageSource(type, cause, at)`: the source position the knockback
         // pushes away from is the direct entity's.
         let from = direct.and_then(|t| self.target_position(t));
-        Some(self.hurt_target(target, amount, damage_type, direct, causing, from))
+        Some(self.hurt_target(
+            target,
+            amount,
+            damage_type,
+            direct,
+            causing.or(direct),
+            from,
+        ))
     }
 
     /// `Entity.isInvulnerableTo` for a source of `damage_type`: #842's own
@@ -398,7 +456,7 @@ impl Game<'_> {
     /// while it is above 10 a hit does only what it deals beyond the last
     /// one. Mobs and players.
     pub(super) fn entity_damage_cooldown_time(&self, entity: EntityRef) -> Option<i32> {
-        match self.native_entity_target(entity)? {
+        match self.timer_read_target(entity)? {
             Target::Mob(id) => Some(self.mobs.iter().find(|m| m.id == id)?.invulnerable),
             t => Some(self.native_player_body(t)?.health.hurt.cooldown),
         }
@@ -435,9 +493,187 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::super::native_entity_refs::tests::with_game;
+
+    /// A client reads its own player's damage cooldown as `LocalPlayer.hurtTo` sets it from
+    /// the server's health (20 on a drop, 10 on a rise), its invulnerable time, and a tracked
+    /// mob's cooldown from its damage event; an entity it doesn't keep reads None (#5694).
+    #[test]
+    #[ignore = "daily"]
+    fn a_client_reads_its_players_and_a_kept_mobs_damage_timers() {
+        use super::super::native_client_session::tests::logged_client;
+        use super::super::native_entity_refs::tests::with_client_game;
+        use sunrise_client::motion::PlayerMotion;
+        use sunrise_protocol::packets::play::{self, Clientbound as C};
+        mod_platform::testing::with_mods(Default::default(), || {
+            with_client_game(|game| {
+                let _server = logged_client(game);
+                game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+                let local = game.local_player().unwrap().entity();
+                let health = |game: &mut super::super::Game<'_>, health: f32| {
+                    game.handle_packet(C::SetHealth(play::SetHealth {
+                        health,
+                        food: 20,
+                        saturation: 5.0,
+                    }))
+                    .unwrap();
+                };
+                // The first health after joining sets it without a flash.
+                health(game, 20.0);
+                let host = &*game as &dyn mod_api::ClientHost;
+                assert_eq!(local.damage_cooldown_time(host), Some(0));
+                health(game, 15.0);
+                let host = &*game as &dyn mod_api::ClientHost;
+                assert_eq!(local.damage_cooldown_time(host), Some(20));
+                health(game, 18.0);
+                let host = &*game as &dyn mod_api::ClientHost;
+                assert_eq!(local.damage_cooldown_time(host), Some(10));
+                game.player.as_mut().unwrap().health.invulnerable_time = 6;
+                let host = &*game as &dyn mod_api::ClientHost;
+                assert_eq!(local.invulnerable_time(host), Some(6));
+
+                let zombie = game
+                    .remote
+                    .as_ref()
+                    .unwrap()
+                    .builtin
+                    .get("minecraft:entity_type")
+                    .unwrap()
+                    .id("minecraft:zombie")
+                    .unwrap();
+                game.handle_packet(C::AddEntity(play::AddEntity {
+                    id: 302,
+                    uuid: 0x5694_0002,
+                    kind: zombie,
+                    position: [2.5, 64.0, 2.5],
+                    velocity: [0.0; 3],
+                    pitch: 0,
+                    yaw: 0,
+                    head_yaw: 0,
+                    data: 0,
+                }))
+                .unwrap();
+                let zombie = game.entity(302).expect("the tracked zombie");
+                let host = &*game as &dyn mod_api::ClientHost;
+                assert_eq!(zombie.damage_cooldown_time(host), Some(0));
+                assert_eq!(zombie.invulnerable_time(host), Some(0));
+                game.handle_packet(C::DamageEvent(play::DamageEvent {
+                    id: 302,
+                    source_type: 0,
+                    cause: None,
+                    direct: None,
+                    position: None,
+                }))
+                .unwrap();
+                let host = &*game as &dyn mod_api::ClientHost;
+                assert_eq!(zombie.damage_cooldown_time(host), Some(20));
+
+                let untracked = EntityRef::new(local.epoch(), 99);
+                assert_eq!(untracked.damage_cooldown_time(host), None);
+                assert_eq!(untracked.invulnerable_time(host), None);
+            });
+        });
+    }
     use mod_api::{EntityRef, WorldEpoch};
     use sunrise_client::mobs::Mob;
     use sunrise_core::geometry::Vec3;
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_native_mods_data_damage_type_hurts_and_names_the_death() {
+        use sunrise_client::mod_content::{ContentMod, resolved_resources};
+        use sunrise_mod_package::{Package, content::Content};
+
+        let scratch = tempfile::tempdir().unwrap();
+        let manifest = format!(
+            "id = 'testmod'\nname = 'Damage fixture'\nversion = '1'\napi = '0.2'\n\
+             side = 'both'\ncapabilities = ['registries']\n[native]\ngame = '26.3'\n\
+             sunrise = '{}'\nmixins = '{}'\n",
+            "a".repeat(40),
+            "b".repeat(40)
+        );
+        let path = scratch.path().join("testmod.smod");
+        let archive = Package::write_files(
+            &manifest,
+            &[
+                (
+                    "Cargo.toml",
+                    b"[package]\nname='testmod'\nversion='1.0.0'\n",
+                ),
+                ("src/lib.rs", b""),
+                (
+                    "data/testmod/damage_type/matter_cannon.json",
+                    br#"{"message_id":"testmod.matter_cannon","scaling":"never","exhaustion":0.0}"#,
+                ),
+            ],
+        )
+        .unwrap();
+        std::fs::write(&path, archive).unwrap();
+        let package = Package::read(&path).unwrap();
+        let content = ContentMod {
+            id: package.manifest.id.clone(),
+            content: Content::read(&path, &package.manifest).unwrap(),
+            jars: Vec::new(),
+        };
+        let _publication = sunrise_client::datapack_net::isolate_server_publication();
+        with_game(|game| {
+            let root = game.options.resources.clone();
+            // Use the package's passive-data reader and the world-open path, not
+            // an entry injected into the damage catalog the hurt call reads.
+            let resources = resolved_resources(
+                &root,
+                root.clone(),
+                scratch.path(),
+                &[content],
+                scratch.path().to_owned(),
+            )
+            .unwrap();
+            let stack = crate::game::functions::pack_stack(
+                scratch.path(),
+                &root,
+                resources.data(),
+                resources.data_changes(),
+                false,
+                &[],
+                &[],
+            );
+            let staged = game.stage_world_tables(&stack, false, &root).unwrap();
+            game.open_world_tables(staged).unwrap();
+            // Entities are found in resident columns only (`Visibility.isAccessible`).
+            game.world.chunks.insert(
+                (0, 0),
+                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            );
+
+            let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+            game.mobs
+                .push(Mob::new(300001, pig.clone(), Vec3::ZERO, 0.0));
+            game.mobs.push(Mob::new(300002, pig, Vec3::ZERO, 0.0));
+            let victim = game.entity(300001).unwrap();
+            let control = game.entity(300002).unwrap();
+            assert_eq!(
+                victim.hurt(game, "testmod:matter_cannon", 2.0, None, None),
+                Some(true)
+            );
+            assert_eq!(game.mobs[0].health, 8.0);
+            assert_eq!(
+                control.hurt(game, "minecraft:player_attack", 2.0, None, None),
+                Some(true)
+            );
+            assert_eq!(game.mobs[1].health, 8.0);
+
+            // A stronger hit lands even inside the first hit's cooldown.
+            assert_eq!(
+                victim.hurt(game, "testmod:matter_cannon", 10.0, None, None),
+                Some(true)
+            );
+            let dead = game.mobs.remove(0);
+            assert_eq!(dead.health, 0.0);
+            assert_eq!(
+                game.mob_death_message(&dead, None).component()["translate"],
+                "death.attack.testmod.matter_cannon"
+            );
+        });
+    }
 
     #[test]
     #[ignore = "daily"]
@@ -529,8 +765,8 @@ mod tests {
         assert_eq!(*heard.lock().unwrap(), vec![(300002, 300003); 4]);
     }
 
-    /// A listening probe counting the incoming-damage hooks a hit fires.
-    struct Probe(std::sync::Arc<std::sync::Mutex<Vec<u32>>>);
+    /// Incoming-damage notifications, in order, with the id the hook heard.
+    struct Probe(std::sync::Arc<std::sync::Mutex<Vec<(u32, String)>>>);
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for Probe {
         fn living_incoming_damage(
@@ -538,9 +774,44 @@ mod tests {
             _: &mut dyn mod_api::HitHost,
             event: &mut mod_api::LivingIncomingDamageEvent<'_>,
         ) -> mod_api::Flow {
-            self.0.lock().unwrap().push(event.entity as u32);
+            self.0
+                .lock()
+                .unwrap()
+                .push((event.entity as u32, event.source.damage_type.to_owned()));
             mod_api::Flow::Continue
         }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn registered_vanilla_damage_keeps_its_hook_and_death_message() {
+        let heard = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "probe",
+            Box::new(Probe(heard.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+                game.mobs.push(Mob::new(300001, pig, Vec3::ZERO, 0.0));
+                let victim = game.entity(300001).unwrap();
+                assert_eq!(
+                    victim.hurt(game, "minecraft:dragon_breath", 10.0, None, None),
+                    Some(true)
+                );
+                let dead = game.mobs.remove(0);
+                assert_eq!(dead.health, 0.0);
+                assert_eq!(
+                    game.mob_death_message(&dead, None).component()["translate"],
+                    "death.attack.dragonBreath"
+                );
+            });
+        });
+        assert_eq!(
+            *heard.lock().unwrap(),
+            vec![(300001, "minecraft:dragon_breath".to_owned())]
+        );
     }
 
     #[test]
@@ -612,7 +883,14 @@ mod tests {
         // hook once — the accepted hit, the weaker one the cooldown window
         // refused (the window is checked inside the pipeline) and the
         // flag-bypassing kill — while the flag-refused one never entered.
-        assert_eq!(*heard.lock().unwrap(), vec![300001, 300001, 300001]);
+        assert_eq!(
+            *heard.lock().unwrap(),
+            vec![
+                (300001, "minecraft:generic".to_owned()),
+                (300001, "minecraft:generic".to_owned()),
+                (300001, "minecraft:out_of_world".to_owned()),
+            ]
+        );
     }
 
     #[test]

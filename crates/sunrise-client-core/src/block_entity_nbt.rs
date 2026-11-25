@@ -21,6 +21,12 @@ pub fn saved_item_slot(entry: &Tag) -> Option<usize> {
         .map(|slot| usize::from(slot as u8))
 }
 
+/// Encode an `Items` row's slot as vanilla's `ItemStackWithSlot.CODEC` does: an unsigned
+/// byte, so `0..=255`; None for a larger index, which no container holds.
+pub fn item_slot_tag(slot: usize) -> Option<Tag> {
+    u8::try_from(slot).ok().map(|byte| Tag::Byte(byte as i8))
+}
+
 fn string(s: &str) -> Tag {
     Tag::String(s.into())
 }
@@ -165,8 +171,8 @@ impl<'a> Fields<'a> {
     }
     /// `BaseContainerBlockEntity`: the custom name and the lock.
     fn base_container(&mut self) {
-        self.component("CustomName");
         self.lock();
+        self.component("CustomName");
     }
     /// `RandomizableContainer.tryLoadLootTable` / `trySaveLootTable`; true when the
     /// block entity has a loot table (and so saves no items).
@@ -417,12 +423,17 @@ pub fn is_known_type(id: &str) -> bool {
 /// entity compound with `id`, `x`, `y`, `z`); None for an unknown type or a tag
 /// without a position.
 pub fn canonical(tag: &Tag) -> Option<Tag> {
-    canonical_with_stack(tag, &stack)
+    canonical_with_stack(tag, &stack, None).map(Tag::Compound)
 }
 
 /// Canonical block entity fields with the caller's saved-stack codec.
 /// Only actual stack fields use this codec; templates and opaque metadata stay intact.
-pub fn canonical_with_stack(tag: &Tag, stack: &dyn Fn(&Tag) -> Option<Tag>) -> Option<Tag> {
+/// A save snapshot may carry already-encoded live items alongside pending loot.
+pub fn canonical_with_stack(
+    tag: &Tag,
+    stack: &dyn Fn(&Tag) -> Option<Tag>,
+    live_items: Option<Tag>,
+) -> Option<Compound> {
     let id = id(tag)?;
     let (x, y, z) = (int(tag.get("x"))?, int(tag.get("y"))?, int(tag.get("z"))?);
     let mut f = Fields {
@@ -436,16 +447,13 @@ pub fn canonical_with_stack(tag: &Tag, stack: &dyn Fn(&Tag) -> Option<Tag>) -> O
     if crate::block_entity_types::declared(&id) {
         f.custom(tag);
         let mut out = f.out;
-        out.insert("id".into(), string(&id));
-        out.insert("x".into(), Tag::Int(x));
-        out.insert("y".into(), Tag::Int(y));
-        out.insert("z".into(), Tag::Int(z));
         if let Some(c @ Tag::Compound(patch)) = tag.get("components")
             && !patch.is_empty()
         {
             out.insert("components".into(), c.clone());
         }
-        return Some(Tag::Compound(out));
+        write_metadata(&mut out, &id, [x, y, z]);
+        return Some(out);
     }
     match id.as_str() {
         "minecraft:furnace" | "minecraft:smoker" | "minecraft:blast_furnace" => {
@@ -802,11 +810,9 @@ pub fn canonical_with_stack(tag: &Tag, stack: &dyn Fn(&Tag) -> Option<Tag>) -> O
         _ => return None,
     }
     let mut out = f.out;
-    out.insert("id".into(), string(&id));
-    out.insert("x".into(), Tag::Int(x));
-    out.insert("y".into(), Tag::Int(y));
-    out.insert("z".into(), Tag::Int(z));
-    out.insert("keepPacked".into(), Tag::Byte(0));
+    if let Some(items) = live_items {
+        out.insert("Items".into(), items);
+    }
     out.insert(
         "components".into(),
         match tag.get("components") {
@@ -814,7 +820,17 @@ pub fn canonical_with_stack(tag: &Tag, stack: &dyn Fn(&Tag) -> Option<Tag>) -> O
             _ => Tag::Compound(Compound::new()),
         },
     );
-    Some(Tag::Compound(out))
+    write_metadata(&mut out, &id, [x, y, z]);
+    out.insert("keepPacked".into(), Tag::Byte(0));
+    Some(out)
+}
+
+/// `BlockEntity.saveMetadata`, after the caller has written additional fields and components.
+pub fn write_metadata(out: &mut Compound, id: &str, pos: [i32; 3]) {
+    out.insert("id".into(), string(id));
+    for (key, v) in ["x", "y", "z"].into_iter().zip(pos) {
+        out.insert(key.into(), Tag::Int(v));
+    }
 }
 
 /// `VibrationSystem.Data` for a sensor with no pending vibration.
@@ -841,41 +857,64 @@ fn is_record(item: &Compound) -> bool {
 /// `loaded` what Sunrise encodes right after decoding it, and `current` what Sunrise
 /// encodes now. Whatever the game left unchanged since loading keeps its original
 /// form (including the detail Sunrise does not model, such as styled text), what it
-/// changed takes the current value, and keys Sunrise never models stay.
-pub fn overlay(original: &Tag, loaded: &Tag, current: &Tag) -> Tag {
-    if current == loaded {
-        return original.clone();
-    }
+/// changed takes the current value, and keys Sunrise never models stay. The outer
+/// table follows the live writer; unchanged values keep their original tables.
+/// A slotless mod's `Items` field is payload, not inventory: the current value
+/// (or its absence) is authoritative, including the order of any list it holds.
+pub fn overlay(original: &Tag, loaded: &Tag, current: &Tag, items_are_payload: bool) -> Tag {
     match (original, loaded, current) {
         (Tag::Compound(o), Tag::Compound(l), Tag::Compound(c)) => {
-            let mut out = Compound::new();
-            for (key, cv) in c {
-                let value = match (o.get(key), l.get(key)) {
-                    (Some(ov), Some(lv)) => overlay(ov, lv, cv),
-                    _ => cv.clone(),
-                };
-                out.insert(key.clone(), value);
-            }
+            let payload_key = items_are_payload.then(|| "Items".into());
+            let mut out = c.clone();
+            out.for_each_mut(|key, value| {
+                if payload_key.as_ref() != Some(key)
+                    && let (Some(ov), Some(lv)) = (o.get(key), l.get(key))
+                {
+                    *value = overlay_value(ov, lv, value);
+                }
+            });
             // Keys the game never models (or models only when present) survive;
             // keys it removed are gone.
             for (key, ov) in o {
-                if !c.contains_key(key) && !l.contains_key(key) {
+                if payload_key.as_ref() != Some(key) && !c.contains_key(key) && !l.contains_key(key)
+                {
                     out.insert(key.clone(), ov.clone());
                 }
             }
             Tag::Compound(out)
         }
+        _ => overlay_value(original, loaded, current),
+    }
+}
+
+fn overlay_value(original: &Tag, loaded: &Tag, current: &Tag) -> Tag {
+    if current == loaded {
+        return original.clone();
+    }
+    match (original, loaded, current) {
+        (Tag::Compound(_), Tag::Compound(_), Tag::Compound(_)) => {
+            overlay(original, loaded, current, false)
+        }
         (Tag::List(o), Tag::List(l), Tag::List(c)) if keyed_by_slot(c) && keyed_by_slot(l) => {
-            let slot = |t: &Tag| int(t.get("Slot"));
+            // A row's identity is its whole `Slot` tag, type and value: an `Int` row and a
+            // `Byte` row that coerce to one number are different rows, and a row takes the
+            // first earlier row of its own identity that no other row took.
+            fn take<'a>(list: &'a [Tag], used: &mut [bool], slot: Option<&Tag>) -> Option<&'a Tag> {
+                let at = (0..list.len()).find(|&i| !used[i] && list[i].get("Slot") == slot)?;
+                used[at] = true;
+                Some(&list[at])
+            }
+            let (mut taken_original, mut taken_loaded) =
+                (vec![false; o.len()], vec![false; l.len()]);
             Tag::List(
                 c.iter()
                     .map(|cv| {
-                        let s = slot(cv);
-                        fn find(list: &[Tag], slot: Option<i32>) -> Option<&Tag> {
-                            list.iter().find(|t| int(t.get("Slot")) == slot)
-                        }
-                        match (find(o, s), find(l, s)) {
-                            (Some(ov), Some(lv)) => overlay(ov, lv, cv),
+                        let slot = cv.get("Slot");
+                        match (
+                            take(o, &mut taken_original, slot),
+                            take(l, &mut taken_loaded, slot),
+                        ) {
+                            (Some(ov), Some(lv)) => overlay_value(ov, lv, cv),
                             _ => cv.clone(),
                         }
                     })
@@ -899,6 +938,35 @@ mod tests {
     }
     fn canon(s: &str) -> Tag {
         canonical(&snbt(s)).expect("known type")
+    }
+
+    /// An opaque `Slot:-128` Int row before the modeled `Slot:-128b` row is a different row: the
+    /// overlay keeps the modeled stack's own original form and leaves the opaque row as it was.
+    #[test]
+    fn rows_that_coerce_to_one_slot_stay_distinct_rows() {
+        let original = snbt(
+            r#"{Items:[{Slot:-128,id:"minecraft:bedrock",count:1},{Slot:-128b,id:"minecraft:stone",count:1,note:"kept"}]}"#,
+        );
+        let loaded = snbt(
+            r#"{Items:[{Slot:-128,id:"minecraft:bedrock",count:1},{Slot:-128b,id:"minecraft:stone",count:1}]}"#,
+        );
+        let current = snbt(
+            r#"{Items:[{Slot:-128,id:"minecraft:bedrock",count:1},{Slot:-128b,id:"minecraft:stone",count:1},{Slot:1b,id:"minecraft:dirt",count:1}]}"#,
+        );
+        let saved = overlay(&original, &loaded, &current, false);
+        let Some(Tag::List(rows)) = saved.get("Items") else {
+            panic!("Items list");
+        };
+        assert_eq!(rows.len(), 3);
+        assert_eq!(
+            rows[0],
+            snbt(r#"{Slot:-128,id:"minecraft:bedrock",count:1}"#)
+        );
+        assert_eq!(
+            rows[1],
+            snbt(r#"{Slot:-128b,id:"minecraft:stone",count:1,note:"kept"}"#),
+            "the modeled row keeps its own original, not the opaque row's"
+        );
     }
 
     #[test]
@@ -1095,7 +1163,7 @@ mod tests {
             "{id:\"minecraft:sign\",front_text:{messages:[\"a\",\"\",\"\",\"\"]},\
              back_text:{messages:[\"y\",\"\",\"\",\"\"]}}",
         );
-        let merged = overlay(&original, &loaded, &current);
+        let merged = overlay(&original, &loaded, &current, false);
         assert_eq!(merged.get("front_text"), original.get("front_text"));
         assert_eq!(merged.get("back_text"), current.get("back_text"));
         assert_eq!(merged.get("extra"), original.get("extra"));
@@ -1117,7 +1185,7 @@ mod tests {
         )]);
         let loaded = Tag::compound([("Items", Tag::List(vec![item(0, 1, ""), item(1, 1, "")]))]);
         let current = Tag::compound([("Items", Tag::List(vec![item(0, 1, ""), item(1, 5, "")]))]);
-        let merged = overlay(&original, &loaded, &current);
+        let merged = overlay(&original, &loaded, &current, false);
         let Some(Tag::List(items)) = merged.get("Items") else {
             panic!("items")
         };
@@ -1126,6 +1194,24 @@ mod tests {
             "slot 0 keeps its lore"
         );
         assert_eq!(items[1].get("count"), Some(&Tag::Int(5)));
+    }
+
+    #[test]
+    fn item_slots_round_trip_as_unsigned_bytes() {
+        for (slot, expected) in [
+            (0usize, Tag::Byte(0)),
+            (127, Tag::Byte(127)),
+            (128, Tag::Byte(-128)),
+            (255, Tag::Byte(-1)),
+        ] {
+            let encoded = item_slot_tag(slot).expect("representable slot");
+            assert_eq!(encoded, expected, "slot {slot}");
+            let row = Tag::compound([("Slot", encoded)]);
+            assert_eq!(saved_item_slot(&row), Some(slot), "slot {slot}");
+        }
+        assert_eq!(item_slot_tag(256), None);
+        assert_eq!(saved_item_slot(&snbt("{Slot:256}")), None);
+        assert_eq!(saved_item_slot(&snbt("{raw:1}")), None);
     }
 }
 

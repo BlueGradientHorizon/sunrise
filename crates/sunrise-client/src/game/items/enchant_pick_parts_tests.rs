@@ -66,7 +66,8 @@ impl ItemPart for Part {
             let tags = host.tags();
             let swords = tags
                 .key(&mod_api::Identifier::parse("minecraft:swords").unwrap())
-                .unwrap();
+                .unwrap()
+                .typed();
             let answer = tags.is_in_tag(sword, swords);
             seen.lock().unwrap().push(answer);
             let enabled = self
@@ -140,8 +141,11 @@ impl Hooks for Mod {
             r.item_part(key, part.clone());
         }
     }
-    fn tags_updated(&self, host: mod_api::HostSide<'_>, _: &mut mod_api::TagsUpdatedEvent) {
-        if let mod_api::HostSide::Client(_) = host {
+    fn tags_updated(&self, _: &dyn mod_api::ReloadContext, event: &mut mod_api::TagsUpdatedEvent) {
+        if matches!(
+            event.cause,
+            mod_api::TagsUpdateCause::ClientPacketReceived { .. }
+        ) {
             for enabled in self
                 .0
                 .iter()

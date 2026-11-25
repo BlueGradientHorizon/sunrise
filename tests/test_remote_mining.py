@@ -1,6 +1,7 @@
 """Exercise the live remote_mining method with scripted world and packet sinks.
 
-Vanilla reference: MultiPlayerGameMode.startDestroyBlock/continueDestroyBlock.
+Vanilla reference: MultiPlayerGameMode.startDestroyBlock/continueDestroyBlock/stopDestroyBlock,
+and the crack stages they tell ClientLevel.destroyBlockProgress (`client_break_progress`).
 The first_person parity harness separately checks consecutive instant breaks
 against the pinned client; this fixture catches drift in the multiplayer path.
 """
@@ -15,12 +16,33 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def method(source, name):
+    # A method moved out of game.rs keeps its file's visibility; the fixture pastes it private.
+    plain = f"    fn {name}("
+    start = source.index(plain) if plain in source else next(
+        source.index(f"    {vis} fn {name}(") for vis in ("pub(super)", "pub(in crate::game)")
+        if f"    {vis} fn {name}(" in source)
+    opening = source.index("{", start)
+    depth = 1
+    end = opening + 1
+    while depth:
+        depth += (source[end] == "{") - (source[end] == "}")
+        end += 1
+    body = source[start:end]
+    for vis in ("pub(super) fn", "pub(in crate::game) fn"):
+        body = body.replace(vis, "fn", 1)
+    return body
+
+
 @unittest.skipUnless(shutil.which("rustc"), "requires Rust")
 class RemoteMiningTests(unittest.TestCase):
     def test_break_timing_and_packets(self):
-        source = (next(ROOT.glob('crates/sunrise-client/src/game/*/remote/mod.rs'))).read_text()
-        start = source.index("    pub(super) fn stop_remote_mining(")
-        end = source.index("    fn veto_mining_prediction(", start)
+        remote = ROOT / "crates/sunrise-client/src/game/network/remote"
+        breaking = method((remote / "use.rs").read_text(encoding="utf-8"), "remote_mining")
+        stopping = method((remote / "break_prediction.rs").read_text(encoding="utf-8"), "stop_remote_mining")
+        hooks = ROOT / "crates/sunrise-client/src/game/native_hooks/client_break_progress.rs"
+        staging = method(hooks.read_text(encoding="utf-8"), "native_local_break_progress")
+        source = breaking + "\n" + stopping + "\n" + staging
         fixture = r'''
 #![allow(dead_code)]
 #[derive(Clone, Copy)]
@@ -75,6 +97,8 @@ struct Game {
     world: World, res: Resources, player: Option<Player>, audio: Audio,
     hit: Hit, sequence: i32, packets: Vec<play::PlayerAction>, restricted: bool,
     veto: bool,
+    /// The cracks told mods (`client_break_progress`): breaker, position and stage.
+    cracks: std::cell::RefCell<Vec<(i32, [i32; 3], i32)>>,
 }
 impl Game {
     // No display subscribers in this packet/gameplay fixture.
@@ -82,6 +106,16 @@ impl Game {
     fn main_hand_key(&self) -> String { String::new() }
     fn same_destroying_item(&self, began: &String) -> bool { *began == self.main_hand_key() }
     fn reset_attack_strength(&mut self) {}
+    fn own_entity_id(&self) -> i32 { 7 }
+    fn native_client_break_progress(&self, breaker: i32, pos: [i32; 3], progress: i32) {
+        self.cracks.borrow_mut().push((breaker, pos, progress));
+    }
+    fn told(&self) -> Vec<i32> {
+        self.cracks.borrow_mut().drain(..).map(|(breaker, pos, stage)| {
+            assert_eq!((breaker, pos), (7, self.hit.pos), "the player's own crack on its block");
+            stage
+        }).collect()
+    }
     fn new(hardness: f32, speed: f32, creative: bool) -> Self {
         Self {
             remote: Some(Remote::default()), mining: None, creative,
@@ -91,7 +125,7 @@ impl Game {
             player: Some(Player { ground: Ground { on_ground: true } }),
             audio: Audio { played: Vec::new() },
             hit: Hit { pos: [0, 64, 0], face: 1 }, sequence: 0, packets: vec![],
-            restricted: false, veto: false,
+            restricted: false, veto: false, cracks: Default::default(),
         }
     }
     fn pick(&self) -> Option<Hit> { Some(self.hit) }
@@ -138,6 +172,9 @@ fn main() {
     assert!(game.stop_remote_mining());
     assert!(!game.stop_remote_mining());
     assert_eq!(game.packets.iter().map(|p| p.action).collect::<Vec<_>>(), [0, 2]);
+    // The start tells -1 (no progress yet), a vetoed tick tells nothing, and the stop tells -1
+    // once: a dig that is not running has nothing to stop.
+    assert_eq!(game.told(), [-1, -1]);
 
     // Zero-hardness blocks and a tool fast enough to break in one tick.
     for (hardness, speed) in [(0.0, 1.0), (0.5, 15.0), (0.5, 30.0)] {
@@ -156,6 +193,7 @@ fn main() {
             });
         }
         assert_eq!(game.packets.len(), 8, "instant breaks only send START");
+        assert!(game.cracks.borrow().is_empty(), "an instant break tells no crack");
     }
     // Gradual breaking still sends STOP and waits five continuation ticks.
     let mut game = Game::new(1.0, 15.0, false);
@@ -169,6 +207,9 @@ fn main() {
     game.remote_mining(false);
     assert_eq!(game.world.broken.len(), 1);
     assert_eq!(game.audio.played, ["hit"], "the client must not play the mining sound in the loop");
+    // Half the block a tick: -1 at the start, stage 5 on the next tick, and -1 once the
+    // finished break resets the progress.
+    assert_eq!(game.told(), [-1, 5, -1]);
     assert_eq!(game.packets.iter().map(|p| p.action).collect::<Vec<_>>(), [0, 3]);
     assert_eq!(game.remote.as_ref().unwrap().destroy_delay, 5);
     game.hit.pos[0] = 1;
@@ -254,7 +295,7 @@ fn main() {
     );
     assert_eq!(game.world.broken, [[2, 64, 0], [3, 64, 0]]);
 }
-'''.replace("METHOD", source[start:end].replace("pub(super) fn", "fn"))
+'''.replace("METHOD", source)
         with tempfile.TemporaryDirectory(prefix="remote-mining-") as directory:
             path = Path(directory)
             (path / "main.rs").write_text(fixture)

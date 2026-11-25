@@ -124,7 +124,14 @@ pub struct Registries {
     /// value (`ResourceOrIdArgument`), where the source has the server's live
     /// features; None leaves the decode to when the command runs.
     pub inline_feature: Option<InlineFeatureCheck>,
+    /// The common custom particle codecs available to `ParticleArgument`.
+    pub particle_options: Option<DecodeParticleOptions>,
 }
+
+/// Read the registered particle type's fields. `None` leaves built-in arguments
+/// on their vanilla path; `Some(Err(_))` means the type refused its options.
+pub type DecodeParticleOptions =
+    fn(&str, &sunrise_core::nbt::Compound) -> Option<Result<mod_vocab::ParticleOptions, String>>;
 
 /// A codec check of an inline value: its error message when it does not decode.
 #[derive(Clone)]
@@ -258,6 +265,13 @@ impl Registries {
                 },
             );
         }
+        // `CommandSourceStack.getAvailableSounds` lists built-in sound events;
+        // a dedicated server does not open the client's sound definitions.
+        if self.sounds.is_empty()
+            && let Some(events) = self.by_registry.get("minecraft:sound_event")
+        {
+            self.sounds.clone_from(&events.ids);
+        }
         if self.block_entities.is_empty() {
             self.block_entities = strings(&r["block_entities"]).into_iter().collect();
         }
@@ -302,6 +316,7 @@ impl Registries {
         fill(&mut self.templates, &e.templates);
         fill(&mut self.persistent_components, &e.persistent_components);
         fill(&mut self.learnable_recipes, &e.learnable_recipes);
+        fill(&mut self.sounds, &e.sounds);
         if self.summonable.is_empty() {
             self.summonable.clone_from(&e.summonable);
             self.summonable.sort();
@@ -350,6 +365,21 @@ impl Registries {
             .or_default()
             .ids = ids;
     }
+    /// The world's enchantment ids (vanilla's, content mods' and the world's packs'), in both
+    /// views the codecs read: `enchantments` and `by_registry`'s `minecraft:enchantment`, which
+    /// [`Self::ids`] reads first and the export fills with vanilla's alone. Sorted and
+    /// deduplicated; the export's tags stay. Replaced, not extended, as
+    /// [`Self::sync_damage_type_ids`] does.
+    pub fn set_enchantment_ids(&mut self, ids: impl IntoIterator<Item = String>) {
+        let mut ids: Vec<String> = ids.into_iter().collect();
+        ids.sort();
+        ids.dedup();
+        self.enchantments = ids.clone();
+        self.by_registry
+            .entry("minecraft:enchantment".into())
+            .or_default()
+            .ids = ids;
+    }
     /// The element ids of a registry (sorted).
     pub fn ids(&self, registry: &str) -> &[String] {
         if let Some(r) = self.by_registry.get(registry) {
@@ -390,6 +420,34 @@ impl Registries {
 
 #[cfg(test)]
 mod tests {
+    /// A content mod's enchantment reaches the ids an item component's enchantment map is
+    /// checked against (#5607): the export's vanilla-only `by_registry` list no longer hides it,
+    /// and the export's tags stay.
+    #[test]
+    fn set_enchantment_ids_reach_the_registry_view_the_codecs_read() {
+        let mut registries = Registries::default();
+        registries.by_registry.insert(
+            "minecraft:enchantment".into(),
+            super::RegistryIds {
+                ids: vec!["minecraft:sharpness".into()],
+                tags: vec!["minecraft:curse".into()],
+            },
+        );
+        registries.set_enchantment_ids(["minecraft:sharpness".into(), "bwncr:silence".into()]);
+        assert_eq!(
+            registries.ids("minecraft:enchantment"),
+            ["bwncr:silence", "minecraft:sharpness"]
+        );
+        assert_eq!(
+            registries.enchantments,
+            ["bwncr:silence", "minecraft:sharpness"]
+        );
+        assert_eq!(
+            registries.by_registry["minecraft:enchantment"].tags,
+            ["minecraft:curse"]
+        );
+    }
+
     use super::Registries;
 
     /// A content mod's damage type joins vanilla's in the commands' ids, the

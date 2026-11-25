@@ -1,6 +1,9 @@
 //! Far meshes share the terrain arenas and passes, with their actual bounds
 //! rather than the 16³ boxes used by the near-section residency walk.
-use super::{Frustum, Renderer, SectionGpu};
+use super::{
+    Frustum, Renderer, SectionGpu,
+    sourced_geometry::gpu::{self, Mesh},
+};
 use crate::{
     fast_hash::{FxHashMap, FxHashSet},
     lod::{MAX_LEVEL, TileKey},
@@ -16,7 +19,7 @@ use std::{
 /// Finished tile meshes not uploaded yet, the tiles they replace (removed
 /// once every mesh is in) and the columns they leave out.
 #[derive(Default)]
-pub(super) struct Pending {
+pub(crate) struct Pending {
     meshes: FxHashMap<TileKey, SectionMesh>,
     /// The order they go up in: as handed over (`Lod::update`: finer tiles
     /// first, so no tile clipped around a finer one is drawn before it).
@@ -53,7 +56,7 @@ impl Pending {
 
 /// Small, its meshes boxed: `draw_frame` walks every tile each frame (thousands at long far
 /// distances), and that walk is bound by the memory it reads.
-pub(super) struct Tile {
+pub(crate) struct Tile {
     pub mesh: Box<SectionGpu>,
     bounds: Bounds,
     /// When it began to fade in; none while the rest of its job uploads.
@@ -108,6 +111,15 @@ fn holding_columns(columns: impl IntoIterator<Item = (i32, i32)>) -> FxHashSet<T
     tiles
 }
 
+/// The cell a tile covers (#2500's `Cell`), and the tile of a cell.
+fn cell(key: TileKey) -> gpu::Cell {
+    gpu::Cell {
+        x: key.x,
+        z: key.z,
+        size_log2: key.level + 4,
+    }
+}
+
 /// How long a tile takes to fade in over the ones it replaces.
 pub(super) const FADE: Duration = Duration::from_millis(600);
 
@@ -140,7 +152,7 @@ pub(super) fn fade_out_code(since: Instant, level: u8, now: Instant) -> u32 {
 }
 
 #[derive(Clone, Copy)]
-struct Bounds {
+pub(in crate::gfx) struct Bounds {
     min: Vec3,
     max: Vec3,
 }
@@ -192,7 +204,7 @@ const CELL: i32 = 128;
 /// changes it, so it is never a frame behind, and the camera moving changes
 /// nothing it holds.
 #[derive(Default)]
-pub(super) struct TileGrid {
+pub(crate) struct TileGrid {
     cells: FxHashMap<(i32, i32), Cell>,
 }
 
@@ -215,7 +227,7 @@ impl TileGrid {
 
     /// Puts a tile in its cell, in the place of the one it may have had
     /// there: a tile meshed again can come back with other bounds.
-    fn insert(&mut self, key: TileKey, bounds: Bounds) {
+    pub(in crate::gfx) fn insert(&mut self, key: TileKey, bounds: Bounds) {
         self.remove(key);
         let (min, max) = bounds.world(key);
         let at = Self::cell_of(key);
@@ -237,7 +249,7 @@ impl TileGrid {
 
     /// Takes a tile out: its cell shrinks to the tiles left, and goes when
     /// there are none.
-    fn remove(&mut self, key: TileKey) {
+    pub(in crate::gfx) fn remove(&mut self, key: TileKey) {
         let at = Self::cell_of(key);
         // Its box after the tile leaves: none when nothing is left in it.
         let mut left: Option<(DVec3, DVec3)> = None;
@@ -266,8 +278,21 @@ impl TileGrid {
     }
 
     /// Every tile gone at once (`clear_lods`, `clear_sections`).
-    pub(super) fn clear(&mut self) {
+    pub(in crate::gfx) fn clear(&mut self) {
         self.cells.clear();
+    }
+
+    /// Whether it holds the tile at `key`.
+    pub(in crate::gfx) fn contains(&self, key: TileKey) -> bool {
+        self.cells
+            .get(&Self::cell_of(key))
+            .is_some_and(|cell| cell.tiles.iter().any(|&(tile, _)| tile == key))
+    }
+
+    /// Whether it holds no tile.
+    #[cfg(any(test, debug_assertions))]
+    pub(in crate::gfx) fn is_empty(&self) -> bool {
+        self.cells.is_empty()
     }
 
     /// Calls `tile` for each tile whose cell meets `view`, with whether the
@@ -312,7 +337,8 @@ pub(super) fn instance(origin: [f32; 3], fade: u32) -> [f32; 4] {
     ]
 }
 
-pub(super) struct Visible {
+#[derive(Clone, Copy)]
+pub(crate) struct Visible {
     pub key: TileKey,
     pub distance: u64,
     pub origin: [f32; 3],
@@ -324,13 +350,43 @@ pub(super) struct Visible {
 }
 
 impl Tile {
+    /// Whether the GPU pass draws its own mesh at `now`: whole, no stand-in, not going. Once
+    /// true it stays so until the mesh is meshed again, stands in or goes.
+    pub(in crate::gfx) fn steady(&self, key: TileKey, now: Instant) -> bool {
+        self.previous.is_none()
+            && self.dying.is_none()
+            && fade_code(self.shown, key.level, now) == Some(0)
+    }
+    /// When it is `steady` at the latest, if time alone makes it so.
+    pub(in crate::gfx) fn whole_at(&self) -> Option<Instant> {
+        let shown = self
+            .shown
+            .filter(|_| self.previous.is_none() && self.dying.is_none());
+        shown.map(|shown| shown + FADE)
+    }
+    /// What sourced geometry's pass reads of its own mesh.
+    pub(in crate::gfx) fn gpu_mesh(&self, key: TileKey) -> Mesh<'_> {
+        let s = &self.mesh;
+        Mesh {
+            cell: cell(key),
+            page: s.page,
+            start: u64::from(s.solid_base()),
+            quads: s.solid,
+            sides: &s.sides,
+            bounds: [self.bounds.min, self.bounds.max],
+        }
+    }
+    /// Its bounds, for sourced geometry's list of the tiles it leaves the CPU (`listed`).
+    pub(in crate::gfx) fn bounds(&self) -> Bounds {
+        self.bounds
+    }
     /// The mesh drawn this frame: the previous one while it stands in.
     pub fn drawn(&self) -> &SectionGpu {
         self.previous
             .as_deref()
             .map_or(&self.mesh, |(mesh, _)| mesh)
     }
-    pub fn drawn_mut(&mut self) -> &mut SectionGpu {
+    pub(crate) fn drawn_mut(&mut self) -> &mut SectionGpu {
         match self.previous.as_deref_mut() {
             Some((mesh, _)) => mesh,
             None => &mut self.mesh,
@@ -340,7 +396,7 @@ impl Tile {
     /// mesh's bounds grown by a block, while that mesh is the one drawn
     /// whole (no stand-in, no fade). A fading tile's dither moves its depth
     /// toward the camera (terrain.wgsl's `fade_depth`), out of the box.
-    pub fn cull_bounds(&self, fade: u32) -> Option<[[f32; 3]; 2]> {
+    pub(crate) fn cull_bounds(&self, fade: u32) -> Option<[[f32; 3]; 2]> {
         (fade == 0 && self.previous.is_none()).then(|| {
             [
                 (self.bounds.min - 1.0).to_array(),
@@ -350,12 +406,21 @@ impl Tile {
     }
     /// Whether either mesh it holds is in the compact layout: a stand-in drawn in its place can
     /// hide a compact replacement (`Renderer::follow_packed_layout`).
-    pub fn holds_packed(&self) -> bool {
+    pub(crate) fn holds_packed(&self) -> bool {
         self.mesh.packed || self.previous.as_ref().is_some_and(|p| p.0.packed)
     }
     /// Both meshes it holds in the arena: its own and the stand-in, if any.
-    pub fn meshes_mut(&mut self) -> impl Iterator<Item = &mut SectionGpu> {
+    pub(crate) fn meshes_mut(&mut self) -> impl Iterator<Item = &mut SectionGpu> {
         std::iter::once(&mut *self.mesh).chain(self.previous.as_deref_mut().map(|(mesh, _)| mesh))
+    }
+    /// `meshes_mut`, each with its own mesh's record's id in sourced geometry's table
+    /// (`sourced_ids`), for the moves that compaction makes.
+    pub(crate) fn recorded_meshes_mut(
+        &mut self,
+        id: Option<u32>,
+    ) -> impl Iterator<Item = (&mut SectionGpu, Option<u32>)> {
+        std::iter::once((&mut *self.mesh, id))
+            .chain(self.previous.as_deref_mut().map(|(mesh, _)| (mesh, None)))
     }
     /// The tile as drawn this frame, if its own box is in view.
     pub fn visible(
@@ -373,7 +438,12 @@ impl Tile {
 
     /// `visible` for a tile whose cell is wholly in view (`TileGrid::walk`):
     /// its own box is wholly in view too, so only its distance is left.
-    pub fn visible_inside(&self, key: TileKey, camera: DVec3, now: Instant) -> Option<Visible> {
+    pub(crate) fn visible_inside(
+        &self,
+        key: TileKey,
+        camera: DVec3,
+        now: Instant,
+    ) -> Option<Visible> {
         let at = DVec3::from(key.origin().map(f64::from)) - camera;
         let mut visible = self.draw_state(key, at, now)?;
         visible.distance = self.bounds.distance(at);
@@ -401,15 +471,29 @@ impl Renderer {
     /// A far tile in, with its cell. `lods` and `lod_cells` change only here
     /// and in `take_lod_tile`, so the cells never name a tile that is gone and
     /// never miss one that is there (the frame walk trusts them).
-    fn add_lod_tile(&mut self, key: TileKey, tile: Tile) {
+    fn add_lod_tile(&mut self, key: TileKey, mut tile: Tile) {
+        if self.sourced.record(
+            key,
+            &mut tile,
+            self.gpu_culling.as_ref(),
+            &self.device,
+            Instant::now(),
+        ) {
+            self.sourced_oom();
+        }
         self.lod_cells.insert(key, tile.bounds);
-        self.lods.insert(key, tile);
+        self.lod_vertex_bytes += tile.mesh.vertex_bytes();
+        if let Some(old) = self.lods.insert(key, tile) {
+            self.lod_vertex_bytes -= old.mesh.vertex_bytes();
+        }
     }
 
     /// A far tile out, with its cell.
     fn take_lod_tile(&mut self, key: TileKey) -> Option<Tile> {
         let tile = self.lods.remove(&key)?;
         self.lod_cells.remove(key);
+        self.sourced.unrecord(key);
+        self.lod_vertex_bytes -= tile.mesh.vertex_bytes();
         Some(tile)
     }
 
@@ -417,7 +501,7 @@ impl Renderer {
     /// one meshed around near chunks or finer tiles that are new (`keep`):
     /// its old mesh stands in while they fade in. A new one waits for the rest of its job
     /// (`upload_lods`), then fades in.
-    pub fn upload_lod(&mut self, key: TileKey, mesh: &SectionMesh, keep: bool) {
+    pub(crate) fn upload_lod(&mut self, key: TileKey, mesh: &SectionMesh, keep: bool) {
         if let Some(copies) = &mut self.capture_copies {
             copies.tile(key, mesh);
         }
@@ -479,7 +563,7 @@ impl Renderer {
         }
     }
 
-    pub fn remove_lod(&mut self, key: TileKey) {
+    pub(crate) fn remove_lod(&mut self, key: TileKey) {
         if let Some(copies) = &mut self.capture_copies {
             copies.forget_tile(key);
         }
@@ -504,10 +588,12 @@ impl Renderer {
                 self.release_section(key);
             }
         }
+        self.lod_vertex_bytes = 0;
         for (_, tile) in std::mem::take(&mut self.lods) {
             self.release_tile(tile);
         }
         self.lod_cells.clear();
+        self.sourced.clear();
         self.lod_cull_free.clear();
         self.lod_cull_next = 0;
         self.set_lod_cutout(Default::default());
@@ -632,9 +718,11 @@ impl Renderer {
                         })
                 };
                 let whole = start.checked_sub(FADE).unwrap_or(start);
+                let mut changed = Vec::new();
                 for (&key, tile) in &mut self.lods {
                     if tile.shown.is_none() {
                         tile.shown = Some(if over_replaced(key) { start } else { whole });
+                        changed.push(key);
                     }
                     if let Some((_, since)) = tile.previous.as_deref_mut() {
                         since.get_or_insert(start);
@@ -647,8 +735,10 @@ impl Renderer {
                     {
                         tile.dying = Some(start);
                         tile.alone = alone;
+                        changed.push(key);
                     }
                 }
+                self.sourced.refresh(changed, &self.lods, start);
                 if let Some(cutout) = pending.cutout {
                     self.set_lod_cutout(cutout);
                 }
@@ -678,18 +768,21 @@ impl Renderer {
         }
         let stood_in: Vec<_> = self
             .lods
-            .values_mut()
-            .filter_map(|tile| match tile.previous.as_deref() {
+            .iter_mut()
+            .filter_map(|(&key, tile)| match tile.previous.as_deref() {
                 Some((_, Some(since))) if start - *since >= FADE => {
                     tile.animated = animated_layers(&tile.mesh, None);
-                    tile.previous.take().map(|p| *p)
+                    tile.previous.take().map(|p| (key, *p))
                 }
                 _ => None,
             })
             .collect();
-        for (previous, _) in stood_in {
+        let mut changed = Vec::with_capacity(stood_in.len());
+        for (key, (previous, _)) in stood_in {
             self.release_mesh(previous);
+            changed.push(key);
         }
+        self.sourced.refresh(changed, &self.lods, start);
     }
 
     /// The tiles drawn for good, not fading out (`render-capture`).
@@ -703,7 +796,7 @@ impl Renderer {
 
     /// The chunk columns the resident tiles now leave out (`Lod::take_cutout`).
     /// Removed sections they no longer leave out are released.
-    pub fn set_lod_cutout(&mut self, cutout: crate::fast_hash::FxHashSet<(i32, i32)>) {
+    pub(crate) fn set_lod_cutout(&mut self, cutout: crate::fast_hash::FxHashSet<(i32, i32)>) {
         self.lod_cutout = cutout;
         let released: Vec<_> = self
             .lod_retiring
@@ -715,6 +808,45 @@ impl Renderer {
             self.lod_retiring.remove(&key);
             self.leave_section(key);
         }
+    }
+}
+
+/// Fixtures for sourced geometry's residency tests (`sourced_geometry::gpu`), which build
+/// tiles and put them in a grid the way `upload_lod` does.
+#[cfg(test)]
+impl Tile {
+    pub(in crate::gfx) fn for_test(
+        mesh: SectionGpu,
+        bounds: [Vec3; 2],
+        shown: Option<Instant>,
+        previous: Option<(SectionGpu, Option<Instant>)>,
+    ) -> Self {
+        Self {
+            animated: SmallVec::new(),
+            mesh: Box::new(mesh),
+            bounds: Bounds {
+                min: bounds[0],
+                max: bounds[1],
+            },
+            shown,
+            dying: None,
+            alone: false,
+            previous: previous.map(Box::new),
+            cull_slot: 0,
+        }
+    }
+}
+
+#[cfg(test)]
+impl TileGrid {
+    pub(in crate::gfx) fn insert_bounds(&mut self, key: TileKey, bounds: [Vec3; 2]) {
+        self.insert(
+            key,
+            Bounds {
+                min: bounds[0],
+                max: bounds[1],
+            },
+        );
     }
 }
 

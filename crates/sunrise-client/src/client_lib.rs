@@ -14,34 +14,39 @@ pub mod arrows;
 pub mod bed_geometry;
 pub mod block_contact;
 pub mod block_sounds;
+#[cfg(test)]
+mod fresh_process;
 pub mod item_damage;
 pub mod mod_packet_builders;
 pub mod packet_source;
 pub mod parallel;
 pub mod powder_snow;
 #[cfg(test)]
+mod rule_replacements;
+#[cfg(test)]
 mod test_log;
 #[cfg(test)]
 mod test_resources;
+pub use sunrise_client_render::moving_colliders;
 pub use sunrise_client_render::{
     assets, atlas_sources, audio, auth, autotune, ban_notice, bidi, biome, block_edit,
     block_entities, block_entity_anim, block_entity_render, block_sprites, block_states, bluemap,
-    bluemap_detect, border_render, breaking, brewing, camera, chat, chunk, chunk_map, cit,
-    cit_armor, cit_assets, cit_glint, client_resources, clouds, collisions, columns, command_block,
-    containers, controller_ui, crash, custom_sky, datapack, dynamic_light, dynamic_resolution,
-    effects, environment, extras, fast_hash, fluid_models, fluid_render, fog, font, gfx, graphics,
+    border_render, breaking, brewing, camera, chat, chunk, chunk_map, cit, cit_armor, cit_assets,
+    cit_glint, client_resources, clouds, collisions, columns, command_block, containers,
+    controller_ui, crash, custom_sky, datapack, dynamic_light, dynamic_resolution, effects,
+    environment, extras, fast_hash, fluid_models, fluid_render, fog, font, gfx, graphics,
     graphics_style, graphics_ui, hdr_calibration, hud, hud_kit, hud_layout, hud_overlays,
     inventory_effects, java_text, jigsaw_block, json_folder, level_loading, light, lod, logging,
-    mark_sprite, menu_blur, menu_style, mesher, mipmap, mod_browser, mod_chunk_tickets, mod_list,
-    mod_pipelines, model_library, models, mods_screen, monitor, multiline_edit, native_emissive,
-    options_file, options_fixes, options_ui, overlay, pack_browser, pack_formats, pack_hooks,
-    pack_palette, pack_screen, packs, pad_cursor, pad_glyph, par, particles, poi_sections,
-    polytone_creative_tabs, polytone_post, post_chain, potent_sulfur, preedit, providers, pvp,
-    pvp_hud, random_source, resource_source, screen_draw, screen_effects, sculk, section_mask,
-    server_terrain, settings, shader_options, shader_pack_list, signs, skins, social, sound_engine,
-    sound_events, sound_preview, spans, sprites, streaming, structure_block, tab_list,
-    terrain_model, test_block, test_instance_block, testgen, trims, ui, vault, weather, widgets,
-    world, worldborder, zip,
+    mark_sprite, menu_blur, menu_style, mesher, mipmap, mod_browser, mod_chunk_tickets, mod_hooks,
+    mod_list, mod_pipelines, model_library, models, mods_screen, monitor, multiline_edit,
+    native_emissive, options_file, options_fixes, options_ui, overlay, pack_browser, pack_formats,
+    pack_hooks, pack_palette, pack_screen, packs, pad_cursor, pad_glyph, par, particles,
+    poi_sections, polytone_creative_tabs, polytone_post, post_chain, potent_sulfur, preedit,
+    providers, pvp, pvp_hud, random_source, resource_source, screen_draw, screen_effects, sculk,
+    section_mask, server_terrain, settings, shader_options, shader_pack_list, signs, skins, social,
+    sound_engine, sound_events, sound_preview, spans, sprites, streaming, structure_block,
+    tab_list, terrain_model, test_block, test_instance_block, testgen, trims, ui, vault, weather,
+    widgets, world, worldborder, zip,
 };
 pub mod attack_strength;
 pub mod attribute_updates;
@@ -189,6 +194,8 @@ pub mod tick_chunk_membership;
 pub mod ticket_levels;
 pub mod title;
 pub mod toasts;
+pub mod tooltip_components;
+pub mod travel_gate;
 pub mod ui_theme;
 pub mod vanillagen;
 pub mod viewed_levels_net;
@@ -217,7 +224,6 @@ pub use sunrise_client_input::gamepad;
 pub use sunrise_client_input::gameplay_guide;
 pub use sunrise_client_input::held;
 pub use sunrise_client_input::input;
-pub use sunrise_client_input::input_queue;
 pub use sunrise_client_input::input_source;
 pub use sunrise_client_input::interaction_input;
 pub use sunrise_client_input::key_names;

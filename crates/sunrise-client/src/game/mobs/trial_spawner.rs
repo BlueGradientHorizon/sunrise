@@ -16,7 +16,6 @@ use sunrise_client::{
         },
     },
 };
-use sunrise_core::nbt::Tag;
 use sunrise_core::{
     geometry::Vec3,
     random::{LegacyRandom, LevelRandom, RandomSource},
@@ -181,34 +180,26 @@ impl Game<'_> {
             &mut self.world.random,
             LevelRandom::for_level(LegacyRandom::new(0)),
         );
-        let mut sequences = std::mem::take(&mut self.rand_sequences);
+        let sequences = std::cell::RefCell::new(std::mem::take(&mut self.rand_sequences));
         let mut events = Vec::new();
         let mut planned: Vec<Planned> = Vec::new();
-        let source = Some(mod_api::SpawnSource::Block(mod_api::BlockPos::new(
-            key.0, key.1, key.2,
-        )));
+        let source = Some(mod_api::Spawner::Trial {
+            pos: mod_api::BlockPos::new(key.0, key.1, key.2),
+        });
         let mut uuids: Vec<(u32, Uuid)> = Vec::new();
         let mut ejected: Vec<(ItemStack, [f64; 3])> = Vec::new();
         let extras: (Vec<Mob>, Vec<(u32, u32)>);
         let next = {
-            let mut level = self.natural_level();
-            level.spawner = Some(mod_api::Spawner::Trial {
-                pos: mod_api::BlockPos::new(key.0, key.1, key.2),
-            });
+            let level = self.natural_level();
             let loot = self.server_loot.get();
             let seed = self.level.seed;
             let mut spawn = |l: &GameLevel, rng: &mut LevelRandom, r: &SpawnerSpawn| {
-                let added = l.game.plan_spawner_mob(l, r, source, &mut planned, rng)?;
-                let uuid = match planned.last_mut() {
-                    Some(Planned::Loaded(Tag::Compound(tag), _, _)) => {
-                        let tag_uuid =
-                            sunrise_client::entity_nbt::uuid(&Tag::Compound(tag.clone()));
-                        tag_uuid.unwrap_or_else(|| {
-                            let uuid = sunrise_client::save::random_uuid();
-                            tag.insert("UUID".into(), Tag::IntArray(uuid.to_vec()));
-                            uuid
-                        })
-                    }
+                let mut sequences = sequences.borrow_mut();
+                let added =
+                    l.game
+                        .plan_spawner_mob(l, r, source, &mut planned, rng, &mut sequences)?;
+                let uuid = match planned.last() {
+                    Some(Planned::Loaded(tree, _)) => tree.root_uuid(),
                     _ => sunrise_client::save::random_uuid(),
                 };
                 uuids.push((added.id, uuid));
@@ -221,7 +212,10 @@ impl Game<'_> {
                     return false;
                 };
                 let drops = match loot.random_sequence(table) {
-                    Some(s) => loot.roll_split(table, sequences.get(s, seed)),
+                    Some(s) => {
+                        let mut sequences = sequences.borrow_mut();
+                        loot.roll_split(table, sequences.get(s, seed))
+                    }
                     None => loot.roll_split(table, random),
                 };
                 for stack in &drops {
@@ -257,7 +251,7 @@ impl Game<'_> {
             state
         };
         self.world.random = random;
-        self.rand_sequences = sequences;
+        self.rand_sequences = sequences.into_inner();
         let (created, rides) = extras;
         let ids = self.add_planned(planned, created, rides);
         let mut by_uuid = HashMap::new();
@@ -281,8 +275,7 @@ impl Game<'_> {
                 TrialEvent::BlockUpdated => self.mark_block_entity_updated(key),
                 TrialEvent::LevelEvent(id, at, data) => self.level_event_at(id, at, data),
                 TrialEvent::Sound(name) => {
-                    self.audio
-                        .play(&format!("minecraft:{name}"), Some(center), 1.0, 1.0)
+                    self.play_audio(&format!("minecraft:{name}"), Some(center), 1.0, 1.0)
                 }
                 // Written with the state above.
                 TrialEvent::OminousSet(_) => {}
@@ -292,26 +285,18 @@ impl Game<'_> {
                 }
                 TrialEvent::TrialOmen(uuid) => self.bad_omen_to_trial_omen(uuid),
                 TrialEvent::Discard(uuid) => {
-                    let (at, dropped) = {
-                        let id = self.persist.uuids.iter().find(|(_, u)| **u == uuid);
-                        if let Some((id, _)) = id
-                            && let Some(m) = self.mobs.iter_mut().find(|m| m.id == *id)
-                        {
-                            let at = m.position;
-                            let dropped = sunrise_client::mobs::drops::drop_preserved_equipment(m);
-                            m.removed = true;
-                            (Some(at), dropped)
-                        } else {
-                            (None, Vec::new())
-                        }
-                    };
-                    if let Some(at) = at {
-                        for stack in dropped {
+                    if let Some((&id, _)) = self.persist.uuids.iter().find(|(_, u)| **u == uuid)
+                        && let Some(m) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed)
+                    {
+                        let at = m.position;
+                        let drops = sunrise_client::mobs::drops::drop_preserved_equipment(m);
+                        for stack in drops {
                             self.spawn_at_location(at, 0.0, stack);
                         }
+                        self.remove_mob_now(id, false);
                     }
                 }
-                TrialEvent::SoundAt(name, at, pitch) => self.audio.play(
+                TrialEvent::SoundAt(name, at, pitch) => self.play_audio(
                     &format!("minecraft:{name}"),
                     Some(at.map(|v| f64::from(v) + 0.5)),
                     1.0,
@@ -350,31 +335,37 @@ impl Game<'_> {
     /// minutes per level, with Trial Omen's sound when it is new. `uuid` is
     /// the player found: the one in the game's frame, else a guest.
     fn bad_omen_to_trial_omen(&mut self, uuid: Uuid) {
-        // MobEffect.onEffectAdded plays at the player's feet.
-        let feet = if self.acting_uuid() == uuid {
-            let added = transform_bad_omen(&mut self.potions.effects);
-            self.player
-                .as_ref()
-                .filter(|_| added)
-                .map(|p| [p.position.x, p.position.y, p.position.z])
-        } else {
-            let acting = self.lan_acting;
-            let Some(host) = self.lan.as_mut() else {
-                return;
-            };
-            let Some(index) = host.hub.guests.iter().position(|g| {
-                sunrise_client::lan::playerdata::uuid_ints(g.uuid) == uuid && Some(g.conn) != acting
-            }) else {
-                return;
-            };
-            host.hub.guests.update(index, |guest| {
-                transform_bad_omen(&mut guest.effects).then_some(guest.position)
-            })
-        };
-        if let Some(at) = feet {
-            self.audio
-                .play("minecraft:event.mob_effect.trial_omen", Some(at), 1.0, 1.0);
+        if self.acting_uuid() == uuid {
+            self.transform_player_bad_omen();
+            return;
         }
+        let acting = self.lan_acting;
+        let conn = self.lan.as_ref().and_then(|host| {
+            host.hub.guests.iter().find_map(|g| {
+                (sunrise_client::lan::playerdata::uuid_ints(g.uuid) == uuid
+                    && Some(g.conn) != acting)
+                    .then_some(g.conn)
+            })
+        });
+        if let Some(conn) = conn {
+            self.as_guest(conn, |g| g.transform_player_bad_omen());
+        }
+    }
+    /// `TrialSpawnerStateData.transformBadOmenIntoTrialOmen` for the acting
+    /// player: `removeEffect(BAD_OMEN)` then `addEffect(TRIAL_OMEN)` through
+    /// the standard effect hooks and added-sound path.
+    fn transform_player_bad_omen(&mut self) {
+        let Some(amplifier) = self.potions.effects.amplifier("bad_omen") else {
+            return;
+        };
+        if let Some(def) = sunrise_client::brewing::effect("bad_omen") {
+            self.remove_player_effects(Some(def.index));
+        }
+        self.add_player_effect(sunrise_client::effects::EffectInstance::new(
+            "trial_omen",
+            TRIAL_OMEN_TICKS_PER_LEVEL * (amplifier + 1),
+            0,
+        ));
     }
     /// `sendBlockUpdated` of a block entity: the clients load its new update tag.
     pub(super) fn mark_block_entity_updated(&mut self, key: Pos) {
@@ -388,6 +379,7 @@ impl Game<'_> {
 }
 
 /// Swap Bad Omen for Trial Omen on `effects`; true when Trial Omen is new.
+#[cfg(test)]
 fn transform_bad_omen(effects: &mut sunrise_client::effects::PlayerEffects) -> bool {
     let Some(amplifier) = effects.amplifier("bad_omen") else {
         return false;
@@ -425,5 +417,57 @@ mod omen_tests {
         );
         assert_eq!(omen_of(&e), Some(Omen::Trial));
         assert!(!transform_bad_omen(&mut e));
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn ominous_item_target_uses_the_reloaded_player_table() {
+        use crate::game::{
+            native_entity_refs::tests::with_game, native_living_flags::tests::guest_server,
+            native_sound_refs::tests::guest,
+        };
+        use std::sync::Arc;
+        use sunrise_client::chunk::Chunk;
+        use sunrise_core::nbt::parse_snbt;
+
+        with_game(|game| {
+            guest_server(game, false, false);
+            game.world
+                .chunks
+                .insert((-1, 0), Arc::new(Chunk::empty(-1, 0)));
+            game.load_server_loot();
+            game.level.seed = 0;
+            game.world.game_time = 1;
+            let (mut left, _left_rx) = guest(16, 16, [-1.5, 0.0, 0.5]);
+            let (mut right, _right_rx) = guest(1, 1, [2.5, 0.0, 0.5]);
+            for player in [&mut left, &mut right] {
+                player.loaded = true;
+                player.dimension = game.dim.id().to_owned();
+            }
+            game.lan.as_mut().unwrap().hub.guests.extend([left, right]);
+
+            let ids = (32..45)
+                .map(|id| format!("[I;0,0,0,{id}]"))
+                .collect::<Vec<_>>();
+            let warmup = parse_snbt(&format!("{{registered_players:[{}]}}", ids.join(",")))
+                .unwrap()
+                .0;
+            let previous = TrialSpawner::load(&warmup, None);
+            let data = parse_snbt(
+                r#"{registered_players:[[I;0,0,0,1],[I;0,0,0,16]],spawn_data:{entity:{id:"minecraft:zombie"}},next_mob_spawns_at:100L}"#,
+            ).unwrap().0;
+            // Vanilla's fresh and grown-table positions for seed 13 (trial_spawner parity).
+            for (previous, expected) in
+                [(None, [-1.5, 2.5, 0.5]), (Some(&previous), [2.5, 2.5, 0.5])]
+            {
+                let mut spawner = TrialSpawner::load(&data, previous);
+                let count = game.ominous_spawners.len();
+                game.world.random = LevelRandom::for_level(LegacyRandom::new(13));
+                game.server_tick_trial_spawner((0, 0, 0), &mut spawner, TrialState::Active, true)
+                    .unwrap();
+                assert_eq!(game.ominous_spawners.len(), count + 1);
+                assert_eq!(game.ominous_spawners.last().unwrap().position, expected);
+            }
+        });
     }
 }

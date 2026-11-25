@@ -22,20 +22,20 @@
 use super::{
     Mob, MobWorld, Species, farm::Climate, gear, spawn_rules::Reason, spawning::LocalDifficulty,
 };
-use crate::{enchant::Enchantments, items::Items};
-use serde_json::Value;
-use std::{fs, path::Path, sync::Arc};
-use sunrise_core::{geometry::Aabb, random::RandomSource};
+use crate::{
+    enchant::Enchantments,
+    items::{ItemStack, Items},
+    living_attributes::EquipmentDeltas,
+};
+use std::{borrow::Cow, sync::Arc};
+use sunrise_core::{equipment_slot::EquipmentSlot, geometry::Aabb, random::RandomSource};
+use sunrise_world::attributes::entity::Catalog;
 
-/// What a level's finalizeSpawn event decided for a mob another mob's
-/// finalizeSpawn created: the rider is dropped, added without its own rolls,
-/// or finalized. Vanilla fires the event for every `finalizeSpawn` call,
-/// riders included.
-#[derive(Debug, PartialEq)]
-pub enum SpawnEvent {
-    Cancelled,
-    Skip,
-    Finalize,
+/// The two independent decisions of NeoForge's `FinalizeSpawnEvent`.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct SpawnEvent {
+    pub skip_initialization: bool,
+    pub veto_admission: bool,
 }
 
 /// The level as finalizeSpawn reads it.
@@ -50,6 +50,10 @@ pub trait FinalizeLevel {
     fn biome_tag(&self, tag: &str, pos: [i32; 3]) -> bool;
     /// The structures with a piece at a block.
     fn structures_with_piece_at(&self, pos: [i32; 3]) -> Vec<String>;
+    /// Whether `structure` belongs to a `worldgen/structure` tag (`minecraft:...`).
+    fn structure_tag(&self, _tag: &str, _structure: &str) -> bool {
+        false
+    }
     /// `EnvironmentAttributes.MOON_PHASE` at a block (0 full moon to 7).
     fn moon_phase(&self, pos: [i32; 3]) -> usize;
     /// `ServerLevel.isSpawningMonsters`.
@@ -74,7 +78,7 @@ pub trait FinalizeLevel {
     /// finalizeSpawn creates (`ZombieHorse`'s zombie, a chicken jockey).
     /// The default finalizes: a level without the event keeps vanilla's flow.
     fn spawn_event(&mut self, _: &mut Mob, _: Reason) -> SpawnEvent {
-        SpawnEvent::Finalize
+        SpawnEvent::default()
     }
     /// What finalizeSpawn needs besides the level: the variant registries,
     /// enchantments and items the level owns.
@@ -122,7 +126,10 @@ pub enum Group {
     Fox(Ageable, u8),
     Rabbit(Ageable, u8),
     Axolotl(Ageable, [u8; 2]),
-    Wolf(Ageable, u8),
+    Wolf(
+        Ageable,
+        crate::lan::data::RegistryRef<super::variants::WolfVariant>,
+    ),
     /// `AbstractSchoolingFish.SchoolSpawnGroupData` (the leader's id), and
     /// `TropicalFishGroupData` with its variant.
     School(u32, Option<(u8, u8, u8)>),
@@ -142,188 +149,10 @@ impl Group {
     }
 }
 
-/// A variant registry entry's spawn conditions (`SpawnPrioritySelectors`).
-#[derive(Clone, Debug)]
-enum Condition {
-    Biome(Vec<String>),
-    Structure(Vec<String>),
-    Moon(Option<f64>, Option<f64>),
-}
-#[derive(Clone, Debug)]
-pub struct VariantRegistry {
-    /// Entry names in registry order (sorted by id).
-    pub names: Vec<String>,
-    selectors: Vec<(usize, Option<Condition>, i32)>,
-}
-impl VariantRegistry {
-    fn load(dir: &Path, structure_tags: &dyn Fn(&str) -> Vec<String>) -> Self {
-        let mut names: Vec<String> = fs::read_dir(dir)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .filter_map(|e| {
-                e.file_name()
-                    .to_str()
-                    .and_then(|n| n.strip_suffix(".json"))
-                    .map(str::to_owned)
-            })
-            .collect();
-        names.sort();
-        let mut selectors = Vec::new();
-        for (i, name) in names.iter().enumerate() {
-            let Ok(bytes) = fs::read(dir.join(format!("{name}.json"))) else {
-                continue;
-            };
-            let Ok(v) = serde_json::from_slice::<Value>(&bytes) else {
-                continue;
-            };
-            for s in v["spawn_conditions"].as_array().into_iter().flatten() {
-                let priority = s["priority"].as_i64().unwrap_or(0) as i32;
-                let c = &s["condition"];
-                let list = |v: &Value| -> Vec<String> {
-                    match v {
-                        Value::String(s) => vec![s.clone()],
-                        Value::Array(a) => a
-                            .iter()
-                            .filter_map(|x| x.as_str().map(str::to_owned))
-                            .collect(),
-                        _ => Vec::new(),
-                    }
-                };
-                let condition = match c["type"].as_str() {
-                    Some("minecraft:biome") => Some(Condition::Biome(list(&c["biomes"]))),
-                    Some("minecraft:structure") => Some(Condition::Structure(
-                        list(&c["structures"])
-                            .into_iter()
-                            .flat_map(|s| match s.strip_prefix('#') {
-                                Some(tag) => structure_tags(tag),
-                                None => vec![s],
-                            })
-                            .collect(),
-                    )),
-                    Some("minecraft:moon_brightness") => {
-                        let r = &c["range"];
-                        Some(match r.as_f64() {
-                            Some(x) => Condition::Moon(Some(x), Some(x)),
-                            None => Condition::Moon(r["min"].as_f64(), r["max"].as_f64()),
-                        })
-                    }
-                    _ => None,
-                };
-                selectors.push((i, condition, priority));
-            }
-        }
-        Self { names, selectors }
-    }
-    pub fn index(&self, name: &str) -> Option<usize> {
-        let name = name.strip_prefix("minecraft:").unwrap_or(name);
-        self.names.iter().position(|n| n == name)
-    }
-    /// `VariantUtils.selectVariantToSpawn`: the entries of the highest
-    /// priority whose condition holds, one of them at random.
-    pub fn select<L: FinalizeLevel + ?Sized>(
-        &self,
-        level: &L,
-        pos: [i32; 3],
-        random: &mut impl RandomSource,
-    ) -> Option<usize> {
-        let mut unpacked: Vec<&(usize, Option<Condition>, i32)> = self.selectors.iter().collect();
-        unpacked.sort_by_key(|s| std::cmp::Reverse(s.2));
-        let mut highest = i32::MIN;
-        let mut selected = Vec::new();
-        for (entry, condition, priority) in unpacked {
-            if *priority < highest {
-                continue;
-            }
-            let ok = match condition {
-                None => true,
-                Some(Condition::Biome(list)) => list.iter().any(|b| match b.strip_prefix('#') {
-                    Some(tag) => level.biome_tag(tag, pos),
-                    None => level.biome(pos) == *b,
-                }),
-                Some(Condition::Structure(list)) => {
-                    let here = level.structures_with_piece_at(pos);
-                    here.iter().any(|s| list.contains(s))
-                }
-                Some(Condition::Moon(min, max)) => {
-                    let b = f64::from(super::spawning::MOON_BRIGHTNESS[level.moon_phase(pos) & 7]);
-                    min.is_none_or(|m| b >= m) && max.is_none_or(|m| b <= m)
-                }
-            };
-            if ok {
-                highest = *priority;
-                selected.push(*entry);
-            }
-        }
-        if selected.is_empty() {
-            return None;
-        }
-        Some(selected[random.next_int_bound(selected.len() as i32).unwrap_or(0) as usize])
-    }
-    /// `Registry.getRandom`: any entry.
-    pub fn random(&self, random: &mut impl RandomSource) -> usize {
-        if self.names.is_empty() {
-            return 0;
-        }
-        random.next_int_bound(self.names.len() as i32).unwrap_or(0) as usize
-    }
-}
-
-/// The registries finalizeSpawn reads.
-pub struct SpawnRegistries {
-    pub pig: VariantRegistry,
-    pub cow: VariantRegistry,
-    pub chicken: VariantRegistry,
-    pub cat: VariantRegistry,
-    pub wolf: VariantRegistry,
-    pub frog: VariantRegistry,
-    pub zombie_nautilus: VariantRegistry,
-    pub pig_sound: VariantRegistry,
-    pub cow_sound: VariantRegistry,
-    pub chicken_sound: VariantRegistry,
-    pub cat_sound: VariantRegistry,
-    pub wolf_sound: VariantRegistry,
-}
-impl SpawnRegistries {
-    /// Loads the variant registries from a resources directory
-    /// (`data/minecraft/<registry>/`).
-    pub fn load(root: &Path) -> Self {
-        let data = root.join("data/minecraft");
-        let structure_tag = |tag: &str| -> Vec<String> {
-            let path = tag.strip_prefix("minecraft:").unwrap_or(tag);
-            let file = data.join(format!("tags/worldgen/structure/{path}.json"));
-            let Ok(bytes) = fs::read(file) else {
-                return Vec::new();
-            };
-            serde_json::from_slice::<Value>(&bytes)
-                .ok()
-                .and_then(|v| v["values"].as_array().cloned())
-                .into_iter()
-                .flatten()
-                .filter_map(|x| x.as_str().map(str::to_owned))
-                .collect()
-        };
-        let r = |name: &str| VariantRegistry::load(&data.join(name), &structure_tag);
-        Self {
-            pig: r("pig_variant"),
-            cow: r("cow_variant"),
-            chicken: r("chicken_variant"),
-            cat: r("cat_variant"),
-            wolf: r("wolf_variant"),
-            frog: r("frog_variant"),
-            zombie_nautilus: r("zombie_nautilus_variant"),
-            pig_sound: r("pig_sound_variant"),
-            cow_sound: r("cow_sound_variant"),
-            chicken_sound: r("chicken_sound_variant"),
-            cat_sound: r("cat_sound_variant"),
-            wolf_sound: r("wolf_sound_variant"),
-        }
-    }
-}
-
-/// What finalizeSpawn needs besides the level: registries, enchantments.
+/// What finalizeSpawn needs besides the level: variant tables, enchantments.
+#[derive(Clone)]
 pub struct SpawnData<'a> {
-    pub registries: &'a SpawnRegistries,
+    pub variants: &'a super::variants::VariantTables,
     pub enchantments: &'a Enchantments,
     pub items: &'a Items,
     /// `EntityTypes.CAMEL_HUSK` dimensions (width, height).
@@ -448,7 +277,7 @@ impl AttrBounds {
     /// The saved base `base` of the attribute `id` as a load takes it
     /// ([`crate::living_attributes::loaded_base`]): clamped into an [`Attr`]'s
     /// bounds when a mod that widened them is gone.
-    pub fn loaded_base(&self, id: &str, base: f64) -> f64 {
+    pub(crate) fn loaded_base(&self, id: &str, base: f64) -> f64 {
         Attr::ALL
             .into_iter()
             .find(|a| a.id() == id)
@@ -467,6 +296,15 @@ pub enum Op {
     AddValue,
     AddMultipliedBase,
     AddMultipliedTotal,
+}
+impl From<Op> for sunrise_world::attributes::Operation {
+    fn from(op: Op) -> Self {
+        match op {
+            Op::AddValue => Self::AddValue,
+            Op::AddMultipliedBase => Self::AddMultipliedBase,
+            Op::AddMultipliedTotal => Self::AddMultipliedTotal,
+        }
+    }
 }
 /// A permanent attribute modifier (`AttributeModifier`).
 #[derive(Clone, Debug, PartialEq)]
@@ -491,6 +329,8 @@ pub struct Attributes {
     pub name_tag_distance: Option<f64>,
     /// `BELOW_NAME_DISTANCE` from a server attribute update.
     pub below_name_distance: Option<f64>,
+    /// `CAMERA_DISTANCE` from a server attribute update; never saved.
+    pub camera_distance: Option<f64>,
     /// The transient minecraft:baby speed modifier was taken away
     /// (`/attribute ... modifier remove`) until the next setBaby. Not
     /// saved: a load runs setBaby again.
@@ -540,7 +380,7 @@ pub fn base_value_with(m: &Mob, a: Attr, default: impl FnOnce() -> Option<f64>) 
 ///   when the load finds no owner (a wolf that is tamed in game makes it too).
 /// - `attack_damage`: `Rabbit.setVariant`, and a baby Goat or Hoglin, whose load's
 ///   `setAge` crosses the baby boundary (`ageBoundaryReached`).
-pub fn made_at_load(m: &Mob) -> Vec<Attr> {
+pub(crate) fn made_at_load(m: &Mob) -> Vec<Attr> {
     let s = m.species();
     let mut made = Vec::new();
     if super::doors::is_zombie(s) || matches!(s, Species::Piglin | Species::Enderman) || m.age > 0 {
@@ -555,7 +395,7 @@ pub fn made_at_load(m: &Mob) -> Vec<Attr> {
     made
 }
 /// The base of an instance `made_at_load` lists, as `AttributeMap.pack` writes it.
-pub fn made_base(m: &Mob, a: Attr) -> f64 {
+pub(crate) fn made_base(m: &Mob, a: Attr) -> f64 {
     match (m.species(), a) {
         // `Wolf.applyTamingSideEffects` sets 40 for a tame wolf and 8 for the others;
         // `attrs.max_health` is the value (modifiers included), never the base.
@@ -627,7 +467,110 @@ fn effect_modifier_id(name: &str) -> String {
         _ => format!("minecraft:effect.{name}"),
     }
 }
+/// One effect mutation's before-order in the legacy and live modifier seed stores.
+/// A clear is one batch: restore all of its rows together, not at stale indices.
+pub struct EffectModifierUndo {
+    keys: Vec<(Attr, String)>,
+    permanent: Vec<Modifier>,
+    transient: Vec<Modifier>,
+    live: crate::living_attributes::TransientModifiers,
+}
+
+impl EffectModifierUndo {
+    pub fn keep_explicit_write(&mut self, attribute: &str, id: &str) {
+        self.keys
+            .retain(|(attr, key)| attr.id() != attribute || key != id);
+        let unaffected = |row: &Modifier| row.attr.id() != attribute || row.id != id;
+        self.permanent.retain(unaffected);
+        self.transient.retain(unaffected);
+        self.live.forget(attribute, id);
+    }
+
+    pub fn restore(self, mob: &mut Mob) {
+        if self.keys.is_empty() {
+            return;
+        }
+        let Self {
+            keys,
+            permanent,
+            transient,
+            live,
+        } = self;
+        let owns = |row: &Modifier| {
+            keys.iter()
+                .any(|(attr, id)| *attr == row.attr && *id == row.id)
+        };
+        let same_key = |a: &Modifier, b: &Modifier| a.attr == b.attr && a.id == b.id;
+        let mut changed = false;
+        if let Some(attrs) = mob.extra.attributes.as_mut() {
+            use crate::living_attributes::restore_modifier_order;
+            changed |= restore_modifier_order(
+                &mut attrs.modifiers,
+                permanent,
+                owns,
+                same_key,
+                Modifier::eq,
+            );
+            changed |= restore_modifier_order(
+                &mut attrs.transient,
+                transient,
+                owns,
+                same_key,
+                Modifier::eq,
+            );
+        }
+        changed |= mob
+            .extra
+            .live
+            .restore_transient_modifiers(live, |attribute, id| {
+                keys.iter()
+                    .any(|(attr, key)| attr.id() == attribute && key == id)
+            });
+        if changed {
+            mob.extra.live.invalidate();
+            for attr in Attr::ALL {
+                if keys.iter().any(|(key, _)| *key == attr) {
+                    refresh(mob, attr);
+                }
+            }
+        }
+    }
+}
+
 impl Mob {
+    /// The modifier rows one effect write (or one bulk clear of the given effects) can replace.
+    pub fn effect_modifier_undo(
+        &self,
+        effects: impl Iterator<Item = &'static str>,
+    ) -> Option<EffectModifierUndo> {
+        let keys: Vec<_> = effects
+            .flat_map(|effect| {
+                let name = effect.trim_start_matches("minecraft:");
+                Attr::ALL
+                    .into_iter()
+                    .filter(move |&attr| {
+                        effect_modifier(name, 0, attr).is_some()
+                            && default_value(self, attr).is_some()
+                    })
+                    .map(move |attr| (attr, effect_modifier_id(name)))
+            })
+            .collect();
+        if keys.is_empty() {
+            return None;
+        }
+        let attrs = self.extra.attributes.as_deref();
+        Some(EffectModifierUndo {
+            keys,
+            permanent: attrs
+                .map(|attrs| attrs.modifiers.clone())
+                .unwrap_or_default(),
+            transient: attrs
+                .map(|attrs| attrs.transient.clone())
+                .unwrap_or_default(),
+            live: self.extra.live.transient_modifiers(),
+        })
+    }
+
     /// The one place a mob's effect attribute modifiers change (#478). They
     /// are permanent modifiers in the attribute store, so they are saved and
     /// synced as any other, and a read derives nothing from the effect list.
@@ -690,7 +633,7 @@ pub fn value(m: &Mob, a: Attr) -> f64 {
 }
 /// `value` with modifiers no store holds: the ones worn equipment grants, or
 /// those of the mob's own state (a witch's drinking, a strider's suffocation).
-pub fn value_with(m: &Mob, a: Attr, extra: impl Iterator<Item = (f64, Op)> + Clone) -> f64 {
+pub(crate) fn value_with(m: &Mob, a: Attr, extra: impl Iterator<Item = (f64, Op)> + Clone) -> f64 {
     compute(m, a, true, extra)
 }
 /// `AttributeInstance.calculateValue`: the base plus every `ADD_VALUE`, then
@@ -838,12 +781,7 @@ pub fn add_transient_modifier(m: &mut Mob, a: Attr, id: &str, amount: f64, op: O
     });
     // The live map is built from the saved record, so it keeps the modifier
     // itself for the next build.
-    let operation = match op {
-        Op::AddValue => sunrise_world::attributes::Operation::AddValue,
-        Op::AddMultipliedBase => sunrise_world::attributes::Operation::AddMultipliedBase,
-        Op::AddMultipliedTotal => sunrise_world::attributes::Operation::AddMultipliedTotal,
-    };
-    let modifier = sunrise_world::attributes::Modifier::new(id, amount, operation).ok();
+    let modifier = sunrise_world::attributes::Modifier::new(id, amount, op.into()).ok();
     m.extra.live.keep_transient(a.id(), id, modifier);
     m.extra.live.invalidate();
     refresh(m, a);
@@ -862,7 +800,7 @@ pub fn remove_modifier(m: &mut Mob, a: Attr, id: &str) {
 /// `Mob.finalizeSpawn`, which every mob's own `finalizeSpawn` reaches
 /// through `super`: the `random_spawn_bonus` follow range modifier (once)
 /// and `setLeftHanded(nextFloat() < 0.05F)`.
-pub fn mob_spawn(m: &mut Mob, random: &mut impl RandomSource) {
+pub(crate) fn mob_spawn(m: &mut Mob, random: &mut impl RandomSource) {
     if !has_modifier(m, Attr::FollowRange, "minecraft:random_spawn_bonus") {
         let bonus = random.triangle(0.0, 0.114_850_000_000_000_01);
         add_modifier(
@@ -932,7 +870,7 @@ pub fn max_health(m: &Mob) -> f32 {
     value(m, Attr::MaxHealth) as f32
 }
 /// Whether the mob stores a base for `a`: `set_base` or a load made one.
-pub fn has_base(m: &Mob, a: Attr) -> bool {
+pub(crate) fn has_base(m: &Mob, a: Attr) -> bool {
     m.extra
         .attributes
         .as_ref()
@@ -943,7 +881,7 @@ pub fn has_base(m: &Mob, a: Attr) -> bool {
 /// above it is lowered (nothing is healed). A wolf with no stored max health
 /// base keeps the cached maximum it was given outside the model; taming
 /// stores the base (`tame::set_tame`), so a tame wolf follows the model.
-pub fn health_boost_changed(m: &mut Mob) {
+pub(crate) fn health_boost_changed(m: &mut Mob) {
     if m.species() == Species::Wolf && !has_base(m, Attr::MaxHealth) {
         return;
     }
@@ -1027,50 +965,6 @@ fn skeleton(s: Species) -> bool {
 fn raider(s: Species) -> bool {
     super::raider::is_raider(s)
 }
-/// `EntityType.isAllowedInPeaceful`: the types built with `notInPeaceful`.
-pub fn allowed_in_peaceful(kind: &str) -> bool {
-    !matches!(
-        kind.strip_prefix("minecraft:").unwrap_or(kind),
-        "blaze"
-            | "bogged"
-            | "breeze"
-            | "cave_spider"
-            | "creaking"
-            | "creeper"
-            | "drowned"
-            | "elder_guardian"
-            | "enderman"
-            | "endermite"
-            | "evoker"
-            | "ghast"
-            | "giant"
-            | "guardian"
-            | "hoglin"
-            | "husk"
-            | "illusioner"
-            | "magma_cube"
-            | "parched"
-            | "phantom"
-            | "piglin_brute"
-            | "pillager"
-            | "ravager"
-            | "silverfish"
-            | "skeleton"
-            | "slime"
-            | "spider"
-            | "stray"
-            | "vex"
-            | "vindicator"
-            | "warden"
-            | "witch"
-            | "wither"
-            | "wither_skeleton"
-            | "zoglin"
-            | "zombie"
-            | "zombie_villager"
-            | "zombified_piglin"
-    )
-}
 /// `AgeableMob.getBabyStartAge` (a sniffer's is -48000).
 pub fn baby_start_age(s: Species) -> i32 {
     if s == Species::Sniffer {
@@ -1113,7 +1007,8 @@ fn age_boundary_reached(m: &mut Mob, w: Option<&MobWorld<'_>>) {
 /// `Goat.finalizeSpawn` on a natural spawn (the spawn path in spawning.rs): the ram
 /// cooldowns (`GoatAi.initMemories`), screaming 2 percent of the time and a
 /// horn lost 10 percent of the time, adults only.
-pub fn goat_spawn(m: &mut Mob, r: &mut impl RandomSource) {
+#[cfg(test)]
+pub(crate) fn goat_spawn(m: &mut Mob, r: &mut impl RandomSource) {
     let jump = r.next_int_between_inclusive(600, 1200).unwrap_or(600);
     set_memory(m, "long_jump_cooling_down", i64::from(jump), i64::MAX);
     let ram = r.next_int_between_inclusive(600, 6000).unwrap_or(600);
@@ -1124,11 +1019,6 @@ pub fn goat_spawn(m: &mut Mob, r: &mut impl RandomSource) {
         let left = r.next_boolean();
         m.extra.lost_horns[usize::from(!left)] = true;
     }
-}
-/// `SpawnEggItem.spawnsEntity`: the spawn egg is for the mob's own kind, so
-/// it is used on it (`Mob.checkAndHandleImportantInteractions`).
-pub fn spawn_egg_is_for(egg: &str, kind: &str) -> bool {
-    egg.strip_suffix("_spawn_egg") == Some(kind)
 }
 
 /// `SpawnEggItem.spawnOffspringFromSpawnEgg`: the offspring of a spawn egg
@@ -1203,38 +1093,243 @@ pub fn item(m: &Mob, slot: usize) -> Option<Arc<str>> {
         _ => None,
     }
 }
-/// The whole stack a mob keeps in `slot` (damage, name, components, count,
-/// enchantments and trim), when it kept more than the item id.
-pub fn stored_stack(m: &Mob, slot: usize) -> Option<crate::items::ItemStack> {
-    if slot > HEAD {
-        return None;
+/// A single equipment stack, with any separate gear data needed to project it.
+pub struct EquipmentRead<'a> {
+    base: &'a ItemStack,
+    overlays: Option<(&'a gear::Gear, usize)>,
+}
+
+impl<'a> EquipmentRead<'a> {
+    /// Borrow a resident stack whose components are all on the stack itself.
+    pub fn resident(base: &'a ItemStack) -> Self {
+        Self {
+            base,
+            overlays: None,
+        }
     }
-    let mut stack = m.extra.slot_stack(slot)?.clone();
-    if stack.damage == 0 && stack.count <= 1 && stack.extra.is_none() {
-        return None;
+
+    /// The stored stack. Gear overlays affect components, not item, count or damage.
+    pub fn base(&self) -> &'a ItemStack {
+        self.base
+    }
+
+    /// The active trim, if any, without projecting the stack's component patch.
+    pub fn trim(&self) -> Option<&'a gear::Trim> {
+        self.overlays
+            .and_then(|(gear, index)| gear.trims[index].as_ref())
+            .or_else(|| self.base.data()?.trim.as_ref())
+    }
+
+    /// Vanilla's foil test uses the same enchantments the caller can read from this stack.
+    pub fn has_foil(&self, item_glint: Option<bool>) -> bool {
+        let enchanted = !self.base.enchantments().is_empty()
+            || self
+                .overlays
+                .is_some_and(|(gear, index)| !gear.slots[index].is_empty());
+        self.base.has_foil_with_enchantments(item_glint, enchanted)
+    }
+
+    /// The complete stack: still borrowed unless its gear data needs overlaying.
+    pub fn project(&self) -> Cow<'a, ItemStack> {
+        if self.overlays.is_none() {
+            return Cow::Borrowed(self.base);
+        }
+        let mut stack = self.base.clone();
+        self.overlay_gear(&mut stack, |_| true);
+        Cow::Owned(stack)
+    }
+
+    /// Whether this stack matches `other` (`ItemStack.matches`), including any
+    /// separate gear overlay, without cloning the stack or its components.
+    pub(crate) fn matches_stack(&self, other: &ItemStack) -> bool {
+        match self.overlays {
+            None => self.base.matches(other),
+            Some((gear, index)) => self.base.matches_with_overlay(
+                other,
+                &gear.slots[index],
+                gear.trims[index].as_ref(),
+            ),
+        }
+    }
+
+    /// `LivingEntity.equipmentHasChanged` negated, for a possibly empty slot.
+    pub(crate) fn matches_previous(now: Option<&Self>, previous: Option<&ItemStack>) -> bool {
+        match (now, previous) {
+            (Some(now), Some(previous)) => now.matches_stack(previous),
+            (None, None) => true,
+            _ => false,
+        }
+    }
+
+    /// Encode selected extra components with the same gear overlay as a full projection.
+    /// Encode only the selected gear values over the resident patch, without cloning the slot.
+    pub fn extra_components_matching(
+        &self,
+        select: impl Fn(&str) -> bool,
+    ) -> Option<sunrise_core::nbt::Tag> {
+        use sunrise_core::nbt::Tag;
+        use sunrise_items::item_data::encode_extra_components_matching;
+
+        let base = encode_extra_components_matching(self.base, &select);
+        if self.overlays.is_none()
+            || !(select("minecraft:enchantments") || select("minecraft:trim"))
+        {
+            return base;
+        }
+
+        let mut shell = ItemStack {
+            item: self.base.item.clone(),
+            count: self.base.count,
+            damage: 0,
+            extra: None,
+        };
+        self.overlay_gear(&mut shell, &select);
+        let Some(Tag::Compound(gear)) = encode_extra_components_matching(&shell, select) else {
+            return base;
+        };
+        let Some(Tag::Compound(mut patch)) = base else {
+            return Some(Tag::Compound(gear));
+        };
+        patch.extend(gear);
+        Some(Tag::Compound(patch))
+    }
+
+    fn overlay_gear(&self, stack: &mut ItemStack, select: impl Fn(&str) -> bool) {
+        let Some((gear, index)) = self.overlays else {
+            return;
+        };
+        if select("minecraft:enchantments") && !gear.slots[index].is_empty() {
+            stack.data_mut().enchantments = gear.slots[index].clone();
+        }
+        if select("minecraft:trim")
+            && let Some(trim) = &gear.trims[index]
+        {
+            stack.data_mut().trim = Some(trim.clone());
+        }
+    }
+}
+
+/// Borrow one slot as `Mob::equipment_stacks` reads it, without reading the other slots.
+pub fn equipment_slot(m: &Mob, slot: EquipmentSlot) -> Option<EquipmentRead<'_>> {
+    let slot = slot as usize;
+    let base = m.extra.slot_stack(slot)?;
+    if slot > HEAD {
+        return Some(EquipmentRead::resident(base));
     }
     let index = gear_slot(slot);
-    if let Some(g) = gear::gear(m) {
-        if !g.slots[index].is_empty() {
-            stack.data_mut().enchantments = g.slots[index].clone();
+    let overlays = gear::gear(m)
+        .filter(|gear| !gear.slots[index].is_empty() || gear.trims[index].is_some())
+        .map(|gear| (gear, index));
+    Some(EquipmentRead { base, overlays })
+}
+
+/// A changed slot at `LivingEntity.collectEquipmentChanges`, still borrowed.
+pub struct EquipmentChange<'a> {
+    pub current: Option<EquipmentRead<'a>>,
+    pub previous: Option<&'a ItemStack>,
+}
+
+pub fn changed_equipment_slot(m: &Mob, slot: EquipmentSlot) -> Option<EquipmentChange<'_>> {
+    let previous = m.extra.live.last_equipment(slot);
+    let current = equipment_slot(m, slot);
+    (!EquipmentRead::matches_previous(current.as_ref(), previous))
+        .then_some(EquipmentChange { current, previous })
+}
+
+/// Detect at the body tick. Return the first changed slot if its callback
+/// needs the owning game; otherwise apply vanilla's changes without yielding.
+pub fn detect_equipment_updates(
+    m: &mut Mob,
+    catalog: &Arc<Catalog>,
+    items: &Items,
+    notify: impl FnOnce() -> bool,
+) -> Option<EquipmentSlot> {
+    if m.extra.equipment.is_empty() && !m.extra.live.has_worn() {
+        return None;
+    }
+    let mut deltas = EquipmentDeltas::default();
+    let mut notify = Some(notify);
+    let mut first = None;
+    for slot in EquipmentSlot::ALL {
+        let Some(change) = changed_equipment_slot(m, slot) else {
+            continue;
+        };
+        if first.is_none() {
+            first = Some(slot);
+            if notify.take().is_some_and(|notify| notify()) {
+                return first;
+            }
         }
-        if g.trims[index].is_some() {
-            stack.data_mut().trim = g.trims[index].clone();
-        }
+        deltas.set(slot, change.current.map(|read| read.project().into_owned()));
+    }
+    finish_equipment_tick(m, catalog, items, deltas);
+    None
+}
+
+pub fn equipment_attribute_seed(m: &Mob) -> Vec<sunrise_core::nbt::Tag> {
+    crate::entity_nbt::attribute_entries(m)
+        .into_iter()
+        .map(|(_, entry)| entry)
+        .collect()
+}
+
+/// Settle only the observed deltas, plus slots whose live modifiers changed
+/// early (such as through a listener's equipment write).
+pub fn finish_equipment_tick(
+    m: &mut Mob,
+    catalog: &Arc<Catalog>,
+    items: &Items,
+    deltas: EquipmentDeltas,
+) {
+    super::armor::prepare(m, catalog);
+    if deltas.is_empty() && !m.extra.live.has_pending_equipment() {
+        return;
+    }
+    let mut live = std::mem::take(&mut m.extra.live);
+    if let Err(error) = live.finish_equipment_tick(
+        catalog,
+        &m.kind.id,
+        items,
+        deltas,
+        |slot| equipment_slot(m, slot),
+        || equipment_attribute_seed(m),
+    ) {
+        log::warn!("equipment attributes of {} {}: {error}", m.kind.id, m.id);
+    }
+    m.extra.live = live;
+}
+
+/// The whole stack a mob keeps in `slot` (damage, name, components, count,
+/// enchantments and trim), when it kept more than the item id.
+pub(crate) fn stored_stack(m: &Mob, slot: usize) -> Option<ItemStack> {
+    let read = equipment_slot(m, *EquipmentSlot::ALL.get(slot)?)?;
+    let base = read.base();
+    if slot > HEAD || (base.damage == 0 && base.count <= 1 && base.extra.is_none()) {
+        return None;
+    }
+    Some(read.project().into_owned())
+}
+/// What a mob has in `slot` as a stack, including its count, enchantments and trim.
+pub fn item_stack(m: &Mob, slot: usize) -> Option<crate::items::ItemStack> {
+    if !matches!(slot, MAINHAND..=HEAD | SADDLE) {
+        return None;
+    }
+    let read = equipment_slot(m, *EquipmentSlot::ALL.get(slot)?)?;
+    let base = read.base();
+    if slot <= HEAD && (base.damage != 0 || base.count > 1 || base.extra.is_some()) {
+        return Some(read.project().into_owned());
+    }
+    let mut stack = ItemStack {
+        item: base.item.clone(),
+        count: base.count,
+        damage: 0,
+        extra: None,
+    };
+    stack.set_crafting_enchantments(slot_enchantments(m, slot));
+    if let Some(trim) = gear::gear(m).and_then(|g| g.trims[gear_slot(slot)].clone()) {
+        stack.data_mut().trim = Some(trim);
     }
     Some(stack)
-}
-/// What a mob has in `slot` as a stack: the one it kept, else one item with
-/// its enchantments.
-pub fn item_stack(m: &Mob, slot: usize) -> Option<crate::items::ItemStack> {
-    stored_stack(m, slot).or_else(|| {
-        let mut stack = crate::items::ItemStack::new(&item(m, slot)?, 1);
-        stack.set_crafting_enchantments(slot_enchantments(m, slot));
-        if let Some(trim) = gear::gear(m).and_then(|g| g.trims[gear_slot(slot)].clone()) {
-            stack.data_mut().trim = Some(trim);
-        }
-        Some(stack)
-    })
 }
 /// `LivingEntity.getItemBySlot` from the stacks a mob keeps: the hands and
 /// armour from `item_stack` (`EquipmentSlot` ordinals match these slots), the
@@ -1291,7 +1386,7 @@ pub fn set_item(m: &mut Mob, slot: usize, id: &str) {
     gear::set(m, gear_slot(slot), Vec::new());
 }
 /// The enchantments on what `m` has in `slot`.
-pub fn slot_enchantments(m: &Mob, slot: usize) -> gear::Levels {
+pub(crate) fn slot_enchantments(m: &Mob, slot: usize) -> gear::Levels {
     gear::gear(m).map_or_else(Vec::new, |g| g.slots[gear_slot(slot)].clone())
 }
 /// Replace the enchantments of what `m` has in `slot` (after `set_item`).
@@ -1344,7 +1439,7 @@ pub fn stored_drop_chance(m: &Mob, slot: usize) -> f32 {
 }
 
 /// `SpecialDates.isHalloween`: October 31.
-pub fn halloween_date(month: u32, day: u32) -> bool {
+pub(crate) fn halloween_date(month: u32, day: u32) -> bool {
     (month, day) == (10, 31)
 }
 
@@ -1406,7 +1501,8 @@ impl<L: FinalizeLevel + ?Sized, R: RandomSource> Ctx<'_, L, R> {
                 set_age(m, start, None);
             }
             if let Some(a) = g.ageable() {
-                a.size += 1;
+                // AgeableMobGroupData.increaseGroupSizeByOne increments a Java int.
+                a.size = a.size.wrapping_add(1);
             }
         }
         self.mob(m, Some(g))
@@ -1555,7 +1651,12 @@ impl<L: FinalizeLevel + ?Sized, R: RandomSource> Ctx<'_, L, R> {
             && self.int(300) == 0
             && item(m, MAINHAND).as_deref() == Some("minecraft:crossbow")
         {
-            gear::upgrade(m, gear::MAIN, "minecraft:piercing", 1);
+            self.enchant_from_provider(
+                m,
+                MAINHAND,
+                "minecraft:crossbow",
+                "minecraft:pillager_spawn_crossbow",
+            );
         }
         // EquipmentSlot.VALUES order: feet, legs, chest, head.
         for slot in [FEET, LEGS, CHEST, HEAD] {
@@ -1567,23 +1668,16 @@ impl<L: FinalizeLevel + ?Sized, R: RandomSource> Ctx<'_, L, R> {
         if self.float() >= chance * self.special() {
             return;
         }
-        self.enchant_by_cost(m, slot, &id);
+        self.enchant_from_provider(m, slot, &id, "minecraft:mob_spawn_equipment");
     }
-    /// `EnchantmentsByCostWithDifficulty.enchant` (`mob_spawn_equipment`:
-    /// cost 5 to 5 + 17 x the special multiplier, `#on_mob_spawn_equipment`).
-    fn enchant_by_cost(&mut self, m: &mut Mob, slot: usize, id: &str) {
-        let top = 5 + (self.special() * 17.0) as i32;
-        let cost = self.random.next_int_between_inclusive(5, top).unwrap_or(5);
+    /// `EnchantmentHelper.enchantItemFromProvider`: apply `provider` to `slot`.
+    fn enchant_from_provider(&mut self, m: &mut Mob, slot: usize, id: &str, provider: &str) {
+        let special = self.special();
+        let stack = item_stack(m, slot).unwrap_or_else(|| crate::items::ItemStack::new(id, 1));
         let d = self.level.spawn_data();
-        let e = d.enchantments;
-        let pool = e.tag("minecraft:on_mob_spawn_equipment");
-        let picked = e.select(
-            d.items,
-            self.random,
-            &item_stack(m, slot).unwrap_or_else(|| crate::items::ItemStack::new(id, 1)),
-            cost,
-            pool,
-        );
+        let picked =
+            d.enchantments
+                .enchant_from_provider(provider, d.items, self.random, &stack, special);
         for (enchantment, level) in picked {
             gear::upgrade(m, gear_slot(slot), &enchantment, level);
         }
@@ -1610,14 +1704,11 @@ impl<L: FinalizeLevel + ?Sized, R: RandomSource> Ctx<'_, L, R> {
     /// `false` drops it, otherwise it is finalized unless the level said the
     /// listener already did (`Mob.finalizeSpawn` fires for riders too).
     fn rider_kept(&mut self, j: &mut Mob, reason: Reason, group: Option<Group>) -> bool {
-        match self.level.spawn_event(j, reason) {
-            SpawnEvent::Cancelled => false,
-            SpawnEvent::Skip => true,
-            SpawnEvent::Finalize => {
-                self.finalize(j, reason, group);
-                true
-            }
+        let event = self.level.spawn_event(j, reason);
+        if !event.skip_initialization {
+            self.finalize(j, reason, group);
         }
+        !event.veto_admission
     }
     /// `startRiding`: the rider leaves the vehicle it was on.
     fn ride(&mut self, rider: &mut Mob, vehicle: &mut Mob) {
@@ -1961,74 +2052,136 @@ impl<L: FinalizeLevel + ?Sized, R: RandomSource> Ctx<'_, L, R> {
         let at = block(m);
         m.extra.variant = self.level.mob_maps().villager_type(&self.level.biome(at));
     }
-    /// `VariantUtils.selectVariantToSpawn` into `variant`, by registry name.
-    fn variant(&mut self, m: &mut Mob, registry: fn(&SpawnRegistries) -> &VariantRegistry) {
-        let r = registry(self.level.spawn_data().registries);
-        let at = block(m);
-        if let Some(i) = r.select(&*self.level, at, self.random) {
-            let name = r.names[i].clone();
-            m.extra.variant = variant_index(m.species(), &name);
-        }
-    }
-    fn sound(&mut self, m: &mut Mob, registry: fn(&SpawnRegistries) -> &VariantRegistry) {
-        let r = registry(self.level.spawn_data().registries);
-        m.extra.sound_variant = Some(r.random(self.random) as u8);
-    }
 
     /// `finalizeSpawn` of the mob's class.
     pub fn finalize(&mut self, m: &mut Mob, reason: Reason, g: Option<Group>) -> Option<Group> {
         use Species as S;
         let s = m.species();
         match s {
-            S::Pig | S::Cow | S::Chicken => {
-                let (v, sound): (
-                    fn(&SpawnRegistries) -> &VariantRegistry,
-                    fn(&SpawnRegistries) -> &VariantRegistry,
-                ) = match s {
-                    S::Pig => (|r| &r.pig, |r| &r.pig_sound),
-                    S::Cow => (|r| &r.cow, |r| &r.cow_sound),
-                    _ => (|r| &r.chicken, |r| &r.chicken_sound),
-                };
-                self.variant(m, v);
-                self.sound(m, sound);
+            S::Pig => {
+                let at = block(m);
+                if let Some(v) =
+                    self.level
+                        .spawn_data()
+                        .variants
+                        .pig
+                        .select(&*self.level, at, self.random)
+                {
+                    m.extra.pig_variant = Some(v);
+                }
+                m.extra.pig_sound_variant = self
+                    .level
+                    .spawn_data()
+                    .variants
+                    .pig_sound
+                    .random(self.random);
+                self.ageable(m, g)
+            }
+            S::Cow => {
+                let at = block(m);
+                if let Some(v) =
+                    self.level
+                        .spawn_data()
+                        .variants
+                        .cow
+                        .select(&*self.level, at, self.random)
+                {
+                    m.extra.cow_variant = Some(v);
+                }
+                m.extra.cow_sound_variant = self
+                    .level
+                    .spawn_data()
+                    .variants
+                    .cow_sound
+                    .random(self.random);
+                self.ageable(m, g)
+            }
+            S::Chicken => {
+                let at = block(m);
+                if let Some(v) =
+                    self.level
+                        .spawn_data()
+                        .variants
+                        .chicken
+                        .select(&*self.level, at, self.random)
+                {
+                    m.extra.chicken_variant = Some(v);
+                }
+                m.extra.chicken_sound_variant = self
+                    .level
+                    .spawn_data()
+                    .variants
+                    .chicken_sound
+                    .random(self.random);
                 self.ageable(m, g)
             }
             S::Cat => {
                 let g = self.ageable(m, g);
-                self.variant(m, |r| &r.cat);
-                self.sound(m, |r| &r.cat_sound);
+                let at = block(m);
+                if let Some(v) =
+                    self.level
+                        .spawn_data()
+                        .variants
+                        .cat
+                        .select(&*self.level, at, self.random)
+                {
+                    m.extra.cat_variant = Some(v);
+                }
+                m.extra.cat_sound_variant = self
+                    .level
+                    .spawn_data()
+                    .variants
+                    .cat_sound
+                    .random(self.random);
                 g
             }
             S::Wolf => {
                 let g = match g {
                     Some(Group::Wolf(a, v)) => {
-                        m.extra.variant = v;
+                        m.extra.wolf_variant = Some(v);
                         Some(Group::Wolf(a, v))
                     }
                     other => {
-                        let r = &self.level.spawn_data().registries.wolf;
+                        let r = &self.level.spawn_data().variants.wolf;
                         let at = block(m);
                         match r.select(&*self.level, at, self.random) {
-                            Some(i) => {
-                                let v = variant_index(s, &r.names[i]);
-                                m.extra.variant = v;
+                            Some(v) => {
+                                m.extra.wolf_variant = Some(v);
                                 Some(Group::Wolf(Ageable::babies(false), v))
                             }
                             None => other,
                         }
                     }
                 };
-                self.sound(m, |r| &r.wolf_sound);
+                m.extra.wolf_sound_variant = self
+                    .level
+                    .spawn_data()
+                    .variants
+                    .wolf_sound
+                    .random(self.random);
                 self.ageable(m, g)
             }
             S::Frog => {
-                self.variant(m, |r| &r.frog);
+                if let Some(v) = self.level.spawn_data().variants.frog.select(
+                    &*self.level,
+                    block(m),
+                    self.random,
+                ) {
+                    m.extra.frog_variant = Some(v);
+                }
                 let jump = self.uniform(100, 140);
                 set_memory(m, "long_jump_cooling_down", i64::from(jump), i64::MAX);
                 self.ageable(m, g)
             }
             S::ZombieNautilus => {
-                self.variant(m, |r| &r.zombie_nautilus);
+                let at = block(m);
+                if let Some(v) = self.level.spawn_data().variants.zombie_nautilus.select(
+                    &*self.level,
+                    at,
+                    self.random,
+                ) {
+                    m.extra.zombie_nautilus_variant = Some(v);
+                }
                 let cooldown = self.uniform(2400, 3600);
                 set_memory(m, "attack_target_cooldown", i64::from(cooldown), i64::MAX);
                 m.extra.counter = cooldown;
@@ -2402,7 +2555,7 @@ pub fn goat_init_memories(m: &mut Mob, random: &mut impl RandomSource) {
 }
 /// `Panda.Gene.getRandom` (enum order: normal, lazy, worried, playful,
 /// brown, weak, aggressive).
-pub fn panda_gene(roll: i32) -> u8 {
+pub(crate) fn panda_gene(roll: i32) -> u8 {
     match roll {
         0 => 1,
         1 => 2,
@@ -2414,7 +2567,7 @@ pub fn panda_gene(roll: i32) -> u8 {
     }
 }
 /// `Panda.Gene.getVariantFromGenes`: a recessive gene shows when both match.
-pub fn panda_variant(main: u8, hidden: u8) -> u8 {
+pub(crate) fn panda_variant(main: u8, hidden: u8) -> u8 {
     let recessive = matches!(main, 4 | 5);
     if recessive && main != hidden { 0 } else { main }
 }
@@ -2426,13 +2579,11 @@ fn sulfur_size(m: &mut Mob, size: i32) {
 fn cube_size(m: &mut Mob, size: i32) {
     super::cube::set_size(m, size);
 }
-/// The index the game keeps for a variant registry entry.
+/// The index the game keeps for an enum variant species (`Mooshroom`, `Fox`,
+/// `Horse`, `Llama`, `TraderLlama`).
 pub fn variant_index(s: Species, name: &str) -> u8 {
     let name = name.strip_prefix("minecraft:").unwrap_or(name);
     let i = match s {
-        Species::Cat => super::tame::CAT_VARIANTS.iter().position(|v| *v == name),
-        Species::Wolf => super::tame::WOLF_VARIANTS.iter().position(|v| v.0 == name),
-        Species::ZombieNautilus => super::nautilus::VARIANTS.iter().position(|v| *v == name),
         // MushroomCow.Variant: red is the codec's default, brown the other.
         Species::Mooshroom => ["red", "brown"].iter().position(|v| *v == name),
         // Fox.Variant, read from a `minecraft:fox/variant` component; the save
@@ -2444,9 +2595,7 @@ pub fn variant_index(s: Species, name: &str) -> u8 {
         Species::Llama | Species::TraderLlama => {
             super::llama::VARIANTS.iter().position(|v| *v == name)
         }
-        _ => ["temperate", "warm", "cold"]
-            .iter()
-            .position(|v| *v == name),
+        _ => None,
     };
     i.unwrap_or(0) as u8
 }
@@ -2455,101 +2604,66 @@ pub fn variant_index(s: Species, name: &str) -> u8 {
 pub fn variant_component(m: &Mob) -> Option<(&'static str, String)> {
     species_variant_component(m.species(), m.extra.variant)
 }
-/// [`variant_component`] of a species with the game's variant index.
+/// [`variant_component`] resolved against the world's data-driven variant tables
+/// for species whose variants are registry holders.
+pub fn variant_component_in(
+    m: &Mob,
+    variants: &super::variants::VariantTables,
+) -> Option<(&'static str, String)> {
+    match m.species() {
+        Species::Wolf => {
+            let r = m.wolf_variant(&variants.wolf)?;
+            let id = variants.wolf.id(r)?;
+            Some(("minecraft:wolf/variant", id.to_owned()))
+        }
+        Species::Cat => {
+            let r = m.cat_variant(&variants.cat)?;
+            let id = variants.cat.id(r)?;
+            Some(("minecraft:cat/variant", id.to_owned()))
+        }
+        Species::Pig => {
+            let r = m.pig_variant(&variants.pig)?;
+            let id = variants.pig.id(r)?;
+            Some(("minecraft:pig/variant", id.to_owned()))
+        }
+        Species::Cow => {
+            let r = m.cow_variant(&variants.cow)?;
+            let id = variants.cow.id(r)?;
+            Some(("minecraft:cow/variant", id.to_owned()))
+        }
+        Species::Chicken => {
+            let r = m.chicken_variant(&variants.chicken)?;
+            let id = variants.chicken.id(r)?;
+            Some(("minecraft:chicken/variant", id.to_owned()))
+        }
+        Species::Frog => {
+            let r = m.frog_variant(&variants.frog)?;
+            let id = variants.frog.id(r)?;
+            Some(("minecraft:frog/variant", id.to_owned()))
+        }
+        Species::ZombieNautilus => {
+            let r = m.zombie_nautilus_variant(&variants.zombie_nautilus)?;
+            let id = variants.zombie_nautilus.id(r)?;
+            Some(("minecraft:zombie_nautilus/variant", id.to_owned()))
+        }
+        _ => variant_component(m),
+    }
+}
+/// [`variant_component`] of an enum-variant species with the game's variant index.
 pub fn species_variant_component(s: Species, variant: u8) -> Option<(&'static str, String)> {
     let component = match s {
-        Species::Wolf => "minecraft:wolf/variant",
-        Species::Cat => "minecraft:cat/variant",
-        Species::Frog => "minecraft:frog/variant",
-        Species::Pig => "minecraft:pig/variant",
-        Species::Cow => "minecraft:cow/variant",
         Species::Mooshroom => "minecraft:mooshroom/variant",
-        Species::Chicken => "minecraft:chicken/variant",
-        Species::ZombieNautilus => "minecraft:zombie_nautilus/variant",
         Species::Horse => "minecraft:horse/variant",
         Species::Llama | Species::TraderLlama => "minecraft:llama/variant",
         _ => return None,
     };
     Some((component, format!("minecraft:{}", variant_name(s, variant))))
 }
-/// Whether the mob's save keeps its variant under `variant` — the registry
-/// id `VariantUtils.writeVariant` stores — rather than under its own key (a
-/// fox's and a mooshroom's `Type`) or a packed int (a horse's and a llama's
-/// `Variant`). Only these seven classes call `writeVariant`, so reporting the
-/// component does not mean the save carries the name.
-pub fn saves_variant_name(s: Species) -> bool {
-    matches!(
-        s,
-        Species::Wolf
-            | Species::Cat
-            | Species::Frog
-            | Species::Pig
-            | Species::Cow
-            | Species::Chicken
-            | Species::ZombieNautilus
-    )
-}
-/// The `*_sound_variant` registry of a species, in registry order.
-pub fn sound_variants(s: Species) -> &'static [&'static str] {
-    match s {
-        Species::Pig => &["big", "classic", "mini"],
-        Species::Cow => &["classic", "moody"],
-        Species::Chicken => &["classic", "picky"],
-        Species::Cat => &["classic", "royal"],
-        Species::Wolf => &["angry", "big", "classic", "cute", "grumpy", "puglin", "sad"],
-        _ => &[],
-    }
-}
-/// A sound of the mob's `*_sound_variant` set (`Pig.getSoundSet`,
-/// `Wolf.getSoundSet`, `Cat.getSoundSet`, ...): `kind` is the sound's key
-/// (`ambient`, `hurt`, `step`, `growl`, `purreow`...). Babies use the species'
-/// baby set (cows have none); an adult's set is `entity.<species>.*` for
-/// `classic` and `entity.<species>_<variant>.*` otherwise, except the
-/// footsteps that every variant shares (not the cow's). None for a species
-/// without sound variants.
-pub fn variant_sound(m: &Mob, kind: &str) -> Option<&'static str> {
-    use std::{collections::HashMap, sync::Mutex};
-    let species = m.species();
-    let name = match species {
-        Species::Pig => "pig",
-        Species::Cow => "cow",
-        Species::Chicken => "chicken",
-        Species::Wolf => "wolf",
-        Species::Cat => "cat",
-        _ => return None,
-    };
-    let variant = m
-        .extra
-        .sound_variant
-        .and_then(|i| sound_variants(species).get(i as usize))
-        .copied()
-        .unwrap_or("classic");
-    let id = if m.is_baby() && species != Species::Cow {
-        format!("entity.baby_{name}.{kind}")
-    } else if variant == "classic" || (kind == "step" && species != Species::Cow) {
-        format!("entity.{name}.{kind}")
-    } else {
-        format!("entity.{name}_{variant}.{kind}")
-    };
-    // A handful of ids in all: keep each one as a `&'static str`.
-    static IDS: Mutex<Option<HashMap<String, &'static str>>> = Mutex::new(None);
-    let mut ids = IDS.lock().ok()?;
-    let ids = ids.get_or_insert_with(HashMap::new);
-    Some(
-        *ids.entry(id)
-            .or_insert_with_key(|k| Box::leak(k.clone().into_boxed_str())),
-    )
-}
-/// The registry name of the game's variant index.
+/// The enum name of the game's variant index (`Mooshroom`, `Horse`, `Llama`,
+/// `TraderLlama`).
 pub fn variant_name(s: Species, index: u8) -> &'static str {
     let i = index as usize;
     match s {
-        Species::Cat => super::tame::CAT_VARIANTS.get(i).copied().unwrap_or("black"),
-        Species::Wolf => super::tame::WOLF_VARIANTS.get(i).map_or("pale", |v| v.0),
-        Species::ZombieNautilus => super::nautilus::VARIANTS
-            .get(i)
-            .copied()
-            .unwrap_or("temperate"),
         Species::Mooshroom => ["red", "brown"].get(i).copied().unwrap_or("red"),
         Species::Horse => super::equine::VARIANT_NAMES
             .get(i)
@@ -2558,10 +2672,7 @@ pub fn variant_name(s: Species, index: u8) -> &'static str {
         Species::Llama | Species::TraderLlama => {
             super::llama::VARIANTS.get(i).copied().unwrap_or("creamy")
         }
-        _ => ["temperate", "warm", "cold"]
-            .get(i)
-            .copied()
-            .unwrap_or("temperate"),
+        _ => "",
     }
 }
 /// `VillagerType.BY_BIOME` (index into `render::VILLAGER_TYPES`: plains,
@@ -2718,21 +2829,6 @@ mod tests {
         assert_eq!(variant_index(Species::Llama, "minecraft:temperate"), 0);
         assert_eq!(variant_name(Species::Horse, 7), "white");
         assert_eq!(variant_name(Species::TraderLlama, 4), "creamy");
-        assert_eq!(variant_name(Species::Cat, 20), "black");
-        // Only `VariantUtils.writeVariant` species save the name; a horse and
-        // a llama save a packed `Variant` int, a fox and a mooshroom `Type`.
-        for species in [Species::Wolf, Species::Cat, Species::Chicken, Species::Pig] {
-            assert!(saves_variant_name(species), "{species:?}");
-        }
-        for species in [
-            Species::Horse,
-            Species::Llama,
-            Species::TraderLlama,
-            Species::Fox,
-            Species::Mooshroom,
-        ] {
-            assert!(!saves_variant_name(species), "{species:?}");
-        }
     }
     /// #2269: the offspring of a spawn egg used on a mob is a baby of that
     /// kind (`SpawnEggItem.spawnOffspringFromSpawnEgg`), and only the mob's
@@ -2759,13 +2855,6 @@ mod tests {
         assert!(child.is_baby());
         // It keeps the parent's variant.
         assert_eq!(child.extra.variant, 3);
-        // The egg is for the mob's own kind.
-        assert!(spawn_egg_is_for("minecraft:cow_spawn_egg", "minecraft:cow"));
-        assert!(!spawn_egg_is_for(
-            "minecraft:pig_spawn_egg",
-            "minecraft:cow"
-        ));
-        assert!(!spawn_egg_is_for("minecraft:stick", "minecraft:cow"));
     }
     /// #7877: `/attribute <mob> <attr> modifier add` hands `add_modifier` an
     /// id typed at run time; it lands in the value, reads back, and goes.
@@ -2961,6 +3050,258 @@ mod tests {
         assert!(!halloween_date(10, 30));
         assert!(!halloween_date(11, 1));
         assert!(!halloween_date(1, 1));
+    }
+
+    #[test]
+    fn equipment_read_matches_stack_with_and_without_gear_overlays() {
+        let kind = crate::mobs::sensor_scan_tests::kind();
+        let mut m = crate::mobs::Mob::new(1, kind, sunrise_core::geometry::Vec3::ZERO, 0.0);
+        set_item(&mut m, CHEST, "minecraft:iron_chestplate");
+        set_slot_enchantments(&mut m, CHEST, vec![(Arc::from("minecraft:thorns"), 3)]);
+        let trim: gear::Trim = ("minecraft:gold".into(), "minecraft:coast".into());
+        gear::set_trim(&mut m, gear::CHEST, Some(trim));
+        set_slot_damage(&mut m, CHEST, 2);
+
+        let read = equipment_slot(&m, EquipmentSlot::Chest).unwrap();
+        let projected = read.project().into_owned();
+        assert!(read.matches_stack(&projected));
+
+        let mut altered = projected.clone();
+        altered.damage = 3;
+        assert!(!read.matches_stack(&altered));
+
+        let mut unenchanted = ItemStack::new("minecraft:iron_chestplate", 1);
+        unenchanted.damage = 2;
+        assert!(!read.matches_stack(&unenchanted));
+    }
+
+    struct ProviderTestLevel {
+        variants: crate::mobs::variants::VariantTables,
+        items: Items,
+    }
+    impl FinalizeLevel for ProviderTestLevel {
+        fn biome(&self, _: [i32; 3]) -> String {
+            "minecraft:plains".into()
+        }
+        fn biome_tag(&self, _: &str, _: [i32; 3]) -> bool {
+            false
+        }
+        fn structures_with_piece_at(&self, _: [i32; 3]) -> Vec<String> {
+            Vec::new()
+        }
+        fn moon_phase(&self, _: [i32; 3]) -> usize {
+            0
+        }
+        fn spawning_monsters(&self) -> bool {
+            true
+        }
+        fn no_collision(&self, _: Aabb) -> bool {
+            true
+        }
+        fn free_chicken(&self, _: Aabb) -> Option<u32> {
+            None
+        }
+        fn ride_chicken(&mut self, _: u32, _: u32) {}
+        fn game_time(&self) -> i64 {
+            0
+        }
+        fn halloween(&self) -> bool {
+            false
+        }
+        fn create(&mut self, _: &str, _: Reason) -> Option<Mob> {
+            None
+        }
+        fn spawn_data(&self) -> SpawnData<'_> {
+            SpawnData {
+                variants: &self.variants,
+                enchantments: &self.items.enchantments,
+                items: &self.items,
+                camel_husk_size: (1.7, 2.375),
+            }
+        }
+    }
+
+    fn provider_test_level(files: &[(String, Vec<Vec<u8>>)]) -> ProviderTestLevel {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(
+            root.path().join("items.json"),
+            serde_json::json!({
+                "minecraft:iron_sword": {},
+                "minecraft:iron_shovel": {},
+                "minecraft:crossbow": {},
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let defaults = sunrise_world::item_defaults::read(root.path()).unwrap();
+        let overlay = sunrise_world::loot::PackOverlay::new(files);
+        let (packed, admitted) = crate::lan::data::SyncData::stage_registry_definitions(
+            root.path(),
+            &defaults,
+            &overlay,
+            &Default::default(),
+            &Default::default(),
+            |_| true,
+        );
+        admitted.unwrap();
+        let mut items = Items::tags_only(root.path(), &overlay, &defaults).unwrap();
+        packed
+            .install_items(&mut items, root.path(), &overlay, &defaults)
+            .unwrap();
+        ProviderTestLevel {
+            variants: Default::default(),
+            items,
+        }
+    }
+
+    #[test]
+    fn mob_spawn_equipment_provider_override_enchants_zombie_sword_with_pack_sharpness() {
+        let files = [
+            (
+                "enchantment/minecraft:sharpness".into(),
+                vec![
+                    serde_json::json!({
+                        "description": "Sharpness",
+                        "weight": 10,
+                        "max_level": 5,
+                        "anvil_cost": 1,
+                        "min_cost": {"base": 1, "per_level_above_first": 11},
+                        "max_cost": {"base": 21, "per_level_above_first": 11},
+                        "supported_items": "minecraft:iron_sword",
+                        "slots": ["mainhand"]
+                    })
+                    .to_string()
+                    .into_bytes(),
+                ],
+            ),
+            (
+                "enchantment_provider/minecraft:mob_spawn_equipment".into(),
+                vec![
+                    serde_json::json!({
+                        "type": "minecraft:single",
+                        "enchantment": "minecraft:sharpness",
+                        "level": 5
+                    })
+                    .to_string()
+                    .into_bytes(),
+                ],
+            ),
+        ];
+        let mut level = provider_test_level(&files);
+        let mut kind = (*crate::mobs::sensor_scan_tests::kind()).clone();
+        kind.species = Species::Zombie;
+        let kind = Arc::new(kind);
+        let difficulty = LocalDifficulty {
+            base: 3,
+            effective: 6.75,
+            normal: false,
+            hard: true,
+            id: 3,
+        };
+        let mut found = false;
+        for seed in 0..5000_i64 {
+            let mut m = Mob::new(
+                1,
+                Arc::clone(&kind),
+                sunrise_core::geometry::Vec3::ZERO,
+                0.0,
+            );
+            let mut rng = sunrise_core::random::LegacyRandom::new(seed);
+            let mut cx = Ctx {
+                level: &mut level,
+                random: &mut rng,
+                difficulty,
+                created: Vec::new(),
+                jockey_rider: None,
+            };
+            finalize(&mut cx, &mut m, Reason::Natural, None);
+            if item(&m, MAINHAND).as_deref() == Some("minecraft:iron_sword")
+                && gear::enchanted(&m, gear::MAIN)
+            {
+                assert_eq!(gear::level(&m, gear::MAIN, "minecraft:sharpness"), 5);
+                found = true;
+                break;
+            }
+        }
+        assert!(
+            found,
+            "expected a seeded zombie with an enchanted iron sword"
+        );
+    }
+
+    #[test]
+    fn pillager_spawn_crossbow_provider_override_changes_spawned_pillager_crossbow() {
+        let files = [
+            (
+                "enchantment/minecraft:multishot".into(),
+                vec![
+                    serde_json::json!({
+                        "description": "Multishot",
+                        "weight": 2,
+                        "max_level": 1,
+                        "anvil_cost": 4,
+                        "min_cost": {"base": 20, "per_level_above_first": 0},
+                        "max_cost": {"base": 50, "per_level_above_first": 0},
+                        "supported_items": "minecraft:crossbow",
+                        "slots": ["mainhand"]
+                    })
+                    .to_string()
+                    .into_bytes(),
+                ],
+            ),
+            (
+                "enchantment_provider/minecraft:pillager_spawn_crossbow".into(),
+                vec![
+                    serde_json::json!({
+                        "type": "minecraft:single",
+                        "enchantment": "minecraft:multishot",
+                        "level": 1
+                    })
+                    .to_string()
+                    .into_bytes(),
+                ],
+            ),
+        ];
+        let mut level = provider_test_level(&files);
+        let mut kind = (*crate::mobs::sensor_scan_tests::kind()).clone();
+        kind.species = Species::Pillager;
+        let kind = Arc::new(kind);
+        // special == 0.0 so only the 1-in-300 `pillager_spawn_crossbow` roll fires.
+        let difficulty = LocalDifficulty {
+            base: 2,
+            effective: 1.0,
+            normal: true,
+            hard: false,
+            id: 2,
+        };
+        let mut found = false;
+        for seed in 0..5000_i64 {
+            let mut m = Mob::new(
+                1,
+                Arc::clone(&kind),
+                sunrise_core::geometry::Vec3::ZERO,
+                0.0,
+            );
+            let mut rng = sunrise_core::random::LegacyRandom::new(seed);
+            let mut cx = Ctx {
+                level: &mut level,
+                random: &mut rng,
+                difficulty,
+                created: Vec::new(),
+                jockey_rider: None,
+            };
+            finalize(&mut cx, &mut m, Reason::Natural, None);
+            if gear::enchanted(&m, gear::MAIN) {
+                assert_eq!(gear::level(&m, gear::MAIN, "minecraft:multishot"), 1);
+                assert_eq!(gear::level(&m, gear::MAIN, "minecraft:piercing"), 0);
+                found = true;
+                break;
+            }
+        }
+        assert!(
+            found,
+            "expected a seeded pillager to hit the 1-in-300 spawn crossbow roll"
+        );
     }
 }
 

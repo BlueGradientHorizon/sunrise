@@ -5,9 +5,7 @@
 //! changed since (`getAttributesToSync`), to the trackers and the player itself.
 use sunrise_protocol::packets::play::{AttributeModifier, AttributeSnapshot};
 use sunrise_world::attributes::{
-    Instance, Modifier, Operation,
-    entity::{AttributeId, EntityAttributes},
-    live::LiveAttributes,
+    Instance, Modifier, Operation, entity::AttributeId, live::LiveAttributes,
 };
 
 /// `AttributeModifier.Operation.id`.
@@ -47,11 +45,17 @@ pub fn snapshot(attribute: AttributeId, instance: &Instance) -> AttributeSnapsho
 
 /// `AttributeMap.getSyncableAttributes` of a live map (a player's).
 pub fn syncable<G: FnMut() -> i32>(map: &LiveAttributes<G>) -> Vec<AttributeSnapshot> {
+    syncable_snapshots(map).collect()
+}
+
+/// The syncable snapshots in instance order, without a temporary collection.
+pub fn syncable_snapshots<G: FnMut() -> i32>(
+    map: &LiveAttributes<G>,
+) -> impl Iterator<Item = AttributeSnapshot> {
     let catalog = map.catalog();
     map.instances()
-        .filter(|(_, key, _)| catalog.attribute(key.attribute()).syncable)
+        .filter(move |(_, key, _)| catalog.attribute(key.attribute()).syncable)
         .map(|(_, key, instance)| snapshot(key.attribute(), instance))
-        .collect()
 }
 
 /// `getAttributesToSync`, cleared once read (`ServerEntity.sendDirtyEntityData`).
@@ -110,15 +114,6 @@ fn operation(id: i32) -> Operation {
         2 => Operation::AddMultipliedTotal,
         _ => Operation::AddValue,
     }
-}
-
-/// The client-syncable instances of a generic attribute map.
-pub fn generic_syncable(map: &EntityAttributes) -> impl Iterator<Item = AttributeSnapshot> + '_ {
-    let catalog = map.catalog();
-    catalog
-        .attributes()
-        .filter(|(_, a)| a.syncable)
-        .filter_map(move |(id, _)| map.instance(id).map(|i| snapshot(id, i)))
 }
 
 /// Adds a modifier to the snapshot of `attribute`, creating it with `base`.
