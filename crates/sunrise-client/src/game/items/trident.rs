@@ -31,6 +31,8 @@ pub(super) fn remote_tick(
     owner_eye: Option<Vec3>,
 ) {
     t.previous = t.position;
+    t.previous_yaw = t.yaw;
+    t.previous_pitch = t.pitch;
     t.shake -= i32::from(t.shake > 0);
     if t.in_ground_time > 4 {
         t.dealt_damage = true;
@@ -280,6 +282,8 @@ impl Game<'_> {
             needs_sync: false,
             yaw: 0.0,
             pitch: 0.0,
+            previous_yaw: 0.0,
+            previous_pitch: 0.0,
             in_ground: false,
             in_ground_time: 0,
             life: 0,
@@ -316,6 +320,9 @@ impl Game<'_> {
         trident.velocity = projectile.velocity;
         trident.yaw = projectile.yaw;
         trident.pitch = projectile.pitch;
+        // Projectile.shoot ends with yRotO = getYRot(), xRotO = getXRot().
+        trident.previous_yaw = trident.yaw;
+        trident.previous_pitch = trident.pitch;
         self.tridents.push(trident);
         self.player_projectile_shot();
         // level.playSound(null, trident, sound, PLAYERS, 1, 1).
@@ -618,6 +625,8 @@ impl Game<'_> {
             }
             let mut t = self.tridents.remove(i);
             t.previous = t.position;
+            t.previous_yaw = t.yaw;
+            t.previous_pitch = t.pitch;
             t.age += 1;
             // AbstractArrow.tick: `if (shakeTime > 0) --shakeTime;`.
             t.shake -= i32::from(t.shake > 0);
@@ -795,6 +804,8 @@ impl Game<'_> {
                             let (velocity, yaw) = breeze_deflect(t.velocity, t.yaw, jitter);
                             t.velocity = velocity;
                             t.yaw = yaw;
+                            // ProjectileDeflection.REVERSE turns the old yaw by the same angle.
+                            t.previous_yaw += 170.0 + jitter * 20.0;
                             t.deflected_by = Some(breeze_id);
                         }
                     } else {

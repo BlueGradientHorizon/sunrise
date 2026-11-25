@@ -4260,6 +4260,8 @@ pub fn armor_stand_from_nbt(tag: &Tag, id: u32) -> Option<ArmorStand> {
     // and both head angles. Current body rotation starts at zero.
     a.body_yaw = 0.0;
     a.pitch = normalize_pitch(rot[1]);
+    // Entity.load ends with setOldPosAndRot.
+    a.previous_pitch = a.pitch;
     a.enchantment_fall_distance = float(tag.get("fall_distance")).unwrap_or(0.0);
     // AttributeMap.load makes an instance for each saved attribute.
     a.speed_instance = matches!(tag.get("attributes"), Some(Tag::List(list))

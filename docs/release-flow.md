@@ -206,6 +206,8 @@ which builds the tool every SDK and mod-tool release ships, refuses a build that
 with no `--sunrise` resolves to it through `SUNRISE_SDK_BASE`. It is an ordinary leg, outside `sdk_green`. A hand dispatch of
 `book-quickstart.yml` checks the published release instead.
 
+The [parity fuzz report](parity-workflow.md#fuzzing-scenarios) runs separately after parity on writing runs of main's head. Corpus regressions and exploratory divergences can file issues, but the summary, SDK and Nightly never wait for fuzz.
+
 The SDK publishes on its own legs (`sdk`, `machine-sample`, `fn-replace-check`: the summary's `sdk_green`) until a runner with prepared data exists (umceko, 2026-11-16). A red linkage probe fails its `sdk / build linux` or `sdk / build windows` job and blocks publication.
 
 Only a run on `main` with `dry_run` false moves the tag, files issues or publishes; a real run on `release/26.3`

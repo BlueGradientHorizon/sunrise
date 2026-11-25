@@ -675,6 +675,8 @@ pub struct GeneralRow {
     pub velocity: Vec3,
     /// The yaw and pitch in degrees.
     pub rotation: [f32; 2],
+    /// The yaw and pitch when the last tick began (`Entity.yRotO`, `xRotO`).
+    pub previous_rotation: [f32; 2],
     /// The UUID of the entity that fired it, kept and saved as `Owner`
     /// (`TraceableEntity.getOwner`); a spawn sets it.
     pub owner: Option<[i32; 4]>,
@@ -1346,6 +1348,7 @@ impl Game<'_> {
             position,
             velocity: Vec3::new(record.velocity[0], record.velocity[1], record.velocity[2]),
             rotation: record.rotation,
+            previous_rotation: record.rotation,
             owner: record.owner,
             fall_distance: 0.0,
             custom_name: record.custom_name,
@@ -1426,8 +1429,13 @@ impl Entity for GeneralRow {
     fn rotation(&self) -> [f32; 2] {
         self.rotation
     }
+    #[inline]
+    fn previous_rotation(&self) -> [f32; 2] {
+        self.previous_rotation
+    }
     fn set_rotation(&mut self, rotation: [f32; 2]) {
         self.rotation = rotation;
+        self.previous_rotation = rotation;
     }
     fn bounds(&self) -> Aabb {
         general_type_catalog().bounds(self.type_slot, self.position)
@@ -1796,6 +1804,7 @@ mod tests {
             previous: Vec3::new(0.5, 64.0, 0.5),
             velocity: Vec3::ZERO,
             rotation: [0.0, 0.0],
+            previous_rotation: [0.0, 0.0],
             owner: None,
             fall_distance: 0.0,
             custom_name: None,

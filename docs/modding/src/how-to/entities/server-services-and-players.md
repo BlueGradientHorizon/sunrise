@@ -117,6 +117,24 @@ JSON (`Option<String>`): namespaced statistic types and entries under `stats`,
 with the current `DataVersion`. An online player without counters has an empty
 map; a stale or unavailable player gives `None`, as does a client host.
 
+On the server, `player.advancement_progress(host, &id)` takes `&dyn Host` and
+returns `Option<AdvancementProgress>`, the same owned snapshot carried by
+`player_advancement_progress`: criteria with their stored grant dates (or `None`),
+requirement groups, satisfied group count, and `done`. An untouched loaded
+advancement answers with all criteria remaining and `done == false`; an unknown id,
+stale or offline player, or client host answers `None`.
+
+On the server, `player.award_advancement(host, &id, criterion)` and
+`player.revoke_advancement(host, &id, criterion)` take `&mut dyn ServerHost` and
+`criterion: Option<&str>` (`Some(name)` for one criterion, `None` for all
+remaining or obtained criteria) and return `Result<bool, AdvancementError>`.
+They route through the same engine path as triggers and `/advancement`, granting
+rewards, announcements, toasts, hooks and client updates on completion, and
+reporting `UnknownAdvancement`, `UnknownCriterion`, `PlayerUnavailable`,
+`NotServer`, or `NoBackend` on refusal. Inside a transaction, validation runs
+immediately while the change, its rewards, messages and hooks are deferred to
+the root commit and dropped on abort.
+
 `player.set_statistics(host, snapshot)` takes `&mut dyn ServerHost` and borrowed
 JSON. It upgrades older saves, reports decode errors and keeps recoverable
 registered counters. An absent or empty `stats` map clears the counters. It
@@ -627,6 +645,8 @@ kept body:
 | `is_crouching` | `LocalPlayer.isCrouching` for the local player: its own crouching flag, set before its input each tick, so it can differ from its pose for a tick. A kept entity's crouching pose otherwise. |
 | `LivingRef::no_jump_delay` | `LivingEntity.noJumpDelay` of the local player's prediction: 10 after a ground jump, counting down. `None` for other entities. |
 | `main_arm` | `LivingEntity.getMainArm` for every living entity the client tracks, as the server last sent it: another player's or a mannequin's main hand, a mob's left-handed flag; the local player's own Main Hand option. `None` for an entity that isn't living. |
+| `previous_position`, `previous_rotation` | `Entity.xo`, `yo`, `zo` and `yRotO`, `xRotO`: where the local player's or a ticked copy's tick began, the start of the step a frame eases along (`position_at(host, partial)` is `Entity.getPosition(float)`). `previous_rotation` answers where `rotation` does. |
+| `is_alive` | `Entity.isAlive` of the client's copy: a living entity's synced health above 0. `None` for an entity whose body the client doesn't keep. |
 
 Client reads are views, not server authority. Inventory access here is read-only;
 inventory and movement writes still require a server host.

@@ -220,6 +220,30 @@ impl crate::RenderAssets for EmptyClientReloadServices {
     ) -> Result<crate::RenderTypeRef, crate::RenderTypeError> {
         Err(crate::RenderTypeError::Unknown)
     }
+    fn entity_solid(
+        &self,
+        _: &crate::Identifier,
+    ) -> Result<crate::RenderTypeRef, crate::RenderTypeError> {
+        Err(crate::RenderTypeError::Unknown)
+    }
+    fn entity_cutout(
+        &self,
+        _: &crate::Identifier,
+    ) -> Result<crate::RenderTypeRef, crate::RenderTypeError> {
+        Err(crate::RenderTypeError::Unknown)
+    }
+    fn entity_translucent(
+        &self,
+        _: &crate::Identifier,
+    ) -> Result<crate::RenderTypeRef, crate::RenderTypeError> {
+        Err(crate::RenderTypeError::Unknown)
+    }
+    fn compute_pipeline(
+        &self,
+        _: &crate::Identifier,
+    ) -> Result<crate::ComputePipelineRef, crate::ComputePipelineError> {
+        Err(crate::ComputePipelineError::Unknown)
+    }
     fn pipeline_modifier(
         &self,
         _: &crate::Identifier,

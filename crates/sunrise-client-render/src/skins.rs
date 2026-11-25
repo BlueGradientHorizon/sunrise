@@ -1783,6 +1783,13 @@ impl SkinSlots {
     pub fn contains(&self, location: &str) -> bool {
         self.slots.iter().any(|(l, _)| l == location)
     }
+    /// The slot `location` holds, if any.
+    pub fn slot(&self, location: &str) -> Option<usize> {
+        self.slots
+            .iter()
+            .find(|(l, _)| l == location)
+            .map(|(_, slot)| *slot)
+    }
     /// A new frame: the skins `drawn` in the last one
     /// (`Downloader::take_drawn`) become the most recently drawn, and keep
     /// their slots through this frame's `place`s.

@@ -14,6 +14,7 @@ use std::{
     path::Path,
     sync::{Arc, Mutex, OnceLock},
 };
+use sunrise_hooks::items::engine::CreativeOrder;
 use sunrise_items::{
     creative_catalog::{Catalog, Kind, TabContents},
     item_data::component_snapshot,
@@ -534,9 +535,11 @@ impl Creative {
         self.index_search();
     }
 
-    /// The built-in sorter keeps the creative UI's ranking for ungrouped items, too.
-    pub fn search_order_from(&self, contents: &[Arc<TabContents>]) -> Vec<ItemStack> {
-        self.with_ungrouped(self.catalog.search_display(contents))
+    /// Vanilla's creative order of `contents`, ungrouped items last: a stack's own place in the
+    /// search tab, else its item's first. The built-in sorter ranks by it, and the platform reads it.
+    pub fn stock_order(&self, contents: &[Arc<TabContents>]) -> CreativeOrder {
+        let stacks = self.with_ungrouped(self.catalog.search_display(contents));
+        CreativeOrder::new(stacks.iter().map(|s| (s.item.as_ref(), s.merge_kind())))
     }
 
     fn with_ungrouped(&self, search: &[ItemStack]) -> Vec<ItemStack> {
@@ -706,15 +709,6 @@ impl Creative {
             .position(|t| t.id == "minecraft:building_blocks");
         self.select(default.unwrap_or(0));
         true
-    }
-    /// Where a stack comes in the creative tabs (the search tab lists them
-    /// all, in tab order): the same stack's place, else its item's first.
-    /// None for items the tabs don't show.
-    pub fn order_of(items: &[ItemStack], stack: &ItemStack) -> Option<usize> {
-        items
-            .iter()
-            .position(|s| s.same_item_same_components(stack))
-            .or_else(|| items.iter().position(|s| s.item == stack.item))
     }
     /// The tabs without their stacks: what the screen draws of them each frame.
     pub fn tab_headers(&self) -> Vec<Tab> {
@@ -2099,6 +2093,31 @@ mod tests {
 
     fn ids(items: &[ItemStack]) -> Vec<&str> {
         items.iter().map(|s| s.item.as_ref()).collect()
+    }
+
+    #[test]
+    fn the_stock_order_is_the_search_tabs_places_without_publishing_anything() {
+        let c = with_operator_tab();
+        let build = |operator| {
+            c.catalog.build(
+                Parameters {
+                    operator,
+                    features: &[],
+                    holders: &Default::default(),
+                    items: &crate::items::Items::empty(),
+                },
+                None,
+                |_, _, _| {},
+            )
+        };
+        let place =
+            |order: &CreativeOrder, id: &str| order.of(id, ItemStack::new(id, 1).merge_kind());
+        let normal = c.stock_order(&build(false));
+        assert_eq!(place(&normal, "minecraft:stone"), Some(0));
+        assert_eq!(place(&normal, "minecraft:barrier"), None);
+        let operator = c.stock_order(&build(true));
+        assert_eq!(place(&operator, "minecraft:command_block"), Some(1));
+        assert_eq!(place(&operator, "minecraft:barrier"), Some(2));
     }
 
     #[test]

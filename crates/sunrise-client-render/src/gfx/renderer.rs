@@ -195,6 +195,12 @@ pub struct Renderer {
     /// Retained GPU storage buffers backing [`mod_api::StorageBufferRef`]; they outlive a resource
     /// reload and a world close.
     pub(crate) mod_storage: std::sync::Mutex<mod_storage::ModStorageBuffers>,
+    /// Mod-owned offscreen GPU render targets backing [`mod_api::RenderTargetRef`].
+    pub(crate) mod_render_targets: std::sync::Mutex<mod_render_targets::ModRenderTargets>,
+    /// Cross-frame pool of transient GPU render targets for `Hooks::frame_graph_setup`.
+    pub(crate) transient_targets: std::sync::Mutex<mod_frame_graph::TransientTargetPool>,
+    /// Distinct frame-graph cycle pass-label sets already logged once since last reload.
+    pub(crate) warned_frame_graph_cycles: std::sync::Mutex<std::collections::HashSet<Vec<String>>>,
     pub(crate) text_polygon_offset_pipeline: wgpu::RenderPipeline,
     pub(crate) world_text_pipeline: wgpu::RenderPipeline,
     pub(crate) text_mark_pipelines: [wgpu::RenderPipeline; 2],
@@ -243,6 +249,8 @@ pub struct Renderer {
     pub(crate) static_entity_indices: wgpu::Buffer,
     pub(crate) static_entity_index_quads: u32,
     pub(crate) entity_batch: EntityBatch,
+    /// Quads of client mods' dynamic textures (`BlockEntityDrawContext::textured_quad`).
+    pub(super) dynamic_entity: dynamic_entity::DynamicEntity,
     pub(crate) entity_order: entity_skin::OrdinaryOrder,
     /// Ordinary entity models posed on the GPU; `None` without compute shaders.
     pub(crate) entity_skin: Option<entity_skin::EntitySkin>,

@@ -13,6 +13,7 @@
 
 use super::expression_blocks::{VANILLA_OFFSETS, VANILLA_SIZES, block_entry};
 use super::mod_meshes::{ResolvedMeshDraw, wgpu_index_format};
+use super::mod_render_targets::{TargetMips, TargetUse};
 use super::world_primitives::{Upload, VertexPages};
 use crate::mod_pipelines::{Built, BuiltTexture, ModifierStacks, Pipelines};
 use glam::Mat4;
@@ -78,6 +79,77 @@ pub enum PipelineDrawSource {
     },
     /// Zero-copy retained GPU buffers resolved from a [`mod_api::MeshRef`].
     Retained(ResolvedMeshDraw),
+    /// Commands read on the GPU from a retained storage buffer ([`mod_api::IndirectDraw`]). The
+    /// command's `draw` range is unused.
+    Indirect(IndirectSource),
+}
+
+/// What an [`mod_api::IndirectDraw`] resolved to: the mesh buffers it binds, and the commands
+/// it draws (vanilla `RenderPass.drawIndexedIndirect(commands, drawCount)`).
+#[derive(Clone, Debug)]
+pub struct IndirectSource {
+    /// The buffers of the draw's [`mod_api::MeshRef`]; `None` for a pipeline that pulls its
+    /// geometry from a storage buffer. The commands are indexed iff it has an index buffer.
+    pub mesh: Option<ResolvedMeshDraw>,
+    /// The buffer holding the commands, created with `INDIRECT` usage.
+    pub buffer: wgpu::Buffer,
+    /// Byte offset of the first command, a multiple of 4 inside `buffer` for all `max_count`.
+    pub offset: u64,
+    /// How many commands are drawn.
+    pub max_count: u32,
+}
+
+impl IndirectSource {
+    /// Check `max_count` commands from `offset` of `buffer` against how they are drawn, before
+    /// any GPU call: a non-indexed draw (`mesh` without an index buffer) cannot take a pipeline
+    /// of a `Quads`, `Lines` or `TriangleFan` `topology`, which the engine expands from a vertex
+    /// range an indirect command does not give it; `buffer` needs `INDIRECT` usage and a
+    /// 4-byte `offset`, and must hold `max_count` commands of vanilla's
+    /// `INDIRECT_INDEXED_DRAW_SIZE` (indexed) or `INDIRECT_DRAW_SIZE` bytes.
+    pub fn new(
+        topology: PrimitiveTopology,
+        mesh: Option<ResolvedMeshDraw>,
+        buffer: wgpu::Buffer,
+        offset: u64,
+        max_count: u32,
+    ) -> Result<Self, mod_api::PipelineDrawError> {
+        let source = Self {
+            mesh,
+            buffer,
+            offset,
+            max_count,
+        };
+        let stride = if source.index_buffer().is_some() {
+            mod_api::INDIRECT_INDEXED_DRAW_SIZE
+        } else {
+            if matches!(
+                topology,
+                PrimitiveTopology::Quads
+                    | PrimitiveTopology::Lines
+                    | PrimitiveTopology::TriangleFan
+            ) {
+                return Err(mod_api::PipelineDrawError::TopologyMismatch);
+            }
+            mod_api::INDIRECT_DRAW_SIZE
+        };
+        if !source.buffer.usage().contains(wgpu::BufferUsages::INDIRECT)
+            || !offset.is_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT)
+            || u64::from(max_count)
+                .checked_mul(stride)
+                .and_then(|bytes| bytes.checked_add(offset))
+                .is_none_or(|end| end > source.buffer.size())
+        {
+            return Err(mod_api::PipelineDrawError::InvalidIndirect);
+        }
+        Ok(source)
+    }
+
+    /// The index buffer and format that make the commands indexed, if any.
+    fn index_buffer(&self) -> Option<&(wgpu::Buffer, wgpu::IndexFormat)> {
+        self.mesh
+            .as_ref()
+            .and_then(|mesh| mesh.index_buffer.as_ref())
+    }
 }
 
 /// One resolved set-1 binding entry for a [`PipelineDraw`] (`#5428`).
@@ -95,6 +167,8 @@ pub enum ResolvedSet1Entry {
     Texture {
         view_id: u64,
         view: wgpu::TextureView,
+        /// The render target mip range the view covers, when it is one.
+        mips: Option<TargetMips>,
     },
     /// Expanded `i32`/`u32` texel buffer byte range in `Batch::texel_data` / `Batch::oit_texel_data`.
     TexelBuffer { byte_range: std::ops::Range<usize> },
@@ -106,6 +180,23 @@ pub enum ResolvedSet1Entry {
         offset: u64,
         size: u64,
     },
+    /// One mip level of a render target colour attachment bound as a storage image, already
+    /// checked against the target's storage access, with the texel `format` of its texture.
+    StorageImage {
+        view_id: u64,
+        view: wgpu::TextureView,
+        format: wgpu::TextureFormat,
+        mips: TargetMips,
+    },
+    /// Transient frame-graph target colour attachment, resolved to a pooled GPU texture view
+    /// right before executing the pass in [`super::mod_frame_graph`].
+    TransientColor {
+        target: mod_api::TransientTargetId,
+        attachment: u8,
+    },
+    /// Transient frame-graph target depth attachment, resolved to a pooled GPU texture view
+    /// right before executing the pass in [`super::mod_frame_graph`].
+    TransientDepth { target: mod_api::TransientTargetId },
 }
 
 /// Resolved set-1 resource bindings for one [`PipelineDraw`] in exact declaration order.
@@ -252,10 +343,23 @@ pub(crate) fn fallback_vanilla_blocks(
     bytes
 }
 
+/// Per-pass draw payload for [`ModPipelines::execute_offscreen_pass`].
+pub struct OffscreenPassData<'a> {
+    pub pass: &'a mod_api::OffscreenPass,
+    pub target: &'a super::mod_render_targets::ResolvedOffscreenTarget,
+    pub draws: &'a [PipelineDraw],
+    pub transient_vertices: &'a [u8],
+    pub transient_indices: &'a [u8],
+    pub inline_uniforms: &'a [u8],
+    pub texel_data: &'a [u8],
+}
+
 /// Target attachment and Z-direction state for [`ModPipelines::build_render_pipeline`].
 #[derive(Clone, Copy)]
 struct TargetState<'a> {
     color_formats: &'a [wgpu::TextureFormat],
+    depth_format: Option<wgpu::TextureFormat>,
+    force_depth_attachment: bool,
     standard_z: bool,
     write_mask: wgpu::ColorWrites,
 }
@@ -505,6 +609,51 @@ impl FanIndices {
     }
 }
 
+/// Append `bytes` to the persistent offscreen buffer `slot` at the next `align`ed offset after
+/// `cursor`, growing the buffer (a power of two, capped at the device's legal buffer size) when
+/// it does not fit, and return that offset. Passes recorded earlier this frame keep the buffer
+/// they were written to alive. `None` when `bytes` is empty or the frame's passes exceed the
+/// device's largest legal buffer.
+#[allow(clippy::too_many_arguments)]
+fn stage_offscreen_bytes(
+    slot: &mut Option<wgpu::Buffer>,
+    cursor: &mut u64,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    label: &'static str,
+    usage: wgpu::BufferUsages,
+    align: u64,
+    bytes: &[u8],
+) -> Option<u64> {
+    if bytes.is_empty() {
+        return None;
+    }
+    let limit = super::upload::legal_buffer_limit(device);
+    let base = cursor.next_multiple_of(align.max(4));
+    let end = base + (bytes.len() as u64).next_multiple_of(4);
+    if end > limit {
+        return None;
+    }
+    if slot.as_ref().is_none_or(|buffer| buffer.size() < end) {
+        *slot = Some(device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(label),
+            size: end.next_power_of_two().clamp(4096, limit.max(4096)),
+            usage: usage | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        }));
+    }
+    let buffer = slot.as_ref()?;
+    if bytes.len().is_multiple_of(4) {
+        queue.write_buffer(buffer, base, bytes);
+    } else {
+        let mut padded = bytes.to_vec();
+        padded.resize(bytes.len().next_multiple_of(4), 0);
+        queue.write_buffer(buffer, base, &padded);
+    }
+    *cursor = end;
+    Some(base)
+}
+
 /// Ensure a resizable transient GPU byte buffer holds at least `bytes.len()` bytes (capped at
 /// `legal_buffer_limit(device)`) and upload `bytes` to it.
 fn upload_transient_bytes(
@@ -580,6 +729,17 @@ struct CompiledOit {
 struct CompiledSet1Entry {
     binding: u32,
     kind: BindingKind,
+    /// The texel format the shader declares for a [`BindingKind::StorageImage`] entry.
+    storage_format: Option<wgpu::TextureFormat>,
+}
+
+/// Key of one render target mip level within a pass scope: `(scope, texture, mip level)`.
+type TargetLevel = (u32, u64, u32);
+
+/// Whether a conflicting use was found on a level of `mips` in pass `scope`.
+fn mips_conflict(conflicts: &HashSet<TargetLevel>, scope: u32, mips: &TargetMips) -> bool {
+    mips.levels()
+        .any(|level| conflicts.contains(&(scope, mips.texture, level)))
 }
 
 /// Cache key for one resource slot in a cached set-1 `wgpu::BindGroup`.
@@ -595,6 +755,8 @@ enum Set1ResourceKey {
     TexelBuffer(u64, u64),
     /// Retained storage buffer range `(unique_id, offset, size)`.
     Storage(u64, u64, u64),
+    /// Storage image view `(unique_view_id)`.
+    StorageImage(u64),
 }
 
 /// Cache key for reusing a set-1 `wgpu::BindGroup` while the same resources are drawn.
@@ -659,12 +821,20 @@ pub struct ModPipelines {
     mod_samplers: [[wgpu::Sampler; 3]; 2],
     /// Shared 1024-byte vanilla uniform buffer (`Globals`, `Projection`, `DynamicTransforms`, `Fog`).
     vanilla: wgpu::Buffer,
+    /// CPU copy of the most recently uploaded `vanilla` blocks so offscreen passes can override
+    /// `Projection`/`ModelViewMat`/`ScreenSize` and restore afterwards in command-buffer order.
+    last_vanilla_blocks: [u8; 1024],
     /// Same blocks with `Projection` adapted to shader-pack GL coordinates (`pack_clip_matrix`).
     pack_vanilla: wgpu::Buffer,
     vertices: VertexPages,
     oit_vertices: VertexPages,
     transient_vbuf: Option<wgpu::Buffer>,
     transient_ibuf: Option<wgpu::Buffer>,
+    /// Persistent grow-only buffers the frame's offscreen passes share, one per kind (vertex,
+    /// index, inline uniform, texel): each pass writes its own range after the previous one's,
+    /// from the cursor in `offscreen_cursors`, which [`Self::begin_frame`] resets.
+    offscreen_buffers: [Option<wgpu::Buffer>; 4],
+    offscreen_cursors: [u64; 4],
     oit_transient_vbuf: Option<wgpu::Buffer>,
     oit_transient_ibuf: Option<wgpu::Buffer>,
     /// Per-frame growing GPU uniform ring buffer for `UniformValue::Inline` and push constants.
@@ -684,6 +854,14 @@ pub struct ModPipelines {
     /// Buffer ids already warned about, so a persisting conflict logs once. Cleared on reload
     /// and trimmed when a buffer is released.
     warned_storage_conflicts: HashSet<u64>,
+    /// Scratch for the frame's render-target usage check: how each `(pass scope, texture id,
+    /// mip level)` is used, as [`TargetUse::bit`] sets. Cleared per frame; keeps its capacity.
+    target_uses: HashMap<TargetLevel, u8>,
+    /// Scratch: the levels used in a way one pass cannot combine, whose draws are skipped.
+    target_conflicts: HashSet<TargetLevel>,
+    /// Texture ids already warned about, so a persisting conflict logs once. Cleared on reload
+    /// and trimmed when a render target is released.
+    warned_target_conflicts: HashSet<u64>,
     fan_indices: FanIndices,
     /// The load `pipelines` was built from; 0 before any.
     generation: u64,
@@ -696,6 +874,11 @@ pub struct ModPipelines {
         (wgpu::TextureFormat, bool),
         Vec<Option<wgpu::RenderPipeline>>,
     )>,
+    /// Lazily built offscreen variants keyed by `(slot, color_formats, depth_format)`.
+    offscreen_pipelines: HashMap<
+        (usize, Vec<wgpu::TextureFormat>, Option<wgpu::TextureFormat>),
+        Option<wgpu::RenderPipeline>,
+    >,
     runs: Vec<Run>,
     oit_runs: Vec<Run>,
     /// Modifier slot sequences seen since `pipelines` was built, each with its stable variant
@@ -704,16 +887,18 @@ pub struct ModPipelines {
     variant_ids: HashMap<Vec<u32>, u32>,
     draws: Vec<PreparedDraw>,
     oit_draws: Vec<PreparedDraw>,
+    /// The compute pipelines of the same load (`mod_compute`).
+    pub(super) compute: super::mod_compute::ModCompute,
 }
 
-fn sampler_filter_idx(filter: SamplerFilter) -> usize {
+pub(super) fn sampler_filter_idx(filter: SamplerFilter) -> usize {
     match filter {
         SamplerFilter::Linear => 1,
         _ => 0,
     }
 }
 
-fn sampler_address_idx(address: SamplerAddress) -> usize {
+pub(super) fn sampler_address_idx(address: SamplerAddress) -> usize {
     match address {
         SamplerAddress::Repeat => 1,
         SamplerAddress::MirroredRepeat => 2,
@@ -721,7 +906,7 @@ fn sampler_address_idx(address: SamplerAddress) -> usize {
     }
 }
 
-fn create_mod_samplers(device: &wgpu::Device) -> [[wgpu::Sampler; 3]; 2] {
+pub(super) fn create_mod_samplers(device: &wgpu::Device) -> [[wgpu::Sampler; 3]; 2] {
     let filters = [wgpu::FilterMode::Nearest, wgpu::FilterMode::Linear];
     let addresses = [
         wgpu::AddressMode::ClampToEdge,
@@ -742,6 +927,37 @@ fn create_mod_samplers(device: &wgpu::Device) -> [[wgpu::Sampler; 3]; 2] {
             })
         })
     })
+}
+
+/// The texel format `built`'s shader declares (`layout(rgba8) uniform image2D`) for the storage
+/// image at set-1 `binding`, when it is one a render target can have.
+fn storage_image_format(built: &Built, binding: u32) -> Option<wgpu::TextureFormat> {
+    [&built.program.vertex, &built.program.fragment]
+        .into_iter()
+        .find_map(|module| {
+            module
+                .global_variables
+                .iter()
+                .filter(|(_, var)| {
+                    var.binding.as_ref().is_some_and(|at| {
+                        at.group == sunrise_mod_pipeline::MOD_BIND_GROUP_SET
+                            && at.binding == binding
+                    })
+                })
+                .find_map(|(_, var)| match module.types[var.ty].inner {
+                    naga::TypeInner::Image {
+                        class: naga::ImageClass::Storage { format, .. },
+                        ..
+                    } => Some(format),
+                    _ => None,
+                })
+        })
+        .and_then(|format| match format {
+            naga::StorageFormat::Rgba8Unorm => Some(wgpu::TextureFormat::Rgba8Unorm),
+            naga::StorageFormat::Rgba16Float => Some(wgpu::TextureFormat::Rgba16Float),
+            naga::StorageFormat::R32Float => Some(wgpu::TextureFormat::R32Float),
+            _ => None,
+        })
 }
 
 fn build_set1_layout(
@@ -767,6 +983,7 @@ fn build_set1_layout(
     let mut texture_count = 0u32;
     let mut sampler_count = 0u32;
     let mut storage_count = 0u32;
+    let mut storage_image_count = 0u32;
     for entry in &built.bind_group_layout.entries {
         match entry.kind {
             BindingKind::UniformBuffer { min_size } => {
@@ -791,6 +1008,7 @@ fn build_set1_layout(
                 compiled_entries.push(CompiledSet1Entry {
                     binding: next_binding,
                     kind: entry.kind,
+                    storage_format: None,
                 });
                 next_binding += 1;
             }
@@ -821,6 +1039,7 @@ fn build_set1_layout(
                 compiled_entries.push(CompiledSet1Entry {
                     binding: next_binding,
                     kind: entry.kind,
+                    storage_format: None,
                 });
                 next_binding += 2;
             }
@@ -839,6 +1058,7 @@ fn build_set1_layout(
                 compiled_entries.push(CompiledSet1Entry {
                     binding: next_binding,
                     kind: entry.kind,
+                    storage_format: None,
                 });
                 next_binding += 1;
             }
@@ -881,6 +1101,60 @@ fn build_set1_layout(
                 compiled_entries.push(CompiledSet1Entry {
                     binding: next_binding,
                     kind: entry.kind,
+                    storage_format: None,
+                });
+                next_binding += 1;
+            }
+            BindingKind::StorageImage { access } => {
+                storage_image_count += 1;
+                let Some(format) = storage_image_format(built, next_binding) else {
+                    return Err(format!(
+                        "storage image `{}` needs a `layout(rgba8)`, `layout(rgba16f)` or `layout(r32f)` declaration in its shader",
+                        entry.name
+                    ));
+                };
+                let (access, read_only) = match access {
+                    mod_api::StorageImageAccess::WriteOnly => {
+                        (wgpu::StorageTextureAccess::WriteOnly, false)
+                    }
+                    mod_api::StorageImageAccess::ReadOnly => {
+                        (wgpu::StorageTextureAccess::ReadOnly, true)
+                    }
+                    mod_api::StorageImageAccess::ReadWrite => {
+                        (wgpu::StorageTextureAccess::ReadWrite, false)
+                    }
+                    _ => {
+                        return Err(format!(
+                            "unsupported storage image access for `{}`",
+                            entry.name
+                        ));
+                    }
+                };
+                // As for storage buffers, wgpu lets only a device with
+                // `VERTEX_WRITABLE_STORAGE` write a storage texture in the vertex stage.
+                let visibility = if read_only
+                    || device
+                        .features()
+                        .contains(wgpu::Features::VERTEX_WRITABLE_STORAGE)
+                {
+                    wgpu::ShaderStages::VERTEX_FRAGMENT
+                } else {
+                    wgpu::ShaderStages::FRAGMENT
+                };
+                layout_entries.push(wgpu::BindGroupLayoutEntry {
+                    binding: next_binding,
+                    visibility,
+                    ty: wgpu::BindingType::StorageTexture {
+                        access,
+                        format,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                    },
+                    count: None,
+                });
+                compiled_entries.push(CompiledSet1Entry {
+                    binding: next_binding,
+                    kind: entry.kind,
+                    storage_format: Some(format),
                 });
                 next_binding += 1;
             }
@@ -939,6 +1213,12 @@ fn build_set1_layout(
             limits.max_storage_buffers_per_shader_stage
         ));
     }
+    if storage_image_count > limits.max_storage_textures_per_shader_stage {
+        return Err(format!(
+            "set-1 storage image count ({storage_image_count}) exceeds device max_storage_textures_per_shader_stage ({})",
+            limits.max_storage_textures_per_shader_stage
+        ));
+    }
     let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("Mod pipeline set-1"),
         entries: &layout_entries,
@@ -991,11 +1271,14 @@ impl ModPipelines {
             non_filtering_sampler,
             mod_samplers,
             vanilla,
+            last_vanilla_blocks: fallback_vanilla_blocks(Mat4::IDENTITY, [1, 1], 0.0),
             pack_vanilla,
             vertices: VertexPages::default(),
             oit_vertices: VertexPages::default(),
             transient_vbuf: None,
             transient_ibuf: None,
+            offscreen_buffers: [None, None, None, None],
+            offscreen_cursors: [0; 4],
             oit_transient_vbuf: None,
             oit_transient_ibuf: None,
             inline_uniform_buf: None,
@@ -1006,11 +1289,16 @@ impl ModPipelines {
             storage_uses: HashMap::new(),
             storage_conflicts: HashSet::new(),
             warned_storage_conflicts: HashSet::new(),
+            target_uses: HashMap::new(),
+            target_conflicts: HashSet::new(),
+            warned_target_conflicts: HashSet::new(),
+            compute: Default::default(),
             fan_indices: FanIndices::default(),
             generation: 0,
             oit_generation: 0,
             pipelines: Vec::new(),
             pack_pipelines: None,
+            offscreen_pipelines: HashMap::new(),
             runs: Vec::new(),
             oit_runs: Vec::new(),
             variant_ids: HashMap::new(),
@@ -1071,32 +1359,44 @@ impl ModPipelines {
                 })
                 .collect()
         };
-        let depth_stencil = state.depth_stencil.map(|ds| {
-            let compare = if target.standard_z {
-                ds.compare.flip_for_standard_z()
-            } else {
-                ds.compare
-            };
-            let (constant, slope_scale) = if target.standard_z {
-                (
-                    ds.depth_bias_constant.saturating_neg(),
-                    -ds.depth_bias_slope_scale,
-                )
-            } else {
-                (ds.depth_bias_constant, ds.depth_bias_slope_scale)
-            };
-            wgpu::DepthStencilState {
-                format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: Some(ds.write),
-                depth_compare: Some(wgpu_compare(compare)),
-                stencil: Default::default(),
-                bias: wgpu::DepthBiasState {
-                    constant,
-                    slope_scale,
-                    clamp: 0.0,
-                },
+        let depth_stencil = match (target.depth_format, state.depth_stencil) {
+            (Some(format), Some(ds)) => {
+                let compare = if target.standard_z {
+                    ds.compare.flip_for_standard_z()
+                } else {
+                    ds.compare
+                };
+                let (constant, slope_scale) = if target.standard_z {
+                    (
+                        ds.depth_bias_constant.saturating_neg(),
+                        -ds.depth_bias_slope_scale,
+                    )
+                } else {
+                    (ds.depth_bias_constant, ds.depth_bias_slope_scale)
+                };
+                Some(wgpu::DepthStencilState {
+                    format,
+                    depth_write_enabled: Some(ds.write),
+                    depth_compare: Some(wgpu_compare(compare)),
+                    stencil: Default::default(),
+                    bias: wgpu::DepthBiasState {
+                        constant,
+                        slope_scale,
+                        clamp: 0.0,
+                    },
+                })
             }
-        });
+            (Some(format), None) if target.force_depth_attachment => {
+                Some(wgpu::DepthStencilState {
+                    format,
+                    depth_write_enabled: Some(false),
+                    depth_compare: Some(wgpu::CompareFunction::Always),
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                })
+            }
+            _ => None,
+        };
 
         let buffers = wgpu_buffer_layouts(vertex_layouts);
         let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
@@ -1564,6 +1864,8 @@ impl ModPipelines {
             &built.color_targets,
             TargetState {
                 color_formats: &[self.color_format],
+                depth_format: Some(wgpu::TextureFormat::Depth32Float),
+                force_depth_attachment: false,
                 standard_z: false,
                 write_mask: wgpu::ColorWrites::ALL,
             },
@@ -1632,6 +1934,8 @@ impl ModPipelines {
         let color_formats = [format];
         let target = TargetState {
             color_formats: &color_formats,
+            depth_format: Some(wgpu::TextureFormat::Depth32Float),
+            force_depth_attachment: false,
             standard_z: true,
             write_mask: if rgb {
                 wgpu::ColorWrites::COLOR
@@ -1683,6 +1987,8 @@ impl ModPipelines {
         let color_formats = [format];
         let target = TargetState {
             color_formats: &color_formats,
+            depth_format: Some(wgpu::TextureFormat::Depth32Float),
+            force_depth_attachment: false,
             standard_z: true,
             write_mask: if rgb {
                 wgpu::ColorWrites::COLOR
@@ -1746,7 +2052,9 @@ impl ModPipelines {
         set: &Pipelines,
         textures: Option<TextureSources<'_>>,
     ) -> Result<(), String> {
-        self.build_with(set, |this, built| this.pipeline(device, built, textures))
+        self.build_with(set, |this, built| this.pipeline(device, built, textures))?;
+        self.compute.build(device, set.compute());
+        Ok(())
     }
 
     fn build_with(
@@ -1792,8 +2100,10 @@ impl ModPipelines {
         self.pipelines = pipelines;
         self.variant_ids.clear();
         self.pack_pipelines = None;
+        self.offscreen_pipelines.clear();
         self.set1_bind_group_cache.clear();
         self.warned_storage_conflicts.clear();
+        self.warned_target_conflicts.clear();
         Ok(())
     }
 
@@ -1955,6 +2265,8 @@ impl ModPipelines {
             &compiled.color_targets,
             TargetState {
                 color_formats: &color_formats,
+                depth_format: Some(wgpu::TextureFormat::Depth32Float),
+                force_depth_attachment: false,
                 standard_z: false,
                 write_mask: wgpu::ColorWrites::ALL,
             },
@@ -2238,6 +2550,12 @@ impl ModPipelines {
             && self.draws.is_empty()
             && self.oit_draws.is_empty()
         {
+            if let Some(blocks) = vanilla_blocks {
+                self.last_vanilla_blocks.copy_from_slice(blocks);
+                upload(&self.vanilla, blocks);
+                let pack_blocks = pack_vanilla_blocks(blocks);
+                upload(&self.pack_vanilla, &pack_blocks);
+            }
             return 0;
         }
         self.prepare_set1_bindings(device, upload, batch);
@@ -2309,10 +2627,532 @@ impl ModPipelines {
                 &fallback
             }
         };
+        self.last_vanilla_blocks.copy_from_slice(blocks);
         upload(&self.vanilla, blocks);
         let pack_blocks = pack_vanilla_blocks(blocks);
         upload(&self.pack_vanilla, &pack_blocks);
         max_index_quads
+    }
+
+    /// Start a frame's offscreen passes: their persistent buffers are written from the start
+    /// again, since the previous frame's passes have been submitted.
+    pub fn begin_frame(&mut self) {
+        self.offscreen_cursors = [0; 4];
+    }
+
+    /// Maximum quad index count needed by `draws` for an offscreen pass.
+    pub fn offscreen_needed_quads(&self, draws: &[PipelineDraw]) -> u32 {
+        let mut max_quads = 0u32;
+        for cmd in draws {
+            let Some(Some(compiled)) = self.pipelines.get(cmd.slot as usize) else {
+                continue;
+            };
+            if let DrawRange::Vertices(ref range) = cmd.draw.range
+                && matches!(
+                    compiled.state.topology,
+                    PrimitiveTopology::Quads | PrimitiveTopology::Lines
+                )
+            {
+                max_quads = max_quads.max(range.end.saturating_sub(range.start) / 4);
+            }
+        }
+        max_quads
+    }
+
+    /// Ensure an offscreen `wgpu::RenderPipeline` variant exists for `(slot, color_formats, depth_format)`.
+    fn ensure_offscreen_pipeline(
+        &mut self,
+        device: &wgpu::Device,
+        slot: usize,
+        color_formats: &[wgpu::TextureFormat],
+        depth_format: Option<wgpu::TextureFormat>,
+    ) {
+        let key = (slot, color_formats.to_vec(), depth_format);
+        if self.offscreen_pipelines.contains_key(&key) {
+            return;
+        }
+        let compiled_opt = self.pipelines.get(slot).and_then(Option::as_ref);
+        let built = compiled_opt.and_then(|c| {
+            let target = TargetState {
+                color_formats,
+                depth_format,
+                force_depth_attachment: depth_format.is_some(),
+                standard_z: false,
+                write_mask: wgpu::ColorWrites::ALL,
+            };
+            match Self::build_render_pipeline(
+                device,
+                &format!("{}/offscreen", c.id),
+                &c.pipeline_layout,
+                &c.vertex_shader,
+                &c.fragment_shader,
+                &c.vertex_layouts,
+                c.state,
+                &c.color_targets,
+                target,
+            ) {
+                Ok(pipeline) => Some(pipeline),
+                Err(error) => {
+                    log::warn!(
+                        "Sunrise: mod pipeline slot {slot} refused for offscreen target ({color_formats:?}, {depth_format:?}): {error}"
+                    );
+                    None
+                }
+            }
+        });
+        self.offscreen_pipelines.insert(key, built);
+    }
+
+    /// Record an offscreen render pass targeting `data.target` into `encoder`.
+    ///
+    /// Overrides `Globals.ScreenSize`, optional `Projection.ProjMat`, and optional
+    /// `DynamicTransforms.ModelViewMat` in command-buffer order via `copy_buffer_to_buffer`
+    /// and restores the main pass's vanilla uniform blocks immediately after the pass ends.
+    pub fn execute_offscreen_pass(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        indices: &wgpu::Buffer,
+        data: &OffscreenPassData<'_>,
+    ) {
+        use wgpu::util::DeviceExt;
+        let upload: Upload<'_> = &mut |buffer, bytes| queue.write_buffer(buffer, 0, bytes);
+        let mut max_fan_verts = 0u32;
+        for cmd in data.draws {
+            let slot = cmd.slot as usize;
+            self.ensure_offscreen_pipeline(
+                device,
+                slot,
+                &data.target.color_formats,
+                data.target.depth_format,
+            );
+            if let Some(Some(compiled)) = self.pipelines.get(slot)
+                && compiled.state.topology == PrimitiveTopology::TriangleFan
+                && let DrawRange::Vertices(ref range) = cmd.draw.range
+            {
+                max_fan_verts = max_fan_verts.max(range.end.saturating_sub(range.start));
+            }
+        }
+        if max_fan_verts >= 3 {
+            self.fan_indices
+                .ensure_with_upload(device, upload, max_fan_verts);
+        }
+        // Each pass takes its own range of the frame's persistent offscreen buffers so several
+        // passes in one CommandEncoder (e.g. a multi-pass frame graph) never clobber each
+        // other's vertices, indices, or set-1 staging data.
+        let [vertex_slot, index_slot, ..] = &mut self.offscreen_buffers;
+        let [vertex_cursor, index_cursor, ..] = &mut self.offscreen_cursors;
+        let vertex_base = stage_offscreen_bytes(
+            vertex_slot,
+            vertex_cursor,
+            device,
+            queue,
+            "Mod offscreen transient vertices",
+            wgpu::BufferUsages::VERTEX,
+            16,
+            data.transient_vertices,
+        );
+        let index_base = stage_offscreen_bytes(
+            index_slot,
+            index_cursor,
+            device,
+            queue,
+            "Mod offscreen transient indices",
+            wgpu::BufferUsages::INDEX,
+            16,
+            data.transient_indices,
+        );
+        let transient_vbuf = vertex_base.and(self.offscreen_buffers[0].clone());
+        let transient_ibuf = index_base.and(self.offscreen_buffers[1].clone());
+        let (vertex_base, index_base) = (vertex_base.unwrap_or(0), index_base.unwrap_or(0));
+
+        // Stage per-draw set-1 inline uniforms and texel buffers into dedicated offscreen
+        // buffers so main-pass buffers are never overwritten before submission.
+        let ubo_align = (device.limits().min_uniform_buffer_offset_alignment as usize).max(16);
+        let storage_align = (device.limits().min_storage_buffer_offset_alignment as usize).max(4);
+        let mut inline_staging: Vec<u8> = Vec::new();
+        let mut texel_staging: Vec<u8> = Vec::new();
+        let mut staged_meta: Vec<Option<(Vec<(u32, u64)>, Vec<(u64, u64)>)>> =
+            Vec::with_capacity(data.draws.len());
+
+        for cmd in data.draws {
+            let Some(Some(compiled)) = self.pipelines.get(cmd.slot as usize) else {
+                staged_meta.push(None);
+                continue;
+            };
+            if compiled.set1_layout.is_none() {
+                staged_meta.push(None);
+                continue;
+            }
+            let Some(bindings) = &cmd.bindings else {
+                staged_meta.push(None);
+                continue;
+            };
+            if bindings.entries.len() != compiled.set1_entries.len() {
+                staged_meta.push(None);
+                continue;
+            }
+            let mut inline_spans = Vec::new();
+            let mut texel_spans = Vec::new();
+            let mut ok = true;
+            for (entry, spec) in bindings.entries.iter().zip(&compiled.set1_entries) {
+                match (entry, spec.kind) {
+                    (
+                        ResolvedSet1Entry::InlineUniform { byte_range },
+                        BindingKind::UniformBuffer { min_size },
+                    ) => {
+                        let Some(slice) = data.inline_uniforms.get(byte_range.clone()) else {
+                            ok = false;
+                            break;
+                        };
+                        let start = align_up_usize(inline_staging.len(), ubo_align);
+                        inline_staging.resize(start, 0);
+                        let padded_len = align_up_usize(slice.len().max(min_size as usize), 16);
+                        inline_staging.extend_from_slice(slice);
+                        inline_staging.resize(start + padded_len, 0);
+                        inline_spans.push((start as u32, padded_len as u64));
+                    }
+                    (
+                        ResolvedSet1Entry::TexelBuffer { byte_range },
+                        BindingKind::TexelBuffer { .. },
+                    ) => {
+                        let Some(slice) = data.texel_data.get(byte_range.clone()) else {
+                            ok = false;
+                            break;
+                        };
+                        if slice.is_empty() || !slice.len().is_multiple_of(4) {
+                            ok = false;
+                            break;
+                        }
+                        let start = align_up_usize(texel_staging.len(), storage_align);
+                        texel_staging.resize(start, 0);
+                        texel_staging.extend_from_slice(slice);
+                        texel_spans.push((start as u64, slice.len() as u64));
+                    }
+                    _ => {}
+                }
+            }
+            if ok && let Some((_, pc_size)) = compiled.push_constant_slot {
+                if let Some(ref pc_range) = bindings.push_constants
+                    && let Some(slice) = data.inline_uniforms.get(pc_range.clone())
+                {
+                    let start = align_up_usize(inline_staging.len(), ubo_align);
+                    inline_staging.resize(start, 0);
+                    let padded_len = align_up_usize(slice.len().max(pc_size as usize), 16);
+                    inline_staging.extend_from_slice(slice);
+                    inline_staging.resize(start + padded_len, 0);
+                    inline_spans.push((start as u32, padded_len as u64));
+                } else {
+                    ok = false;
+                }
+            }
+            staged_meta.push(ok.then_some((inline_spans, texel_spans)));
+        }
+
+        let inline_base = stage_offscreen_bytes(
+            &mut self.offscreen_buffers[2],
+            &mut self.offscreen_cursors[2],
+            device,
+            queue,
+            "Mod offscreen inline uniforms",
+            wgpu::BufferUsages::UNIFORM,
+            ubo_align as u64,
+            &inline_staging,
+        );
+        let texel_base = stage_offscreen_bytes(
+            &mut self.offscreen_buffers[3],
+            &mut self.offscreen_cursors[3],
+            device,
+            queue,
+            "Mod offscreen texel buffers",
+            wgpu::BufferUsages::STORAGE,
+            storage_align as u64,
+            &texel_staging,
+        );
+        let inline_buf = inline_base.and(self.offscreen_buffers[2].clone());
+        let texel_buf = texel_base.and(self.offscreen_buffers[3].clone());
+        let inline_base = inline_base.unwrap_or(0) as u32;
+        let texel_base = texel_base.unwrap_or(0);
+
+        let mut prepared_draws: Vec<PreparedDraw> = Vec::with_capacity(data.draws.len());
+        for (cmd, meta) in data.draws.iter().zip(staged_meta) {
+            let Some(Some(compiled)) = self.pipelines.get(cmd.slot as usize) else {
+                continue;
+            };
+            let set1_bind_group = if let Some(ref set1_layout) = compiled.set1_layout {
+                let (Some(bindings), Some((inline_spans, texel_spans))) = (&cmd.bindings, meta)
+                else {
+                    continue;
+                };
+                let mut dynamic_offsets: Vec<u32> = Vec::new();
+                let mut bg_entries: Vec<wgpu::BindGroupEntry<'_>> = Vec::new();
+                let mut inline_i = 0usize;
+                let mut texel_i = 0usize;
+                let mut valid = true;
+                for (entry, spec) in bindings.entries.iter().zip(&compiled.set1_entries) {
+                    match (entry, spec.kind) {
+                        (
+                            ResolvedSet1Entry::UniformBuffer {
+                                buffer, byte_len, ..
+                            },
+                            BindingKind::UniformBuffer { .. },
+                        ) => {
+                            dynamic_offsets.push(0);
+                            bg_entries.push(wgpu::BindGroupEntry {
+                                binding: spec.binding,
+                                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                                    buffer,
+                                    offset: 0,
+                                    size: wgpu::BufferSize::new(*byte_len),
+                                }),
+                            });
+                        }
+                        (
+                            ResolvedSet1Entry::InlineUniform { .. },
+                            BindingKind::UniformBuffer { .. },
+                        ) => {
+                            let (offset, size) = inline_spans[inline_i];
+                            inline_i += 1;
+                            dynamic_offsets.push(inline_base + offset);
+                            let Some(buf) = inline_buf.as_ref() else {
+                                valid = false;
+                                break;
+                            };
+                            bg_entries.push(wgpu::BindGroupEntry {
+                                binding: spec.binding,
+                                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                                    buffer: buf,
+                                    offset: 0,
+                                    size: wgpu::BufferSize::new(size),
+                                }),
+                            });
+                        }
+                        (
+                            ResolvedSet1Entry::Texture { view, .. },
+                            BindingKind::CombinedImageSampler { filter, address },
+                        ) => {
+                            let sampler = &self.mod_samplers[sampler_filter_idx(filter)]
+                                [sampler_address_idx(address)];
+                            bg_entries.push(wgpu::BindGroupEntry {
+                                binding: spec.binding,
+                                resource: wgpu::BindingResource::TextureView(view),
+                            });
+                            bg_entries.push(wgpu::BindGroupEntry {
+                                binding: spec.binding + 1,
+                                resource: wgpu::BindingResource::Sampler(sampler),
+                            });
+                        }
+                        (
+                            ResolvedSet1Entry::TexelBuffer { .. },
+                            BindingKind::TexelBuffer { .. },
+                        ) => {
+                            let (offset, size) = texel_spans[texel_i];
+                            texel_i += 1;
+                            let Some(buf) = texel_buf.as_ref() else {
+                                valid = false;
+                                break;
+                            };
+                            bg_entries.push(wgpu::BindGroupEntry {
+                                binding: spec.binding,
+                                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                                    buffer: buf,
+                                    offset: texel_base + offset,
+                                    size: wgpu::BufferSize::new(size),
+                                }),
+                            });
+                        }
+                        (
+                            ResolvedSet1Entry::StorageImage { view, format, .. },
+                            BindingKind::StorageImage { .. },
+                        ) => {
+                            if spec.storage_format != Some(*format) {
+                                valid = false;
+                                break;
+                            }
+                            bg_entries.push(wgpu::BindGroupEntry {
+                                binding: spec.binding,
+                                resource: wgpu::BindingResource::TextureView(view),
+                            });
+                        }
+                        _ => {
+                            valid = false;
+                            break;
+                        }
+                    }
+                }
+                if valid && let Some((pc_binding, _)) = compiled.push_constant_slot {
+                    let (offset, size) = inline_spans[inline_i];
+                    dynamic_offsets.push(inline_base + offset);
+                    if let Some(buf) = inline_buf.as_ref() {
+                        bg_entries.push(wgpu::BindGroupEntry {
+                            binding: pc_binding,
+                            resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                                buffer: buf,
+                                offset: 0,
+                                size: wgpu::BufferSize::new(size),
+                            }),
+                        });
+                    } else {
+                        valid = false;
+                    }
+                }
+                if !valid {
+                    continue;
+                }
+                let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
+                let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("Mod offscreen set-1"),
+                    layout: set1_layout,
+                    entries: &bg_entries,
+                });
+                if let Some(error) = pollster::block_on(validation.pop()) {
+                    log::warn!(
+                        "Sunrise: a mod offscreen draw's set-1 bindings were refused: {error}"
+                    );
+                    continue;
+                }
+                Some((bg, dynamic_offsets))
+            } else {
+                None
+            };
+            prepared_draws.push(PreparedDraw {
+                slot: cmd.slot as usize,
+                stage: cmd.stage as usize,
+                modifier_stack: cmd.modifier_stack,
+                topology: compiled.state.topology,
+                draw: cmd.draw.clone(),
+                source: match &cmd.source {
+                    PipelineDrawSource::Transient {
+                        vertex_ranges,
+                        index_range,
+                    } => PipelineDrawSource::Transient {
+                        vertex_ranges: vertex_ranges
+                            .iter()
+                            .map(|(binding, range)| {
+                                (*binding, range.start + vertex_base..range.end + vertex_base)
+                            })
+                            .collect(),
+                        index_range: index_range.as_ref().map(|(format, range)| {
+                            (*format, range.start + index_base..range.end + index_base)
+                        }),
+                    },
+                    retained => retained.clone(),
+                },
+                set1_bind_group,
+            });
+        }
+
+        // Patch vanilla uniform blocks for this offscreen pass (ScreenSize, optional ProjMat,
+        // optional ModelViewMat) in command-buffer order so consecutive passes never clobber.
+        let mut patched = self.last_vanilla_blocks;
+        let screen_size = [data.target.size[0] as f32, data.target.size[1] as f32];
+        patched[32..40].copy_from_slice(bytemuck::cast_slice(&screen_size));
+        if let Some(proj) = data.pass.projection {
+            patched[256..320].copy_from_slice(bytemuck::cast_slice(&proj));
+        }
+        if let Some(view) = data.pass.view {
+            patched[512..576].copy_from_slice(bytemuck::cast_slice(&view));
+        }
+        let patched_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Mod offscreen vanilla override"),
+            contents: &patched,
+            usage: wgpu::BufferUsages::COPY_SRC,
+        });
+        let restore_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Mod offscreen vanilla restore"),
+            contents: &self.last_vanilla_blocks,
+            usage: wgpu::BufferUsages::COPY_SRC,
+        });
+        encoder.copy_buffer_to_buffer(&patched_buf, 0, &self.vanilla, 0, 1024);
+
+        let color_attachments: Vec<Option<wgpu::RenderPassColorAttachment<'_>>> = data
+            .target
+            .color_views
+            .iter()
+            .enumerate()
+            .map(|(idx, view)| {
+                let load = match data.pass.clear_color.get(idx).copied().flatten() {
+                    Some([r, g, b, a]) => wgpu::LoadOp::Clear(wgpu::Color {
+                        r: f64::from(r),
+                        g: f64::from(g),
+                        b: f64::from(b),
+                        a: f64::from(a),
+                    }),
+                    None => wgpu::LoadOp::Load,
+                };
+                Some(wgpu::RenderPassColorAttachment {
+                    view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })
+            })
+            .collect();
+
+        let depth_stencil_attachment = data.target.depth_view.as_ref().map(|view| {
+            let depth_load = match data.pass.clear_depth {
+                Some(d) => wgpu::LoadOp::Clear(d),
+                None => wgpu::LoadOp::Load,
+            };
+            let stencil_ops = data.target.has_stencil.then_some(wgpu::Operations {
+                load: match data.pass.clear_stencil {
+                    Some(s) => wgpu::LoadOp::Clear(s),
+                    None => wgpu::LoadOp::Load,
+                },
+                store: wgpu::StoreOp::Store,
+            });
+            wgpu::RenderPassDepthStencilAttachment {
+                view,
+                depth_ops: Some(wgpu::Operations {
+                    load: depth_load,
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops,
+            }
+        });
+
+        {
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Mod offscreen pass"),
+                color_attachments: &color_attachments,
+                depth_stencil_attachment,
+                ..Default::default()
+            });
+            for cmd in &prepared_draws {
+                let Some(Some(compiled)) = self.pipelines.get(cmd.slot) else {
+                    continue;
+                };
+                let key = (
+                    cmd.slot,
+                    data.target.color_formats.clone(),
+                    data.target.depth_format,
+                );
+                let Some(Some(pipeline)) = self.offscreen_pipelines.get(&key) else {
+                    continue;
+                };
+                rpass.set_pipeline(pipeline);
+                rpass.set_bind_group(0, &compiled.group, &[]);
+                if compiled.set1_layout.is_some() {
+                    let Some((ref bg, ref offsets)) = cmd.set1_bind_group else {
+                        continue;
+                    };
+                    rpass.set_bind_group(1, bg, offsets);
+                }
+                self.issue_prepared_draw(
+                    &mut rpass,
+                    indices,
+                    transient_vbuf.as_ref(),
+                    transient_ibuf.as_ref(),
+                    cmd,
+                );
+            }
+        }
+
+        encoder.copy_buffer_to_buffer(&restore_buf, 0, &self.vanilla, 0, 1024);
     }
 
     /// Whether any prepared runs or unified draws fall in stages `first..=last`.
@@ -2397,6 +3237,32 @@ impl ModPipelines {
                         .as_ref()
                         .map(|(buf, fmt)| (buf.clone(), *fmt, 0..buf.size()));
                     (vbs, ib)
+                }
+                PipelineDrawSource::Indirect(indirect) => {
+                    if indirect.max_count > 0 {
+                        let vertex_buffers = indirect
+                            .mesh
+                            .iter()
+                            .flat_map(|mesh| mesh.vertex_buffers.iter())
+                            .map(|(binding, buf, len)| (*binding, buf.clone(), 0..*len))
+                            .collect();
+                        out.push(super::pack_post::ModDrawChunk {
+                            slot: cmd.slot,
+                            vertex_buffers,
+                            kind: super::pack_post::ModDrawKind::Indirect {
+                                buffer: indirect.buffer.clone(),
+                                offset: indirect.offset,
+                                count: indirect.max_count,
+                                index: indirect
+                                    .index_buffer()
+                                    .map(|(buf, format)| (buf.clone(), *format)),
+                            },
+                            instances: 0..1,
+                            mod_bind_group: cmd.set1_bind_group.clone(),
+                            mod_globals: self.pack_globals(cmd.slot),
+                        });
+                    }
+                    continue;
                 }
             };
             let kind = match &cmd.draw.range {
@@ -2725,6 +3591,39 @@ impl ModPipelines {
             }
         }
 
+        // The same holds for a render target's mip levels: wgpu gives each one usage for the
+        // whole pass, so a level one draw writes as a storage image cannot be sampled, or bound
+        // with another storage access, by any other draw of the pass, nor by the draw itself.
+        // Read-only storage and sampling share a usage and may be combined.
+        self.target_uses.clear();
+        self.target_conflicts.clear();
+        for (sd, bindings) in &staged {
+            for entry in &bindings.entries {
+                let (ResolvedSet1Entry::Texture {
+                    mips: Some(mips), ..
+                }
+                | ResolvedSet1Entry::StorageImage { mips, .. }) = entry
+                else {
+                    continue;
+                };
+                for level in mips.levels() {
+                    let key = (sd.scope, mips.texture, level);
+                    let used = self.target_uses.entry(key).or_default();
+                    *used |= mips.usage.bit();
+                    if TargetUse::conflict(*used) {
+                        self.target_conflicts.insert(key);
+                    }
+                }
+            }
+        }
+        for &(_, texture, _) in &self.target_conflicts {
+            if self.warned_target_conflicts.insert(texture) {
+                log::warn!(
+                    "Sunrise: mod draws using a mip level of render target texture {texture} in conflicting ways (written as a storage image and also sampled or bound with another access) in one pass are skipped"
+                );
+            }
+        }
+
         // Only bind groups the previous frame used survive into this one, so a released
         // uniform buffer, a resized or retired texture and a disabled mod's resources are
         // dropped with the first frame that no longer draws them.
@@ -2762,9 +3661,15 @@ impl ModPipelines {
                         dynamic_offsets.push(offset);
                     }
                     (
-                        ResolvedSet1Entry::Texture { view_id, .. },
+                        ResolvedSet1Entry::Texture { view_id, mips, .. },
                         BindingKind::CombinedImageSampler { .. },
                     ) => {
+                        if mips.as_ref().is_some_and(|mips| {
+                            mips_conflict(&self.target_conflicts, sd.scope, mips)
+                        }) {
+                            valid = false;
+                            break;
+                        }
                         key_resources.push(Set1ResourceKey::Texture(*view_id));
                     }
                     (ResolvedSet1Entry::TexelBuffer { .. }, BindingKind::TexelBuffer { .. }) => {
@@ -2783,6 +3688,23 @@ impl ModPipelines {
                             break;
                         }
                         key_resources.push(Set1ResourceKey::Storage(*id, *offset, *size));
+                    }
+                    (
+                        ResolvedSet1Entry::StorageImage {
+                            view_id,
+                            format,
+                            mips,
+                            ..
+                        },
+                        BindingKind::StorageImage { .. },
+                    ) => {
+                        if spec.storage_format != Some(*format)
+                            || mips_conflict(&self.target_conflicts, sd.scope, mips)
+                        {
+                            valid = false;
+                            break;
+                        }
+                        key_resources.push(Set1ResourceKey::StorageImage(*view_id));
                     }
                     _ => {
                         valid = false;
@@ -2901,6 +3823,15 @@ impl ModPipelines {
                                 }),
                             });
                         }
+                        (
+                            ResolvedSet1Entry::StorageImage { view, .. },
+                            BindingKind::StorageImage { .. },
+                        ) => {
+                            bg_entries.push(wgpu::BindGroupEntry {
+                                binding: spec.binding,
+                                resource: wgpu::BindingResource::TextureView(view),
+                            });
+                        }
                         _ => {
                             valid = false;
                             break;
@@ -2964,6 +3895,12 @@ impl ModPipelines {
                 .iter()
                 .any(|r| matches!(r, Set1ResourceKey::Storage(id, ..) if released.contains(id)))
         });
+    }
+
+    /// Forget the conflict warnings of render target textures `released` since the last frame.
+    pub fn forget_render_targets(&mut self, released: &[u64]) {
+        self.warned_target_conflicts
+            .retain(|texture| !released.contains(texture));
     }
 
     /// Draws the prepared runs and unified draws of stages `first..=last` in the order queued,
@@ -3233,6 +4170,33 @@ impl ModPipelines {
                         );
                     }
                     _ => {}
+                }
+            }
+            PipelineDrawSource::Indirect(indirect) => {
+                if indirect.max_count == 0 {
+                    return;
+                }
+                if let Some(mesh) = &indirect.mesh {
+                    for (binding, buf, len) in &mesh.vertex_buffers {
+                        pass.set_vertex_buffer(*binding, buf.slice(0..*len));
+                    }
+                }
+                // One path on every backend: `max_count` commands, those the mod's culling
+                // shader zeroed (`instance_count = 0`) drawing nothing.
+                match indirect.index_buffer() {
+                    Some((ibuf, fmt)) => {
+                        pass.set_index_buffer(ibuf.slice(..), *fmt);
+                        pass.multi_draw_indexed_indirect(
+                            &indirect.buffer,
+                            indirect.offset,
+                            indirect.max_count,
+                        );
+                    }
+                    None => pass.multi_draw_indirect(
+                        &indirect.buffer,
+                        indirect.offset,
+                        indirect.max_count,
+                    ),
                 }
             }
         }
@@ -5915,6 +6879,219 @@ void main() {
         assert_near(at(48, 16), [0.0, 255.0, 0.0, 255.0], 2.0, "second range");
     }
 
+    /// `max_count` indexed commands a shader-less CPU wrote into an `INDIRECT` storage buffer
+    /// draw their quads: a `base_vertex` other than zero reaches the vertex fetch (the DirectX 12
+    /// case), a command with `instance_count = 0` draws nothing (how a mod's culling shader drops
+    /// a slot), and the buffer is refused unless it is `INDIRECT`, 4-aligned and large enough.
+    #[test]
+    #[ignore = "daily"]
+    fn indirect_commands_draw_with_base_vertex_skip_zeroed_slots_and_are_refused_when_unfit() {
+        let _gpu = crate::gfx::test_gpu::lock();
+        let Some((device, queue)) = device() else {
+            return;
+        };
+        let vsh = "\
+#version 330
+in uvec4 PackedPos;
+in vec4 PackedColor;
+out vec4 vertexColor;
+void main() {
+    vec2 ndc = vec2(float(PackedPos.x) / 32.0 - 1.0, 1.0 - float(PackedPos.y) / 32.0);
+    gl_Position = vec4(ndc, 0.5, 1.0);
+    vertexColor = PackedColor;
+    // Red says whether `gl_VertexID` counted the command's base vertex: the second and third
+    // quad's vertices are 4 and up only if it did.
+    vertexColor.r = gl_VertexID >= 4 ? 1.0 : 0.0;
+}
+";
+        let fsh = "\
+#version 330
+in vec4 vertexColor;
+out vec4 fragColor;
+void main() {
+    fragColor = vertexColor;
+}
+";
+        let fmt = VertexFormat::builder(VertexStepMode::Vertex)
+            .attribute("PackedPos", VertexAttributeFormat::Uint8x4)
+            .attribute("PackedColor", VertexAttributeFormat::Unorm8x4)
+            .build()
+            .unwrap();
+        let id = Identifier::parse("example:indirect_mesh").unwrap();
+        let reg = [RenderPipeline::new(
+            id.clone(),
+            id,
+            PipelineBlend::Opaque,
+            WorldDepth::ThroughWalls,
+        )
+        .topology(PrimitiveTopology::Triangles)
+        .vertex_binding(0, fmt)];
+        let set = Pipelines::build(&reg, 1, |file| {
+            if file.ends_with(".vsh") {
+                Ok(Some(vsh.to_owned()))
+            } else if file.ends_with(".fsh") {
+                Ok(Some(fsh.to_owned()))
+            } else {
+                Ok(stub_asset(file))
+            }
+        })
+        .unwrap();
+
+        // Three quads of the same four-vertex shape, side by side at y 0..16: a green one at
+        // x 0..16 (vertices 0..4), a blue one at x 16..32 (4..8) and a red one at x 32..48 (8..12).
+        let quad = |x: u8, color: [u8; 4]| {
+            [[x, 0], [x, 16], [x + 16, 16], [x + 16, 0]]
+                .map(|[x, y]| [x, y, 0, 0, color[0], color[1], color[2], color[3]])
+        };
+        let vertices: Vec<[u8; 8]> = [
+            quad(0, [0, 220, 40, 255]),
+            quad(16, [255, 40, 220, 255]),
+            quad(32, [220, 20, 40, 255]),
+        ]
+        .concat();
+        let indices: [u16; 6] = [0, 1, 2, 0, 2, 3];
+        let vb_inits = [mod_api::MeshBufferInit::from_bytes(
+            8,
+            bytemuck::cast_slice(&vertices),
+        )];
+        let desc = mod_api::MeshDescriptor::new(&vb_inits).with_indices(
+            mod_api::MeshIndexInit::from_bytes(IndexFormat::Uint16, bytemuck::cast_slice(&indices)),
+        );
+        let mut meshes = crate::gfx::mod_meshes::ModMeshes::default();
+        let mesh = meshes.create_mesh(&device, &queue, None, &desc).unwrap();
+        let resolved = meshes
+            .resolve_indirect(None, mesh, set.vertex_bindings(0).unwrap())
+            .unwrap();
+
+        // Command 0: base vertex 0. Command 1: base vertex 4, the case DirectX 12's count draws
+        // lose. Command 2: base vertex 8 with `instance_count = 0`, culled.
+        let commands: [[u32; 5]; 3] = [[6, 1, 0, 0, 0], [6, 1, 0, 4, 0], [6, 0, 0, 8, 0]];
+        let mut storage = crate::gfx::mod_storage::ModStorageBuffers::default();
+        let buffer = storage
+            .create(
+                &device,
+                None,
+                &mod_api::StorageBufferDescriptor::new(60).indirect(true),
+            )
+            .unwrap();
+        storage
+            .write_range(None, buffer, 0, bytemuck::cast_slice(&commands))
+            .unwrap();
+        storage.flush(&device, &queue);
+        let commands_buffer = storage.resolve_buffer(None, buffer).unwrap();
+        let indirect = IndirectSource::new(
+            PrimitiveTopology::Triangles,
+            Some(resolved.clone()),
+            commands_buffer.clone(),
+            0,
+            3,
+        )
+        .unwrap();
+
+        let format = wgpu::TextureFormat::Rgba8Unorm;
+        let mut primitives = WorldPrimitives::new(&device, (format, false));
+        let draw_cmd = PipelineDraw {
+            slot: 0,
+            stage: 4,
+            modifier_stack: 0,
+            draw: MeshDraw::vertices(0..0),
+            source: PipelineDrawSource::Indirect(indirect),
+            bindings: None,
+        };
+        let gpu = (device, queue);
+        let batch = Batch {
+            set: Some(&set),
+            draws: std::slice::from_ref(&draw_cmd),
+            time: 0.0,
+            ..Default::default()
+        };
+        let at = render(&gpu, &mut primitives, format, batch, STAGES - 1);
+        assert_near(at(4, 4), [0.0, 220.0, 40.0, 255.0], 1.0, "command 0");
+        assert_near(
+            at(20, 4),
+            [255.0, 40.0, 220.0, 255.0],
+            1.0,
+            "command 1: base vertex 4 must reach the vertex fetch and gl_VertexID on this backend",
+        );
+        assert_eq!(at(36, 4), at(36, 40), "command 2 is culled");
+
+        let ok = |topology, offset, count| {
+            IndirectSource::new(
+                topology,
+                Some(resolved.clone()),
+                commands_buffer.clone(),
+                offset,
+                count,
+            )
+            .map(|_| ())
+        };
+        let triangles = PrimitiveTopology::Triangles;
+        assert_eq!(ok(triangles, 0, 0), Ok(()));
+        assert_eq!(ok(triangles, 0, 3), Ok(()));
+        assert_eq!(ok(triangles, 40, 1), Ok(()));
+        assert_eq!(
+            ok(triangles, 0, 4),
+            Err(mod_api::PipelineDrawError::InvalidIndirect)
+        );
+        assert_eq!(
+            ok(triangles, 44, 1),
+            Err(mod_api::PipelineDrawError::InvalidIndirect)
+        );
+        assert_eq!(
+            ok(triangles, 2, 1),
+            Err(mod_api::PipelineDrawError::InvalidIndirect)
+        );
+        assert_eq!(
+            ok(triangles, u64::MAX - 3, u32::MAX),
+            Err(mod_api::PipelineDrawError::InvalidIndirect)
+        );
+        let plain = {
+            let device = &gpu.0;
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: None,
+                size: 60,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            })
+        };
+        assert_eq!(
+            IndirectSource::new(triangles, Some(resolved.clone()), plain, 0, 1).map(|_| ()),
+            Err(mod_api::PipelineDrawError::InvalidIndirect)
+        );
+        // Without an index buffer the commands are 16 bytes each, and an expanded topology has
+        // no vertex range to expand.
+        let bare = crate::gfx::mod_meshes::ResolvedMeshDraw {
+            vertex_buffers: resolved.vertex_buffers.clone(),
+            index_buffer: None,
+        };
+        let non_indexed = |topology, count| {
+            IndirectSource::new(
+                topology,
+                Some(bare.clone()),
+                commands_buffer.clone(),
+                0,
+                count,
+            )
+            .map(|_| ())
+        };
+        assert_eq!(non_indexed(triangles, 3), Ok(()));
+        assert_eq!(
+            non_indexed(triangles, 4),
+            Err(mod_api::PipelineDrawError::InvalidIndirect)
+        );
+        assert_eq!(
+            non_indexed(PrimitiveTopology::Quads, 1),
+            Err(mod_api::PipelineDrawError::TopologyMismatch)
+        );
+        meshes.release(None, mesh).unwrap();
+        assert_eq!(
+            meshes
+                .resolve_indirect(None, mesh, set.vertex_bindings(0).unwrap())
+                .unwrap_err(),
+            mod_api::PipelineDrawError::Mesh(mod_api::MeshError::Stale)
+        );
+    }
+
     #[test]
     #[ignore = "daily"]
     fn set1_dynamic_and_standalone_textures_sample_with_repeat_addressing() {
@@ -5967,12 +7144,15 @@ void main() {
         })
         .expect("textured set-1 pipeline must translate");
 
-        let dyn_id = Identifier::parse("mod_c3:dyn_stripe").unwrap();
         let rgba: [u8; 8] = [255, 0, 0, 255, 0, 0, 255, 255];
-        let mut uniforms = crate::gfx::mod_uniforms::ModUniformBuffers::default();
-        let (view_id, view) = uniforms
-            .resolve_dynamic_texture(&device, &queue, &dyn_id, [2, 1], &rgba, 1)
-            .unwrap();
+        let (_texture, view) = crate::gfx::mod_uniforms::create_rgba_texture(
+            &device,
+            &queue,
+            "Mod dynamic texture",
+            [2, 1],
+            &rgba,
+        );
+        let view_id = crate::gfx::mod_uniforms::DYNAMIC_VIEW_ID_BIT | 1;
 
         let quad = [
             PipelineVertex {
@@ -6007,7 +7187,11 @@ void main() {
                 index_range: None,
             },
             bindings: Some(ResolvedDrawBindings {
-                entries: vec![ResolvedSet1Entry::Texture { view_id, view }],
+                entries: vec![ResolvedSet1Entry::Texture {
+                    view_id,
+                    view,
+                    mips: None,
+                }],
                 push_constants: None,
             }),
         };
@@ -6027,5 +7211,442 @@ void main() {
         assert_near(at(24, 32), [0.0, 0.0, 255.0, 255.0], 1.0, "repeat 0 blue");
         assert_near(at(40, 32), [255.0, 0.0, 0.0, 255.0], 1.0, "repeat 1 red");
         assert_near(at(56, 32), [0.0, 0.0, 255.0, 255.0], 1.0, "repeat 1 blue");
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn offscreen_render_target_draw_sample_persist_and_resize() {
+        let _gpu_lock = crate::gfx::test_gpu::lock();
+        let (device, queue) = device().expect("a GPU adapter");
+
+        // Pipeline 0: solid red quad into offscreen target (no set-1 bindings).
+        let write_id = Identifier::parse("test:offscreen_write").unwrap();
+        let write_vsh = "#version 330\n\
+            in vec3 Position;\n\
+            in vec2 UV0;\n\
+            in vec4 Color;\n\
+            out vec4 vColor;\n\
+            layout(std140) uniform Projection { mat4 ProjMat; };\n\
+            layout(std140) uniform DynamicTransforms {\n\
+                mat4 ModelViewMat; mat4 TextureMat; vec4 ColorModulator; vec3 ModelOffset;\n\
+            };\n\
+            void main() {\n\
+                gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);\n\
+                vColor = Color;\n\
+            }\n";
+        let write_fsh = "#version 330\n\
+            in vec4 vColor;\n\
+            out vec4 fragColor;\n\
+            void main() { fragColor = vColor; }\n";
+
+        // Pipeline 1: samples the offscreen target's colour attachment via set-1 sampler.
+        let read_id = Identifier::parse("test:offscreen_read").unwrap();
+        let read_vsh = "#version 330\n\
+            in vec3 Position;\n\
+            in vec2 UV0;\n\
+            in vec4 Color;\n\
+            out vec2 vUv;\n\
+            void main() {\n\
+                vec2 ndc = vec2(Position.x / 32.0 - 1.0, 1.0 - Position.y / 32.0);\n\
+                gl_Position = vec4(ndc, 0.5, 1.0);\n\
+                vUv = UV0;\n\
+            }\n";
+        let read_fsh = "#version 330\n\
+            in vec2 vUv;\n\
+            uniform sampler2D OffscreenTex;\n\
+            out vec4 fragColor;\n\
+            void main() { fragColor = texture(OffscreenTex, vUv); }\n";
+
+        let p_write = RenderPipeline::new(
+            write_id.clone(),
+            write_id,
+            PipelineBlend::Opaque,
+            mod_api::WorldDepth::ThroughWalls,
+        );
+        let p_read = RenderPipeline::new(
+            read_id.clone(),
+            read_id,
+            PipelineBlend::Opaque,
+            mod_api::WorldDepth::ThroughWalls,
+        )
+        .sampler(
+            "OffscreenTex",
+            mod_api::SamplerFilter::Nearest,
+            mod_api::SamplerAddress::ClampToEdge,
+        );
+
+        let set = Pipelines::build(&[p_write, p_read], 1, |file| {
+            if file.contains("offscreen_write") && file.ends_with(".vsh") {
+                Ok(Some(write_vsh.to_owned()))
+            } else if file.contains("offscreen_write") && file.ends_with(".fsh") {
+                Ok(Some(write_fsh.to_owned()))
+            } else if file.contains("offscreen_read") && file.ends_with(".vsh") {
+                Ok(Some(read_vsh.to_owned()))
+            } else if file.contains("offscreen_read") && file.ends_with(".fsh") {
+                Ok(Some(read_fsh.to_owned()))
+            } else {
+                Ok(None)
+            }
+        })
+        .expect("offscreen write/read pipelines must translate");
+
+        let mut targets = crate::gfx::mod_render_targets::ModRenderTargets::default();
+        let rt = targets
+            .create(
+                &device,
+                Some("test_mod"),
+                &mod_api::RenderTargetDescriptor::rgba8(
+                    [32, 32],
+                    mod_api::RenderTargetDepth::Depth32Float,
+                ),
+            )
+            .expect("create 32x32 RGBA8+D32F target");
+        assert_eq!(targets.size(Some("test_mod"), rt), Ok([32, 32]));
+        assert_eq!(
+            targets.size(Some("other_mod"), rt),
+            Err(mod_api::RenderTargetError::NotOwned)
+        );
+
+        // Depth aspect refuses linear (filterable) sampling, allows nearest.
+        assert_eq!(
+            targets
+                .resolve_depth(Some("test_mod"), rt, true)
+                .map(|(id, _)| id),
+            Err(mod_api::PipelineDrawError::InvalidBinding)
+        );
+        assert!(targets.resolve_depth(Some("test_mod"), rt, false).is_ok());
+
+        let format = wgpu::TextureFormat::Rgba8Unorm;
+        let mut primitives = WorldPrimitives::new(&device, (format, false));
+        primitives
+            .pipelines
+            .build(&device, &set, None)
+            .expect("build offscreen pipelines");
+
+        // Orthographic projection mapping [0..32, 0..32] into clip space [-1..1].
+        let ortho32 = Mat4::orthographic_rh(0.0, 32.0, 32.0, 0.0, -1.0, 1.0).to_cols_array();
+        // `PipelineVertex.color` packs red in the low byte (0xAABBGGRR).
+        let red_quad = [
+            PipelineVertex {
+                pos: [0.0, 0.0, 0.0],
+                uv: [0.0, 0.0],
+                color: 0xFF00_00FF,
+            },
+            PipelineVertex {
+                pos: [0.0, 32.0, 0.0],
+                uv: [0.0, 1.0],
+                color: 0xFF00_00FF,
+            },
+            PipelineVertex {
+                pos: [32.0, 32.0, 0.0],
+                uv: [1.0, 1.0],
+                color: 0xFF00_00FF,
+            },
+            PipelineVertex {
+                pos: [32.0, 0.0, 0.0],
+                uv: [1.0, 0.0],
+                color: 0xFF00_00FF,
+            },
+        ];
+        let red_vbytes = bytemuck::cast_slice(&red_quad);
+        let write_draw = PipelineDraw {
+            slot: 0,
+            stage: 0,
+            modifier_stack: 0,
+            draw: MeshDraw::vertices(0..4),
+            source: PipelineDrawSource::Transient {
+                vertex_ranges: vec![(0, 0..red_vbytes.len() as u64)],
+                index_range: None,
+            },
+            bindings: None,
+        };
+
+        // Pass 1: clear to black, draw red quad into offscreen target.
+        let resolved_rt = targets.resolve_target(Some("test_mod"), rt, 0).unwrap();
+        let pass1 = mod_api::OffscreenPass::new(rt)
+            .clear_color_0([0.0, 0.0, 0.0, 1.0])
+            .clear_depth(0.0)
+            .projection(ortho32);
+        let mut enc = device.create_command_encoder(&Default::default());
+        primitives.execute_offscreen_pass(
+            &device,
+            &queue,
+            &mut enc,
+            &OffscreenPassData {
+                pass: &pass1,
+                target: &resolved_rt,
+                draws: std::slice::from_ref(&write_draw),
+                transient_vertices: red_vbytes,
+                transient_indices: &[],
+                inline_uniforms: &[],
+                texel_data: &[],
+            },
+        );
+        // Pass 2: LoadOp::Load (no clear) with zero draws — pixels must persist!
+        let pass2 = mod_api::OffscreenPass::new(rt);
+        primitives.execute_offscreen_pass(
+            &device,
+            &queue,
+            &mut enc,
+            &OffscreenPassData {
+                pass: &pass2,
+                target: &resolved_rt,
+                draws: &[],
+                transient_vertices: &[],
+                transient_indices: &[],
+                inline_uniforms: &[],
+                texel_data: &[],
+            },
+        );
+        queue.submit([enc.finish()]);
+
+        // Same-size resize is a no-op that preserves existing contents and view_id.
+        let (view_id_before, _, _) = targets
+            .resolve_color(Some("test_mod"), rt, 0, false, false)
+            .unwrap();
+        targets
+            .resize(&device, Some("test_mod"), rt, [32, 32])
+            .unwrap();
+        let (view_id_after_noop, rt_view, _) = targets
+            .resolve_color(Some("test_mod"), rt, 0, false, false)
+            .unwrap();
+        assert_eq!(view_id_before, view_id_after_noop);
+
+        // Sample the offscreen target in a world pass and verify the red pixels survived!
+        let sample_quad = [
+            PipelineVertex {
+                pos: [0.0, 0.0, 0.0],
+                uv: [0.0, 0.0],
+                color: 0xFFFF_FFFF,
+            },
+            PipelineVertex {
+                pos: [0.0, 64.0, 0.0],
+                uv: [0.0, 1.0],
+                color: 0xFFFF_FFFF,
+            },
+            PipelineVertex {
+                pos: [64.0, 64.0, 0.0],
+                uv: [1.0, 1.0],
+                color: 0xFFFF_FFFF,
+            },
+            PipelineVertex {
+                pos: [64.0, 0.0, 0.0],
+                uv: [1.0, 0.0],
+                color: 0xFFFF_FFFF,
+            },
+        ];
+        let sample_vbytes = bytemuck::cast_slice(&sample_quad);
+        let read_draw = PipelineDraw {
+            slot: 1,
+            stage: 4,
+            modifier_stack: 0,
+            draw: MeshDraw::vertices(0..4),
+            source: PipelineDrawSource::Transient {
+                vertex_ranges: vec![(0, 0..sample_vbytes.len() as u64)],
+                index_range: None,
+            },
+            bindings: Some(ResolvedDrawBindings {
+                entries: vec![ResolvedSet1Entry::Texture {
+                    view_id: view_id_after_noop,
+                    view: rt_view,
+                    mips: None,
+                }],
+                push_constants: None,
+            }),
+        };
+
+        // Resize to 64x64 changes dimensions and view_id; destroy retires handle.
+        let gpu = (device, queue);
+        let batch = Batch {
+            set: Some(&set),
+            draws: std::slice::from_ref(&read_draw),
+            transient_vertices: sample_vbytes,
+            time: 0.0,
+            ..Default::default()
+        };
+        let at = render(&gpu, &mut primitives, format, batch, STAGES - 1);
+        assert_near(
+            at(32, 32),
+            [255.0, 0.0, 0.0, 255.0],
+            1.0,
+            "sampled offscreen red pixel",
+        );
+
+        targets
+            .resize(&gpu.0, Some("test_mod"), rt, [64, 64])
+            .unwrap();
+        assert_eq!(targets.size(Some("test_mod"), rt), Ok([64, 64]));
+        let (view_id_resized, _, _) = targets
+            .resolve_color(Some("test_mod"), rt, 0, false, false)
+            .unwrap();
+        assert_ne!(view_id_before, view_id_resized);
+        targets.release(Some("test_mod"), rt).unwrap();
+        assert_eq!(
+            targets.size(Some("test_mod"), rt),
+            Err(mod_api::RenderTargetError::Stale)
+        );
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_glsl_image_store_writes_one_mip_level_of_a_render_target() {
+        let _gpu = crate::gfx::test_gpu::lock();
+        let Some((device, queue)) = device() else {
+            return;
+        };
+        let id = Identifier::parse("mod_mips:store").unwrap();
+        let vsh = "#version 330\n\
+            in vec3 Position;\n\
+            in vec2 UV0;\n\
+            in vec4 Color;\n\
+            void main() {\n\
+                vec2 ndc = vec2(Position.x / 32.0 - 1.0, 1.0 - Position.y / 32.0);\n\
+                gl_Position = vec4(ndc, 0.5, 1.0);\n\
+            }\n";
+        let fsh = "#version 330\n\
+            layout(r32f) writeonly uniform image2D Next;\n\
+            out vec4 fragColor;\n\
+            void main() {\n\
+                imageStore(Next, ivec2(0), vec4(0.25));\n\
+                imageStore(Next, ivec2(1, 0), vec4(0.5));\n\
+                fragColor = vec4(1.0);\n\
+            }\n";
+        let pipeline = RenderPipeline::new(
+            id.clone(),
+            id,
+            PipelineBlend::Opaque,
+            mod_api::WorldDepth::ThroughWalls,
+        )
+        .bind_group_layout(
+            mod_api::BindGroupLayout::builder()
+                .entry(mod_api::BindEntry::new(
+                    "Next",
+                    mod_api::BindingKind::StorageImage {
+                        access: mod_api::StorageImageAccess::WriteOnly,
+                    },
+                ))
+                .build()
+                .unwrap(),
+        );
+        let set = Pipelines::build(&[pipeline], 1, |file| {
+            if file.ends_with(".vsh") {
+                Ok(Some(vsh.to_owned()))
+            } else if file.ends_with(".fsh") {
+                Ok(Some(fsh.to_owned()))
+            } else {
+                Ok(stub_asset(file))
+            }
+        })
+        .expect("a write-only storage image pipeline must translate");
+
+        // A 4 x 4 pyramid of three levels: level 1 is 2 x 2.
+        let mut targets = crate::gfx::mod_render_targets::ModRenderTargets::default();
+        let target = targets
+            .create(
+                &device,
+                None,
+                &mod_api::RenderTargetDescriptor::new([4, 4])
+                    .color_target(mod_api::RenderTargetFormat::R32Float)
+                    .mip_levels(3)
+                    .storage(mod_api::StorageImageAccess::WriteOnly),
+            )
+            .expect("a mip-chained R32Float write-only storage target");
+        let (view_id, view, format, mips) = targets
+            .resolve_storage_image(
+                None,
+                mod_api::StorageImageAccess::WriteOnly,
+                mod_api::StorageImageBinding::new(target, 0, 1),
+            )
+            .unwrap();
+
+        let quad =
+            [[0.0, 0.0], [0.0, 64.0], [64.0, 64.0], [64.0, 0.0]].map(|[x, y]| PipelineVertex {
+                pos: [x, y, 0.0],
+                uv: [0.0, 0.0],
+                color: 0xFFFF_FFFF,
+            });
+        let vbytes = bytemuck::cast_slice(&quad);
+        let draw = PipelineDraw {
+            slot: 0,
+            stage: 4,
+            modifier_stack: 0,
+            draw: MeshDraw::vertices(0..4),
+            source: PipelineDrawSource::Transient {
+                vertex_ranges: vec![(0, 0..vbytes.len() as u64)],
+                index_range: None,
+            },
+            bindings: Some(ResolvedDrawBindings {
+                entries: vec![ResolvedSet1Entry::StorageImage {
+                    view_id,
+                    view,
+                    format,
+                    mips,
+                }],
+                push_constants: None,
+            }),
+        };
+        let frame_format = wgpu::TextureFormat::Rgba8Unorm;
+        let mut primitives = WorldPrimitives::new(&device, (frame_format, false));
+        let gpu = (device, queue);
+        let batch = Batch {
+            set: Some(&set),
+            draws: std::slice::from_ref(&draw),
+            transient_vertices: vbytes,
+            time: 0.0,
+            ..Default::default()
+        };
+        let at = render(&gpu, &mut primitives, frame_format, batch, STAGES - 1);
+        assert_near(
+            at(32, 32),
+            [255.0, 255.0, 255.0, 255.0],
+            1.0,
+            "the draw ran",
+        );
+
+        // Read level 1 (2 x 2) and the single texel of level 0 back.
+        let (device, queue) = &gpu;
+        let readback = device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: 1024,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let texture = targets.color_texture(target, 0).unwrap();
+        let mut encoder = device.create_command_encoder(&Default::default());
+        for (mip, offset, size) in [(1, 0, 2), (0, 512, 1)] {
+            encoder.copy_texture_to_buffer(
+                wgpu::TexelCopyTextureInfo {
+                    texture,
+                    mip_level: mip,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::TexelCopyBufferInfo {
+                    buffer: &readback,
+                    layout: wgpu::TexelCopyBufferLayout {
+                        offset,
+                        bytes_per_row: Some(256),
+                        rows_per_image: None,
+                    },
+                },
+                wgpu::Extent3d {
+                    width: size,
+                    height: size,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+        queue.submit([encoder.finish()]);
+        readback.slice(..).map_async(wgpu::MapMode::Read, |_| {});
+        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+        let bytes = readback.slice(..).get_mapped_range().unwrap().to_vec();
+        let texel =
+            |offset: usize| f32::from_ne_bytes(bytes[offset..offset + 4].try_into().unwrap());
+        // The shader wrote two texels of level 1; the others and level 0 keep their zeroes.
+        assert_eq!(texel(0), 0.25, "level 1 texel (0, 0)");
+        assert_eq!(texel(4), 0.5, "level 1 texel (1, 0)");
+        assert_eq!(texel(256), 0.0, "level 1 texel (0, 1)");
+        assert_eq!(texel(260), 0.0, "level 1 texel (1, 1)");
+        assert_eq!(texel(512), 0.0, "level 0 texel (0, 0)");
     }
 }

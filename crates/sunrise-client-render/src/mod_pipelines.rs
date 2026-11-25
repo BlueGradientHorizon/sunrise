@@ -71,6 +71,7 @@ pub enum RegistrationError {
         id: Identifier,
         pipeline: Identifier,
     },
+    InvalidComputePipeline(String),
     AlreadyPublished,
 }
 
@@ -130,6 +131,7 @@ impl std::fmt::Display for RegistrationError {
                 f,
                 "mod {owner}: render type {id} references unknown pipeline {pipeline}"
             ),
+            Self::InvalidComputePipeline(reason) => f.write_str(reason),
             Self::AlreadyPublished => f.write_str("pipeline registrations were already published"),
         }
     }
@@ -929,7 +931,7 @@ impl Built {
     }
 }
 
-fn mod_bindings_from_layout(
+pub(crate) fn mod_bindings_from_layout(
     layout: &mod_api::BindGroupLayout,
 ) -> Vec<sunrise_mod_pipeline::ModBinding<'_>> {
     layout
@@ -948,6 +950,22 @@ fn mod_bindings_from_layout(
                 }
                 mod_api::BindingKind::StorageBuffer { read_only, .. } => {
                     sunrise_mod_pipeline::ModBindingKind::StorageBuffer { read_only }
+                }
+                mod_api::BindingKind::StorageImage { access } => {
+                    sunrise_mod_pipeline::ModBindingKind::StorageImage {
+                        access: match access {
+                            mod_api::StorageImageAccess::WriteOnly => {
+                                sunrise_glsl::ImageAccess::WriteOnly
+                            }
+                            mod_api::StorageImageAccess::ReadOnly => {
+                                sunrise_glsl::ImageAccess::ReadOnly
+                            }
+                            mod_api::StorageImageAccess::ReadWrite => {
+                                sunrise_glsl::ImageAccess::ReadWrite
+                            }
+                            _ => return None,
+                        },
+                    }
                 }
                 _ => return None,
             };
@@ -977,6 +995,19 @@ pub struct Pipelines {
     generation: u64,
     invalid: std::sync::Arc<std::sync::Mutex<Vec<usize>>>,
     oit_ineligible_logged: std::sync::Arc<std::sync::Mutex<Vec<usize>>>,
+    /// The texture-taking built-in render types made so far, shared by clones of this set.
+    textured: std::sync::Arc<std::sync::Mutex<TexturedRenderTypes>>,
+    /// The registered compute pipelines of the same load (`mod_compute`).
+    compute: crate::mod_compute::ComputeSet,
+}
+
+/// The texture-taking built-in render types of one load (`RenderTypes.entitySolid(Identifier)`,
+/// `entityCutout`, `entityTranslucent`): one per built-in and texture, in the order they were
+/// first asked for, which is their slot after the built-in and custom ones.
+#[derive(Debug, Default)]
+struct TexturedRenderTypes {
+    by_texture: BTreeMap<(u32, Identifier), u32>,
+    made: Vec<(BuiltinRenderType, Identifier)>,
 }
 
 impl Pipelines {
@@ -987,13 +1018,18 @@ impl Pipelines {
         source: &crate::resource_source::ResourceSource,
         generation: u64,
     ) -> Result<Self, String> {
-        Self::build(registered(), generation, |file| {
-            match source.read_to_string(file) {
-                Ok(text) => Ok(Some(text)),
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-                Err(e) => Err(e.to_string()),
-            }
-        })
+        let read = |file: &str| match source.read_to_string(file) {
+            Ok(text) => Ok(Some(text)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e.to_string()),
+        };
+        let mut set = Self::build(registered(), generation, read)?;
+        set.compute = crate::mod_compute::ComputeSet::build(
+            crate::mod_compute::registered(),
+            generation,
+            read,
+        );
+        Ok(set)
     }
 
     /// Build every registered pipeline, reading `.vsh`, `.fsh`, and include files via `read`
@@ -1171,7 +1207,15 @@ impl Pipelines {
             generation,
             invalid: Default::default(),
             oit_ineligible_logged: Default::default(),
+            textured: Default::default(),
+            compute: Default::default(),
         })
+    }
+
+    /// The compute pipelines of this load: what `RenderAssets::compute_pipeline` resolves in and
+    /// the renderer builds on its device.
+    pub fn compute(&self) -> &crate::mod_compute::ComputeSet {
+        &self.compute
     }
 
     /// The registered [`PrimitiveTopology`] of `slot`, or `None` if `slot` is out of range or
@@ -1367,6 +1411,89 @@ impl Pipelines {
             self.generation,
             (BUILTIN_RENDER_TYPE_IDS.len() + index) as u32,
         ))
+    }
+
+    /// The handle of the built-in entity render type `kind` (`EntitySolid`, `EntityCutout` or
+    /// `EntityTranslucent`; another built-in takes no texture and is
+    /// [`RenderTypeError::Invalid`]) drawing the dynamic texture `texture`, as vanilla's
+    /// `RenderTypes.entitySolid(Identifier)` and its siblings are memoized per texture
+    /// (`RenderTypes.java`): the same texture gives the same handle. It does not ask whether the
+    /// texture exists; a draw does.
+    pub fn textured_render_type(
+        &self,
+        kind: BuiltinRenderType,
+        texture: &Identifier,
+    ) -> Result<RenderTypeRef, RenderTypeError> {
+        self.textured_render_type_in(registered_render_types().len(), kind, texture)
+    }
+
+    pub(crate) fn textured_render_type_in(
+        &self,
+        custom: usize,
+        kind: BuiltinRenderType,
+        texture: &Identifier,
+    ) -> Result<RenderTypeRef, RenderTypeError> {
+        let key = match kind {
+            BuiltinRenderType::EntitySolid => 3,
+            BuiltinRenderType::EntityCutout => 4,
+            BuiltinRenderType::EntityTranslucent => 5,
+            _ => return Err(RenderTypeError::Invalid),
+        };
+        // An unpublished set has no generation to name a handle in.
+        if self.generation == 0 {
+            return Err(RenderTypeError::Unknown);
+        }
+        let mut table = self.textured.lock().unwrap_or_else(|e| e.into_inner());
+        let index = match table.by_texture.get(&(key, texture.clone())) {
+            Some(&index) => index,
+            None => {
+                let index =
+                    u32::try_from(table.made.len()).map_err(|_| RenderTypeError::Invalid)?;
+                table.made.push((kind, texture.clone()));
+                table.by_texture.insert((key, texture.clone()), index);
+                index
+            }
+        };
+        let slot = (BUILTIN_RENDER_TYPE_IDS.len() + custom)
+            .checked_add(index as usize)
+            .and_then(|slot| u32::try_from(slot).ok())
+            .ok_or(RenderTypeError::Invalid)?;
+        Ok(mod_api::__private::built::render_type_ref(
+            self.generation,
+            slot,
+        ))
+    }
+
+    /// The built-in entity render type and the dynamic texture a handle from
+    /// [`Self::textured_render_type`] names: `Unknown` for any other handle (a plain built-in or
+    /// a custom render type), `Stale` for one of an earlier load.
+    pub fn textured_render_type_of(
+        &self,
+        handle: RenderTypeRef,
+    ) -> Result<(BuiltinRenderType, Identifier), RenderTypeError> {
+        self.textured_render_type_of_in(registered_render_types().len(), handle)
+    }
+
+    pub(crate) fn textured_render_type_of_in(
+        &self,
+        custom: usize,
+        handle: RenderTypeRef,
+    ) -> Result<(BuiltinRenderType, Identifier), RenderTypeError> {
+        use mod_api::__private::game::Fields;
+        let fields = handle.fields();
+        if fields.generation != self.generation {
+            return Err(RenderTypeError::Stale);
+        }
+        let index = (fields.slot as usize)
+            .checked_sub(BUILTIN_RENDER_TYPE_IDS.len() + custom)
+            .ok_or(RenderTypeError::Unknown)?;
+        self.textured
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .made
+            .get(index)
+            .cloned()
+            .ok_or(RenderTypeError::Unknown)
     }
 
     /// Validate a [`RenderTypeRef`] against this load and return its resolved descriptor.
@@ -1964,6 +2091,44 @@ void main() {
         assert_eq!(before.slot(handle), Ok(1));
     }
 
+    /// `RenderTypes.entitySolid(Identifier)` and its siblings are memoized per texture: one
+    /// texture gives one handle, another texture another, and the handle names its texture and
+    /// kind back. Only the three entity kinds take a texture.
+    #[test]
+    fn a_textured_render_type_is_one_handle_per_kind_and_texture() {
+        let set = Pipelines::build(&[], 7, |_| Ok(None)).unwrap();
+        let (a, b) = (id("example:dynamic/a"), id("example:dynamic/b"));
+        let solid =
+            |texture| set.textured_render_type_in(0, BuiltinRenderType::EntitySolid, texture);
+        assert_eq!(solid(&a), solid(&a));
+        assert_ne!(solid(&a), solid(&b));
+        let cutout = set.textured_render_type_in(0, BuiltinRenderType::EntityCutout, &a);
+        assert_ne!(cutout, solid(&a));
+        assert_eq!(
+            set.textured_render_type_of_in(0, cutout.unwrap()),
+            Ok((BuiltinRenderType::EntityCutout, a.clone()))
+        );
+        assert_eq!(
+            set.textured_render_type_of_in(0, solid(&b).unwrap()),
+            Ok((BuiltinRenderType::EntitySolid, b))
+        );
+        assert_eq!(
+            set.textured_render_type_in(0, BuiltinRenderType::Lightning, &a),
+            Err(RenderTypeError::Invalid)
+        );
+        // A plain built-in handle names no texture, and a handle of another load is stale.
+        let plain = mod_api::__private::built::render_type_ref(7, 0);
+        assert_eq!(
+            set.textured_render_type_of_in(0, plain),
+            Err(RenderTypeError::Unknown)
+        );
+        let earlier = mod_api::__private::built::render_type_ref(6, 40);
+        assert_eq!(
+            set.textured_render_type_of_in(0, earlier),
+            Err(RenderTypeError::Stale)
+        );
+    }
+
     #[test]
     fn initial_required_failure_has_a_literal_message() {
         let registered = [pipeline("example:glow", "example:core/glow")];
@@ -2127,9 +2292,11 @@ void main() {
             mod_platform::testing::with_mods(mods.into(), || {
                 let mut staged = Vec::new();
                 let mut staged_render_types = Vec::new();
+                let mut staged_compute = Vec::new();
                 mod_api::dispatch_register_render_pipelines(
                     &RegistrationContext::new(),
                     &mut staged_render_types,
+                    &mut staged_compute,
                     &mut staged,
                 );
                 result = validate_pack_bindings(&staged).map(|()| staged);

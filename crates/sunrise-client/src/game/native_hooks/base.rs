@@ -1,5 +1,5 @@
 use super::*;
-use mod_api::BlockEntityDataView;
+use mod_api::{BlockEntityDataView, ModBlockEntity};
 impl GameLevel<'_> {
     /// Initial saved data for a declared block entity (`EntityBlock.newBlockEntity`),
     /// fired inside the write that creates it (`LevelChunk.setBlockState`), on
@@ -625,10 +625,14 @@ impl Game<'_> {
     }
     /// Before a level's tick pass on either logical side.
     pub(in crate::game) fn native_level_tick_pre(&mut self, level: LevelRef) {
+        let _listeners =
+            crate::game::native_server::LevelTickListeners::mark(!self.has_open_transaction());
         self.fire_level_tick_pre(level);
     }
     /// After a successful level tick pass on either logical side.
     pub(in crate::game) fn native_level_tick_post(&mut self, level: LevelRef) {
+        let _listeners =
+            crate::game::native_server::LevelTickListeners::mark(!self.has_open_transaction());
         self.fire_level_tick_post(level);
     }
     /// Before a vanilla or registered HUD slot runs (`RenderGuiLayerEvent.Pre`), even under F1.
@@ -1114,6 +1118,16 @@ impl Game<'_> {
         canceled: &mut bool,
     ) {
         self.fire_screen_mouse_moved_pre(screen, delta, modifiers, canceled);
+    }
+    /// Files dropped on the window while a screen is open (`Screen.onFilesDrop`, called by
+    /// `MouseHandler.onDrop` with the whole drop): `paths` are the operating system's, in its
+    /// order. Observe only.
+    pub(in crate::game) fn native_screen_files_dropped(
+        &self,
+        screen: &ScreenView<'_>,
+        paths: &[std::path::PathBuf],
+    ) {
+        self.fire_screen_files_dropped(screen, paths);
     }
     /// Raw device motion while the open mod screen holds the pointer grab.
     pub(in crate::game) fn native_screen_pointer_motion(
@@ -3056,9 +3070,9 @@ impl Game<'_> {
     }
     /// NeoForge's `LivingEntityUseItemEvent.Start`: `entity` starts using
     /// `stack` in `hand` (`LivingEntity.startUsingItem`), for `duration`
-    /// ticks (`native_use_duration`'s answer). `entity` is a mob's
-    /// `Entity.getId`, None for a player (`native_acting_player` says who);
-    /// a mob fires it only for `LivingRef::start_using_item`. Change `duration` (consumables, potions,
+    /// ticks (`native_use_duration`'s answer). `entity` is the user's
+    /// `Entity.getId`: a player's (the acting one, `native_acting_player`, on the
+    /// server; the local player on a server's client) or a mob's; a mob fires it only for `LivingRef::start_using_item`. Change `duration` (consumables, potions,
     /// spyglasses and mods' items count to it; below 0 refuses the use, and
     /// 0 runs it out on its first tick, as `native_living_entity_use_item_tick`
     /// running it out, unless the item's own is 0 already), or set
@@ -3084,7 +3098,7 @@ impl Game<'_> {
     /// `finishUsingItem` left in the hand (the bowl of a stew, none for the
     /// last apple; a mod's own item is kept) and may be replaced. Fired for
     /// consumables, potions, spyglasses and mods' items. Both sides (a server's client sees its prediction);
-    /// on the server for every player of the world (the helpers read the acting one).
+    /// on the server for every player of the world, `entity` the acting one's id.
     pub(in crate::game) fn native_living_entity_use_item_finish(
         &mut self,
         stack: &ItemStack,
@@ -3958,9 +3972,7 @@ impl Game<'_> {
         batch.fill(&self.gui.atlas, x, y, w, h, rgba(r, g, b, a));
     }
     /// Part `src` (`[x, y, w, h]` in the sprite's own pixels) of sprite
-    /// `name` (vanilla's `gui/...`, a content mod's GUI texture `mymod:gui/...`,
-    /// or a client mod's dynamic texture bound to an atlas slot,
-    /// `create_dynamic_texture`), drawn stretched into `dst` (`[x, y, w, h]` in GUI
+    /// `name` (vanilla's `gui/...` or a content mod's GUI texture `mymod:gui/...`), drawn stretched into `dst` (`[x, y, w, h]` in GUI
     /// pixels), every texel multiplied by `tint` (`0xAARRGGBB`, a fluid's colour)
     /// when there is one. False when there is no such sprite.
     pub(in crate::game) fn native_sprite(
@@ -4354,11 +4366,26 @@ impl Game<'_> {
 /// (a client's guess at a click), it reads over the blocks the preview set. A read goes only
 /// through `Signals`, which asks the signal hooks and never `state_for_placement` or
 /// `can_survive`: a listener cannot re-enter itself through it.
-pub(in crate::game) type LevelView<'a> =
-    super::super::mod_api_host::LevelTicks<'a, &'a GameLevel<'a>, &'a Ticks>;
+pub(in crate::game) struct LevelView<'a> {
+    pub(in crate::game) level: &'a dyn super::super::mod_api_host::SidedLevel,
+    pub(in crate::game) world: *const sunrise_client::world::World,
+}
+
+impl<'a> LevelView<'a> {
+    pub(in crate::game) fn new(
+        level: &'a dyn super::super::mod_api_host::SidedLevel,
+        world: &sunrise_client::world::World,
+    ) -> Self {
+        Self { level, world }
+    }
+}
+
 impl GameLevel<'_> {
     /// This level as a placement or survival question sees it, with the simulation's `ticks`.
-    pub(in crate::game) fn view<'a>(&'a self, ticks: &'a Ticks) -> LevelView<'a> {
+    pub(in crate::game) fn view<'a>(
+        &'a self,
+        ticks: &'a Ticks,
+    ) -> super::super::mod_api_host::LevelTicks<'a, &'a GameLevel<'a>, &'a Ticks> {
         super::super::mod_api_host::LevelTicks::new(self, ticks)
     }
 }
@@ -4379,6 +4406,15 @@ impl LevelView<'_> {
         may: &mut Option<bool>,
         inert: &mut bool,
     ) {
+        let pos = BlockPos::new(ground_pos.x, ground_pos.y.saturating_add(1), ground_pos.z);
+        let Some(_active) = super::survival_query_guard::enter_part(
+            self.world,
+            pos,
+            state,
+            super::survival_query_guard::PartHook::MayPlaceOn,
+        ) else {
+            return;
+        };
         self.fire_may_place_on(dimension, state, ground, ground_pos, may, inert);
     }
 
@@ -4401,6 +4437,14 @@ impl LevelView<'_> {
         survives: &mut Option<bool>,
         inert: &mut bool,
     ) {
+        let Some(_active) = super::survival_query_guard::enter_part(
+            self.world,
+            pos,
+            state,
+            super::survival_query_guard::PartHook::CanSurvive,
+        ) else {
+            return;
+        };
         self.fire_can_survive(dimension, pos, state, survives, inert);
     }
 

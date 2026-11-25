@@ -244,6 +244,11 @@ pub enum ModBindingKind {
         /// Whether the block is `readonly`.
         read_only: bool,
     },
+    /// `layout(<format>) uniform image2D` storage image (`binding = k`).
+    StorageImage {
+        /// What the declaration's `readonly`/`writeonly` qualifiers must say.
+        access: sunrise_glsl::ImageAccess,
+    },
 }
 
 /// One mod-declared set-1 binding passed into [`Options::mod_bindings`].
@@ -260,6 +265,7 @@ pub struct Set1Bindings<'a> {
     pub samplers: Vec<(&'a str, u32)>,
     pub texel_buffers: Vec<(&'a str, u32)>,
     pub storage_buffers: Vec<(&'a str, u32, bool)>,
+    pub storage_images: Vec<(&'a str, u32, sunrise_glsl::ImageAccess)>,
     pub push_constant_binding: Option<u32>,
     pub next_binding: u32,
 }
@@ -288,6 +294,10 @@ pub fn assign_set1_bindings<'a>(
             }
             ModBindingKind::StorageBuffer { read_only } => {
                 out.storage_buffers.push((b.name, next, read_only));
+                next += 1;
+            }
+            ModBindingKind::StorageImage { access } => {
+                out.storage_images.push((b.name, next, access));
                 next += 1;
             }
         }
@@ -341,6 +351,17 @@ pub fn extract_mod_bindings(
                 line = line[..comment].trim();
             }
             if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if let Some(image) = sunrise_glsl::storage_image(line) {
+                if !is_reserved(image.name) && !out.iter().any(|(n, _)| n == image.name) {
+                    out.push((
+                        image.name.to_owned(),
+                        ModBindingKind::StorageImage {
+                            access: sunrise_glsl::ImageAccess::of_qualifiers(&image.qualifiers),
+                        },
+                    ));
+                }
                 continue;
             }
             if let Some(block) = sunrise_glsl::storage_block(line) {
@@ -706,6 +727,111 @@ pub fn translate(
         .unwrap_or_else(|reason| Err(vec![problem(sources.fragment_file, reason)]))
 }
 
+/// The GLSL source text and path of one mod compute shader (`.csh`).
+pub struct ComputeSources<'a> {
+    /// Asset path for diagnostics (e.g. `assets/mod/shaders/compute/a.csh`).
+    pub file: &'a str,
+    /// Include base folder for quoted relative includes (e.g. `mod:shaders/compute/`).
+    pub dir: &'a str,
+    pub source: &'a str,
+}
+
+/// Compilation options for [`translate_compute`].
+#[derive(Clone, Copy)]
+pub struct ComputeOptions<'a> {
+    /// Preprocessor defines (`NAME` or `NAME value`) in order.
+    pub defines: &'a [&'a str],
+    /// Mod-declared bindings (`BindGroupLayout`) in declaration order, bound in group
+    /// [`COMPUTE_BIND_GROUP`].
+    pub mod_bindings: &'a [ModBinding<'a>],
+    /// Also run SPIR-V, Metal and DirectX 12 backend translation checks.
+    pub check_backends: bool,
+    /// Stage interface limits of the target device (or [`DEVICELESS_INTERFACE_LIMITS`]).
+    pub interface: InterfaceLimits,
+}
+
+/// The one bind group of a compute pipeline: the mod's own `BindGroupLayout`. A compute shader
+/// reads no vanilla bindings, so there is no shared set 0 to sit beside.
+pub const COMPUTE_BIND_GROUP: u32 = 0;
+
+/// The folder under `assets/<namespace>/` holding compute shaders (`.csh`).
+pub const COMPUTE_FOLDER: &str = "shaders/compute";
+
+/// Translate and validate one mod compute shader (`.csh`) on a guarded 64 MiB stack thread with
+/// the same crash/memory containment bounds as [`translate`].
+pub fn translate_compute(
+    sources: &ComputeSources<'_>,
+    options: &ComputeOptions<'_>,
+    include: &(dyn Fn(&str) -> Result<Option<String>, String> + Sync),
+) -> Result<sunrise_glsl::ComputeTranslated, Vec<Problem>> {
+    guard::guarded(|| translate_compute_inner(sources, options, include))
+        .unwrap_or_else(|reason| Err(vec![problem(sources.file, reason)]))
+}
+
+fn translate_compute_inner(
+    sources: &ComputeSources<'_>,
+    options: &ComputeOptions<'_>,
+    include: &dyn Fn(&str) -> Result<Option<String>, String>,
+) -> Result<sunrise_glsl::ComputeTranslated, Vec<Problem>> {
+    let includes = Includes {
+        read: &include,
+        namespace: "minecraft",
+        folder: INCLUDE_FOLDER,
+        once: &["moj_import"],
+    };
+    let expanded = sunrise_glsl::expand_includes(
+        sources.source,
+        sources.file,
+        sources.dir,
+        &includes,
+        Some(options.defines),
+    )
+    .map_err(|e| vec![problem(sources.file, e.to_string())])?
+    .text()
+    .to_owned();
+    if let Some((at, msg)) = guard::refusal(&expanded) {
+        return Err(vec![located(sources.file, &expanded, at, msg)]);
+    }
+    let set = assign_set1_bindings(options.mod_bindings, 0);
+    let inputs = Inputs {
+        blocks: &[],
+        samplers: &[],
+        extra_set: COMPUTE_BIND_GROUP,
+        extra_blocks: &set.blocks,
+        extra_samplers: &set.samplers,
+        extra_texel_buffers: &set.texel_buffers,
+        extra_storage_buffers: &set.storage_buffers,
+        extra_storage_images: &set.storage_images,
+        push_constant_binding: None,
+        loose: &[],
+        defines: options.defines,
+        includes: &includes,
+    };
+    let translated = sunrise_glsl::translate_compute(
+        sources.source,
+        sources.file,
+        sources.dir,
+        &inputs,
+        options.interface,
+    )
+    .map_err(|errors| {
+        errors
+            .into_iter()
+            .map(|e| problem(sources.file, e.to_string()))
+            .collect::<Vec<_>>()
+    })?;
+    if options.check_backends {
+        let errors: Vec<Problem> = translate_backends(&translated.module)
+            .into_iter()
+            .map(|err| problem(sources.file, err))
+            .collect();
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+    }
+    Ok(translated)
+}
+
 /// Translate and validate all three OIT variants (`DepthBounds`, `Transmittance`, `Accumulate`)
 /// of an `.order_independent()` mod render pipeline program on a guarded 64 MiB stack thread.
 /// When `additive` is true (`PipelineBlend::Additive`), `OIT_ADDITIVE` is also defined so the
@@ -857,6 +983,7 @@ fn translate_inner(
         extra_samplers: &set1.samplers,
         extra_texel_buffers: &set1.texel_buffers,
         extra_storage_buffers: &set1.storage_buffers,
+        extra_storage_images: &set1.storage_images,
         push_constant_binding: set1.push_constant_binding,
         loose: &[],
         defines,
@@ -944,6 +1071,7 @@ pub fn translate_linear_fragment(
             extra_samplers: &set1.samplers,
             extra_texel_buffers: &set1.texel_buffers,
             extra_storage_buffers: &set1.storage_buffers,
+            extra_storage_images: &set1.storage_images,
             push_constant_binding: set1.push_constant_binding,
             loose: &[],
             defines: &defines,
@@ -1653,6 +1781,123 @@ void main() {
             vec![(
                 "Quads".to_owned(),
                 ModBindingKind::StorageBuffer { read_only: true }
+            )]
+        );
+    }
+
+    #[test]
+    fn storage_images_translate_into_set_one_with_their_declared_format_and_access() {
+        let vsh = "\
+#version 330
+in vec3 Position;
+in vec2 UV0;
+in vec4 Color;
+out vec2 texCoord0;
+out vec4 vertexColor;
+void main() {
+    gl_Position = vec4(Position, 1.0);
+    texCoord0 = UV0;
+    vertexColor = Color;
+}
+";
+        let fsh = |image: &str| {
+            format!(
+                "\
+#version 330
+in vec2 texCoord0;
+in vec4 vertexColor;
+{image}
+out vec4 fragColor;
+void main() {{
+    imageStore(Pyramid, ivec2(0), vertexColor);
+    fragColor = vertexColor;
+}}
+"
+            )
+        };
+        let declared = |access| {
+            [ModBinding {
+                name: "Pyramid",
+                kind: ModBindingKind::StorageImage { access },
+            }]
+        };
+        let write_only = fsh("layout(rgba8) writeonly uniform image2D Pyramid;");
+        let bindings = declared(sunrise_glsl::ImageAccess::WriteOnly);
+        let opts = Options {
+            mod_bindings: &bindings,
+            check_backends: true,
+            ..Default::default()
+        };
+        let built = translate(&sources(vsh, &write_only), &opts, &stub_include)
+            .expect("a write-only rgba8 image translates");
+        let module = &built.translated.fragment;
+        let (_, image) = module
+            .global_variables
+            .iter()
+            .find(|(_, var)| var.name.as_deref() == Some("Pyramid"))
+            .expect("the image is a global");
+        assert_eq!(
+            image.binding,
+            Some(naga::ResourceBinding {
+                group: MOD_BIND_GROUP_SET,
+                binding: 0
+            })
+        );
+        assert!(matches!(
+            module.types[image.ty].inner,
+            naga::TypeInner::Image {
+                class: naga::ImageClass::Storage {
+                    format: naga::StorageFormat::Rgba8Unorm,
+                    ..
+                },
+                ..
+            }
+        ));
+
+        // The qualifiers must agree with the declared access, and the image must be declared.
+        let read_write = declared(sunrise_glsl::ImageAccess::ReadWrite);
+        let opts = Options {
+            mod_bindings: &read_write,
+            ..Default::default()
+        };
+        assert!(
+            translate(&sources(vsh, &write_only), &opts, &stub_include).is_err(),
+            "`writeonly` on a read-write image is refused"
+        );
+        assert!(
+            translate(
+                &sources(vsh, &write_only),
+                &Options::default(),
+                &stub_include,
+            )
+            .is_err(),
+            "an undeclared image is refused"
+        );
+
+        // The texel format comes from `layout(<format>)`: without one the image is refused.
+        let no_format = fsh("writeonly uniform image2D Pyramid;");
+        let opts = Options {
+            mod_bindings: &bindings,
+            ..Default::default()
+        };
+        assert!(
+            translate(&sources(vsh, &no_format), &opts, &stub_include).is_err(),
+            "an image with no format is refused"
+        );
+
+        // `uniform readonly image2D` orders its qualifiers after the storage word.
+        let (extracted, _) = extract_mod_bindings(
+            vsh,
+            &fsh("layout(r32f) uniform readonly image2D Pyramid;"),
+            false,
+        );
+        assert_eq!(
+            extracted,
+            vec![(
+                "Pyramid".to_owned(),
+                ModBindingKind::StorageImage {
+                    access: sunrise_glsl::ImageAccess::ReadOnly
+                }
             )]
         );
     }

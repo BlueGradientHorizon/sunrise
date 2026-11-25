@@ -121,6 +121,13 @@ pub trait FrameHooks {
         true
     }
     fn on_custom_geometry(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool);
+    /// Fire `Hooks::frame_graph_setup` at the start of level rendering to record data-driven
+    /// offscreen passes and transient per-frame targets.
+    fn on_frame_graph_setup(&mut self, _sections: &[mod_api::RenderableSection], _oit_on: bool) {}
+    /// Take the recorded frame graph for compilation and execution during this world frame.
+    fn take_frame_graph(&mut self) -> Option<super::mod_frame_graph::RecordedFrameGraph> {
+        None
+    }
     fn on_after_sky(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool);
     fn on_prepare_render_buffers(
         &mut self,
@@ -761,6 +768,12 @@ impl WorldPrimitives {
         self.pipelines.forget_storage(released);
     }
 
+    /// Forget the warnings about released mod render target textures (see
+    /// [`mod_pipelines::ModPipelines::forget_render_targets`]).
+    pub fn forget_render_targets(&mut self, released: &[u64]) {
+        self.pipelines.forget_render_targets(released);
+    }
+
     /// Uploads this frame's `batch`, drawn with `view_proj` (camera-relative world to clip,
     /// jittered as the world is) into a frame `viewport` pixels big, sampling `atlas`. When
     /// `vanilla_blocks` is `Some`, mod GLSL pipelines bind those `core_lines::uniforms` blocks
@@ -1229,6 +1242,23 @@ impl WorldPrimitives {
         }
         self.pipelines
             .draw_excluding(pass, &self.indices, first, last, &self.bound_mod_slots);
+    }
+
+    /// Execute one mod-owned offscreen render pass (`OffscreenPass`) into `data.target`.
+    pub fn execute_offscreen_pass(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        data: &super::mod_pipelines::OffscreenPassData<'_>,
+    ) {
+        let upload: Upload<'_> = &mut |buffer, bytes| queue.write_buffer(buffer, 0, bytes);
+        let needed_quads = self.pipelines.offscreen_needed_quads(data.draws);
+        if needed_quads > 0 {
+            self.reserve_indices(device, upload, needed_quads);
+        }
+        self.pipelines
+            .execute_offscreen_pass(device, queue, encoder, &self.indices, data);
     }
 }
 

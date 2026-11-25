@@ -116,6 +116,7 @@ pub(crate) struct Kept {
     targets: HashMap<u64, Target>,
     flipped: Flipped,
     clipped_entities: wgpu::RenderPipeline,
+    clipped_foil: wgpu::RenderPipeline,
     pub sections: super::view_sections::Sections,
 }
 
@@ -143,7 +144,45 @@ impl Kept {
             targets: HashMap::new(),
             flipped: Flipped { solid, translucent },
             clipped_entities,
+            clipped_foil: entity(super::energy_swirl_options(true)),
             sections: Default::default(),
+        }
+    }
+}
+
+/// Which ranges of the packed entity buffer a secondary view submits. Foil needs its
+/// additive, depth-read-only pipeline; other energy swirls are not part of these views.
+pub(super) struct EntityDraws {
+    pub ordinary: u32,
+    /// A pack-drawn name tag's copies, drawn as the native entity layer with the ordinary
+    /// pipeline (the pack's text blocks hold the frame camera's matrices, not the view's).
+    pub name_tags: std::ops::Range<u32>,
+    pub foil: std::ops::Range<u32>,
+}
+
+impl EntityDraws {
+    pub(super) fn draw(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        pipelines: [&wgpu::RenderPipeline; 2],
+        group: &wgpu::BindGroup,
+        buffer: &wgpu::Buffer,
+    ) {
+        if self.ordinary == 0 && self.name_tags.is_empty() && self.foil.is_empty() {
+            return;
+        }
+        pass.set_bind_group(0, group, &[]);
+        pass.set_vertex_buffer(0, buffer.slice(..));
+        let [entities, foil] = pipelines;
+        for (pipeline, quads) in [
+            (entities, 0..self.ordinary),
+            (entities, self.name_tags.clone()),
+            (foil, self.foil.clone()),
+        ] {
+            if !quads.is_empty() {
+                pass.set_pipeline(pipeline);
+                pass.draw_indexed(0..quads.len() as u32 * 6, (quads.start * 4) as i32, 0..1);
+            }
         }
     }
 }
@@ -155,9 +194,7 @@ struct Lists {
     pub sky: bool,
     pub flat: bool,
     pub hdr: bool,
-    pub entity_quads: u32,
-    /// A pack-drawn name tag's copies: their first quad and count.
-    pub name_tags: (u32, u32),
+    pub entities: EntityDraws,
 }
 
 impl Renderer {
@@ -187,8 +224,11 @@ impl Renderer {
             sky: super::sky_visible(frame),
             flat,
             hdr: self.hdr.is_some(),
-            entity_quads,
-            name_tags,
+            entities: EntityDraws {
+                ordinary: entity_quads,
+                name_tags: name_tags.0..name_tags.0 + name_tags.1,
+                foil: self.entity_batch.armor_foil.clone(),
+            },
         };
         let format = self.output.frame.format;
         let mut targets = std::mem::take(&mut self.world_views.targets);
@@ -337,19 +377,20 @@ impl Renderer {
             }
         }
         pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
-        let (tags_first, tags) = lists.name_tags;
-        if lists.entity_quads + tags > 0 {
-            pass.set_pipeline(match view.clip_plane {
-                Some(_) => &self.world_views.clipped_entities,
-                None => &self.entity_pipeline,
-            });
-            pass.set_bind_group(0, &self.entity_group, &[]);
-            pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
-            pass.draw_indexed(0..lists.entity_quads * 6, 0, 0..1);
-            // A pack-drawn name tag's copies, as the native entity layer (the pack's text blocks
-            // hold the frame camera's matrices, not the view's).
-            pass.draw_indexed(0..tags * 6, (tags_first * 4) as i32, 0..1);
-        }
+        let pipelines = if view.clip_plane.is_some() {
+            [
+                &self.world_views.clipped_entities,
+                &self.world_views.clipped_foil,
+            ]
+        } else {
+            [&self.entity_pipeline, &self.energy_swirl_pipeline]
+        };
+        lists.entities.draw(
+            &mut pass,
+            pipelines,
+            &self.entity_group,
+            &self.entity_buffer,
+        );
         pass.set_bind_group(0, &self.group, &[]);
         match flat {
             Some(flat) => {

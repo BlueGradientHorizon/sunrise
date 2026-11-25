@@ -33,7 +33,10 @@ use sunrise_protocol::packets::play::Clientbound as C;
 mod progress_tests;
 
 /// Capture the owning progress without changing its dates or requirement semantics.
-fn progress_snapshot(a: &adv::Advancement, progress: &Progress) -> mod_api::AdvancementProgress {
+pub(super) fn progress_snapshot(
+    a: &adv::Advancement,
+    progress: &Progress,
+) -> mod_api::AdvancementProgress {
     let obtained = progress.criteria.get(&a.id);
     mod_api::AdvancementProgress::new(
         a.criteria

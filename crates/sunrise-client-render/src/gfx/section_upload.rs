@@ -160,6 +160,21 @@ pub struct BlockEntityInRange<'a> {
     pub near: bool,
 }
 
+/// The normal stream of the arena page a run's `key` names (`draw_sections_paged`): the
+/// translucent arena's past `flat::TRANSLUCENT_KEYS`, as far as its vertices are bound. Only
+/// while the arenas keep one (`follow_arena_layout`).
+pub(super) fn normals_binding_in<'a>(
+    arena: &'a arena::Arena,
+    translucent_arena: &'a Option<arena::Arena>,
+    key: u32,
+) -> wgpu::BufferSlice<'a> {
+    let normals = match (translucent_arena, key.checked_sub(flat::TRANSLUCENT_KEYS)) {
+        (Some(arena), Some(page)) => arena.normals_binding(page),
+        _ => arena.normals_binding(key),
+    };
+    normals.expect("every page has a normal stream while a pack reads it")
+}
+
 impl Renderer {
     /// Whether `upload_mesh` puts `mesh`'s solid quads in the compact layout: where the
     /// mesher made it and the passes read it (`packed_quads`).
@@ -486,19 +501,6 @@ impl Renderer {
         page: &dyn Fn(&mut wgpu::RenderPass<'_>, u32),
     ) {
         self.draw_sections_with(pass, indirect, 0, first..first + count, false, page);
-    }
-    /// The normal stream of the arena page a run's `key` names (`draw_sections_paged`): the
-    /// translucent arena's past `flat::TRANSLUCENT_KEYS`, as far as its vertices are bound.
-    /// Only while the arenas keep one (`follow_arena_layout`).
-    pub(super) fn normals_binding(&self, key: u32) -> wgpu::BufferSlice<'_> {
-        let normals = match (
-            &self.translucent_arena,
-            key.checked_sub(flat::TRANSLUCENT_KEYS),
-        ) {
-            (Some(arena), Some(page)) => arena.normals_binding(page),
-            _ => self.arena.normals_binding(key),
-        };
-        normals.expect("every page has a normal stream while a pack reads it")
     }
     /// `draw_sections` through the solid pipelines that read the arena page themselves
     /// (`vs_section`): each page's group is bound as their group 1.

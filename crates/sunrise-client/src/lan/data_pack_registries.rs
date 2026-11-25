@@ -163,6 +163,10 @@ pub const REGISTRY_KINDS: &[RegistryKind] = &[
         decode: decode_block_transformer,
     },
     RegistryKind {
+        key: "minecraft:worldgen/block_state_provider",
+        decode: decode_block_state_provider,
+    },
+    RegistryKind {
         key: "minecraft:timeline",
         decode: decode_timeline,
     },
@@ -1910,6 +1914,19 @@ fn decode_block_transformer(
     value: Value,
 ) -> Result<Definition, String> {
     crate::block_transform::Transformers::validate(&value, decoder.sound_exists)?;
+    validated(value, true)
+}
+
+/// `BlockStateProvider.DIRECT_CODEC`: a map; the provider's own fields are read by the world
+/// generator's state-provider catalog, which admits the same pack files.
+fn decode_block_state_provider(
+    _: &mut Decoder<'_>,
+    _: &str,
+    value: Value,
+) -> Result<Definition, String> {
+    if !value.is_object() {
+        return Err("not a map".into());
+    }
     validated(value, true)
 }
 

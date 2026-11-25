@@ -11,6 +11,7 @@ impl Crystal {
             join: Default::default(),
             id,
             position,
+            previous: position,
             rotation: [0.0; 2],
             fire: 0,
             show_bottom,

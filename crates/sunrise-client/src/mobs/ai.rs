@@ -5595,15 +5595,7 @@ pub(super) fn play_wolf_ambient(
     };
     if let Some(sound) = wolf_sound(m, variants, kind) {
         m.voice_id(sound, events);
-        return;
     }
-    let fallback = match kind {
-        "growl" => "entity.wolf.growl",
-        "whine" => "entity.wolf.whine",
-        "pant" => "entity.wolf.pant",
-        _ => "entity.wolf.ambient",
-    };
-    m.voice(fallback, events);
 }
 /// `Cat.getSoundSet`: resolves `kind` (`ambient`, `stray_ambient`, `hiss`,
 /// `hurt`, `death`, `eat`, `beg_for_food`, `purr`, `purreow`) from the world's
@@ -5636,15 +5628,7 @@ pub(super) fn play_cat_ambient(
     };
     if let Some(sound) = cat_sound(m, variants, kind) {
         m.voice_id(sound, events);
-        return;
     }
-    let fallback = match kind {
-        "purr" => "entity.cat.purr",
-        "purreow" => "entity.cat.purreow",
-        "stray_ambient" => "entity.cat.stray_ambient",
-        _ => "entity.cat.ambient",
-    };
-    m.voice(fallback, events);
 }
 /// `Animal.mobInteract` with its food in hand: an adult that can fall in
 /// love does, a baby grows up by a tenth, and either plays its eating sound
@@ -5806,9 +5790,7 @@ pub fn eating_sound_with_variants(
         }
         // playSound(sound, 1, 1).
         Species::Cat => {
-            let sound = cat_sound(m, variants, "eat")
-                .map(|s| Cow::Owned(s.to_owned()))
-                .unwrap_or(Cow::Borrowed("entity.cat.eat"));
+            let sound = Cow::Owned(cat_sound(m, variants, "eat")?.to_owned());
             (sound, 1.0, 1.0, true)
         }
         Species::Fox => (Cow::Borrowed("entity.fox.eat"), 1.0, 1.0, true),

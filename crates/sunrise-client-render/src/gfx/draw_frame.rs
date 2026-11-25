@@ -37,6 +37,9 @@ impl Renderer {
         let mut laps = crate::spans::laps();
         let landing = Instant::now();
         self.land_frame();
+        if let Some(world_primitives) = self.world_primitives.as_mut() {
+            world_primitives.pipelines.begin_frame();
+        }
         // The frame's one poll takes in what earlier frames read back (GPU times, GPU
         // culling's statistics, occlusion results, a shader pack's centre depth); their
         // collectors don't poll. It, or the previous frame's submission, is often where a
@@ -579,6 +582,7 @@ impl Renderer {
                         }),
                 );
             hooks.on_custom_geometry(&self.visible_renderable_sections, hook_oit);
+            hooks.on_frame_graph_setup(&self.visible_renderable_sections, hook_oit);
         }
         let now = std::time::Instant::now();
         let mut visible_lods = std::mem::take(&mut self.visible_lods);
@@ -1573,13 +1577,28 @@ impl Renderer {
             self.prepared_draws
                 .append(&mut self.hook_geometry.prepared_draws);
         }
+        let mut frame_graph = if live_hooks
+            && let Some(hooks) = hooks.as_deref_mut()
+            && let Some(recorded) = hooks.take_frame_graph()
+        {
+            let mut warned = self
+                .warned_frame_graph_cycles
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            mod_frame_graph::FrameGraphRunner::prepare(recorded, hook_oit, &mut warned)
+        } else {
+            None
+        };
         // Upload both mods' stage batches and deferred geometry through the same path, before
         // the first consuming pass. Stage listeners may only reference these prepared ranges.
         let world_primitives = !frame.title && {
             let batch = hooks
                 .as_deref()
                 .map_or(frame.world_primitives, |hooks| hooks.prepared_primitives());
-            let mod_blocks = (!batch.pipelines.runs.is_empty()).then(vanilla_blocks);
+            let mod_blocks = (!batch.pipelines.runs.is_empty()
+                || !batch.pipelines.draws.is_empty()
+                || frame_graph.is_some())
+            .then(vanilla_blocks);
             // Mods' queued storage buffer writes land in call order before anything draws.
             self.flush_mod_storage();
             let prepared = self
@@ -1600,6 +1619,11 @@ impl Renderer {
                 .as_mut()
                 .expect("world primitives")
                 .forget_storage(&released);
+            let released_targets = self.take_released_mod_render_targets();
+            self.world_primitives
+                .as_mut()
+                .expect("world primitives")
+                .forget_render_targets(&released_targets);
             let bound = self
                 .pack_post
                 .as_ref()
@@ -1611,6 +1635,32 @@ impl Renderer {
                 .set_bound_mod_slots(bound);
             prepared || live_hooks
         };
+        if frame_graph.is_some() {
+            post::execute_pack_fg_slot(
+                &mut frame_graph,
+                mod_frame_graph::FrameGraphSlot::BeforeWorld,
+                &self.device,
+                &self.queue,
+                &mut encoder,
+                self.world_primitives.as_mut(),
+                &self.mod_render_targets,
+                &self.transient_targets,
+            );
+            if sky_stage == Some(SkyStageOwner::Engine) {
+                post::execute_pack_fg_slot(
+                    &mut frame_graph,
+                    mod_frame_graph::FrameGraphSlot::AfterStage(
+                        mod_api::RenderLevelStage::AfterSky,
+                    ),
+                    &self.device,
+                    &self.queue,
+                    &mut encoder,
+                    self.world_primitives.as_mut(),
+                    &self.mod_render_targets,
+                    &self.transient_targets,
+                );
+            }
+        }
         // Polytone GPU particles with their own shader: the vanilla blocks as the block outline's
         // (a particle's ModelViewMat is the camera's rotation, its positions camera relative).
         self.core_particles
@@ -1681,6 +1731,17 @@ impl Renderer {
                 skin.filter(|_| pack_skin),
                 (frame.entity_motion, frame.entity_motion_posed),
             );
+            // `RenderTypes.entitySolid` of a mod's texture: the pack's program draws it with that
+            // texture bound as the entity texture.
+            post.resolve_entity_textures(|handle| {
+                self.dynamic_entity.view(
+                    &self.device,
+                    &mut self.uploads,
+                    &mut encoder,
+                    self.hud.dynamic(),
+                    handle,
+                )
+            });
             entities = &self.pack_entity_rest;
         }
         self.hook_geometry.entity_spans.clear();
@@ -1746,9 +1807,13 @@ impl Renderer {
             glint_only_quads,
             text_offset_solid_quads,
             text_normal_solid_quads,
+            dynamic_solid_quads,
+            dynamic_cutout_quads,
+            dynamic_translucent_quads,
             name_tag_solid_quads,
             name_tag_quads,
         ] = batch_counts.materials;
+        let dynamic_quads = dynamic_solid_quads + dynamic_cutout_quads + dynamic_translucent_quads;
         let entities = &entities[..batch_counts.admitted_entity_vertices];
         let additive_quads = batch_counts.additive;
         let hand_quads = batch_counts.hand;
@@ -1776,6 +1841,7 @@ impl Renderer {
             + native_cutout_quads
             + native_cutout_mipped_quads
             + native_translucent_quads
+            + dynamic_quads
             + banner_pattern_quads
             + glint_only_quads
             + text_solid_quads
@@ -1797,11 +1863,28 @@ impl Renderer {
             - native_cutout_quads
             - native_cutout_mipped_quads
             - native_translucent_quads
+            - dynamic_quads
             - banner_pattern_quads
             - glint_only_quads
             - text_solid_quads
             - name_tag_solid_quads
             - name_tag_quads;
+        // Dynamic-texture quads sit after the terrain models and before banner patterns: their
+        // first quad in the entity buffer, and their runs with one bind group each.
+        let dynamic_first =
+            text_end - text_solid_quads - glint_only_quads - banner_pattern_quads - dynamic_quads;
+        if dynamic_quads > 0 {
+            let section_start = (dynamic_first - posed / 4) as usize * 4;
+            self.dynamic_entity.prepare(
+                &self.device,
+                &mut self.uploads,
+                &mut encoder,
+                self.hud.dynamic(),
+                &self.entity_batch.combined
+                    [section_start..section_start + dynamic_quads as usize * 4],
+                dynamic_first,
+            );
+        }
         let native_clouds = self.native.as_ref().is_none_or(|n| n.vanilla_clouds);
         // A pack's core/clouds, decided before either mesh is prepared: its faces, or none and
         // the native mesh in this same frame.
@@ -2741,6 +2824,33 @@ impl Renderer {
                     hooks.on_after_sky(&self.visible_renderable_sections, hook_oit);
                 }
             }
+            if sky_stage == Some(SkyStageOwner::Inline)
+                && frame_graph.as_ref().is_some_and(|fg| {
+                    fg.has_slot(mod_frame_graph::FrameGraphSlot::AfterStage(
+                        mod_api::RenderLevelStage::AfterSky,
+                    ))
+                })
+            {
+                drop(pass);
+                post::execute_pack_fg_slot(
+                    &mut frame_graph,
+                    mod_frame_graph::FrameGraphSlot::AfterStage(
+                        mod_api::RenderLevelStage::AfterSky,
+                    ),
+                    &self.device,
+                    &self.queue,
+                    &mut encoder,
+                    self.world_primitives.as_mut(),
+                    &self.mod_render_targets,
+                    &self.transient_targets,
+                );
+                let mut resumed =
+                    after_culling_pass(&mut encoder, world_view, world_depth, true, None)
+                        .forget_lifetime();
+                resumed.set_bind_group(0, &self.group, &[]);
+                pack_frame(&mut resumed);
+                pass = pack_timing::CountedPass::plain(resumed);
+            }
             // Keep the cursor for engine-supplied test batches. Mod stage callbacks draw only
             // explicitly selected prepared ranges at their real boundaries.
             let mut primitive_stage = 0;
@@ -3106,6 +3216,29 @@ impl Renderer {
                     pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
                 }
             }
+            if !pack_draws_terrain
+                && frame_graph.as_ref().is_some_and(|fg| {
+                    fg.has_slot(mod_frame_graph::FrameGraphSlot::AfterStage(
+                        mod_api::RenderLevelStage::AfterOpaqueBlocks,
+                    ))
+                })
+            {
+                drop(pass);
+                post::execute_pack_fg_slot(
+                    &mut frame_graph,
+                    mod_frame_graph::FrameGraphSlot::AfterStage(
+                        mod_api::RenderLevelStage::AfterOpaqueBlocks,
+                    ),
+                    &self.device,
+                    &self.queue,
+                    &mut encoder,
+                    self.world_primitives.as_mut(),
+                    &self.mod_render_targets,
+                    &self.transient_targets,
+                );
+                pass = plain_pass(&mut encoder);
+                pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+            }
             if static_entity_quads > 0 {
                 pass.stage(self.own_timing.as_mut(), "static block entities");
                 pass.set_pipeline(&self.static_entity_pipeline);
@@ -3245,6 +3378,7 @@ impl Renderer {
                 - text_solid_quads
                 - glint_only_quads
                 - banner_pattern_quads
+                - dynamic_quads
                 - native_solid_quads
                 - native_cutout_quads
                 - native_cutout_mipped_quads
@@ -3267,6 +3401,20 @@ impl Renderer {
                 first += count;
             }
             pass.set_bind_group(0, &self.group, &[]);
+            // `RenderTypes.entitySolid` and `entityCutout` of a mod's dynamic texture
+            // (`BlockEntityDrawContext::textured_quad`): the entity pipeline, one bind group a run.
+            for (overlay, count) in [
+                (DYNAMIC_TEXTURE_SOLID_OVERLAY, dynamic_solid_quads),
+                (DYNAMIC_TEXTURE_CUTOUT_OVERLAY, dynamic_cutout_quads),
+            ] {
+                if count > 0 {
+                    pass.stage(self.own_timing.as_mut(), "dynamic texture quads");
+                    pass.set_pipeline(&self.entity_pipeline);
+                    pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
+                    self.dynamic_entity.draw(&mut pass, overlay);
+                    pass.set_bind_group(0, &self.group, &[]);
+                }
+            }
             // RenderLevelStageEvent.AfterOpaqueFeatures: after the last opaque feature, including
             // the terrain-material model group. This pass owns those draws even when a pack
             // owns the blocks.
@@ -3297,6 +3445,29 @@ impl Renderer {
                     pack_frame(&mut pass);
                     pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
                 }
+            }
+            if !after_pack_features
+                && frame_graph.as_ref().is_some_and(|fg| {
+                    fg.has_slot(mod_frame_graph::FrameGraphSlot::AfterStage(
+                        mod_api::RenderLevelStage::AfterOpaqueFeatures,
+                    ))
+                })
+            {
+                drop(pass);
+                post::execute_pack_fg_slot(
+                    &mut frame_graph,
+                    mod_frame_graph::FrameGraphSlot::AfterStage(
+                        mod_api::RenderLevelStage::AfterOpaqueFeatures,
+                    ),
+                    &self.device,
+                    &self.queue,
+                    &mut encoder,
+                    self.world_primitives.as_mut(),
+                    &self.mod_render_targets,
+                    &self.transient_targets,
+                );
+                pass = plain_pass(&mut encoder);
+                pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
             }
             // FeatureRenderDispatcher.PreparedFrame.executeTranslucent: the shadows
             // come before the translucent items, which then cover them (#7026).
@@ -3379,10 +3550,24 @@ impl Renderer {
                         - text_solid_quads
                         - glint_only_quads
                         - banner_pattern_quads
+                        - dynamic_quads
                         - native_translucent_quads)
                         * 4) as i32,
                     0..1,
                 );
+                pass.set_bind_group(0, &self.group, &[]);
+            }
+            // `RenderTypes.entityTranslucent` of a dynamic texture: blended and depth writing, as
+            // the translucent items are, quads far to near.
+            if dynamic_translucent_quads > 0 {
+                pass.stage(
+                    self.own_timing.as_mut(),
+                    "translucent dynamic texture quads",
+                );
+                pass.set_pipeline(&self.translucent_item_pipeline);
+                pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
+                self.dynamic_entity
+                    .draw(&mut pass, DYNAMIC_TEXTURE_TRANSLUCENT_OVERLAY);
                 pass.set_bind_group(0, &self.group, &[]);
             }
             // Still-fluid block entities draw as their own ordinary sorted
@@ -3555,6 +3740,30 @@ impl Renderer {
                     pack_frame(&mut pass);
                     pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
                 }
+            }
+            if !oit_on
+                && !after_pack_features
+                && frame_graph.as_ref().is_some_and(|fg| {
+                    fg.has_slot(mod_frame_graph::FrameGraphSlot::AfterStage(
+                        mod_api::RenderLevelStage::AfterTranslucentFeatures,
+                    ))
+                })
+            {
+                drop(pass);
+                post::execute_pack_fg_slot(
+                    &mut frame_graph,
+                    mod_frame_graph::FrameGraphSlot::AfterStage(
+                        mod_api::RenderLevelStage::AfterTranslucentFeatures,
+                    ),
+                    &self.device,
+                    &self.queue,
+                    &mut encoder,
+                    self.world_primitives.as_mut(),
+                    &self.mod_render_targets,
+                    &self.transient_targets,
+                );
+                pass = plain_pass(&mut encoder);
+                pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
             }
             match self.flat.as_ref().filter(|_| flat_frame) {
                 // The pack draws translucent terrain after its deferred programs.
@@ -3770,6 +3979,24 @@ impl Renderer {
                     drop(features);
                     self.world_primitives = Some(wp);
                     self.own_timing = own_timing;
+                    for oit_stage in [
+                        mod_api::OitStage::DepthBounds,
+                        mod_api::OitStage::Transmittance,
+                        mod_api::OitStage::Accumulate,
+                    ] {
+                        post::execute_pack_fg_slot(
+                            &mut frame_graph,
+                            mod_frame_graph::FrameGraphSlot::AfterStage(
+                                mod_api::RenderLevelStage::OitTranslucent(oit_stage),
+                            ),
+                            &self.device,
+                            &self.queue,
+                            &mut encoder,
+                            self.world_primitives.as_mut(),
+                            &self.mod_render_targets,
+                            &self.transient_targets,
+                        );
+                    }
                     pass = world_pass_after_culling(
                         &mut encoder,
                         world_view,
@@ -3894,6 +4121,31 @@ impl Renderer {
                     pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
                 }
             }
+            if !pack_draws_water
+                && !pack_draws_terrain
+                && !oit_on
+                && frame_graph.as_ref().is_some_and(|fg| {
+                    fg.has_slot(mod_frame_graph::FrameGraphSlot::AfterStage(
+                        mod_api::RenderLevelStage::AfterTranslucentBlocks,
+                    ))
+                })
+            {
+                drop(pass);
+                post::execute_pack_fg_slot(
+                    &mut frame_graph,
+                    mod_frame_graph::FrameGraphSlot::AfterStage(
+                        mod_api::RenderLevelStage::AfterTranslucentBlocks,
+                    ),
+                    &self.device,
+                    &self.queue,
+                    &mut encoder,
+                    self.world_primitives.as_mut(),
+                    &self.mod_render_targets,
+                    &self.transient_targets,
+                );
+                pass = plain_pass(&mut encoder);
+                pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+            }
             // LevelRenderer.executeTranslucentAfterTerrain: vanilla's
             // translucent particle layer draws after translucent terrain —
             // the quads write depth, so before it they would hide the glass
@@ -3974,6 +4226,29 @@ impl Renderer {
                     pack_frame(&mut pass);
                     pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
                 }
+            }
+            if !oit_on
+                && frame_graph.as_ref().is_some_and(|fg| {
+                    fg.has_slot(mod_frame_graph::FrameGraphSlot::AfterStage(
+                        mod_api::RenderLevelStage::AfterTranslucentParticles,
+                    ))
+                })
+            {
+                drop(pass);
+                post::execute_pack_fg_slot(
+                    &mut frame_graph,
+                    mod_frame_graph::FrameGraphSlot::AfterStage(
+                        mod_api::RenderLevelStage::AfterTranslucentParticles,
+                    ),
+                    &self.device,
+                    &self.queue,
+                    &mut encoder,
+                    self.world_primitives.as_mut(),
+                    &self.mod_render_targets,
+                    &self.transient_targets,
+                );
+                pass = plain_pass(&mut encoder);
+                pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
             }
             // Native world text is an ordinary depth-tested overlay, after
             // particles (also after the OIT composite) and before the hand.
@@ -4078,6 +4353,30 @@ impl Renderer {
                     pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
                 }
             }
+            if !pack_draws_weather
+                && !oit_on
+                && frame_graph.as_ref().is_some_and(|fg| {
+                    fg.has_slot(mod_frame_graph::FrameGraphSlot::AfterStage(
+                        mod_api::RenderLevelStage::AfterWeather,
+                    ))
+                })
+            {
+                drop(pass);
+                post::execute_pack_fg_slot(
+                    &mut frame_graph,
+                    mod_frame_graph::FrameGraphSlot::AfterStage(
+                        mod_api::RenderLevelStage::AfterWeather,
+                    ),
+                    &self.device,
+                    &self.queue,
+                    &mut encoder,
+                    self.world_primitives.as_mut(),
+                    &self.mod_render_targets,
+                    &self.transient_targets,
+                );
+                pass = plain_pass(&mut encoder);
+                pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+            }
             // LevelRenderer: the world border after translucent terrain and weather.
             if let Some(b) = frame.border.as_ref().filter(|_| !frame.title && !oit_on) {
                 pass.stage(self.own_timing.as_mut(), "world border");
@@ -4145,11 +4444,20 @@ impl Renderer {
         }
         // RenderLevelStageEvent.AfterLevel: after the world finishes and before the engine
         // hand and overlays. A classic pack finishes its world inside PackPost.
-        if live_hooks
-            && !pack_world_runs
-            && let Some(hooks) = hooks.as_deref_mut()
-        {
-            hooks.on_after_level(&self.visible_renderable_sections, oit_on);
+        if !pack_world_runs {
+            if live_hooks && let Some(hooks) = hooks.as_deref_mut() {
+                hooks.on_after_level(&self.visible_renderable_sections, oit_on);
+            }
+            post::execute_pack_fg_slot(
+                &mut frame_graph,
+                mod_frame_graph::FrameGraphSlot::AfterStage(mod_api::RenderLevelStage::AfterLevel),
+                &self.device,
+                &self.queue,
+                &mut encoder,
+                self.world_primitives.as_mut(),
+                &self.mod_render_targets,
+                &self.transient_targets,
+            );
         }
         let lifts_world = output::lifts_world(
             frame.title,
@@ -4214,6 +4522,7 @@ impl Renderer {
                 sourced_frame,
                 sourced_cpu,
                 lifts_world,
+                frame_graph,
             },
             if pack_world_runs { hooks } else { None },
         )?;

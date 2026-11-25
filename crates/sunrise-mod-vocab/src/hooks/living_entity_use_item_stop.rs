@@ -16,7 +16,8 @@ pub trait Hooks {
         contract = "cancel",
         out = "canceled",
         neoforge = "LivingEntityUseItemEvent.Stop",
-        cancellable = true
+        cancellable = true,
+        version = 2
     )]
     fn living_entity_use_item_stop(
         stack: &ItemStack,

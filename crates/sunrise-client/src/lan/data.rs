@@ -2385,6 +2385,122 @@ mod tests {
         );
     }
 
+    /// RegistryDataLoader.SYNCHRONIZED_REGISTRIES: a world pack that adds one entry to each of
+    /// the registries reaches every client in that registry's `RegistryData`, with its data.
+    /// Entries a registry's own codec is complex for are the prepared vanilla file of that
+    /// registry under a new id, except where the registry validates across entries (the timeline
+    /// is written out); the biome table is the world's admitted one.
+    #[test]
+    #[ignore = "daily"]
+    fn world_packs_add_an_entry_to_every_synchronized_registry() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../.local/sunrise-client")
+            .join(sunrise_core::VANILLA_VERSION);
+        let written = |registry: &str, value: &str| {
+            (
+                format!("{registry}/demo:added"),
+                vec![value.as_bytes().to_vec()],
+            )
+        };
+        let mut files = Vec::new();
+        for (registry, value) in [
+            ("world_clock", r#"{}"#),
+            // Timeline.validateRegistry refuses a (clock, marker) pair defined twice, so the
+            // entry is not a copy of a vanilla timeline with its markers.
+            (
+                "timeline",
+                r#"{"clock":"minecraft:overworld","period_ticks":24000}"#,
+            ),
+            ("decorated_pot_pattern", r#"{"asset_id":"demo:p"}"#),
+            (
+                "block_transformer",
+                r#"[{"block_state_provider":{"id":"minecraft:dirt"},"sound":"minecraft:item.hoe.till"}]"#,
+            ),
+            (
+                "worldgen/block_state_provider",
+                r#"{"type":"minecraft:simple_state_provider","state":{"Name":"minecraft:stone"}}"#,
+            ),
+            (
+                "test_environment",
+                r#"{"type":"minecraft:all_of","definitions":[]}"#,
+            ),
+            (
+                "test_instance",
+                r#"{"type":"minecraft:function","function":"demo:f","structure":"demo:s","max_ticks":1,
+                    "environment":{"type":"minecraft:all_of","definitions":[]}}"#,
+            ),
+            (
+                "trim_pattern",
+                r#"{"asset_id":"demo:zigzag","description":{"translate":"trim_pattern.demo.zigzag"}}"#,
+            ),
+            (
+                "trim_material",
+                r#"{"palette_id":"demo:trim/jade","description":{"translate":"trim_material.demo.jade"}}"#,
+            ),
+            (
+                "banner_pattern",
+                r#"{"asset_id":"demo:mural","translation_key":"test.banner"}"#,
+            ),
+            (
+                "painting_variant",
+                r#"{"asset_id":"demo:mural","width":1,"height":2}"#,
+            ),
+            (
+                "instrument",
+                r#"{"sound_event":"minecraft:item.goat_horn.sound.0","use_duration":4.0,"range":128.0,"description":"Demo"}"#,
+            ),
+        ] {
+            files.push(written(registry, value));
+        }
+        for &registry in SYNCHRONIZED {
+            let path = registry.trim_start_matches("minecraft:");
+            if registry == BIOME_REGISTRY || files.iter().any(|(key, _)| key.starts_with(path)) {
+                continue;
+            }
+            let folder = sunrise_world::json_folder::read(&root.join("data/minecraft").join(path))
+                .unwrap_or_else(|e| panic!("{registry}: no prepared folder: {e}"));
+            let first = folder
+                .files
+                .iter()
+                .find(|file| !file.name.contains('/'))
+                .unwrap_or_else(|| panic!("{registry}: no prepared file"));
+            files.push((
+                format!("{path}/demo:added"),
+                vec![first.bytes().unwrap().to_vec()],
+            ));
+        }
+        let biomes = crate::biome::Biomes::load_vanilla_for_server(
+            &sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+        )
+        .unwrap();
+        let plains = biomes.builtin_file("minecraft:plains").unwrap().clone();
+        let biomes = biomes.with_packs([("demo:added", &plains)]).unwrap();
+        let sync = SyncData::load_with(
+            &root,
+            &sunrise_world::loot::PackOverlay::new(&files),
+            Some(&biomes),
+            &sunrise_world::item_defaults::read(&root).unwrap(),
+            &crate::crafting::ResolvedSources::default(),
+        )
+        .unwrap();
+        let packets = sync.registry_packets(true, &LevelShapes::VANILLA);
+        assert_eq!(SYNCHRONIZED.len(), 32);
+        for &registry in SYNCHRONIZED {
+            let entry = packets
+                .iter()
+                .find(|packet| packet.registry == registry)
+                .unwrap_or_else(|| panic!("{registry} is not sent"))
+                .entries
+                .iter()
+                .find(|entry| entry.id == "demo:added")
+                .unwrap_or_else(|| panic!("{registry}: the pack's entry is not sent"));
+            assert!(
+                entry.data.is_some(),
+                "{registry}: the entry goes with its data"
+            );
+        }
+    }
+
     /// RegistrySynchronization.packRegistry: a client that knows the core
     /// pack gets the vanilla dialogs without data; a pack's dialog has it.
     #[test]

@@ -257,6 +257,9 @@ pub(super) struct Crystal {
     /// The entity id a server tracks it by (0 until it is tracked).
     pub id: u32,
     pub position: Vec3,
+    /// `Entity.xo`, `yo`, `zo`: where it was when its tick began (`setOldPosAndRot`). It never
+    /// moves itself; a client's copy eases to where the server sends it.
+    pub previous: Vec3,
     pub rotation: [f32; 2],
     pub fire: i16,
     pub show_bottom: bool,
@@ -1564,6 +1567,8 @@ impl Game<'_> {
             .then(|| self.pack.assets.registry.default_state("minecraft:fire"))
             .flatten();
         for i in 0..self.crystals.len() {
+            // Entity.commonTick's setOldPosAndRot.
+            self.crystals[i].previous = self.crystals[i].position;
             self.crystals[i].time += 1;
             self.crystal_block_effects(i);
             let p = self.crystals[i].position;
@@ -4136,6 +4141,7 @@ impl Crystal {
             join: Default::default(),
             id: 0,
             position,
+            previous: position,
             rotation: sunrise_client::entity_nbt::loaded_rotation(tag),
             fire,
             show_bottom: sunrise_client::entity_nbt::flag_or(tag, "ShowBottom", true),

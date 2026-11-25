@@ -1608,6 +1608,18 @@ impl PackPost {
                             rp.set_index_buffer(buffer.slice(..), *format);
                             rp.draw_indexed(indices.clone(), *base_vertex, chunk.instances.clone());
                         }
+                        ModDrawKind::Indirect {
+                            buffer,
+                            offset,
+                            count,
+                            index,
+                        } => match index {
+                            Some((index_buffer, format)) => {
+                                rp.set_index_buffer(index_buffer.slice(..), *format);
+                                rp.multi_draw_indexed_indirect(buffer, *offset, *count);
+                            }
+                            None => rp.multi_draw_indirect(buffer, *offset, *count),
+                        },
                     }
                 }
             }
@@ -1838,6 +1850,9 @@ impl PackPost {
                 pass,
                 (geometry.draws.iter()).any(|d| d.pack && d.program == program && d.block_atlas),
             );
+            let dynamic = self.dynamic_groups(device, pass, geometry, |d| {
+                d.pack && d.program == program && !d.water_mask
+            });
             {
                 let mut rp = self.begin(encoder, pass);
                 rp.set_pipeline(pass.render());
@@ -1857,7 +1872,7 @@ impl PackPost {
                 let offset = pass.polygon_offset.as_ref().and_then(|p| p.get());
                 let mut on_offset = false;
                 for d in draws {
-                    bind_atlas(&mut rp, d, groups, &mut bound);
+                    bind_atlas(&mut rp, d, groups, &dynamic, &mut bound);
                     if let Some(offset) = offset
                         && d.polygon_offset != on_offset
                     {
@@ -1947,6 +1962,52 @@ impl PackPost {
         Some(group)
     }
 
+    /// A bind group for each dynamic texture (`Draw::texture`) that a draw of `geometry` selected
+    /// by `wanted` binds as the atlas, as the texture's view and revision were resolved
+    /// (`PackEntities::resolve_textures`): its own texture instead of the shared atlas, with no
+    /// paged maps. Made again for a texture of a new revision; a texture no draw binds loses its
+    /// groups.
+    pub fn dynamic_groups(
+        &self,
+        device: &wgpu::Device,
+        pass: &mut Pass,
+        geometry: &crate::pack_entities::PackEntities,
+        wanted: impl Fn(&crate::pack_entities::Draw) -> bool,
+    ) -> Vec<(u64, wgpu::BindGroup)> {
+        let mut handles: Vec<u64> = (geometry.draws.iter())
+            .filter(|d| wanted(d))
+            .filter_map(|d| d.texture)
+            .collect();
+        handles.sort_unstable();
+        handles.dedup();
+        pass.dynamic_groups
+            .retain(|handle, _| handles.binary_search(handle).is_ok());
+        let mut out = Vec::with_capacity(handles.len());
+        for handle in handles {
+            let Some((view, revision)) = geometry.texture_view(handle) else {
+                continue;
+            };
+            // `bind` caches groups by a key without the atlas: each texture's are kept in a
+            // cache of their own, swapped in with the texture.
+            let mut cache = match pass.dynamic_groups.remove(&handle) {
+                Some((held, cache)) if held == *revision => cache,
+                _ => std::collections::HashMap::new(),
+            };
+            let saved = (
+                pass.atlas.replace(view.clone()),
+                std::mem::replace(&mut pass.paged, false),
+                std::mem::replace(&mut pass.material_maps, false),
+            );
+            std::mem::swap(&mut pass.groups, &mut cache);
+            let group = self.cached_group(device, pass);
+            std::mem::swap(&mut pass.groups, &mut cache);
+            (pass.atlas, pass.paged, pass.material_maps) = saved;
+            pass.dynamic_groups.insert(handle, (*revision, cache));
+            out.push((handle, group));
+        }
+        out
+    }
+
     /// Native terrain quads (`Draw::block_atlas`) bind the block atlas, the one
     /// the pack's terrain samples, as the atlas. The program reads its `normals` and `specular`
     /// as paged maps of the shared atlas (`Pass::paged`), whose pages say nothing of the block
@@ -2019,6 +2080,9 @@ impl PackPost {
                         && d.block_atlas
                 }),
             );
+            let dynamic = self.dynamic_groups(device, pass, geometry, |d| {
+                d.shadow && crate::pack_entities::shadow_program(d.program) == program
+            });
             let groups = [Some(&group), portal_group.as_ref(), block_group.as_ref()];
             let mut bound = 0;
             let mut rp = self.begin(encoder, pass);
@@ -2033,7 +2097,7 @@ impl PackPost {
             rp.set_vertex_buffer(0, geometry.vertices());
             rp.set_index_buffer(geometry.indices.slice(..), wgpu::IndexFormat::Uint32);
             for d in draws {
-                bind_atlas(&mut rp, d, groups, &mut bound);
+                bind_atlas(&mut rp, d, groups, &dynamic, &mut bound);
                 if pass.draw {
                     rp.set_bind_group(2, &geometry.group, &[geometry.offset(d.slot)]);
                 }
@@ -3030,25 +3094,36 @@ impl PackPost {
     }
 }
 
-/// Set 0 for draw `d` of an entity pass: of `groups` (plain, End portal, block atlas), the one
-/// of the atlas it samples (`Draw::portal`, `Draw::block_atlas`), the plain one when that atlas's
-/// is missing. `bound`: the index of the group set now.
+/// Set 0 for draw `d` of an entity pass: of `groups` (plain, End portal, block atlas) and
+/// `dynamic` (a group for each dynamic texture), the one of the atlas it samples (`Draw::portal`,
+/// `Draw::block_atlas`, `Draw::texture`), the plain one when that atlas's is missing. `bound`: the
+/// index now set (`groups`, then `dynamic` after them).
 fn bind_atlas(
     rp: &mut wgpu::RenderPass<'_>,
     d: &crate::pack_entities::Draw,
     groups: [Option<&wgpu::BindGroup>; 3],
+    dynamic: &[(u64, wgpu::BindGroup)],
     bound: &mut usize,
 ) {
-    let wanted = if d.portal {
-        1
-    } else if d.block_atlas {
-        2
-    } else {
-        0
+    let (wanted, group) = match d
+        .texture
+        .and_then(|handle| dynamic.iter().position(|(h, _)| *h == handle))
+    {
+        Some(i) => (groups.len() + i, Some(&dynamic[i].1)),
+        None => {
+            let wanted = if d.portal {
+                1
+            } else if d.block_atlas {
+                2
+            } else {
+                0
+            };
+            (wanted, groups[wanted])
+        }
     };
-    let wanted = if groups[wanted].is_some() { wanted } else { 0 };
+    let wanted = if group.is_some() { wanted } else { 0 };
     if wanted != *bound
-        && let Some(group) = groups[wanted]
+        && let Some(group) = group.or(groups[0])
     {
         rp.set_bind_group(0, group, &[]);
         *bound = wanted;
