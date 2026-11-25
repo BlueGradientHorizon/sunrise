@@ -25,14 +25,16 @@ pub(crate) fn mod_event_listeners(event: TypeId) -> Option<&'static [ModEventLis
 }
 
 impl Installed {
-    /// The first client event the mod at `index` listens to, by id.
+    /// The client event the mod at `index` listens to that sorts first by id: the table is
+    /// a `HashMap`, so its own order would name a different one from run to run.
     pub(crate) fn client_event(&self, index: usize) -> Option<&'static str> {
         self.keys
             .mod_events
             .values()
             .flatten()
-            .find(|listener| listener.client && listener.mod_index == index)
+            .filter(|listener| listener.client && listener.mod_index == index)
             .map(|listener| listener.event_id)
+            .min()
     }
 }
 
@@ -79,7 +81,8 @@ impl dyn Registrar + '_ {
     ///
     /// The method takes `&self`, the host of the event's side and `&mut` the event, and returns
     /// [`Flow`](crate::Flow) when the event can be cancelled. Name the event's mod under
-    /// `[dependencies]`; an optional one listens inside `if_installed!`. Refused, which refuses
+    /// `[dependencies]`; an optional one is gated with `#[cfg(feature = "<dep>")]`, the
+    /// feature `cargo sunrise-mod` turns on when the library is installed. Refused, which refuses
     /// the mods at startup, when the method is not on this mod's [`Hooks`] type, when the
     /// event's id is not namespaced or is `minecraft:`, or when another mod listens to the same
     /// id with another Rust type. `#[subscribe]` in `#[sunrise_mod]` calls this for a method.

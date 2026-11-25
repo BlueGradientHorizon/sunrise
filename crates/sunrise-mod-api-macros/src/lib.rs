@@ -201,7 +201,7 @@ fn expand(mut implementation: ItemImpl, export: bool) -> TokenStream {
         });
         implementation.items.push(syn::parse_quote! {
             fn register(&self, r: &mut dyn mod_api::Registrar, cx: &mod_api::RegistrationContext) {
-                let _ = cx;
+                let _ = (&r, cx);
                 #(#adds)*
                 #own
             }

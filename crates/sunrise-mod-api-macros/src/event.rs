@@ -40,6 +40,7 @@ pub(crate) fn expand(input: DeriveInput) -> syn::Result<TokenStream> {
                     !namespace.is_empty()
                         && !path.is_empty()
                         && namespace != "minecraft"
+                        && namespace != ".."
                         && namespace
                             .bytes()
                             .all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'_' | b'-' | b'.'))
