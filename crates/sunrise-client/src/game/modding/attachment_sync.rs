@@ -262,7 +262,7 @@ impl Game<'_> {
     }
 
     /// Publish a synced copy once its scoped client holder can be named.
-    pub(super) fn bind_remote_attachment(&mut self, holder: Holder) {
+    pub(in crate::game) fn bind_remote_attachment(&mut self, holder: Holder) {
         self.bind_remote_attachment_with_player(holder, None);
     }
 

@@ -384,6 +384,8 @@ mod_menu_decisions_tests	client	touches only ClientState fields	game/modding/mod
 mod_raycast_tests	client	touches only client-owned fields	game/modding/mod_raycast_tests.rs
 mod_recipe_property_tests	client	touches only client-owned fields	game/interface/mod_recipe_property_tests.rs
 mod_toasts	client	touches only ClientState fields	game/interface/mod_toasts.rs
+modapi_client	client	client side-op implementations for mod_api_host	game/side_ops/modapi_client.rs
+modapi_server	server	server side-op implementations for mod_api_host	game/side_ops/modapi_server.rs
 model_baking_completed_tests	client	touches only client-owned fields	game/modding/model_baking_completed_tests.rs
 mods	game	touches both ClientState and ServerState fields	game/modding/mods/mod.rs
 motion_ids	game	touches neither ClientState nor ServerState fields	game/blocks/motion_ids.rs
@@ -880,6 +882,7 @@ sheep_dye	game	touches neither ClientState nor ServerState fields	game/mobs/shee
 shelf	client	touches only client-owned fields	game/blocks/shelf.rs
 shield	server	touches only ServerState fields	game/items/shield.rs
 shoulders	server	touches only server-owned fields	game/mobs/shoulders.rs
+side_ops	game	role-dispatched side operations	game/side_ops/mod.rs
 sign_chain_tests	client	touches only client-owned fields	game/interface/tests/sign_chain_tests.rs
 sign_edit	client	touches only client-owned fields (opposite-side functions moved to sign_edit_server)	game/interface/sign_edit.rs
 sign_outline_tests	client	touches only ClientState fields	game/interface/tests/sign_outline_tests.rs
@@ -938,6 +941,7 @@ sulfur_prime_phase_tests	game	touches neither ClientState nor ServerState fields
 swing_packet	game	touches neither ClientState nor ServerState fields	game/network/swing_packet.rs
 sync_background_tests	client	touches only ClientState fields	game/interface/sync_background_tests.rs
 table_enchant	game	touches neither ClientState nor ServerState fields	game/items/table_enchant.rs
+tables	game	read-only world content tables shared by both roles	game/world/tables.rs
 test_block_edit	game	touches neither ClientState nor ServerState fields	game/administration/test_block_edit.rs
 test_blocks	game	touches neither ClientState nor ServerState fields	game/administration/test_blocks.rs
 test_entities	server	touches only server-owned fields	game/administration/test_entities.rs

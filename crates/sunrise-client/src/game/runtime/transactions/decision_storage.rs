@@ -127,7 +127,6 @@ impl ActionHost for GameHost<'_, '_> {
     }
 
     fn residence(&self, holder: EntityRef) -> Residence {
-        use sunrise_client::join_seq::residency::table::EntityLookup;
         if self.game.native_lifecycle.epoch() != Some(holder.epoch()) {
             return Residence::Missing;
         }
@@ -140,20 +139,7 @@ impl ActionHost for GameHost<'_, '_> {
         {
             return Residence::Found;
         }
-        if self.identity().side == Side::Client {
-            return if self.game.native_client_entity_target(holder).is_some() {
-                Residence::Found
-            } else {
-                Residence::Missing
-            };
-        }
-        // The shared entity table includes players and parked dimensions. A
-        // missing row refuses the original holder; never fall back to a scan.
-        match self.game.server_resident_entity(holder.id()) {
-            EntityLookup::Taken => Residence::Taken,
-            EntityLookup::Found { .. } => Residence::Found,
-            EntityLookup::Missing => Residence::Missing,
-        }
+        self.game.side_entity_residence(holder)
     }
 
     fn has_transaction(&self) -> bool {

@@ -33,7 +33,7 @@ impl ReloadContext for Game<'_> {
         <Self as prelude::ConfigHost>::setting(self, mod_id, key)
     }
     fn game_tests_enabled(&self) -> bool {
-        <Self as prelude::ConfigServerHost>::game_tests_enabled(self)
+        crate::entry::runtime_environment::get().game_tests_enabled()
     }
     fn is_loaded(&self, id: &str) -> bool {
         <Self as prelude::LevelsHost>::is_loaded(self, id)
@@ -190,7 +190,7 @@ impl ClientReloadListenerContext for Game<'_> {
         <Self as prelude::ConfigHost>::sunrise_version(self)
     }
     fn game_tests_enabled(&self) -> bool {
-        <Self as prelude::ConfigServerHost>::game_tests_enabled(self)
+        crate::entry::runtime_environment::get().game_tests_enabled()
     }
     fn on(&self, mod_id: &str) -> bool {
         <Self as prelude::ConfigHost>::on(self, mod_id)

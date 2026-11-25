@@ -2,6 +2,8 @@
 #[allow(unused_imports)]
 pub(in crate::game::client_side) use super::*;
 
+#[path = "side_ops/modapi_client.rs"]
+pub(in crate::game) mod modapi_client;
 #[path = "runtime/activity.rs"]
 pub(in crate::game) mod activity;
 #[path = "interface/advancements_screen.rs"]

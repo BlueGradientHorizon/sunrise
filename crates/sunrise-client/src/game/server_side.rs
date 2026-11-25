@@ -2,6 +2,8 @@
 #[allow(unused_imports)]
 pub(in crate::game::server_side) use super::*;
 
+#[path = "side_ops/modapi_server.rs"]
+pub(in crate::game) mod modapi_server;
 #[path = "interface/advancements/mod.rs"]
 pub(in crate::game) mod advancements;
 #[path = "entities/ahead.rs"]

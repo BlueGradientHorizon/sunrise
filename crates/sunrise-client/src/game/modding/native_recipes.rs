@@ -560,11 +560,6 @@ impl Game<'_> {
 }
 
 impl Game<'_> {
-    /// The server's recipes a client was sent, over its own; None on a
-    /// server and until a server sends any.
-    pub(in crate::game) fn synced_recipes(&self) -> Option<&sunrise_client::crafting::Recipes> {
-        self.recipe_tables.synced.as_ref()
-    }
     /// The display numbers the recipe book reads: the server's recipes',
     /// once a server sent them, else the world's own.
     pub(in crate::game::client_side) fn display_index(

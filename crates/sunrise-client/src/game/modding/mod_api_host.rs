@@ -136,20 +136,7 @@ impl Game<'_> {
         holder: mod_api::Holder,
         access: AttachmentAccess,
     ) -> Result<&mut mod_api::Attachments, mod_api::AttachmentError> {
-        if self.client_attachment_entity_exists(holder) {
-            self.initialize_entity_on_access(holder);
-        }
-        if self.native_authoritative() {
-            self.world.attachment_syncs.insert(holder);
-            return self.attachment_map_quiet(holder, access);
-        }
-        let Some(remote) = self.remote.as_mut() else {
-            return Err(mod_api::AttachmentError::MissingHolder);
-        };
-        remote.attachments.entry(holder).or_default();
-        self.bind_remote_attachment(holder);
-        let remote = self.remote.as_mut().unwrap();
-        Ok(remote.attachments.get_mut(&holder).unwrap())
+        self.side_attachment_map(holder, access)
     }
 
     /// `attachment_map` without recording the holder for the sync. Inside a transaction, the

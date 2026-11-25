@@ -62,7 +62,7 @@ impl Game<'_> {
     /// `initialize_entity` for a holder whose attachments are about to be read, its type
     /// looked up: an entity that started on a path that doesn't tell (one made and touched
     /// within a pass, before the join pass) is told before the read.
-    pub(in crate::game::server_side) fn initialize_entity_on_access(&mut self, holder: Holder) {
+    pub(in crate::game) fn initialize_entity_on_access(&mut self, holder: Holder) {
         if !mod_api::__private::listened(mod_api::HookId::EntityConstructing) {
             return;
         }

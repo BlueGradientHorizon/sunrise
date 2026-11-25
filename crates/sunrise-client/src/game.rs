@@ -602,6 +602,20 @@ mod event_loop;
 pub(in crate::game) use client_side::events;
 #[path = "game/runtime/execution_role.rs"]
 mod execution_role;
+#[path = "game/world/tables.rs"]
+pub(in crate::game) mod tables;
+#[allow(unused_imports)]
+pub(in crate::game) use tables::level_suffocation_of;
+#[path = "game/side_ops/mod.rs"]
+pub(in crate::game) mod side_ops;
+#[allow(dead_code)]
+pub(in crate::game) type ServerGame<'a> = Game<'a>;
+#[allow(dead_code)]
+pub(in crate::game) type ClientGame<'a> = Game<'a>;
+#[allow(unused_imports)]
+pub(in crate::game) use client_side::modapi_client;
+#[allow(unused_imports)]
+pub(in crate::game) use server_side::modapi_server;
 #[cfg(test)]
 #[path = "game/interface/experience_points_tests.rs"]
 mod experience_points_tests;
@@ -3190,21 +3204,21 @@ struct WorldRest {
 /// opens and on `/reload`: `ReloadableServerResources` loads a server's
 /// recipes, loot tables and tags from the world's pack stack, over the
 /// resource root's own. Worlds without packs use `Resources.rest` directly.
-struct WorldTables {
+pub(in crate::game) struct WorldTables {
     conditions: sunrise_world::conditions::LoadConditions,
-    suffocation: sunrise_world::suffocation::SuffocationRegistry<'static>,
+    pub(in crate::game) suffocation: sunrise_world::suffocation::SuffocationRegistry<'static>,
     /// The pack files the tables were built from (a native mod's among
     /// them), for the advancement tree reload and the loot data.
     files: Vec<(String, Vec<Vec<u8>>)>,
     priority_layers: Vec<sunrise_world::loot::RecipePriorityLayer>,
-    items: Arc<Items>,
+    pub(in crate::game) items: Arc<Items>,
     /// Registry definitions stay frozen at world open, even when tags reload.
     packed_registries: Arc<sunrise_client::lan::data::PackRegistryDefinitions>,
-    providers: Providers,
+    pub(in crate::game) providers: Providers,
     loot: Arc<sunrise_world::loot::LootData>,
     loot_modifier_manager: Arc<mod_api::GlobalLootModifierManager>,
-    recipes: Recipes,
-    stations: sunrise_client::stations::StationData,
+    pub(in crate::game) recipes: Recipes,
+    pub(in crate::game) stations: sunrise_client::stations::StationData,
     reload_sources: Option<Arc<sunrise_client::crafting::ResolvedSources>>,
     /// The values of the data map types native mods registered (`native_data_map_types`).
     data_maps: native_data_maps::DataMaps,
