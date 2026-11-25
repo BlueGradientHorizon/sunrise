@@ -361,11 +361,19 @@ impl Game<'_> {
                 continue;
             }
             let id = self.paintings[i].id;
-            if !self.native_tick_pre_one(&mut round, id, "minecraft:painting") {
+            // ServerLevel.tick skips an entity that `isRemoved`, here one whose removal is queued.
+            let target = super::commands::Target::Painting(id);
+            if self.target_removed(&target)
+                || !self.native_tick_pre_one(&mut round, id, "minecraft:painting")
+            {
                 i += 1;
                 continue;
             }
-            // The Pre's listener may have removed paintings.
+            // The Pre's listener may have removed paintings, this one included.
+            if self.target_removed(&target) {
+                i += 1;
+                continue;
+            }
             if self.paintings.get(i).is_none_or(|p| p.id != id) {
                 let Some(now) = self.paintings.iter().position(|p| p.id == id) else {
                     continue;

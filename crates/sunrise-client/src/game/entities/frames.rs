@@ -714,11 +714,17 @@ impl Game<'_> {
                 continue;
             }
             let (id, kind) = (self.item_frames[i].id, self.item_frames[i].kind());
-            if !self.native_tick_pre_one(&mut round, id, kind) {
+            // ServerLevel.tick skips an entity that `isRemoved`, here one whose removal is queued.
+            let target = super::commands::Target::Frame(id);
+            if self.target_removed(&target) || !self.native_tick_pre_one(&mut round, id, kind) {
                 i += 1;
                 continue;
             }
-            // The Pre's listener may have removed frames.
+            // The Pre's listener may have removed frames, this one included.
+            if self.target_removed(&target) {
+                i += 1;
+                continue;
+            }
             if self.item_frames.get(i).is_none_or(|f| f.id != id) {
                 let Some(now) = self.item_frames.iter().position(|f| f.id == id) else {
                     continue;

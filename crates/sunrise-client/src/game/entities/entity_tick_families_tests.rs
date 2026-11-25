@@ -112,17 +112,15 @@ fn told(id: u32, kind: &str) -> [(&'static str, u32, String); 2] {
 fn item_and_glow_item_frames_are_told_their_tick() {
     with_families(|game, listened, _, _| {
         assert_eq!(game.item_frames.len(), 2);
-        let ids = game
-            .item_frames
-            .iter()
-            .map(|f| (f.id, f.kind()))
-            .collect::<Vec<_>>();
+        // Summoned in this order: the item frame, then the glow item frame.
+        let (frame, glow) = (game.item_frames[0].id, game.item_frames[1].id);
         heard(listened);
         game.tick_item_frames();
-        let expected = ids
-            .iter()
-            .flat_map(|&(id, kind)| told(id, kind))
-            .collect::<Vec<_>>();
+        let expected = [
+            told(frame, "minecraft:item_frame"),
+            told(glow, "minecraft:glow_item_frame"),
+        ]
+        .concat();
         assert_eq!(heard(listened), expected);
         assert!(game.item_frames.iter().all(|f| f.ticks == 1));
     });
