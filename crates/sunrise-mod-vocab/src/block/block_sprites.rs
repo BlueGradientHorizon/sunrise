@@ -36,7 +36,9 @@ pub struct AtlasSpritePixels {
 // no wire: refusal of a local read.
 pub enum AtlasSpriteError {
     /// The blocks atlas of the published resources holds no sprite at this reference: its array
-    /// or layer is past the last, or the reference came from an earlier resource load.
+    /// or layer is past the last. A reference from an earlier resource load that is still in range
+    /// is not refused and may name a different sprite; resolve references again when
+    /// `block_sprites_version` changes.
     NoSuchSprite,
     /// No resource load has published a blocks atlas yet.
     NotReady,

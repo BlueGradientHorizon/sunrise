@@ -182,10 +182,9 @@ impl RenderAssets {
         }
         let edge = self.sprite_size as usize;
         let bytes = edge * edge * 4;
-        let pixels = self.pixels.get();
         let Some(held) = (layer as usize)
             .checked_mul(bytes)
-            .and_then(|from| pixels.get(from..from.checked_add(bytes)?))
+            .and_then(|from| self.pixels.range(from, bytes))
         else {
             return Err(NoSuchSprite);
         };
@@ -197,7 +196,7 @@ impl RenderAssets {
             return Ok(mod_api::__private::built::atlas_sprite_pixels(
                 edge as u32,
                 edge as u32,
-                held.to_vec(),
+                held,
             ));
         }
         // `Sprites::finish` read the pixel at row `r * side / edge` for each of the `edge` rows;
@@ -264,10 +263,11 @@ impl RenderAssets {
 }
 
 /// The block sprites' pixels for a renderer to upload. Once a renderer has
-/// them ([`Self::pack`]) they are kept lz4-compressed: the GPU holds the
+/// them ([`Self::pack`]) they are kept lz4-compressed in blocks: the GPU holds the
 /// texture array, and the copy only serves a renderer made again (another
 /// window, a lost device, another graphics API), which waits for
-/// [`Self::get`] to uncompress them. Shared by the window and the workers'
+/// [`Self::get`] to uncompress them, or a read of one range ([`Self::range`]),
+/// which uncompresses only the blocks it touches. Shared by the window and the workers'
 /// `RenderAssets`, so the compressed form replaces the raw one in place.
 pub struct SpritePixels(Arc<PixelStore>);
 struct PixelStore {
@@ -276,8 +276,12 @@ struct PixelStore {
     packing: std::sync::atomic::AtomicBool,
     /// As built; dropped once `packed` holds them.
     raw: std::sync::Mutex<Option<Arc<Vec<u8>>>>,
-    packed: std::sync::OnceLock<Vec<u8>>,
+    /// `raw` in lz4 blocks of [`PACKED_BLOCK`] bytes (the last may be shorter).
+    packed: std::sync::OnceLock<Vec<Vec<u8>>>,
 }
+/// Uncompressed bytes per lz4 block of packed sprite pixels: a read of one layer
+/// uncompresses this much at most beyond the layer itself.
+const PACKED_BLOCK: usize = 64 * 1024;
 impl SpritePixels {
     pub fn new(pixels: Vec<u8>) -> Self {
         Self(Arc::new(PixelStore {
@@ -298,14 +302,39 @@ impl SpritePixels {
     pub fn get(&self) -> Arc<Vec<u8>> {
         let raw = self.0.raw.lock().unwrap_or_else(|e| e.into_inner()).clone();
         raw.unwrap_or_else(|| {
-            let packed = self.0.packed.get().map(Vec::as_slice).unwrap_or_default();
             Arc::new(
-                lz4_flex::decompress_size_prepended(packed)
-                    .ok()
-                    .filter(|p| p.len() == self.0.len)
+                self.unpack(0, self.0.len)
                     .unwrap_or_else(|| vec![0; self.0.len]),
             )
         })
+    }
+    /// The `bytes` bytes from byte `from` of the pixels, uncompressing only the blocks they
+    /// lie in once packed. None when the range reaches past [`Self::len`].
+    pub fn range(&self, from: usize, bytes: usize) -> Option<Vec<u8>> {
+        let end = from.checked_add(bytes).filter(|end| *end <= self.0.len)?;
+        let raw = self.0.raw.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        match raw {
+            Some(raw) => raw.get(from..end).map(<[u8]>::to_vec),
+            None => Some(self.unpack(from, end).unwrap_or_else(|| vec![0; bytes])),
+        }
+    }
+    /// Bytes `from..end` (within `len`) out of the packed blocks; None when they are not packed
+    /// yet or a block does not decode to its size.
+    fn unpack(&self, from: usize, end: usize) -> Option<Vec<u8>> {
+        let packed = self.0.packed.get()?;
+        let mut out = Vec::with_capacity(end - from);
+        if from == end {
+            return Some(out);
+        }
+        for index in from / PACKED_BLOCK..=(end - 1) / PACKED_BLOCK {
+            let start = index * PACKED_BLOCK;
+            let size = PACKED_BLOCK.min(self.0.len - start);
+            let block = lz4_flex::decompress_size_prepended(packed.get(index)?)
+                .ok()
+                .filter(|block| block.len() == size)?;
+            out.extend_from_slice(&block[from.max(start) - start..end.min(start + size) - start]);
+        }
+        Some(out)
     }
     /// Keep them compressed from now on, once a renderer has uploaded them:
     /// compressed on a thread of their own, the raw copy dropped after.
@@ -318,7 +347,11 @@ impl SpritePixels {
         let job = move || {
             let raw = store.raw.lock().unwrap_or_else(|e| e.into_inner()).clone();
             if let Some(raw) = raw {
-                let _ = store.packed.set(lz4_flex::compress_prepend_size(&raw));
+                let _ = store.packed.set(
+                    raw.chunks(PACKED_BLOCK)
+                        .map(lz4_flex::compress_prepend_size)
+                        .collect(),
+                );
                 // `get` reads the compressed copy from here on.
                 *store.raw.lock().unwrap_or_else(|e| e.into_inner()) = None;
             }
@@ -869,17 +902,52 @@ mod tests {
                 .0
                 .packed
                 .get()
-                .is_some_and(|p| p.len() < pixels.len())
+                .is_some_and(|p| p.iter().map(Vec::len).sum::<usize>() < pixels.len())
         );
         assert_eq!(*stored.get(), pixels);
         assert_eq!(stored.len(), pixels.len());
+    }
+
+    #[test]
+    fn a_range_of_packed_pixels_reads_across_blocks() {
+        // Three blocks and a bit: the ranges lie in one block, across a boundary, over
+        // two boundaries, at the very end, and past it.
+        let pixels: Vec<u8> = (0..3 * super::PACKED_BLOCK + 100)
+            .map(|i| (i * 13 % 251) as u8)
+            .collect();
+        let stored = super::SpritePixels::new(pixels.clone());
+        stored.pack();
+        let started = std::time::Instant::now();
+        while stored.0.raw.lock().unwrap().is_some() {
+            assert!(started.elapsed().as_secs() < 10, "packing never finished");
+            std::thread::yield_now();
+        }
+        for (from, bytes) in [
+            (10, 20),
+            (65_530, 12),
+            (65_000, 70_000),
+            (3 * 65_536, 100),
+            (7, 0),
+        ] {
+            assert_eq!(
+                stored.range(from, bytes).as_deref(),
+                Some(&pixels[from..from + bytes]),
+                "{bytes} bytes from {from}"
+            );
+        }
+        assert_eq!(stored.range(3 * 65_536 + 1, 100), None);
+        assert_eq!(stored.range(usize::MAX, 2), None);
     }
 }
 
 #[cfg(test)]
 mod atlas_sprite_pixels_tests {
     use super::{RenderAssets, SpritePixels};
-    use crate::{mipmap::Settings, sprites::resample};
+    use crate::{
+        mipmap::Settings,
+        resource_source::ResourceSource,
+        sprites::{Sprites, resample},
+    };
     use mod_api::{AtlasSpriteError, SpriteRef};
 
     fn sprite(array: u32, layer: u32) -> SpriteRef {
@@ -951,6 +1019,48 @@ mod atlas_sprite_pixels_tests {
         assert_eq!(read.rgba, frame(2, 3));
         let second = atlas.atlas_sprite_pixels(sprite(0, 1), 2).unwrap();
         assert_eq!(second.rgba, frame(2, 2));
+    }
+
+    #[test]
+    fn an_animated_sprite_reads_back_the_frame_it_starts_on() {
+        // A sheet of two solid 16 x 16 frames, the animation starting on the second.
+        let root =
+            std::env::temp_dir().join(format!("sunrise-sprite-start-{}", std::process::id()));
+        let directory = root.join("assets/test/textures");
+        std::fs::create_dir_all(&directory).unwrap();
+        let sheet: Vec<u8> = [[10, 20, 30, 255], [200, 100, 50, 255]]
+            .iter()
+            .flat_map(|texel| texel.repeat(16 * 16))
+            .collect();
+        let path = directory.join("start.png");
+        let mut encoder = png::Encoder::new(std::fs::File::create(&path).unwrap(), 16, 32);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        encoder
+            .write_header()
+            .unwrap()
+            .write_image_data(&sheet)
+            .unwrap();
+        std::fs::write(
+            path.with_extension("png.mcmeta"),
+            r#"{"animation":{"frames":[1,0]}}"#,
+        )
+        .unwrap();
+        let mut sprites = Sprites::new(ResourceSource::directory(root.clone()));
+        let layer = sprites.insert("test:start").unwrap();
+        sprites.finish();
+        std::fs::remove_dir_all(&root).unwrap();
+        let mut atlas = RenderAssets::unpublished();
+        atlas.generation = 1;
+        atlas.sprite_size = sprites.size;
+        atlas.texture_layers = sprites.count() as u32;
+        atlas.sprite_mips = sprites.mips;
+        atlas.pixels = SpritePixels::new(sprites.pixels);
+        let read = atlas
+            .atlas_sprite_pixels(sprite(0, layer), u32::MAX)
+            .unwrap();
+        assert_eq!((read.width, read.height), (16, 16));
+        assert_eq!(read.rgba, [200, 100, 50, 255].repeat(16 * 16));
     }
 
     #[test]
