@@ -468,6 +468,106 @@ impl Game<'_> {
             }
         }
     }
+    /// Handle client-produced `MobEvent` visuals and local movement effects.
+    pub(in crate::game) fn handle_client_mob_events(
+        &mut self,
+        events: &mut Vec<sunrise_client::mobs::MobEvent>,
+    ) {
+        use sunrise_client::mobs::MobEvent;
+        use sunrise_client::particles::{ParticleOptions, ParticleType};
+        for event in events.drain(..) {
+            match event {
+                MobEvent::Sound(name, at, volume, pitch) => {
+                    let id = if name.contains(':') {
+                        name.to_owned()
+                    } else {
+                        format!("minecraft:{name}")
+                    };
+                    self.audio.0.play(&id, Some(at), volume, pitch);
+                }
+                MobEvent::SoundId(name, at, volume, pitch) => {
+                    self.audio.0.play(&name, Some(at), volume, pitch);
+                }
+                MobEvent::ProfessionWorkSound(name, at, volume, pitch) => {
+                    self.audio.0.play(&name, Some(at), volume, pitch);
+                }
+                MobEvent::LocalSound(name, at, volume, pitch) => {
+                    let id = if name.contains(':') {
+                        name.to_owned()
+                    } else {
+                        format!("minecraft:{name}")
+                    };
+                    self.audio.0.play_unshared(&id, Some(at), volume, pitch);
+                }
+                MobEvent::LandingDust {
+                    state,
+                    at,
+                    count,
+                    speed,
+                } => self.client_landing_dust(state, Vec3::new(at[0], at[1], at[2]), count, speed),
+                MobEvent::PowderSnowParticle { at, velocity } => {
+                    self.snowflake_particle(at, velocity);
+                }
+                MobEvent::LevelParticles {
+                    kind,
+                    at,
+                    spread,
+                    speed,
+                    count,
+                } => {
+                    if let Some(ty) = ParticleType::from_name(kind) {
+                        let options = ParticleOptions::simple(ty);
+                        self.particles
+                            .0
+                            .send_particles(&options, at, spread, speed, count);
+                    }
+                }
+                MobEvent::Particles { kind, at, count } => {
+                    if let Some(ty) = ParticleType::from_name(kind) {
+                        let options = ParticleOptions::simple(ty);
+                        if count == 0 {
+                            self.particles.0.add(&options, at, [0.0; 3]);
+                        }
+                        for _ in 0..count {
+                            let r = &mut self.world.random;
+                            let p = [
+                                at[0] + (f64::from(r.next_float()) - 0.5),
+                                at[1] + (f64::from(r.next_float()) - 0.5) * 0.5,
+                                at[2] + (f64::from(r.next_float()) - 0.5),
+                            ];
+                            let v = [
+                                r.next_gaussian() * 0.02,
+                                r.next_gaussian() * 0.02,
+                                r.next_gaussian() * 0.02,
+                            ];
+                            self.particles.0.add(&options, p, v);
+                        }
+                    }
+                }
+                MobEvent::ParticleAt { kind, at, velocity } => {
+                    if let Some(ty) = ParticleType::from_name(kind) {
+                        let options = ParticleOptions::simple(ty);
+                        self.particles.0.add(&options, at, velocity);
+                    }
+                }
+                MobEvent::ParticleColored {
+                    at,
+                    color: [r, g, b],
+                } => {
+                    let options =
+                        ParticleOptions::colored(ParticleType::EntityEffect, [r, g, b, 1.0]);
+                    self.particles.0.add(&options, at, [0.0; 3]);
+                }
+                MobEvent::DigParticles { at } => self.warden_dig_particles(at),
+                MobEvent::LidPush {
+                    shulker,
+                    area,
+                    delta,
+                } => self.apply_shulker_lid_push(shulker, area, delta),
+                _ => {}
+            }
+        }
+    }
     /// `Armadillo.mobInteract`: a brush brushes a scute off an adult
     /// (`brushOffScute`) and loses 16 durability.
     pub(in crate::game) fn interact_armadillo(&mut self, index: usize, item: &str) -> bool {

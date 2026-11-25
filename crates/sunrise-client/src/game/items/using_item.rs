@@ -320,7 +320,7 @@ impl Game<'_> {
     /// `ITEM_INTERACT_FINISH` when it ends) from the player, at its feet, when
     /// the stack's use effects ask for interaction vibrations (the default).
     pub(in crate::game) fn use_vibration(&mut self, stack: &ItemStack, event: &'static str) {
-        if !self.use_vibrates(stack) {
+        if !self.is_logical_server() || !self.use_vibrates(stack) {
             return;
         }
         let Some(p) = self.player.as_ref().map(|p| p.position) else {

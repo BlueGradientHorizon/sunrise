@@ -4376,7 +4376,11 @@ impl Game<'_> {
                 || p.health.invulnerable_time > 0,
             // EntitySelector.NO_CREATIVE_OR_SPECTATOR.
             creative: self.creative || self.spectator(),
-            sneaking: self.server_acting_sneak(),
+            sneaking: if self.is_logical_server() {
+                self.server_acting_sneak()
+            } else {
+                self.held_mapping(Action::Sneak)
+            },
             swimming: p.swimming,
             look: view_vector(self.yaw, self.pitch),
             main_hand: self.held().map(|s| s.item.clone()),

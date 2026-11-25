@@ -335,6 +335,7 @@ creatures	impl Game<'_>	entity_ticking_area	-	server	touches only server-owned f
 creatures	impl Game<'_>	finish_arrow_step	-	server	touches only server-owned fields
 creatures	impl Game<'_>	finish_mob_damage_at	-	server	touches only server-owned fields
 creatures	impl Game<'_>	guardian_bubbles	-	client	touches only client-owned fields
+creatures	impl Game<'_>	handle_client_mob_events	-	client	touches only client-owned fields
 creatures	impl Game<'_>	handle_mob_events_pending	-	server	touches only server-owned fields
 creatures	impl Game<'_>	hurt_player_by	-	server	touches only server-owned fields
 creatures	impl Game<'_>	hurt_player_from	-	server	touches only server-owned fields

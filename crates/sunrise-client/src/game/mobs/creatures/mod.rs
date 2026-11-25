@@ -1539,6 +1539,10 @@ impl Game<'_> {
         &mut self,
         events: &mut Vec<MobEvent>,
     ) -> Result<()> {
+        if !self.is_logical_server() {
+            self.handle_client_mob_events(events);
+            return Ok(());
+        }
         let mut actions = NormalMobActions::new(std::mem::take(events));
         let result = self.handle_mob_events_pending(&mut actions);
         *events = actions.root.events.into();

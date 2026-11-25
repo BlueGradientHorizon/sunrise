@@ -211,6 +211,7 @@ client	creatures_client	impl Game<'_>	begin_mob_geometry	-	method	test	called
 client	creatures_client	impl Game<'_>	bubble_column_particles	-	method	server,game	called
 client	creatures_client	impl Game<'_>	death_poof	-	method	game	called
 client	creatures_client	impl Game<'_>	guardian_bubbles	-	method	server	called
+client	creatures_client	impl Game<'_>	handle_client_mob_events	-	method	game	called
 client	creatures_client	impl Game<'_>	interact_armadillo	-	method	server	called
 client	creatures_client	impl Game<'_>	item_burst	-	method	server	called
 client	creatures_client	impl Game<'_>	mob_pearl_teleport	-	method	server	called

@@ -1920,7 +1920,7 @@ impl Game<'_> {
     /// the client level random, x then y then z. It is `level.addParticle`, so
     /// only the local player's own click or step draws it, not a guest's turn.
     pub(in crate::game) fn redstone_ore_particles(&mut self, pos: [i32; 3]) {
-        if self.lan_guest_acting()
+        if self.is_logical_server()
             || !matches!(
                 &*self.block_name(pos),
                 "minecraft:redstone_ore" | "minecraft:deepslate_redstone_ore"
