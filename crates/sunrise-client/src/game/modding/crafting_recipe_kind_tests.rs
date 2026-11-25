@@ -105,7 +105,7 @@ fn registered_crafting_remainder_drops_through_server_item_toss() {
     .into();
     super::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
-        super::native_entity_refs::tests::with_game(|game| {
+        super::native_guest_turn_tests::with_guests(|game| {
             let recipes = sunrise_client::crafting::Recipes::from_sources(
                 &game.options.resources,
                 game.items(),
@@ -188,31 +188,33 @@ fn registered_crafting_remainder_drops_through_server_item_toss() {
                     .recipes
                     .contains("recipe_probe:literal")
             );
-            game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(
-                    game.motion,
-                    sunrise_core::geometry::Vec3::new(8.5, 70.0, 8.5),
-                )
-                .unwrap(),
+            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                guest.game_mode = 0;
+                guest.carried = None;
+                guest.inventory = vec![Some(ItemStack::new("minecraft:stone", 64)); 36];
+                guest.craft_grid = Default::default();
+                guest.craft_grid[0] = Some(ItemStack::new("minecraft:stick", 2));
+            });
+            game.lan_guest_packet(
+                12,
+                sunrise_protocol::packets::play::Serverbound::ContainerClick(
+                    sunrise_protocol::packets::play::ContainerClick {
+                        container: 0,
+                        state: 0,
+                        slot: 0,
+                        button: 0,
+                        input: 0,
+                        changed: Vec::new(),
+                        carried: None,
+                    },
+                ),
             );
-            game.client.screen = Screen::Inventory;
-            game.craft_size = 2;
-            game.creative = false;
-            game.carried = None;
-            for slot in &mut game.inventory {
-                *slot = Some(ItemStack::new("minecraft:stone", 64));
-            }
-            *game.slot_mut(100) = Some(ItemStack::new("minecraft:stick", 2));
-            assert!(game.menu_session(|menu, env, _| {
-                menu.click(env, 0, 0, sunrise_client::menu::Input::Pickup)
-                    .unwrap();
-                Some(true)
-            }));
+            let guest = &game.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(
-                game.carried.as_ref().map(|s| (&*s.item, s.count)),
+                guest.carried.as_ref().map(|s| (&*s.item, s.count)),
                 Some(("minecraft:diamond", 3))
             );
-            assert_eq!(game.slot_mut(100).as_ref().map(|s| s.count), Some(1));
+            assert_eq!(guest.craft_grid[0].as_ref().map(|s| s.count), Some(1));
             assert_eq!(tosses.load(Ordering::Relaxed), 1);
         });
     });

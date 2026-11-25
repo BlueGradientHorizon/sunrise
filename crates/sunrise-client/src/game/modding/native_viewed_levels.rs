@@ -75,16 +75,14 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn client_level_handle_current(&self, level: LevelRef) -> bool {
-        self.remote.as_ref().is_some_and(|r| r.logged_in)
-            && self.native_lifecycle.epoch() == Some(level.epoch())
+        self.native_lifecycle.epoch() == Some(level.epoch()) && level.generation() == 0
     }
 
     pub(in crate::game) fn client_level_datapack_set(
         &self,
         level: LevelRef,
     ) -> Option<std::sync::Arc<mod_api::DatapackRegistrySet>> {
-        if !self.client_level_handle_current(level) || level.dimension() != self.native_level_key()
-        {
+        if self.native_client_level() != Some(level) {
             return None;
         }
         sunrise_client::datapack_net::received()

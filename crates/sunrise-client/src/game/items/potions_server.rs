@@ -2659,7 +2659,7 @@ pub(in crate::game) mod sound_on_added_tests {
                 )
                 .unwrap(),
             );
-            game.audio.0.capture = Some(Vec::new());
+            game.start_audio_capture();
             for (id, amplifier) in [
                 ("bad_omen", 0),
                 ("bad_omen", 1),
@@ -2669,12 +2669,7 @@ pub(in crate::game) mod sound_on_added_tests {
             ] {
                 game.add_player_effect(EffectInstance::new(id, 2400, amplifier));
             }
-            let played: Vec<(String, [f64; 3])> = game
-                .audio
-                .0
-                .capture
-                .take()
-                .unwrap()
+            let played: Vec<(String, [f64; 3])> = std::mem::take(&mut game.server.pending_sounds)
                 .into_iter()
                 .map(|s| (s.event, s.position))
                 .collect();

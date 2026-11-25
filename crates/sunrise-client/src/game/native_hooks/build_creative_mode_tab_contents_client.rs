@@ -48,7 +48,7 @@ pub(in crate::game::client_side) use sunrise_items::creative_catalog::{
 pub(in crate::game::client_side) use sunrise_items::items::Items;
 
 impl Game<'_> {
-    pub(in crate::game) fn creative_holders(&self) -> Option<Holders> {
+    pub(in crate::game) fn client_creative_holders(&self) -> Option<Holders> {
         self.remote.as_ref().map(|remote| {
             sunrise_client::creative::live_holders(&remote.builtin, &remote.registries)
         })
@@ -166,7 +166,7 @@ impl Game<'_> {
             return Ok(published.lists.clone());
         }
         let holders = self
-            .creative_holders()
+            .side_creative_holders()
             .ok_or(CreativeTabReadError::Unavailable)?;
         let items = self.shared_items();
         let catalog = self.creative_screen.0.catalog().clone();
@@ -388,7 +388,7 @@ impl Game<'_> {
                 Parameters {
                     features: self.enabled_feature_ids(),
                     operator: false,
-                    holders: &self.creative_holders().unwrap_or_default(),
+                    holders: &self.side_creative_holders().unwrap_or_default(),
                     items: self.items(),
                 },
                 None,

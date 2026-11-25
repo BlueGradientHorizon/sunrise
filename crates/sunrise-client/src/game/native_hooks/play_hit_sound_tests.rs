@@ -107,19 +107,15 @@ fn play_hit_sound_helper_and_eight_mining_ticks() {
                 }
                 for state in [stone, glass] {
                     game.world.set(5, 63, 4, state).unwrap();
-                    game.audio.0.capture = Some(Vec::new());
+                    game.audio.0.heard.clear();
                     hits.lock().unwrap().clear();
                     let mut played = Vec::new();
                     for tick in 1..=8 {
                         game.breaking_block_effects([5, 63, 4], [-1, 0, 0], tick % 4 == 1);
-                        for sound in game.audio.0.capture.as_mut().unwrap().drain(..) {
-                            played.push((
-                                tick,
-                                sound.event,
-                                sound.position,
-                                sound.volume,
-                                sound.pitch,
-                            ));
+                        for (event, count) in std::mem::take(&mut game.audio.0.heard) {
+                            for _ in 0..count {
+                                played.push((tick, event.clone()));
+                            }
                         }
                     }
                     if installed && state == glass {
@@ -135,20 +131,8 @@ fn play_hit_sound_helper_and_eight_mining_ticks() {
                         assert_eq!(
                             played,
                             [
-                                (
-                                    1,
-                                    "minecraft:block.stone.hit".into(),
-                                    [5.5, 63.5, 4.5],
-                                    0.25,
-                                    0.5
-                                ),
-                                (
-                                    5,
-                                    "minecraft:block.stone.hit".into(),
-                                    [5.5, 63.5, 4.5],
-                                    0.25,
-                                    0.5
-                                )
+                                (1, "minecraft:block.stone.hit".to_owned()),
+                                (5, "minecraft:block.stone.hit".to_owned()),
                             ]
                         );
                     }

@@ -227,7 +227,7 @@ impl DragonSlot {
     fn part_ids(&self) -> Vec<u32> {
         self.table.borrow().iter().collect()
     }
-    pub(in crate::game::server_side) fn replace(&mut self, dragon: crate::game::dragon::Dragon) {
+    pub(in crate::game) fn replace(&mut self, dragon: crate::game::dragon::Dragon) {
         self.register(0);
         self.register(dragon.id);
         self.slot.replace(dragon);

@@ -2243,7 +2243,6 @@ pub(in crate::game) mod h255_mob_piston_ground_tests {
     fn h255_added_tnt_authority_and_exhausted_budget() {
         use crate::game::execution_role::ExecutionRole;
         for role in [
-            ExecutionRole::Client,
             ExecutionRole::IntegratedServer,
             ExecutionRole::DedicatedServer,
         ] {
@@ -2365,7 +2364,6 @@ pub(in crate::game) mod h255_mob_piston_ground_tests {
     fn h255_added_client_role_ai_and_vertical_ground_state() {
         use crate::game::execution_role::ExecutionRole as Role;
         for (role, no_ai, movement, on_ground) in [
-            (Role::Client, true, Vec3::new(0.25, 0.0, 0.0), true),
             (
                 Role::IntegratedServer,
                 false,

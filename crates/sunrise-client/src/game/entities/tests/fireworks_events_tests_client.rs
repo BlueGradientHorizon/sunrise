@@ -53,7 +53,7 @@ fn a_falling_rocket_hits_the_ground_and_one_in_water_splashes() {
                 "summon firework_rocket {x}.5 202 10.5 {{LifeTime:100,HasBeenShot:1b,ShotAtAngle:1b,Motion:[0d,-0.5d,0d]}}"
             )));
         }
-        game.audio.0.heard.clear();
+        game.start_audio_capture();
         start_events();
         let mut falls = Vec::new();
         for _ in 0..6 {
@@ -76,9 +76,14 @@ fn a_falling_rocket_hits_the_ground_and_one_in_water_splashes() {
             [("minecraft:splash", 20), ("minecraft:hit_ground", 6)]
         );
         assert_eq!(
-            game.audio.0.heard.get("minecraft:entity.generic.splash"),
-            Some(&1)
+            game.server
+                .pending_sounds
+                .iter()
+                .filter(|s| s.event == "minecraft:entity.generic.splash")
+                .count(),
+            1
         );
+        game.stop_audio_capture();
     });
 }
 
@@ -98,35 +103,46 @@ fn a_silent_rocket_bursts_without_blast_or_twinkle() {
         launching.silent = true;
         launching.lifetime = 100;
         game.rockets.push(launching);
-        game.audio.0.capture = Some(Vec::new());
+        game.start_audio_capture();
         game.tick_rockets();
-        let heard = game.audio.0.capture.take().unwrap_or_default();
+        let heard = std::mem::take(&mut game.server.pending_sounds);
+        game.stop_audio_capture();
         assert!(
             heard
                 .iter()
                 .all(|s| s.event != "minecraft:entity.firework_rocket.launch"),
             "a silent rocket launches quietly: {heard:?}"
         );
-        game.rockets.clear();
-
+    });
+    crate::game::native_entity_refs::tests::with_client_game(|game| {
+        use sunrise_protocol::packets::play::{Clientbound as C, EntityEvent};
+        game.player = Some(
+            sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(2.5, 200.0, 2.5))
+                .unwrap(),
+        );
         let (quiet_at, loud_at) = ([6.5, 201.5, 10.5], [12.5, 201.5, 10.5]);
-        let mut quiet = game.new_rocket(
+        let mut quiet = crate::game::fireworks::Rocket::remote(
+            101,
             Vec3::new(quiet_at[0], quiet_at[1], quiet_at[2]),
-            &stack,
-            false,
-            &mut LegacyRandom::new(0),
+            Vec3::ZERO,
         );
         quiet.silent = true;
         quiet.explosions = vec![twinkling()].into();
-        let mut loud = game.new_rocket(
+        let mut loud = crate::game::fireworks::Rocket::remote(
+            102,
             Vec3::new(loud_at[0], loud_at[1], loud_at[2]),
-            &stack,
-            false,
-            &mut LegacyRandom::new(0),
+            Vec3::ZERO,
         );
         loud.explosions = vec![twinkling()].into();
-        game.explode_rocket(&quiet);
-        game.explode_rocket(&loud);
+        game.rockets.push(quiet);
+        game.rockets.push(loud);
+        for id in [101, 102] {
+            game.apply_packet(C::EntityEvent(EntityEvent {
+                id,
+                event: crate::game::fireworks::FIREWORK_EXPLODE_EVENT,
+            }))
+            .unwrap();
+        }
         game.particles.0.sounds.clear();
         for _ in 0..20 {
             tick_particles(game);

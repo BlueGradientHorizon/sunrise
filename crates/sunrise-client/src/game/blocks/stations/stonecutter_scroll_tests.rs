@@ -56,8 +56,11 @@ fn the_stonecutter_list_returns_to_the_top_when_its_input_changes() {
         );
 
         // Taking a result uses up one deepslate, so the input changes: the list is
-        // back at the top.
+        // back at the top. On a client (`menu.on_client = true`),
+        // `StonecutterMenu.setupResultSlot` leaves the result slot to the server's
+        // `ContainerSetSlot`.
         assert!(pick_recipe(g, 8));
+        *g.slot_mut(RESULT) = Some(ItemStack::new("minecraft:polished_deepslate", 1));
         scroll_to_bottom(g);
         assert!(g.click_open_inventory(Some(RESULT), 0, Input::Pickup));
         let s = g.station.as_ref().unwrap();

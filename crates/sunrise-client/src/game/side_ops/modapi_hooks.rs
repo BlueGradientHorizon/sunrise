@@ -6,6 +6,7 @@ use mod_api::{
     SwimmingCheck,
 };
 use sunrise_client::{chunk::Chunk, items::ItemStack};
+use sunrise_items::creative_catalog::Holders;
 
 impl Game<'_> {
     pub(in crate::game) fn side_fire_pending_block_entity_loads(&mut self) {
@@ -13,6 +14,14 @@ impl Game<'_> {
             self.server_fire_pending_block_entity_loads();
         } else {
             self.client_fire_pending_block_entity_loads();
+        }
+    }
+
+    pub(in crate::game) fn side_creative_holders(&self) -> Option<Holders> {
+        if self.is_logical_server() {
+            self.server_creative_holders()
+        } else {
+            self.client_creative_holders()
         }
     }
 

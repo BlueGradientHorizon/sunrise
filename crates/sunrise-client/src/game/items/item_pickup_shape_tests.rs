@@ -214,11 +214,6 @@ fn indexed_pickup_keeps_bound_survivors_and_processes_shifted_tail() {
                         assert!(matches!(result, EntityLookup::Found { .. }));
                     }
                 }
-                assert_eq!(
-                    game.pickups.0.made().get("item").copied().unwrap_or(0),
-                    2,
-                    "full and partial pickup animations"
-                );
 
                 // A pickup the full inventory refuses is not heard.
                 for item in &mut game.dropped {

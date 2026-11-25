@@ -85,12 +85,41 @@ fn crack_packets_wait_for_root_commit_and_preserve_fifo() {
 #[test]
 #[ignore = "daily"]
 fn break_progress_waits_for_commit_but_explicit_block_updates_survive_abort() {
-    with_game(|game| {
+    use super::native_guest_turn_tests::with_guests;
+    use sunrise_client::lan::{Out, PlayerSender};
+    use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
+    with_guests(|game| {
         game.options.dedicated = Some(Vec::new());
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         game.world.block_log = Some(Vec::new());
+        let (tx, rx) = std::sync::mpsc::channel();
+        game.lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .update_guest(12, |guest| {
+                guest.sender = PlayerSender::new(tx, Arc::default());
+            })
+            .unwrap();
+        let drain_cracks = || -> Vec<([i32; 3], u8)> {
+            rx.try_iter()
+                .filter_map(|out| {
+                    let Out::Packet(body) = out else {
+                        return None;
+                    };
+                    let mut reader = Reader::new(&body);
+                    let id = reader.varint().unwrap();
+                    match Clientbound::decode(id, reader.rest()).unwrap() {
+                        Clientbound::BlockDestruction(packet) if packet.id == -7 => {
+                            Some((packet.pos, packet.progress))
+                        }
+                        _ => None,
+                    }
+                })
+                .collect()
+        };
         let level = game.level(game.dim.id()).unwrap();
         let host: &mut dyn mod_api::ServerHost = game;
         let aborted: Result<(), TransactionError<()>> = host.transaction(|host, _| {
@@ -99,10 +128,7 @@ fn break_progress_waits_for_commit_but_explicit_block_updates_survive_abort() {
             Err(())
         });
         assert!(aborted.is_err());
-        assert!(
-            !game.client.destroying.contains_key(&-7),
-            "no crack after abort"
-        );
+        assert!(drain_cracks().is_empty(), "no crack after abort");
         assert!(game.world.block_log.as_ref().unwrap().contains(&(2, 64, 2)));
 
         let host: &mut dyn mod_api::ServerHost = game;
@@ -112,15 +138,12 @@ fn break_progress_waits_for_commit_but_explicit_block_updates_survive_abort() {
             Ok::<_, ()>(())
         })
         .unwrap();
-        assert_eq!(
-            game.client.destroying.get(&-7).map(|c| (c.pos, c.stage)),
-            Some(([1, 64, 1], 3))
-        );
+        assert_eq!(drain_cracks(), [([1, 64, 1], 3)]);
         assert_eq!(game.world.block_log.as_ref().unwrap(), &vec![(2, 64, 2)]);
 
         // Outside a transaction the crack is cleared at once (any stage outside 0..10).
         assert!(game.level_set_break_progress(level, -7, [1, 64, 1], -1));
-        assert!(!game.client.destroying.contains_key(&-7));
+        assert_eq!(drain_cracks(), [([1, 64, 1], 255)]);
     });
 }
 

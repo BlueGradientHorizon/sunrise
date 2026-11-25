@@ -135,6 +135,12 @@ impl Game<'_> {
         if self.rockets.iter().any(|r| r.id == id) {
             for (index, _, value) in values {
                 match (index, value) {
+                    // Entity.DATA_SILENT: suppresses client burst blast and twinkle sounds.
+                    (4, Value::Bool(silent)) => {
+                        if let Some(r) = self.rockets.iter_mut().find(|r| r.id == id) {
+                            r.silent = *silent;
+                        }
+                    }
                     // FireworkRocketEntity.DATA_ID_FIREWORKS_ITEM: its
                     // explosions for `createFireworks`.
                     (8, Value::Item(stack)) => {

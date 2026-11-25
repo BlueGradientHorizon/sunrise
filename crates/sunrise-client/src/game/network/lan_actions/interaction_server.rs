@@ -20,10 +20,16 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn drop_guest_items(&mut self, gi: usize, stacks: Vec<ItemStack>) {
+        if stacks.is_empty() {
+            return;
+        }
         let Some(host) = self.lan.as_ref() else {
             return;
         };
-        let g = &host.hub.guests[gi];
+        let Some(g) = host.hub.guests.get(gi) else {
+            return;
+        };
+        let (conn, uuid) = (g.conn, g.uuid);
         let eye = [
             g.position[0],
             g.position[1] + g.eye_height() - f64::from(0.3f32),
@@ -31,9 +37,32 @@ impl Game<'_> {
         ];
         let (yaw, pitch) = (g.yaw, g.pitch);
         let mut r = sunrise_client::random_source::entity(); // the guest's Entity.random
-        for stack in stacks {
-            let v = sunrise_client::entities::drop_motion(&mut r, yaw, pitch, false);
-            self.spawn_item(stack, eye, v, 40);
+        let mut toss = |game: &mut Self, stacks: Vec<ItemStack>| {
+            for stack in stacks {
+                let v = sunrise_client::entities::drop_motion(&mut r, yaw, pitch, false);
+                game.toss_item(stack, eye, v, None);
+            }
+        };
+        if self.server.lan_acting == Some(conn) {
+            toss(self, stacks);
+            return;
+        }
+        let mut remaining = Some(stacks);
+        let _ = self.as_guest_at(gi, conn, |game| {
+            if let Some(stacks) = remaining.take() {
+                toss(game, stacks);
+            }
+        });
+        // Fallback when `conn` is already suspended under a nested guest turn.
+        if let Some(stacks) = remaining {
+            let prev = self.server.lan_acting_uuid.replace(uuid);
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                toss(self, stacks);
+            }));
+            self.server.lan_acting_uuid = prev;
+            if let Err(payload) = result {
+                std::panic::resume_unwind(payload);
+            }
         }
     }
 

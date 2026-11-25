@@ -422,6 +422,7 @@ fn start_case(
     } else {
         sunrise_client::command::args::GameMode::Survival
     };
+    game.remote.as_mut().unwrap().profile = sunrise_client::lan::playerdata::ints_uuid(PLAYER);
     game.level.player_uuid = Some(PLAYER);
     game.particles
         .0

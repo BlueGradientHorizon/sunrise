@@ -44,7 +44,7 @@ fn a_falling_rocket_hits_the_ground_and_one_in_water_splashes() {
             "summon firework_rocket {x}.5 202 10.5 {{LifeTime:100,HasBeenShot:1b,ShotAtAngle:1b,Motion:[0d,-0.5d,0d]}}"
         )));
         }
-        game.audio.0.heard.clear();
+        game.start_audio_capture();
         start_events();
         let mut falls = Vec::new();
         for _ in 0..6 {
@@ -67,9 +67,14 @@ fn a_falling_rocket_hits_the_ground_and_one_in_water_splashes() {
             [("minecraft:splash", 20), ("minecraft:hit_ground", 6)]
         );
         assert_eq!(
-            game.audio.0.heard.get("minecraft:entity.generic.splash"),
-            Some(&1)
+            game.server
+                .pending_sounds
+                .iter()
+                .filter(|s| s.event == "minecraft:entity.generic.splash")
+                .count(),
+            1
         );
+        game.stop_audio_capture();
     });
 }
 

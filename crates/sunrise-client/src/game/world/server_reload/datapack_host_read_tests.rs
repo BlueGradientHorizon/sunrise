@@ -34,27 +34,27 @@ fn native_datapack_host_reads_enforce_level_session_and_generation() {
     mod_platform::testing::with_mods(
         vec![ModEntry::new("registry_test", Box::new(SyncedRegistryMod))].into(),
         || {
+            let candidate = |power: i64| {
+                mod_api::DatapackCandidate::build(
+                    mod_api::__private::datapack_registry_declarations(),
+                    &[
+                        (
+                            "data/registry_test/registry_test/spell/fire.json".into(),
+                            vec![(
+                                "pack".to_owned(),
+                                format!(r#"{{"power":{power}}}"#).into_bytes(),
+                            )],
+                        ),
+                        (
+                            "data/addon/registry_test/spell/ice.json".into(),
+                            vec![("pack".to_owned(), br#"{"power":3}"#.to_vec())],
+                        ),
+                    ],
+                )
+                .unwrap()
+            };
             with_game(|game| {
                 game.load_world(request(scratch.path())).unwrap();
-                let candidate = |power: i64| {
-                    mod_api::DatapackCandidate::build(
-                        mod_api::__private::datapack_registry_declarations(),
-                        &[
-                            (
-                                "data/registry_test/registry_test/spell/fire.json".into(),
-                                vec![(
-                                    "pack".to_owned(),
-                                    format!(r#"{{"power":{power}}}"#).into_bytes(),
-                                )],
-                            ),
-                            (
-                                "data/addon/registry_test/spell/ice.json".into(),
-                                vec![("pack".to_owned(), br#"{"power":3}"#.to_vec())],
-                            ),
-                        ],
-                    )
-                    .unwrap()
-                };
                 game.mods.datapack_registries = Some(std::sync::Arc::new(
                     mod_api::DatapackRegistrySet::from_candidate(candidate(7)),
                 ));
@@ -164,7 +164,15 @@ fn native_datapack_host_reads_enforce_level_session_and_generation() {
                     )
                     .unwrap();
                 assert_eq!(reloaded_visits, 1);
-                // The client must use the received snapshot, not this Game's server set.
+                assert!(!visited_refusal);
+            });
+            // The client must use the received snapshot, not any server set on its Game.
+            crate::game::native_entity_refs::tests::with_client_game(|client| {
+                let (_reader, _writer) = crate::game::remote::tests::connect_menu_test(client);
+                crate::game::remote::tests::spawn_menu_test(client);
+                client.mods.datapack_registries = Some(std::sync::Arc::new(
+                    mod_api::DatapackRegistrySet::from_candidate(candidate(9)),
+                ));
                 let declarations = mod_api::__private::datapack_registry_declarations();
                 let remote = mod_api::DatapackCandidate::build(
                     declarations,
@@ -185,11 +193,17 @@ fn native_datapack_host_reads_enforce_level_session_and_generation() {
                 };
                 sunrise_client::datapack_net::clear_received();
                 sunrise_client::datapack_net::accept(&bytes).unwrap();
-                game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-                assert_eq!(parked.datapack_entries(game, "registry_test:spell"), None);
+                let level = client.level("minecraft:overworld").unwrap();
+                let other_dim = LevelRef::new(level.epoch(), mod_api::DimensionKey::NETHER);
+                let mut visited_refusal = false;
+                let mut unexpected_visit = |_: &DatapackEntry| visited_refusal = true;
                 assert_eq!(
-                    parked.datapack_read(
-                        game,
+                    other_dim.datapack_entries(client, "registry_test:spell"),
+                    None
+                );
+                assert_eq!(
+                    other_dim.datapack_read(
+                        client,
                         "registry_test:spell",
                         "registry_test:fire",
                         &mut unexpected_visit,
@@ -197,13 +211,13 @@ fn native_datapack_host_reads_enforce_level_session_and_generation() {
                     Err(E::UnknownRegistry)
                 );
                 assert_eq!(
-                    level.datapack_entries(game, "registry_test:spell"),
+                    level.datapack_entries(client, "registry_test:spell"),
                     Some(vec!["registry_test:fire".into()])
                 );
                 let mut visits = 0;
                 level
                     .datapack_read(
-                        game,
+                        client,
                         "registry_test:spell",
                         "registry_test:fire",
                         &mut |entry| {
@@ -217,7 +231,7 @@ fn native_datapack_host_reads_enforce_level_session_and_generation() {
                 assert_eq!(visits, 1);
                 assert_eq!(
                     level.datapack_read(
-                        game,
+                        client,
                         "registry_test:spell",
                         "registry_test:fire",
                         &mut unexpected_visit,

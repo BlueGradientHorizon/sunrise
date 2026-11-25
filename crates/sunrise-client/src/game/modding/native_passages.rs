@@ -1215,3 +1215,370 @@ pub(in crate::game) mod tests {
         });
     }
 }
+
+#[cfg(test)]
+mod cross_tests {
+    use super::tests::{doorway, listen, packets, passage_messages};
+    use crate::game::Dim;
+    use crate::game::native_guest_turn_tests::with_guests;
+    use mod_api::{DimensionKey, Passage, PassageCrossRefusal as Refusal, PassageId, Vec3};
+    use std::sync::{Arc, mpsc};
+    use sunrise_client::chunk::Chunk;
+    use sunrise_client::lan::guest::InboxItem;
+    use sunrise_client::lan::hub::passage_cross::refusal_code;
+    use sunrise_protocol::packets::configuration::CustomPayload;
+    use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S, relative};
+    use sunrise_protocol::passage_sync::{CROSS_CHANNEL, Cross, Message, encode_cross};
+
+    /// The doorway comes out 24 blocks east, turned a clockwise quarter.
+    fn near_doorway() -> Passage {
+        Passage {
+            destination: Vec3::new(24.5, 65.5, 8.5),
+            ..doorway()
+        }
+    }
+
+    /// Guests 12 and 13 on Sunrise clients on a stone floor (y 64) over chunks x 0 to 1,
+    /// tracking them; 12 stands loaded at `at`. The doorway is passage 1.
+    fn scene(
+        game: &mut crate::game::Game<'_>,
+        at: [f64; 3],
+    ) -> mpsc::Receiver<sunrise_client::lan::Out> {
+        game.native_lifecycle.world_open_ready().unwrap();
+        let stone = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:stone")
+            .unwrap()
+            .0;
+        for cx in 0..=1 {
+            let mut chunk = Chunk::empty(cx, 0);
+            for x in 0..16 {
+                for z in 0..16 {
+                    chunk.set(x, 64, z, stone);
+                }
+            }
+            game.world.chunks.insert((cx, 0), Arc::new(chunk));
+        }
+        let dimension = game.dim.id().to_owned();
+        let mut receivers = listen(game, ["sunrise", "sunrise"]);
+        game.lan.as_mut().unwrap().hub.guests.update_all(|g| {
+            g.dimension = dimension.clone();
+            g.loaded = true;
+            g.load_timeout = 0;
+            g.center = Some((0, 0));
+            g.sent_chunks.extend([(0, 0), (1, 0)]);
+            g.position = at;
+            g.previous_position = at;
+            g.first_good = at;
+            g.on_ground = true;
+        });
+        let level = game.level(game.dim.id()).unwrap();
+        let id = game.level_register_passage(level, near_doorway()).unwrap();
+        assert_eq!(id, PassageId::from_raw(1));
+        game.tick_lan(false);
+        receivers.truncate(1);
+        let rx = receivers.pop().unwrap();
+        packets(&rx);
+        rx
+    }
+
+    /// Guest 12's next tick: `inbox`, then the rest of the server's tick.
+    fn tick(game: &mut crate::game::Game<'_>, inbox: Vec<S>) {
+        game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            g.inbox
+                .extend(inbox.into_iter().map(|p| InboxItem::Packet(p, None)));
+        });
+        game.tick_lan(false);
+    }
+
+    fn cross(id: u64, from: [f64; 3]) -> S {
+        S::CustomPayload(CustomPayload {
+            channel: CROSS_CHANNEL.into(),
+            data: encode_cross(&Cross { id, from }),
+        })
+    }
+
+    fn position_packets(sent: &[C]) -> Vec<play::PlayerPosition> {
+        sent.iter()
+            .filter_map(|p| match p {
+                C::PlayerPosition(p) => Some(p.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The refusals among `sent` (the passages sent with chunks are left out).
+    fn refusals(sent: &[C]) -> Vec<Message> {
+        passage_messages(sent)
+            .into_iter()
+            .filter(|m| matches!(m, Message::Refused { .. }))
+            .collect()
+    }
+
+    fn guest<'a>(game: &'a crate::game::Game<'_>) -> &'a sunrise_client::lan::guest::Guest {
+        &game.lan.as_ref().unwrap().hub.guests[0]
+    }
+
+    const ALL: i32 = relative::X
+        | relative::Y
+        | relative::Z
+        | relative::Y_ROT
+        | relative::X_ROT
+        | relative::DELTA_X
+        | relative::DELTA_Y
+        | relative::DELTA_Z
+        | relative::ROTATE_DELTA;
+
+    /// The server follows a guest's crossing to where the doorway comes out, with the yaw
+    /// turned, and answers with one position packet that is all relative and zero. The
+    /// confirmation, from a step further on, and the next move are accepted as they are:
+    /// no correction follows. A passage that leads into the air: the confirmation, checked
+    /// off the ground, and the fall after it pass too, and the player is not floating.
+    #[test]
+    #[ignore = "daily"]
+    fn the_server_follows_a_crossing_without_a_snap() {
+        for (destination_y, steps) in [(65.5, [65.0, 65.0]), (75.5, [74.9216, 74.6862])] {
+            with_guests(|game| {
+                let rx = scene(game, [0.5, 65.0, 8.25]);
+                if destination_y != 65.5 {
+                    let level = game.level(game.dim.id()).unwrap();
+                    assert!(game.level_remove_passage(level, PassageId::from_raw(1)));
+                    let high = Passage {
+                        destination: Vec3::new(24.5, destination_y, 8.5),
+                        ..near_doorway()
+                    };
+                    assert_eq!(
+                        game.level_register_passage(level, high),
+                        Ok(PassageId::from_raw(2))
+                    );
+                }
+                let id = if destination_y == 65.5 { 1 } else { 2 };
+                tick(game, vec![cross(id, [0.5, 65.0, 8.25])]);
+                let to = [24.75, destination_y - 0.5, 8.5];
+                let g = guest(game);
+                assert_eq!(g.position, to);
+                assert_eq!(g.yaw, 90.0);
+                let (teleport, awaited) = g.awaiting_teleport.expect("the acceptance waits");
+                assert_eq!(awaited, to);
+                let sent = packets(&rx);
+                assert_eq!(
+                    position_packets(&sent),
+                    [play::PlayerPosition {
+                        teleport,
+                        position: [0.0; 3],
+                        delta: [0.0; 3],
+                        yaw: 0.0,
+                        pitch: 0.0,
+                        relatives: ALL,
+                    }]
+                );
+                assert!(refusals(&sent).is_empty(), "no refusal");
+
+                let on_floor = u8::from(destination_y == 65.5);
+                tick(
+                    game,
+                    vec![
+                        S::AcceptTeleportation(play::AcceptTeleportation {
+                            id: teleport,
+                            x: 24.5,
+                            y: steps[0],
+                            z: 8.5,
+                            yaw: 90.0,
+                            pitch: 0.0,
+                        }),
+                        S::ClientTickEnd(sunrise_protocol::packets::Empty),
+                    ],
+                );
+                tick(
+                    game,
+                    vec![
+                        S::MovePlayerPos(play::MovePlayerPos {
+                            x: 24.25,
+                            y: steps[1],
+                            z: 8.5,
+                            flags: on_floor,
+                        }),
+                        S::ClientTickEnd(sunrise_protocol::packets::Empty),
+                    ],
+                );
+                let g = guest(game);
+                assert_eq!(g.awaiting_teleport, None);
+                assert_eq!(g.position, [24.25, steps[1], 8.5]);
+                assert!(!g.client_is_floating);
+                assert!(position_packets(&packets(&rx)).is_empty(), "no correction");
+            });
+        }
+    }
+
+    /// Two crossings in one inbox from different places, no move behind them: the first is
+    /// decided from its own `from` before the hub reads the second, and is followed; the
+    /// second, read the next tick while the first's acceptance waits, is refused `Pending`.
+    #[test]
+    #[ignore = "daily"]
+    fn two_crossings_in_a_row_are_decided_each_from_its_own_source() {
+        with_guests(|game| {
+            let rx = scene(game, [0.5, 65.0, 8.25]);
+            tick(
+                game,
+                vec![cross(1, [0.5, 65.0, 8.25]), cross(1, [0.5, 65.0, 8.0])],
+            );
+            let g = guest(game);
+            assert_eq!(g.position, [24.75, 65.0, 8.5]);
+            let (teleport, awaited) = g.awaiting_teleport.expect("the first is followed");
+            assert_eq!(awaited, [24.75, 65.0, 8.5]);
+            let sent = packets(&rx);
+            assert!(refusals(&sent).is_empty());
+            let accepted = position_packets(&sent);
+            assert_eq!(accepted.len(), 1);
+            assert_eq!(
+                (accepted[0].teleport, accepted[0].relatives),
+                (teleport, ALL)
+            );
+            tick(game, Vec::new());
+            let sent = packets(&rx);
+            let reason = refusal_code(Refusal::Pending);
+            assert_eq!(refusals(&sent), [Message::Refused { id: 1, reason }]);
+            let back = position_packets(&sent);
+            assert_eq!(back.len(), 1);
+            assert_eq!(
+                (back[0].position, back[0].relatives),
+                ([24.75, 65.0, 8.5], 0)
+            );
+        });
+    }
+
+    /// Each refusal is told by name, then the player is put back where the server has it:
+    /// a passage the level lacks, a crossing while a teleport waits, a far end the guest
+    /// does not track, feet more than 20 blocks from the opening, and a move to where it
+    /// crossed from that the move checks turn down.
+    #[test]
+    #[ignore = "daily"]
+    fn a_crossing_the_server_cannot_follow_is_refused_by_name() {
+        with_guests(|game| {
+            let rx = scene(game, [0.5, 65.0, 8.25]);
+            let level = game.level(game.dim.id()).unwrap();
+            let away = Passage {
+                destination: Vec3::new(100.5, 65.5, 8.5),
+                ..doorway()
+            };
+            assert_eq!(
+                game.level_register_passage(level, away),
+                Ok(PassageId::from_raw(2))
+            );
+            let refused =
+                |game: &mut crate::game::Game<'_>, id: u64, why: Refusal, at: [f64; 3]| {
+                    let sent = packets(&rx);
+                    let reason = refusal_code(why);
+                    assert_eq!(
+                        refusals(&sent),
+                        [Message::Refused { id, reason }],
+                        "{why:?}"
+                    );
+                    let back = position_packets(&sent);
+                    assert_eq!(back.len(), 1, "{why:?}");
+                    assert_eq!((back[0].position, back[0].relatives), (at, 0), "{why:?}");
+                    assert_eq!(guest(game).position, at, "{why:?}");
+                    back[0].teleport
+                };
+            let here = [0.5, 65.0, 8.25];
+            tick(game, vec![cross(9, here)]);
+            refused(game, 9, Refusal::UnknownPassage, here);
+            tick(game, vec![cross(1, here)]);
+            refused(game, 1, Refusal::Pending, here);
+            let accept = |id| {
+                S::AcceptTeleportation(play::AcceptTeleportation {
+                    id,
+                    x: here[0],
+                    y: here[1],
+                    z: here[2],
+                    yaw: 0.0,
+                    pitch: 0.0,
+                })
+            };
+            let latest = guest(game).awaiting_teleport.unwrap().0;
+            tick(game, vec![accept(latest), cross(2, here)]);
+            let teleport = refused(game, 2, Refusal::FarEndNotTracked, here);
+            tick(game, vec![accept(teleport), cross(1, [0.5, 65.0, 40.0])]);
+            refused(game, 1, Refusal::MoveRefused, here);
+
+            let far = [0.5, 65.0, 29.0];
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.awaiting_teleport = None;
+                g.position = far;
+                g.previous_position = far;
+                g.first_good = far;
+            });
+            tick(game, vec![cross(1, far)]);
+            refused(game, 1, Refusal::TooFar { limit: 20 }, far);
+        });
+    }
+
+    /// What `player_passage_cross` heard.
+    static HEARD: std::sync::Mutex<Vec<(PassageId, Vec3)>> = std::sync::Mutex::new(Vec::new());
+
+    /// Cancels every crossing it hears.
+    struct Veto;
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for Veto {
+        fn player_passage_cross(
+            &self,
+            _: &mut dyn mod_api::ServerHost,
+            e: &mut mod_api::PlayerPassageCrossEvent,
+        ) -> mod_api::Flow {
+            HEARD.lock().unwrap().push((e.passage, e.from));
+            mod_api::Flow::Cancel
+        }
+    }
+
+    /// A passage into another level is refused `FarLevel` however near the player is, and
+    /// the player stays: crossing another level waits for clients that can follow.
+    #[test]
+    #[ignore = "daily"]
+    fn a_crossing_into_another_level_is_refused_far_level() {
+        with_guests(|game| {
+            game.enter_level(Dim::Nether).unwrap();
+            game.enter_level(Dim::Overworld).unwrap();
+            let rx = scene(game, [0.5, 65.0, 8.25]);
+            let level = game.level(game.dim.id()).unwrap();
+            let far = Passage {
+                destination_level: Some(DimensionKey::NETHER),
+                ..near_doorway()
+            };
+            assert_eq!(
+                game.level_register_passage(level, far),
+                Ok(PassageId::from_raw(2))
+            );
+            tick(game, vec![cross(2, [0.5, 65.0, 8.25])]);
+            let sent = packets(&rx);
+            let reason = refusal_code(Refusal::FarLevel);
+            assert_eq!(refusals(&sent), [Message::Refused { id: 2, reason }]);
+            assert_eq!(position_packets(&sent)[0].relatives, 0);
+            assert_eq!(guest(game).position, [0.5, 65.0, 8.25]);
+        });
+    }
+
+    /// A mod hears the crossing, its passage and the feet before it, before the server
+    /// follows, and cancels it: refused as `Vetoed`, and the player stays.
+    #[test]
+    #[ignore = "daily"]
+    fn a_mod_vetoes_a_crossing_before_the_server_follows() {
+        let mods = vec![mod_api::ModEntry::new("veto", Box::new(Veto))];
+        mod_platform::testing::with_mods(mods.into(), || {
+            with_guests(|game| {
+                let rx = scene(game, [0.5, 65.0, 8.25]);
+                tick(game, vec![cross(1, [0.5, 65.0, 8.25])]);
+                let sent = packets(&rx);
+                let reason = refusal_code(Refusal::Vetoed);
+                assert_eq!(refusals(&sent), [Message::Refused { id: 1, reason }]);
+                assert_eq!(position_packets(&sent)[0].relatives, 0);
+                assert_eq!(guest(game).position, [0.5, 65.0, 8.25]);
+            });
+        });
+        assert_eq!(
+            *HEARD.lock().unwrap(),
+            [(PassageId::from_raw(1), Vec3::new(0.5, 65.0, 8.25))]
+        );
+    }
+}

@@ -48,20 +48,26 @@ pub(in crate::game::server_side) use sunrise_items::creative_catalog::{
 pub(in crate::game::server_side) use sunrise_items::items::Items;
 
 impl Game<'_> {
+    pub(in crate::game) fn server_creative_holders(&self) -> Option<Holders> {
+        self.registry_sync().map(|sync| sync.creative_holders())
+    }
+
     pub(in crate::game) fn server_creative_tab_entries(
         &self,
-        _edit: CreativeTabEdit,
-        _list: CreativeTabList,
+        edit: CreativeTabEdit,
+        list: CreativeTabList,
     ) -> Result<Vec<ItemStack>, CreativeTabEditError> {
-        Err(CreativeTabEditError::Stale)
+        // Active CreativeCache still lives in ClientOnly until world exposes it to both sides.
+        self.client_creative_tab_entries(edit, list)
     }
 
     pub(in crate::game) fn server_creative_tab_change(
         &self,
-        _edit: CreativeTabEdit,
-        _change: CreativeTabChange,
+        edit: CreativeTabEdit,
+        change: CreativeTabChange,
     ) -> Result<(), CreativeTabEditError> {
-        Err(CreativeTabEditError::Stale)
+        // Active CreativeCache still lives in ClientOnly until world exposes it to both sides.
+        self.client_creative_tab_change(edit, change)
     }
 }
 

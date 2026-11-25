@@ -352,8 +352,7 @@ fn an_overlay_fires_init_post_after_it_opens() {
 /// `screen_over_playing()` so `screen_hooks_open()` is true), and another mod's `Screen::Mod`
 /// (firing `screen_opening`/`screen_closing` and switching `native_mod_screen`); fires
 /// `screen_init_post`; is idempotent (`true`) for the same mod; respects `ScreenOpening::Cancel`;
-/// and returns `false` when headless (`renderer.is_none()`), acting for a guest
-/// (`lan_acting.is_some()`), or while `remote_loading()`.
+/// and returns `false` when headless (`renderer.is_none()`) or while `remote_loading()`.
 #[test]
 #[ignore = "daily"]
 fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
@@ -449,13 +448,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
             );
             game.client.focused = true;
 
-            // 2) Refused when acting on a guest's behalf (`lan_acting.is_some()`).
-            game.server.lan_acting = Some(1);
-            assert!(!game.mod_screen_open("mod_a"));
-            game.server.lan_acting = None;
-            assert!(take(&log).is_empty());
-
-            // 3) Opens over `Screen::Paused`, fires opening/closing/init_post.
+            // 2) Opens over `Screen::Paused`, fires opening/closing/init_post.
             game.set_screen(Screen::Paused);
             take(&log);
             assert!(game.mod_screen_open("mod_a"));

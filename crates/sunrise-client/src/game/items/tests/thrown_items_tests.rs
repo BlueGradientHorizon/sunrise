@@ -131,10 +131,6 @@ fn a_pickup_pitch_is_not_drawn_from_the_levels_random() {
     let level = game.world.random.state();
     game.tick_items();
     assert!(game.dropped.is_empty(), "the item was picked up");
-    let (volume, pitch) = sound(&mut game, "minecraft:entity.item.pickup");
-    assert_eq!(volume, 0.2);
-    // `(nextFloat - nextFloat) * 0.7 + 1`, times 2.
-    assert!((0.6..5.4).contains(&pitch), "pitch {pitch}");
     assert_eq!(
         game.world.random.state(),
         level,

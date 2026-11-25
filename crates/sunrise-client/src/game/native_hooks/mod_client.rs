@@ -531,7 +531,9 @@ impl Game<'_> {
         _unloaded: &[std::sync::Arc<sunrise_client::chunk::Chunk>],
     ) {
     }
-    pub(in crate::game) fn client_apply_after_use_components(&mut self, _stack: &ItemStack) {}
+    pub(in crate::game) fn client_apply_after_use_components(&mut self, stack: &ItemStack) {
+        self.client_apply_use_cooldown(stack);
+    }
     pub(in crate::game) fn observe_client_packet(
         &mut self,
         packet: &sunrise_protocol::packets::play::Clientbound,

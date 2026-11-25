@@ -206,7 +206,9 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
                         .hoppers
                         .insert(from, crate::game::machines::HopperState::with_cooldown(40));
                 }
-                game.server.lid_openers.insert(from, 2);
+                if !client {
+                    game.server.lid_openers.insert(from, 2);
+                }
                 game.world.chest_openers.insert(from, (2, 4.0));
                 game.be_anims.chests.insert(
                     [3, 64, 2],
@@ -217,7 +219,9 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
                     },
                 );
                 game.container = Some(from);
-                game.server.open_container_slots = Some((from, 27));
+                if !client {
+                    game.server.open_container_slots = Some((from, 27));
+                }
                 if case == "same-scope" {
                     let far = (5, 64, 2);
                     let air = registry.default_state("minecraft:air").unwrap();
@@ -268,7 +272,9 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
                 assert!(!game.world.block_names.contains_key(&from));
                 assert!(game.world.block_lock(from).is_none());
                 assert_eq!(game.world.container_stack_limit(from), None);
-                assert!(!game.server.lid_openers.contains_key(&from));
+                if !client {
+                    assert!(!game.server.lid_openers.contains_key(&from));
+                }
                 assert!(!game.world.chest_openers.contains_key(&from));
                 assert!(!game.be_anims.chests.contains_key(&[3, 64, 2]));
                 // Save/reload in flight also keeps the position-owned fields.

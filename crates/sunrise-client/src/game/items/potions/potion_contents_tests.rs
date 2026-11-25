@@ -39,8 +39,7 @@ fn with_custom_effects(mut stack: ItemStack, effects: &[(&str, i32, i32)]) -> It
 /// `ThrownSplashPotion.onHitAsPotion` over `PotionContents.getAllEffects` and
 /// `PotionContents.getColor`: a swiftness potion carrying a custom poison
 /// effect lands both, each for `(int)(scale * d * durationScale + 0.5)` of its
-/// ticks, and the splash's hundred spell particles are drawn in the contents'
-/// `custom_color`.
+/// ticks, and queues splash level event 2002 with the contents' `custom_color`.
 #[test]
 #[ignore = "daily"]
 fn a_splash_potion_applies_its_custom_effects_and_duration_scale() {
@@ -58,7 +57,8 @@ fn a_splash_potion_applies_its_custom_effects_and_duration_scale() {
         .data_mut()
         .potion_extra
         .push(("custom_color".into(), Tag::Int(0x0020_4080)));
-    game.particles.0.requested = Some(Vec::new());
+    game.start_audio_capture();
+    game.server.lan_events.clear();
     let at = Vec3::new(0.5, 64.0, 0.5);
     game.splash(
         &stack,
@@ -82,24 +82,15 @@ fn a_splash_potion_applies_its_custom_effects_and_duration_scale() {
         Some(113),
         "the custom effect, scaled"
     );
-    let spell: Vec<[f32; 4]> = game
-        .particles
-        .0
-        .requested
-        .as_ref()
-        .unwrap()
+    let splash: Vec<_> = game
+        .server
+        .lan_events
         .iter()
-        .filter(|(o, ..)| o.ty == ParticleType::Effect)
-        .map(|(o, ..)| o.color)
+        .filter(|e| e.kind == 2002)
         .collect();
-    assert_eq!(spell.len(), 100, "the splash's spell particles");
-    for c in spell {
-        // 0x204080, brightened by each particle's own 0.75 to 1.
-        assert!(
-            (c[0] * 2.0 - c[1]).abs() < 1.0e-4 && (c[1] * 2.0 - c[2]).abs() < 1.0e-4,
-            "{c:?}"
-        );
-    }
+    assert_eq!(splash.len(), 1, "the splash's level event");
+    assert_eq!(splash[0].pos, [0, 64, 0]);
+    assert_eq!(splash[0].data, 0x0020_4080, "the splash's custom_color");
 }
 
 /// `ThrownLingeringPotion.onHitAsPotion` with `AreaEffectCloud.applyComponentsFromItemStack`:

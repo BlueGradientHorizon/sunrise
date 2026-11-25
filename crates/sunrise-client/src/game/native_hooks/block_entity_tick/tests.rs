@@ -1202,7 +1202,7 @@ fn invalid_resident_ticker_warns_once_until_a_valid_tick() {
             metadata.level() == log::Level::Warn
                 && metadata
                     .target()
-                    .ends_with("::native_hooks::block_entity_tick")
+                    .ends_with("::native_hooks_server::block_entity_tick")
         }
         fn log(&self, record: &log::Record<'_>) {
             if self.enabled(record.metadata()) {

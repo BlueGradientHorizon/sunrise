@@ -1193,6 +1193,12 @@ impl Game<'_> {
                 r.ground.on_ground,
             );
             e.velocity = at(r.velocity);
+            // Entity.DATA_SILENT (index 4): default listed so clearing Silent:1b syncs too.
+            if r.silent {
+                e.meta.push((4, serializer::BOOLEAN, Value::Bool(true)));
+            }
+            e.defaults
+                .push((4, serializer::BOOLEAN, Value::Bool(false)));
             // DATA_ID_FIREWORKS_ITEM once set from a stack, DATA_ATTACHED_TO_TARGET,
             // DATA_SHOT_AT_ANGLE.
             if let Some(item) = item {
