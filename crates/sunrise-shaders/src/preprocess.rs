@@ -152,7 +152,11 @@ impl Run<'_> {
         let Some(after) = line.trim_start().strip_prefix('#') else {
             let code = if self.conditionals.active() {
                 self.macros.define("__LINE__", origin.line.to_string());
-                self.macros.expand(line)
+                // A call nested past `MAX_ARGUMENT_DEPTH` refuses the program, at its line.
+                self.macros.try_expand(line).unwrap_or_else(|why| {
+                    self.diagnose(origin, &why);
+                    String::new()
+                })
             } else {
                 String::new()
             };
@@ -475,5 +479,131 @@ mod tests {
         assert_eq!(p.warnings.len(), 1);
         let code: Vec<&str> = code_lines(&p).iter().map(|(c, _)| *c).collect();
         assert_eq!(code, ["float b;", "float c;"]);
+    }
+
+    /// `#if` and `#elif` nested to `MAX_CONDITION_DEPTH` in an include nine deep (the most a
+    /// pack's includes nest) run on a thread of half the 2 MiB Rust gives a spawned thread, such
+    /// as the one a pack loads on, in this (debug) build; one level more is a warning naming
+    /// the depth at its file and line, and reads as false, as every condition that can't be
+    /// evaluated does.
+    #[test]
+    fn a_condition_nested_past_the_bound_is_read_as_false() {
+        use sunrise_glsl::condition::{MAX_CONDITION_DEPTH, too_deep};
+        let parens = |depth: usize, value: &str| {
+            format!("{}{value}{}", "(".repeat(depth), ")".repeat(depth))
+        };
+        let (at, past) = (
+            parens(MAX_CONDITION_DEPTH, "1"),
+            parens(MAX_CONDITION_DEPTH + 1, "1"),
+        );
+        let deepest = format!(
+            "#if {at}\nfloat deepest;\n#endif\n#if {past}\nfloat past;\n#else\nfloat other;\n#endif\n\
+             #if 0\n#elif {at}\nfloat elif_deepest;\n#endif\n#if 0\n#elif {past}\nfloat elif_past;\n#endif\n"
+        );
+        let p = std::thread::Builder::new()
+            .stack_size(1 << 20)
+            .spawn(move || {
+                let mut files = vec![(
+                    "program/final.fsh".to_owned(),
+                    "#version 330\n#include \"/lib/i1.glsl\"\n".to_owned(),
+                )];
+                for n in 1..9 {
+                    files.push((
+                        format!("lib/i{n}.glsl"),
+                        format!("#include \"i{}.glsl\"\n", n + 1),
+                    ));
+                }
+                files.push(("lib/i9.glsl".into(), deepest));
+                let files: Vec<(&str, &str)> = files
+                    .iter()
+                    .map(|(p, t)| (p.as_str(), t.as_str()))
+                    .collect();
+                run(&files)
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+        assert!(p.diagnostics.is_empty(), "{:?}", p.diagnostics);
+        let code: Vec<&str> = code_lines(&p).iter().map(|(c, _)| *c).collect();
+        assert_eq!(
+            code,
+            ["float deepest;", "float other;", "float elif_deepest;"]
+        );
+        let deepest = p.files.iter().position(|f| f == "lib/i9.glsl").unwrap() as u16;
+        let warning = |line: u32| Diagnostic {
+            origin: Origin {
+                file: deepest,
+                line,
+            },
+            message: format!("`#if {past}`: {}; read as false", too_deep()),
+        };
+        assert_eq!(p.warnings, [warning(4), warning(14)]);
+    }
+
+    /// Macro calls nested to `MAX_ARGUMENT_DEPTH` in an include nine deep expand on a thread of
+    /// half the 2 MiB Rust gives a spawned thread, in this (debug) build. 400 levels, which
+    /// overflowed it, stop at the bound: in an `#if` or `#elif` it is a warning at its file and
+    /// line and reads as false; in code, a diagnostic at its line, which refuses the program.
+    /// Each expansion past the bound stops alone: the lines after it expand.
+    #[test]
+    fn macro_calls_nested_past_the_depth_are_refused_where_they_are() {
+        use sunrise_glsl::macros::MAX_ARGUMENT_DEPTH;
+        let nested = |depth: usize, value: &str| {
+            format!("{}{value}{}", "F(".repeat(depth), ")".repeat(depth))
+        };
+        let (at, past) = (nested(MAX_ARGUMENT_DEPTH, "1"), nested(400, "1"));
+        let deepest = format!(
+            "#define F(x) x\n#if {at}\nfloat deepest;\n#endif\n#if {past}\nfloat past;\n#else\n\
+             float other;\n#endif\n#if 0\n#elif {past}\nfloat elif_past;\n#endif\n\
+             float code = {};\nfloat code_past = {};\nfloat after = F(3.0);\n",
+            nested(MAX_ARGUMENT_DEPTH, "2.0"),
+            nested(400, "2.0"),
+        );
+        let p = std::thread::Builder::new()
+            .stack_size(1 << 20)
+            .spawn(move || {
+                let mut files = vec![(
+                    "program/final.fsh".to_owned(),
+                    "#version 330\n#include \"/lib/i1.glsl\"\n".to_owned(),
+                )];
+                for n in 1..9 {
+                    files.push((
+                        format!("lib/i{n}.glsl"),
+                        format!("#include \"i{}.glsl\"\n", n + 1),
+                    ));
+                }
+                files.push(("lib/i9.glsl".into(), deepest));
+                let files: Vec<(&str, &str)> = files
+                    .iter()
+                    .map(|(p, t)| (p.as_str(), t.as_str()))
+                    .collect();
+                run(&files)
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+        let code: Vec<&str> = code_lines(&p).iter().map(|(c, _)| *c).collect();
+        assert_eq!(
+            code,
+            [
+                "float deepest;",
+                "float other;",
+                "float code = 2.0;",
+                "float after = 3.0;"
+            ]
+        );
+        let why = sunrise_glsl::macros::calls_too_deep();
+        let file = p.files.iter().position(|f| f == "lib/i9.glsl").unwrap() as u16;
+        let at = |line: u32| Origin { file, line };
+        let warning = |line: u32| Diagnostic {
+            origin: at(line),
+            message: format!("`#if {past}`: {why}; read as false"),
+        };
+        assert_eq!(p.warnings, [warning(5), warning(11)]);
+        let refused = Diagnostic {
+            origin: at(15),
+            message: why.clone(),
+        };
+        assert_eq!(p.diagnostics, [refused]);
     }
 }

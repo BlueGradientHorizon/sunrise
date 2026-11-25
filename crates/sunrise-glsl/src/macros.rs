@@ -19,13 +19,19 @@ struct Macro {
     body: String,
 }
 
-/// How deep a call may sit in another call's arguments ([`Macros::checked`]): each level expands
-/// its arguments in a frame of its own. A depth whose frames fit in a 2 MiB thread (what Rust
-/// gives a spawned thread) in a debug build with half of it to spare, which
-/// `directives_tests::calls_nested_to_the_bound_fit_a_small_thread` checks.
+/// How deep a call may sit in another call's arguments, in either mode: each level expands its
+/// arguments in a frame of its own. A depth whose frames fit in a 2 MiB thread (what Rust gives a
+/// spawned thread) in a debug build with half of it to spare, which
+/// `directives_tests::calls_nested_to_the_bound_fit_a_small_thread` checks, and `sunrise-shaders`'
+/// tests of its preprocessor and properties for the shader packs' mode.
 pub const MAX_ARGUMENT_DEPTH: usize = 128;
 
-/// Why an expansion of [`Macros::checked`] stopped, its result unfinished.
+/// Why an expansion with a call deeper than [`MAX_ARGUMENT_DEPTH`] is refused ([`Stop::Depth`]).
+pub fn calls_too_deep() -> String {
+    format!("a macro call sits more than {MAX_ARGUMENT_DEPTH} calls deep in arguments")
+}
+
+/// Why an expansion stopped, its result unfinished.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Stop {
     /// The work ran out.
@@ -46,7 +52,7 @@ pub struct Macros {
     /// its replacement makes; telling whether a call goes on past its line costs its expansion.
     work: Cell<usize>,
     /// [`Macros::checked`]: calls must give a function-like macro as many arguments as it takes,
-    /// and calls nest at most [`MAX_ARGUMENT_DEPTH`] deep.
+    /// and a stop lasts.
     arity: bool,
     /// How deep the expansion is in calls' arguments.
     depth: Cell<usize>,
@@ -55,8 +61,9 @@ pub struct Macros {
     stopped: RefCell<Option<Stop>>,
 }
 
-/// No macros, no bound on the work or the depth, and a call with too many or too few arguments
-/// takes what it has (a missing argument is empty).
+/// No macros, no bound on the work, and a call with too many or too few arguments takes what it
+/// has (a missing argument is empty). Calls nest at most [`MAX_ARGUMENT_DEPTH`] deep, and a call
+/// past it stops that one expansion only ([`Macros::try_expand`]): the next starts afresh.
 impl Default for Macros {
     fn default() -> Self {
         Self {
@@ -90,14 +97,22 @@ impl Macros {
         }
     }
 
-    /// Why an expansion stopped, its result unfinished; from then on every expansion stops.
+    /// Why an expansion stopped, its result unfinished. With [`Macros::checked`], from then on
+    /// every expansion stops; otherwise, the last expansion's.
     pub fn stopped(&self) -> Option<Stop> {
         self.stopped.borrow().clone()
     }
 
+    /// An expansion starts: without [`Macros::checked`], what stopped the last one is forgotten.
+    fn begin(&self) {
+        if !self.arity {
+            self.stopped.replace(None);
+        }
+    }
+
     /// One level deeper in calls' arguments; false (and stopped) past [`MAX_ARGUMENT_DEPTH`].
     fn deeper(&self) -> bool {
-        if self.arity && self.depth.get() >= MAX_ARGUMENT_DEPTH {
+        if self.depth.get() >= MAX_ARGUMENT_DEPTH {
             self.stop(Stop::Depth);
             return false;
         }
@@ -253,6 +268,7 @@ impl Macros {
     /// Whether upcoming source lines continue a call, including one whose expanded name
     /// ends `text` and whose opening parenthesis is on the next nonempty line.
     pub fn unfinished_call(&self, text: &str, upcoming: &[&str]) -> bool {
+        self.begin();
         let (tokens, unfinished) = self.expand_tokens(expansion_tokens(text));
         unfinished
             || (tokens.iter().rfind(|t| !t.blank()).is_some_and(|t| {
@@ -270,6 +286,7 @@ impl Macros {
     /// expansion, so `A` defined as `A + 1` stops. Function-like macros take their arguments
     /// (expanded first, raw beside `##`, which pastes) when a `(` follows their name.
     pub fn expand(&self, text: &str) -> String {
+        self.begin();
         self.expand_tokens(expansion_tokens(text))
             .0
             .iter()
@@ -277,13 +294,22 @@ impl Macros {
             .collect()
     }
 
+    /// [`Macros::expand`], or why it stopped ([`Stop`]) when it did.
+    pub fn try_expand(&self, text: &str) -> Result<String, String> {
+        let expanded = self.expand(text);
+        match self.stopped() {
+            Some(stop) => Err(crate::directives::stopped(stop)),
+            None => Ok(expanded),
+        }
+    }
+
     /// [`Macros::expand`] for the condition of an `#if`: with [`Macros::checked`], the name a
     /// `defined` reads is not expanded, and a `defined` the expansion makes is read
-    /// ([`resolve_defined`]), as naga's preprocessor (pp-rs 0.2.1) read it. Otherwise the same
-    /// as [`Macros::expand`].
+    /// ([`resolve_defined`]), as naga's preprocessor (pp-rs 0.2.1) read it. Otherwise
+    /// [`Macros::try_expand`].
     pub fn expand_condition(&self, text: &str) -> Result<String, String> {
         if !self.arity {
-            return Ok(self.expand(text));
+            return self.try_expand(text);
         }
         self.condition.set(true);
         let expanded = self.expand(text);
@@ -681,5 +707,33 @@ mod tests {
         m.define_function("CAT", vec!["a".into(), "b".into()], "a ## b");
         assert_eq!(m.expand("F(2)"), "2 + 1");
         assert_eq!(m.expand("CAT(, x) CAT(y, )"), "x y");
+    }
+
+    /// Without [`Macros::checked`] (the shader packs' mode), calls nest to `MAX_ARGUMENT_DEPTH`
+    /// on a thread of half the 2 MiB Rust gives a spawned thread, in this (debug) build; one
+    /// level more stops that expansion, by name, and the next expansion starts afresh.
+    #[test]
+    fn the_default_mode_stops_one_expansion_past_the_depth() {
+        let nested = |depth: usize| format!("{}5{}", "F(".repeat(depth), ")".repeat(depth));
+        let (deepest, past, condition, after) = std::thread::Builder::new()
+            .stack_size(1 << 20)
+            .spawn(move || {
+                let mut m = Macros::default();
+                m.define_function("F", vec!["x".into()], "x");
+                (
+                    m.try_expand(&nested(MAX_ARGUMENT_DEPTH)),
+                    m.try_expand(&nested(400)),
+                    m.expand_condition(&nested(MAX_ARGUMENT_DEPTH + 1)),
+                    m.try_expand("F(2)"),
+                )
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+        let why = crate::directives::stopped(Stop::Depth);
+        assert_eq!(deepest, Ok("5".into()));
+        assert_eq!(past, Err(why.clone()));
+        assert_eq!(condition, Err(why));
+        assert_eq!(after, Ok("2".into()));
     }
 }

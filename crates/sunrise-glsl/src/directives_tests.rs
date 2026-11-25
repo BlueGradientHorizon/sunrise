@@ -768,6 +768,129 @@ fn calls_nested_to_the_bound_fit_a_small_thread() {
     );
 }
 
+/// `(` and `)` around `value`, `depth` deep.
+fn parens(depth: usize, value: &str) -> String {
+    format!("{}{value}{}", "(".repeat(depth), ")".repeat(depth))
+}
+
+/// `run` on a thread of half the 2 MiB Rust gives a spawned thread.
+fn on_small_thread<T: Send + 'static>(run: impl FnOnce() -> T + Send + 'static) -> T {
+    std::thread::Builder::new()
+        .stack_size(1 << 20)
+        .spawn(run)
+        .unwrap()
+        .join()
+        .unwrap()
+}
+
+/// `#if`, `#elif` and `#line` nested to `MAX_CONDITION_DEPTH` run on a thread of half the 2 MiB
+/// Rust gives a spawned thread, in this (debug) build; one level more is refused by name, at the
+/// directive's file and line.
+#[test]
+fn conditions_nested_to_the_bound_fit_a_small_thread() {
+    use crate::condition::{MAX_CONDITION_DEPTH, too_deep};
+    let at = MAX_CONDITION_DEPTH;
+    let run = |text: String| {
+        on_small_thread(move || {
+            let code = Expanded {
+                lines: Lines::from_text(&text),
+                files: vec!["t:shaders/t.vsh".into()],
+            };
+            run_directives(&code, &[]).map(|c| c.text().to_owned())
+        })
+    };
+    let deepest = run(format!(
+        "#version 330\n#if {}\nfloat kept;\n#endif\n#if 0\n#elif {}\nfloat elif_kept;\n#endif\n\
+         #line {}\nconst int l = __LINE__;\n",
+        parens(at, "1"),
+        parens(at, "2"),
+        parens(at, "40"),
+    ))
+    .unwrap();
+    // The directive's own line takes the number, as naga's preprocessor numbered it.
+    for kept in ["float kept;", "float elif_kept;", "const int l = 41u;"] {
+        assert!(deepest.contains(kept), "{kept}: {deepest}");
+    }
+    let past = parens(at + 1, "1");
+    let condition = format!("`#if {past}`: {}", too_deep());
+    let cases = [
+        (format!("#version 330\n#if {past}\n#endif\n"), 2, &condition),
+        (
+            format!("#version 330\n#if 0\n#elif {past}\n#endif\n"),
+            3,
+            &condition,
+        ),
+        (format!("#version 330\n\n\n#line {past}\n"), 4, &too_deep()),
+    ];
+    for (text, line, message) in cases {
+        let error = run(text).unwrap_err();
+        assert_eq!(
+            (error.file.as_str(), error.line, &error.message),
+            ("t:shaders/t.vsh", line, message)
+        );
+    }
+}
+
+/// The walk that pastes a core shader's includes tests their conditions inside its own
+/// recursion: an `#if` and a `#line` nested to `MAX_CONDITION_DEPTH` in an include sixteen deep
+/// (the most the walk takes) run on a thread of half the 2 MiB Rust gives a spawned thread; one
+/// level more is refused by name, at that include's file and line.
+#[test]
+fn an_include_sixteen_deep_tests_a_condition_at_the_bound_on_a_small_thread() {
+    use crate::condition::{MAX_CONDITION_DEPTH, too_deep};
+    let walk = |deepest: String| {
+        on_small_thread(move || {
+            let read = move |id: &str| -> Result<Option<String>, String> {
+                let n: usize = id
+                    .strip_prefix("minecraft:shaders/include/i")
+                    .and_then(|r| r.strip_suffix(".glsl"))
+                    .and_then(|n| n.parse().ok())
+                    .ok_or(format!("{id} not a test file"))?;
+                Ok(Some(match n {
+                    16 => deepest.clone(),
+                    _ => format!("#include <i{}.glsl>\n", n + 1),
+                }))
+            };
+            let includes = crate::Includes {
+                read: &read,
+                namespace: "minecraft",
+                folder: "shaders/include/",
+                once: &["moj_import"],
+            };
+            let vsh = "#version 330\n#include <i1.glsl>\n#ifdef DEEPEST\nfloat deepest;\n#endif\n";
+            crate::expand_includes(
+                vsh,
+                tests::VSH_FILE,
+                "minecraft:shaders/core/",
+                &includes,
+                Some(&[]),
+            )
+            .map(|e| e.text().to_owned())
+        })
+    };
+    let condition =
+        |depth: usize| format!("\n#if {}\n#define DEEPEST 1\n#endif\n", parens(depth, "3"));
+    let line = |depth: usize| format!("\n#line {}\nfloat after_line;\n", parens(depth, "70"));
+    let text = walk(condition(MAX_CONDITION_DEPTH)).unwrap();
+    assert!(text.contains("float deepest;"), "{text}");
+    let text = walk(line(MAX_CONDITION_DEPTH)).unwrap();
+    assert!(text.contains("float after_line;"), "{text}");
+    let refused = |why: String| crate::ImportError {
+        file: "minecraft:shaders/include/i16.glsl".into(),
+        line: 2,
+        refusal: crate::ImportRefusal::Directive(why),
+    };
+    let past = parens(MAX_CONDITION_DEPTH + 1, "3");
+    assert_eq!(
+        walk(condition(MAX_CONDITION_DEPTH + 1)).unwrap_err(),
+        refused(format!("`#if {past}`: {}", too_deep()))
+    );
+    assert_eq!(
+        walk(line(MAX_CONDITION_DEPTH + 1)).unwrap_err(),
+        refused(too_deep())
+    );
+}
+
 /// A `defined` a macro's replacement makes is read in a condition, a post shader's as naga's
 /// preprocessor read it, and now a core shader's too (the walk refused it before).
 #[test]
