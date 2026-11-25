@@ -1515,22 +1515,17 @@ impl Game<'_> {
     }
 
     /// The attribute map of a living entity whose attributes Sunrise does
-    /// not model, created from its type's defaults on first use.
+    /// not model, created from its type's defaults on first use. A mob keeps
+    /// its own (`generic_attributes`), which its effects' modifiers reach
+    /// too, made with what its live map kept (`finalize::attribute_map`):
+    /// a reloaded mob reports and removes its saved modifiers.
     pub(in crate::game) fn generic_attributes(
         &mut self,
         t: Target,
-        attribute: &str,
     ) -> Option<&mut sunrise_world::attributes::entity::EntityAttributes> {
-        if let Target::Mob(id) = t
-            && (matches!(attribute, "minecraft:armor" | "minecraft:armor_toughness")
-                || self.sulfur_archetype_attribute(t, attribute))
-        {
+        if let Target::Mob(id) = t {
             let mob = self.mobs.iter_mut().find(|m| m.id == id)?;
-            if mob.extra.armor_attributes.is_none() {
-                mob.extra.armor_attributes =
-                    self.motion.attributes.create(&mob.kind.id).map(Box::new);
-            }
-            return mob.extra.armor_attributes.as_deref_mut();
+            return sunrise_client::mobs::finalize::attribute_map(mob, &self.motion.attributes);
         }
         if !self.cmds.attributes.contains_key(&t) {
             let ty = self.target_type(t);
@@ -1578,9 +1573,7 @@ impl Game<'_> {
         };
         let catalog = self.motion.attributes.clone();
         let key = catalog.id(attribute).ok_or_else(no_attribute)?;
-        let map = self
-            .generic_attributes(target, attribute)
-            .ok_or_else(no_attribute)?;
+        let map = self.generic_attributes(target).ok_or_else(no_attribute)?;
         if !map.has(key) {
             return Err(no_attribute());
         }
@@ -1619,7 +1612,7 @@ impl Game<'_> {
                 self.write_attribute(target, attribute, AttributeWrite::ResetBase)
                     .ok_or_else(no_attribute)?;
                 let v = self
-                    .generic_attributes(target, attribute)
+                    .generic_attributes(target)
                     .and_then(|map| map.base_value(key).ok())
                     .unwrap_or(0.0);
                 (

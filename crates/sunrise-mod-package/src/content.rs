@@ -1013,8 +1013,9 @@ pub enum EffectCategory {
     Neutral,
 }
 
-/// A mob effect the mod adds: what `new MobEffect(category, color)` takes.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+/// A mob effect the mod adds: what `new MobEffect(category, color)` takes,
+/// and the attribute modifiers its constructor adds.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct MobEffect {
     /// `<mod id>:<path>`.
@@ -1028,6 +1029,70 @@ pub struct MobEffect {
     /// compares the colour, which it is when absent.
     #[serde(default)]
     pub sort_order: Option<i32>,
+    /// `MobEffect.addAttributeModifier`, one per attribute: on an entity while
+    /// the effect is, its amount times the amplifier plus one.
+    #[serde(default)]
+    pub attribute_modifiers: Vec<EffectAttributeModifier>,
+}
+
+/// One `MobEffect.addAttributeModifier(attribute, id, amount, operation)`.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct EffectAttributeModifier {
+    /// The attribute, vanilla's or a mod's, `namespace:path`.
+    pub attribute: String,
+    /// The modifier's id, `namespace:path`.
+    pub id: String,
+    /// The amount at amplifier 0.
+    pub amount: f64,
+    pub operation: ModifierOperation,
+}
+
+/// `AttributeModifier.Operation`, by its codec name.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ModifierOperation {
+    AddValue,
+    AddMultipliedBase,
+    AddMultipliedTotal,
+}
+
+impl MobEffect {
+    /// The checks a declaration's attribute modifiers pass at load: each
+    /// attribute and id a `namespace:path` (`Identifier`'s rules, which refuse
+    /// the namespace `..`), and one modifier per attribute
+    /// (vanilla keys its templates by attribute). JSON has no infinite or NaN
+    /// amount: one out of `f64`'s range fails to parse. Whether the attribute
+    /// exists is the game's check, which knows the mods' attributes.
+    fn check_attribute_modifiers(&self) -> Result<(), String> {
+        let identifier =
+            |id: &str| sunrise_core::identifier::Identifier::parse_namespaced(id).is_some();
+        for (i, modifier) in self.attribute_modifiers.iter().enumerate() {
+            let entry = format!("attribute_modifiers[{i}]");
+            if !identifier(&modifier.attribute) {
+                return Err(format!(
+                    "{entry}: attribute {:?} is an attribute id (namespace:path)",
+                    modifier.attribute
+                ));
+            }
+            if !identifier(&modifier.id) {
+                return Err(format!(
+                    "{entry}: id {:?} is a modifier id (namespace:path)",
+                    modifier.id
+                ));
+            }
+            if let Some(first) = self.attribute_modifiers[..i]
+                .iter()
+                .position(|m| m.attribute == modifier.attribute)
+            {
+                return Err(format!(
+                    "attribute_modifiers[{first}] ({}) and {entry} ({}) both modify {}: one modifier per attribute",
+                    self.attribute_modifiers[first].id, modifier.id, modifier.attribute
+                ));
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Vanilla's `DyeColor` names, by id.
@@ -1882,6 +1947,8 @@ impl Content {
             if file.color > 0xFF_FFFF {
                 return Err(format!("{name}: color is RGB, 0 to 16777215 (0xFFFFFF)"));
             }
+            file.check_attribute_modifiers()
+                .map_err(|e| format!("{name}: {e}"))?;
             self.effects.push(MobEffect { id: effect, ..file });
         }
         for (tab, name) in tabs {
@@ -3381,6 +3448,102 @@ capabilities = ["registries"]
                 "missing field",
             ),
         ] {
+            let files: &[(&str, &[u8])] =
+                &[("data/ruby/sunrise/mob_effect/a.json", file.as_bytes())];
+            let e = smod(case, MANIFEST_TEXT, files).unwrap_err();
+            assert!(e.contains(why), "{case}: {e}");
+        }
+    }
+
+    /// #4473: `attribute_modifiers` is `MobEffect.addAttributeModifier`'s
+    /// arguments, one entry per attribute; without it there are none.
+    #[test]
+    fn mob_effects_take_attribute_modifiers_one_per_attribute() {
+        let stun = br#"{"category": "harmful", "color": 1, "attribute_modifiers": [
+            {"attribute": "minecraft:movement_speed", "id": "ruby:effect/stun_speed",
+             "amount": -1.0, "operation": "add_multiplied_total"},
+            {"attribute": "ruby:mana", "id": "ruby:effect/stun_mana",
+             "amount": 2.5, "operation": "add_value"}]}"#;
+        let files: &[(&str, &[u8])] = &[
+            ("data/ruby/sunrise/mob_effect/stun.json", stun),
+            (
+                "data/ruby/sunrise/mob_effect/plain.json",
+                br#"{"category": "neutral", "color": 1}"#,
+            ),
+        ];
+        let content = smod("effect-modifiers", MANIFEST_TEXT, files).unwrap();
+        assert!(content.effects[0].attribute_modifiers.is_empty());
+        assert_eq!(
+            content.effects[1].attribute_modifiers,
+            [
+                EffectAttributeModifier {
+                    attribute: "minecraft:movement_speed".into(),
+                    id: "ruby:effect/stun_speed".into(),
+                    amount: -1.0,
+                    operation: ModifierOperation::AddMultipliedTotal,
+                },
+                EffectAttributeModifier {
+                    attribute: "ruby:mana".into(),
+                    id: "ruby:effect/stun_mana".into(),
+                    amount: 2.5,
+                    operation: ModifierOperation::AddValue,
+                },
+            ]
+        );
+        let entry = |attribute: &str, id: &str, amount: &str, operation: &str| {
+            format!(
+                r#"{{"attribute": "{attribute}", "id": "{id}", "amount": {amount}, "operation": "{operation}"}}"#
+            )
+        };
+        let speed = entry("minecraft:movement_speed", "ruby:a", "1", "add_value");
+        for (case, modifiers, why) in [
+            (
+                "modifier-attribute",
+                entry("movement_speed", "ruby:a", "1", "add_value"),
+                "attribute_modifiers[0]: attribute \"movement_speed\" is an attribute id",
+            ),
+            (
+                "modifier-id",
+                entry("minecraft:movement_speed", "Ruby:A", "1", "add_value"),
+                "attribute_modifiers[0]: id \"Ruby:A\" is a modifier id",
+            ),
+            (
+                "modifier-id-dot-dot",
+                entry("minecraft:movement_speed", "..:stun", "1", "add_value"),
+                "attribute_modifiers[0]: id \"..:stun\" is a modifier id",
+            ),
+            (
+                "modifier-attribute-dot-dot",
+                entry("..:speed", "ruby:a", "1", "add_value"),
+                "attribute_modifiers[0]: attribute \"..:speed\" is an attribute id",
+            ),
+            (
+                "modifier-amount",
+                entry("minecraft:movement_speed", "ruby:a", "1e999", "add_value"),
+                "number out of range",
+            ),
+            (
+                "modifier-operation",
+                entry("minecraft:movement_speed", "ruby:a", "1", "multiply"),
+                "unknown variant `multiply`",
+            ),
+            (
+                "modifier-twice",
+                format!(
+                    "{speed}, {}",
+                    entry("minecraft:movement_speed", "ruby:b", "2", "add_value")
+                ),
+                "attribute_modifiers[0] (ruby:a) and attribute_modifiers[1] (ruby:b) both modify minecraft:movement_speed",
+            ),
+            (
+                "modifier-key",
+                speed.replace('}', r#", "slot": "any"}"#),
+                "unknown field `slot`",
+            ),
+        ] {
+            let file = format!(
+                r#"{{"category": "neutral", "color": 1, "attribute_modifiers": [{modifiers}]}}"#
+            );
             let files: &[(&str, &[u8])] =
                 &[("data/ruby/sunrise/mob_effect/a.json", file.as_bytes())];
             let e = smod(case, MANIFEST_TEXT, files).unwrap_err();

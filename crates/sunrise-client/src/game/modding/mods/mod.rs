@@ -1833,7 +1833,8 @@ fn register_mob_effects(
     selected: &[sunrise_mod_package::selection::SelectedPackage],
 ) {
     use sunrise_client::brewing::{self, Category};
-    use sunrise_mod_package::content::EffectCategory;
+    use sunrise_mod_package::content::{EffectCategory, ModifierOperation};
+    use sunrise_world::attributes::Operation;
     let effects = mob_effect_entries(mods, selected);
     if effects.is_empty() {
         return;
@@ -1848,13 +1849,23 @@ fn register_mob_effects(
             EffectCategory::Harmful => Category::Harmful,
             EffectCategory::Neutral => Category::Neutral,
         };
-        (
-            e.id.clone(),
-            e.color,
-            category,
-            e.sort_order,
-            owner.to_owned(),
-        )
+        let modifiers = e
+            .attribute_modifiers
+            .iter()
+            .map(|m| {
+                let operation = match m.operation {
+                    ModifierOperation::AddValue => Operation::AddValue,
+                    ModifierOperation::AddMultipliedBase => Operation::AddMultipliedBase,
+                    ModifierOperation::AddMultipliedTotal => Operation::AddMultipliedTotal,
+                };
+                (m.attribute.clone(), m.id.clone(), m.amount, operation)
+            })
+            .collect();
+        brewing::ModEffect {
+            sort_order: e.sort_order,
+            modifiers,
+            ..brewing::ModEffect::new(&e.id, e.color, category, owner)
+        }
     }));
     if !set
         && brewing::mod_effects()
@@ -2489,12 +2500,14 @@ pub(super) fn living_mod_types()
     std::fs::create_dir_all(&root).unwrap();
     std::fs::write(root.join("entity-types.json"), table).unwrap();
     // No attribute catalog: the rows' values stay as written.
-    let attributes = &sunrise_world::attributes::entity::Catalog::from_json(&serde_json::json!({
-        "data_version": sunrise_world::DATA_VERSION,
-        "attributes": [],
-        "entities": {},
-    }))
-    .unwrap();
+    let attributes = &Arc::new(
+        sunrise_world::attributes::entity::Catalog::from_json(&serde_json::json!({
+            "data_version": sunrise_world::DATA_VERSION,
+            "attributes": [],
+            "entities": {},
+        }))
+        .unwrap(),
+    );
     let types = sunrise_client::mobs::MobTypes::load_for_server(&root, attributes).unwrap();
     let _ = std::fs::remove_dir_all(&root);
     types
@@ -4805,8 +4818,10 @@ pub(in crate::game) mod tests {
         // attribute map and fields (`take_attribute_row`).
         let mut types = living_mod_types();
         let ghoul = types.get_mut("ruby:ghoul").unwrap();
-        Arc::make_mut(ghoul)
-            .take_attribute_row(Arc::new(merged.entity_row("ruby:ghoul").unwrap()), &merged);
+        Arc::make_mut(ghoul).take_attribute_row(
+            Arc::new(merged.entity_row("ruby:ghoul").unwrap()),
+            &Arc::new(merged.clone()),
+        );
         let ghoul = Mob::new(7, types["ruby:ghoul"].clone(), Vec3::ZERO, 0.0);
         assert_eq!(ghoul.health, 55.0, "the spawn's health");
         assert_eq!(ghoul.attrs.max_health, 55.0);
@@ -4991,8 +5006,10 @@ pub(in crate::game) mod tests {
         let mut types = living_mod_types();
         let ghoul = types.get_mut("ruby:ghoul").unwrap();
         assert_eq!(ghoul.max_health, 40.0, "the content row's own value");
-        Arc::make_mut(ghoul)
-            .take_attribute_row(Arc::new(merged.entity_row("ruby:ghoul").unwrap()), &merged);
+        Arc::make_mut(ghoul).take_attribute_row(
+            Arc::new(merged.entity_row("ruby:ghoul").unwrap()),
+            &Arc::new(merged.clone()),
+        );
         let ghoul = Mob::new(7, types["ruby:ghoul"].clone(), Vec3::ZERO, 0.0);
         assert_eq!(
             ghoul.health, 20.0,
@@ -5148,6 +5165,44 @@ pub(in crate::game) mod tests {
         .err()
         .unwrap();
         assert!(error.contains("ruby:ghoul"), "{error}");
+    }
+
+    /// #4473: a content mod's effect may declare modifiers on the attributes
+    /// the complete catalog has, vanilla's or a mod's; another refuses the
+    /// load, naming the effect and the attribute.
+    #[test]
+    fn a_declared_effect_modifier_on_an_unknown_attribute_refuses_the_load() {
+        use sunrise_client::brewing::{self, EffectDef};
+        use sunrise_world::attributes::{Operation, entity::Catalog};
+
+        let catalog = Catalog::from_json(&serde_json::json!({
+            "data_version": sunrise_world::DATA_VERSION,
+            "attributes": [
+                {"id": "minecraft:luck", "default": "0000000000000000", "min": "c090000000000000", "max": "4090000000000000", "syncable": true},
+                {"id": "ruby:mana", "default": "0000000000000000", "min": "0000000000000000", "max": "4090000000000000", "syncable": true}
+            ],
+            "entities": {"minecraft:player": {}}
+        }))
+        .unwrap();
+        let effect = |modifiers| EffectDef {
+            id: "ruby:stun",
+            modifiers,
+            ..*brewing::effect("slowness").unwrap()
+        };
+        let check = |effects: &[EffectDef]| {
+            super::super::resource_load::check_effect_modifier_attributes(&catalog, effects)
+        };
+        const KNOWN: &[brewing::EffectModifier] = &[
+            ("minecraft:luck", "ruby:a", 1.0, Operation::AddValue),
+            ("ruby:mana", "ruby:b", 1.0, Operation::AddValue),
+        ];
+        const UNKNOWN: &[brewing::EffectModifier] =
+            &[("ruby:stamina", "ruby:c", 1.0, Operation::AddValue)];
+        assert_eq!(check(&[effect(KNOWN), effect(&[])]), Ok(()));
+        assert_eq!(
+            check(&[effect(KNOWN), effect(UNKNOWN)]),
+            Err("mob effect ruby:stun: attribute_modifiers: unknown attribute ruby:stamina".into())
+        );
     }
 
     /// A content mod's type from the wandering trader, the neutral template
@@ -5744,32 +5799,79 @@ pub(in crate::game) mod tests {
     /// that does.
     #[test]
     fn a_root_without_mob_effects_does_not_freeze_the_registry() {
-        use sunrise_client::{brewing, mod_content::ContentMod};
-        // Another test may have set the process-wide list already.
-        if !brewing::mod_effects().is_empty() {
-            return;
-        }
+        use sunrise_client::brewing;
+        let _scope = sunrise_client_core::potions::isolate_mod_effects();
         let f = Fixture::new("no-effects");
+        register_mob_effects(&[plain_mod(&f, None)], &[]);
+        assert!(brewing::register_mod_effects([brewing::ModEffect::new(
+            "test:effect",
+            0,
+            brewing::Category::Neutral,
+            "test-potions",
+        )]));
+    }
+
+    /// #4473: a declared effect registers with its `attribute_modifiers`,
+    /// each operation by its codec name.
+    #[test]
+    fn a_declared_effect_registers_its_attribute_modifiers() {
+        use sunrise_world::attributes::Operation;
+        let _scope = sunrise_client_core::potions::isolate_mod_effects();
+        let f = Fixture::new("effect-modifiers");
+        let stun = r#"{"category": "harmful", "color": 1, "attribute_modifiers": [
+            {"attribute": "minecraft:movement_speed", "id": "plain:stun_speed", "amount": -1.0, "operation": "add_multiplied_total"},
+            {"attribute": "minecraft:armor", "id": "plain:stun_armor", "amount": 2.5, "operation": "add_value"},
+            {"attribute": "minecraft:scale", "id": "plain:stun_scale", "amount": 0.5, "operation": "add_multiplied_base"}]}"#;
+        register_mob_effects(&[plain_mod(&f, Some(stun))], &[]);
+        let stun = sunrise_client::brewing::effect("plain:stun").unwrap();
+        assert_eq!(
+            stun.modifiers,
+            [
+                (
+                    "minecraft:movement_speed",
+                    "plain:stun_speed",
+                    -1.0,
+                    Operation::AddMultipliedTotal
+                ),
+                (
+                    "minecraft:armor",
+                    "plain:stun_armor",
+                    2.5,
+                    Operation::AddValue
+                ),
+                (
+                    "minecraft:scale",
+                    "plain:stun_scale",
+                    0.5,
+                    Operation::AddMultipliedBase
+                ),
+            ]
+        );
+    }
+
+    /// A content mod `plain` in `f`, declaring the effect `plain:stun` when given.
+    fn plain_mod(f: &Fixture, stun: Option<&str>) -> sunrise_client::mod_content::ContentMod {
         std::fs::write(
             f.0.join("sunrise-mod.toml"),
-            "id = 'plain'\nname = 'plain'\nversion = '1.0'\napi = '0.2'\ncapabilities = ['registries']\n",
+            "id = 'plain'
+name = 'plain'
+version = '1.0'
+api = '0.2'
+capabilities = ['registries']
+",
         )
         .unwrap();
+        if let Some(stun) = stun {
+            let dir = f.0.join("data/plain/sunrise/mob_effect");
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("stun.json"), stun).unwrap();
+        }
         let package = sunrise_mod_package::Package::read(&f.0).unwrap();
-        let plain = ContentMod {
+        sunrise_client::mod_content::ContentMod {
             id: "plain".into(),
             content: sunrise_mod_package::content::Content::read(&f.0, &package.manifest).unwrap(),
             jars: Vec::new(),
-        };
-        register_mob_effects(&[plain], &[]);
-        // The list `potions::tests` registers, so it holds whichever test runs first.
-        assert!(brewing::register_mod_effects([(
-            "test:effect".to_owned(),
-            0,
-            brewing::Category::Neutral,
-            None,
-            "test-potions".into()
-        )]));
+        }
     }
 }
 

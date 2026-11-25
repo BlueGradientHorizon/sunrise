@@ -647,7 +647,7 @@ impl Game<'_> {
                     // Mob.readAdditionalSaveData updates persistent home fields,
                     // while retaining the rest of the live AI/runtime state.
                     entity_nbt::read_mob_home(slot, &tag);
-                    slot.extra.armor_attributes = old.extra.armor_attributes;
+                    slot.extra.generic_attributes = old.extra.generic_attributes;
                     // LivingEntity.lastEquipmentItems is runtime state Entity.load
                     // keeps: the next tick swaps the archetype modifiers.
                     slot.extra.adopted_body = old.extra.adopted_body;
