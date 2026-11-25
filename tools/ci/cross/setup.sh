@@ -46,6 +46,12 @@ triple="${target//-/_}"
 upper="$(tr a-z A-Z <<< "$triple")"
 case "$target" in
   aarch64-apple-darwin | x86_64-unknown-linux-gnu)
+    if [[ "$target" == aarch64-apple-darwin ]]; then
+      # clang drives the link (zld-macos); zig compiles the C of build scripts.
+      fetch llvm-mingw-20261117 https://github.com/mstorsjo/llvm-mingw/releases/download/20261117/llvm-mingw-20261117-ucrt-ubuntu-22.04-x86_64.tar.xz \
+        e7a15a49a2ea95e9f3d8a9d0cfabe5052a4b10fb4777cc54de5a8c27b64bb701 1
+      path "$tools/llvm-mingw-20261117/bin"
+    fi
     fetch zig-0.17.1 https://ziglang.org/download/0.17.1/zig-x86_64-linux-0.17.1.tar.xz 3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a 1
     path "$tools/zig-0.17.1"
     flavour="${target##*-}"
