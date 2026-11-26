@@ -381,7 +381,8 @@ impl ClientGame<'_> {
     /// bright when `glowing` (`LightCoordsUtil.FULL_BRIGHT`, as glowing sign text) and otherwise
     /// in `light`. See-through (`Font.DisplayMode.SEE_THROUGH`, `RenderPipelines.TEXT_SEE_THROUGH`:
     /// no depth test, no lightmap), with the labels' copies over everything. Refused whole,
-    /// before layout, for an `origin`, `pose` or `at` that is not finite.
+    /// before layout, for an `origin`, `pose` or `at` that is not finite, and after it when a
+    /// finite pose or origin still overflows a vertex to infinity or NaN.
     pub(in crate::game) fn native_world_text(
         &self,
         draw: &mut WorldGeometry,
@@ -418,6 +419,10 @@ impl ClientGame<'_> {
             quads.extend(quad.map(|v| Vertex { layer, light, ..v }));
             true
         });
+        // A huge pose entry or origin can overflow the camera-relative corners: draw nothing.
+        if !quads.iter().flat_map(|v| v.pos).all(f32::is_finite) {
+            return Err(DrawError::NonFinite);
+        }
         let (world, see_through): (&[Vertex], &[Vertex]) = if options.see_through {
             (&[], &quads)
         } else {

@@ -16,7 +16,7 @@ mod scene;
 pub(super) const CAMERA: [f64; 3] = [0.5, 70.5, -3.5];
 
 /// The view the tests draw with: the camera looking south, reversed depth as the game's.
-fn view_proj() -> Mat4 {
+pub(super) fn view_proj() -> Mat4 {
     let projection = Mat4::perspective_rh(70f32.to_radians(), 1.0, 512.0, 0.05);
     projection * Mat4::look_to_rh(Vec3::ZERO, Vec3::Z, Vec3::Y)
 }

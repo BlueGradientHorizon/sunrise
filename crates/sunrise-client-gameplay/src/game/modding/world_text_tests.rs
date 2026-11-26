@@ -2,9 +2,9 @@
 //! text is: turned and rolled as the pose says, full bright when glowing, ringed when outlined.
 use crate::game::host::draw::GameWorldDrawContext;
 use super::native_entity_refs::tests::with_client_game;
-use super::world_name_tag_tests::{CAMERA, face_south};
+use super::world_name_tag_tests::{CAMERA, face_south, view_proj};
 use glam::{DVec3, Mat4, Vec3};
-use mod_api::{DrawError, Text, WorldDrawContext, WorldTextOptions};
+use mod_api::{DrawError, NameTagOptions, Text, WorldDrawContext, WorldTextOptions};
 use sunrise_client::block_entity_render::vertex_light;
 use sunrise_client::{mesher::Vertex, world_geometry::WorldGeometry};
 
@@ -82,16 +82,23 @@ fn posed_text_turns_and_rolls_as_its_pose_says_and_non_finite_is_refused() {
         let yawed = rows(Mat4::from_rotation_y(90f32.to_radians()) * name_tag_scale());
         let (_, [turned, _]) = texts(game, ORIGIN, yawed, &text, options);
         assert!(turned.iter().all(|v| (v.pos[0] - anchor.x).abs() < 1e-5));
-        // Non-finite origins, poses and starts are refused, with nothing drawn.
+        // Non-finite origins, poses and starts are refused, with nothing drawn, and so are a
+        // finite pose and a finite origin whose corners overflow to infinity.
         let mut nan = rows(name_tag_scale());
         nan[5] = f32::NAN;
         let mut infinite = rows(name_tag_scale());
         infinite[3] = f32::INFINITY;
+        let mut huge = rows(name_tag_scale());
+        huge[0] = f32::MAX;
+        let mut far_off = rows(name_tag_scale());
+        far_off[3] = 1.0e38;
         for (origin, pose, options) in [
             ([f64::NAN, 70.5, 0.5], rows(name_tag_scale()), options),
             ([0.5, f64::INFINITY, 0.5], rows(name_tag_scale()), options),
             (ORIGIN, nan, options),
             (ORIGIN, infinite, options),
+            (ORIGIN, huge, options),
+            ([3.0e38, 70.5, 0.5], far_off, options),
             (
                 ORIGIN,
                 rows(name_tag_scale()),
@@ -183,5 +190,235 @@ fn an_outline_rings_each_glyph_in_its_colour_and_a_backdrop_goes_behind() {
             glyphs.iter().map(|v| v.pos).collect::<Vec<_>>(),
             plain.iter().map(|v| v.pos).collect::<Vec<_>>()
         );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_backdrop_spans_a_pixel_round_the_advance_and_ten_pixels_down() {
+    with_client_game(|game| {
+        let text = Text::literal("A");
+        let advance = {
+            let mut draw = WorldGeometry::default();
+            GameWorldDrawContext::new(game, &mut draw).text_width(&text)
+        };
+        let options = WorldTextOptions::default().with_background(0x4000_0000);
+        let (_, [backed, _]) = texts(game, ORIGIN, rows(name_tag_scale()), &text, options);
+        // PreparedTextBuilder.markBackground: from x - 1 to x + advance, y - 1 to y + 9, in
+        // font pixels of 0.025 blocks, y down (up in the world), 0.01 behind the glyphs.
+        let (anchor, pixel) = (anchor(), 0.025);
+        let backdrop = &backed[..4];
+        let min = |axis: usize| {
+            backdrop
+                .iter()
+                .map(|v| v.pos[axis])
+                .fold(f32::INFINITY, f32::min)
+        };
+        let max = |axis: usize| {
+            backdrop
+                .iter()
+                .map(|v| v.pos[axis])
+                .fold(f32::NEG_INFINITY, f32::max)
+        };
+        assert!(
+            (min(0) - (anchor.x - pixel)).abs() < 1e-5,
+            "left {}",
+            min(0)
+        );
+        assert!(
+            (max(0) - (anchor.x + advance * pixel)).abs() < 1e-5,
+            "right {}",
+            max(0)
+        );
+        assert!((max(1) - (anchor.y + pixel)).abs() < 1e-5, "top {}", max(1));
+        assert!(
+            (min(1) - (anchor.y - 9.0 * pixel)).abs() < 1e-5,
+            "bottom {}",
+            min(1)
+        );
+        assert!(
+            backdrop
+                .iter()
+                .all(|v| (v.pos[2] - (anchor.z - 0.01 * pixel)).abs() < 1e-6)
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_drop_shadow_is_a_quarter_bright_copy_a_pixel_right_and_down_and_none_with_an_outline() {
+    with_client_game(|game| {
+        let text = Text::literal("A");
+        let pose = rows(name_tag_scale());
+        let (_, [plain, _]) = texts(game, ORIGIN, pose, &text, WorldTextOptions::default());
+        let shadowed = WorldTextOptions::default().with_shadow();
+        let (_, [drawn, _]) = texts(game, ORIGIN, pose, &text, shadowed);
+        // Font.drawInBatch: the shadow first, ARGB.scaleRGB(color, 0.25), one font pixel right
+        // and down; the glyph where it is unshadowed, Font.SHADOW_DEPTH in front of it.
+        assert_eq!(drawn.len(), 2 * plain.len());
+        let (shadow, glyph) = drawn.split_at(plain.len());
+        assert!(shadow.iter().all(|v| v.color == 0xFF3F_3F3F));
+        assert!(glyph.iter().all(|v| v.color == u32::MAX));
+        for ((s, g), p) in shadow.iter().zip(glyph).zip(&plain) {
+            let moved = Vec3::from(s.pos) - Vec3::from(p.pos);
+            assert!(
+                (moved - Vec3::new(0.025, -0.025, 0.0)).length() < 1e-5,
+                "{moved}"
+            );
+            assert_eq!([g.pos[0], g.pos[1]], [p.pos[0], p.pos[1]]);
+            assert!(g.pos[2] > s.pos[2]);
+        }
+        // Font.drawInBatch8xOutline draws no shadow: the same quads as the outline alone.
+        let ringed = WorldTextOptions::default().with_outline(0xFF00_0000);
+        let (_, [outlined, _]) = texts(game, ORIGIN, pose, &text, ringed);
+        let (_, [both, _]) = texts(game, ORIGIN, pose, &text, ringed.with_shadow());
+        assert_eq!(
+            both.iter().map(|v| (v.pos, v.color)).collect::<Vec<_>>(),
+            outlined
+                .iter()
+                .map(|v| (v.pos, v.color))
+                .collect::<Vec<_>>()
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_colour_keeps_its_alpha() {
+    with_client_game(|game| {
+        let text = Text::literal("A");
+        let options = WorldTextOptions::default().with_color(0x80FF_0000);
+        let (_, [drawn, _]) = texts(game, ORIGIN, rows(name_tag_scale()), &text, options);
+        assert!(!drawn.is_empty());
+        // Half-transparent red: ARGB in, the vertices' RGBA bytes out, alpha kept.
+        assert!(
+            drawn.iter().all(|v| v.color == 0x8000_00FF),
+            "{:x}",
+            drawn[0].color
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn glowing_outlined_text_is_full_bright_in_its_rings_and_its_text() {
+    with_client_game(|game| {
+        let text = Text::literal("A");
+        let pose = rows(name_tag_scale());
+        let outlined = WorldTextOptions::default()
+            .with_light(0x00)
+            .with_outline(0xFF00_0000);
+        let (_, [dark, _]) = texts(game, ORIGIN, pose, &text, outlined);
+        let (_, [glowing, _]) = texts(game, ORIGIN, pose, &text, outlined.with_glowing());
+        // A glowing sign's outlined text: all nine copies at LightCoordsUtil.FULL_BRIGHT.
+        assert_eq!(glowing.len(), 9 * 4);
+        assert!(glowing.iter().all(|v| v.light == vertex_light(0xFF)));
+        assert_eq!(
+            glowing.iter().map(|v| (v.pos, v.color)).collect::<Vec<_>>(),
+            dark.iter().map(|v| (v.pos, v.color)).collect::<Vec<_>>(),
+            "glowing changes only the light"
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn see_through_text_keeps_its_backdrop_and_its_outline_over_everything() {
+    with_client_game(|game| {
+        let text = Text::literal("A");
+        let pose = rows(name_tag_scale());
+        for options in [
+            WorldTextOptions::default().with_background(0x4000_0000),
+            WorldTextOptions::default().with_outline(0xFF00_0000),
+        ] {
+            let (_, [tested, _]) = texts(game, ORIGIN, pose, &text, options);
+            let see_through = options.with_see_through();
+            let (_, [world, through]) = texts(game, ORIGIN, pose, &text, see_through);
+            // Font.DisplayMode.SEE_THROUGH: the backdrop or the rings with the glyphs, all of
+            // them over everything and unlit.
+            assert!(world.is_empty());
+            assert!(tested.len() > 4);
+            assert_eq!(
+                through.iter().map(|v| (v.pos, v.color)).collect::<Vec<_>>(),
+                tested.iter().map(|v| (v.pos, v.color)).collect::<Vec<_>>()
+            );
+            assert!(through.iter().all(|v| v.light == 0 && v.layer == 2));
+        }
+    });
+}
+
+/// Whether each quad of `vertices` (camera-relative) winds counterclockwise as the camera
+/// sees it: its front, which the back-face culled world text pipelines keep.
+fn fronts(vertices: &[Vertex]) -> Vec<bool> {
+    vertices
+        .chunks(4)
+        .map(|q| {
+            let [a, b, c] = [q[0], q[1], q[2]].map(|v| Vec3::from(v.pos));
+            (b - a).cross(c - a).dot(-a) > 0.0
+        })
+        .collect()
+}
+
+#[test]
+#[ignore = "daily"]
+fn posed_text_shows_the_side_it_reads_from_as_a_name_tag_shows_the_camera() {
+    with_client_game(|game| {
+        let text = Text::literal("Label");
+        // A name tag faces the camera (Camera.rotation(), a half turn for a camera facing
+        // south), and so does text turned the same half turn from a pose that reads from +z.
+        face_south(game);
+        let mut draw = WorldGeometry::default();
+        draw.reset(CAMERA, Mat4::IDENTITY, [0.5, 0.5]);
+        let tag = NameTagOptions::new(false, false, 0xF0);
+        let at = [ORIGIN[0], ORIGIN[1] - 0.5, ORIGIN[2]];
+        assert_eq!(
+            GameWorldDrawContext::new(game, &mut draw).name_tag(at, &text, tag),
+            Ok(())
+        );
+        let name_tag = draw.labels()[0].to_vec();
+        assert!(!name_tag.is_empty() && fronts(&name_tag).iter().all(|&f| f));
+        let half_turn = rows(Mat4::from_rotation_y(std::f32::consts::PI) * name_tag_scale());
+        let options = WorldTextOptions::default();
+        let (_, [facing, _]) = texts(game, ORIGIN, half_turn, &text, options);
+        assert!(fronts(&facing).iter().all(|&f| f));
+        // Seen from behind (the camera on the pose's -z side) only backs show, so nothing
+        // draws: the native world text pipelines and a pack's core/text ones both cull back
+        // faces, the see-through ones too.
+        let unturned = rows(name_tag_scale());
+        let (_, [behind, _]) = texts(game, ORIGIN, unturned, &text, options);
+        assert!(!behind.is_empty() && fronts(&behind).iter().all(|&f| !f));
+        let (_, [_, through]) = texts(game, ORIGIN, unturned, &text, options.with_see_through());
+        assert!(!through.is_empty() && fronts(&through).iter().all(|&f| !f));
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn an_outline_and_a_backdrop_keep_their_depth_order_at_name_tag_distance() {
+    with_client_game(|game| {
+        // 64 blocks ahead, as far as a name tag shows, facing the camera.
+        let far = [CAMERA[0], CAMERA[1], CAMERA[2] + 64.0];
+        let pose = rows(Mat4::from_rotation_y(std::f32::consts::PI) * name_tag_scale());
+        let options = WorldTextOptions::default()
+            .with_outline(0xFF00_0000)
+            .with_background(0x4000_0000);
+        let (_, [drawn, _]) = texts(game, far, pose, &Text::literal("A"), options);
+        assert_eq!(drawn.len(), 4 + 9 * 4);
+        let (backdrop, glyphs) = drawn.split_at(4);
+        let (rings, front) = glyphs.split_at(8 * 4);
+        // Each corner's depth (reversed: nearer is larger) as f32 bits: two positive floats'
+        // bits differ by how many f32 steps apart they are.
+        let depth = |v: &Vertex| {
+            let clip = view_proj() * Vec3::from(v.pos).extend(1.0);
+            i64::from((clip.z / clip.w).to_bits())
+        };
+        let nearest = |q: &[Vertex]| q.iter().map(depth).max().unwrap();
+        let farthest = |q: &[Vertex]| q.iter().map(depth).min().unwrap();
+        // TEXT_OVER_OUTLINE (0.05 font pixels) and the backdrop's 0.01 keep the text in front
+        // of its rings and the glyphs in front of the backdrop by many steps of depth.
+        let lift = farthest(front) - nearest(rings);
+        let behind = farthest(glyphs) - nearest(backdrop);
+        assert!(lift >= 128, "{lift} steps");
+        assert!(behind >= 32, "{behind} steps");
     });
 }
