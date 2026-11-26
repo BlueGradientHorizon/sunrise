@@ -308,6 +308,29 @@ pub trait LevelBlocksBackendMut {
         collect: bool,
     ) -> Result<Option<Vec<ItemStack>>, StackWriteError>;
     /// Side: server.
+    /// Drop the resources of the block at `pos` without breaking it
+    /// (`Block.dropResources(state, level, pos, blockEntity, entity, tool)`): what
+    /// `destroy_block` drops, with `tool` (None is an empty hand) and `breaker` as the loot's
+    /// `this` entity, the block entity's contribution (a shulker box's contents), the
+    /// `block_drops` hook and the block's experience (`Block.spawnAfterBreak`), under the
+    /// `doTileDrops` game rule. Unlike `destroy_block` it sends no break particles or sound
+    /// (level event 2001), leaves the block in place and posts no `minecraft:block_destroy` game
+    /// event: a mod that breaks many blocks at once sends the effect once, drops each block's
+    /// resources, then removes the blocks and posts the game events itself. With `collect`,
+    /// return the stacks without spawning their item entities; otherwise an empty list after
+    /// spawning them. `Ok(None)` for air and where `destroy_block` refuses: a refused write, a
+    /// stale or foreign `breaker`, a stale handle, a client, an unloaded or out-of-height
+    /// position, or a parked level. In a transaction in the block's level, the loot is rolled
+    /// now and the spawns wait for commit, as `destroy_block`'s do.
+    fn level_drop_resources(
+        &mut self,
+        level: LevelRef,
+        pos: [i32; 3],
+        tool: Option<&ItemStack>,
+        breaker: Option<EntityRef>,
+        collect: bool,
+    ) -> Result<Option<Vec<ItemStack>>, StackWriteError>;
+    /// Side: server.
     /// What the block at `pos` would drop (`Block.getDrops(state, level, pos, blockEntity,
     /// entity, tool)`), without breaking it or spawning anything: its loot table rolled with
     /// `tool` (None is an empty hand) and `entity` as the breaker, with what its block entity
