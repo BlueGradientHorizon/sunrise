@@ -119,8 +119,10 @@ impl Game<'_> {
     }
 
     /// Applies `edit` to the entity's base state and stores what changed, where its family
-    /// keeps each value. False for a gone body and for the kinds that keep no entity data at
-    /// all (a fishing bobber, a leash knot, a dragon's part).
+    /// keeps each value. False for a gone body and for a dragon's part, which has no record of
+    /// its own: its eight parts are ids derived from the dragon's. A fishing bobber (never
+    /// saved) and a natural leash knot (saved as `Entity.saveWithoutId` writes it, in
+    /// `/data`'s tag) hold theirs in their own struct.
     pub(in crate::game) fn update_entity_base(
         &mut self,
         t: Target,
@@ -308,9 +310,23 @@ impl Game<'_> {
             }
             // The dragon's parts take its type, which is fire immune.
             Target::DragonPart(_) => (ALL, true),
-            // Kinds with no entity data: a bobber and a knot are never saved, and nothing here
-            // holds a record for them.
-            Target::Hook(_) | Target::Knot(_) => (ALL, false),
+            // `EntityType.FISHING_BOBBER` is not fire immune; the bobber is never saved.
+            Target::Hook(id) => {
+                let (hook, _) = self.fishing_hook_by_id(id)?;
+                *base = hook.base;
+                (ALL, false)
+            }
+            Target::Knot(id) => {
+                let k = self.resident_entities.knots.iter().find(|k| k.id == id)?;
+                *base = EntityBase {
+                    fire_ticks: k.fire_ticks,
+                    invulnerable: k.invulnerable,
+                    no_gravity: k.no_gravity,
+                    silent: k.silent,
+                    glowing: k.glowing,
+                };
+                (ALL, false)
+            }
             Target::Frame(_)
             | Target::Painting(_)
             | Target::Cushion(_)
@@ -456,7 +472,30 @@ impl Game<'_> {
                 };
                 row.base = *new;
             }
-            Target::Hook(_) | Target::Knot(_) | Target::DragonPart(_) => return false,
+            Target::Hook(id) => {
+                let Some((_, caster)) = self.fishing_hook_by_id(id) else {
+                    return false;
+                };
+                let Some(hook) = self.caster_hook_mut(caster) else {
+                    return false;
+                };
+                hook.base = *new;
+            }
+            Target::Knot(id) => {
+                let Some(i) = self.resident_entities.knots.iter().position(|k| k.id == id) else {
+                    return false;
+                };
+                self.resident_entities.knots.update(i, |k| {
+                    k.fire_ticks = new.fire_ticks;
+                    k.invulnerable = new.invulnerable;
+                    k.no_gravity = new.no_gravity;
+                    k.silent = new.silent;
+                    k.glowing = new.glowing;
+                });
+            }
+            // A dragon's eight parts are ids derived from the dragon's, not structs: there is
+            // no record to hold a part's own base state.
+            Target::DragonPart(_) => return false,
             // Their values live in the saved compound, which `update_entity_base` wrote.
             Target::Dragon(_)
             | Target::Cloud(_)

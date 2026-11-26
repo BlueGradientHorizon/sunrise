@@ -80,6 +80,11 @@ fn resident_new_family_lifetimes_bind_move_and_retire() {
             id: game.next_entity,
             join: Default::default(),
             fence: [0, 70, 0],
+            fire_ticks: 0,
+            invulnerable: false,
+            no_gravity: false,
+            silent: false,
+            glowing: false,
         });
         check_list!(game, resident_entities.knots);
 

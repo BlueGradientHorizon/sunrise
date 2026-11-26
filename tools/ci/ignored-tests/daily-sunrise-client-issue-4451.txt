@@ -1190,6 +1190,8 @@ sunrise-client game::native_entity_base_tests::a_boat_keeps_its_base_state lib d
 sunrise-client game::native_entity_base_tests::a_marker_keeps_its_base_state_in_its_saved_tags lib daily resources
 sunrise-client game::native_entity_base_tests::a_minecart_keeps_its_base_state lib daily resources
 sunrise-client game::native_entity_base_tests::a_projectile_keeps_its_base_state lib daily resources
+sunrise-client game::native_entity_base_tests::a_fishing_hook_keeps_its_base_state_in_memory lib daily resources
+sunrise-client game::native_entity_base_tests::a_leash_knot_keeps_its_base_state_in_its_saved_tags lib daily resources
 sunrise-client game::native_entity_data::tests::an_entity_is_in_its_level_from_its_join_until_its_removal lib daily resources
 sunrise-client game::native_entity_data::tests::classification_is_the_types_category lib daily resources
 sunrise-client game::native_entity_data::tests::custom_name_and_visibility_are_saved_and_load_again lib daily resources

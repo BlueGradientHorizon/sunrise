@@ -112,3 +112,45 @@ fn a_marker_keeps_its_base_state_in_its_saved_tags() {
         assert_eq!(raw.get("NoGravity"), None);
     });
 }
+
+#[test]
+#[ignore = "daily"]
+fn a_fishing_hook_keeps_its_base_state_in_memory() {
+    with_game(|game| {
+        open_chunk(game);
+        game.options.dedicated = Some(Vec::new());
+        let id = game.take_entity_id();
+        game.install_fishing_hook(crate::game::fishing::Hook::remote(
+            id,
+            Vec3::ZERO,
+            [1, 2, 3, 4],
+        ));
+        let entity = game.entity(id).unwrap();
+        write_and_read_back(game, entity);
+        assert_eq!(entity.fire_immune(game), Some(false));
+        // A bobber is never saved: nothing lands in a saved compound.
+        assert!(game.persist.raw.get(&id).is_none());
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_leash_knot_keeps_its_base_state_in_its_saved_tags() {
+    with_game(|game| {
+        open_chunk(game);
+        let id = game.tie_knot([8, 70, 8]);
+        let entity = game.entity(id).unwrap();
+        write_and_read_back(game, entity);
+        assert_eq!(entity.fire_immune(game), Some(false));
+        assert!(entity.set_silent(game, true));
+        assert!(entity.set_remaining_fire_ticks(game, 40));
+        let tag = game
+            .command_target_nbt(crate::game::commands::Target::Knot(id))
+            .unwrap();
+        assert_eq!(tag.get("Silent"), Some(&Tag::Byte(1)));
+        assert_eq!(tag.get("Glowing"), Some(&Tag::Byte(1)));
+        assert_eq!(tag.get("Invulnerable"), Some(&Tag::Byte(1)));
+        assert_eq!(tag.get("NoGravity"), None);
+        assert_eq!(tag.get("Fire"), Some(&Tag::Short(40)));
+    });
+}
