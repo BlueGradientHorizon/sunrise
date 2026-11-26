@@ -28,7 +28,7 @@ fn main() {
                 attributes: motion::Attributes, random: Random,
             }),
             level,
-            last_hurt_by_player: (),
+            side: ServerState { last_hurt_by_player: () },
         };
         let attack = Attack { attacker: 0 };
         if full {
