@@ -15,6 +15,7 @@ import unittest
 from unittest.mock import patch
 
 from tests.os_support import needs_runner_shell
+from tests.test_ci_concurrency import expression_value
 from tools.ci import pr_gate, vendored_yaml
 
 yaml = vendored_yaml.load()
@@ -257,6 +258,21 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(status["steps"][0]["env"]["MERGE"], "${{ needs.changes.outputs.pr_merge }}")
         self.assertNotIn("actions/checkout", self.job("pr-status"))
         self.assertEqual(workflow["permissions"], {"contents": "read"})
+
+    def test_verify_cache_saves_only_for_main_without_a_selected_pr(self):
+        verify = yaml.safe_load(self.workflow)["jobs"]["verify"]
+        cache = next(step for step in verify["steps"] if step.get("uses") == "Swatinem/rust-cache@v2")
+        save = re.fullmatch(r"\$\{\{(.*?)\}\}", cache["with"]["save-if"])
+        self.assertIsNotNone(save)
+        main = "refs/heads/main"
+        for event, ref, inputs, expected in (
+            ("push", main, {}, True),
+            ("workflow_dispatch", main, {"pr": ""}, True),
+            ("workflow_dispatch", main, {"pr": PR}, False),
+            ("pull_request", f"refs/pull/{PR}/merge", {}, False),
+        ):
+            with self.subTest(event=event, ref=ref, inputs=inputs):
+                self.assertIs(expression_value(save[1], {"event_name": event, "ref": ref}, inputs), expected)
 
     def test_no_fork_code_reaches_our_runners(self):
         # The one trust decision: the gate's answer for a dispatched pull request, else the event's own repository.

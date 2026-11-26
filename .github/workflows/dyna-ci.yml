@@ -594,14 +594,15 @@ jobs:
             export PATH="$CARGO_HOME/bin:$PATH"
           fi
           bash tools/ci/rustup_install.sh --profile minimal --component rustfmt --component clippy
-      # Registry dependencies, from the snapshot ci-cache.yml publishes from main every 6 hours; pull requests only
-      # read it. The workspace crates are rebuilt: their snapshot was 3 GB of the repository's 10 GB of caches.
+      # Registry dependencies, from the snapshot ci-cache.yml publishes from main every 6 hours. The workspace
+      # crates are rebuilt: their snapshot was 3 GB of the repository's 10 GB of caches. A dispatch with `pr`
+      # checks out a PR merge even on ref main, so it can restore but must not save.
       # Profile overrides in Cargo.toml are part of rust-cache's key; unchanged dependencies still restore.
       - uses: Swatinem/rust-cache@v2
         if: needs.changes.outputs.rust_required != 'false' && (env.RUNNER_KIND == 'github' || env.RUNNER_KIND == 'boat')
         with:
           shared-key: verify-deps
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.ref == 'refs/heads/main' && inputs.pr == '' }}
       - name: Use persistent verify build artifacts
         if: needs.changes.outputs.rust_required != 'false' && needs.changes.outputs.self_hosted == 'true'
         run: |
