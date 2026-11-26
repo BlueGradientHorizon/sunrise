@@ -15,6 +15,27 @@ use sunrise_gameplay_common::game::creatures::SpawnSite;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::{lan::playerdata::uuid_ints, projectiles::Projectile};
 
+thread_local! {
+    /// A `level_check_spawn_rules` is running on this thread.
+    static CHECKING_SPAWN_RULES: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Marks a `level_check_spawn_rules` as running until it is dropped, unwinding included.
+struct CheckingSpawnRules;
+
+impl CheckingSpawnRules {
+    /// None when a check already runs on this thread.
+    fn enter() -> Option<Self> {
+        CHECKING_SPAWN_RULES.with(|running| (!running.replace(true)).then_some(Self))
+    }
+}
+
+impl Drop for CheckingSpawnRules {
+    fn drop(&mut self) {
+        CHECKING_SPAWN_RULES.with(|running| running.set(false));
+    }
+}
+
 impl crate::game::ServerGame<'_> {
     /// `LevelRef::spawn_entity`: a thrown projectile, a mob or a general row of
     /// `kind` at `pos`, each through its family's own route (`Projectile.spawnProjectile`,
@@ -236,7 +257,9 @@ impl crate::game::ServerGame<'_> {
         true
     }
     /// `SpawnPlacements.checkSpawnRules` and the `mob_spawn_placement_check` hook with the light
-    /// reads `light` names: see `LevelSpawningBackend::level_check_spawn_rules`.
+    /// reads `light` names: see `LevelSpawningBackend::level_check_spawn_rules`. A call made
+    /// while another runs on this thread (a listener asking again) is refused before it reads
+    /// anything, so a listener cannot recurse.
     pub fn level_check_spawn_rules(
         &self,
         level: LevelRef,
@@ -255,18 +278,22 @@ impl crate::game::ServerGame<'_> {
         if self.dim.key() != level.dimension() {
             return Err(LevelReadError::Unavailable);
         }
+        let lights: Vec<Option<i32>> = match light {
+            LightOverride::Real => vec![None],
+            LightOverride::Level(n) => vec![Some(i32::from(n.min(15)))],
+            LightOverride::Any => (0..=15).map(Some).collect(),
+            // A variant this build does not know is refused, not read as another.
+            _ => return Err(LevelReadError::Unavailable),
+        };
+        let Some(_checking) = CheckingSpawnRules::enter() else {
+            return Err(LevelReadError::Unavailable);
+        };
         if !self.world.is_loaded_at(pos[0], pos[1], pos[2]) {
             return Ok(false);
         }
-        let ask = |light: Option<i32>| {
-            self.check_spawn_rules_with_light(kind, reason, pos, light)
-                .unwrap_or(false)
-        };
-        Ok(match light {
-            LightOverride::Level(level) => ask(Some(i32::from(level.min(15)))),
-            LightOverride::Any => (0..=15).any(|light| ask(Some(light))),
-            _ => ask(None),
-        })
+        Ok(self
+            .check_spawn_rules_with_light(kind, reason, pos, &lights)
+            .unwrap_or(false))
     }
     /// `ServerLevel.canSpawnEntitiesInChunk` as natural spawning answers it. None for a
     /// stale handle or on a client.

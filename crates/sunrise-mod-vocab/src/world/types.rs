@@ -998,7 +998,8 @@ pub enum LightOverride {
     /// Sky and block light both read this level (0 to 15; more is 15), at every position the
     /// rule reads.
     Level(u8),
-    /// True when the rule passes at some light level from 0 to 15.
+    /// True when the rule passes at some light level from 0 to 15, tried from 0 up, each try
+    /// drawing after the one before (see `LevelRef::check_spawn_rules`).
     Any,
 }
 
