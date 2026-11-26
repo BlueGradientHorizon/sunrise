@@ -835,11 +835,11 @@ fn hover_moves_fire_before_drag_and_a_screen_grab_ends_with_the_screen() {
 /// A drop of two files, the second not UTF-8, reaches a mod screen's listener once, whole
 /// and in order, when the event-loop pass ends (`Game::idle`), and the screen stays open
 /// (vanilla's `Screen.onFilesDrop`).
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 #[test]
 #[ignore = "daily"]
 fn dropped_files_reach_a_mod_screen_whole_and_in_order() {
-    use std::{ffi::OsStr, os::unix::ffi::OsStrExt, path::PathBuf};
+    use std::path::PathBuf;
     if run_fresh_cases(
         "game::native_hooks::base::screen_widgets_tests::input_routing::dropped_files_reach_a_mod_screen_whole_and_in_order",
         "SUNRISE_SCREEN_FILES_DROPPED_CHILD",
@@ -849,7 +849,7 @@ fn dropped_files_reach_a_mod_screen_whole_and_in_order() {
     }
     with_input_game_as("input_route", |game, id, state| {
         let first = PathBuf::from("/tmp/a.png");
-        let second = PathBuf::from(OsStr::from_bytes(b"/tmp/a\xff.png"));
+        let second = not_utf8_path();
         // No screen open: the drop fires nothing.
         send(game, id, WindowEvent::DroppedFile(first.clone()));
         game.idle(&NoLoop);
@@ -868,7 +868,7 @@ fn dropped_files_reach_a_mod_screen_whole_and_in_order() {
         let Seen::Dropped(_, paths) = &seen[0] else {
             unreachable!()
         };
-        assert_eq!(paths[1].as_os_str().as_bytes(), b"/tmp/a\xff.png");
+        assert_eq!(paths[1].to_str(), None, "the second path is still not UTF-8");
         assert!(
             game.mod_screen_open("input_route"),
             "observe only: the screen stays"
@@ -877,6 +877,26 @@ fn dropped_files_reach_a_mod_screen_whole_and_in_order() {
         game.idle(&NoLoop);
         assert!(take(state).is_empty(), "a drop fires once");
     });
+}
+
+/// `/tmp/a?.png` with a `?` that is not UTF-8: the byte `0xff` on Unix, a lone surrogate on
+/// Windows, where a path is UTF-16.
+#[cfg(any(unix, windows))]
+fn not_utf8_path() -> std::path::PathBuf {
+    #[cfg(unix)]
+    let path = {
+        use std::os::unix::ffi::OsStrExt;
+        std::ffi::OsStr::from_bytes(b"/tmp/a\xff.png").to_owned()
+    };
+    #[cfg(windows)]
+    let path = {
+        use std::os::windows::ffi::OsStringExt;
+        let mut units: Vec<u16> = "/tmp/a".encode_utf16().collect();
+        units.push(0xd800);
+        units.extend(".png".encode_utf16());
+        std::ffi::OsString::from_wide(&units)
+    };
+    path.into()
 }
 
 /// A drop followed in the same event-loop pass by a click that closes its screen reaches
