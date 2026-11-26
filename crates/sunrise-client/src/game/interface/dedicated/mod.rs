@@ -176,23 +176,6 @@ pub(in crate::game) struct Setup {
     pub(in crate::game) allow_missing_mods: bool,
 }
 static SETUP: OnceLock<Mutex<Option<Setup>>> = OnceLock::new();
-/// usercache.json (Services.nameToIdCache): used by the server thread only.
-static USER_CACHE: Mutex<Option<UserCache>> = Mutex::new(None);
-
-/// PlayerList.placeNewPlayer: a player who joined is cached (and the file saved).
-pub(super) fn player_joined(id: u128, name: &str) {
-    if let Some(cache) = USER_CACHE.lock().unwrap().as_mut() {
-        cache.add(NameAndId {
-            id,
-            name: name.to_owned(),
-        });
-    }
-}
-
-/// A player in the user cache by id, on a dedicated server.
-pub(super) fn cached_user_by_id(id: u128) -> Option<NameAndId> {
-    USER_CACHE.lock().unwrap().as_mut()?.get_by_id(id)
-}
 
 /// What the start answers when the server folder still has a `forwarding.secret`.
 const FORWARDING_REMOVED: &str = "Velocity forwarding was removed from Sunrise; delete forwarding.secret from the \
@@ -936,7 +919,7 @@ impl Game<'_> {
         }
         // DedicatedServer.initServer: names nobody has resolve offline only without authentication.
         cache.resolve_offline_users = !props.online_mode;
-        *USER_CACHE.lock().unwrap() = Some(cache);
+        self.user_cache = Some(cache);
         // Services.create: the services' public keys, fetched in the
         // background (they check players' chat keys).
         let secure_chat = Arc::new(sunrise_client::lan::SecureChat::new(
@@ -1679,7 +1662,7 @@ impl Game<'_> {
     /// GameProfileArgument for a name: the user cache, else the profile
     /// service, else (offline) the offline player. None, told to the console:
     /// no such player.
-    fn resolve(&self, name: &str) -> Option<NameAndId> {
+    fn resolve(&mut self, name: &str) -> Option<NameAndId> {
         let found = self.resolve_name(name);
         if found.is_none() {
             let unknown = Text::translate("argument.player.unknown", &[]);
@@ -1690,15 +1673,13 @@ impl Game<'_> {
 
     /// `Services.nameToIdCache().get(name)`: the user cache, else the profile
     /// service, else (offline) the offline player.
-    pub(super) fn resolve_name(&self, name: &str) -> Option<NameAndId> {
-        USER_CACHE.lock().unwrap().as_mut().and_then(|cache| {
-            cache.get_by_name(name, |lower| {
-                let found = profiles::find_by_name(&profiles::discovery_url(), lower);
-                if found.is_none() {
-                    log("WARN", &format!("Couldn't find profile with name: {lower}"));
-                }
-                found
-            })
+    pub(super) fn resolve_name(&mut self, name: &str) -> Option<NameAndId> {
+        self.user_cache.as_mut()?.get_by_name(name, |lower| {
+            let found = profiles::find_by_name(&profiles::discovery_url(), lower);
+            if found.is_none() {
+                log("WARN", &format!("Couldn't find profile with name: {lower}"));
+            }
+            found
         })
     }
 

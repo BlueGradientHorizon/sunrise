@@ -188,12 +188,32 @@ pub trait ScreensClientHost {
     /// The last window focus state reported by the window system.
     fn window_focused(&self) -> bool;
     /// Side: client.
+    /// Whether the pointer is over the game window, focused or not, as the window system last
+    /// reported its enter and leave. Vanilla 26.3 has a cursor-enter event only; the leave
+    /// comes from the window system. With [`Self::window_focused`] false, true means the window
+    /// is hovered in the background. False before the pointer has entered the window.
+    fn window_hovered(&self) -> bool;
+    /// Side: client.
+    /// Whether the window is fully hidden (occluded): covered by other windows, on another
+    /// desktop, or minimized, where the window system reports it (some report only minimizing,
+    /// and some nothing). A hidden window's frames are not seen, so a mod may draw less.
+    fn window_occluded(&self) -> bool;
+    /// Side: client.
     /// The same screen identifier provided to screen hooks.
     fn observed_screen_id(&self) -> Option<ScreenId>;
     /// Side: client.
     /// Whether the client draws its debug overlay this frame. Always-on debug entries can
     /// make it visible with F3 off. F1 hides the overlay unless a screen is open.
     fn debug_overlay_visible(&self) -> bool;
+    /// Side: client.
+    /// Adds the calling mod's `text` to the end of F3's frame rate line (vanilla's
+    /// `DebugEntryFps`, the line that reads `60 fps T: 120 ...`), after a space, where a mod
+    /// shows a state of its own (Dynamic FPS's reduced frame rate) without an entry of its own
+    /// that starts off. It stays until the mod sets another text, or `None` or an empty text,
+    /// which takes it away; set it when the state changes, not every frame. Several mods' texts follow in mod
+    /// load order, and a disabled mod's is left out. Legacy colour codes (§) work; line breaks
+    /// become spaces. False, setting nothing, outside a mod's call.
+    fn set_debug_fps_text(&self, text: Option<&str>) -> bool;
     /// Side: client.
     /// Whether a specific key is currently held down.
     /// `key` is the vanilla physical key or mouse button name (`key.keyboard.left.shift`,

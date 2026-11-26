@@ -199,6 +199,7 @@ impl Game<'_> {
             causing: 0,
             direct: 0,
             position: None,
+            direct_type: None,
         };
         let knock = Knock { strength, x, z };
         let id = living.id();
@@ -818,7 +819,11 @@ impl Game<'_> {
                 let Some(m) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
                     return false;
                 };
-                m.heal(&self.loop_context, amount);
+                m.heal(
+                    &self.loop_context,
+                    &|| crate::game::entity::hit_reads_of!(self),
+                    amount,
+                );
                 m.needs_sync = true;
                 true
             }

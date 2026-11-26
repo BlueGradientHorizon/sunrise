@@ -152,8 +152,13 @@ A failed Dev build is retried with **Re-run failed jobs** on its `nightly build`
 after them run again, every SDK or game leg that built is kept, and a public `sdk-<sha>` is never rebuilt (a new
 dispatch of the same commit reuses it too; an SDK that is still a draft is built again and its draft replaced). A
 commit already published or drafted that day is skipped. Only a new commit, a fix,
-builds everything again. `BLACKSMITH_DEV_MACOS=on` (a repository variable the owner sets; unset is off) moves the
-macOS legs of a Dev build, the SDK's and the game's, to Blacksmith while `BLACKSMITH` stays `off` for everything else.
+builds everything again. `BLACKSMITH_DEV=on` (a repository variable the owner sets; unset is off) moves every leg
+of a Dev build, the SDK's and the game's, to Blacksmith while `BLACKSMITH` stays `off` for everything else;
+`BLACKSMITH_DEV_MACOS=on` moves its macOS legs alone. `DEV_ON_DYNA_LINUX`, `DEV_ON_DYNA_WINDOWS` and `DEV_ON_DYNA_MACOS`
+(one per platform, `on` or unset) build that platform's legs of a Dev build, the SDK's and the game's, on Dyna's
+Linux runners instead: Linux against glibc 2.35, Windows and macOS cross-compiled (`tools/ci/cross/`), and the
+programs of a cross-built Windows or macOS leg started on GitHub's runner of that platform before anything publishes.
+Unsetting a switch puts its legs back where the variables above send them.
 
 It never touches the `nightly` tag or channel, its rotation, its `nightly-source/` tags or `daily-green`. A dry run
 (the default for a dispatch, and any run off main) starts a `nightly build` dry run, which builds, indexes and
@@ -205,6 +210,8 @@ throwaway key that only a debug-assertions build trusts through `SUNRISE_SDK_TRU
 which builds the tool every SDK and mod-tool release ships, refuses a build that reads that variable), plus `nightly/sdk.json` so a `new`
 with no `--sunrise` resolves to it through `SUNRISE_SDK_BASE`. It is an ordinary leg, outside `sdk_green`. A hand dispatch of
 `book-quickstart.yml` checks the published release instead.
+
+The [parity fuzz report](parity-workflow.md#fuzzing-scenarios) runs separately after parity on writing runs of main's head. Corpus regressions and exploratory divergences can file issues, but the summary, SDK and Nightly never wait for fuzz.
 
 The SDK publishes on its own legs (`sdk`, `machine-sample`, `fn-replace-check`: the summary's `sdk_green`) until a runner with prepared data exists (umceko, 2026-11-16). A red linkage probe fails its `sdk / build linux` or `sdk / build windows` job and blocks publication.
 

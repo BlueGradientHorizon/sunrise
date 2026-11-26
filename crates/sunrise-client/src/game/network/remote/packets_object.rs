@@ -186,6 +186,14 @@ impl Game<'_> {
 
     /// `C::TakeItemEntity`: its arms of `apply_packet`, guard and order kept.
     pub(super) fn apply_take_item_entity_packet(&mut self, p: play::TakeItemEntity) {
+        // A client mod hears the pickup while what was taken is still whole (#5595): only of an
+        // entity this client tracks, as vanilla acts only on one (`if (from != null)`).
+        if mod_api::__private::listened(mod_api::HookId::ClientTakeItemEntity)
+            && let Some(collected) = u32::try_from(p.item).ok().and_then(|id| self.entity(id))
+        {
+            let collector = u32::try_from(p.player).ok().and_then(|id| self.entity(id));
+            self.native_client_take_item_entity(collected, collector, p.amount);
+        }
         // ClientPacketListener.handleTakeItemEntity: the pickup sound at
         // the orb, item or arrow, whoever collects it (the server sends
         // none); an entity this client doesn't track sounds at this player.

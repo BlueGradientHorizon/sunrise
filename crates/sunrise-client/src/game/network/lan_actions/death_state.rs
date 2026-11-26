@@ -20,6 +20,7 @@ impl FatalSource {
                 causing: self.causing as i32,
                 direct: self.causing as i32,
                 position: None,
+                direct_type: None,
             },
             |hit| hit.source(),
         )

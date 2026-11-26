@@ -92,10 +92,7 @@ impl OptionsUi {
         let mut rows = ListRows::default();
         let page = self.page();
         let cx = (w / 2.0).floor();
-        if matches!(
-            page,
-            Page::Video | Page::Controls | Page::KeyBinds | Page::ModBrowser
-        ) {
+        if matches!(page, Page::Video | Page::Controls | Page::KeyBinds) {
             self.settings_search.x = cx - 100.0;
             self.settings_search.y = 17.0;
         }
@@ -542,12 +539,12 @@ impl OptionsUi {
             // Drawn by `pack_screen` and `mods_screen`.
             Page::Packs | Page::Mods => {}
             _ => {
-                if matches!(page, Page::Video | Page::Controls | Page::ModBrowser) {
+                if matches!(page, Page::Video | Page::Controls) {
                     top = 38.0;
                 }
                 out.push(Widget {
                     x: 0.0,
-                    y: if matches!(page, Page::Video | Page::Controls | Page::ModBrowser) {
+                    y: if matches!(page, Page::Video | Page::Controls) {
                         4.0
                     } else {
                         12.0

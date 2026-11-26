@@ -36,6 +36,7 @@ use sunrise_client::{
         playerdata,
     },
     mobs::{Mob, Species, Who, leash::Holder},
+    server::user_lists::NameAndId,
     text::Text,
     world::World,
 };
@@ -586,36 +587,36 @@ pub(super) fn mob_meta(
             if kind == "minecraft:cat" {
                 // Cat.DATA_VARIANT_ID and DATA_SOUND_VARIANT_ID carry the world
                 // table's network id directly (`RegistryRef<K>`).
-                let variant_id = e
-                    .cat_variant
-                    .map(|r| r.network_id() as i32)
-                    .or_else(|| id("minecraft:cat_variant", "black"));
-                if let Some(v) = variant_id {
-                    meta.push((20, serializer::CAT_VARIANT, Value::Id(v)));
+                if let Some(r) = e.cat_variant {
+                    meta.push((
+                        20,
+                        serializer::CAT_VARIANT,
+                        Value::Id(r.network_id() as i32),
+                    ));
                 }
-                let sound_id = e
-                    .cat_sound_variant
-                    .map(|r| r.network_id() as i32)
-                    .or_else(|| id("minecraft:cat_sound_variant", "classic"));
-                if let Some(v) = sound_id {
-                    meta.push((24, serializer::CAT_SOUND_VARIANT, Value::Id(v)));
+                if let Some(r) = e.cat_sound_variant {
+                    meta.push((
+                        24,
+                        serializer::CAT_SOUND_VARIANT,
+                        Value::Id(r.network_id() as i32),
+                    ));
                 }
             } else {
                 // Wolf.DATA_VARIANT_ID and DATA_SOUND_VARIANT_ID carry the world
                 // table's network id directly (`RegistryRef<K>`).
-                let variant_id = e
-                    .wolf_variant
-                    .map(|r| r.network_id() as i32)
-                    .or_else(|| id("minecraft:wolf_variant", "pale"));
-                if let Some(v) = variant_id {
-                    meta.push((23, serializer::WOLF_VARIANT, Value::Id(v)));
+                if let Some(r) = e.wolf_variant {
+                    meta.push((
+                        23,
+                        serializer::WOLF_VARIANT,
+                        Value::Id(r.network_id() as i32),
+                    ));
                 }
-                let sound_id = e
-                    .wolf_sound_variant
-                    .map(|r| r.network_id() as i32)
-                    .or_else(|| id("minecraft:wolf_sound_variant", "classic"));
-                if let Some(v) = sound_id {
-                    meta.push((24, serializer::WOLF_SOUND_VARIANT, Value::Id(v)));
+                if let Some(r) = e.wolf_sound_variant {
+                    meta.push((
+                        24,
+                        serializer::WOLF_SOUND_VARIANT,
+                        Value::Id(r.network_id() as i32),
+                    ));
                 }
             }
             // Cat.IS_LYING and RELAX_STATE_ONE.
@@ -1373,6 +1374,7 @@ impl Game<'_> {
             .then(|| sunrise_client::lod_net::Service::new(net.lod_distance, biome_names.clone()));
         let lan = super::lan_configuration_tasks::start(sync.clone(), net)?;
         let mut hub = Hub::new(lan, sync, encoder, config, self.loop_context.clone());
+        hub.allow_commands = self.allow_commands();
         hub.dispatch_move_effects = true;
         self.bind_guest_residency(&mut hub);
         self.passages.record_on(&mut hub);
@@ -1948,10 +1950,9 @@ impl Game<'_> {
         }
         // An integrated server gives guests commands only where the world
         // allows them (IntegratedServer.getCustomPermissionLevel).
-        let effective = guest_commands && (!self.serving() || self.allow_commands());
         if let Some(host) = self.lan.as_mut() {
             host.settings.guest_commands = guest_commands;
-            host.hub.config.guest_commands = effective;
+            host.hub.config.guest_commands = guest_commands;
         }
         self.set_force_game_mode(force);
         self.resend_commands_filtered();
@@ -2430,7 +2431,7 @@ impl Game<'_> {
                     if self.options.execution_role.is_dedicated_server()
                         && let Some((uuid, name)) =
                             host.hub.guest(conn).map(|g| (g.uuid, g.name.clone()))
-                        && let Some(old) = super::dedicated::cached_user_by_id(uuid)
+                        && let Some(old) = self.user_cache.as_mut().and_then(|c| c.get_by_id(uuid))
                     {
                         if !old.name.eq_ignore_ascii_case(&name) {
                             renamed = Some(old.name.clone());
@@ -2439,15 +2440,23 @@ impl Game<'_> {
                     }
                     self.lan_guest_joined(conn, entities, spawn, prepared);
                     let host = self.lan.as_ref()?;
+                    let guest = host.hub.guest(conn);
                     super::cauldron_prediction::publish_registrations(
                         &super::cauldron_interactions::snapshot(),
-                        host.hub.guest(conn),
+                        guest,
                     );
-                    if self.is_dedicated_server()
-                        && let Some(g) = host.hub.guest(conn)
+                    // PlayerList.placeNewPlayer remembers the joined identity on either server.
+                    if let (Some(cache), Some(g)) =
+                        (self.user_cache.as_mut(), guest.filter(|g| g.placed))
                     {
-                        // PlayerList.placeNewPlayer, then the broadcast join message.
-                        super::dedicated::player_joined(g.uuid, &g.name);
+                        cache.add(NameAndId {
+                            id: g.uuid,
+                            name: g.name.clone(),
+                        });
+                    }
+                    if self.is_dedicated_server()
+                        && let Some(g) = guest
+                    {
                         super::dedicated::events::record(
                             "join",
                             &g.name,

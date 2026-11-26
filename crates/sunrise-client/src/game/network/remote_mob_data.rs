@@ -1669,13 +1669,14 @@ pub(in crate::game) mod tests {
             r#"{"minecraft:sulfur_cube":{"width":0.52,"height":0.52,"eye_height":0.325,"category":"monster","fire_immune":false,"attributes":{"minecraft:max_health":4.0}}}"#,
         )
         .unwrap();
-        let attributes =
-            &sunrise_world::attributes::entity::Catalog::from_json(&serde_json::json!({
+        let attributes = &std::sync::Arc::new(
+            sunrise_world::attributes::entity::Catalog::from_json(&serde_json::json!({
                 "data_version": sunrise_world::DATA_VERSION,
                 "attributes": [],
                 "entities": {},
             }))
-            .unwrap();
+            .unwrap(),
+        );
         let types = sunrise_client::mobs::MobTypes::load_for_server(&root, attributes).unwrap();
         let _ = std::fs::remove_dir_all(&root);
         let kind = std::sync::Arc::new(types.types["minecraft:sulfur_cube"].clone());

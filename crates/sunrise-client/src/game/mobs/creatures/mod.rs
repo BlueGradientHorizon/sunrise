@@ -112,6 +112,22 @@ fn arrow_miss(dodged: bool) -> EntityHit {
 }
 pub(super) type SpawnReason = sunrise_client::mobs::spawn_rules::Reason;
 
+/// Who caused a player's hurt, keeping vanilla's `DamageSource.getEntity` cases
+/// apart: a caller can name the entity, say there is none, or leave the one a
+/// non-mob cause already put in the lent attack.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum KnownCause {
+    /// No explicit cause: infer the melee attacker or projectile owner.
+    Infer,
+    /// Explicitly no causing entity: the source names none.
+    None,
+    /// The causing entity the lent attack already carries (a player, guest or
+    /// dragon from `/damage`, `EntityRef::hurt`).
+    Attack,
+    /// The explicitly named causing entity.
+    Entity(u32),
+}
+
 /// Whether vanilla calls `finalizeSpawn` for a mob a spawn site makes, and with
 /// which reason. The reason is vanilla's `EntitySpawnReason` at that site.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -547,14 +563,13 @@ impl Game<'_> {
         Some((uuid, id))
     }
     /// A sulfur cube's attribute map (`LivingEntity.attributes`), from its
-    /// type's defaults, before its first tick adopts the body's archetype
-    /// modifiers. A map already there (commands, armor) is kept.
+    /// type's defaults and what its save kept (`finalize::attribute_map`),
+    /// before its first tick adopts the body's archetype modifiers. A map
+    /// already there (commands, armor) is kept.
     fn init_sulfur_attribute_maps(&mut self) {
         for m in &mut self.mobs {
-            if m.species() == sunrise_client::mobs::Species::SulfurCube
-                && m.extra.armor_attributes.is_none()
-            {
-                m.extra.armor_attributes = self.motion.attributes.create(&m.kind.id).map(Box::new);
+            if m.species() == sunrise_client::mobs::Species::SulfurCube {
+                sunrise_client::mobs::finalize::attribute_map(m, &self.motion.attributes);
             }
         }
     }
@@ -1422,7 +1437,7 @@ impl Game<'_> {
         // Hurts dealt since the last creature tick (explosions, commands, the
         // systems after it) teleport an enderman before it ticks, not in its AI step.
         self.settle_hurt_teleports()?;
-        self.attack_ticks = self.attack_ticks.saturating_add(1);
+        self.attack_ticks = self.attack_ticks.wrapping_add(1);
         self.refresh_gear_knockback_resistance();
         self.tick_leads();
         // Vanilla's spawning and raids run before ChunkMap.tick.
@@ -2280,6 +2295,7 @@ impl Game<'_> {
             damage_type,
             causing: attack.attacker,
             direct: attack.attacker,
+            direct_type: attack.direct_type.as_deref(),
             position: source.from,
         };
         let ctx = attack.enchantment_context(hurt_source, &kind);
@@ -2295,10 +2311,10 @@ impl Game<'_> {
                 amount,
                 source.from,
                 damage_type,
-                Some(match source.attacker {
-                    Some(Who::Mob(id)) => Some(id),
-                    _ => None,
-                }),
+                match source.attacker {
+                    Some(Who::Mob(id)) => KnownCause::Entity(id),
+                    _ => KnownCause::None,
+                },
                 false,
                 false,
             ),
@@ -3375,7 +3391,7 @@ impl Game<'_> {
                         amount,
                         Some(from),
                         "minecraft:mob_attack",
-                        Some(Some(cube)),
+                        KnownCause::Entity(cube),
                         false,
                     ) && let Some(m) = self.mobs.iter_mut().find(|m| m.id == cube)
                     {
@@ -3470,9 +3486,10 @@ impl Game<'_> {
                     if let Some(m) = self.mobs.iter().find(|m| m.id == mob) {
                         let at = m.center();
                         let sound = cat_sound(m, Some(self.world_variants()), "hiss")
-                            .unwrap_or("entity.cat.hiss")
-                            .to_owned();
-                        self.play_audio(&full_id(&sound), Some(at), 1.0, 1.0);
+                            .map(|s| full_id(s).into_owned());
+                        if let Some(sound) = sound {
+                            self.play_audio(&sound, Some(at), 1.0, 1.0);
+                        }
                     }
                 }
                 MobEvent::StabMemory {
@@ -3510,6 +3527,13 @@ impl Game<'_> {
                         }
                         Who::Mob(id) => self.mob_hits_mob(id, amount, source),
                     };
+                    // A mod's `MobRef::do_hurt_target` answers the golem's `wasHurt` from it.
+                    // The mob tick's own events don't record it: vanilla's `doHurtTarget` and
+                    // `stabAttack` each read their own hurt, so a golem's must not reach a
+                    // `StabMemory` of the same batch.
+                    if self.fake_action.acting() {
+                        self.combat.hit_landed = hurt;
+                    }
                     if hurt {
                         let resistance = match target {
                             Who::Player => self.player.as_mut().map_or(0.0, |p| {
@@ -4925,14 +4949,15 @@ impl Game<'_> {
         true
     }
     /// `hurtServer` on the player. `from` is the source's position (none: no
-    /// direction), `known`: the causing mob when it is given (`/damage`).
+    /// direction), `known`: who caused it (`KnownCause::Infer` guesses the
+    /// melee attacker nearest to `from`).
     /// A caller's player attack keeps its own source, even with a custom damage type.
     pub(super) fn hurt_player_from(
         &mut self,
         amount: f32,
         from: Option<[f64; 3]>,
         damage_type: &str,
-        known: Option<Option<u32>>,
+        known: KnownCause,
         by_creative_player: bool,
     ) -> bool {
         self.hurt_player_from_inner(amount, from, damage_type, known, by_creative_player, true)
@@ -4943,7 +4968,7 @@ impl Game<'_> {
         amount: f32,
         from: Option<[f64; 3]>,
         damage_type: &str,
-        known: Option<Option<u32>>,
+        known: KnownCause,
         by_creative_player: bool,
         post_attack: bool,
     ) -> bool {
@@ -4963,7 +4988,7 @@ impl Game<'_> {
         // The causing entity for the death message.
         let owner = self.combat.projectile_owner.take();
         let current = self.combat.attack();
-        let player_melee = known.is_none()
+        let player_melee = known == KnownCause::Infer
             && melee.is_none()
             && current.projectile.is_none()
             && current.direct.is_none()
@@ -4973,10 +4998,11 @@ impl Game<'_> {
                 .is_some_and(|actor| actor.kind.as_ref() == "minecraft:player");
         // Only an unrecorded mob swing is inferred from the source position.
         let attacker = match known {
-            Some(known) => known,
-            None if melee.is_some() => melee,
-            None if player_melee => None,
-            None => from
+            KnownCause::Entity(id) => Some(id),
+            KnownCause::Attack | KnownCause::None => None,
+            KnownCause::Infer if melee.is_some() => melee,
+            KnownCause::Infer if player_melee => None,
+            KnownCause::Infer => from
                 .filter(|_| !projectile && damage_type != "minecraft:player_attack")
                 .and_then(|from| {
                     self.mobs
@@ -5028,10 +5054,16 @@ impl Game<'_> {
         // owner of the projectile that hit (`projectile_owner` outlives a
         // projectile's other hits), not the guessed melee attacker.
         let owner = owner.filter(|_| projectile);
-        let causing = known.map_or_else(
-            || attacker.or(owner).map_or(attack.attacker, |id| id as i32),
-            |known| known.map_or(0, |id| id as i32),
-        );
+        let causing = match known {
+            KnownCause::Infer => attacker.or(owner).map_or(attack.attacker, |id| id as i32),
+            // An explicit cause that is not a mob (another player, a guest, the
+            // dragon, a stand) stays in the lent attack's attacker.
+            KnownCause::Attack => attack.attacker,
+            KnownCause::Entity(id) => id as i32,
+            // `magic()` from a projectile whose owner is gone names no entity,
+            // even though the enclosing attack still holds the dead shooter.
+            KnownCause::None => 0,
+        };
         let mut outcome = sunrise_client::health::BlockOutcome::default();
         // The hit's own push, held back until after the shield's (`hurtServer`
         // runs `applyItemBlocking` before `dealDefaultKnockback`).
@@ -5076,6 +5108,7 @@ impl Game<'_> {
                     causing,
                     direct: attack.projectile_direct(damage_type),
                     position: None,
+                    direct_type: None,
                 };
                 default_push = Some(([xd, zd], source));
             }
@@ -5147,6 +5180,7 @@ impl Game<'_> {
                 causing,
                 direct: attack.projectile_direct(damage_type),
                 position: None,
+                direct_type: None,
             };
             self.after_block(outcome, (attacker, projectile), source, &attack);
         }
@@ -8078,6 +8112,7 @@ impl Game<'_> {
                     mob,
                     block,
                     p.age,
+                    p.id,
                     &owner,
                     self.entity_silent(p.id),
                     p.velocity,
@@ -8743,7 +8778,11 @@ impl Game<'_> {
                     .map_or(2.0, |f| f.0 as f32 * 2.0);
                 // TamableAnimal.feed(.., 2.0F, 2.0F): heals twice the nutrition,
                 // then playEatingSound, which wolves leave empty.
-                m.heal(&self.loop_context, heal);
+                m.heal(
+                    &self.loop_context,
+                    &|| crate::game::entity::hit_reads_of!(self),
+                    heal,
+                );
                 consume = true;
             }
             // Wolf.mobInteract: the owner puts wolf armor on a tamed adult.
@@ -8899,7 +8938,11 @@ impl Game<'_> {
                     .and_then(|i| i.food.as_ref())
                     .map_or(1.0, |f| f.0 as f32);
                 // TamableAnimal.feed.
-                m.heal(&self.loop_context, heal);
+                m.heal(
+                    &self.loop_context,
+                    &|| crate::game::entity::hit_reads_of!(self),
+                    heal,
+                );
                 consume = true;
                 let variants = self
                     .world_tables
@@ -8967,7 +9010,11 @@ impl Game<'_> {
             Species::IronGolem
                 if item == "minecraft:iron_ingot" && m.health < m.attrs.max_health =>
             {
-                m.heal(&self.loop_context, 25.0);
+                m.heal(
+                    &self.loop_context,
+                    &|| crate::game::entity::hit_reads_of!(self),
+                    25.0,
+                );
                 consume = true;
                 eat = Some((
                     std::borrow::Cow::Borrowed("entity.iron_golem.repair"),

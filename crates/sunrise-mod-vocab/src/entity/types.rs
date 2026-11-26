@@ -208,6 +208,19 @@ impl EntityRef {
     pub fn epoch(self) -> WorldEpoch {
         self.epoch
     }
+    /// Where the entity is `partial` of the way through its current tick
+    /// (`Entity.getPosition(float)`): on each axis `Mth.lerp(partial, xo, x)`, from
+    /// [`Self::previous_position`] to [`Self::position`], the position a renderer draws the
+    /// entity at with the frame's partial tick. NeoForge mods call the same vanilla method.
+    /// Side: both. None when either read is None.
+    pub fn position_at(self, host: &dyn Host, partial: f32) -> Option<[f64; 3]> {
+        let old = self.previous_position(host)?;
+        let now = self.position(host)?;
+        let delta = f64::from(partial);
+        Some(std::array::from_fn(|axis| {
+            old[axis] + delta * (now[axis] - old[axis])
+        }))
+    }
     /// Use the entity's live `Entity.getRandom` stream for `draw`. The hit leaves the
     /// draws in the stream in listener order. Returns `None` without running `draw`
     /// if this hit does not lend the entity.
@@ -1339,9 +1352,9 @@ pub struct PlayerFood {
     pub exhaustion: f32,
 }
 
-// no wire: borrows the connected player's profile from the host.
+// no wire: borrows a profile from the host.
 /// A player's borrowed game profile (authlib's `GameProfile`): UUID, name and login
-/// properties, such as `textures` (the skin). A custom test host can lend one using
+/// properties, such as `textures` (the skin) when available. A custom test host can lend one using
 /// `mod_api::testing::GameProfileFixture` with the `testing` feature enabled.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -1355,7 +1368,7 @@ pub struct GameProfile<'a> {
 
 impl<'a> GameProfile<'a> {
     /// Read the profile's properties in login order without copying the text.
-    /// An offline-mode player has no properties.
+    /// Offline-mode players and profiles from the user cache have no properties.
     pub fn properties(&self) -> impl ExactSizeIterator<Item = ProfileProperty<'a>> + use<'a> {
         self.properties.iter().map(|property| ProfileProperty {
             name: &property.name,

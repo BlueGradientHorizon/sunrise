@@ -286,8 +286,12 @@ impl Game<'_> {
         }
         true
     }
-    /// `swing(hand)` for the hand that acts, with the default animation.
+    /// `swing(hand)` for the hand that acts, with the default animation. None while a mod's
+    /// `PlayerRef::attack` runs `Player.attack`, which has no swing: the swing is its packet's.
     pub(super) fn swing_arm(&mut self) {
+        if self.fake_action.unswung() {
+            return;
+        }
         self.swing_hand(self.hand, SwingAnimation::DEFAULT);
     }
     /// `swing_arm` for a use whose result is `SwingSource.PREDICTED`: the
@@ -544,7 +548,7 @@ impl Game<'_> {
             while self.consume_mapping_click("key.pickItem") {
                 if !using {
                     if let Some(hit) = self.crosshair_entity_hit() {
-                        if let Some(stack) = self.entity_pick_result(hit.id) {
+                        if let Some(stack) = self.pick_result_of(hit.id) {
                             self.pick_into_inventory(&stack, self.creative);
                         }
                     } else if let Some(hit) = self.pick() {

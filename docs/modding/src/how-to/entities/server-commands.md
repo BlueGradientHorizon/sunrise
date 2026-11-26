@@ -105,15 +105,18 @@ as vanilla's parser so `~`, `^` and the dimension list complete as in a vanilla 
 |---|---|---|
 | `vec3` | `minecraft:vec3`, whole `x` and `z` centred on the block | `Vec3([f64; 3])` |
 | `vec3_uncentered` | `minecraft:vec3`, coordinates as written | `Vec3([f64; 3])` |
+| `vec2` | `minecraft:vec2`, whole `x` and `z` centred on the block | `Vec2([f32; 2])` |
+| `vec2_uncentered` | `minecraft:vec2`, coordinates as written | `Vec2([f32; 2])` |
 | `column_pos` | `minecraft:column_pos` | `ColumnPos([i32; 2])`, floored |
 | `rotation` | `minecraft:rotation` | `Rotation([f32; 2])`, yaw then pitch |
 | `dimension` | `minecraft:dimension` | `Dimension(LevelRef)` |
 | `nbt` | `minecraft:nbt_compound_tag` | `Nbt(Compound)` |
 
-`~` and `^` resolve against the command source's position and rotation, as `block_pos` does. A
+`~` and `^` resolve against the command source's position and rotation, as `block_pos` does
+(`vec2` and `vec2_uncentered` take `~` relative coordinates and refuse `^`). A
 `dimension` the world has not loaded is refused with `argument.dimension.invalid` before the
-executor runs. A `vec3` and a `vec3_uncentered` cannot share a position in one command's
-usages, as they look the same to a client.
+executor runs. Neither `vec3`/`vec3_uncentered` nor `vec2`/`vec2_uncentered` can share a
+position in one command's usages, as they look the same to a client.
 A player's source is their position and rotation. The console has no source
 entity and uses the world spawn's block corner, in the level the spawn is in, with zero rotation, so `@s`
 cannot resolve there. Every executor receives the same kind of typed input.
@@ -247,6 +250,29 @@ are not selector members in vanilla and are never delivered by these arguments.
 Temporarily held-out or removed entities cannot be delivered. An unbounded
 selector can reach other loaded dimensions; handle lookup uses the entity's own
 dimension. There is no extra count cap. A very large `@e` is the caller's cost.
+
+## Game profiles, including offline players
+
+Use `Command::new("inspect <targets:game_profile>")` for commands that can reach
+offline players. The executor receives `CommandArgumentValue::GameProfiles`:
+a list of `(uuid, name)` pairs, not player handles. A plain name matches an
+online player or an unexpired user-cache entry, case-insensitively. Selectors
+select online players in vanilla order and use the same permission rules as
+other selectors. The client receives vanilla's `minecraft:game_profile` parser
+for player-name and selector completion. Unknown names report
+`argument.player.unknown`; empty selectors report `argument.entity.notfound.player`.
+
+On the server, `host.players().profile_by_name(name)` and
+`host.players().profile_by_uuid(uuid)` return the same borrowed `GameProfile<'_>`
+as `player.profile(host)`. They check online players first, then the unexpired
+user cache. Cached profiles have no login properties. Neither read contacts
+Mojang or invents an offline identity. For a UUID, use `profile_by_uuid`:
+vanilla's command argument takes a name or a selector, not a UUID literal.
+
+`host.players().profile_permission_level(uuid, name)` works in `player_login`,
+before a `PlayerRef` exists, and for offline profiles. Dedicated servers read
+the op list by UUID. Integrated servers also account for the owner's name and
+world and guest command access. `PermissionLevel::All` is level 0.
 
 ## Custom argument types
 

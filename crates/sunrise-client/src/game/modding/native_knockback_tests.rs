@@ -120,6 +120,7 @@ fn source(causing: i32) -> HurtSource<'static> {
         causing,
         direct: 0,
         position: None,
+        direct_type: None,
     }
 }
 

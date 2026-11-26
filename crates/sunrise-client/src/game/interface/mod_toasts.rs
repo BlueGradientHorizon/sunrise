@@ -86,9 +86,9 @@ impl Game<'_> {
                 entry.request.icon = request.icon;
                 entry.layout = layout;
             } else {
+                let clock = sunrise_client::toasts::ToastClock::of(self.clock.still());
                 self.toast_manager
-                    .queued
-                    .push_back(Toast::Mod(Entry { request, layout }));
+                    .post(clock, Toast::Mod(Entry { request, layout }));
             }
         }
     }

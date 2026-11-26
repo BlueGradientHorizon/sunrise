@@ -499,7 +499,16 @@ impl Game<'_> {
         entity: BlockEntityRef,
         data: Compound,
     ) -> Result<bool, BlockEntityError> {
-        self.write_block_entity_data(entity, data, false)
+        self.write_block_entity_data(entity, data, false, true)
+    }
+
+    /// `merge_data` with `BlockEntity.setChanged` only: no `Level.sendBlockUpdated`.
+    pub(super) fn block_entity_merge_data_quiet(
+        &mut self,
+        entity: BlockEntityRef,
+        data: Compound,
+    ) -> Result<bool, BlockEntityError> {
+        self.write_block_entity_data(entity, data, false, false)
     }
 
     /// Replaces the saved payload, retaining identity and position metadata.
@@ -510,7 +519,16 @@ impl Game<'_> {
         entity: BlockEntityRef,
         data: Compound,
     ) -> Result<bool, BlockEntityError> {
-        self.write_block_entity_data(entity, data, true)
+        self.write_block_entity_data(entity, data, true, true)
+    }
+
+    /// `replace_data` with `BlockEntity.setChanged` only: no `Level.sendBlockUpdated`.
+    pub(super) fn block_entity_replace_data_quiet(
+        &mut self,
+        entity: BlockEntityRef,
+        data: Compound,
+    ) -> Result<bool, BlockEntityError> {
+        self.write_block_entity_data(entity, data, true, false)
     }
 
     fn write_block_entity_data(
@@ -518,6 +536,7 @@ impl Game<'_> {
         entity: BlockEntityRef,
         data: Compound,
         replace: bool,
+        send: bool,
     ) -> Result<bool, BlockEntityError> {
         let (key, block) = self
             .native_block_entity_write_target(entity)
@@ -552,8 +571,78 @@ impl Game<'_> {
         if cleared && let Some(BlockEntity::Mod(loaded)) = self.world.block_entities.get_mut(&key) {
             loaded.keep_shapes_cleared(true);
         }
-        self.block_entity_updated(key);
+        // `BlockDataAccessor.setData`: `setChanged`, then `sendBlockUpdated` unless the mod
+        // keeps the send for `block_entity_sync`.
+        if send {
+            self.block_entity_updated(key);
+        } else {
+            self.world.modified.insert((key.0 >> 4, key.2 >> 4));
+        }
         self.container_changed(key);
+        Ok(true)
+    }
+
+    /// `RandomizableContainer.setLootTable(table, seed)` on a mod container: kept beside the
+    /// block entity as a vanilla chest's is, and rolled by its first access
+    /// (`container_loot::unpack_loot`).
+    pub(super) fn block_entity_set_loot_table(
+        &mut self,
+        entity: BlockEntityRef,
+        table: &str,
+        seed: i64,
+    ) -> Result<bool, BlockEntityError> {
+        let (key, block) = self
+            .native_block_entity_write_target(entity)
+            .ok_or(BlockEntityError::Stale)?;
+        let Some(entity) = self.world.block_entities.get(&key) else {
+            return Err(BlockEntityError::Stale);
+        };
+        let Some(table) = sunrise_client_core::identifier::normalize_id(table) else {
+            return Ok(false);
+        };
+        if !matches!(entity, BlockEntity::Mod(_)) || !save::randomizable_container(entity, &block) {
+            return Ok(false);
+        }
+        // The table and seed as `trySaveLootTable` writes them and a reload reads them back:
+        // the identifier in full, and no seed for 0.
+        let pending = save::PendingContainerLoot {
+            table: Tag::String(table.as_str().into()),
+            seed: (seed != 0).then_some(Tag::Long(seed)),
+        };
+        let current = self
+            .world
+            .chunks
+            .get(&(key.0 >> 4, key.2 >> 4))
+            .and_then(|chunk| chunk.saved.as_ref())
+            .and_then(|saved| saved.pending_loot.get(&key));
+        if current.is_some_and(|current| {
+            current.table_id() == table && current.seed_value().unwrap_or(0) == seed
+        }) {
+            return Ok(false);
+        }
+        self.journal_block_entity(key);
+        self.world.with_chunk_extras(key, |extras| {
+            extras.pending_loot.insert(key, pending);
+        });
+        self.world.modified.insert((key.0 >> 4, key.2 >> 4));
+        Ok(true)
+    }
+
+    /// `RandomizableContainer.unpackLootTable(null)`, what vanilla's `getItem`, `setItem`,
+    /// `removeItem` and `isEmpty` run first: a pending table rolls into the container's empty
+    /// slots now, with no player. False when no table waits.
+    pub(super) fn block_entity_unpack_loot_table(
+        &mut self,
+        entity: BlockEntityRef,
+    ) -> Result<bool, BlockEntityError> {
+        let (key, _) = self
+            .native_block_entity_write_target(entity)
+            .ok_or(BlockEntityError::Stale)?;
+        if !self.block_loot_pending(key) {
+            return Ok(false);
+        }
+        self.journal_block_entity(key);
+        self.unpack_loot(crate::game::container_loot::LootTarget::Block(key), None);
         Ok(true)
     }
 
@@ -895,6 +984,14 @@ pub(in crate::game) fn mod_payload(mut data: Compound) -> Compound {
     }
     data
 }
+
+#[cfg(test)]
+#[path = "quiet_write_tests.rs"]
+mod quiet_write_tests;
+
+#[cfg(test)]
+#[path = "container_loot_table_tests.rs"]
+mod container_loot_table_tests;
 
 #[cfg(test)]
 mod payload_tests {

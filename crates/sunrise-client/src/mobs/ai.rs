@@ -451,7 +451,7 @@ mod inside_walk_tests {
 }
 #[cfg(test)]
 #[path = "effect_modifier_tests.rs"]
-mod effect_modifier_tests;
+pub(crate) mod effect_modifier_tests;
 #[cfg(test)]
 #[path = "fall_flying_tests.rs"]
 mod fall_flying_tests;
@@ -512,6 +512,10 @@ pub struct Ai {
     /// last started on. On the mob, not the goal, so the mob tick can tell that a pet
     /// has nothing new to read without building the level's player views.
     pub owner_hurt_timestamp: i32,
+    /// `OwnerHurtByTargetGoal.timestamp`: the owner's `getLastHurtByMobTimestamp` the
+    /// goal last started on. On the mob, not the goal, so the mob tick can tell that a
+    /// pet has nothing new to read without building the level's player views.
+    pub owner_hurt_by_timestamp: i64,
     /// Sensing: line-of-sight results cached for one tick.
     pub seen_cache: Vec<(Who, bool)>,
     /// Swing animation progress (attackAnim) and ticks.
@@ -1359,7 +1363,7 @@ pub fn tick(
             TickProgress::Paused(Pause::Drink { stack, resume }) => {
                 // The hostless probe runs the same drink's built-in behaviour.
                 if stack.potion().unwrap_or(&stack.item) == "minecraft:healing" {
-                    m.heal(w.loop_context, 4.0);
+                    m.heal(w.loop_context, &|| w.side.hit_reads(), 4.0);
                 }
                 if let Some(effect) = drink_potion_effect(&stack) {
                     m.add_effect_instance(crate::brewing::namespaced(effect.id), effect);
@@ -1957,7 +1961,7 @@ fn continue_ai_tail(
                         farm::chicken_egg_step(m, events);
                     }
                     if m.species() == Species::Allay {
-                        super::allay::passive_heal(m, w.loop_context);
+                        super::allay::passive_heal(m, w.loop_context, w.side);
                         super::allay::update_duplication_cooldown(m);
                     }
                     // AbstractHorse.aiStep, Camel.tick, Bee.aiStep and WanderingTrader.aiStep
@@ -5591,15 +5595,7 @@ pub(super) fn play_wolf_ambient(
     };
     if let Some(sound) = wolf_sound(m, variants, kind) {
         m.voice_id(sound, events);
-        return;
     }
-    let fallback = match kind {
-        "growl" => "entity.wolf.growl",
-        "whine" => "entity.wolf.whine",
-        "pant" => "entity.wolf.pant",
-        _ => "entity.wolf.ambient",
-    };
-    m.voice(fallback, events);
 }
 /// `Cat.getSoundSet`: resolves `kind` (`ambient`, `stray_ambient`, `hiss`,
 /// `hurt`, `death`, `eat`, `beg_for_food`, `purr`, `purreow`) from the world's
@@ -5632,15 +5628,7 @@ pub(super) fn play_cat_ambient(
     };
     if let Some(sound) = cat_sound(m, variants, kind) {
         m.voice_id(sound, events);
-        return;
     }
-    let fallback = match kind {
-        "purr" => "entity.cat.purr",
-        "purreow" => "entity.cat.purreow",
-        "stray_ambient" => "entity.cat.stray_ambient",
-        _ => "entity.cat.ambient",
-    };
-    m.voice(fallback, events);
 }
 /// `Animal.mobInteract` with its food in hand: an adult that can fall in
 /// love does, a baby grows up by a tenth, and either plays its eating sound
@@ -5802,9 +5790,7 @@ pub fn eating_sound_with_variants(
         }
         // playSound(sound, 1, 1).
         Species::Cat => {
-            let sound = cat_sound(m, variants, "eat")
-                .map(|s| Cow::Owned(s.to_owned()))
-                .unwrap_or(Cow::Borrowed("entity.cat.eat"));
+            let sound = Cow::Owned(cat_sound(m, variants, "eat")?.to_owned());
             (sound, 1.0, 1.0, true)
         }
         Species::Fox => (Cow::Borrowed("entity.fox.eat"), 1.0, 1.0, true),
@@ -6286,7 +6272,7 @@ fn tick_effects_until_hurt(
                 "minecraft:regeneration"
                     if count % interval(50) == 0 && !m.kind.flags.undead && m.alive() =>
                 {
-                    m.heal(context, 1.0);
+                    m.heal(context, &|| level.reads(), 1.0);
                 }
                 // AbsorptionMobEffect.applyEffectTick (asked on every tick): false
                 // once the absorption is used up, so tickServer drops the effect
@@ -6325,7 +6311,7 @@ fn tick_effects_until_hurt(
         } = tick;
         while let Some(change) = changes.next() {
             match change {
-                super::MobEffectAction::Heal(amount) => m.heal(context, amount),
+                super::MobEffectAction::Heal(amount) => m.heal(context, &|| level.reads(), amount),
                 super::MobEffectAction::Hurt(kind, amount) => {
                     m.damage(level, amount, Damage::of(kind));
                     after_effect(m);
@@ -6367,7 +6353,10 @@ fn tick_effects_until_hurt(
                 m.extra.effects[i].update_from_instance(&hidden);
                 // `tickServer`'s onExpire: `onEffectUpdated(instance, true, null)`,
                 // the modifiers of the amplifier that is active now.
-                m.set_effect_modifiers(effect, Some(hidden.amplifier));
+                let def = m.extra.effects[i]
+                    .registry_index
+                    .and_then(sunrise_client_core::potions::effect_by_index);
+                m.set_effect_modifiers(effect, def, Some(hidden.amplifier));
                 m.extra.ambient_effects.retain(|e| *e != effect);
                 if hidden.ambient {
                     m.extra.ambient_effects.push(effect);

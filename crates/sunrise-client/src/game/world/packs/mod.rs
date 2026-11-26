@@ -560,8 +560,11 @@ impl Game<'_> {
         // A reload from the title can apply before the start's world-rest worker is done.
         self.join_world_rest()?;
         let tab_modifiers = sunrise_client::polytone_creative_tabs::TabModifier::read_all(&root);
-        let standalone_geometry =
-            super::native_block_entity_draw::StandaloneGeometry::new(&pack, &gui);
+        let standalone_geometry = super::native_block_entity_draw::StandaloneGeometry::new(
+            &pack,
+            &gui,
+            self.res.try_block_entity_render(),
+        );
         // Keep the working GPU resources, and hand its window surface over.
         if let Some(renderer) = &mut self.renderer {
             renderer.release_surface();
@@ -582,7 +585,7 @@ impl Game<'_> {
                     Some(textures),
                     self.settings.sunrise.api,
                     self.settings.sunrise.translucent_batching,
-                    self.settings.vsync,
+                    self.effective_vsync(),
                     &self.settings.sunrise,
                     super::shader_packs::picked_pack_shape(&self.settings),
                     self.renderer
@@ -591,8 +594,8 @@ impl Game<'_> {
                         .unwrap_or_default(),
                     self.settings.texture_atlas_settings(),
                 )
-                .and_then(|(renderer, clouds)| {
-                    clouds?;
+                .and_then(|(renderer, required)| {
+                    required?;
                     Ok(renderer)
                 })
             })
@@ -643,6 +646,10 @@ impl Game<'_> {
             game.standalone_geometry = standalone_geometry;
             game.instance_groups.borrow_mut().clear();
             game.prepared_items.borrow_mut().clear();
+            if let Some(renderer) = &game.renderer {
+                renderer.clear_mod_meshes();
+                renderer.clear_mod_uniforms();
+            }
             // The new atlas's skin and map slots are blank: players and maps
             // upload into it again instead of naming sprites it does not have.
             game.skin_slots.forget();
@@ -727,11 +734,6 @@ impl Game<'_> {
             if has_renderer {
                 game.apply_ui_settings();
             }
-            // Sunrise's own shader pack is built again: its sprite tags name the old atlas's
-            // layers, and a new renderer runs no pack.
-            game.native_shaders = super::native_shaders::NativeShaders::picking(&std::mem::take(
-                &mut game.native_shaders.picked,
-            ));
             game.ui.chat.rescale(&game.gui.atlas);
             game.install_loop_context(loop_context);
             game.resolve_entity_renderers();
@@ -811,7 +813,6 @@ pub(super) fn stage_pack_with_emissive(
         || -> sunrise_client::Result<_> {
             // The world's models and sprites and the GUI atlas read the same root and nothing of
             // each other: about a second each, side by side.
-            let pool = super::resource_tables::dynamic_texture_pool();
             // The sound events and the language are read here too, not in
             // the frame that applies the reload (about 20 ms of it).
             let (render, atlas, panorama, (sounds, language)) = std::thread::scope(|s| {
@@ -819,14 +820,8 @@ pub(super) fn stage_pack_with_emissive(
                     let game = sunrise_assets::resource_source::ResourceSource::directory(
                         vanilla_root.to_path_buf(),
                     );
-                    HudAtlas::build_over_with_dynamic_textures_and_limit(
-                        &source,
-                        &source,
-                        &game,
-                        pool,
-                        max_atlas_size,
-                    )
-                    .map_err(|e| e.to_string())
+                    HudAtlas::build_over_and_limit(&source, &source, &game, max_atlas_size)
+                        .map_err(|e| e.to_string())
                 });
                 let panorama = super::resource_load::named_scope(s, "pack-assets", || {
                     sunrise_client::gfx::panorama::Faces::load(&source, &source)
@@ -1334,3 +1329,7 @@ mod tests {
 #[cfg(test)]
 #[path = "clouds_reload_tests.rs"]
 mod clouds_reload_tests;
+
+#[cfg(test)]
+#[path = "core_shaders_reload_tests.rs"]
+mod core_shaders_reload_tests;

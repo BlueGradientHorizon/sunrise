@@ -257,6 +257,9 @@ pub(super) struct Crystal {
     /// The entity id a server tracks it by (0 until it is tracked).
     pub id: u32,
     pub position: Vec3,
+    /// `Entity.xo`, `yo`, `zo`: where it was when its tick began (`setOldPosAndRot`). It never
+    /// moves itself; a client's copy eases to where the server sends it.
+    pub previous: Vec3,
     pub rotation: [f32; 2],
     pub fire: i16,
     pub show_bottom: bool,
@@ -1184,6 +1187,7 @@ fn hurt_source(kind: DamageKind, by: Option<i32>, direct: Option<i32>) -> HurtSo
             0
         }),
         position: None,
+        direct_type: None,
     }
 }
 /// `Mth.wrapDegrees(float)`: Java's `%` (truncating, as Rust's), then one step of 360.
@@ -1563,6 +1567,8 @@ impl Game<'_> {
             .then(|| self.pack.assets.registry.default_state("minecraft:fire"))
             .flatten();
         for i in 0..self.crystals.len() {
+            // Entity.commonTick's setOldPosAndRot.
+            self.crystals[i].previous = self.crystals[i].position;
             self.crystals[i].time += 1;
             self.crystal_block_effects(i);
             let p = self.crystals[i].position;
@@ -1782,6 +1788,7 @@ impl Game<'_> {
                 position: direct
                     .as_ref()
                     .map(|d| [d.position.x, d.position.y, d.position.z]),
+                direct_type: None,
             };
             if self.native_nonliving_invulnerable(
                 crystal_id,
@@ -1877,6 +1884,7 @@ impl Game<'_> {
             causing,
             direct: direct_entity,
             position: from.map(|p| [p.x, p.y, p.z]),
+            direct_type: None,
         };
         // The world's tags, so a datapack type is classed as vanilla's are.
         let explosion = self.damage_in_tag(ty, "minecraft:is_explosion");
@@ -1980,6 +1988,7 @@ impl Game<'_> {
             causing: entity_id(cause),
             direct: entity_id(direct),
             position,
+            direct_type: None,
         };
         if self.native_nonliving_invulnerable(id, "minecraft:end_crystal", source, vanilla)
             || matches!(cause, Some(Target::Dragon(_)))
@@ -2145,7 +2154,7 @@ impl Game<'_> {
             }
             let pitch = 0.8 + self.world.random.next_float() * 0.3;
             self.play_audio("minecraft:entity.ender_dragon.hurt", Some(at), 5.0, pitch);
-            if kind == DamageKind::Thorns {
+            if kind.is("minecraft:thorns") {
                 self.play_audio("minecraft:enchant.thorns.hit", Some(at), 1.0, 1.0);
             }
         }
@@ -3352,7 +3361,7 @@ impl Game<'_> {
         };
         let mut harmed: Vec<(FightWho, f32)> = Vec::new();
         self.end_dragon_flame();
-        let mut harmed_mobs: Vec<(u32, i32, [f64; 3])> = Vec::new();
+        let mut harmed_mobs: Vec<(u32, i32, [f64; 3], u32)> = Vec::new();
         let ticking = self.entity_ticking_area();
         let through = self.ticked_entities_through;
         let mut clouds = self.breath_clouds.lift();
@@ -3409,7 +3418,9 @@ impl Game<'_> {
             for victim in breath_victims(c.age, &mut c.victims, inside) {
                 match victim {
                     Victim::Player(who) => harmed.push((who, amount)),
-                    Victim::Mob(id) => harmed_mobs.push((id, i32::from(!c.from_dragon), c.at)),
+                    Victim::Mob(id) => {
+                        harmed_mobs.push((id, i32::from(!c.from_dragon), c.at, c.id))
+                    }
                 }
             }
             true
@@ -3421,8 +3432,8 @@ impl Game<'_> {
                 g.dragon_hurts_player("minecraft:indirect_magic", amount);
             });
         }
-        for (id, amplifier, at) in harmed_mobs {
-            self.breath_affect_mob(id, amplifier, at);
+        for (id, amplifier, at, cloud) in harmed_mobs {
+            self.breath_affect_mob(id, amplifier, at, Some(cloud));
         }
     }
     /// `EnderDragon.knockBack` on the player in a wing's zone: pushed away
@@ -3462,6 +3473,7 @@ impl Game<'_> {
                         causing,
                         direct: causing,
                         position: origin,
+                        direct_type: None,
                     },
                     &attack,
                 );
@@ -4129,6 +4141,7 @@ impl Crystal {
             join: Default::default(),
             id: 0,
             position,
+            previous: position,
             rotation: sunrise_client::entity_nbt::loaded_rotation(tag),
             fire,
             show_bottom: sunrise_client::entity_nbt::flag_or(tag, "ShowBottom", true),
@@ -4212,6 +4225,7 @@ impl Game<'_> {
                         .or(self.combat.explosion_source)
                         .map_or(0, |id| id as i32),
                     position: Some(center),
+                    direct_type: None,
                 };
                 if self.native_nonliving_invulnerable(id, "minecraft:end_crystal", source, vanilla)
                 {
@@ -5969,6 +5983,7 @@ pub(in crate::game) mod tests {
         causing: 0,
         direct: 0,
         position: None,
+        direct_type: None,
     });
     fn dragon(phase: Phase) -> Dragon {
         let mut d = Dragon::new(Vec3::new(0.0, 70.0, 0.0), 0.0, 1);
@@ -6563,6 +6578,7 @@ pub(in crate::game) mod tests {
             causing: 12,
             direct: 0,
             position: None,
+            direct_type: None,
         };
         let hurt = d.hurt(level, 0, 9.0, Some(arrow), false);
         assert_eq!(hurt, Hurt::Landed { full: false });

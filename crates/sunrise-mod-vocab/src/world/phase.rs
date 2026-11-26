@@ -214,6 +214,42 @@ impl crate::RenderAssets for EmptyClientReloadServices {
     ) -> Result<crate::RenderPipelineRef, crate::RenderPipelineError> {
         Err(crate::RenderPipelineError::Unknown)
     }
+    fn render_type(
+        &self,
+        _: &crate::Identifier,
+    ) -> Result<crate::RenderTypeRef, crate::RenderTypeError> {
+        Err(crate::RenderTypeError::Unknown)
+    }
+    fn entity_solid(
+        &self,
+        _: &crate::Identifier,
+    ) -> Result<crate::RenderTypeRef, crate::RenderTypeError> {
+        Err(crate::RenderTypeError::Unknown)
+    }
+    fn entity_cutout(
+        &self,
+        _: &crate::Identifier,
+    ) -> Result<crate::RenderTypeRef, crate::RenderTypeError> {
+        Err(crate::RenderTypeError::Unknown)
+    }
+    fn entity_translucent(
+        &self,
+        _: &crate::Identifier,
+    ) -> Result<crate::RenderTypeRef, crate::RenderTypeError> {
+        Err(crate::RenderTypeError::Unknown)
+    }
+    fn compute_pipeline(
+        &self,
+        _: &crate::Identifier,
+    ) -> Result<crate::ComputePipelineRef, crate::ComputePipelineError> {
+        Err(crate::ComputePipelineError::Unknown)
+    }
+    fn pipeline_modifier(
+        &self,
+        _: &crate::Identifier,
+    ) -> Result<crate::PipelineModifierRef, crate::RenderPipelineError> {
+        Err(crate::RenderPipelineError::Unknown)
+    }
     fn animation(&self, _: &crate::Identifier) -> Option<crate::AnimationHolder> {
         None
     }
@@ -234,6 +270,18 @@ impl crate::RenderAssets for EmptyClientReloadServices {
         _: crate::BakedModelKey,
     ) -> Result<crate::BakedModelView<'_>, crate::ModelError> {
         Err(crate::ModelError::UnknownModel)
+    }
+    fn atlas_sprite_pixels(
+        &self,
+        _: crate::SpriteRef,
+    ) -> Result<crate::AtlasSpritePixels, crate::AtlasSpriteError> {
+        Err(crate::AtlasSpriteError::NotReady)
+    }
+    fn shader_pack_block_id(&self, _: crate::BlockState) -> Option<i32> {
+        None
+    }
+    fn pipeline_pack_bound(&self, _: crate::RenderPipelineRef) -> bool {
+        false
     }
 }
 
@@ -1348,6 +1396,12 @@ pub trait WorldgenHost {
         key: &str,
         value: &str,
     ) -> Option<crate::BlockState>;
+
+    /// `BlockState.getValue`: the value of `state`'s property `key` as its block's state
+    /// definition spells it (`north`, `true`, `3`), so a `rotate` part can read the property it
+    /// turns. None when its block has no such property, for a state this game does not have, and
+    /// in a context with no block states at hand.
+    fn state_property(&self, state: crate::BlockState, key: &str) -> Option<String>;
 }
 
 // no wire: a process-local borrow of frozen worldgen metadata.
@@ -1369,6 +1423,7 @@ pub trait WorldgenReader: Sync {
 pub struct OwningWorldgen<'a> {
     source: &'a dyn WorldgenReader,
     state_with_property: &'a StateWithProperty<'a>,
+    state_property: &'a StateProperty<'a>,
     mods: LoadedMods,
 }
 
@@ -1376,15 +1431,22 @@ pub struct OwningWorldgen<'a> {
 type StateWithProperty<'a> =
     dyn Fn(crate::BlockState, &str, &str) -> Option<crate::BlockState> + 'a;
 
+/// `BlockState.getValue` as the game answers it for [`OwningWorldgen`].
+type StateProperty<'a> = dyn Fn(crate::BlockState, &str) -> Option<String> + 'a;
+
 impl<'a> OwningWorldgen<'a> {
-    /// Borrow the owning engine's frozen metadata reader and block-state query.
+    /// Borrow the owning engine's frozen metadata reader and its block-state build and read
+    /// (`BlockState.setValue`, `getValue`). A context with no block index to answer from passes
+    /// closures that answer None.
     pub fn new(
         source: &'a dyn WorldgenReader,
         state_with_property: &'a StateWithProperty<'a>,
+        state_property: &'a StateProperty<'a>,
     ) -> Self {
         Self {
             source,
             state_with_property,
+            state_property,
             mods: LoadedMods::enabled_at_startup(),
         }
     }
@@ -1407,6 +1469,9 @@ impl WorldgenHost for OwningWorldgen<'_> {
         value: &str,
     ) -> Option<crate::BlockState> {
         (self.state_with_property)(state, key, value)
+    }
+    fn state_property(&self, state: crate::BlockState, key: &str) -> Option<String> {
+        (self.state_property)(state, key)
     }
 }
 

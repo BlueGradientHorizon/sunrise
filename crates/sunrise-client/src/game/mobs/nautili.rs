@@ -123,7 +123,11 @@ impl Game<'_> {
                     .and_then(|i| i.food.as_ref())
                     .map(|f| f.0 as i32);
                 let m = &mut self.mobs[index];
-                m.heal(&self.loop_context, nautilus::feed_heal(nutrition));
+                m.heal(
+                    &self.loop_context,
+                    &|| crate::game::entity::hit_reads_of!(self),
+                    nautilus::feed_heal(nutrition),
+                );
                 self.use_nautilus_food(item);
                 self.nautilus_sound(index, sound);
                 return true;

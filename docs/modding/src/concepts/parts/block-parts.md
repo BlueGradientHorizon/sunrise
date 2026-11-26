@@ -158,10 +158,12 @@ neighbour updates run as vanilla's do. It runs before the block's own `onPlace` 
 
 `BlockPart::rotate` answers how a structure template turns your block as it places it: world
 generation's structures, `/place template`, the structure block, jigsaw blocks and the host's
-template snapshots. `event.state` is already mirrored, `event.pos` is where it goes and
-`event.rotation` the template's turn. `event.rotated` starts at the game's own turned state; set
+template snapshots. `event.state` is already mirrored (see [Mirroring](#mirroring)), `event.pos`
+is where it goes and `event.rotation` the template's turn. `event.rotated` starts at the game's own turned state; set
 it to another state of the same block, for example
-`context.state_with_property(event.state, "facing", "north")`.
+`context.state_with_property(event.state, "facing", "north")`. Read the value to turn with
+`context.state_property(event.state, "facing")` (vanilla's `state.getValue(FACING)`), an owned
+`String`, or `None` for a key the state does not have.
 
 Jigsaw connector discovery is different from block placement: matching and expansion read
 the connector's plain rotated state, without calling `BlockPart::rotate`, as
@@ -174,8 +176,22 @@ template block writes still call the rotation Part at their placed world positio
 | --- | --- |
 | Context | A worldgen Part method: a `WorldgenHost` on the worldgen workers or the server thread, no `Host`, no writes. Keep it a pure function of the event. |
 | Refusals | A state of another block, or one the game does not have, is refused with a warning; the game's state is placed. |
-| Mirroring | Stays the game's: vanilla's table, or the template's for a mod block. |
+| Mirroring | `BlockPart::mirror`, asked before this one: see [Mirroring](#mirroring). |
 | Panics | A panicking part is contained with a warning, and the game's state is placed. |
+
+## Mirroring
+
+`BlockPart::mirror` answers how a structure template mirrors your block as it places it, as a block
+overriding vanilla's `BlockBehaviour.mirror(BlockState, Mirror)` does: world generation's structures,
+`/place template`, the structure block and the host's template snapshots. `event.state` is the
+template's state, `event.pos` is where it goes and `event.mirror` the template's mirror
+(`LeftRight` flips north and south, `FrontBack` east and west). `event.mirrored` starts at the
+game's own mirrored state; set it to another state of the same block, for example
+`context.state_with_property(event.state, "facing", "south")`. `BlockPart::rotate` then turns the
+state you answer. A template asks it for every block, `StructureMirror::None` included, as
+`StructureTemplate.placeInWorld` calls `mirror(NONE)`; the legacy structure pieces ask it only when
+they mirror. Jigsaw connectors are never mirrored. Context, refusals and panics follow the
+[rotation](#rotation) rules.
 
 ## Step effects
 

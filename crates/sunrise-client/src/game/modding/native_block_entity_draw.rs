@@ -50,6 +50,9 @@ pub(super) struct StateModel {
     faces: Vec<sunrise_client::models::catalog::BakedFace>,
     prepared: Vec<super::minecarts::PreparedModelFace>,
     tints: FxHashMap<i32, u32>,
+    /// The state is also drawn by its block's special renderer, with default data
+    /// (`BuiltInBlockModels`' `CompositeBlockModel`: the block-state model, then the special one).
+    special: bool,
     bounds: [[f32; 3]; 2],
 }
 
@@ -58,27 +61,34 @@ pub(super) struct InstanceSlot {
     pub translucent: bool,
     /// A block state's model: drawn on the CPU route only, never as a GPU instance.
     pub state: bool,
+    /// The block state whose special renderer draws after the model's faces.
+    pub special: Option<BlockStateId>,
     pub bounds: [[f32; 3]; 2],
 }
 
-fn face_bounds(positions: impl IntoIterator<Item = [f32; 3]>) -> [[f32; 3]; 2] {
+/// The box around `points`, or `None` when there are none.
+fn point_bounds(points: impl IntoIterator<Item = [f32; 3]>) -> Option<[[f32; 3]; 2]> {
     let mut min = [f32::INFINITY; 3];
     let mut max = [f32::NEG_INFINITY; 3];
-    for pos in positions {
+    for pos in points {
         for axis in 0..3 {
             min[axis] = min[axis].min(pos[axis]);
             max[axis] = max[axis].max(pos[axis]);
         }
     }
-    if min[0].is_finite() {
-        [min, max]
-    } else {
-        [[0.0; 3], [0.0; 3]]
-    }
+    min[0].is_finite().then_some([min, max])
+}
+
+fn face_bounds(positions: impl IntoIterator<Item = [f32; 3]>) -> [[f32; 3]; 2] {
+    point_bounds(positions).unwrap_or_default()
 }
 
 impl StandaloneGeometry {
-    pub(super) fn new(pack: &super::PackResources, gui: &super::UiResources) -> Self {
+    pub(super) fn new(
+        pack: &super::PackResources,
+        gui: &super::UiResources,
+        block_entity_render: Option<&sunrise_client::block_entity_render::BlockEntityRenderer>,
+    ) -> Self {
         let catalog = &pack.render.model_catalog;
         let layer_sprites: FxHashMap<_, _> = pack
             .layer_names
@@ -115,8 +125,46 @@ impl StandaloneGeometry {
             );
             slots[index] = Some(prepared);
         }
+        // The special parts are sized in an empty world, with no level loaded yet.
+        let special_renderer = block_entity_render.map(|renderer| {
+            (
+                renderer,
+                sunrise_client::world::World::new(BlockStateId(0), 0),
+            )
+        });
+        let mut special_scratch = Vec::new();
         let states = (0..pack.assets.registry.len() as u32)
-            .map(|state| Self::bind_state(pack, &layer_sprites, BlockStateId(state)))
+            .map(|state| {
+                let id = BlockStateId(state);
+                // `BuiltInBlockModels.addDefaults`: only run the special renderer for blocks
+                // that have one, widening the state's bounds with its default geometry.
+                let special = special_renderer.as_ref().and_then(|(renderer, world)| {
+                    if !pack
+                        .assets
+                        .registry
+                        .state(id)?
+                        .name
+                        .strip_prefix("minecraft:")
+                        .is_some_and(super::text_displays::has_special_model)
+                    {
+                        return None;
+                    }
+                    special_scratch.clear();
+                    super::minecarts::render_default_state(
+                        renderer,
+                        gui,
+                        world,
+                        0,
+                        false,
+                        id,
+                        Mat4::IDENTITY,
+                        0,
+                        &mut special_scratch,
+                    );
+                    point_bounds(special_scratch.iter().map(|vertex| vertex.pos))
+                });
+                Self::bind_state(pack, &layer_sprites, id, special)
+            })
             .collect();
         Self {
             generation: pack.render.generation,
@@ -131,11 +179,13 @@ impl StandaloneGeometry {
 
     /// Block state `id` as one model: the blockstate file's parts at `BLOCK_MODEL_SEED` with
     /// each tinted face holding the block's default tint (no position) in its colour, bound to
-    /// its atlas regions.
+    /// its atlas regions, plus `special`'s bounds when the state also draws with a special
+    /// renderer.
     fn bind_state(
         pack: &super::PackResources,
         layer_sprites: &FxHashMap<u32, Rect>,
         id: BlockStateId,
+        special: Option<[[f32; 3]; 2]>,
     ) -> StateModel {
         use sunrise_client::models::catalog::BakedFace;
         let mut faces = Vec::new();
@@ -168,11 +218,18 @@ impl StandaloneGeometry {
                 ));
             }
         }
-        let bounds = face_bounds(faces.iter().flat_map(|face| face.quad.positions));
+        let corners = special.into_iter().flatten();
+        let bounds = face_bounds(
+            faces
+                .iter()
+                .flat_map(|face| face.quad.positions)
+                .chain(corners),
+        );
         StateModel {
             faces,
             prepared,
             tints,
+            special: special.is_some(),
             bounds,
         }
     }
@@ -183,6 +240,7 @@ impl StandaloneGeometry {
             return Some(InstanceSlot {
                 translucent: false,
                 state: true,
+                special: model.special.then_some(BlockStateId(state)),
                 bounds: model.bounds,
             });
         }
@@ -190,6 +248,7 @@ impl StandaloneGeometry {
         self.slots.get(index)?.is_some().then_some(InstanceSlot {
             translucent: self.translucent[index],
             state: false,
+            special: None,
             bounds: self.bounds[index],
         })
     }
@@ -663,6 +722,11 @@ impl<'v> BlockEntityDraw<'v> {
         self
     }
 
+    /// Device-derived entity quad capacity and reserved quad count for this draw.
+    pub(super) fn quad_budget(&self) -> (sunrise_client::gfx::EntityQuadCapacity, usize) {
+        (self.quad_capacity, self.reserved_quads)
+    }
+
     /// Opens the renderer-owned scoped quad submission sink for this draw.
     pub(super) fn quad_scope(&mut self) -> sunrise_client::gfx::EntityQuadScope<'_> {
         sunrise_client::gfx::EntityQuadScope::new(
@@ -998,6 +1062,60 @@ impl<'v> BlockEntityDraw<'v> {
             },
             self.light,
         );
+    }
+
+    /// A quad of `corners` showing a dynamic texture: `quad`'s shading and light, UVs in the
+    /// texture's own unit square, and the texture named in the vertices (`overlay` is the
+    /// render type, `handle` the texture) for the renderer to bind when it draws. False, with
+    /// nothing appended, for a first-person hand draw, a coordinate that is not finite, or a
+    /// quad the batch has no room for.
+    pub(super) fn textured_quad(
+        &mut self,
+        corners: [[f32; 3]; 4],
+        uv: [[f32; 2]; 4],
+        overlay: u32,
+        handle: u64,
+        tint: u32,
+    ) -> bool {
+        // The hand's vertices are drawn from the shared atlas by a pass of their own.
+        if self.normal_pose.is_some()
+            || !corners
+                .iter()
+                .flatten()
+                .chain(uv.iter().flatten())
+                .all(|c| c.is_finite())
+        {
+            return false;
+        }
+        let start = self.vertices.len();
+        let whole = Rect {
+            u0: 0.0,
+            v0: 0.0,
+            u1: 1.0,
+            v1: 1.0,
+            w: 1,
+            h: 1,
+        };
+        self.emit_quad(corners, uv, whole, tint, self.element_ambient());
+        if self.vertices.len() != start + 4 {
+            return false;
+        }
+        let glint_uv = sunrise_client::gfx::dynamic_texture_bits(handle);
+        for v in &mut self.vertices[start..] {
+            v.layer = overlay;
+            v.glint_uv = glint_uv;
+        }
+        self.drawn_since(
+            start,
+            || {
+                corners
+                    .into_iter()
+                    .map(|c| DVec3::from_array(c.map(f64::from)) / 4.0)
+                    .sum()
+            },
+            self.light,
+        );
+        true
     }
 
     /// A quad of `corners` (blocks, under the pose) with unit UVs, shaded as
@@ -1460,9 +1578,9 @@ impl Game<'_> {
     }
     /// Device-derived combined entity quad capacity for this frame's renderer.
     pub(super) fn entity_quad_capacity(&self) -> sunrise_client::gfx::EntityQuadCapacity {
-        self.renderer.as_ref().map_or_else(
+        self.mod_gpu().map_or_else(
             sunrise_client::gfx::EntityQuadCapacity::default_device,
-            sunrise_client::gfx::Renderer::entity_quad_capacity,
+            sunrise_client::gfx::ModGpuResources::entity_quad_capacity,
         )
     }
 
@@ -1772,6 +1890,40 @@ impl Game<'_> {
         true
     }
 
+    /// Draws a quad of `corners` under `draw`'s pose showing the dynamic texture `render_type`
+    /// names, with unit `uv`s (`BlockEntityDrawContext::textured_quad`). False for a handle that
+    /// is not one of the three texture-taking built-ins' of this resource load, a texture that
+    /// is not live, or input `draw` refuses.
+    pub(super) fn native_draw_textured_quad(
+        &self,
+        draw: &mut BlockEntityDraw,
+        render_type: mod_api::RenderTypeRef,
+        corners: [[f32; 3]; 4],
+        uv: [[f32; 2]; 4],
+        tint: u32,
+    ) -> bool {
+        use sunrise_client::gfx::{
+            DYNAMIC_TEXTURE_CUTOUT_OVERLAY, DYNAMIC_TEXTURE_SOLID_OVERLAY,
+            DYNAMIC_TEXTURE_TRANSLUCENT_OVERLAY,
+        };
+        use sunrise_client_render::mod_pipelines::BuiltinRenderType;
+        let Ok((kind, texture)) = self.pack.render.textured_render_type_of(render_type) else {
+            return false;
+        };
+        let overlay = match kind {
+            BuiltinRenderType::EntitySolid => DYNAMIC_TEXTURE_SOLID_OVERLAY,
+            BuiltinRenderType::EntityCutout => DYNAMIC_TEXTURE_CUTOUT_OVERLAY,
+            BuiltinRenderType::EntityTranslucent => DYNAMIC_TEXTURE_TRANSLUCENT_OVERLAY,
+            _ => return false,
+        };
+        // A live texture when the quad is submitted; one released after it draws the missing
+        // texture (`TextureManager.getTexture`).
+        let Some((handle, _)) = self.dynamic_textures.get(&texture) else {
+            return false;
+        };
+        draw.textured_quad(corners, uv, overlay, handle, tint)
+    }
+
     /// Draws `text` under `draw`'s pose as vanilla's `Font.drawInBatch` draws a
     /// component in the world (a sign's line, a text display's): in the pose's
     /// x-y plane, one unit a font pixel, y down, its left end at `at`, facing
@@ -1932,12 +2084,53 @@ impl Game<'_> {
     ) -> Result<ModelRef, ModelError> {
         let _ = self
             .resolved_block_model(id)
-            .filter(|model| !model.faces.is_empty())
+            .filter(|model| !model.faces.is_empty() || model.special)
             .ok_or(ModelError::UnknownModel)?;
         Ok(mod_api::__private::built::model_ref(
             self.standalone_geometry.generation(),
             self.standalone_geometry.states_from + id.0,
         ))
+    }
+
+    /// `CompositeBlockModel`'s second part for block state `state`: what its special renderer
+    /// draws with default data, after the block-state model's faces, under the same pose and
+    /// packed `light`. It takes no tint and no hidden faces; `color` (`0xAARRGGBB`) multiplies
+    /// it, and below opaque it blends as `entityTranslucent` does. The end portal and gateway
+    /// draw their starfield whatever `color` is, as `rendertype_end_portal` does. Non-finite
+    /// quads are skipped individually and the contribution stays within `capacity` minus
+    /// `reserved_quads`.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn special_model_part(
+        &self,
+        state: BlockStateId,
+        pose: Mat4,
+        light: u32,
+        color: u32,
+        out: &mut Vec<Vertex>,
+        capacity: sunrise_client::gfx::EntityQuadCapacity,
+        reserved_quads: usize,
+    ) {
+        use sunrise_client::block_entity_render::{END_GATEWAY_LAYER, END_PORTAL_LAYER};
+        if !sunrise_client::gfx::EntityQuadScope::new(out, capacity, reserved_quads).has_room() {
+            return;
+        }
+        let start = out.len();
+        self.special_block_model(state, pose, super::minecarts::special_light(light), out);
+        sunrise_client::gfx::EntityQuadScope::new(out, capacity, reserved_quads)
+            .retain_valid_since(start);
+        if color != u32::MAX {
+            for vertex in &mut out[start..] {
+                vertex.color =
+                    sunrise_client::terrain_model::multiply_draw_color(vertex.color, color);
+            }
+        }
+        // The portal shader writes an opaque starfield, so a faded portal stays opaque.
+        let portal = out[start..]
+            .iter()
+            .any(|vertex| matches!(vertex.layer & 0xFFFF, END_PORTAL_LAYER | END_GATEWAY_LAYER));
+        if color >> 24 != 0xFF && !portal {
+            sunrise_client::gfx::mark_oit(&mut out[start..]);
+        }
     }
 
     /// Share the same prepared state model for terrain submissions and block-entity draws.
@@ -3843,6 +4036,126 @@ mod tests {
         let up = diffuse(Vec3::Y, diffuse_lights(false));
         assert_eq!(v.color, shaded(0xFFFFFF, up));
         assert_eq!(v.color >> 24, 0xFF);
+    }
+
+    const CORNERS: [[f32; 3]; 4] = [
+        [0.0, 1.0, 0.0],
+        [0.0, 1.0, 1.0],
+        [1.0, 1.0, 1.0],
+        [1.0, 1.0, 0.0],
+    ];
+    const UNIT_UV: [[f32; 2]; 4] = [[0.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, 0.0]];
+
+    /// Each quad carries its render type and texture in its vertices, so quads of two textures
+    /// stay apart whatever the batch does with them.
+    #[test]
+    fn textured_quads_name_their_render_type_and_texture() {
+        use sunrise_client::gfx::{
+            DYNAMIC_TEXTURE_CUTOUT_OVERLAY, DYNAMIC_TEXTURE_SOLID_OVERLAY, dynamic_texture_bits,
+        };
+        let mut d = draw();
+        assert!(d.textured_quad(
+            CORNERS,
+            UNIT_UV,
+            DYNAMIC_TEXTURE_CUTOUT_OVERLAY,
+            7,
+            0xFFFFFF
+        ));
+        assert!(d.textured_quad(
+            CORNERS,
+            UNIT_UV,
+            DYNAMIC_TEXTURE_CUTOUT_OVERLAY,
+            7,
+            0xFFFFFF
+        ));
+        assert!(d.textured_quad(CORNERS, UNIT_UV, DYNAMIC_TEXTURE_SOLID_OVERLAY, 9, 0xFFFFFF));
+        assert_eq!(d.vertices.len(), 12);
+        let expected = [
+            (DYNAMIC_TEXTURE_CUTOUT_OVERLAY, 7),
+            (DYNAMIC_TEXTURE_CUTOUT_OVERLAY, 7),
+            (DYNAMIC_TEXTURE_SOLID_OVERLAY, 9),
+        ];
+        for (quad, (overlay, handle)) in d.vertices.chunks(4).zip(expected) {
+            for v in quad {
+                assert_eq!(v.layer, overlay);
+                assert_eq!(v.glint_uv, dynamic_texture_bits(handle));
+            }
+        }
+        assert_eq!(d.vertices[2].uv, [1.0, 1.0]);
+    }
+
+    /// A coordinate that is not finite refuses the quad and appends nothing; so does a
+    /// first-person hand draw.
+    #[test]
+    fn a_textured_quad_refuses_non_finite_input_and_the_hand() {
+        use sunrise_client::gfx::DYNAMIC_TEXTURE_SOLID_OVERLAY as SOLID;
+        let mut d = draw();
+        let mut bad = CORNERS;
+        bad[1][2] = f32::NAN;
+        assert!(!d.textured_quad(bad, UNIT_UV, SOLID, 7, 0xFFFFFF));
+        let mut uv = UNIT_UV;
+        uv[3][0] = f32::INFINITY;
+        assert!(!d.textured_quad(CORNERS, uv, SOLID, 7, 0xFFFFFF));
+        assert!(d.vertices.is_empty());
+        d.normal_pose = Some(ModelNormals::from_rotation(Mat4::IDENTITY));
+        assert!(!d.textured_quad(CORNERS, UNIT_UV, SOLID, 7, 0xFFFFFF));
+        assert!(d.vertices.is_empty());
+    }
+
+    /// Under `unlit(true)` a textured quad has full bright light and no shading normal.
+    #[test]
+    fn an_unlit_textured_quad_is_full_bright() {
+        use sunrise_client::gfx::DYNAMIC_TEXTURE_SOLID_OVERLAY as SOLID;
+        use sunrise_client::mobs::render::FULL_BRIGHT;
+        let mut d = draw();
+        d.set_light(0x3070);
+        d.unlit(true);
+        assert!(d.textured_quad(CORNERS, UNIT_UV, SOLID, 7, 0xFFFFFF));
+        for v in &d.vertices {
+            assert_eq!(v.light, FULL_BRIGHT);
+            assert_eq!(v.normal, [0; 4]);
+        }
+    }
+
+    /// `textured_quad` draws nothing for a render type whose texture is not a live dynamic
+    /// texture, and for a handle that is not one of the three texture-taking constructors'
+    /// (`entity_solid`, `entity_cutout`, `entity_translucent`), here `minecraft:eyes`'.
+    #[test]
+    #[ignore = "daily"]
+    fn a_textured_quad_of_a_texture_that_is_not_live_or_a_plain_render_type_draws_nothing() {
+        use sunrise_client_render::mod_pipelines::{BuiltinRenderType, Pipelines};
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
+            let mut render = sunrise_client_render::assets::RenderAssets::unpublished();
+            render.mod_pipelines = Pipelines::load(
+                &sunrise_assets::resource_source::ResourceSource::directory(
+                    "/nonexistent/sunrise-test-assets".into(),
+                ),
+                7,
+            )
+            .unwrap();
+            game.pack.render = std::sync::Arc::new(render);
+            let texture = mod_api::Identifier::parse("example:dynamic/none").unwrap();
+            let mut d = draw();
+            for kind in [
+                BuiltinRenderType::EntitySolid,
+                BuiltinRenderType::EntityCutout,
+                BuiltinRenderType::EntityTranslucent,
+            ] {
+                let made = game
+                    .pack
+                    .render
+                    .textured_render_type(kind, &texture)
+                    .unwrap();
+                assert!(!game.native_draw_textured_quad(&mut d, made, CORNERS, UNIT_UV, 0xFFFFFF));
+            }
+            let eyes = game
+                .pack
+                .render
+                .render_type(&mod_api::Identifier::parse("minecraft:eyes").unwrap())
+                .unwrap();
+            assert!(!game.native_draw_textured_quad(&mut d, eyes, CORNERS, UNIT_UV, 0xFFFFFF));
+            assert!(d.vertices.is_empty());
+        });
     }
 
     /// A quad (what `cube` and `model_part` emit) drawn after `unlit(true)` has no shading

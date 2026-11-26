@@ -19,6 +19,55 @@ pub fn chest_backed_id<'a>(id: &'a str, block: &'a str) -> &'a str {
         _ => id,
     }
 }
+/// A live block entity's `current` encoding over the `original` NBT it was loaded from:
+/// what the game left unchanged keeps its original form, what it changed or cleared takes the
+/// current value, and keys Sunrise never models (a stored `components` patch, a mod's
+/// fields) stay. The chunk save and a loot roll's `saveWithFullMetadata` both write this.
+/// `original` must have the entity's own id.
+pub fn overlay_block_entity_source(
+    original: &Tag,
+    e: &crate::containers::BlockEntity,
+    block: &str,
+    current: &Tag,
+    items: &crate::items::Items,
+) -> Tag {
+    let hopper_cooldown = (block == "minecraft:hopper")
+        .then(|| number(original.get("TransferCooldown")).unwrap_or(-1) as i32);
+    let items_are_payload =
+        matches!(e, crate::containers::BlockEntity::Mod(_)) && block_mod_item_slots(block) == 0;
+    let loaded = decode_block_entity_with_history(original, None, Some(block)).map_or_else(
+        || current.clone(),
+        |(q, e)| {
+            // External name removal must win over the source overlay.
+            let custom_name = (!matches!(
+                e,
+                crate::containers::BlockEntity::Banner(_)
+                    | crate::containers::BlockEntity::Sign(_)
+                    | crate::containers::BlockEntity::Mod(_)
+            ))
+            .then(|| {
+                original
+                    .get("CustomName")
+                    .and_then(crate::block_entity_nbt::component)
+            })
+            .flatten();
+            block_entity_encode::encode_with(
+                q,
+                &e,
+                block,
+                block_entity_encode::DataFields {
+                    lock: original.get("lock"),
+                    custom_name: custom_name.as_ref(),
+                    pending: PendingContainerLoot::from_tag(original).as_ref(),
+                    hopper_cooldown,
+                },
+                items,
+                |_| None,
+            )
+        },
+    );
+    merge_block_entity(original, &loaded, current, items_are_payload)
+}
 /// `block_entity_nbt::overlay`, then a container that now holds items loses its
 /// loot table (vanilla clears it when the loot is generated into the container).
 pub(super) fn merge_block_entity(
@@ -135,9 +184,35 @@ pub(super) fn decode_mod_block_entity(
 const COMPACT_MOD_ITEM_SLOTS: usize = 256;
 
 /// The declared item slot count owned by a mod block's stock container.
-pub(super) fn block_mod_item_slots(block: &str) -> usize {
+pub fn block_mod_item_slots(block: &str) -> usize {
     mod_api::__private::parts_installation::block_container(block)
         .map_or(0, |container| container.slots)
+}
+/// A `RandomizableContainer`: a chest, barrel, shulker box, dispenser or hopper, or a mod
+/// block entity whose block declares container slots. Its `LootTable` and `LootTableSeed`
+/// wait beside it until its first access rolls them.
+pub fn randomizable_container(e: &crate::containers::BlockEntity, block: &str) -> bool {
+    match e {
+        crate::containers::BlockEntity::Chest(_) => true,
+        crate::containers::BlockEntity::Mod(_) => block_mod_item_slots(block) > 0,
+        _ => false,
+    }
+}
+
+/// `RandomizableContainerBlockEntity.loadAdditional` for a container with a valid
+/// `LootTable` (`tryLoadLootTable`): the inventory starts empty and `Items` is not read. The
+/// table and seed leave the payload too, to wait beside the block entity. None without a
+/// valid table.
+fn without_container_loot(tag: &Tag) -> Option<Tag> {
+    PendingContainerLoot::from_tag(tag)?;
+    let Tag::Compound(map) = tag else {
+        return None;
+    };
+    let mut map = map.clone();
+    for key in ["Items", "LootTable", "LootTableSeed"] {
+        map.remove(&key.into());
+    }
+    Some(Tag::Compound(map))
 }
 
 /// Decode an entity at a known block, refusing undeclared IDs and invalid native membership.
@@ -156,6 +231,9 @@ pub fn decode_block_entity_replacing(
     block: &str,
     previous: Option<&crate::containers::BlockEntity>,
 ) -> Option<((i32, i32, i32), crate::containers::BlockEntity)> {
+    let slots = block_mod_item_slots(block);
+    let loot_first = (slots > 0).then(|| without_container_loot(tag)).flatten();
+    let tag = loot_first.as_ref().unwrap_or(tag);
     let mut decoded = decode_block_entity_with_history(tag, previous, Some(block))?;
     // Several vanilla types share a decoded representation (for example barrel
     // and chest). Membership belongs to the saved type, not that representation.

@@ -82,6 +82,19 @@ impl NoBackend for AddToastError {
     }
 }
 
+/// How clouds are drawn (vanilla's `CloudStatus`, the Clouds option).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+// exhaustive: vanilla's three values, which the game matches without a wildcard
+// no wire: a local client option for this session.
+pub enum CloudStatus {
+    /// No clouds (`OFF`, `renderClouds:false`).
+    Off,
+    /// Flat clouds (`FAST`, `renderClouds:fast`).
+    Fast,
+    /// Volumetric clouds (`FANCY`, `renderClouds:true`).
+    Fancy,
+}
+
 /// What a key did in an `input_key` event (GLFW's `action`: release 0, press 1, repeat 2).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 // exhaustive: a closed set the game matches without a wildcard

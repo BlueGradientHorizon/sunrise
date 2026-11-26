@@ -106,11 +106,55 @@ pub fn translate_core_at(
     let inputs = Inputs {
         blocks: &BLOCKS,
         samplers: &SAMPLERS,
+        extra_set: 0,
+        extra_blocks: &[],
+        extra_samplers: &[],
+        extra_texel_buffers: &[],
+        extra_storage_buffers: &[],
+        extra_storage_images: &[],
+        push_constant_binding: None,
         loose: &LOOSE,
         defines: &defines,
         includes: &includes(&read),
     };
     sunrise_glsl::translate(sources, &inputs, glue, provided)
+}
+
+/// Whether `device` can make `program`'s pipeline `pipeline`, drawing into `targets` (their
+/// formats), within its limits; otherwise said in the log ([`sunrise_glsl::PastDeviceLimit`]),
+/// and the pipeline draws natively.
+pub(crate) fn within_device_limits(
+    device: &wgpu::Device,
+    program: &Translated,
+    pipeline: &str,
+    targets: &[wgpu::TextureFormat],
+) -> bool {
+    match program.past_device_limit(&device.limits(), targets) {
+        Some(past) => {
+            log::warn!("the resource pack's shader for {pipeline} is drawn natively: {past}");
+            false
+        }
+        None => true,
+    }
+}
+
+/// What `f` makes on `device`, or the device's refusal named by `pipeline` (its location,
+/// `minecraft:pipeline/sky`): a pack's shader is untrusted, and the backend failing to compile it
+/// is an internal error. A required pipeline it refuses fails the pack reload
+/// (`hud::pack_text::RequiredShaderRefused`).
+pub(crate) fn scoped<T>(
+    device: &wgpu::Device,
+    pipeline: &str,
+    f: impl FnOnce() -> T,
+) -> Result<T, String> {
+    let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
+    let made = f();
+    let internal = pollster::block_on(internal.pop());
+    if let Some(e) = internal.or(pollster::block_on(validation.pop())) {
+        return Err(format!("{pipeline}: {e}"));
+    }
+    Ok(made)
 }
 
 /// The packs' file `file` (its id) with its includes inlined, every branch's: the one resolver
@@ -180,12 +224,8 @@ fn with_polytone_globals(
 }
 
 /// A program of stages not yet validated (tests that build their own).
-#[cfg(test)]
-pub(crate) fn validated(
-    vertex: naga::Module,
-    fragment: naga::Module,
-    other: Vec<String>,
-) -> Translated {
+#[cfg(any(test, feature = "test-support"))]
+pub fn validated(vertex: naga::Module, fragment: naga::Module, other: Vec<String>) -> Translated {
     use naga::valid::{Capabilities, ValidationFlags, Validator};
     let validate = |module: naga::Module| {
         let info = Validator::new(ValidationFlags::all(), Capabilities::all())

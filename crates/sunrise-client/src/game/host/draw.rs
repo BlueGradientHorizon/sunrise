@@ -400,6 +400,17 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_, '_> {
             .native_draw_quad(&mut *self.surface, sprite, corners, uv, tint)
     }
     #[inline]
+    fn textured_quad(
+        &mut self,
+        render_type: RenderTypeRef,
+        corners: [[f32; 3]; 4],
+        uv: [[f32; 2]; 4],
+        tint: u32,
+    ) -> bool {
+        self.game
+            .native_draw_textured_quad(&mut *self.surface, render_type, corners, uv, tint)
+    }
+    #[inline]
     fn cube(
         &mut self,
         from: [f32; 3],
@@ -564,6 +575,37 @@ impl WorldDrawContext for GameWorldDrawContext<'_, '_> {
         self.game
             .native_world_draw_pipeline_quads(&mut *self.surface, pipeline, quads)
     }
+    fn draw_mesh(
+        &mut self,
+        pipeline: RenderPipelineRef,
+        mesh: MeshRef,
+        draw: MeshDraw,
+        bindings: &DrawBindings<'_>,
+    ) -> Result<(), PipelineDrawError> {
+        self.game
+            .native_world_draw_mesh(&mut *self.surface, pipeline, mesh, draw, bindings)
+    }
+    fn draw_indirect(&mut self, draw: &IndirectDraw<'_>) -> Result<(), PipelineDrawError> {
+        self.game
+            .native_world_draw_indirect(&mut *self.surface, draw)
+    }
+    fn draw_vertices(
+        &mut self,
+        pipeline: RenderPipelineRef,
+        vertices: &[&[u8]],
+        indices: Option<(IndexFormat, &[u8])>,
+        draw: MeshDraw,
+        bindings: &DrawBindings<'_>,
+    ) -> Result<(), PipelineDrawError> {
+        self.game.native_world_draw_vertices(
+            &mut *self.surface,
+            pipeline,
+            vertices,
+            indices,
+            draw,
+            bindings,
+        )
+    }
     fn name_tag(
         &mut self,
         at: [f64; 3],
@@ -581,6 +623,23 @@ impl WorldDrawContext for GameWorldDrawContext<'_, '_> {
         self.game
             .native_world_draw_model_instances(&mut *self.surface, model, instances)
     }
+    fn with_pipeline_modifier(
+        &mut self,
+        modifier: PipelineModifierRef,
+        draw: &mut dyn FnMut(&mut dyn WorldDrawContext),
+    ) {
+        use mod_api::__private::game::Fields;
+        let pushed = self.surface.push_pipeline_modifier(modifier.fields().slot);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            draw(self);
+        }));
+        if pushed {
+            self.surface.pop_pipeline_modifier();
+        }
+        if let Err(payload) = result {
+            std::panic::resume_unwind(payload);
+        }
+    }
     fn set_pack_uniform(&mut self, name: &str, value: PackUniformValue) -> bool {
         let Some((static_name, ty)) = sunrise_client::mod_pipelines::lookup_pack_uniform(name)
         else {
@@ -597,13 +656,7 @@ impl WorldDrawContext for GameWorldDrawContext<'_, '_> {
         pipeline: RenderPipelineRef,
     ) -> Result<PackOverrideState, RenderPipelineError> {
         let slot = self.game.pack.render.mod_pipelines.slot(pipeline)?;
-        Ok(self
-            .game
-            .renderer
-            .as_ref()
-            .map_or(PackOverrideState::NoPack, |renderer| {
-                renderer.pack_override_state(slot as usize)
-            }))
+        Ok(self.game.pack_override_state(slot as usize))
     }
 }
 /// The only mod surface that appends CPU geometry for named passes.
@@ -645,6 +698,133 @@ impl PrepareRenderBuffersContext for GamePrepareRenderBuffersContext<'_, '_> {
         }
         self.surface.prepare_draw(stage, |surface| {
             self.game.native_world_draw_quads(surface, quads)
+        })
+    }
+
+    fn pipeline_quads(
+        &mut self,
+        stage: RenderLevelStage,
+        pipeline: RenderPipelineRef,
+        quads: &[PipelineQuad],
+    ) -> Result<PreparedWorldDraw, PipelineDrawError> {
+        if !stage.has_render_pass() {
+            return Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid));
+        }
+        let slot = self
+            .game
+            .pack
+            .render
+            .mod_pipelines
+            .slot(pipeline)
+            .map_err(PipelineDrawError::Pipeline)?;
+        if stage.oit_stage().is_some() && !self.game.pack.render.mod_pipelines.is_oit_eligible(slot)
+        {
+            self.game
+                .pack
+                .render
+                .mod_pipelines
+                .warn_oit_ineligible(slot);
+            return Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid));
+        }
+        self.surface.prepare_draw(stage, |surface| {
+            self.game
+                .native_world_draw_pipeline_quads(surface, pipeline, quads)
+        })
+    }
+
+    fn draw_mesh(
+        &mut self,
+        stage: RenderLevelStage,
+        pipeline: RenderPipelineRef,
+        mesh: MeshRef,
+        draw: MeshDraw,
+        bindings: &DrawBindings<'_>,
+    ) -> Result<PreparedWorldDraw, PipelineDrawError> {
+        if !stage.has_render_pass() {
+            return Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid));
+        }
+        let slot = self
+            .game
+            .pack
+            .render
+            .mod_pipelines
+            .slot(pipeline)
+            .map_err(PipelineDrawError::Pipeline)?;
+        if stage.oit_stage().is_some() && !self.game.pack.render.mod_pipelines.is_oit_eligible(slot)
+        {
+            self.game
+                .pack
+                .render
+                .mod_pipelines
+                .warn_oit_ineligible(slot);
+            return Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid));
+        }
+        self.surface.prepare_draw(stage, |surface| {
+            self.game
+                .native_world_draw_mesh(surface, pipeline, mesh, draw, bindings)
+        })
+    }
+
+    fn draw_indirect(
+        &mut self,
+        stage: RenderLevelStage,
+        draw: &IndirectDraw<'_>,
+    ) -> Result<PreparedWorldDraw, PipelineDrawError> {
+        if !stage.has_render_pass() {
+            return Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid));
+        }
+        let slot = self
+            .game
+            .pack
+            .render
+            .mod_pipelines
+            .slot(draw.pipeline)
+            .map_err(PipelineDrawError::Pipeline)?;
+        if stage.oit_stage().is_some() && !self.game.pack.render.mod_pipelines.is_oit_eligible(slot)
+        {
+            self.game
+                .pack
+                .render
+                .mod_pipelines
+                .warn_oit_ineligible(slot);
+            return Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid));
+        }
+        self.surface.prepare_draw(stage, |surface| {
+            self.game.native_world_draw_indirect(surface, draw)
+        })
+    }
+
+    fn draw_vertices(
+        &mut self,
+        stage: RenderLevelStage,
+        pipeline: RenderPipelineRef,
+        vertices: &[&[u8]],
+        indices: Option<(IndexFormat, &[u8])>,
+        draw: MeshDraw,
+        bindings: &DrawBindings<'_>,
+    ) -> Result<PreparedWorldDraw, PipelineDrawError> {
+        if !stage.has_render_pass() {
+            return Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid));
+        }
+        let slot = self
+            .game
+            .pack
+            .render
+            .mod_pipelines
+            .slot(pipeline)
+            .map_err(PipelineDrawError::Pipeline)?;
+        if stage.oit_stage().is_some() && !self.game.pack.render.mod_pipelines.is_oit_eligible(slot)
+        {
+            self.game
+                .pack
+                .render
+                .mod_pipelines
+                .warn_oit_ineligible(slot);
+            return Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid));
+        }
+        self.surface.prepare_draw(stage, |surface| {
+            self.game
+                .native_world_draw_vertices(surface, pipeline, vertices, indices, draw, bindings)
         })
     }
 }
@@ -693,6 +873,233 @@ impl RenderLevelStageContext for GameRenderLevelStageContext<'_, '_> {
 
     fn has_render_pass(&self) -> bool {
         self.surface.stage().has_render_pass()
+    }
+}
+
+/// Offscreen pass draw recorder handed to a `FrameGraphContext::add_pass` callback.
+struct GameOffscreenDrawContext<'a, 'g> {
+    game: &'a Game<'g>,
+    pass: &'a mut sunrise_client::gfx::mod_frame_graph::RecordedFramePass,
+    transients: &'a [RenderTargetDescriptor],
+    camera: [f64; 3],
+}
+
+impl OffscreenDrawContext for GameOffscreenDrawContext<'_, '_> {
+    fn draw_mesh(
+        &mut self,
+        pipeline: RenderPipelineRef,
+        mesh: MeshRef,
+        draw: MeshDraw,
+        bindings: &DrawBindings<'_>,
+    ) -> Result<(), PipelineDrawError> {
+        self.game.native_offscreen_draw_mesh(
+            self.pass,
+            self.transients,
+            pipeline,
+            mesh,
+            draw,
+            bindings,
+        )
+    }
+
+    fn draw_indirect(&mut self, draw: &IndirectDraw<'_>) -> Result<(), PipelineDrawError> {
+        self.game
+            .native_offscreen_draw_indirect(self.pass, self.transients, draw)
+    }
+
+    fn draw_vertices(
+        &mut self,
+        pipeline: RenderPipelineRef,
+        vertices: &[&[u8]],
+        indices: Option<(IndexFormat, &[u8])>,
+        draw: MeshDraw,
+        bindings: &DrawBindings<'_>,
+    ) -> Result<(), PipelineDrawError> {
+        self.game.native_offscreen_draw_vertices(
+            self.pass,
+            self.transients,
+            pipeline,
+            vertices,
+            indices,
+            draw,
+            bindings,
+        )
+    }
+
+    fn pipeline_quads(
+        &mut self,
+        pipeline: RenderPipelineRef,
+        quads: &[PipelineQuad],
+    ) -> Result<(), PipelineDrawError> {
+        self.game.native_offscreen_draw_pipeline_quads(
+            self.pass,
+            self.transients,
+            self.camera,
+            pipeline,
+            quads,
+        )
+    }
+}
+
+/// Dispatch recorder handed to a `FrameGraphContext::add_compute_pass` callback.
+struct GameComputeDispatchContext<'a, 'g> {
+    game: &'a Game<'g>,
+    pass: &'a mut sunrise_client::gfx::mod_frame_graph::RecordedFramePass,
+    transients: &'a [RenderTargetDescriptor],
+}
+
+impl ComputeDispatchContext for GameComputeDispatchContext<'_, '_> {
+    fn dispatch(
+        &mut self,
+        pipeline: ComputePipelineRef,
+        bindings: &DrawBindings<'_>,
+        workgroups: [u32; 3],
+    ) -> Result<(), ComputeDispatchError> {
+        self.game.native_compute_dispatch(
+            self.pass,
+            self.transients,
+            pipeline,
+            bindings,
+            Ok(workgroups),
+        )
+    }
+
+    fn dispatch_indirect(
+        &mut self,
+        pipeline: ComputePipelineRef,
+        bindings: &DrawBindings<'_>,
+        indirect: StorageBufferRef,
+        offset: u64,
+    ) -> Result<(), ComputeDispatchError> {
+        self.game.native_compute_dispatch(
+            self.pass,
+            self.transients,
+            pipeline,
+            bindings,
+            Err((indirect, offset)),
+        )
+    }
+}
+
+/// Frame-graph setup context lent to `Hooks::frame_graph_setup` (`FrameGraphSetupEvent`).
+pub(crate) struct GameFrameGraphContext<'a, 'g> {
+    game: &'a Game<'g>,
+    surface: &'a mut crate::world_geometry::FrameGraphSurface,
+}
+
+impl<'a, 'g> GameFrameGraphContext<'a, 'g> {
+    pub(crate) fn new(
+        game: &'a Game<'g>,
+        surface: &'a mut crate::world_geometry::FrameGraphSurface,
+    ) -> Self {
+        Self { game, surface }
+    }
+}
+
+impl FrameGraphContext for GameFrameGraphContext<'_, '_> {
+    fn create_transient(
+        &mut self,
+        desc: &RenderTargetDescriptor,
+    ) -> Result<TransientTargetId, RenderTargetError> {
+        let Some(renderer) = self.game.mod_gpu() else {
+            return Err(RenderTargetError::Unavailable);
+        };
+        desc.validate(renderer.max_texture_dimension_2d())?;
+        // Pooled transient targets have a single mip level and no storage access.
+        if desc.mip_levels != 1 {
+            return Err(RenderTargetError::InvalidMipLevels);
+        }
+        if desc.storage.is_some() {
+            return Err(RenderTargetError::UnsupportedStorage);
+        }
+        Ok(self.surface.graph.add_transient(desc.clone()))
+    }
+
+    fn add_pass(
+        &mut self,
+        desc: FramePassDescriptor,
+        record: &mut dyn FnMut(&mut dyn OffscreenDrawContext),
+    ) -> Result<FramePassId, FrameGraphError> {
+        let Some(renderer) = self.game.mod_gpu() else {
+            return Err(FrameGraphError::Unavailable);
+        };
+        let owner = mod_api::content::crash::current_native_mod();
+        // Validate imported mod render target ownership/liveness up front.
+        if let FrameTarget::Mod(rt) = desc.target {
+            renderer
+                .render_target_size(owner, rt)
+                .map_err(FrameGraphError::InvalidTarget)?;
+        }
+        for &t in desc.reads.iter().chain(desc.writes.iter()) {
+            if let FrameTarget::Mod(rt) = t {
+                renderer
+                    .render_target_size(owner, rt)
+                    .map_err(FrameGraphError::InvalidTarget)?;
+            }
+        }
+        if let Err(err) = self
+            .surface
+            .graph
+            .validate_new_pass(&desc, self.surface.oit_on)
+        {
+            if let FrameGraphError::Cycle { ref passes } = err {
+                renderer.warn_frame_graph_cycle_once(passes);
+            }
+            return Err(err);
+        }
+        let mut recorded =
+            sunrise_client::gfx::mod_frame_graph::RecordedFramePass::from_descriptor(desc, owner);
+        {
+            let mut ctx = GameOffscreenDrawContext {
+                game: self.game,
+                pass: &mut recorded,
+                transients: &self.surface.graph.transients,
+                camera: self.surface.camera,
+            };
+            record(&mut ctx);
+        }
+        Ok(self.surface.graph.push_pass(recorded))
+    }
+
+    fn add_compute_pass(
+        &mut self,
+        desc: ComputePassDescriptor,
+        record: &mut dyn FnMut(&mut dyn ComputeDispatchContext),
+    ) -> Result<FramePassId, FrameGraphError> {
+        let Some(renderer) = self.game.mod_gpu() else {
+            return Err(FrameGraphError::Unavailable);
+        };
+        let owner = mod_api::content::crash::current_native_mod();
+        for &t in desc.reads.iter().chain(desc.writes.iter()) {
+            if let FrameTarget::Mod(rt) = t {
+                renderer
+                    .render_target_size(owner, rt)
+                    .map_err(FrameGraphError::InvalidTarget)?;
+            }
+        }
+        if let Err(err) = self
+            .surface
+            .graph
+            .validate_new_compute_pass(&desc, self.surface.oit_on)
+        {
+            if let FrameGraphError::Cycle { ref passes } = err {
+                renderer.warn_frame_graph_cycle_once(passes);
+            }
+            return Err(err);
+        }
+        let mut recorded =
+            sunrise_client::gfx::mod_frame_graph::RecordedFramePass::from_compute_descriptor(
+                desc, owner,
+            );
+        {
+            let mut ctx = GameComputeDispatchContext {
+                game: self.game,
+                pass: &mut recorded,
+                transients: &self.surface.graph.transients,
+            };
+            record(&mut ctx);
+        }
+        Ok(self.surface.graph.push_pass(recorded))
     }
 }
 

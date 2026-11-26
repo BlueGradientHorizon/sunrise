@@ -424,6 +424,12 @@ pub(super) fn gameplay_tables(
                     modifications,
                 )?);
             }
+            // #4473: then the attributes the content mods' effects declare
+            // modifiers on, which the complete catalog knows.
+            check_effect_modifier_attributes(
+                &motion.attributes,
+                sunrise_client::brewing::mod_effects(),
+            )?;
             Ok::<_, Box<dyn std::error::Error>>(motion)
         })
         .map_err(|e| e.to_string());
@@ -551,6 +557,26 @@ pub(super) fn with_mod_attribute_additions(
     Ok(catalog)
 }
 
+/// Refuses the load when a content mod's effect declares a modifier on an
+/// attribute the catalog does not have, vanilla's and the mods' declared ones
+/// included (#4473), naming the effect and the attribute.
+pub(super) fn check_effect_modifier_attributes(
+    catalog: &sunrise_world::attributes::entity::Catalog,
+    effects: &[sunrise_client::brewing::EffectDef],
+) -> std::result::Result<(), String> {
+    for effect in effects {
+        for &(attribute, ..) in effect.modifiers {
+            if catalog.id(attribute).is_none() {
+                return Err(format!(
+                    "mob effect {}: attribute_modifiers: unknown attribute {attribute}",
+                    effect.id
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Each mob type mods added attributes to takes its grown catalog row
 /// (`with_mod_attribute_additions`) as its attribute map and spawn fields, as
 /// a declared set's type does (#845), so a new mob of the type spawns with
@@ -558,7 +584,7 @@ pub(super) fn with_mod_attribute_additions(
 /// its map from the catalog alone.
 pub(super) fn take_modified_attribute_rows(
     types: &mut HashMap<String, sunrise_client::mobs::MobType>,
-    catalog: &sunrise_world::attributes::entity::Catalog,
+    catalog: &Arc<sunrise_world::attributes::entity::Catalog>,
     modifications: &[mod_api::__private::EntityAttributeModification],
 ) {
     let modified: std::collections::BTreeSet<&str> = modifications

@@ -350,12 +350,24 @@ pub fn install(archetypes: Vec<Arc<Archetype>>) {
     *TABLE.write().unwrap_or_else(PoisonError::into_inner) = Some(Arc::new(archetypes));
 }
 
+#[cfg(test)]
+thread_local! {
+    /// The table a unit fixture published for its own test thread, read before [`TABLE`].
+    static TEST_TABLE: std::cell::RefCell<Option<Arc<Vec<Arc<Archetype>>>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
 fn installed() -> Option<Arc<Vec<Arc<Archetype>>>> {
+    #[cfg(test)]
+    if let Some(table) = TEST_TABLE.with(|t| t.borrow().clone()) {
+        return Some(table);
+    }
     TABLE.read().unwrap_or_else(PoisonError::into_inner).clone()
 }
 
-/// The archetypes the unit fixtures run on, published once per process (no fixture changes
-/// them afterwards): the explosive and hot bodies, and two of the physics-only ones.
+/// The archetypes the unit fixtures run on, published for the calling test's thread only (the
+/// process-wide [`TABLE`] is left alone): the explosive and hot bodies, and two of the
+/// physics-only ones.
 #[cfg(test)]
 fn test_archetype_items() {
     use serde_json::json;
@@ -434,9 +446,8 @@ fn test_archetype_items() {
             HashSet::from(["minecraft:magma_block".to_owned()]),
         ),
     ]);
-    if installed().is_none() {
-        install(build(&entries, &tags));
-    }
+    let built = Arc::new(build(&entries, &tags));
+    TEST_TABLE.with(|t| *t.borrow_mut() = Some(built));
 }
 /// `matchingArchetypes`: the last one wins (as `collectEquipmentChanges`
 /// leaves it), buoyancy if any.
@@ -481,7 +492,7 @@ pub fn adopt_body(m: &mut Mob) {
         return;
     }
     let new = m.extra.body_id().map(std::sync::Arc::<str>::from);
-    let Some(map) = m.extra.armor_attributes.as_deref_mut() else {
+    let Some(map) = m.extra.generic_attributes.as_deref_mut() else {
         return;
     };
     let old = std::mem::replace(&mut m.extra.adopted_body, new.clone());
@@ -621,11 +632,12 @@ pub(crate) mod adopt_body_tests {
         kind.id = "minecraft:sulfur_cube".into();
         let mut m = Mob::new(1, Arc::new(kind), Vec3::ZERO, 0.0);
         m.extra.set_body(body.map(Into::into));
-        m.extra.armor_attributes = Some(Box::new(catalog.create("minecraft:sulfur_cube").unwrap()));
+        m.extra.generic_attributes =
+            Some(Box::new(catalog.create("minecraft:sulfur_cube").unwrap()));
         m
     }
     fn map(m: &mut Mob) -> &mut EntityAttributes {
-        m.extra.armor_attributes.as_deref_mut().unwrap()
+        m.extra.generic_attributes.as_deref_mut().unwrap()
     }
     fn value(m: &mut Mob, attribute: &str) -> f64 {
         let map = map(m);
@@ -715,6 +727,14 @@ pub(crate) mod adopt_body_tests {
     }
 
     #[test]
+    fn the_fixture_table_is_visible_to_its_own_thread_only() {
+        test_archetype_items();
+        assert!(archetype_of("minecraft:tnt").is_some());
+        let elsewhere = std::thread::spawn(|| archetype_of("minecraft:tnt").is_some());
+        assert!(!elsewhere.join().unwrap());
+    }
+
+    #[test]
     fn the_modifier_amounts_are_the_archetype_files_doubles() {
         test_archetype_items();
         let table = installed().unwrap();
@@ -738,7 +758,7 @@ pub(crate) mod adopt_body_tests {
     #[test]
     fn a_cube_without_a_map_or_of_another_species_adopts_nothing() {
         let mut m = cube(Some("minecraft:tnt"));
-        m.extra.armor_attributes = None;
+        m.extra.generic_attributes = None;
         adopt_body(&mut m);
         assert_eq!(m.extra.adopted_body, None);
         let mut other = cube(Some("minecraft:tnt"));

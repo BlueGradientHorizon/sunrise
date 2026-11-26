@@ -365,7 +365,11 @@ impl Game<'_> {
         let result: Result<(), ()> = self.storage_transaction(|game, _| {
             if stack.potion().unwrap_or(&stack.item) == "minecraft:healing" {
                 if let Some(mob) = game.mobs.iter_mut().find(|m| m.id == id && !m.removed) {
-                    mob.heal(&game.loop_context, 4.0);
+                    mob.heal(
+                        &game.loop_context,
+                        &|| crate::game::entity::hit_reads_of!(game),
+                        4.0,
+                    );
                 }
             } else if let Some(effect) = sunrise_client::mobs::ai::drink_potion_effect(stack) {
                 game.add_mob_effect(id, effect, None);

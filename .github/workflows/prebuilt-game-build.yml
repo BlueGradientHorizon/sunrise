@@ -16,7 +16,7 @@ on:
         type: boolean
         default: false
       dev:
-        description: A Dev release's build (nightly-build.yml kind dev), whose macOS leg BLACKSMITH_DEV_MACOS may move and whose legs DEV_ON_DYNA=on cross-builds on Dyna's runners
+        description: A Dev release's build (nightly-build.yml kind dev), whose legs BLACKSMITH_DEV and BLACKSMITH_DEV_MACOS may move and DEV_ON_DYNA_LINUX, DEV_ON_DYNA_WINDOWS and DEV_ON_DYNA_MACOS cross-build on Dyna's runners
         type: boolean
         default: false
     outputs:
@@ -38,6 +38,7 @@ jobs:
       needed: ${{ steps.release.outputs.needed }}
       tag: ${{ env.TAG }}
       matrix: ${{ steps.legs.outputs.matrix }}
+      checks: ${{ steps.legs.outputs.checks }}
     steps:
       - id: release
         env:
@@ -50,15 +51,19 @@ jobs:
       - id: legs
         env:
           LEGS: ${{ inputs.legs }}
+          # The Windows and macOS legs a Dev build cross-builds on Dyna's runners, whose programs `cross-check` runs on
+          # their own platform.
+          CROSS_WINDOWS: ${{ inputs.dev && vars.DEV_ON_DYNA_WINDOWS || '' }}
+          CROSS_MACOS: ${{ inputs.dev && vars.DEV_ON_DYNA_MACOS || '' }}
           # The launcher builds native mods with the windows-gnu toolchain and its own MinGW linker.
           ALL: >-
-            [{"name": "linux", "os": "ubuntu-22.04", "blacksmith": "blacksmith-16vcpu-ubuntu-2204",
+            [{"name": "linux", "dyna": "LINUX", "os": "ubuntu-22.04", "blacksmith": "blacksmith-16vcpu-ubuntu-2204",
               "target": "x86_64-unknown-linux-gnu", "linkage": true},
-            {"name": "linux-server", "os": "ubuntu-22.04", "blacksmith": "blacksmith-16vcpu-ubuntu-2204",
+            {"name": "linux-server", "dyna": "LINUX", "os": "ubuntu-22.04", "blacksmith": "blacksmith-16vcpu-ubuntu-2204",
               "target": "x86_64-unknown-linux-gnu", "server": true},
-            {"name": "windows", "os": "windows-latest", "blacksmith": "blacksmith-16vcpu-windows-2025",
+            {"name": "windows", "dyna": "WINDOWS", "os": "windows-latest", "blacksmith": "blacksmith-16vcpu-windows-2025",
               "target": "x86_64-pc-windows-gnu", "linkage": true},
-            {"name": "macos", "os": "macos-15", "blacksmith": "blacksmith-6vcpu-macos-15", "target": "aarch64-apple-darwin"}]
+            {"name": "macos", "dyna": "MACOS", "os": "macos-15", "blacksmith": "blacksmith-6vcpu-macos-15", "target": "aarch64-apple-darwin"}]
         run: |
           case "$LEGS" in
             all) pick='.' ;;
@@ -67,6 +72,9 @@ jobs:
             *) echo "::error::legs is all, linux or windows-macos, not '$LEGS'"; exit 1 ;;
           esac
           echo "matrix=$(jq -c "{include: $pick}" <<< "$ALL")" >> "$GITHUB_OUTPUT"
+          echo "checks=$(jq -c --arg windows "$CROSS_WINDOWS" --arg macos "$CROSS_MACOS" \
+            "{include: $pick | map(select((.dyna == \"WINDOWS\" and \$windows == \"on\") or (.dyna == \"MACOS\" and \$macos == \"on\")))}" \
+            <<< "$ALL")" >> "$GITHUB_OUTPUT"
 
   build:
     needs: fresh
@@ -77,24 +85,25 @@ jobs:
       matrix: ${{ fromJSON(needs.fresh.outputs.matrix) }}
     # Blacksmith's machines (owner, 2026-11-18): 16 vCPUs for Linux and Windows, the M4 Mac, the same images as
     # GitHub's with the Rust cache beside them. The repository variable BLACKSMITH=off puts every leg back on `os`.
-    # BLACKSMITH_DEV_MACOS=on (the owner's switch; unset or anything else is off) puts a Dev release's macOS leg alone
-    # back on Blacksmith while BLACKSMITH stays off: the leg the whole Dev release waits for (88m36 on GitHub's
-    # macos-15 on 2026-11-25).
-    # DEV_ON_DYNA=on (the owner's switch; unset or anything else is off) builds a Dev release's four legs on Dyna's Linux
-    # runners instead (docs/release-flow.md): Linux against glibc 2.35 with zig, the windows-gnu and macOS legs
-    # cross-compiled (tools/ci/cross/). `cross-check` below runs what needs the leg's own platform, on GitHub's runner.
+    # BLACKSMITH_DEV=on (the owner's switch; unset or anything else is off) puts every leg of a Dev release back on
+    # Blacksmith while BLACKSMITH stays off (the Windows leg took 68m on GitHub's windows-latest on 2026-11-25);
+    # BLACKSMITH_DEV_MACOS=on does so for its macOS leg alone (88m36 on GitHub's macos-15 the same day).
+    # DEV_ON_DYNA_LINUX (both Linux legs), DEV_ON_DYNA_WINDOWS and DEV_ON_DYNA_MACOS (the owner's switches; unset or
+    # anything but `on` is off) build that leg of a Dev release on Dyna's Linux runners instead (docs/release-flow.md):
+    # Linux against glibc 2.35 with zig, the windows-gnu and macOS legs cross-compiled (tools/ci/cross/). `cross-check`
+    # below runs what needs the leg's own platform, on GitHub's runner.
     runs-on: >-
-      ${{ inputs.dev && vars.DEV_ON_DYNA == 'on' && 'dyna-large' ||
-      (vars.BLACKSMITH != 'off' || (inputs.dev && matrix.name == 'macos' && vars.BLACKSMITH_DEV_MACOS == 'on'))
+      ${{ inputs.dev && vars[format('DEV_ON_DYNA_{0}', matrix.dyna)] == 'on' && 'dyna-large' ||
+      (vars.BLACKSMITH != 'off' || (inputs.dev && (vars.BLACKSMITH_DEV == 'on' || (matrix.name == 'macos' && vars.BLACKSMITH_DEV_MACOS == 'on'))))
       && matrix.blacksmith || matrix.os }}
     # Hosted macOS runner speed varies: 41 to 90+ minutes observed. Windows without its build cache (the first run after
     # a lock or toolchain change saves it) takes over 85 minutes in "Build and collect" alone.
     timeout-minutes: ${{ (matrix.os == 'macos-15' && 120) || (matrix.os == 'windows-latest' && 180) || 90 }}
     env:
       # `on` when this Dev leg is cross-built on Dyna's runner, empty otherwise.
-      CROSS: ${{ inputs.dev && vars.DEV_ON_DYNA == 'on' && 'on' || '' }}
+      CROSS: ${{ inputs.dev && vars[format('DEV_ON_DYNA_{0}', matrix.dyna)] == 'on' && 'on' || '' }}
       # tools/prebuilt_game.py builds for this target, not the computer's (a cross build); empty on a hosted runner.
-      SUNRISE_PREBUILT_TARGET: ${{ inputs.dev && vars.DEV_ON_DYNA == 'on' && matrix.target || '' }}
+      SUNRISE_PREBUILT_TARGET: ${{ inputs.dev && vars[format('DEV_ON_DYNA_{0}', matrix.dyna)] == 'on' && matrix.target || '' }}
     defaults:
       run:
         shell: bash
@@ -290,14 +299,11 @@ jobs:
   # build folder the leg uploaded: nothing is rebuilt. `needs.sdk` is red when one fails, so no SDK publishes.
   cross-check:
     needs: [fresh, build]
-    if: ${{ !cancelled() && needs.fresh.outputs.needed == 'true' && inputs.dev && vars.DEV_ON_DYNA == 'on' }}
+    if: ${{ !cancelled() && needs.fresh.outputs.needed == 'true' && fromJSON(needs.fresh.outputs.checks).include[0] }}
     name: check ${{ matrix.name }}
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - {name: macos, os: macos-15, target: aarch64-apple-darwin}
-          - {name: windows, os: windows-latest, target: x86_64-pc-windows-gnu, linkage: true}
+      matrix: ${{ fromJSON(needs.fresh.outputs.checks) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     defaults:

@@ -120,6 +120,7 @@ A native package holds the manifest, an optional `icon.png`, `assets/` and `data
 - A `path` dependency that leaves the package, or names a folder the package leaves out, is refused by manifest and
   path (the SDK's `.sunrise/` path stays allowed: the native build replaces it).
 - Two file names that differ only by case are refused, since a Windows or macOS extraction keeps only one.
+- A file or folder name ending in `.` or a space is refused, since a Windows extraction drops it.
 
 A root `rust-toolchain` or `rust-toolchain.toml` may stay in the package, but the staged build leaves it out: the
 build runs the toolchain it pins.
