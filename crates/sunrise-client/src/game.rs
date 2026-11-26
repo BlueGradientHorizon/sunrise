@@ -2532,6 +2532,7 @@ pub(crate) use api_values::{block_jump_factor, block_speed_factor, is_ladder};
 pub(crate) use launch_options::Options;
 pub use native_block_entity_draw::BlockEntityDraw;
 pub use native_data_maps::DataMapType;
+pub(crate) use native_hooks::is_scaffolding;
 pub use native_hooks::{PhantomSpawnResult, SleepProblem};
 pub(crate) use native_living_body::with_lent_view;
 pub use native_mob_draw::{MobRender, PlayerRender};
