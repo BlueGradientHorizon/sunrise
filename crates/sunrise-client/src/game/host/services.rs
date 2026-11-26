@@ -24,6 +24,12 @@ impl ClientSession for Game<'_> {
             self.native_session().map(|_| self as &dyn ClientTabList)
         }))
     }
+    fn client_waypoints(&self) -> Option<ClientWaypoints> {
+        CallbackOwner::call_host(|| self.native_client_waypoints())
+    }
+    fn client_player_skins(&self) -> Option<ClientPlayerSkins> {
+        CallbackOwner::call_host(|| self.native_client_player_skins())
+    }
     fn client_frame_stats(&self) -> Option<ClientFrameStats> {
         CallbackOwner::call_host(|| self.native_client_frame_stats())
     }
