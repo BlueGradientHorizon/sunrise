@@ -43,6 +43,12 @@ class UnpinnedPlatformTests(unittest.TestCase):
                     self.assertRaisesRegex(ValueError, f'platform {plat};'):
                 worlds.java('x')
 
+    def test_an_unpinned_platform_is_refused_before_version_metadata_is_read(self):
+        with mock.patch.object(worlds, 'platform', return_value='windows-x64'), \
+                mock.patch.object(worlds, 'version_meta', side_effect=AssertionError('no metadata download')), \
+                self.assertRaisesRegex(ValueError, 'platform windows-x64;'):
+            worlds.java('x')
+
     def test_platform_names_what_mojang_calls_the_machine(self):
         for system, machine, expected in (('win32', 'AMD64', 'windows-x64'), ('win32', 'ARM64', 'windows-arm64'),
                                           ('darwin', 'x86_64', 'mac-os'), ('darwin', 'arm64', 'mac-os-arm64'), ('linux', 'x86_64', 'linux'), ('linux', 'i686', 'linux-i386')):
