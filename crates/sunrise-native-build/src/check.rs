@@ -270,7 +270,7 @@ impl From<String> for Lack {
 /// Checks `plan`'s mods against its build, opening the supplied surface only if needed.
 pub fn check(plan: &Plan) -> Result<Reply, String> {
     let parsed = OnceCell::new();
-    let mut surface = || {
+    check_mods(&plan.mods, &plan.build, plan.build_data.as_deref(), || {
         let path = plan.surface.as_ref().ok_or(Lack::Needs("surface"))?;
         parsed
             .get_or_init(|| {
@@ -279,15 +279,30 @@ pub fn check(plan: &Plan) -> Result<Reply, String> {
             })
             .as_ref()
             .map_err(|why| Lack::Unread(why.clone()))
-    };
-    let build = plan.build.as_str();
-    let found = scan_bundles(&plan.mods)?;
+    })
+}
+
+/// Checks mods against the caller's surface. The provider is called only when a verdict needs
+/// it; omitted build data is reported in [`Checked::needs`].
+pub fn check_with_surface<'s>(
+    mods: &Path,
+    build: &str,
+    mut surface: impl FnMut() -> Result<&'s mod_surface::Surface, String>,
+    build_data: Option<&Path>,
+) -> Result<Reply, String> {
+    check_mods(mods, build, build_data, || surface().map_err(Lack::Unread))
+}
+
+fn check_mods<'s>(
+    mods: &Path,
+    build: &str,
+    build_data_dir: Option<&Path>,
+    mut surface: impl FnMut() -> Result<&'s mod_surface::Surface, Lack>,
+) -> Result<Reply, String> {
+    let found = scan_bundles(mods)?;
     let build_data = OnceCell::new();
     let data = || {
-        let dir = plan
-            .build_data
-            .as_deref()
-            .ok_or(Lack::Needs("build-data"))?;
+        let dir = build_data_dir.ok_or(Lack::Needs("build-data"))?;
         build_data
             .get_or_init(|| game_uses::Data::read(dir, build))
             .as_ref()

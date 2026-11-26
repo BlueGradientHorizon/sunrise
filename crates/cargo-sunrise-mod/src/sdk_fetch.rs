@@ -174,6 +174,11 @@ impl VerifiedSurface {
     pub(crate) fn get(&self) -> Result<&Surface, &SurfaceError> {
         LazyLock::force(&self.parsed).as_ref()
     }
+
+    #[cfg(test)]
+    pub(crate) fn parse_count(&self) -> usize {
+        self.parses.load(std::sync::atomic::Ordering::Relaxed)
+    }
 }
 
 struct VerifiedSdk {
@@ -182,12 +187,18 @@ struct VerifiedSdk {
 }
 
 impl VerifiedSdk {
+    /// Retain the verified surface without parsing it.
+    fn into_parts(self) -> (Index, VerifiedSurface) {
+        (self.index, VerifiedSurface::new(self.surface_bytes))
+    }
+
     fn pinned(self, dir: PathBuf) -> PinnedSdk {
+        let (index, surface) = self.into_parts();
         PinnedSdk {
-            name: name(&self.index),
+            name: name(&index),
             dir,
-            index: self.index,
-            surface: VerifiedSurface::new(self.surface_bytes),
+            index,
+            surface,
         }
     }
 }
@@ -493,6 +504,16 @@ pub(crate) fn fetch_index(
     api: bool,
 ) -> Result<Index, String> {
     fetch_verified(base, keys, build, dir, api).map(|sdk| sdk.index)
+}
+
+/// Verified metadata for an in-process native build, without parsing the surface.
+pub(crate) fn fetch_metadata(
+    base: &Base,
+    keys: &[PublicKey],
+    build: &str,
+    dir: &Path,
+) -> Result<(Index, VerifiedSurface), String> {
+    fetch_verified(base, keys, build, dir, false).map(VerifiedSdk::into_parts)
 }
 
 fn fetch_verified(
