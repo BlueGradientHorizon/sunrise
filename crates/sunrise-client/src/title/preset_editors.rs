@@ -325,7 +325,12 @@ impl WorldOptions {
             selected.insert(0, mod_data);
         }
         let data = crate::datapack::DataPacks::new(&selected);
-        crate::datapack::worldgen_overrides_over(&[], &data).0
+        crate::datapack::worldgen_overrides_over(
+            &[],
+            &data,
+            &sunrise_world::conditions::LoadConditions::vanilla(),
+        )
+        .0
     }
     /// Reload Create World's selected pack resources, retaining a still-available choice.
     pub(super) fn refresh_presets(

@@ -1504,31 +1504,14 @@ impl ChunkGenerator for VanillaTerrain {
             VanillaProto::Failed(x, z) => return Chunk::with_layout(x, z, self.layout()),
         };
         let mut out = chunk.column(self);
-        let (block_entities, pending_loot) = crate::structure_blocks::block_entities(&chunk);
-        out.block_entities = block_entities;
-        // The block entities Sunrise does not model (decorated pots with their
-        // sherds and loot table) stay as placed, like a
-        // loaded chunk's.
-        let mut unmodelled: Vec<Tag> = chunk
-            .block_entities
-            .iter()
-            .filter(|(pos, _)| {
-                !out.block_entities
-                    .iter()
-                    .any(|(p, _)| *p == (pos[0], pos[1], pos[2]))
-            })
-            .filter_map(|(pos, nbt)| {
-                let id = crate::lan::chunks::block_entity_type(
-                    chunk.block_name(pos[0], pos[1], pos[2]),
-                )?;
-                let mut nbt = nbt.clone();
-                nbt.insert("id".into(), Tag::String(id.into()));
-                for (key, v) in ["x", "y", "z"].into_iter().zip(pos) {
-                    nbt.insert(key.into(), Tag::Int(*v));
-                }
-                Some(Tag::Compound(nbt))
-            })
-            .collect();
+        let crate::structure_blocks::Promoted {
+            modelled,
+            pending_loot,
+            mut unmodelled,
+        } = crate::structure_blocks::promote(&chunk.block_entities, |[x, y, z]| {
+            chunk.block_name(x, y, z)
+        });
+        out.block_entities = modelled;
         add_default_block_entities(&self.block_entity_types, &mut out, &mut unmodelled);
         if !unmodelled.is_empty() || !pending_loot.is_empty() {
             let mut extras = out
