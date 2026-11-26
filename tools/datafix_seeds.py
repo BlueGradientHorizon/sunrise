@@ -27,13 +27,10 @@ import tempfile
 import time
 import urllib.request
 
-try:
-    from . import datafix_paths, file_lock
-except ImportError:
-    import datafix_paths
-    import file_lock
-
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+from tools import datafix_paths, file_lock
+
 KEEP_VARIABLE = 'SUNRISE_DATAFIX_SEED_KEEP'
 MANIFEST_VARIABLE = 'SUNRISE_DATAFIX_MANIFEST'
 OUTCOME_VARIABLE = 'SUNRISE_DATAFIX_SEEDS_OUTCOME'
@@ -60,8 +57,8 @@ LAB = 'tools/lab.py'
 
 
 def _sibling(name):
-    """A module of tools/, by package name when this module is part of the package, else by bare name (script)."""
-    return importlib.import_module(f'{__package__}.{name}' if __package__ else name)
+    """A module of tools/, imported when first needed."""
+    return importlib.import_module(f'tools.{name}')
 
 
 def seed_modules():

@@ -58,7 +58,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-import network_guard
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+from tools.ci import network_guard
 
 
 def package_identity(package_id: str) -> tuple[str, str]:

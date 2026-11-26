@@ -12,6 +12,7 @@ import unittest
 from unittest.mock import patch
 from pathlib import Path
 
+import tools
 from tools import lab, prebuilt_game
 from tests.os_support import needs_runner_shell, needs_symlinks
 from tests.test_ci_concurrency import yaml
@@ -586,11 +587,12 @@ class SdkAssetTests(unittest.TestCase):
             with self.subTest(launcher_min=launcher_min, unknown_kinds=unknown_kinds):
                 self.assertEqual(prebuilt_game.lists_programs(launcher_min, unknown_kinds), listed)
         for floor, unknown_kinds in (("1.0.0", ""), ("1.2.0", "1.2.0")):
+            release_file = type(sys)("tools.release_file")
             with self.subTest(floor=floor), tempfile.TemporaryDirectory() as directory, \
-                    patch.dict(sys.modules, {"release_file": type(sys)("release_file")}), \
+                    patch.object(tools, "release_file", release_file, create=True), \
                     patch.object(prebuilt_game, "programs") as programs:
-                sys.modules["release_file"].LAUNCHER_MIN = floor
-                sys.modules["release_file"].UNKNOWN_KINDS_LAUNCHER = unknown_kinds
+                release_file.LAUNCHER_MIN = floor
+                release_file.UNKNOWN_KINDS_LAUNCHER = unknown_kinds
                 root = Path(directory)
                 folder = root / "programs-x86_64-unknown-linux-gnu-server"
                 (folder / "exporters").mkdir(parents=True)
