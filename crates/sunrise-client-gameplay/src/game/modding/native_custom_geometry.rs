@@ -603,12 +603,12 @@ mod tests {
             let mut entities = Vec::new();
             game.commit_model_instances(&mut draw, camera, &mut entities);
             assert!(
-                game.side.prepared_model_draws.borrow().is_empty(),
+                game.client.prepared_model_draws.borrow().is_empty(),
                 "no GPU copy"
             );
             let slot = mod_api::__private::game::Fields::fields(&model).slot;
             let faces = game
-                .side
+                .client
                 .standalone_geometry
                 .faces(slot)
                 .expect("prepared faces")
@@ -727,7 +727,7 @@ mod tests {
                 Err(GroupError::InvalidLight)
             );
             assert_eq!(group.set_len(game, 9), Err(GroupError::OutOfRange));
-            game.side.view_frustum = Some(sunrise_client::gfx::test_frustum([
+            game.client.view_frustum = Some(sunrise_client::gfx::test_frustum([
                 glam::Vec4::new(-1.0, 0.0, 0.0, 4.0),
                 glam::Vec4::W,
                 glam::Vec4::W,
@@ -789,25 +789,25 @@ mod tests {
                 .unwrap();
             let expected = render(game);
             assert!(expected.as_chunks::<4>().0.iter().any(|p| p[..3] != [0; 3]));
-            game.side.prepared_model_draws.borrow_mut().clear();
+            game.client.prepared_model_draws.borrow_mut().clear();
             draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
             context(game, &mut draw).draw_instance_group(group).unwrap();
             context(game, &mut draw).draw_instance_group(group).unwrap();
             assert_eq!(expected, render(game));
             draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
-            game.side.prepared_model_draws.borrow_mut().clear();
+            game.client.prepared_model_draws.borrow_mut().clear();
             context(game, &mut draw).draw_instance_group(group).unwrap();
             assert_eq!(expected, render(game));
-            let bytes = || game.side.instance_groups.borrow().converted_bytes();
+            let bytes = || game.client.instance_groups.borrow().converted_bytes();
             let stride = std::mem::size_of::<sunrise_client::gfx::PreparedModelInstance>();
             let before = bytes();
             // An unchanged frame stages all visible records, but converts none.
             draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
-            game.side.prepared_model_draws.borrow_mut().clear();
+            game.client.prepared_model_draws.borrow_mut().clear();
             context(game, &mut draw).draw_instance_group(group).unwrap();
             assert_eq!(bytes(), before);
             assert_eq!(
-                game.side.prepared_model_draws.borrow().len() * stride,
+                game.client.prepared_model_draws.borrow().len() * stride,
                 stride
             );
             assert_eq!(expected, render(game));
@@ -817,18 +817,18 @@ mod tests {
             group.write(game, 1, &[changed]).unwrap();
             assert_eq!(bytes() - before, stride);
             draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
-            game.side.prepared_model_draws.borrow_mut().clear();
+            game.client.prepared_model_draws.borrow_mut().clear();
             context(game, &mut draw)
                 .draw_model_instances(model, &[far, changed])
                 .unwrap();
             let rewritten = render(game);
             assert_ne!(expected, rewritten);
             draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
-            game.side.prepared_model_draws.borrow_mut().clear();
+            game.client.prepared_model_draws.borrow_mut().clear();
             context(game, &mut draw).draw_instance_group(group).unwrap();
             assert_eq!(rewritten, render(game));
             assert_eq!(
-                game.side.prepared_model_draws.borrow().len() * stride,
+                game.client.prepared_model_draws.borrow().len() * stride,
                 stride
             );
             let pose = [
@@ -842,7 +842,7 @@ mod tests {
                 1.0, 0.0, 0.0, 0.225, 0.0, 0.5, 0.0, 0.25, 0.0, 0.0, 0.5, 0.0,
             ];
             draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
-            game.side.prepared_model_draws.borrow_mut().clear();
+            game.client.prepared_model_draws.borrow_mut().clear();
             context(game, &mut draw)
                 .draw_model_instances(model, &[precomposed])
                 .unwrap();
@@ -855,11 +855,11 @@ mod tests {
             );
             assert_eq!(bytes(), count);
             draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
-            game.side.prepared_model_draws.borrow_mut().clear();
+            game.client.prepared_model_draws.borrow_mut().clear();
             context(game, &mut draw).draw_instance_group(group).unwrap();
             assert_eq!(transformed, render(game));
             assert_eq!(
-                game.side.prepared_model_draws.borrow().len() * stride,
+                game.client.prepared_model_draws.borrow().len() * stride,
                 stride
             );
             let mut outside = pose;
@@ -875,10 +875,10 @@ mod tests {
                 "newly exposed records use the current pose"
             );
             draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
-            game.side.prepared_model_draws.borrow_mut().clear();
+            game.client.prepared_model_draws.borrow_mut().clear();
             context(game, &mut draw).draw_instance_group(group).unwrap();
             assert!(
-                game.side.prepared_model_draws.borrow().is_empty(),
+                game.client.prepared_model_draws.borrow().is_empty(),
                 "cull group-transformed bounds"
             );
             group
@@ -896,10 +896,10 @@ mod tests {
                 .unwrap();
             group.set_len(game, 1).unwrap();
             draw.reset([30_000_000.0; 3], Mat4::IDENTITY, [0.0; 2]);
-            game.side.prepared_model_draws.borrow_mut().clear();
+            game.client.prepared_model_draws.borrow_mut().clear();
             context(game, &mut draw).draw_instance_group(group).unwrap();
             {
-                let staged = game.side.prepared_model_draws.borrow();
+                let staged = game.client.prepared_model_draws.borrow();
                 assert_eq!(staged.len(), 1);
                 // Subtract world coordinates in f64: each fractional block survives.
                 assert_eq!(staged[0].instance.model[3], [0.25, 0.5, 0.75, 1.0]);
@@ -931,15 +931,15 @@ mod tests {
             game.spawn_pack_reload(super::super::packs::ReloadKind::Selection)
                 .unwrap();
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
-            while game.side.pack_reload.0.is_some() && std::time::Instant::now() < deadline {
+            while game.client.pack_reload.0.is_some() && std::time::Instant::now() < deadline {
                 game.drive_pack_reload();
                 std::thread::sleep(std::time::Duration::from_millis(1));
             }
             assert_ne!(
-                game.side.standalone_geometry.generation(),
+                game.client.standalone_geometry.generation(),
                 model.fields().generation,
                 "reload error: {:?}",
-                game.side.chat_ui.options.resource_error
+                game.client.chat_ui.options.resource_error
             );
             assert_eq!(fresh.set_len(game, 1), Err(GroupError::Stale));
             let after_reload: Vec<_> = (0..4)
@@ -989,7 +989,7 @@ mod tests {
             // Both shader selection and unavailable GPU records force the shared CPU route.
             // Overlay copies also use it even when GPU records are available.
             for route in 0..3 {
-                game.side.native_shaders.picked = if route == 0 {
+                game.client.native_shaders.picked = if route == 0 {
                     "test-pack".into()
                 } else {
                     String::new()
@@ -1015,7 +1015,7 @@ mod tests {
                     .unwrap();
                 let mut expected = Vec::new();
                 game.commit_model_instances(&mut batch, camera, &mut expected);
-                assert!(game.side.prepared_model_draws.borrow().is_empty());
+                assert!(game.client.prepared_model_draws.borrow().is_empty());
                 let expected_pixels = pixels(game, &expected);
                 assert!(
                     expected_pixels
@@ -1112,7 +1112,7 @@ mod tests {
                 assert_eq!(released.set_len(game, 1), Err(GroupError::Stale));
                 game.create_group(model, 1).unwrap()
             };
-            game.side
+            game.client
                 .settings
                 .mods
                 .disabled
@@ -1135,7 +1135,7 @@ mod tests {
                 other_group.set_len(game, 1).unwrap();
                 other_group.destroy(game).unwrap();
             }
-            game.side.settings.mods.disabled.remove("group-owner");
+            game.client.settings.mods.disabled.remove("group-owner");
             game.sync_native_switches();
             assert_eq!(released.set_len(game, 1), Err(GroupError::Stale));
             let reenabled: Vec<_> = (0..4)
@@ -1196,7 +1196,7 @@ mod tests {
                 .unwrap();
             let mut entities = Vec::new();
             game.commit_model_instances(&mut draw, camera, &mut entities);
-            let staged = game.side.prepared_model_draws.borrow();
+            let staged = game.client.prepared_model_draws.borrow();
             assert_eq!(staged.len(), 2, "the lit copies were not instanced");
             assert_eq!(staged[0].instance.light, 0x30F0);
             assert_eq!(staged[1].instance.light, 0xF030);
@@ -1219,7 +1219,7 @@ mod tests {
                 Vec3::new(-0.55, -0.85, 0.5),
             );
             let faces = game
-                .side
+                .client
                 .standalone_geometry
                 .faces(slot)
                 .expect("prepared faces");
@@ -1282,12 +1282,12 @@ mod tests {
                 .unwrap();
             let mut spare = Vec::new();
             game.commit_model_instances(&mut draw, camera, &mut spare);
-            let staged = game.side.prepared_model_draws.borrow();
+            let staged = game.client.prepared_model_draws.borrow();
             let instance = staged[0].instance;
             let slot = staged[0].slot;
             let uploaded = staged[0].generation;
             drop(staged);
-            game.side.prepared_model_draws.borrow_mut().clear();
+            game.client.prepared_model_draws.borrow_mut().clear();
             sunrise_client::gfx::set_test_prepared_generation(None);
             let mut cpu_draw = WorldGeometry::default();
             cpu_draw.reset(camera.to_array(), Mat4::IDENTITY, [0.0, 0.0]);
@@ -1338,7 +1338,7 @@ mod tests {
             let mut entities = Vec::new();
             game.commit_model_instances(&mut draw, camera, &mut entities);
             assert!(
-                game.side.prepared_model_draws.borrow().is_empty(),
+                game.client.prepared_model_draws.borrow().is_empty(),
                 "no GPU copy"
             );
             assert!(!entities.is_empty());
@@ -1351,7 +1351,7 @@ mod tests {
             // The two translucent copies' quads and none of the fully hidden copy's.
             let slot = mod_api::__private::game::Fields::fields(&model).slot;
             let faces = game
-                .side
+                .client
                 .standalone_geometry
                 .faces(slot)
                 .expect("prepared faces")
@@ -1392,7 +1392,7 @@ mod tests {
                 .unwrap();
             let mut entities = Vec::new();
             game.commit_model_instances(&mut draw, camera, &mut entities);
-            let staged = game.side.prepared_model_draws.borrow();
+            let staged = game.client.prepared_model_draws.borrow();
             assert_eq!(staged.len(), 1, "only the first copy fits the room");
             assert_eq!(staged[0].cpu_vertices, 0, "baked copies follow the prefix");
             let placed = staged[0].instance.model[3][0];
@@ -1403,7 +1403,7 @@ mod tests {
             let slot = staged[0].slot;
             drop(staged);
             let faces = game
-                .side
+                .client
                 .standalone_geometry
                 .faces(slot)
                 .expect("prepared faces")
@@ -1439,7 +1439,7 @@ mod tests {
             let _restore = Restore;
             let model = grass(game);
             sunrise_client::gfx::cap_prepared_instance_slots(16_384);
-            game.side.view_frustum = Some(sunrise_client::gfx::test_frustum([
+            game.client.view_frustum = Some(sunrise_client::gfx::test_frustum([
                 glam::Vec4::new(-1.0, 0.0, 0.0, 4.0),
                 glam::Vec4::W,
                 glam::Vec4::W,
@@ -1462,13 +1462,13 @@ mod tests {
             let mut committed = Vec::new();
             game.commit_model_instances(&mut draw, DVec3::ZERO, &mut committed);
             assert_eq!(
-                game.side.prepared_model_draws.borrow().len(),
+                game.client.prepared_model_draws.borrow().len(),
                 1,
                 "an accepted copy must be staged"
             );
             assert_eq!(draw.usage().instances_used, 0, "commit takes the copies");
             assert!(committed.is_empty(), "the staged copy is not also baked");
-            game.side.prepared_model_draws.borrow_mut().clear();
+            game.client.prepared_model_draws.borrow_mut().clear();
             draw.reset([0.0; 3], Mat4::IDENTITY, [0.0, 0.0]);
             {
                 let mut ctx = context(game, &mut draw);
@@ -1486,16 +1486,16 @@ mod tests {
                 );
                 ctx.draw_model_instances(model, &vec![near; 16_382])
                     .unwrap();
-                let staged = game.side.prepared_model_draws.borrow().len();
+                let staged = game.client.prepared_model_draws.borrow().len();
                 assert_eq!(
                     ctx.draw_model_instances(model, &[near, near]),
                     Err(InstanceError::CapacityExceeded)
                 );
                 assert_eq!(ctx.usage().instances_used, 16_383);
-                assert_eq!(game.side.prepared_model_draws.borrow().len(), staged);
+                assert_eq!(game.client.prepared_model_draws.borrow().len(), staged);
                 ctx.draw_model_instances(model, &[near]).unwrap();
                 assert_eq!(ctx.usage().instances_used, 16_384);
-                game.side.prepared_model_draws.borrow_mut().clear();
+                game.client.prepared_model_draws.borrow_mut().clear();
                 ctx.surface.reset([0.0; 3], Mat4::IDENTITY, [0.0, 0.0]);
                 assert_eq!(
                     ctx.draw_model_instances(model, &vec![far; 16_385]),
@@ -1622,13 +1622,13 @@ mod tests {
             );
             FILL_ARMED.store(false, Ordering::Relaxed);
             assert_eq!(
-                game.side.prepared_model_draws.borrow().len(),
+                game.client.prepared_model_draws.borrow().len(),
                 1,
                 "fill_world_geometry must commit the accepted copy"
             );
             assert_eq!(draw.usage().instances_used, 0);
             assert_eq!(entities.len(), 4);
-            assert_eq!(game.side.prepared_model_draws.borrow()[0].cpu_vertices, 4);
+            assert_eq!(game.client.prepared_model_draws.borrow()[0].cpu_vertices, 4);
         });
     }
 }

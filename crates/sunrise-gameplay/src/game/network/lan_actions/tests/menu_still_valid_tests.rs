@@ -369,7 +369,7 @@ fn a_blockless_mod_menu_closes_when_its_part_answers_false() {
                             .unwrap()
                             .state
                     };
-                    game.side
+                    game.server
                         .lan
                         .as_mut()
                         .unwrap()
@@ -382,7 +382,7 @@ fn a_blockless_mod_menu_closes_when_its_part_answers_false() {
                     assert_eq!(state_of_guest(game), (old_state + 1) & 0x7FFF);
                     assert_eq!(answer.asks.load(Ordering::Relaxed), before);
 
-                    game.side
+                    game.server
                         .lan
                         .as_mut()
                         .unwrap()
@@ -393,7 +393,7 @@ fn a_blockless_mod_menu_closes_when_its_part_answers_false() {
                     assert_eq!(window_of_guest(game), None);
                     assert_eq!(answer.asks.load(Ordering::Relaxed), before + 1);
                     assert!(
-                        game.side.lan
+                        game.server.lan
                             .as_ref()
                             .unwrap()
                             .hub

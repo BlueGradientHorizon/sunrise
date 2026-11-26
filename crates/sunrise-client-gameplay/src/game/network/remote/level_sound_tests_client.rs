@@ -49,7 +49,7 @@ fn game_events_ask_client_level_before_playback() {
                 ]
             );
             assert!(
-                game.side.audio.0.heard.is_empty(),
+                game.client.audio.0.heard.is_empty(),
                 "all three canceled requests stop before Audio"
             );
             game.handle_packet(C::GameEvent(play::GameEvent {
@@ -69,9 +69,9 @@ fn game_events_ask_client_level_before_playback() {
                 player: None,
                 cached_chunk: std::cell::Cell::new(None),
             };
-            game.side.particles.0.tick(&level);
+            game.client.particles.0.tick(&level);
             assert_eq!(
-                game.side.particles.0.elder_guardians().len(),
+                game.client.particles.0.elder_guardians().len(),
                 2,
                 "neither silent nor canceled sound suppresses the apparition"
             );
@@ -93,7 +93,7 @@ fn local_level_requests_can_mute_sound_without_undoing_prediction() {
         with_client_game(|game| {
             let _server = logged_client(game);
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(1.0, 64.0, 1.0)).unwrap());
-            game.side
+            game.client
                 .streaming
                 .insert_remote(&mut game.world, Chunk::empty(0, 0));
             let old = game
@@ -145,7 +145,7 @@ fn local_level_requests_can_mute_sound_without_undoing_prediction() {
             game.emit_consume(&consumable, &stack, 16);
             game.play_player_bound_sound("minecraft:item.goat_horn.sound.0", 2, 8.0, 1.0, true);
             assert!(
-                game.side.audio.0.heard.is_empty(),
+                game.client.audio.0.heard.is_empty(),
                 "all four canceled requests stop before Audio"
             );
             let expected = [
@@ -175,10 +175,10 @@ fn local_level_requests_can_mute_sound_without_undoing_prediction() {
                 },
             ];
             assert_eq!(*requests.lock().unwrap(), expected);
-            game.side.audio.0.engine.loaded = true;
+            game.client.audio.0.engine.loaded = true;
             game.play_client_player_sound("minecraft:block.honey_block.slide", 1.0, 1.0);
             assert_eq!(
-                game.side
+                game.client
                     .audio
                     .0
                     .heard
@@ -186,7 +186,7 @@ fn local_level_requests_can_mute_sound_without_undoing_prediction() {
                 Some(&1)
             );
             assert!(
-                game.side.audio.0.engine.bound_entities().is_empty(),
+                game.client.audio.0.engine.bound_entities().is_empty(),
                 "LocalPlayer.playSound stays positional"
             );
         });

@@ -165,7 +165,7 @@ fn two_entities_are_asked_in_the_draw_queues_order() {
     }
     let heard = Arc::default();
     with_pair(&heard, |game| {
-        game.side.pack_ids = Some(Default::default());
+        game.client.pack_ids = Some(Default::default());
         game.mobs.push(mob(game, "minecraft:zombie", 91, 0.0));
         admit_own_player(game, false);
         game.mobs.push(mob(game, "minecraft:cow", 92, 2.0));
@@ -184,7 +184,7 @@ fn two_entities_are_asked_in_the_draw_queues_order() {
             ]
         );
         assert_eq!(markers(&out), 12, "each pre hook's marker is kept");
-        let motion = game.side.entity_motion.borrow();
+        let motion = game.client.entity_motion.borrow();
         let tracked: Vec<_> = motion.iter().copied().filter(|&(_, id)| id != 0).collect();
         assert_eq!(
             tracked.iter().map(|&(_, id)| id).collect::<Vec<_>>(),
@@ -195,7 +195,7 @@ fn two_entities_are_asked_in_the_draw_queues_order() {
             ]
         );
         assert!(tracked[0].0 < tracked[1].0 && tracked[1].0 < tracked[2].0);
-        let spans = game.side.entity_spans.borrow();
+        let spans = game.client.entity_spans.borrow();
         let local = spans.iter().find(|span| span.player).unwrap();
         assert_eq!(local.start, tracked[1].0);
         assert!(!local.hidden);
@@ -226,10 +226,10 @@ fn a_spectator_following_an_entity_submits_no_local_body() {
             (CameraType::ThirdPersonBack, false),
             (CameraType::FirstPerson, true),
         ] {
-            game.side.camera_type = camera;
-            game.side.occlusion.0.shadow_casters.1 = player_shadow;
+            game.client.camera_type = camera;
+            game.client.occlusion.0.shadow_casters.1 = player_shadow;
             game.entity_geometry(CAMERA, 1.0, None, Vec::new(), &mut Vec::new());
-            assert!(!game.side.entity_runs.iter().any(|run| run.family
+            assert!(!game.client.entity_runs.iter().any(|run| run.family
                 == crate::game::client_side::entity_client::DrawFamily::LocalPlayer));
             assert!(!events(&heard).iter().any(|event| matches!(
                 event.as_str(),
@@ -638,7 +638,7 @@ fn a_canceled_pre_keeps_the_local_players_flames() {
     with_pair(&heard, |game| {
         place_stone_floor(game);
         admit_own_player(game, false);
-        game.side.settings.entity_shadows = false;
+        game.client.settings.entity_shadows = false;
         let expected = 20; // FlameFeatureRenderer submits five quads for a standing player.
         let added = |game: &mut crate::game::ClientGame<'_>| {
             game.player.as_mut().unwrap().fire_ticks = 0;

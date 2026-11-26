@@ -38,7 +38,7 @@ use sunrise_items::items::ItemStack;
         }
         let level = game.level(game.dim.id()).unwrap();
         let player = game.fake_player(level, 2, "fake").unwrap();
-        let host = game.side.lan.as_mut().unwrap();
+        let host = game.server.lan.as_mut().unwrap();
         let conn = |uuid| {
             host.hub
                 .guests
@@ -80,7 +80,7 @@ pub fn held(
         game: &crate::game::ServerGame<'_>,
         uuid: u128,
     ) -> Option<ItemStack> {
-        let host = game.side.lan.as_ref().unwrap();
+        let host = game.server.lan.as_ref().unwrap();
         let g = host.hub.guests.iter().find(|g| g.uuid == uuid).unwrap();
         g.inventory[g.selected].clone()
     }
@@ -126,7 +126,7 @@ pub fn held(
         // empties when used, by its ray from the eyes (looking straight down here).
         with_game(|game| {
             let (player, ..) = fake(game, Some("minecraft:water_bucket"), 0);
-            game.side.lan.as_mut().unwrap().hub.guests.update_all(|g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update_all(|g| {
                 g.pitch = 90.0;
             });
             assert_eq!(
@@ -192,7 +192,7 @@ pub(in crate::game) fn health(game: &crate::game::ServerGame<'_>, id: u32) -> f3
         use super::super::native_entity_refs::tests::with_game;
         with_game(|game| {
             let (player, fake_conn, _) = fake(game, None, 0);
-            game.side.lan.as_mut().unwrap().hub.guests.update_all(|g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update_all(|g| {
                 g.yaw = -90.0;
             });
             // A fist does 1 (the attack damage attribute's base), scaled by the attack strength
@@ -209,7 +209,7 @@ pub(in crate::game) fn health(game: &crate::game::ServerGame<'_>, id: u32) -> f3
             assert!((full - health(game, 5000) - dealt).abs() < 1e-4);
             // No mob takes the fake as the player to answer.
             let bound = game
-                .side
+                .server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -279,7 +279,7 @@ pub(in crate::game) fn health(game: &crate::game::ServerGame<'_>, id: u32) -> f3
                 Some("minecraft:bedrock")
             );
             place(game, [3, 64, 3], "minecraft:stone");
-            game.side.lan.as_mut().unwrap().hub.guests.update_all(|g| {
+            game.server.lan.as_mut().unwrap().hub.guests.update_all(|g| {
                 g.position = [-6.5, 64.0, -6.5];
             });
             assert_eq!(

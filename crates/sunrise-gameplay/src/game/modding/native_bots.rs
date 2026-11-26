@@ -252,7 +252,7 @@ mod tests {
 
         with_game(|game| {
             open_to_lan(game);
-            game.side
+            game.server
                 .streaming
                 .insert_remote(&mut game.world, Chunk::empty(0, 0));
             let stone = game
@@ -271,7 +271,7 @@ mod tests {
             ));
             guest.offhand = Some(ItemStack::new("minecraft:bow", 1));
             let uuid = guest.uuid;
-            game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+            game.server.lan.as_mut().unwrap().hub.guests.push(guest);
             let player = game.player(uuid).unwrap();
 
             let run = |game: &mut crate::game::ServerGame<'_>| {
@@ -287,7 +287,7 @@ mod tests {
             assert!(using.position[2] > 1.5 && using.position[2] < free.position[2]);
 
             game.as_guest(1, |game| game.using = None).unwrap();
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -304,7 +304,7 @@ mod tests {
                 game.player_simulate_move(player, jump).unwrap()
             };
             let fall = jump(game);
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -316,7 +316,7 @@ mod tests {
             let glide = jump(game);
             assert_eq!(fall.velocity[2], 0.0);
             assert!(glide.velocity[2] > 0.0 && glide.velocity[1] > fall.velocity[1]);
-            let live = game.side.lan.as_ref().unwrap().hub.guest(1).unwrap();
+            let live = game.server.lan.as_ref().unwrap().hub.guest(1).unwrap();
             assert!(!live.motion.as_ref().unwrap().fall_flying);
         });
     }
@@ -346,7 +346,7 @@ mod tests {
                     std::sync::Arc::make_mut(&mut items.enchantments)
                         .bind_damage_catalog(&game.health_resources.damage);
                     game.server_items = Some(std::sync::Arc::new(items));
-                    game.side
+                    game.server
                         .streaming
                         .insert_remote(&mut game.world, Chunk::empty(0, 0));
                     let magma = game
@@ -365,7 +365,7 @@ mod tests {
                     body.entity_id = guest.entity_id;
                     guest.motion = Some(Box::new(body));
                     let uuid = guest.uuid;
-                    game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+                    game.server.lan.as_mut().unwrap().hub.guests.push(guest);
                     let player = game.player(uuid).unwrap();
                     game.damage_hooks = DamageHooks {
                         post: Some(|_, _, _| HITS.with(|hits| hits.set(hits.get() + 1))),
@@ -382,14 +382,14 @@ mod tests {
 
                     let mut boots = ItemStack::new("minecraft:leather_boots", 1);
                     boots.enchant("minecraft:frost_walker", 1);
-                    game.side
+                    game.server
                         .lan
                         .as_mut()
                         .unwrap()
                         .hub
                         .update_guest(1, |guest| guest.armor[3] = Some(boots))
                         .unwrap();
-                    assert_eq!(game.side.lan_acting, None);
+                    assert_eq!(game.server.lan_acting, None);
                     assert_eq!(
                         preview(game),
                         0,

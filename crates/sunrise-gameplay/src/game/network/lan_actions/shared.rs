@@ -978,7 +978,7 @@ pub(in crate::game) mod hotbar_tests {
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
                 open_to_lan(game);
-                game.side.lan.as_mut().unwrap().hub.guests.push(guest(1));
+                game.server.lan.as_mut().unwrap().hub.guests.push(guest(1));
                 let switch = |game: &mut crate::game::ServerGame<'_>, slot| {
                     game.lan_guest_packet(
                         1,
@@ -1056,7 +1056,7 @@ pub(in crate::game) mod respawn_position_tests {
                 let mut player = guest(1);
                 player.dead = true;
                 player.spawn = Some([5.5, 64.0, 5.5]);
-                game.side.lan.as_mut().unwrap().hub.guests.push(player);
+                game.server.lan.as_mut().unwrap().hub.guests.push(player);
                 game.guest_respawn(1);
                 let heard = heard.lock().unwrap();
                 let [(uuid, level, original, missing)] = heard[..] else {
@@ -1066,7 +1066,7 @@ pub(in crate::game) mod respawn_position_tests {
                     (uuid, level, missing),
                     (123, LevelDimension::Overworld, false)
                 );
-                let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                let g = &game.server.lan.as_ref().unwrap().hub.guests[0];
                 assert!(!g.dead);
                 assert_eq!(g.position, [original[0] + 10.0, original[1], original[2]]);
                 assert_eq!(g.yaw, 180.0);
@@ -1111,14 +1111,14 @@ pub(in crate::game) mod respawn_position_tests {
                 player.dead = true;
                 (player.yaw, player.pitch) = (90.0, 30.0);
                 player.spawn = Some([5.5, 64.0, 5.5]);
-                game.side.lan.as_mut().unwrap().hub.guests.push(player);
+                game.server.lan.as_mut().unwrap().hub.guests.push(player);
                 game.guest_respawn(1);
                 let heard = heard.lock().unwrap();
                 let [(found, yaw, pitch)] = heard[..] else {
                     panic!("heard {heard:?}");
                 };
                 assert_eq!((yaw, pitch), (0.0, 0.0), "told the respawn facing");
-                let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                let g = &game.server.lan.as_ref().unwrap().hub.guests[0];
                 assert!(!g.dead);
                 assert_eq!(g.position, found);
                 assert_eq!((g.yaw, g.pitch), (0.0, 0.0));
@@ -1161,7 +1161,7 @@ pub(in crate::game) mod pickup_xp_tests {
             let mut g = guest(1);
             g.loaded = true;
             g.position = [0.5, 70.0, 0.5];
-            game.side.lan.as_mut().unwrap().hub.guests.push(g);
+            game.server.lan.as_mut().unwrap().hub.guests.push(g);
             let p = Vec3::new(0.5, 70.0, 0.5);
             game.orbs.push(ExperienceOrb {
                 size_answer: None,
@@ -1186,7 +1186,7 @@ pub(in crate::game) mod pickup_xp_tests {
             });
             game.guest_orbs(0);
             let left = game.orbs.iter().any(|o| o.id == 40);
-            out = (left, game.side.lan.as_ref().unwrap().hub.guests[0].xp_total);
+            out = (left, game.server.lan.as_ref().unwrap().hub.guests[0].xp_total);
         });
         out
     }

@@ -219,7 +219,7 @@ fn boat_with_rider(game: &mut crate::game::ServerGame<'_>) -> (EntityRef, Entity
 fn a_spawn_then_abort_leaves_no_entity_map_or_hook() {
     const NAME: &str = "game::server_side::transaction_entities_tests::a_spawn_then_abort_leaves_no_entity_map_or_hook";
     with_observer(NAME, |game| {
-        let (mobs, next) = (game.mobs.len(), game.side.next_entity);
+        let (mobs, next) = (game.mobs.len(), game.server.next_entity);
         let pig = game.storage_scope(|game, _| {
             let pig = summon(game, "minecraft:pig", "{}").unwrap();
             assert!(game.entity(pig).is_some(), "in the level inside the action");
@@ -235,7 +235,7 @@ fn a_spawn_then_abort_leaves_no_entity_map_or_hook() {
         game.native_joins_flush(false, 0);
         game.native_leaves_flush();
         assert_eq!(heard(), Heard::default(), "no join and no leave");
-        assert_eq!(game.side.next_entity, next + 1, "its id is burnt");
+        assert_eq!(game.server.next_entity, next + 1, "its id is burnt");
     });
 }
 
@@ -342,7 +342,7 @@ fn a_thrown_spawn_joins_at_the_call_or_the_root_commit() {
             game.level_spawn_entity(level, kind, [1.5, 70.0, 1.5], &spawn)
         };
         let projectiles = game.creatures.projectiles.len();
-        let next = game.side.next_entity;
+        let next = game.server.next_entity;
         assert_eq!(thrown(game, "minecraft:snowball"), None, "kept out at once");
         assert_eq!(heard().joined, [next + 1]);
         assert_eq!(game.creatures.projectiles.len(), projectiles);
@@ -367,7 +367,7 @@ fn a_thrown_spawn_joins_at_the_call_or_the_root_commit() {
 fn outside_a_transaction_joins_and_leaves_are_told_at_the_call() {
     const NAME: &str = "game::server_side::transaction_entities_tests::outside_a_transaction_joins_and_leaves_are_told_at_the_call";
     with_observer(NAME, |game| {
-        let next = game.side.next_entity;
+        let next = game.server.next_entity;
         let boat = summon(game, "minecraft:oak_boat", "{}").unwrap();
         assert_eq!(boat, next + 1);
         assert_eq!(
@@ -588,7 +588,7 @@ fn ids_never_go_back_and_a_stale_handle_names_no_later_entity() {
         });
         let next = summon(game, "minecraft:pig", "{}").unwrap();
         assert_eq!(next, aborted + 1);
-        assert!(game.side.next_entity >= next);
+        assert!(game.server.next_entity >= next);
         assert_eq!(game.native_entity_target(handle), None);
         assert_eq!(game.entity(aborted), None);
     });
@@ -675,7 +675,7 @@ fn an_aborted_spawn_is_in_no_tracking_pass() {
         "game::server_side::transaction_entities_tests::an_aborted_spawn_is_in_no_tracking_pass";
     with_observer(NAME, |game| {
         // Above the guest's fixed entity id.
-        game.side.next_entity = 100;
+        game.server.next_entity = 100;
         let _rx = crate::game::server_side::lan::world_spawn_sync_tests::host_for(game);
         let tracked = |game: &mut crate::game::ServerGame<'_>, id: u32| {
             let mut states = sunrise_sim::lan::entity::States::default();
@@ -799,16 +799,16 @@ fn exhausted_ids_refuse_every_mod_spawn() {
         };
         // Each spawns below the headroom; ids only ever go up.
         let last = u32::MAX - ENTITY_ID_HEADROOM;
-        game.side.next_entity = last - 1024;
+        game.server.next_entity = last - 1024;
         for (name, spawn) in rows {
             assert!(spawn(game, fixture), "{name} spawns below the headroom");
         }
         assert!(!game.native_lifecycle.ids_exhausted_told);
-        game.side.next_entity = last;
+        game.server.next_entity = last;
         for (name, spawn) in rows {
             let entities = game.live_entity_ids().len();
             assert!(!spawn(game, fixture), "{name} refuses");
-            assert_eq!(game.side.next_entity, last, "{name} takes no id");
+            assert_eq!(game.server.next_entity, last, "{name} takes no id");
             assert_eq!(
                 game.live_entity_ids().len(),
                 entities,
@@ -825,13 +825,13 @@ fn exhausted_ids_stop_the_tick_spawners() {
     const NAME: &str =
         "game::server_side::transaction_entities_tests::exhausted_ids_stop_the_tick_spawners";
     with_observer(NAME, |game| {
-        game.side.next_entity = u32::MAX - ENTITY_ID_HEADROOM - 1;
+        game.server.next_entity = u32::MAX - ENTITY_ID_HEADROOM - 1;
         game.tick_spawners();
         assert!(!game.native_lifecycle.ids_exhausted_told);
-        game.side.next_entity = u32::MAX - ENTITY_ID_HEADROOM;
+        game.server.next_entity = u32::MAX - ENTITY_ID_HEADROOM;
         game.tick_spawners();
         assert!(game.native_lifecycle.ids_exhausted_told, "named in the log");
-        assert_eq!(game.side.next_entity, u32::MAX - ENTITY_ID_HEADROOM);
+        assert_eq!(game.server.next_entity, u32::MAX - ENTITY_ID_HEADROOM);
     });
 }
 
@@ -1097,7 +1097,7 @@ fn a_level_commit_told_inside_another_levels_commit_keeps_its_own_batch() {
         game.build_registries();
         assert!(game.run_command("difficulty normal"));
         let _rx = crate::game::server_side::lan::world_spawn_sync_tests::host_for(game);
-        game.side.lan.as_mut().unwrap().hub.guests.clear();
+        game.server.lan.as_mut().unwrap().hub.guests.clear();
         heard();
         game.enter_level(Dim::Nether).unwrap();
         game.world
@@ -1179,12 +1179,12 @@ fn an_exhausted_level_pop_draws_nothing_from_the_level_random() {
     const NAME: &str = "game::server_side::transaction_entities_tests::an_exhausted_level_pop_draws_nothing_from_the_level_random";
     with_observer(NAME, |game| {
         let level = game.level(game.dim.id()).unwrap();
-        game.side.next_entity = u32::MAX - ENTITY_ID_HEADROOM;
+        game.server.next_entity = u32::MAX - ENTITY_ID_HEADROOM;
         let expected = game.world.random.clone().next_long();
         let stack = ItemStack::new("minecraft:stone", 1);
         assert!(game.level_pop_resource(level, [1, 70, 1], stack).is_none());
         assert_eq!(game.world.random.clone().next_long(), expected);
-        assert_eq!(game.side.next_entity, u32::MAX - ENTITY_ID_HEADROOM);
+        assert_eq!(game.server.next_entity, u32::MAX - ENTITY_ID_HEADROOM);
     });
 }
 

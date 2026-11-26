@@ -478,7 +478,7 @@ pub mod tests {
             let _server = logged_client(game);
             let player = game.local_player().unwrap();
             assert_eq!(player.block_breaking(game), Some(BlockBreakingState::Idle));
-            game.side.ambience.moodiness = 0.375;
+            game.client.ambience.moodiness = 0.375;
             assert_eq!(player.ambient_mood(game), Some(0.375));
             for (progress, stage) in [(0.0, None), (0.45, Some(4)), (1.0, Some(9))] {
                 game.set_client_mining(Some(super::super::Mining {
@@ -497,7 +497,7 @@ pub mod tests {
                 );
             }
             game.set_client_mining(None);
-            game.side.ambience.moodiness = 0.0;
+            game.client.ambience.moodiness = 0.0;
             assert_eq!(player.block_breaking(game), Some(BlockBreakingState::Idle));
             assert_eq!(player.ambient_mood(game), Some(0.0));
             let fields = mod_api::__private::game::player_ref;
@@ -522,10 +522,10 @@ pub mod tests {
             assert_eq!(current.ambient_mood(game), None);
             assert_eq!(game.client_session().client_server(), None);
             game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
-            game.side.remote.as_mut().unwrap().logged_in = false;
+            game.client.remote.as_mut().unwrap().logged_in = false;
             assert_eq!(current.block_breaking(game), None);
             assert_eq!(current.ambient_mood(game), None);
-            game.side.remote = None;
+            game.client.remote = None;
             assert_eq!(current.block_breaking(game), None);
         });
     }

@@ -2385,7 +2385,14 @@ pub(in crate::game) mod upload_pace;
 
 #[cfg(any(test, feature = "client"))]
 #[path = "interface/key_codes.rs"]
-pub mod key_codes;
+pub(in crate::game) mod key_codes;
+
+#[cfg(any(test, all(feature = "client", feature = "test-support")))]
+pub mod test_key_codes {
+    pub use super::key_codes::{
+        drop_held_behind_dialog, gameplay_has_keyboard, glfw_button, glfw_modifiers, keyboard_button,
+    };
+}
 
 #[cfg(any(test, feature = "client"))]
 #[path = "interface/key_focus.rs"]

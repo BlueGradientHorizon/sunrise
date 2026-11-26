@@ -33,7 +33,7 @@ fn terrain_sources_are_kept_only_while_a_pack_is_loaded() {
         let _event_loop = frame_scene(game);
         let sky = sunrise_level::environment::Sky::default();
         let camera = glam::DVec3::new(0.5, 65.5, 0.5);
-        let renderer = game.side.renderer.0.as_mut().expect("a renderer");
+        let renderer = game.client.renderer.0.as_mut().expect("a renderer");
         // Flat draws are what read the sources: a device without them keeps none, and has
         // nothing for this case to check.
         if renderer.set_flat_draws(true).is_err() {
@@ -49,14 +49,14 @@ fn terrain_sources_are_kept_only_while_a_pack_is_loaded() {
         };
         // The first frame turns the resource packs' material maps on and reloads them, the
         // next loads the pack, and the one after meshes with its sources.
-        game.side.settings.sunrise.shader_pack = pack.to_str().unwrap().to_owned();
+        game.client.settings.sunrise.shader_pack = pack.to_str().unwrap().to_owned();
         assert!(kept_after(game, 3), "loaded");
-        assert!(game.side.streaming.shader_pack);
+        assert!(game.client.streaming.shader_pack);
         // Dropped: the next frame unloads it, the one after meshes without sources.
-        game.side.settings.sunrise.shader_pack = String::new();
+        game.client.settings.sunrise.shader_pack = String::new();
         assert!(!kept_after(game, 2), "dropped");
-        assert!(!game.side.streaming.shader_pack);
-        game.side.settings.sunrise.shader_pack = pack.to_str().unwrap().to_owned();
+        assert!(!game.client.streaming.shader_pack);
+        game.client.settings.sunrise.shader_pack = pack.to_str().unwrap().to_owned();
         assert!(kept_after(game, 3), "loaded again");
     });
 }

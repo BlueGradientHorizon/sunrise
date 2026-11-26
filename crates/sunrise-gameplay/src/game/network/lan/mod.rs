@@ -3615,7 +3615,7 @@ pub(in crate::game) mod tests {
         guest.placed = true;
         guest.dimension = "minecraft:overworld".into();
         hub.guests.push(guest);
-        game.side.lan = Some(LanHost::for_test(hub));
+        game.server.lan = Some(LanHost::for_test(hub));
         for (block, expected) in [
             ("minecraft:ladder", false),
             ("minecraft:scaffolding", false),
@@ -3623,7 +3623,7 @@ pub(in crate::game) mod tests {
         ] {
             let state = game.pack.assets.registry.default_state(block).unwrap();
             game.world.set(0, 4, 0, state).unwrap();
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -3652,7 +3652,7 @@ pub(in crate::game) mod tests {
             })
             .unwrap();
             assert_eq!(
-                game.side.lan.as_ref().unwrap().hub.guests[0].fall_flying,
+                game.server.lan.as_ref().unwrap().hub.guests[0].fall_flying,
                 expected,
                 "{block}"
             );

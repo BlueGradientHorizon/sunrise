@@ -4,6 +4,7 @@
 pub(crate) mod tests {
 
 use sunrise_gameplay_common::game::server_side::view_pass::tests::decode_ordered;
+use sunrise_gameplay_common::game::server_side::view_pass::tests::{Got, Sent};
 
 use sunrise_gameplay_common::game::server_side::view_pass::tests::every;
 

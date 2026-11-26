@@ -1907,13 +1907,13 @@ use sunrise_gameplay_common::game::api_values::test_snapshot;
                 let (player, fake_conn, _) = fake(game, None, 0);
                 // A placed fake participates in actions, not online-player tracking.
                 // The packet attack gate must still reach the hook and damage below.
-                let host = game.side.lan.as_ref().unwrap();
+                let host = game.server.lan.as_ref().unwrap();
                 let guest = host.hub.guest(fake_conn).unwrap();
                 assert!(guest.is_fake());
                 assert!(guest.placed);
                 assert_eq!(guest.dimension, host.hub.config.dimension);
                 assert!(!guest.participates_online());
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -1922,7 +1922,7 @@ use sunrise_gameplay_common::game::api_values::test_snapshot;
                     .update_all(|g| g.yaw = -90.0);
                 let near = zombie(game, 5000, [2.0, 64.0, 0.5]);
                 let full = health(game, 5000);
-                game.as_guest(fake_conn, |g| g.side.attack_ticks = 2)
+                game.as_guest(fake_conn, |g| g.server.attack_ticks = 2)
                     .unwrap();
                 assert_eq!(
                     game.player_perform_action(player, PlayerAction::Attack { target: near }),
@@ -1941,7 +1941,7 @@ use sunrise_gameplay_common::game::api_values::test_snapshot;
                     "the blow uses the pre-reset charge"
                 );
                 assert_eq!(
-                    game.as_guest(fake_conn, |g| g.side.attack_ticks).unwrap(),
+                    game.as_guest(fake_conn, |g| g.server.attack_ticks).unwrap(),
                     0,
                     "the swing resets the charge after the hit"
                 );
@@ -1950,7 +1950,7 @@ use sunrise_gameplay_common::game::api_values::test_snapshot;
             // the hit nor the reset has run yet.
             with_game(|game| {
                 let (player, fake_conn, _) = fake(game, None, 0);
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -1961,7 +1961,7 @@ use sunrise_gameplay_common::game::api_values::test_snapshot;
                 let full = health(game, 5001);
                 seen.lock().unwrap().clear();
                 cancel.store(true, Ordering::Relaxed);
-                game.as_guest(fake_conn, |g| g.side.attack_ticks = 2)
+                game.as_guest(fake_conn, |g| g.server.attack_ticks = 2)
                     .unwrap();
                 assert_eq!(
                     game.player_perform_action(player, PlayerAction::Attack { target: near }),
@@ -1970,7 +1970,7 @@ use sunrise_gameplay_common::game::api_values::test_snapshot;
                 assert_eq!(*seen.lock().unwrap(), vec![full]);
                 assert_eq!(health(game, 5001), full, "a veto stops the blow");
                 assert_eq!(
-                    game.as_guest(fake_conn, |g| g.side.attack_ticks).unwrap(),
+                    game.as_guest(fake_conn, |g| g.server.attack_ticks).unwrap(),
                     2,
                     "and the swing that would reset the charge never starts"
                 );
@@ -1984,7 +1984,7 @@ use sunrise_gameplay_common::game::api_values::test_snapshot;
         use super::super::native_entity_refs::tests::with_game;
         with_game(|game| {
             let (player, conn, _) = fake(game, None, 0);
-            game.as_guest(conn, |g| g.side.attack_ticks = 2).unwrap();
+            game.as_guest(conn, |g| g.server.attack_ticks = 2).unwrap();
             for partial in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
                 assert_eq!(game.player_attack_strength_scale(player, partial), None);
                 game.as_guest(conn, |g| {
@@ -2030,7 +2030,7 @@ use sunrise_gameplay_common::game::api_values::test_snapshot;
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
                 let (player, fake_conn, _) = fake(game, None, 0);
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -2041,14 +2041,14 @@ use sunrise_gameplay_common::game::api_values::test_snapshot;
                 let full = health(game, 5000);
                 // A fist's cooldown is 5 ticks: a full ticker reads 1.0, and half of one
                 // ((2 + 0.5) / 5) reads 0.5.
-                game.as_guest(fake_conn, |g| g.side.attack_ticks = 5)
+                game.as_guest(fake_conn, |g| g.server.attack_ticks = 5)
                     .unwrap();
                 assert_eq!(
                     player.attack_strength_scale(game, 0.5),
                     Some(1.0),
                     "a full ticker is a fully charged blow"
                 );
-                game.as_guest(fake_conn, |g| g.side.attack_ticks = 2)
+                game.as_guest(fake_conn, |g| g.server.attack_ticks = 2)
                     .unwrap();
                 assert_eq!(
                     player.attack_strength_scale(game, 0.5),
@@ -2089,7 +2089,7 @@ use sunrise_gameplay_common::game::api_values::test_snapshot;
         }
         with_game(|game| {
             let (player, conn, _) = fake(game, None, 0);
-            game.as_guest(conn, |g| g.side.attack_ticks = 3).unwrap();
+            game.as_guest(conn, |g| g.server.attack_ticks = 3).unwrap();
             let charged = zombie(game, 5000, [2.0, 64.0, 0.5]);
             // Out of a sweep's reach of the first.
             let uncharged = zombie(game, 5001, [-1.5, 64.0, 0.5]);
@@ -2110,7 +2110,7 @@ use sunrise_gameplay_common::game::api_values::test_snapshot;
                     .unwrap();
                 assert_eq!(result.outcome, ActionOutcome::Consumed);
                 assert_eq!(
-                    game.as_guest(conn, |g| g.side.attack_ticks).unwrap(),
+                    game.as_guest(conn, |g| g.server.attack_ticks).unwrap(),
                     3,
                     "the fake's own ticker comes back"
                 );

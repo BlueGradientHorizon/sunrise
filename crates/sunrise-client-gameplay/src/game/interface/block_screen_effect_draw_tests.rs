@@ -216,9 +216,9 @@ fn a_mod_draws_prepends_replaces_and_cancels_overlays() {
                 ..LEAVE
             };
             *PLAN.lock().unwrap() = plan;
-            game.side.chat_ui.hide_gui = true;
+            game.client.chat_ui.hide_gui = true;
             let prepended = quads(game);
-            game.side.chat_ui.hide_gui = false;
+            game.client.chat_ui.hide_gui = false;
             assert_eq!(names(&prepended), ["mod block", "block", "fire", "fire"]);
             assert_eq!(
                 ASKED.lock().unwrap().drain(..).collect::<Vec<_>>(),
@@ -540,7 +540,7 @@ pub(in crate::game::client_side) fn observe_overlay(
 fn underwater_third_person_neither_extracts_nor_draws_the_overlay() {
     with_client_game(|game| {
         burning_player(game);
-        game.side.camera_type = CameraType::ThirdPersonBack;
+        game.client.camera_type = CameraType::ThirdPersonBack;
         let water = game
             .pack
             .assets

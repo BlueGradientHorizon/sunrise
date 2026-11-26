@@ -2,7 +2,7 @@ pub use crate::game_facade::*;
 #[cfg(all(test, feature = "client"))]
 pub(crate) use sunrise_client_gameplay::hud_gates::{block_outline_drawn, debug_crosshair_drawn};
 #[cfg(all(test, feature = "client"))]
-pub(crate) use sunrise_client_gameplay::game::client_side::key_codes::{
+pub(crate) use sunrise_client_gameplay::game::client_side::test_key_codes::{
     drop_held_behind_dialog, gameplay_has_keyboard, glfw_button, glfw_modifiers, keyboard_button,
 };
 #[cfg(test)]

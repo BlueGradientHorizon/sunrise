@@ -887,7 +887,7 @@ pub(in crate::game) mod tests {
                 (9005, "minecraft:leash_knot"),
                 (9006, "minecraft:block_display"),
             ] {
-                game.side.others.0.push(crate::game::commands::OtherEntity {
+                game.server.others.0.push(crate::game::commands::OtherEntity {
                     size_answer: None,
                     attachment_lifetime: Default::default(),
                     knot_check: None,

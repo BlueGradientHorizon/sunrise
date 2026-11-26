@@ -2741,7 +2741,7 @@ pub(in crate::game) mod tests {
                         .iter()
                         .filter_map(|e| e.downcast_ref::<KnownClient>())
                         .collect();
-                    let font = &game.side.gui.atlas.font;
+                    let font = &game.client.gui.atlas.font;
                     let expected = font.split_formatted(&long, 40.0);
                     assert!(expected.len() > 1);
                     assert_eq!(

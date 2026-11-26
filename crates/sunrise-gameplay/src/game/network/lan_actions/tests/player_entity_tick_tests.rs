@@ -123,7 +123,7 @@ fn a_canceled_player_skips_its_server_player_tick_while_the_others_run_it() {
     mod_platform::testing::with_mods(mods, || {
         crate::game::native_guest_turn_tests::with_guests(|game| {
             let [first, second] = far_chests(game, &cancel);
-            game.side.lan.as_mut().unwrap().owner = Some(crate::game::lan::Owner {
+            game.server.lan.as_mut().unwrap().owner = Some(crate::game::lan::Owner {
                 uuid: 12,
                 saved: None,
             });
@@ -174,13 +174,13 @@ fn a_player_riding_a_pig_is_told_its_own_tick_as_the_pig_is() {
         crate::game::native_guest_turn_tests::with_guests(|game| {
             let [rider, other] = far_chests(game, &cancel);
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-            let at = game.side.lan.as_ref().unwrap().hub.guests[0].position;
+            let at = game.server.lan.as_ref().unwrap().hub.guests[0].position;
             let mut pig = Mob::new(90, kind, Vec3::new(at[0] + 1.0, at[1], at[2]), 0.0);
             pig.no_ai = true;
             pig.no_gravity = true;
             pig.ground.on_ground = true;
             game.mobs.push(pig);
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -207,7 +207,7 @@ fn a_player_riding_a_pig_is_told_its_own_tick_as_the_pig_is() {
                     ("post", vec![other]),
                 ]
             );
-            let seated = game.side.lan.as_ref().unwrap().hub.guests[0].position;
+            let seated = game.server.lan.as_ref().unwrap().hub.guests[0].position;
             assert_eq!(
                 seated[0],
                 at[0] + 1.0,
@@ -222,7 +222,7 @@ fn a_player_riding_a_pig_is_told_its_own_tick_as_the_pig_is() {
                 "the rider's Post still sees the old seat position"
             );
             assert_eq!(
-                game.side.lan.as_ref().unwrap().hub.guests[0].position[0],
+                game.server.lan.as_ref().unwrap().hub.guests[0].position[0],
                 at[0] + 2.0
             );
         });

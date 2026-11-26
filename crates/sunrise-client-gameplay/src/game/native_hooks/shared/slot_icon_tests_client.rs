@@ -135,7 +135,7 @@ fn unknown_slot_icon_opens_screen_and_draws_missing_sprite() {
                         game.world.set(pos.0, pos.1, pos.2, block).unwrap();
                         assert!(game.open_native_screen(pos, Some(pos), 9, None));
                         assert!(
-                            game.side.mod_screen.0.is_some(),
+                            game.client.mod_screen.0.is_some(),
                             "valid icon must open the screen"
                         );
                         unknown.store(true, Ordering::Relaxed);
@@ -149,14 +149,14 @@ fn unknown_slot_icon_opens_screen_and_draws_missing_sprite() {
                         let mut actual = HudBatch::scratch([128, 128]);
                         game.draw_slot_item(&mut actual, None, 300, &None, 8.0, 18.0);
                         let missing = game
-                            .side
+                            .client
                             .gui
                             .atlas
                             .gui_sprite_or_missing("icon_open:missing")
                             .expect("missing sprite in atlas");
                         assert_eq!(
                             missing,
-                            game.side.gui.atlas.sprites[sunrise_client::hud::MISSING_SPRITE]
+                            game.client.gui.atlas.sprites[sunrise_client::hud::MISSING_SPRITE]
                         );
                         let mut expected = HudBatch::scratch([128, 128]);
                         expected.rect_uv(8.0, 18.0, 16.0, 16.0, missing, 0xFFFF_FFFF);

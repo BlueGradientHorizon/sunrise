@@ -32,7 +32,7 @@ fn a_packs_separate_ao_reaches_the_terrain() {
     }
     with_client_game(|game| {
         let _event_loop = frame_scene(game);
-        game.side.settings.sunrise.shader_pack = pack.to_str().unwrap().to_owned();
+        game.client.settings.sunrise.shader_pack = pack.to_str().unwrap().to_owned();
         let sky = sunrise_level::environment::Sky::default();
         let camera = glam::DVec3::new(0.5, 65.5, 0.5);
         // The first frame turns the resource packs' material maps on and reloads them; the
@@ -40,9 +40,9 @@ fn a_packs_separate_ao_reaches_the_terrain() {
         for _ in 0..2 {
             game.shader_pack_inputs(camera, camera, 0.0, &sky);
         }
-        let ids = game.side.pack_ids.as_ref().expect("the pack loads");
+        let ids = game.client.pack_ids.as_ref().expect("the pack loads");
         assert!(ids.separate_ao);
         game.shader_pack_inputs(camera, camera, 0.0, &sky);
-        assert!(game.side.streaming.separate_ao);
+        assert!(game.client.streaming.separate_ao);
     });
 }

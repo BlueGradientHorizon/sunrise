@@ -350,7 +350,7 @@ fn glyphs_of_a_label_refused_for_capacity_still_upload() {
             })
             .into(),
         );
-        let atlas = &mut game.side.gui.atlas;
+        let atlas = &mut game.client.gui.atlas;
         atlas.font = sunrise_client::font::Font::load(
             &source,
             &atlas.sprites,
@@ -367,12 +367,12 @@ fn glyphs_of_a_label_refused_for_capacity_still_upload() {
         let quad = mod_api::WorldQuad::new([[0.5, 70.5, 0.0]; 4], !0, mod_api::WorldDepth::Tested);
         let capacity = draw.usage().quad_capacity as usize;
         draw.quads(&vec![quad; capacity - 1]).unwrap();
-        game.side.text_patches.borrow_mut().clear();
+        game.client.text_patches.borrow_mut().clear();
         let refused = GameWorldDrawContext::new(game, &mut draw).name_tag(at, &text, options);
         assert_eq!(refused, Err(DrawError::CapacityExceeded));
         assert!(draw.labels().iter().all(|label| label.is_empty()));
         let queued: Vec<[u32; 4]> = game
-            .side
+            .client
             .text_patches
             .borrow()
             .iter()
@@ -387,13 +387,13 @@ fn glyphs_of_a_label_refused_for_capacity_still_upload() {
         let accepted = GameWorldDrawContext::new(game, &mut draw).name_tag(at, &text, options);
         assert_eq!(accepted, Ok(()));
         assert_eq!(
-            game.side.text_patches.borrow().len(),
+            game.client.text_patches.borrow().len(),
             queued.len(),
             "the glyphs were cached by the refused label"
         );
         let size = [
-            game.side.gui.atlas.width as f32,
-            game.side.gui.atlas.height as f32,
+            game.client.gui.atlas.width as f32,
+            game.client.gui.atlas.height as f32,
         ];
         let glyphs: Vec<&[Vertex; 4]> = draw.labels()[0]
             .as_chunks::<4>()

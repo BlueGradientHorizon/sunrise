@@ -37,7 +37,7 @@ use mod_api::{GlobalPos, Identifier, PlayerRef};
         };
         game.lan_host(settings, net, config).unwrap();
         let guest = new_guest(1, 123);
-        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.server.lan.as_mut().unwrap().hub.guests.push(guest);
         game.player(123).unwrap()
     }
 }

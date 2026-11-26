@@ -46,7 +46,7 @@ use std::collections::HashMap;
 /// The ids of the rows present on the window.
     pub fn row_ids(game: &crate::game::ClientGame<'_>) -> Vec<i32> {
         let mut ids: Vec<i32> = game
-            .side
+            .client
             .remote
             .as_ref()
             .unwrap()
@@ -61,6 +61,6 @@ use std::collections::HashMap;
 pub fn rows(
         game: &crate::game::ClientGame<'_>,
     ) -> IndexMap<i32, RemoteGeneral> {
-        game.side.remote.as_ref().unwrap().general.rows.clone()
+        game.client.remote.as_ref().unwrap().general.rows.clone()
     }
 }

@@ -291,7 +291,7 @@ color = [0.0, 1.0, 0.0]
         ]))
         .unwrap();
         let report = sunrise_shader_api::check(&pack).unwrap();
-        game.side
+        game.client
             .renderer
             .0
             .as_mut()

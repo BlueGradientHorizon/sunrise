@@ -403,7 +403,7 @@ fn an_outer_abort_after_an_applied_click_restores_the_inventory() {
                 assert_eq!(click(game), (3, 0, 0));
                 ((), false)
             });
-            let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+            let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!((count(&guest.inventory[9]), count(&guest.carried)), (0, 3));
         });
     });
@@ -488,7 +488,7 @@ fn a_lan_inventory_click_is_decided_the_same_way() {
                 ..Script::default()
             });
             assert_eq!(click(game), (0, 3, 0));
-            assert!(game.side.lan.is_some());
+            assert!(game.server.lan.is_some());
             script(Script::default());
             assert_eq!(click(game), (3, 0, 0));
         });
@@ -594,7 +594,7 @@ pub(in crate::game) mod families {
             |game| {
                 block(game, "minecraft:crafting_table", (1, 64, 1));
                 game.lan_open_crafting(12, [1, 64, 1]);
-                let host = game.side.lan.as_ref().unwrap();
+                let host = game.server.lan.as_ref().unwrap();
                 window.set(host.menus[&12].crafting.table.as_ref().unwrap().0);
             },
             |game| game.lan_guest_packet(12, packet(window.get(), 1)),
@@ -666,7 +666,7 @@ pub(in crate::game) mod families {
                     }),
                 );
                 game.open_block_menu(12, (1, 64, 1));
-                let host = game.side.lan.as_ref().unwrap();
+                let host = game.server.lan.as_ref().unwrap();
                 window.set(host.hub.guests[0].menu.as_ref().unwrap().window);
             },
             |game| game.lan_guest_packet(12, packet(window.get(), 0)),
@@ -787,7 +787,7 @@ pub(in crate::game) mod families {
             |game| {
                 block(game, "minecraft:stonecutter", (1, 64, 1));
                 assert!(game.lan_open_station(12, &Station::new(Kind::Stonecutter, [1, 64, 1])));
-                let host = game.side.lan.as_ref().unwrap();
+                let host = game.server.lan.as_ref().unwrap();
                 window.set(host.menus[&12].station.as_ref().unwrap().window);
             },
             |game| game.lan_guest_packet(12, packet(window.get(), 0)),
@@ -808,7 +808,7 @@ pub(in crate::game) mod families {
                 horse.extra.tame = true;
                 game.mobs.push(horse);
                 game.lan_open_mount(12, 60);
-                let host = game.side.lan.as_ref().unwrap();
+                let host = game.server.lan.as_ref().unwrap();
                 window.set(host.play[&12].mount_window.as_ref().unwrap().window);
             },
             |game| game.lan_guest_packet(12, packet(window.get(), 1)),
@@ -1132,7 +1132,7 @@ pub(in crate::game) mod families {
                     },
                 );
                 window.set(
-                    game.side.lan.as_ref().unwrap().menus[&12]
+                    game.server.lan.as_ref().unwrap().menus[&12]
                         .merchant
                         .as_ref()
                         .unwrap()

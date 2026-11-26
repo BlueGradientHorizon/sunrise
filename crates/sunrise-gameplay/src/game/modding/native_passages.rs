@@ -13,7 +13,7 @@ use std::sync::{Arc, mpsc};
         let mut receivers = Vec::new();
         for (conn, brand) in [12, 13].into_iter().zip(brands) {
             let (tx, rx) = mpsc::channel();
-            game.side.lan.as_mut().unwrap().hub.update_guest(conn, |g| {
+            game.server.lan.as_mut().unwrap().hub.update_guest(conn, |g| {
                 g.sender = sunrise_sim::lan::PlayerSender::new(tx, Arc::default());
                 g.brand = brand.into();
             });

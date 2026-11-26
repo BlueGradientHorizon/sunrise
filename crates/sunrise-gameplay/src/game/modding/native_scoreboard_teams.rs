@@ -395,14 +395,14 @@ mod tests {
     fn teams_are_written_joined_synced_saved_and_stale_once_removed() {
         with_game(|game| {
             let saved_board = open_lan(game);
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
                 .hub
                 .guests
                 .push(guest(123, 1));
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -544,7 +544,7 @@ mod tests {
             game.lan_sync_scoreboard();
             let view = sunrise_sim::lan::scoreboard::View::of(&game.score.board);
             assert_eq!(
-                game.side.lan.as_ref().unwrap().hub.guests[0].scoreboard,
+                game.server.lan.as_ref().unwrap().hub.guests[0].scoreboard,
                 view
             );
 
