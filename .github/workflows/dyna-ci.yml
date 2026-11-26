@@ -229,6 +229,8 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
           RECOVERY_REF: ${{ github.head_ref || github.ref_name }}
+          # `changes` already validated this input. The replacement selects the PR's live test merge.
+          RECOVERY_PR: ${{ inputs.pr }}
         run: python3 tools/ci/boat_watch.py
 
   # The conflict-hotspot churn report (tools/hotspots/README.md), on the nightly schedule only, on GitHub's runner:

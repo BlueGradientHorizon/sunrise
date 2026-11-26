@@ -163,6 +163,13 @@ class WorkflowTests(unittest.TestCase):
             with self.subTest(rust=rust, label=label, pool=pool):
                 self.assertEqual(self.runs_on("verify-static", outputs, pool), "ubuntu-latest")
 
+    def test_boat_watcher_receives_the_same_pr_input_as_the_gate(self):
+        jobs = yaml.safe_load(self.workflow)["jobs"]
+        gate = next(step for step in jobs["changes"]["steps"] if step.get("id") == "gate")
+        watcher = next(step for step in jobs["boat-watch"]["steps"] if step.get("run") == "python3 tools/ci/boat_watch.py")
+        self.assertEqual(gate["env"]["PR"], "${{ inputs.pr }}")
+        self.assertEqual(watcher["env"]["RECOVERY_PR"], gate["env"]["PR"])
+
     def test_the_runner_script_is_given_the_gates_trust(self):
         self.assertIn("SAME_REPO: ${{ steps.gate.outputs.trusted || (", self.job("changes"))
 
