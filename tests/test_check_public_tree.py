@@ -5,12 +5,14 @@ import sys
 from tempfile import TemporaryDirectory
 import unittest
 
+from tests.git_fixture import isolated_git_env
+
 SCRIPT = Path(__file__).resolve().parents[1] / "tools/check_public_tree.py"
 
 
 def git(repo, *args):
     subprocess.run(["git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@example.com", *args],
-                   check=True, capture_output=True)
+                   env=isolated_git_env(), check=True, capture_output=True)
 
 
 def check(repo, *args):
@@ -113,7 +115,3 @@ class CommercialDenylistTests(unittest.TestCase):
             self.assertEqual(check(directory).returncode, 0)
             history = check(directory, "--history")
             self.assertEqual(history.returncode, 0, history.stderr)
-
-
-if __name__ == "__main__":
-    unittest.main()
