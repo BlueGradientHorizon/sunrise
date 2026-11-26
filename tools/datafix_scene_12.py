@@ -8,7 +8,7 @@ entities, player data, scoreboard, maps, advancements and statistics that the fl
 States that the game recomputes at once (powered pistons, repeaters, fluids, hanging entities ...) are
 placed in the very last tick, together with `save-all flush`, and the server is killed right after: the saved chunks keep them.
 
-  populate(server, Bot, port, protocol, name, problems)  -> runs everything, bot joined, returns the bot
+  populate(server, Bot, port, protocol, name, problems)  -> runs everything; its bot has left when it returns
 
 What a real server cannot produce is written by hand after the stop, see `fixtures()` (marked there).
 """
@@ -1745,7 +1745,8 @@ LAST = {}
 
 
 def populate(server, Bot, port, protocol, name, problems):
-    """Build the whole 1.12.2 scene, save it for good and return the (still joined) bot."""
+    """Build the whole 1.12.2 scene and save it for good. Its bot leaves before the last tick; the caller closes any
+    bot that was left joined by a failure."""
     harness = sys.modules[Bot.__module__]
     Player = make_player(Bot, varint, parse_varint, harness.mcstring)
     set_protocol(protocol)
@@ -1817,7 +1818,6 @@ def populate(server, Bot, port, protocol, name, problems):
         server.process.stdin.close()
     except OSError:
         pass
-    return bot
 
 
 # ------------------------------------------------------------------ after the server stopped

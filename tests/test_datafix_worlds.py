@@ -171,10 +171,9 @@ class BuildCleanupTests(unittest.TestCase):
                     raise stop_error
 
         def scene(server, run, Bot, *args):
-            bot = Bot(1, 2, 'x')
+            Bot(1, 2, 'x')
             if scene_error:
                 raise scene_error
-            return bot
 
         with tempfile.TemporaryDirectory() as temp, mock.patch.object(worlds, 'LOCAL', Path(temp)), \
                 mock.patch.object(worlds, 'server_jar', return_value=(Path('server.jar'), 3700, 770)), \

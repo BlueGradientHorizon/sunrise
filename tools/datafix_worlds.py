@@ -428,7 +428,7 @@ def place_states(run, states):
 
 
 def build_scene(server, run, Bot, port, protocol, props, era, data_version, states=()):
-    """The scene of the generic generator; returns the bot that stays joined."""
+    """The scene of the generic generator; its bot stays joined until the caller closes it."""
     if not props:  # variants only differ in their world type
         run('forceload add -48 -48 79 79')
         run('fill 0 99 0 47 99 47 minecraft:stone')
@@ -446,7 +446,7 @@ def build_scene(server, run, Bot, port, protocol, props, era, data_version, stat
             place_states(run, states)
     if not props:
         run('setworldspawn 20 101 20')
-    bot = Bot(port, protocol, BOT)
+    Bot(port, protocol, BOT)
     time.sleep(3)
     for command in scene.player_commands(era, BOT, data_version):
         run(command)
@@ -456,7 +456,6 @@ def build_scene(server, run, Bot, port, protocol, props, era, data_version, stat
         time.sleep(wait)
     run('save-all flush')
     time.sleep(2)
-    return bot
 
 
 def tracked_bot(bots):
