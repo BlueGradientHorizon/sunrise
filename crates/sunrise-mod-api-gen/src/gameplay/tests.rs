@@ -27,6 +27,7 @@ pub trait FixtureHost {
 }
 pub trait FixtureServerHost {
     #[service] fn service(&self) -> &dyn FixtureService;
+    fn slot(&self, slot: u32) -> Result<Option<ItemStack>, SlotError>;
 }
 pub trait FixtureBackendMut {
     fn update(&mut self, value: u32) -> u32;
@@ -173,6 +174,8 @@ borrow = "mutable"
         r#"
 pub trait FixtureService {}
 pub struct ItemStack(pub u32);
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SlotError { Engine, Conversion }
 pub struct BackendRef<'a>(pub &'a dyn Backend);
 pub trait Host: prelude::FixtureHost { fn backend(&self) -> Option<BackendRef<'_>> { None } }
 pub trait Backend: prelude::TablesBackend + prelude::FixtureClientBackend {}
@@ -187,7 +190,10 @@ pub mod prelude {
         fn fixed(&self) -> u32;
         fn fixed_data(&self) -> u32;
     }
-    pub trait FixtureServerHost { fn service(&self) -> &dyn crate::FixtureService; }
+    pub trait FixtureServerHost {
+        fn service(&self) -> &dyn crate::FixtureService;
+        fn slot(&self, slot: u32) -> Result<Option<crate::ItemStack>, crate::SlotError>;
+    }
     pub trait FixtureBackendMut {
         fn update(&mut self, value: u32) -> u32;
         fn consume(&mut self, value: crate::ItemStack) -> u32;
@@ -252,6 +258,37 @@ pub mod game {{
         impl TryIntoEngine for mod_api::ItemStack {{
             fn try_into_engine(&self, original_items: u32) -> Result<u32, ()> {{ Ok(self.0 + original_items) }}
         }}
+        pub trait TryIntoApi {{
+            type Api;
+            fn try_into_api(&self) -> Result<Self::Api, StackReadError>;
+        }}
+        pub struct StackReadError;
+        impl StackReadError {{
+            fn into_write_error(self) -> mod_api::SlotError {{ mod_api::SlotError::Conversion }}
+        }}
+        impl TryIntoApi for Option<u32> {{
+            type Api = Option<mod_api::ItemStack>;
+            fn try_into_api(&self) -> Result<Self::Api, StackReadError> {{
+                match self {{
+                    Some(0) => Err(StackReadError),
+                    value => Ok(value.map(mod_api::ItemStack)),
+                }}
+            }}
+        }}
+        impl<T: TryIntoApi, E: Clone> TryIntoApi for Result<T, E> {{
+            type Api = Result<T::Api, E>;
+            fn try_into_api(&self) -> Result<Self::Api, StackReadError> {{
+                match self {{
+                    Ok(value) => value.try_into_api().map(Ok),
+                    Err(error) => Ok(Err(error.clone())),
+                }}
+            }}
+        }}
+        pub fn call_stack_write<T: TryIntoApi, E: From<mod_api::SlotError>>(
+            call: impl FnOnce() -> Result<T, E>,
+        ) -> Result<T::Api, E> {{
+            call()?.try_into_api().map_err(|error| error.into_write_error().into())
+        }}
     }}
     pub mod native_hooks {{
         pub mod fire {{ {} }}
@@ -281,7 +318,16 @@ pub mod game {{
             r#"
 impl mod_api::ServerHost for ServerGame<'_> {}
 impl mod_api::FixtureService for ServerGame<'_> {}
-impl ServerGame<'_> { fn consume(&mut self, value: u32) -> u32 { value } }
+impl ServerGame<'_> {
+    fn consume(&mut self, value: u32) -> u32 { value }
+    fn slot(&self, slot: u32) -> Result<Option<u32>, mod_api::SlotError> {
+        match slot {
+            1 => Ok(Some(9)),
+            2 => Ok(Some(0)),
+            _ => Err(mod_api::SlotError::Engine),
+        }
+    }
+}
 pub mod goal {
     pub struct GoalCx<'read, 'game> {
         pub host: &'read dyn mod_api::Host,
@@ -295,7 +341,16 @@ pub mod goal {
             "impl mod_api::ClientHost for ClientGame<'_> {} impl ClientGame<'_> { fn desktop(&self) -> Option<u32> { Some(self.client) } }".into()
         };
         let extra = if server {
-            "assert_eq!(FixtureBackendMut::consume(&mut game, mod_api::ItemStack(7)), 12); assert_eq!(FixtureBackendMut::update(&mut game, 2), 6); let _ = FixtureServerHost::service(&game); assert_eq!(FixtureClientBackend::desktop(&game), None); native_hooks::fixture::native_borrowed(&common::Borrowed(&4));"
+            r#"
+        assert_eq!(FixtureBackendMut::consume(&mut game, mod_api::ItemStack(7)), 12);
+        assert_eq!(FixtureBackendMut::update(&mut game, 2), 6);
+        let _ = FixtureServerHost::service(&game);
+        assert_eq!(FixtureServerHost::slot(&game, 1).unwrap().unwrap().0, 9);
+        assert!(matches!(FixtureServerHost::slot(&game, 2), Err(mod_api::SlotError::Conversion)));
+        assert!(matches!(FixtureServerHost::slot(&game, 3), Err(mod_api::SlotError::Engine)));
+        assert_eq!(FixtureClientBackend::desktop(&game), None);
+        native_hooks::fixture::native_borrowed(&common::Borrowed(&4));
+            "#
         } else {
             "assert_eq!(FixtureClientBackend::desktop(&game), Some(6));"
         };

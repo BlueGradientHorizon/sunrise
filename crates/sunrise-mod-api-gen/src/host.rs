@@ -886,6 +886,7 @@ fn render_forwarders(
                     Some(error) if outer_type(error, "GameRuleReadError") => format!(
                         "{call}.try_into_api().expect(\"game rule values convert infallibly\")"
                     ),
+                    Some(_) if split.is_some() => format!("call_stack_write(|| {call})"),
                     Some(_) => format!(
                         "{call}.try_into_api().unwrap_or_else(|error| Err(error.into_write_error().into()))"
                     ),
