@@ -20,6 +20,17 @@ class EngineBoundaryTests(unittest.TestCase):
         """
         self.assertEqual(boundary.referenced_modules(source, CONFIG["modules"]), {"audio", "gfx", "window"})
 
+    def test_the_split_client_crates_count_as_engine_heads(self):
+        source = """
+            use sunrise_client_lib::audio::Audio;
+            use sunrise_client_render::gfx::Frame;
+            use sunrise_client_input::window::PointerSample;
+            use sunrise_client_other::gfx::Frame;
+        """
+        self.assertEqual(
+            boundary.referenced_modules(source, CONFIG["modules"]), {"audio", "gfx", "window"}
+        )
+
     def test_a_submodule_named_like_an_engine_module_is_not_a_hit(self):
         source = "use crate::game::{gfx, audio}; use other::gfx::Frame;"
         self.assertEqual(boundary.referenced_modules(source, CONFIG["modules"]), set())

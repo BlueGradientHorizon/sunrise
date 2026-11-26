@@ -49,6 +49,16 @@ class LauncherMirrorTests(unittest.TestCase):
         announced = "launcher-mirror: the launcher must take the new field\n"
         self.assertEqual(mirrors.check(config, {"smod": "sha256:a"}, base, announced), [])
 
+    def test_every_shipped_manifest_source_exists(self):
+        manifest = mirrors.load_manifest()
+        for mirror in manifest["mirror"]:
+            for source in mirror.get("sources", []):
+                with self.subTest(launcher=mirror["launcher"], source=source):
+                    self.assertTrue(
+                        (mirrors.ROOT / source).exists(),
+                        f"{mirror['launcher']}: {source} is not in the repository",
+                    )
+
     def test_a_mirror_with_no_source_is_not_hashed(self):
         hashes, notes = mirrors.measured(MANIFEST)
         self.assertNotIn("proxy", hashes)

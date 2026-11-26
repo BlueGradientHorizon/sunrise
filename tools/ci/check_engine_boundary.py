@@ -64,8 +64,19 @@ def _module_roots(tokens, start):
     return roots
 
 
+# The crate roots an engine reference may start from: the current crate, the client's public crate, and the
+# split client crates a gameplay file reaches by path (`use sunrise_client_lib::audio::Audio`).
+CRATE_HEADS = (
+    "crate",
+    "sunrise_client",
+    "sunrise_client_lib",
+    "sunrise_client_render",
+    "sunrise_client_input",
+)
+
+
 def referenced_modules(source, modules):
-    """Engine modules this source imports or namespaces through `crate` or `sunrise_client`."""
+    """Engine modules this source imports or namespaces through a crate head in `CRATE_HEADS`."""
     try:
         from tools.rust_tokens import tokens
     except ImportError:
@@ -74,7 +85,7 @@ def referenced_modules(source, modules):
     values = [value for value, _ in tokens(source)]
     found = set()
     for i, value in enumerate(values[:-3]):
-        if value in ("crate", "sunrise_client") and values[i + 1:i + 3] == [":", ":"]:
+        if value in CRATE_HEADS and values[i + 1:i + 3] == [":", ":"]:
             roots = _module_roots(values, i + 3)
             found |= roots & set(modules)
     return found
