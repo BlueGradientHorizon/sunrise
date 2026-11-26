@@ -57,8 +57,8 @@ backdrop's alpha is 255 times the text background opacity (0.25 when it is set f
 faded text's 255 times the larger of (opacity + 0.75) / 2 and 0.5. Labels draw with the world's
 name tags whatever the stage, sorted far to near. A position that is not finite, or text
 positions that overflow f32 at a huge scale (`DrawError::NonFinite`), and a scale that is not
-finite, or is zero or negative (`DrawError::InvalidScale`), are refused whole: nothing is drawn. Only visible text and styles
-are used, not click, hover or opaque metadata. `see_through` can show a
+finite, or is zero or negative (`DrawError::InvalidScale`), are refused whole: nothing is drawn.
+Only visible text and styles are used, not click, hover or opaque metadata. `see_through` can show a
 label through any wall, which vanilla does only for the names its own renderers choose; the call
 sends nothing and reads nothing the client does not already hold."#]
     #[hook(
