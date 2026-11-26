@@ -90,6 +90,7 @@ fn right_arm_drawn(game: &super::Game<'_>, mob: &Mob) -> PartPose {
 }
 
 fn with_posed<R>(action: Action, test: impl FnOnce(&Arc<Mutex<Vec<Call>>>) -> R) -> R {
+    crate::entry::install_client_hooks();
     let calls = Arc::new(Mutex::new(Vec::new()));
     let mods = vec![mod_api::ModEntry::new(
         "posed",
