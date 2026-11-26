@@ -8286,6 +8286,7 @@ void main() {
     #[ignore = "daily"]
     fn sampler_variants_above_63_draw_and_dispatch_on_a_capable_device() {
         use super::super::mod_compute::{DispatchKind, RecordedDispatch};
+        use crate::gfx::test_gpu;
         use crate::mod_compute::ComputeSet;
         use mod_api::{BindEntry, BindGroupLayout, ComputePipeline, StorageImageAccess};
         use std::fmt::Write;
@@ -8294,8 +8295,8 @@ void main() {
         const COLORS: u32 = 60;
         // Compute has an additional output binding before the sampled pairs.
         const BINDINGS: u32 = 2 * PAIRS + 1;
-        let _guard = crate::gfx::test_gpu::lock();
-        let Some(adapter) = crate::gfx::test_gpu::adapter() else {
+        let _guard = test_gpu::lock();
+        let Some(adapter) = test_gpu::adapter() else {
             return;
         };
         let capacity = |limits: wgpu::Limits| {
@@ -8311,9 +8312,9 @@ void main() {
             .get_downlevel_capabilities()
             .flags
             .contains(wgpu::DownlevelFlags::COMPUTE_SHADERS);
-        eprintln!(
-            "wide sampler adapter {:?}: sampled textures={textures}, samplers={samplers}, group bindings={bindings}, storage images={images}, compute shaders={compute_supported}",
-            adapter.get_info(),
+        let info = adapter.get_info();
+        let reported = format!(
+            "{info:?}: sampled textures={textures}, samplers={samplers}, group bindings={bindings}, storage images={images}, compute shaders={compute_supported}"
         );
         if textures < PAIRS
             || samplers < PAIRS
@@ -8321,25 +8322,35 @@ void main() {
             || images == 0
             || !compute_supported
         {
-            eprintln!(
-                "skipped: wide sampler fixture needs {PAIRS} pairs, compute shaders and {BINDINGS} compute bindings including one storage image"
+            let reason = format!(
+                "wide sampler fixture needs {PAIRS} pairs, compute shaders and {BINDINGS} compute bindings including one storage image; adapter reported {reported}"
             );
+            assert!(!test_gpu::require_adapter(), "{reason}");
+            eprintln!("skipped: {reason}");
             return;
         }
+        eprintln!("wide sampler adapter {reported}");
         let color_format = wgpu::TextureFormat::Rgba8Unorm;
         let depth_format = wgpu::TextureFormat::Depth32Float;
         let color_usage = wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING;
         let depth_usage =
             wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
         let output_usage = wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_SRC;
-        if !crate::gfx::test_gpu::supports_texture_usage(&adapter, depth_format, depth_usage)
-            || !crate::gfx::test_gpu::supports_texture_usage(
-                &adapter,
-                color_format,
-                color_usage | output_usage,
-            )
-        {
-            return;
+        for (format, usage) in [
+            (depth_format, depth_usage),
+            (color_format, color_usage | output_usage),
+        ] {
+            let allowed = adapter.get_texture_format_features(format).allowed_usages;
+            let missing = usage.difference(allowed);
+            if !missing.is_empty() {
+                let reason = format!(
+                    "wide sampler fixture needs {format:?} {usage:?}; {} / {:?} allows {allowed:?}, missing {missing:?}",
+                    info.name, info.backend
+                );
+                assert!(!test_gpu::require_adapter(), "{reason}");
+                eprintln!("skipped: {reason}");
+                return;
+            }
         }
         let gpu = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             required_limits: wgpu::Limits {
