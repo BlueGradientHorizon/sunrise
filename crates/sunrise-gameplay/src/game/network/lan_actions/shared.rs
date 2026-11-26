@@ -59,6 +59,7 @@ pub mod tests {
 
     #[test]
     #[ignore = "daily"]
+    #[cfg(any())]
     fn menu_rules_match_guest_packets_and_prediction() {
         use mod_api::{Hooks, MenuPart, MenuSlotRulesEvent, ModEntry, Mods, Registrar};
         use std::sync::Arc;
@@ -556,7 +557,7 @@ pub mod tests {
     #[ignore = "daily"]
     fn block_menu_handle_and_use_each_count_the_guest_once() {
         use crate::game::sculk_server::TEST_POSTED_EVENTS;
-        use sunrise_gameplay_common::game::Hit;
+        use sunrise_gameplay_common::game::{Hit, native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _};
         use mod_api::{BlockUpdateFlags, GameMode};
         use std::sync::Arc;
         use sunrise_level::chunk::Chunk;

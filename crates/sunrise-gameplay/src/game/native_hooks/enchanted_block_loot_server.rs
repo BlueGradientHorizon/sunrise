@@ -133,6 +133,6 @@ pub(in crate::game) mod tests {
             .server
             .rand_sequences
             .get("minecraft:blocks/gravel", seed);
-        (flint, game.world.random.next_int(), sequence.next_int())
+        (flint, game.common.world.random.next_int(), sequence.next_int())
     }
 }

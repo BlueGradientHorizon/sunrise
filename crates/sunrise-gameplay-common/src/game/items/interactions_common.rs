@@ -55,7 +55,7 @@ impl RemoteInteraction {
     }
     /// Unsynced spawns keep EntityType's 0x0 dimensions until refreshDimensions runs.
     #[cfg(test)]
-    pub(in crate::game) fn seat_height(&self) -> f64 {
+    pub fn seat_height(&self) -> f64 {
         if self.dimensions_refreshed {
             f64::from(self.height)
         } else {

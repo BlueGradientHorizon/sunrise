@@ -290,13 +290,13 @@ mod tests {
         });
     }
 
-    fn run_bound_falling<S>(
-        game: &mut crate::game::Game<'_, S>,
+    fn run_bound_falling(
+        game: &mut crate::game::ServerGame<'_>,
         exercise: impl FnOnce(
-            &mut crate::game::Game<'_, S>,
+            &mut crate::game::ServerGame<'_>,
             &Arc<Mutex<AttachmentIndex<mod_api::EntityRef>>>,
         ),
-        clear: impl FnOnce(&mut crate::game::Game<'_, S>),
+        clear: impl FnOnce(&mut crate::game::ServerGame<'_>),
     ) {
         game.world
             .chunks

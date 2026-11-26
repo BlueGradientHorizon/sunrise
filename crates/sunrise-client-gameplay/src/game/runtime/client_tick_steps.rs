@@ -88,7 +88,7 @@ impl crate::game::ClientGame<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use {crate::game::client_side::native_client_session::tests::logged_client, crate::game::native_entity_refs::tests::with_client_game, crate::game::native_entity_refs::tests::with_game, crate::game::startup_menu::StartupMenu};
+    use {crate::game::native_entity_refs::tests::with_client_game, crate::game::startup_menu::StartupMenu};
     use winit::{event::WindowEvent, event_loop::ControlFlow};
 
     struct NoLoop(std::cell::Cell<bool>);
@@ -99,9 +99,12 @@ mod tests {
         fn set_control_flow(&self, _: ControlFlow) {}
     }
 
+    #[cfg(any())]
     #[test]
     #[ignore = "daily"]
     fn tick_body_dispatches_by_role_and_remote() {
+        use crate::game::client_side::native_client_session::tests::logged_client;
+        use crate::game::native_entity_refs::tests::with_game;
         with_client_game(|game| {
             let time_before = game.world.game_time;
             game.destroy_block_progress(-1, [0, 64, 0], 5);

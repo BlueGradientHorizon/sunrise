@@ -176,3 +176,7 @@ impl DragonSlot {
         self.slot.retire_extracted(id, join);
     }
 }
+
+#[cfg(test)]
+#[path = "dragon_parts_table_tests.rs"]
+mod tests;

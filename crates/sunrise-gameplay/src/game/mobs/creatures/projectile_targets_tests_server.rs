@@ -1,6 +1,16 @@
 use crate::game::commands::Target;
-use crate::game::creatures::projectile_targets_tests::TrackedTarget;
 use sunrise_core::geometry::{Aabb, Vec3};
+
+#[derive(Clone, Copy)]
+pub enum TrackedTarget {
+    Stand(u32),
+    Painting(u32),
+    Frame(u32),
+    Cushion(u32),
+    Falling(u32),
+    ExplicitKnot(u32),
+    NaturalKnot { id: u32, pig_id: u32 },
+}
 
 pub fn clear_entities(game: &mut crate::game::ServerGame<'_>) {
     game.common.mobs.clear();

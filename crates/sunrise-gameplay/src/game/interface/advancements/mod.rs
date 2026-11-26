@@ -2124,8 +2124,8 @@ impl crate::game::ServerGame<'_> {
     }
     /// `ItemUsedOnLocationTrigger` (placed_block, item_used_on_block).
     pub(in crate::game) fn trigger_block(&mut self, name: &str, pos: [i32; 3], stack: &ItemStack) {
-        #[cfg(test)]
-        crate::game::block_use_completion_tests::record(name, Some(stack));
+        #[cfg(any(test, feature = "test-support"))]
+        block_use_recording::record(name, Some(stack));
         let me = self.player_entity_for(name);
         let it = item_view(stack);
         self.trigger(name, move |c, w| {
@@ -2161,8 +2161,8 @@ impl crate::game::ServerGame<'_> {
         pos: [i32; 3],
         stack: Option<&ItemStack>,
     ) {
-        #[cfg(test)]
-        crate::game::block_use_completion_tests::record(name, stack);
+        #[cfg(any(test, feature = "test-support"))]
+        block_use_recording::record(name, stack);
         let me = self.player_entity_for(name);
         let it = stack.map(item_view);
         let centre = pos.map(|c| f64::from(c) + 0.5);
@@ -2784,3 +2784,6 @@ use sunrise_gameplay_common::game::native_hooks::enchantments::EnchantmentsGameE
 use sunrise_gameplay_common::game::native_item_entity_refs::NativeItemEntityRefsGameExt1 as _;
 
 use sunrise_gameplay_common::game::scoreboard_common::CommonGameExt1 as _;
+
+#[cfg(any(test, feature = "test-support"))]
+pub mod block_use_recording;

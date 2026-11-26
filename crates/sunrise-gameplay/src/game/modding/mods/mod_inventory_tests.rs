@@ -1,5 +1,6 @@
 use super::*;
 use mod_api::{Hooks, ModEntry};
+#[cfg(test)]
 use mod_platform::testing::with_mods;
 use std::sync::atomic::{AtomicBool, Ordering};
 use sunrise_mod_package::selection::SelectedPackage;
@@ -24,6 +25,7 @@ pub(in crate::game) fn selected(fixture: &Fixture, id: &str, side: &str) -> Sele
     }
 }
 
+#[cfg(test)]
 #[test]
 fn admission_uses_active_native_entries_and_accepted_content_not_startup_metadata() {
     let fixture = Fixture::new("inventory-admission");
@@ -124,6 +126,7 @@ impl Hooks for Guard {
 }
 
 /// Capture metadata uses the same typed runtime provenance as loading.
+#[cfg(test)]
 #[test]
 fn capture_metadata_distinguishes_content_native_and_unknown_code() {
     use sunrise_perf_format::v1::ModKind;

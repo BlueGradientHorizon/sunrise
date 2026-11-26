@@ -2,7 +2,10 @@
 
 #[cfg(test)]
 mod tests {
-    use {crate::game::mods::standalone::*, sunrise_gameplay_common::game::mods::standalone::{ExecutionRole, RegistrationContext, StandaloneModelRegistration, collect_standalone_models}};
+    use mod_api::{__private::game::StandaloneModelRegistration, RegistrationContext};
+    use sunrise_gameplay_common::game::{
+        execution_role::ExecutionRole, mods::standalone::collect_standalone_models,
+    };
 
     #[test]
     fn standalone_models_collect_only_on_the_client() {

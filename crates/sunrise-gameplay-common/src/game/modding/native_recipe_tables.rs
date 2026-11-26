@@ -88,3 +88,13 @@ impl RecipeTables {
         self.server_stations = None;
     }
 }
+
+#[cfg(any(test, feature = "test-support"))]
+impl RecipeTables {
+    pub fn install_test_recipes(
+        &mut self,
+        recipes: sunrise_sim::crafting::Recipes,
+    ) {
+        self.synced = Some(recipes);
+    }
+}

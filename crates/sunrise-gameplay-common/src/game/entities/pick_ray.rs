@@ -188,7 +188,7 @@ pub trait PickRayGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         self.side_dragon_hit()
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
      fn set_test_forced_hit(&mut self, hit: Option<Hit>) {
         self.side_set_test_forced_hit(hit);
     }

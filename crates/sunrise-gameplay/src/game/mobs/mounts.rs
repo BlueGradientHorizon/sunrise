@@ -1280,12 +1280,11 @@ pub fn rider(yaw: f32) -> Rider {
             main_arm_left: false,
         }
     }
-#[cfg(test)]
 /// What one feeding made the level show.
     #[derive(Debug)]
-    pub(in crate::game) struct Shown {
-        pub(in crate::game) sounds: Vec<(String, [f64; 3], f32, f32)>,
-        pub(in crate::game) events: Vec<(&'static str, [f64; 3], Option<Who>)>,
+    pub struct Shown {
+        pub sounds: Vec<(String, [f64; 3], f32, f32)>,
+        pub events: Vec<(&'static str, [f64; 3], Option<Who>)>,
     }
 
 use sunrise_gameplay_common::game::server_side::mounts::tests::block_of;
@@ -1562,7 +1561,7 @@ use sunrise_gameplay_common::game::server_side::mounts::tests::mob;
         game: &mut crate::game::ServerGame<'_>,
         item: &str,
     ) -> (bool, Shown) {
-        game.inventory[game.selected] = Some(ItemStack::new(item, 2));
+        game.common.inventory[game.common.selected] = Some(ItemStack::new(item, 2));
         game.start_audio_capture();
         crate::game::sculk_server::TEST_POSTED_EVENTS
             .with(|events| *events.borrow_mut() = Some(Vec::new()));
@@ -1612,7 +1611,7 @@ use sunrise_gameplay_common::game::server_side::mounts::tests::mob;
         game: &mut crate::game::ServerGame<'_>,
         item: &str,
     ) -> (bool, Shown) {
-        game.inventory[game.selected] = Some(ItemStack::new(item, 2));
+        game.common.inventory[game.common.selected] = Some(ItemStack::new(item, 2));
         game.start_audio_capture();
         crate::game::sculk_server::TEST_POSTED_EVENTS
             .with(|events| *events.borrow_mut() = Some(Vec::new()));

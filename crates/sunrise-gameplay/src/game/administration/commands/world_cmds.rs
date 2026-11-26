@@ -1483,6 +1483,7 @@ pub(in crate::game) use crate::game::server_side::commands_server::world_cmds::d
     
 
     #[allow(unused_imports)]
+#[cfg(any())]
 pub(in crate::game) use crate::game::server_side::commands_server::world_cmds::datapack_damage_tests::run_a_datapack_explosion_type_removes_a_crystal_quietly_and_hurts_the_dragon;
 }
 

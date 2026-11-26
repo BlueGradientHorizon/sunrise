@@ -636,3 +636,129 @@ mod living_type_tests {
         );
     }
 }
+
+#[cfg(all(test, feature = "client"))]
+mod tests {
+    use super::{ExecutionRole, RegistrationContext};
+
+    #[test]
+    fn fluid_models_recollection_changes_model_identifiers() {
+        use mod_api::{FluidModel, Hooks, ModEntry, RegisterFluidModelsEvent};
+        use mod_platform::testing::with_mods;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        #[derive(Default)]
+        struct Models(Arc<AtomicUsize>);
+        #[mod_api::sunrise_mod]
+        impl Hooks for Models {
+            fn register_fluid_models(
+                &self,
+                _: &RegistrationContext,
+                event: &mut RegisterFluidModelsEvent<'_>,
+            ) {
+                let generation = self.0.load(Ordering::SeqCst);
+                let mut model = FluidModel::default();
+                model.fluid = "reload_fluid:oil".into();
+                model.still = Some(format!("reload_fluid:block/oil_{generation}"));
+                event.register(model);
+            }
+        }
+        let generation = Arc::new(AtomicUsize::new(0));
+        with_mods(
+            vec![ModEntry::new(
+                "reload_fluid",
+                Box::new(Models(generation.clone())),
+            )]
+            .into(),
+            || {
+                mod_platform::__private::with_test_packages(&["reload_fluid"], || {
+                    sunrise_client::fluid_models::set_world_looks([
+                        &sunrise_mod_package::content::FluidLook {
+                            id: "reload_fluid:oil".into(),
+                            sprite: None,
+                            tint: None,
+                            world: Some(Default::default()),
+                            measures: Default::default(),
+                        },
+                    ]);
+                    super::register_fluid_models(
+                        ExecutionRole::Client,
+                    );
+                    assert_eq!(
+                        sunrise_client::fluid_models::resolved()[0].still,
+                        "reload_fluid:block/oil_0"
+                    );
+                    generation.store(1, Ordering::SeqCst);
+                    super::register_fluid_models(
+                        ExecutionRole::Client,
+                    );
+                    assert_eq!(
+                        sunrise_client::fluid_models::resolved()[0].still,
+                        "reload_fluid:block/oil_1"
+                    );
+                    // An item's fluid layer follows the same reload.
+                    let item_still = || {
+                        sunrise_client::fluid_models::item_appearance("reload_fluid:oil")
+                            .map(|appearance| appearance.still)
+                    };
+                    assert_eq!(item_still().as_deref(), Some("reload_fluid:block/oil_1"));
+                    sunrise_client::fluid_models::register(vec![]);
+                    sunrise_client::fluid_models::set_world_looks([]);
+                    assert_eq!(item_still(), None);
+                });
+            },
+        );
+    }
+
+    #[test]
+    fn fluid_models_collect_only_on_the_client() {
+        use mod_api::FluidModel;
+        use mod_api::{Hooks, ModEntry, RegisterFluidModelsEvent};
+        use mod_platform::testing::with_mods;
+        #[derive(Default)]
+        struct Models;
+        #[mod_api::sunrise_mod]
+        impl Hooks for Models {
+            fn register_fluid_models(
+                &self,
+                _: &RegistrationContext,
+                event: &mut RegisterFluidModelsEvent<'_>,
+            ) {
+                let mut model = FluidModel::default();
+                model.fluid = "registration_test:oil".into();
+                model.flowing = Some("registration_test:block/oil_flow".into());
+                model.overlay = Some("registration_test:block/oil_overlay".into());
+                event.register(model);
+            }
+        }
+        with_mods(
+            vec![ModEntry::new("registration_test", Box::new(Models))].into(),
+            || {
+                mod_platform::__private::with_test_packages(&["registration_test"], || {
+                    for server in [
+                        ExecutionRole::IntegratedServer,
+                        ExecutionRole::DedicatedServer,
+                    ] {
+                        assert_eq!(
+                            super::collect_fluid_models(server),
+                            None
+                        );
+                    }
+                    let models = super::collect_fluid_models(
+                        ExecutionRole::Client,
+                    )
+                    .unwrap();
+                    assert_eq!(models.len(), 1);
+                    assert_eq!(models[0].fluid, "registration_test:oil");
+                    assert_eq!(
+                        models[0].flowing.as_deref(),
+                        Some("registration_test:block/oil_flow")
+                    );
+                    assert_eq!(
+                        models[0].overlay.as_deref(),
+                        Some("registration_test:block/oil_overlay")
+                    );
+                });
+            },
+        );
+    }
+}

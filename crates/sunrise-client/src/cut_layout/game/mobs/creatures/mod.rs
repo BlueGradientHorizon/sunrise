@@ -70,9 +70,6 @@ pub(in crate::game) mod pending_birth_tests;
 pub(in crate::game) mod revenge_home_tests;
 
 #[cfg(test)]
-pub(in crate::game) mod death_loot_context_tests;
-
-#[cfg(test)]
 pub(in crate::game) mod breeding_heart_tests;
 
 #[cfg(test)]

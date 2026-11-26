@@ -100,12 +100,12 @@ struct MenuInner {
 /// names storage, while `instance` distinguishes replacement menus in it.
 #[derive(Clone)]
 pub struct Menu {
-    id: MenuId,
+    pub id: MenuId,
     inner: Rc<RefCell<MenuInner>>,
 }
 
 impl Menu {
-    pub(in crate::game) fn new(state: MenuState) -> Self {
+    pub fn new(state: MenuState) -> Self {
         Self {
             id: MenuId::fresh(),
             inner: Rc::new(RefCell::new(MenuInner {
@@ -115,13 +115,13 @@ impl Menu {
         }
     }
 
-    pub(in crate::game) fn read<R>(&self, f: impl FnOnce(&MenuState) -> R) -> R {
+    pub fn read<R>(&self, f: impl FnOnce(&MenuState) -> R) -> R {
         f(&self.inner.borrow().state)
     }
 
     /// Journal before granting write access; even an equal or panicking write
     /// advances the epoch. Rollback restores content, never the epoch counter.
-    pub(in crate::game) fn edit<H: ActionHost, R>(
+    pub fn edit<H: ActionHost, R>(
         &self,
         host: &mut H,
         f: impl FnOnce(&mut MenuState) -> R,
@@ -541,6 +541,6 @@ pub(in crate::game) fn route<H: ActionHost, T: ActionTarget<H>>(
     run(host, menu, decide, fire)
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[path = "decision_tests.rs"]
 pub mod tests;

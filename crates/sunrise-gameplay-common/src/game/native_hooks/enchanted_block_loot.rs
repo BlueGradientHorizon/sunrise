@@ -102,18 +102,18 @@ pub mod tests {
 
     #[derive(Debug, PartialEq)]
     pub struct Read {
-        pub(in crate::game) pos: [i32; 3],
-        pub(in crate::game) state: mod_api::BlockState,
-        pub(in crate::game) tool: Option<String>,
-        pub(in crate::game) enchantment: String,
-        pub(in crate::game) level: u32,
-        pub(in crate::game) entity: Option<u32>,
+        pub pos: [i32; 3],
+        pub state: mod_api::BlockState,
+        pub tool: Option<String>,
+        pub enchantment: String,
+        pub level: u32,
+        pub entity: Option<u32>,
     }
 
     /// Records every read and answers with `answer`, or leaves it.
     pub struct Fortune {
-        pub(in crate::game) answer: Option<u32>,
-        pub(in crate::game) reads: Arc<Mutex<Vec<Read>>>,
+        pub answer: Option<u32>,
+        pub reads: Arc<Mutex<Vec<Read>>>,
     }
     #[mod_api::__subscriptions]
     impl Hooks for Fortune {

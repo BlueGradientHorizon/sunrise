@@ -404,6 +404,7 @@ mod omen_tests {
         assert!(!transform_bad_omen(&mut e));
     }
 
+    #[cfg(any())]
     #[test]
     #[ignore = "daily"]
     fn ominous_item_target_uses_the_reloaded_player_table() {

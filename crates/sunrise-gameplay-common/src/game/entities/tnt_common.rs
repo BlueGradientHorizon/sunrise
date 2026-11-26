@@ -148,8 +148,8 @@ impl PrimedTnt {
         }
         tops
     }
-    #[cfg(test)]
-    pub(in crate::game) fn tick(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn tick(
         &mut self,
         world: &sunrise_level::world::World,
         collision: &sunrise_world::block_collision::BlockCollisionRegistry<'_>,

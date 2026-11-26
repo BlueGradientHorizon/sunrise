@@ -604,7 +604,6 @@ pub(in crate::game) mod tests {
 #[cfg(any(test, feature = "test-support"))]
 pub mod loot_mine_component_tests {
     use super::*;
-    use sunrise_gameplay_common::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
     use sunrise_core::nbt::{Compound, Tag};
     use sunrise_level::{chunk::Chunk, containers::BlockEntity};

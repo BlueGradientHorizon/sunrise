@@ -536,7 +536,7 @@ pub mod resident_state;
 pub mod resource_load;
 #[path = "game/runtime/resource_tables.rs"]
 pub mod resource_tables;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[path = "game/modding/rule_replacements.rs"]
 pub mod rule_replacements;
 #[path = "game/world/saving.rs"]
@@ -3556,7 +3556,7 @@ pub fn clip_start_source(
 pub use closest_space::closest_space_nudge;
 
 pub use sunrise_gameplay_common::game_master_blocks::is_game_master_block;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub mod test_neighbourhood {
     //! Shared fixture step for tests that tick entities on prepared data.
     use super::*;
@@ -3566,7 +3566,7 @@ pub mod test_neighbourhood {
         /// Entity ticking waits for every chunk in that 5x5 neighbourhood
         /// (`ChunkMap.prepareEntityTickingChunk`), so a fixture that ticks mobs,
         /// items or TNT in a chunk calls this after setting up its own chunks.
-        pub(crate) fn load_ticking_neighbourhood(&mut self, cx: i32, cz: i32) {
+        pub fn load_ticking_neighbourhood(&mut self, cx: i32, cz: i32) {
             for z in cz - 2..=cz + 2 {
                 for x in cx - 2..=cx + 2 {
                     if self.world.chunks.contains_key(&(x, z)) {
@@ -4040,3 +4040,7 @@ pub mod test_fixtures;
 mod native_entity_refs {
     pub use super::test_fixtures as tests;
 }
+
+#[cfg(any(test, feature = "test-support"))]
+#[path = "game/network/lan_meta_fixture.rs"]
+pub mod lan_meta_fixture;

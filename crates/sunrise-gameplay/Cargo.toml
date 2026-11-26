@@ -33,6 +33,8 @@ sunrise-world = { path = "../sunrise-world" }
 sunrise-sim = { path = "../sunrise-sim" }
 sunrise-level = { path = "../sunrise-level" }
 
+mod_platform = { package = "sunrise-mod-api", path = "../sunrise-mod-api", features = ["testing"], optional = true }
+
 [dev-dependencies]
 tempfile = "3"
 sunrise-gameplay-common = { path = "../sunrise-gameplay-common", features = ["test-support"] }
@@ -49,4 +51,4 @@ sunrise-mod-api-gen = { path = "../sunrise-mod-api-gen" }
 [features]
 parity-fixtures = []
 state-digest = []
-test-support = ["sunrise-gameplay-common/test-support"]
+test-support = ["sunrise-gameplay-common/test-support", "dep:mod_platform"]

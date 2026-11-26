@@ -276,6 +276,8 @@ impl crate::game::ServerGame<'_> {
 
 #[cfg(test)]
 mod tests {
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
     use {sunrise_gameplay_common::game::api_values::StackReadError, sunrise_gameplay_common::game::api_values::TryIntoApi, sunrise_gameplay_common::game::api_values::test_snapshot};
     #[test]
     #[ignore = "daily"]

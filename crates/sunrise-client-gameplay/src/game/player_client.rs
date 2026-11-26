@@ -232,7 +232,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     pub(in crate::game) fn client_pick_unfiltered(&self) -> Option<Hit> {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if let Some(hit) = self.client.client_pick.test_forced_hit {
             return Some(hit);
         }
@@ -241,7 +241,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     pub(in crate::game) fn client_pick(&self) -> Option<Hit> {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if let Some(hit) = self.client.client_pick.test_forced_hit {
             return Some(hit);
         }
@@ -476,7 +476,7 @@ impl crate::game::ClientGame<'_> {
         self.release_tick_targets();
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(in crate::game) fn client_set_test_forced_hit(&mut self, hit: Option<Hit>) {
         self.client.client_pick.test_forced_hit = hit;
     }

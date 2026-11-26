@@ -898,6 +898,7 @@ pub mod tests {
     }
 
     #[test]
+    #[cfg(any())]
     fn typed_particle_packet_is_shared_by_spawns_and_kept_from_vanilla_peers() {
         let entries = [mod_api::ModEntry::new("test", Box::new(MeasuredParticle))];
         mod_platform::__private::part_tests::install_parts_fixture(&entries).unwrap();

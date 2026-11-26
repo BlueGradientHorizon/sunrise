@@ -357,8 +357,8 @@ impl crate::game::ServerGame<'_> {
                 ));
             }
         });
-        #[cfg(test)]
-        super::item_use::interact_vibration_tests::record_event(
+        #[cfg(any(test, feature = "test-support"))]
+        item_use_event_fixture::record_event(
             event,
             pos,
             ctx.source.and_then(|source| source.actor()),
@@ -2748,3 +2748,23 @@ use sunrise_gameplay_common::game::GameGameExt1 as _;
 use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+#[cfg(any(test, feature = "test-support"))]
+pub mod item_use_event_fixture {
+    type RecordedEvent = (&'static str, [f64; 3], Option<sunrise_sim::mobs::Who>);
+    thread_local! {
+        pub static EVENTS: std::cell::RefCell<Vec<RecordedEvent>> = const { std::cell::RefCell::new(Vec::new()) };
+        pub static RECORDING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
+
+    pub fn record_event(
+        event: &'static str,
+        pos: [f64; 3],
+        source: Option<sunrise_sim::mobs::Who>,
+    ) {
+        if RECORDING.get() {
+            EVENTS.with(|events| events.borrow_mut().push((event, pos, source)));
+        }
+    }
+
+}

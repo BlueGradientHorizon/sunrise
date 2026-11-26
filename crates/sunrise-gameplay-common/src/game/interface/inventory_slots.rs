@@ -19,8 +19,8 @@ pub fn container_slot_index(slot: usize) -> Option<usize> {
     }
 }
 
-#[cfg(test)]
-thread_local! { pub(in crate::game) static SLOT_POSITIONS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) }; }
+#[cfg(any(test, feature = "test-support"))]
+thread_local! { pub static SLOT_POSITIONS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) }; }
 
 impl crate::game::CommonGame<'_> {
     /// The stock hopper/dispenser slot layout, unless a mod screen is shown for

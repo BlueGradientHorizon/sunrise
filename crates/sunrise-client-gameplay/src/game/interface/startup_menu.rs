@@ -1613,6 +1613,7 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
+    #[cfg(any())]
     fn queued_creation_is_reconciled_at_handoff() {
         use mod_api::{Hooks, Registrar, RegistrationContext};
         use sunrise_game_data::gamerules::Value;

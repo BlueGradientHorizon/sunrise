@@ -314,7 +314,6 @@ pub(in crate::game) fn count_down(ticks: u32, duration: i32) -> Option<u32> {
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::{bow_release_power, count_down, release_parts, use_counter_leaving};
-    use crate::game::client_side::item_use_client::use_pose;
     use sunrise_gameplay_common::game::item_use_common::{
         consumes_at_once, duration_leaving, held, start_of, tick_left, ticks_left,
     };

@@ -614,9 +614,6 @@ pub(in crate::game) mod random_sequences_save_tests;
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
-    use crate::game::client_side::trading_client::{
-        SHIFT, drag_scroll, on_scroller, scroller_cursor, scroller_rect,
-    };
 
     /// `MerchantScreen.mouseScrolled`: the offset is `(int)(scrollOff - scrollY)`
     /// clamped, so the list moves by as many rows as the event's delta and a

@@ -148,6 +148,9 @@ impl ProjectileHandBack {
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
+pub mod peaceful_fixture;
+
 #[cfg(test)]
 #[test]
 #[ignore = "daily"]
@@ -156,7 +159,7 @@ fn a_hand_egg_checks_and_spawns_the_type_named_by_its_component() {
     use sunrise_core::nbt::Tag;
     use sunrise_level::chunk::block_entity::BlockEntity;
     use sunrise_sim::mobs::spawner::{SpawnDataExt, SpawnerExt};
-    peaceful_tests::with_types(ExecutionRole::IntegratedServer, |game| {
+    peaceful_fixture::with_types(ExecutionRole::IntegratedServer, |game| {
         game.set_mode_id(0);
         game.server.forced_hit = Some(sunrise_gameplay_common::game::Hit {
             pos: [4, 64, 4],
@@ -8349,7 +8352,7 @@ impl sunrise_sim::arrows::OwnerLookup for crate::game::ServerGame<'_> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[path = "pending_birth_matrix_tests_server.rs"]
 pub mod pending_birth_matrix_tests;
 

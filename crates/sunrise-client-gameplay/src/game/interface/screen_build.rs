@@ -935,7 +935,9 @@ impl crate::game::ClientGame<'_> {
 #[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::client_side::screen_build::tests::gui;
+    pub fn gui(framebuffer: [u32; 2], scale: u32) -> GuiSize {
+        GuiSize::new(framebuffer, scale, false)
+    }
 
     use super::{
         BuildLayout, ContainerLayout, EffectsLayout, PauseInputs, PauseLayout, ScreenBuildState,

@@ -1,39 +1,36 @@
-#[allow(unused_imports)]
-pub(crate) use super::super::pickups::{Collector, Taken};
-#[allow(unused_imports)]
-pub(crate) use crate::game::native_hooks::shared::particle_count_tests::ClearAt;
-#[allow(unused_imports)]
-pub(crate) use crate::game::native_hooks::shared::particle_count_tests::ClearInGui;
-#[allow(unused_imports)]
-pub(crate) use crate::game::native_hooks::shared::particle_count_tests::ClearInModel;
-#[allow(unused_imports)]
-pub(crate) use crate::game::native_hooks::shared::particle_count_tests::FrameGeometry;
-#[allow(unused_imports)]
-pub(crate) use crate::game::native_hooks::shared::particle_count_tests::FrameMod;
-#[allow(unused_imports)]
-pub(crate) use crate::game::native_hooks::shared::particle_count_tests::frame_geometry;
-#[allow(unused_imports)]
-pub(crate) use crate::game::native_hooks::shared::particle_count_tests::host_clear;
-#[allow(unused_imports)]
-pub(crate) use crate::game::native_hooks::shared::particle_count_tests::orb;
-#[allow(unused_imports)]
-pub(crate) use crate::game::native_hooks::shared::particle_count_tests::with_frame_scene;
-#[allow(unused_imports)]
-pub(crate) use crate::game::native_hooks::shared::particle_count_tests::*;
-#[allow(unused_imports)]
-pub(crate) use mod_api::ClientHost;
-#[allow(unused_imports)]
-pub(crate) use std::time::Duration;
-#[allow(unused_imports)]
-pub(crate) use sunrise_client::particles::FireworkExplosion;
-#[allow(unused_imports)]
-pub(crate) use sunrise_core::geometry::Vec3;
-#[allow(unused_imports)]
-pub(crate) use sunrise_level::particle_options::{
-    ParticleOptions, ParticleType,
-};
-#[allow(unused_imports)]
-pub(crate) use sunrise_sim::entities::ExperienceOrb;
+use super::super::pickups::{Collector, Taken};
+#[cfg(test)]
+use mod_api::ClientHost;
+#[cfg(test)]
+use std::time::Duration;
+use sunrise_client::particles::FireworkExplosion;
+use sunrise_core::geometry::Vec3;
+use sunrise_level::particle_options::{ParticleOptions, ParticleType};
+use sunrise_sim::entities::ExperienceOrb;
+
+fn orb(at: Vec3) -> ExperienceOrb {
+    ExperienceOrb {
+        size_answer: None,
+        attachment_lifetime: Default::default(),
+        fall_distance: 0.0,
+        rotation: [0.0, 0.0],
+        join: Default::default(),
+        no_gravity: false,
+        id: 1,
+        position: at,
+        previous: at,
+        velocity: Vec3::ZERO,
+        value: 1,
+        age: 0,
+        ground: Default::default(),
+        count: 1,
+        fire_ticks: 0,
+        ticks: 0,
+        health: 5,
+        air: 300,
+        following: None,
+    }
+}
 
 /// `particle_count` and `clear_particles` through the client host. The count covers every
 /// live group. A clear reads 0 at once and empties every group, its queue and emitters
@@ -187,7 +184,7 @@ pub fn fill(game: &mut crate::game::ClientGame<'_>) {
 
 /// A real offscreen renderer and a world for it to draw; the event loop that returns
 /// holds the window.
-pub(in crate::game) fn frame_scene(
+pub fn frame_scene(
     game: &mut crate::game::ClientGame<'_>,
 ) -> winit::event_loop::EventLoop<()> {
     let mut builder = winit::event_loop::EventLoop::builder();
@@ -252,7 +249,7 @@ pub(in crate::game) fn frame_scene(
 #[test]
 #[ignore = "daily"]
 fn late_clear_removes_native_particle_lights_at_the_frame_consumer() {
-    let name = "game::client_side::native_hooks_client::particle_count_tests::late_clear_removes_native_particle_lights_at_the_frame_consumer";
+    let name = "game::native_hooks::particle_count_tests::late_clear_removes_native_particle_lights_at_the_frame_consumer";
     if super::super::native_entity_refs::tests::run_fresh_cases(
         name,
         "SUNRISE_PARTICLE_LIGHT_CHILD",

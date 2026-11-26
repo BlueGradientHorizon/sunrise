@@ -86,7 +86,7 @@ fn empty_slot_draws_icon_but_a_filled_slot_does_not() {
 fn unknown_slot_icon_opens_screen_and_draws_missing_sprite() {
     // Content registries are process-global.
     if crate::game::native_entity_refs::tests::run_fresh_cases(
-        "game::client_side::native_hooks_client::slot_icon_tests::unknown_slot_icon_opens_screen_and_draws_missing_sprite",
+        "game::native_hooks::slot_icon_tests::unknown_slot_icon_opens_screen_and_draws_missing_sprite",
         "SUNRISE_SLOT_ICON_OPEN_CHILD",
         &["open"],
     ) {

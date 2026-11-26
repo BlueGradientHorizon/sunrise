@@ -89,8 +89,13 @@ pub(in crate::game) enum MoveIn {
 }
 
 #[cfg(test)]
-impl View {
-    pub(in crate::game::server_side) fn slots_to_add(&self, face: Option<Direction>) -> Vec<usize> {
+pub(in crate::game::server_side) trait ViewTestSlots {
+    fn slots_to_add(&self, face: Option<Direction>) -> Vec<usize>;
+}
+
+#[cfg(test)]
+impl ViewTestSlots for View {
+    fn slots_to_add(&self, face: Option<Direction>) -> Vec<usize> {
         self.slots_to_add_iter(face).collect()
     }
 }

@@ -266,43 +266,7 @@ fn a_parent_changed_during_dispatch_refuses_the_baby_and_nothing_is_rebuilt() {
     });
 }
 
-/// [`breed_pair`] with the host player credited for feeding the parents into love (what the
-/// goal records in `love_cause`), when `credited`.
-pub(in crate::game) fn breed_pair_credited(
-    game: &mut sunrise_gameplay::game::ServerGame<'_>,
-    kind: &str,
-    credited: bool,
-) -> (u32, u32, Option<u32>) {
-    let kind = game.res.mob_types().get(kind).unwrap().clone();
-    let base = game.side.next_entity;
-    game.side.next_entity += 2;
-    game.mobs.push(Mob::new(
-        base + 1,
-        kind.clone(),
-        Vec3::new(0.0, 64.0, 0.0),
-        0.0,
-    ));
-    game.mobs
-        .push(Mob::new(base + 2, kind, Vec3::new(1.0, 64.0, 0.0), 0.0));
-    game.native_joins_skip();
-    if credited {
-        game.side.love_cause.insert(base + 1, None);
-    }
-    let parent = game.mobs.iter_mut().find(|m| m.id == base + 1).unwrap();
-    parent.random = LegacyRandom::new(0);
-    parent.extra.age = 6000;
-    let partner = game.mobs.iter_mut().find(|m| m.id == base + 2).unwrap();
-    partner.extra.in_love = 600;
-    let child = game.breed(
-        base + 1,
-        base + 2,
-        None,
-        None,
-        None,
-        sunrise_sim::mobs::BreedExperience::Deferred,
-    );
-    (base + 1, base + 2, child)
-}
+pub(in crate::game) use sunrise_gameplay::game::server_side::creatures_server::pending_birth_matrix_tests::breed_pair_credited;
 
 #[test]
 #[ignore = "daily"]
@@ -352,29 +316,7 @@ fn credit_goes_to_the_player_only_when_the_baby_is_accepted() {
     );
 }
 
-/// A dying cube mob of `kind` and `size` whose own random is `new Random(seed)`.
-pub(in crate::game) fn cube(
-    game: &mut sunrise_gameplay::game::ServerGame<'_>,
-    kind: &str,
-    size: i32,
-    seed: i64,
-) -> Mob {
-    game.side.next_entity += 1;
-    let kind = game.res.mob_types().get(kind).unwrap().clone();
-    let mut mob = Mob::new(
-        game.side.next_entity,
-        kind,
-        Vec3::new(AT[0], AT[1], AT[2]),
-        0.0,
-    );
-    if mob.species() == Species::SulfurCube {
-        sunrise_sim::mobs::sulfur_cube::set_size(&mut mob, size, true);
-    } else {
-        sunrise_sim::mobs::cube::set_size(&mut mob, size);
-    }
-    mob.random = LegacyRandom::new(seed);
-    mob
-}
+pub(in crate::game) use sunrise_gameplay::game::server_side::creatures_server::pending_birth_matrix_tests::cube;
 
 #[test]
 #[ignore = "daily"]

@@ -235,3 +235,11 @@ impl Hook {
 }
 
 use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+#[cfg(any(test, feature = "test-support"))]
+impl Hook {
+    pub fn set_hooked_in(&mut self, id: u32) {
+        self.hooked_in = Some(id);
+        self.state = State::Hooked(id);
+    }
+}

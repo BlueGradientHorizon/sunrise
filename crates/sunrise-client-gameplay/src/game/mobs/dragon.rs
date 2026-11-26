@@ -5,7 +5,8 @@ pub(crate) mod tests {
 
 use sunrise_gameplay_common::game::server_side::dragon::tests::flying;
 
-use super::*;
+use sunrise_core::random::LegacyRandom;
+use sunrise_gameplay_common::game::dragon_common::Phase;
 
 use crate::game::client_side::dragon_client::breath_puffs;
 

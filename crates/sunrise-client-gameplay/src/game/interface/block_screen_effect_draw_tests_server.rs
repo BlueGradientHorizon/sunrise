@@ -13,7 +13,7 @@ pub(in crate::game) fn sample_eye_in_water(game: &mut crate::game::ClientGame<'_
                 .insert((x, z), Arc::new(Chunk::with_layout(x, z, layout)));
         }
     }
-    let side = game_side!(game);
+    let side = client_game_side!(game, game.game_side_client());
     let mut motion = MotionWorld {
         side: &side,
         entities: &[],

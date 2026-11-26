@@ -862,6 +862,7 @@ pub mod audience_tests {
         host.hub.guests.push(real);
         // The real guest took entity id 1: the fake made next takes the one after it.
         game.server.next_entity = game.server.next_entity.max(1);
+        use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
         let level = game.level(game.dim.id()).unwrap();
         game.fake_player(level, 2, "fake").unwrap();
         let guests = &mut game.server.lan.as_mut().unwrap().hub.guests;

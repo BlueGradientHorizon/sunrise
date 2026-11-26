@@ -150,7 +150,7 @@ pub trait PlayerSideGameExt<'__sg>: crate::game::SideGame<'__sg> {
      fn side_release_tick_targets(&mut self) {
         <Self::State as SideOps>::side_release_tick_targets(self)
     }
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     #[inline(always)]
      fn side_set_test_forced_hit(&mut self, hit: Option<Hit>) {
         <Self::State as SideOps>::side_set_test_forced_hit(self, hit)
@@ -282,7 +282,7 @@ pub trait SideOps: Sized {
     fn side_pick_shares_vehicle(game: &Self::Game<'_>, id: u32) -> bool;
     fn side_refresh_client_pick(game: &mut Self::Game<'_>, partial: f32);
     fn side_release_tick_targets(game: &mut Self::Game<'_>);
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     fn side_set_test_forced_hit(game: &mut Self::Game<'_>, hit: Option<Hit>);
     fn side_reset_client_item_use(game: &mut Self::Game<'_>);
     fn side_tick_client_item_use(game: &mut Self::Game<'_>);

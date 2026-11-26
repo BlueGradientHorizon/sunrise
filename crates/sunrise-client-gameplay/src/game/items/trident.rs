@@ -9,6 +9,19 @@ pub(in crate::game) mod tests {
     
     
 
+struct Air;
+impl ProjectileWorld for Air {
+        fn clip(&self, _: Vec3, _: Vec3) -> Option<(Vec3, [i32; 3], [i32; 3])> {
+            None
+        }
+        fn in_water(&self, _: Aabb) -> bool {
+            false
+        }
+        fn targets(&self) -> &[(Who, Aabb)] {
+            &[]
+        }
+    }
+
     #[test]
     fn remote_trident_waits_for_a_non_self_move_to_leave_its_block() {
         let mut trident = ThrownTrident::remote(1, Vec3::new(0.5, 100.0, 0.5), 0.0, 0.0);

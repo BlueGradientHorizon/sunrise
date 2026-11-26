@@ -43,8 +43,8 @@ pub const PLAYER_CHUNKS: usize = 49;
 /// What the window and its server thread share.
 #[derive(Default)]
 pub struct Flags {
-    #[cfg(test)]
-    pub(in crate::game) fail_tick: AtomicBool,
+    #[cfg(any(test, feature = "test-support"))]
+    pub fail_tick: AtomicBool,
     /// `Minecraft.pause`: a single-player pause screen is open.
     pub paused: AtomicBool,
     pub stop: AtomicBool,

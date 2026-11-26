@@ -1336,7 +1336,7 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn test_has_client_item_use(&self) -> bool {
         self.client.client_item_use.0.is_some()
     }
-    pub(in crate::game) fn test_audio_mut(&mut self) -> &mut sunrise_gameplay_common::game::Audio {
+    pub(in crate::game) fn test_audio_mut(&mut self) -> &mut sunrise_client_render::audio::Audio {
         &mut self.client.audio.0
     }
     pub(in crate::game) fn test_show_title_screen(&mut self) {

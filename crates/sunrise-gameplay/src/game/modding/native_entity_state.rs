@@ -750,15 +750,15 @@ pub mod tests {
                 let mut world = MotionWorld {
                     side: &side,
                     entities: &[],
-                    player: game.player.as_mut().unwrap(),
-                    scene: &mut game.world,
-                    assets: &game.pack.assets,
-                    collision_binding: game.collision,
-                    resources: game.motion,
-                    health: &game.health_resources,
+                    player: game.common.player.as_mut().unwrap(),
+                    scene: &mut game.common.world,
+                    assets: &game.common.pack.assets,
+                    collision_binding: game.common.collision,
+                    resources: game.common.motion,
+                    health: &game.common.health_resources,
                     tag_items: None,
-                    loop_context: &game.loop_context,
-                    damage_hooks: &game.damage_hooks,
+                    loop_context: &game.common.loop_context,
+                    damage_hooks: &game.common.damage_hooks,
                     block_registries: None,
                 };
                 world.fluid_base_tick().unwrap();
@@ -880,6 +880,7 @@ pub mod tests {
             game.world.set(0, 65, 8, portal).unwrap();
             game.mobs
                 .push(Mob::new(40, zombie, Vec3::new(0.5, 64.0, 8.5), 0.0));
+            use sunrise_gameplay_common::game::GameGameExt1 as _;
             game.load_ticking_neighbourhood(0, 0);
             game.update_chunk_tickets();
             assert!(

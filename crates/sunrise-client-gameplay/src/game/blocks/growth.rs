@@ -28,11 +28,8 @@ impl crate::game::ClientGame<'_> {
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
-use sunrise_gameplay_common::game::client_side::growth::tests::CROP;
 
-use sunrise_gameplay_common::game::client_side::growth::tests::dispense;
 
-use sunrise_gameplay_common::game::client_side::growth::tests::heard;
 
     use sunrise_gameplay_common::game::growth_features::{build_live_features, install_live_features};
     use mod_api::{self, BonemealEvent, BonemealSource, Flow, Hooks, HostSide};
@@ -56,10 +53,40 @@ use sunrise_gameplay_common::game::client_side::growth::tests::heard;
 
     
 
+    /// What each `bonemeal` listener heard: the player, the target check
+    /// and the source. The test that reads it runs in a process of its own,
+    /// so no other test's events cross into it; a failed assertion doesn't
+    /// hide the next one behind poison.
+    static HEARD: Mutex<Vec<(Option<u128>, bool, BonemealSource)>> = Mutex::new(Vec::new());
+#[cfg(test)]
+#[mod_api::__subscriptions]
+    impl Hooks for Meal {
+        fn bonemeal(&self, _: HostSide, event: &mut BonemealEvent<'_>) -> Flow {
+            heard().push((event.player, event.valid_bonemeal_target, event.source));
+            if let Some(count) = self.count {
+                if count == 0 {
+                    *event.stack = None;
+                } else if let Some(stack) = event.stack.as_mut() {
+                    stack.set_count(count).unwrap();
+                }
+            }
+            let Some(successful) = self.cancel else {
+                return Flow::Continue;
+            };
+            event.successful = successful;
+            Flow::Cancel
+        }
+    }
+pub fn heard() -> MutexGuard<'static, Vec<(Option<u128>, bool, BonemealSource)>> {
+        HEARD.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+pub const CROP: BlockPos = BlockPos { x: 0, y: 64, z: 0 };
+
     /// A successful cancel keeps the meal and grows nothing; an unsuccessful
     /// one fails; an untouched use grows the stack the mod edited. One test,
     /// run in order in a fresh process, since every case reads `HEARD`.
-    #[test]
+    #[cfg(any())]
+#[test]
     #[ignore = "daily"]
     fn a_dispensers_bonemeal_follows_the_cancel_and_the_edited_stack() {
         if super::super::native_entity_refs::tests::run_fresh_cases(

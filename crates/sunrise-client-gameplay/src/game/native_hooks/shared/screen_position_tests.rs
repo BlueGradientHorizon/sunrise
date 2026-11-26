@@ -2,24 +2,24 @@ use {crate::game::native_hooks::*, sunrise_gameplay_common::game::native_hooks::
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug, PartialEq)]
-pub(in crate::game) struct Frame {
-    pub(in crate::game) pointer: [i32; 2],
-    pub(in crate::game) size: [i32; 2],
-    pub(in crate::game) origin: [f32; 2],
+pub struct Frame {
+    pub pointer: [i32; 2],
+    pub size: [i32; 2],
+    pub origin: [f32; 2],
 }
 
 #[derive(Default)]
-pub(in crate::game) struct ScreenEvents {
+pub struct ScreenEvents {
     /// The block and position captured by the drawn screen's factory.
-    pub(in crate::game) draw: Vec<(Option<String>, Option<[i32; 3]>)>,
-    pub(in crate::game) frames: Vec<Frame>,
-    pub(in crate::game) tooltip_at: Vec<[f32; 2]>,
-    pub(in crate::game) data: Vec<Vec<i32>>,
+    pub draw: Vec<(Option<String>, Option<[i32; 3]>)>,
+    pub frames: Vec<Frame>,
+    pub tooltip_at: Vec<[f32; 2]>,
+    pub data: Vec<Vec<i32>>,
     pub(in crate::game) data_slots: Vec<usize>,
     pub(in crate::game) extra: Vec<(i32, Vec<u8>)>,
-    pub(in crate::game) cancel_opening: bool,
+    pub cancel_opening: bool,
 }
-pub(in crate::game) type Seen = Arc<Mutex<ScreenEvents>>;
+pub type Seen = Arc<Mutex<ScreenEvents>>;
 /// A mod menu type no block opens here.
 pub const PACK: &str = "test:pack";
 
@@ -197,7 +197,7 @@ pub const CRATE_MENU: &str = "test:crate_menu";
 
 /// A mod that adds `test:crate`, a block whose container opens `test:crate_menu`,
 /// with the `Position` screen registered for that menu type.
-pub(in crate::game) struct CrateMod(pub(in crate::game) Seen);
+pub struct CrateMod(pub Seen);
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for CrateMod {
     fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
@@ -221,14 +221,14 @@ impl mod_api::Hooks for CrateMod {
 }
 
 /// What the hopper screens heard, as (the screen's mod, the callback).
-pub(in crate::game) type Heard = Arc<Mutex<Vec<(&'static str, &'static str)>>>;
+pub type Heard = Arc<Mutex<Vec<(&'static str, &'static str)>>>;
 /// Mod `owner`'s screen for `menu`: it leaves slot `HIDDEN` inactive at open,
 /// its button is `HIDDEN` and its tooltip names the owner.
 #[derive(Clone)]
-pub(in crate::game) struct HopperScreen<const HIDDEN: usize> {
-    pub(in crate::game) owner: &'static str,
-    pub(in crate::game) menu: &'static str,
-    pub(in crate::game) heard: Heard,
+pub struct HopperScreen<const HIDDEN: usize> {
+    pub owner: &'static str,
+    pub menu: &'static str,
+    pub heard: Heard,
 }
 impl<const HIDDEN: usize> mod_api::MenuScreenFactory for HopperScreen<HIDDEN> {
     fn create(
@@ -285,9 +285,9 @@ impl<const HIDDEN: usize> mod_api::MenuScreenFactory for HopperScreen<HIDDEN> {
 }
 /// Mod `owner`: its block `<owner>:machine` opens `<owner>:hopper`, while it registers
 /// its screen factory for `screen.menu` (testing cross-mod registration).
-pub(in crate::game) struct HopperMod<const HIDDEN: usize> {
-    pub(in crate::game) block_menu: &'static str,
-    pub(in crate::game) screen: HopperScreen<HIDDEN>,
+pub struct HopperMod<const HIDDEN: usize> {
+    pub block_menu: &'static str,
+    pub screen: HopperScreen<HIDDEN>,
 }
 #[mod_api::__subscriptions]
 impl<const HIDDEN: usize> mod_api::Hooks for HopperMod<HIDDEN> {

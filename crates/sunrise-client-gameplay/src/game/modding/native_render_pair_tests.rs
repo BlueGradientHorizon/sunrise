@@ -127,6 +127,7 @@ fn markers(out: &[Vertex]) -> usize {
 }
 
 /// One frame of the level's mobs, begun as the entity pass begins it.
+#[cfg(test)]
 fn mob_frame(game: &mut crate::game::ClientGame<'_>) -> Vec<Vertex> {
     game.prepare_entity_culling();
     let mut out = Vec::new();
@@ -135,6 +136,7 @@ fn mob_frame(game: &mut crate::game::ClientGame<'_>) -> Vec<Vertex> {
 }
 
 /// Runs `check` on a client game with prepared resources and the [`Pair`] mod.
+#[cfg(test)]
 fn with_pair(heard: &Arc<Mutex<Heard>>, check: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
     let mods = vec![mod_api::ModEntry::new(
         "pair",
@@ -153,6 +155,7 @@ fn events(heard: &Arc<Mutex<Heard>>) -> Vec<String> {
     std::mem::take(&mut heard.lock().unwrap().events)
 }
 
+#[cfg(test)]
 #[test]
 #[ignore = "daily"]
 fn two_entities_are_asked_in_the_draw_queues_order() {
@@ -166,9 +169,9 @@ fn two_entities_are_asked_in_the_draw_queues_order() {
     let heard = Arc::default();
     with_pair(&heard, |game| {
         game.client.pack_ids = Some(Default::default());
-        game.mobs.push(mob(game, "minecraft:zombie", 91, 0.0));
+        game.common.mobs.push(mob(game, "minecraft:zombie", 91, 0.0));
         admit_own_player(game, false);
-        game.mobs.push(mob(game, "minecraft:cow", 92, 2.0));
+        game.common.mobs.push(mob(game, "minecraft:cow", 92, 2.0));
         let (out, ..) = game.entity_geometry(CAMERA, 1.0, None, Vec::new(), &mut Vec::new());
         assert_eq!(
             events(&heard),
@@ -190,7 +193,7 @@ fn two_entities_are_asked_in_the_draw_queues_order() {
             tracked.iter().map(|&(_, id)| id).collect::<Vec<_>>(),
             [
                 (1 << 32) | 91,
-                crate::game::MOTION_OWN_PLAYER,
+                sunrise_gameplay_common::game::MOTION_OWN_PLAYER,
                 (1 << 32) | 92
             ]
         );
@@ -202,6 +205,7 @@ fn two_entities_are_asked_in_the_draw_queues_order() {
     });
 }
 
+#[cfg(test)]
 #[test]
 #[ignore = "daily"]
 fn a_spectator_following_an_entity_submits_no_local_body() {
@@ -215,7 +219,7 @@ fn a_spectator_following_an_entity_submits_no_local_body() {
         game.connect_local(pipe, "Steve").unwrap();
         admit_own_player(game, true);
         game.mode = GameMode::Spectator;
-        game.mobs.push(mob(game, "minecraft:zombie", 91, 0.0));
+        game.common.mobs.push(mob(game, "minecraft:zombie", 91, 0.0));
         game.handle_packet(Clientbound::SetCamera(SetCamera { camera_id: 91 }))
             .unwrap();
         assert!(!game.controls_camera());
@@ -304,6 +308,7 @@ pub fn submitted_bodies<T>(
 
 /// Exercise the real packet and draw paths; the parity harness reads the same scene
 /// and compares these submitted body IDs with the vanilla renderer's dispatch order.
+#[cfg(test)]
 #[test]
 #[ignore = "daily"]
 fn entity_draw_order_after_client_packets() {
@@ -378,10 +383,7 @@ pub(in crate::game::client_side) fn run_entity_draw_order_after_client_packets()
                 ["beams", crystal] => {
                     let id: u32 = crystal.parse().unwrap();
                     let index = game.crystals.iter().position(|c| c.id == id).unwrap();
-                    game.dragon
-                        .as_mut()
-                        .unwrap()
-                        .set_render_test_crystal(Some(index));
+                    game.dragon.as_mut().unwrap().nearest_crystal = Some(index);
                     check_beams = true;
                     C::SetEntityData(play::SetEntityData {
                         id: id as i32,
@@ -511,6 +513,7 @@ pub(in crate::game::client_side) fn run_entity_draw_order_after_client_packets()
     });
 }
 
+#[cfg(test)]
 #[test]
 #[ignore = "daily"]
 fn a_canceled_living_pre_skips_the_model_and_the_post_hook() {
@@ -523,7 +526,7 @@ fn a_canceled_living_pre_skips_the_model_and_the_post_hook() {
     }
     let heard: Arc<Mutex<Heard>> = Arc::default();
     with_pair(&heard, |game| {
-        game.mobs.push(mob(game, "minecraft:zombie", 91, 0.0));
+        game.common.mobs.push(mob(game, "minecraft:zombie", 91, 0.0));
         let drawn = mob_frame(game);
         assert!(drawn.len() > 4, "its model, beside the marker");
         events(&heard);
@@ -542,6 +545,7 @@ fn a_canceled_living_pre_skips_the_model_and_the_post_hook() {
     });
 }
 
+#[cfg(test)]
 #[test]
 #[ignore = "daily"]
 fn a_canceled_entity_draws_no_name_tag() {
@@ -598,6 +602,7 @@ fn zombie_frame(game: &mut crate::game::ClientGame<'_>, burning: bool, shadows: 
     entity_frame(game)
 }
 
+#[cfg(test)]
 #[test]
 #[ignore = "daily"]
 fn a_canceled_pre_keeps_the_flames_and_the_shadow() {
@@ -624,6 +629,7 @@ fn a_canceled_pre_keeps_the_flames_and_the_shadow() {
     });
 }
 
+#[cfg(test)]
 #[test]
 #[ignore = "daily"]
 fn a_canceled_pre_keeps_the_local_players_flames() {
@@ -656,13 +662,14 @@ fn a_canceled_pre_keeps_the_local_players_flames() {
     });
 }
 
+#[cfg(test)]
 #[test]
 #[ignore = "daily"]
 fn a_culled_entity_is_asked_neither_hook() {
     let heard: Arc<Mutex<Heard>> = Arc::default();
     with_pair(&heard, |game| {
         // Far past any render distance.
-        game.mobs.push(mob(game, "minecraft:zombie", 91, 100_000.0));
+        game.common.mobs.push(mob(game, "minecraft:zombie", 91, 100_000.0));
         let out = mob_frame(game);
         assert_eq!(events(&heard), Vec::<String>::new());
         assert_eq!(markers(&out), 0);
@@ -693,6 +700,7 @@ fn own_player_frame(game: &mut crate::game::ClientGame<'_>, spectator: bool) -> 
     out
 }
 
+#[cfg(test)]
 #[test]
 #[ignore = "daily"]
 fn the_player_pair_wraps_the_living_pair() {
@@ -734,6 +742,7 @@ fn the_player_pair_wraps_the_living_pair() {
     });
 }
 
+#[cfg(test)]
 #[test]
 #[ignore = "daily"]
 fn a_spectator_draws_no_layers_but_gets_its_post_hooks() {

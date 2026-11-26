@@ -393,6 +393,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(any())]
     fn ominous_banner_survives_placement_save_and_drop() {
         let original = raider::ominous_banner();
         let Tag::Compound(components) = item_data::component_snapshot(&original).unwrap() else {

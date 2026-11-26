@@ -1,4 +1,4 @@
-use {crate::game::remote::*, sunrise_gameplay_common::game::remote::{C, Chunk, Game, S, Vec3, play}};
+use {crate::game::remote::*, sunrise_gameplay_common::game::remote::{C, Chunk, Vec3, play}};
 use std::sync::mpsc::Receiver;
 use sunrise_protocol::buf::Reader;
 use sunrise_sim::lan::Out;
@@ -10,13 +10,11 @@ pub const START: Vec3 = Vec3::new(4.5, 64.0, 4.5);
 /// the blocks `Entity.isInRain` samples at either start height: the feet blocks (4, 64, 4) and
 /// (4, 65, 4) and the tops (4, 65, 4) and (4, 66, 4), whose corners are the quarts with x and
 /// z in {0, 1} and y in 15..=17.
-pub fn arena<S: sunrise_gameplay_common::game::Side>(
-    game: &mut Game<'_, S>,
+pub fn arena<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
+    game: &mut G,
     roof: bool,
-    insert: impl FnOnce(&mut Game<'_, S>, Chunk),
-) where
-    for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host,
-{
+    insert: impl FnOnce(&mut G, Chunk),
+) {
     let plains = game.res.biomes().id("minecraft:plains");
     let mut chunk = Chunk::empty(0, 0);
     let bottom = game.world.bottom_y() >> 2;
@@ -42,9 +40,6 @@ pub fn arena<S: sunrise_gameplay_common::game::Side>(
     game.world.weather.raining = true;
     game.world.weather.settle_levels();
 }
-
-#[allow(unused_imports)]
-pub(in crate::game) use crate::game::server_side::remote_server::riptide_tests::client_tick_to_server;
 
 pub fn server_to_client(
     rx: &Receiver<Out>,

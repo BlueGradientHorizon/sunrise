@@ -1,46 +1,10 @@
 use super::*;
-use std::cell::{Cell, RefCell};
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
 
-thread_local! {
-    static CAPTURE: Cell<bool> = const { Cell::new(false) };
-    static SEEN: RefCell<Vec<(String, Option<ItemStack>)>> = const { RefCell::new(Vec::new()) };
-}
-pub(in sunrise_gameplay::game::server_side) fn record(name: &str, stack: Option<&ItemStack>) {
-    if CAPTURE.get() {
-        SEEN.with_borrow_mut(|seen| seen.push((name.to_owned(), stack.cloned())));
-    }
-}
-fn counts() -> [usize; 3] {
-    SEEN.with_borrow(|seen| {
-        [
-            "minecraft:default_block_use",
-            "minecraft:item_used_on_block",
-            "minecraft:any_block_use",
-        ]
-        .map(|name| seen.iter().filter(|(n, _)| n == name).count())
-    })
-}
-
-struct Recording;
-
-impl Recording {
-    fn start() -> Self {
-        SEEN.with_borrow_mut(Vec::clear);
-        CAPTURE.set(true);
-        Self
-    }
-}
-
-impl Drop for Recording {
-    fn drop(&mut self) {
-        CAPTURE.set(false);
-        SEEN.with_borrow_mut(Vec::clear);
-    }
-}
+use sunrise_gameplay::game::server_side::advancements::block_use_recording::{Recording, SEEN, counts};
 
 #[test]
 #[ignore = "daily"]

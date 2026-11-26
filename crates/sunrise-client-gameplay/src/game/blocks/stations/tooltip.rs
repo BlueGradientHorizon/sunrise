@@ -737,7 +737,7 @@ impl crate::game::ClientGame<'_> {
     /// A stack's tooltip: its ordered lines and a bundle's contents
     /// (`ClientBundleTooltip`: the 4 wide grid, the `+N` of what it leaves
     /// out, and the weight bar).
-    pub(in crate::game::client_side) fn draw_stack_tooltip(
+    pub(in crate::game) fn draw_stack_tooltip(
         &mut self,
         batch: &mut HudBatch,
         stack: &ItemStack,

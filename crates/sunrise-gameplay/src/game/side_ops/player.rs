@@ -143,7 +143,7 @@ impl SideOps for crate::game::server_side::ServerState {
     fn side_release_tick_targets(game: &mut Self::Game<'_>) {
         game.server_release_tick_targets()
     }
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     fn side_set_test_forced_hit(game: &mut Self::Game<'_>, hit: Option<Hit>) {
         game.server_set_test_forced_hit(hit)
     }

@@ -14,7 +14,7 @@ pub(in crate::game) struct ClientPick {
     pub(in crate::game) result: Option<CrosshairTarget>,
     pub entity_metadata: (bool, bool),
     pub rider_candidates: Vec<sunrise_gameplay_common::game::pick_ray::PickCandidate>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(in crate::game) test_forced_hit: Option<sunrise_gameplay_common::game::Hit>,
     pub sections: std::cell::RefCell<crate::game::pick_entity::pick_sections::PickSectionStorage>,
     pub(in crate::game) dispatching: bool,

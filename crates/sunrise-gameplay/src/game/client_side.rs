@@ -16,10 +16,6 @@ pub mod lan_trade_decisions_tests_client;
 #[path = "modding/native_player_level_tests_client.rs"]
 pub(in crate::game) mod native_player_level_tests_client;
 #[cfg(feature = "client")]
-#[path = "world/world_session.rs"]
-pub(in crate::game) mod world_session;
-
-#[cfg(feature = "client")]
 #[path = "modding/native_mob_refs_client.rs"]
 pub(in crate::game) mod native_mob_refs_client;
 

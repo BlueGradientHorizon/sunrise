@@ -139,8 +139,8 @@ pub struct OpenTransactions {
     /// kept in sync with open transaction frames so mutations roll back on abort.
     pub(in crate::game) retained_original_attachments:
         Vec<std::sync::Arc<std::sync::Mutex<super::player_state::OriginalAttachmentSlot>>>,
-    #[cfg(test)]
-    pub(in crate::game) trace: Option<std::sync::Arc<std::sync::Mutex<Vec<String>>>>,
+    #[cfg(any(test, feature = "test-support"))]
+    pub trace: Option<std::sync::Arc<std::sync::Mutex<Vec<String>>>>,
 }
 
 impl OpenTransactions {
@@ -1091,7 +1091,7 @@ impl<'g, S: crate::game::SideGame<'g> + ?Sized> Drop for StorageScope<'_, 'g, S>
 
 pub trait TransactionsGameExt<'g>: crate::game::SideGame<'g> {
     /// Actual transaction/restore events for storage-attempt regression traces.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     fn trace_storage_attempt(&self, entry: String) {
         if let Some(trace) = &self.transactions.trace {
             trace.lock().unwrap().push(entry);
@@ -1142,7 +1142,7 @@ pub trait TransactionsGameExt<'g>: crate::game::SideGame<'g> {
                 .unwrap_or_else(|e| e.into_inner())
                 .open_frame(frame);
         }
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         self.trace_storage_attempt("open".into());
         frame
     }

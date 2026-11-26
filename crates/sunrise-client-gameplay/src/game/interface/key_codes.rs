@@ -114,7 +114,7 @@ pub fn gameplay_has_keyboard(
 }
 
 /// A dialog drops held keys and mouse buttons it does not see (#4974).
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn drop_held_behind_dialog(
     dialog: bool,
     keys: &mut sunrise_client::held::HeldKeys,

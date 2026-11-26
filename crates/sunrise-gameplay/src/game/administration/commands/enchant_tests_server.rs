@@ -1,6 +1,7 @@
 use super::Text;
-use crate::game::commands::enchant_tests::RIPTIDE;
 use sunrise_game_data::scoreboard::comp_text;
+
+const RIPTIDE: &str = "minecraft:riptide";
 
 pub fn enchant_outcome(
     game: &mut crate::game::ServerGame<'_>,

@@ -2,9 +2,9 @@
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use super::super::native_entity_refs::tests::with_game;
-    use sunrise_gameplay_common::game::server_side::native_living_writes::tests::Shared;
-    use sunrise_gameplay_common::game::server_side::native_living_writes::tests::UseMod;
+    use crate::game::native_entity_refs::tests::with_game;
+    use super::super::observer_tests::tests::{Shared, UseMod};
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
     use mod_api::{LivingRef, ModEntry, Mods};
     use sunrise_core::geometry::Vec3;
 

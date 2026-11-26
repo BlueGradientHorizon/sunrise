@@ -68,7 +68,10 @@ use sunrise_sim::mobs::Mob;
             sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 66.0, 16.5))
                 .unwrap(),
         );
-        game.side.particles.0.camera = [8.5, 66.0, 16.5];
+        sunrise_client_gameplay::game::client_side::breezes_client::tests::set_test_particle_camera(
+            &mut game,
+            [8.5, 66.0, 16.5],
+        );
         let kind = game.res.mob_types()["minecraft:breeze"].clone();
         game.mobs.push(Mob::new(13001, kind, feet, 0.0));
         game

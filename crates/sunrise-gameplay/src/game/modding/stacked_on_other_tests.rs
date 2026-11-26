@@ -578,10 +578,7 @@ pub(in crate::game) mod families {
         });
     }
 
-    fn block<S: sunrise_gameplay_common::game::Side>(game: &mut Game<'_, S>, name: &str, pos: (i32, i32, i32))
-    where
-        for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host,
-    {
+    fn block(game: &mut crate::game::ServerGame<'_>, name: &str, pos: (i32, i32, i32)) {
         let state = game.pack.assets.registry.default_state(name).unwrap();
         game.world.set(pos.0, pos.1, pos.2, state).unwrap();
     }

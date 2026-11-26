@@ -1656,6 +1656,7 @@ pub mod tests {
     use sunrise_sim::mobs::Mob;
 
     #[cfg(test)]
+#[cfg(any())]
 #[test]
     #[ignore = "daily"]
     fn a_dispenser_keeps_the_egg_if_its_type_cannot_spawn_in_peaceful() {

@@ -881,8 +881,8 @@ impl TeleportConsumeWorld for MobTeleporter<'_, '_> {
     }
 }
 
-#[cfg(test)]
-pub(in crate::game) mod teleport_hook_tests {
+#[cfg(any(test, feature = "test-support"))]
+pub mod teleport_hook_tests {
     use super::*;
     use sunrise_gameplay_common::game::api_values::test_snapshot;
     use crate::game::native_entity_refs::tests::with_game;
@@ -896,6 +896,36 @@ pub(in crate::game) mod teleport_hook_tests {
     
     
 
+pub struct ConsumptionProbe(pub Arc<Mutex<Vec<mod_api::ItemStack>>>, pub Arc<AtomicBool>);
+#[mod_api::__subscriptions]
+    impl Hooks for ConsumptionProbe {
+        fn item_consumption_teleport(
+            &self,
+            host: &mut dyn ServerHost,
+            event: &mut ItemConsumptionTeleportEvent<'_>,
+        ) -> Flow {
+            assert_eq!(
+                event.consumer.entity(),
+                host.players().acting_player().unwrap().entity()
+            );
+            self.0.lock().unwrap().push(event.consumed.clone());
+            assert_eq!(event.consumed.count(), 7);
+            assert_eq!(event.consumed.damage(), 3);
+            assert!(event.consumed.components().is_some());
+            if self.1.load(Ordering::SeqCst) {
+                assert!(
+                    event
+                        .consumer
+                        .entity()
+                        .teleport_to(host, [3.0, 70.0, 3.0], None)
+                );
+                return Flow::Continue;
+            }
+            Flow::Cancel
+        }
+    }
+
+    #[cfg(test)]
     #[test]
     fn unregistered_consumed_stack_skips_the_snapshot() {
         let heard = Arc::new(Mutex::new(Vec::new()));

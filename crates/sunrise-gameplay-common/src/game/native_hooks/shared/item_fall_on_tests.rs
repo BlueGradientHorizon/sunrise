@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 /// asks for the block to be destroyed.
 #[derive(Clone, Default)]
 pub struct Lands(
-    pub(in crate::game) Arc<Mutex<Vec<(i32, String, BlockPos, f64, f32)>>>,
+    pub Arc<Mutex<Vec<(i32, String, BlockPos, f64, f32)>>>,
 );
 #[mod_api::sunrise_part]
 impl BlockPart for Lands {
@@ -21,7 +21,7 @@ impl BlockPart for Lands {
         event.request(mod_api::LandingWrite::DestroyBlock { drop: false });
     }
 }
-pub struct Mod(pub(in crate::game) Lands);
+pub struct Mod(pub Lands);
 #[mod_api::__subscriptions]
 impl Hooks for Mod {
     fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
@@ -54,7 +54,7 @@ impl BlockPart for LoanPart {
         std::panic::panic_any(self.0.clone());
     }
 }
-pub struct LoanMod(pub(in crate::game) std::sync::Arc<()>);
+pub struct LoanMod(pub std::sync::Arc<()>);
 #[mod_api::__subscriptions]
 impl Hooks for LoanMod {
     fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {

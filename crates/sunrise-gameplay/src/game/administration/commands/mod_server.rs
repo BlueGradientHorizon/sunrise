@@ -1926,6 +1926,7 @@ pub mod clone_writes_tests;
 
 #[cfg(test)]
 pub(in crate::game) mod forced_respawn_tests {
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
     #[test]
     #[ignore = "daily"]
@@ -1974,3 +1975,58 @@ use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
+
+#[cfg(test)]
+mod persistent_component_tests {
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+    #[test]
+    #[ignore = "daily"]
+    fn native_persistent_components_are_available_to_give() {
+        sunrise_protocol::item::custom::install(1000, vec!["example:marker".into()]).unwrap();
+        crate::game::native_entity_refs::tests::with_game(|game| {
+            game.player = Some(
+                sunrise_sim::motion::PlayerMotion::new(
+                    game.motion,
+                    sunrise_core::geometry::Vec3::ZERO,
+                )
+                .unwrap(),
+            );
+            game.build_registries();
+            game.build_registries();
+            game.ui.registries.permission = 4;
+            assert_eq!(
+                game.ui
+                    .registries
+                    .persistent_components
+                    .iter()
+                    .filter(|id| *id == "example:marker")
+                    .count(),
+                1
+            );
+            let mut suggestions =
+                sunrise_command::SuggestionsBuilder::new("minecraft:apple[example:", 0);
+            sunrise_command::item::suggest_stack(&mut suggestions, &game.ui.registries);
+            assert!(
+                suggestions
+                    .out
+                    .iter()
+                    .any(|entry| entry.text == "example:marker=")
+            );
+            assert!(game.run_command("give @s minecraft:apple[example:marker={probe:1}]"));
+            let item = game
+                .inventory
+                .iter()
+                .flatten()
+                .find(|item| &*item.item == "minecraft:apple")
+                .unwrap();
+            assert_eq!(
+                item.data().and_then(|data| data.other("example:marker")),
+                Some(&sunrise_core::nbt::Tag::compound([(
+                    "probe",
+                    sunrise_core::nbt::Tag::Int(1)
+                )]))
+            );
+            assert!(!game.run_command("give @s minecraft:apple[minecraft:creative_slot_lock={}]"));
+        });
+    }
+}

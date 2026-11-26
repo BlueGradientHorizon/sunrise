@@ -488,6 +488,7 @@ impl crate::game::ServerGame<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::ViewTestSlots as _;
     use std::sync::Arc;
     use sunrise_core::geometry::Direction;
     use sunrise_level::containers::ModContainer;

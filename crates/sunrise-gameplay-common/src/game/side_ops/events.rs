@@ -3,12 +3,12 @@ use sunrise_level::{block_entities::BlockEntityIdentity, sculk::Context as Sculk
 use sunrise_sim::mobs::Who;
 use sunrise_world::registry::BlockStateId;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 thread_local! {
-    pub(in crate::game) static TEST_POSTED_EVENTS: std::cell::RefCell<
+    pub static TEST_POSTED_EVENTS: std::cell::RefCell<
         Option<Vec<(&'static str, [f64; 3], Option<Who>)>>,
     > = const { std::cell::RefCell::new(None) };
-    pub(in crate::game) static TEST_POSTED_EVENT_ORDER: std::cell::RefCell<
+    pub static TEST_POSTED_EVENT_ORDER: std::cell::RefCell<
         Option<Vec<(&'static str, Option<Who>, usize, usize)>>,
     > = const { std::cell::RefCell::new(None) };
 }

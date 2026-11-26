@@ -38,8 +38,7 @@ pub fn world() -> World {
         w.chunks.insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         w
     }
-#[cfg(test)]
-fn names(s: u32) -> Arc<str> {
+pub fn names(s: u32) -> Arc<str> {
         match s {
             0 => "minecraft:air",
             1 => "minecraft:stone",

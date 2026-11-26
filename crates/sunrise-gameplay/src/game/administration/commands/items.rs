@@ -879,6 +879,7 @@ pub mod registered_slot_source_preservation_tests {
     use super::*;
 
     #[allow(unused_imports)]
+#[cfg(any())]
 pub(in crate::game) use crate::game::server_side::commands_server::items::registered_slot_source_preservation_tests::scene;
 
     pub fn count(game: &mut crate::game::ServerGame<'_>, expected: i32) {

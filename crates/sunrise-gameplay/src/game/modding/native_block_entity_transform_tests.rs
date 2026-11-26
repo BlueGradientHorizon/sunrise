@@ -515,7 +515,8 @@ fn structure_transform_survives_real_datapack_reload_with_its_registry() {
             )
             .unwrap();
             request.save_root = dir.path().to_owned();
-            game.load_world(request).unwrap();
+            let prepared = game.prepare_world_and_rules(request).unwrap();
+            game.finish_open_world(prepared).unwrap();
             let registry = game.pack.assets.registry;
             let frozen = registry
                 .structure_block_entity_transform

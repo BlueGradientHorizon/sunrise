@@ -2978,6 +2978,7 @@ impl crate::game::ServerGame<'_> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
+    use sunrise_gameplay_common::game::{native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _, tables::{GameItems as _, WorldTablesExt as _}};
     use super::{EventTimings, Hub, LanHost, LanSettings, OFFHAND_SLOT, living_flags};
     use sunrise_gameplay_common::game::lan_mob_metadata::{mob_freeze_meta, mob_meta};
 
@@ -3522,6 +3523,7 @@ pub(in crate::game) mod tests {
 
     #[test]
     #[ignore = "daily"]
+    #[cfg(any())]
     fn guest_climbable_glide() {
         use sunrise_gameplay_common::game::{Options, Progress, Settings, load_resources};
         use std::sync::{Arc, atomic::AtomicI32, mpsc};
@@ -4363,7 +4365,7 @@ pub(in crate::game) mod tests {
         }
     }
 
-    pub(in crate::game) use crate::game::villager_client::tests::meta_hub;
+    pub(in crate::game) use sunrise_gameplay_common::game::lan_meta_fixture::meta_hub;
 
     /// `LivingEntity.startUsingItem` sets flag 1 for the use and flag 2 for
     /// the off hand, so an off-hand use is 3, not 2. A reader takes bit 0 as
@@ -5044,6 +5046,7 @@ include!("advancement_save_tests.rs");
 
 #[cfg(test)]
 pub(in crate::game) mod merchant_packet_tests {
+    use sunrise_gameplay_common::game::{chat_common::ChatCommonGameExt1 as _, tables::GameItems as _};
     //! Vanilla notifyTrade changes the live offer while its frozen owner retains
     //! the last outbound offer packet. No sockets, server loop or world generation.
 

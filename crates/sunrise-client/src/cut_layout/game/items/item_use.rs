@@ -295,21 +295,7 @@ use sunrise_core::use_animation::UseAnimation;
 pub(in crate::game) mod interact_vibration_tests {
     use super::*;
 
-    type RecordedEvent = (&'static str, [f64; 3], Option<sunrise_sim::mobs::Who>);
-    thread_local! {
-        pub(in crate::game) static EVENTS: std::cell::RefCell<Vec<RecordedEvent>> = const { std::cell::RefCell::new(Vec::new()) };
-        static RECORDING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-    }
-
-    pub(in sunrise_gameplay::game::server_side) fn record_event(
-        event: &'static str,
-        pos: [f64; 3],
-        source: Option<sunrise_sim::mobs::Who>,
-    ) {
-        if RECORDING.get() {
-            EVENTS.with(|events| events.borrow_mut().push((event, pos, source)));
-        }
-    }
+    use sunrise_gameplay::game::server_side::sculk_server::item_use_event_fixture::{EVENTS, RECORDING};
 
     /// Runs `f` on a windowless game built from the prepared resources with
     /// `held` in the main hand and returns the game events it posted;

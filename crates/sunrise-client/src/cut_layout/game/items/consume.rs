@@ -2,6 +2,7 @@
 
 #[cfg(test)]
 pub(crate) mod teleport_hook_tests {
+use sunrise_gameplay::game::server_side::consume::teleport_hook_tests::ConsumptionProbe;
 
 use sunrise_gameplay_common::game::api_values::test_snapshot;
 

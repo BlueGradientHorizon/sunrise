@@ -27,6 +27,8 @@ fn read_encoding_keeps_nonresident_stack_limits() {
 fn draw_consumers_render_nonresident_stacks() {
     use crate::game::host::draw::{GameBlockEntityDrawContext, GameDrawContext};
     use mod_api::{BlockEntityDrawContext, DrawContext, ItemDisplayContext};
+    use sunrise_client_render::hud::HudBatch;
+    use sunrise_gameplay_common::game::tables::GameItems as _;
     crate::game::native_entity_refs::tests::with_client_game(|game| {
         let mut excess = ApiStack::of(mod_api::__private::item_key("minecraft:stick").unwrap());
         excess.set_count(65).unwrap();
@@ -43,13 +45,13 @@ fn draw_consumers_render_nonresident_stacks() {
                 api.try_into_engine(game.items()).is_err(),
                 "not a resident write"
             );
-            let mut gui = crate::hud::HudBatch::scratch([320, 240]);
+            let mut gui = HudBatch::scratch([320, 240]);
             {
                 let mut context = GameDrawContext::new(game, &mut gui);
                 assert!(context.item_stack(&api, [16.0, 32.0], 16.0));
             }
             assert!(!gui.vertices.is_empty(), "item_stack renders geometry");
-            let mut decorated = crate::hud::HudBatch::scratch([320, 240]);
+            let mut decorated = HudBatch::scratch([320, 240]);
             GameDrawContext::new(game, &mut decorated).gui_draw_item_with(&api, [16.0, 32.0], None);
             assert!(
                 !decorated.vertices.is_empty(),

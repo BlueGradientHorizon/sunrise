@@ -31,7 +31,7 @@ pub struct Journal {
     pub owners: HashMap<MenuId, engine::KeptOwner>,
     // The harness has no Game::After queue. Production uses that existing queue
     // directly through GameHost::defer, preserving listener/apply effect order.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     after: Vec<Effect>,
 }
 
@@ -43,7 +43,7 @@ impl Journal {
         });
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(super) fn defer(&mut self, effect: Effect) {
         self.after.push(effect);
     }
@@ -56,14 +56,14 @@ impl Journal {
         for (id, kept) in child.owners {
             self.owners.entry(id).or_insert(kept);
         }
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         self.after.extend(child.after);
     }
 
     pub fn rollback(self) {
         assert!(self.owners.is_empty(), "game menu undo needs its owner");
         // No success effect, drop, or retirement escapes an aborted action.
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         drop(self.after);
         for kept in self.menus.into_values() {
             let mut inner = kept.menu.inner.borrow_mut();
@@ -77,7 +77,7 @@ impl Journal {
     }
 
     /// Only the root commit owner may take the queued effects.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(super) fn root_effects(self) -> Vec<Effect> {
         self.after
     }

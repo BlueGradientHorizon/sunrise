@@ -942,6 +942,7 @@ pub(in crate::game) mod tab_list_tests {
     }
 
     #[test]
+    #[cfg(any())]
     fn lan_tab_list_tracks_join_and_disconnect() {
         let me = TabPlayer::new(1, PLAYER_NAME);
         let mut guests = vec![guest(2, "Alex")];

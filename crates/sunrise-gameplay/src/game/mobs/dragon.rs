@@ -2796,12 +2796,6 @@ impl crate::game::ServerGame<'_> {
         )
     }
 }
-#[cfg(test)]
-impl Dragon {
-    pub(in crate::game) fn set_render_test_crystal(&mut self, crystal: Option<usize>) {
-        self.nearest_crystal = crystal;
-    }
-}
 
 impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn fight_ready(&mut self) -> bool {

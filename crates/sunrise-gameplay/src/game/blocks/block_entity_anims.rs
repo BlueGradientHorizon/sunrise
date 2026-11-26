@@ -734,9 +734,6 @@ pub mod conduit_target_tests {
     //! `ConduitBlockEntity.selectNewTarget` picks `Enemy`s only, and its
     //! `Target` reaches every window through `sendBlockUpdated`; the window
     //! then spits a nautilus particle at the mob.
-    use sunrise_gameplay_common::game::{Options, Progress, Settings, execution_role, load_resources};
-    use std::sync::Arc;
-    use sunrise_level::chunk::Chunk;
 
     
 

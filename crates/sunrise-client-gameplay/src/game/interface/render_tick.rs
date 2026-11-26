@@ -1412,9 +1412,9 @@ mod tests {
                 state("minecraft:dirt"),
                 state("minecraft:fire"),
             );
-            game.world.chunks.insert(
+            game.common.world.chunks.insert(
                 (0, 0),
-                Arc::new(Chunk::with_layout(0, 0, game.world.layout())),
+                Arc::new(Chunk::with_layout(0, 0, game.common.world.layout())),
             );
             // The eye is at y 65.62, so all eight test points are in block (0, 65, 0).
             let mut player =

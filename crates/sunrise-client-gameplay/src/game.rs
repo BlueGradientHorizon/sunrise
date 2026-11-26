@@ -465,13 +465,6 @@ pub(in crate::game) use client_side::native_item_particles;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::native_key_mappings;
 #[cfg(feature = "client")]
-#[cfg(test)]
-#[allow(unused_imports)]
-#[cfg(feature = "client")]
-#[cfg(test)]
-#[allow(unused_imports)]
-pub(in crate::game) use client_side::native_level_notify_tests;
-#[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::native_local_player_writes;
 #[cfg(feature = "client")]

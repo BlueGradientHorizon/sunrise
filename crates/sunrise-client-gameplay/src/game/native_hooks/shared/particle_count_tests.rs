@@ -1,34 +1,3 @@
-use mod_api::ClientHost;
-use sunrise_core::geometry::Vec3;
-use sunrise_sim::entities::ExperienceOrb;
-
-pub(in crate::game) fn orb(at: Vec3) -> ExperienceOrb {
-    ExperienceOrb {
-        size_answer: None,
-        attachment_lifetime: Default::default(),
-        fall_distance: 0.0,
-        rotation: [0.0, 0.0],
-        join: Default::default(),
-        no_gravity: false,
-        id: 1,
-        position: at,
-        previous: at,
-        velocity: Vec3::ZERO,
-        value: 1,
-        age: 0,
-        ground: Default::default(),
-        count: 1,
-        fire_ticks: 0,
-        ticks: 0,
-        health: 5,
-        air: 300,
-        following: None,
-    }
-}
-
-#[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::native_hooks_client::particle_count_tests::fill;
-
 pub(in crate::game) struct ClearInGui;
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for ClearInGui {
@@ -140,12 +109,6 @@ pub(in crate::game) fn with_frame_scene(
     });
 }
 
-#[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::native_hooks_client::particle_count_tests::frame_scene;
-
-#[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::native_hooks_client::particle_count_tests::add_frame_particles;
-
 #[derive(Debug, PartialEq)]
 pub(in crate::game) struct FrameGeometry {
     pub(in crate::game) entities: Vec<u8>,
@@ -156,7 +119,7 @@ pub(in crate::game) struct FrameGeometry {
     pub(in crate::game) gpu_spans: Vec<sunrise_client_render::render_geometry::EntitySpan>,
     pub(in crate::game) outlines: (usize, u32),
 }
-pub(in crate::game) fn frame_geometry(frame: &sunrise_gameplay_common::game::Frame<'_>) -> FrameGeometry {
+pub(in crate::game) fn frame_geometry(frame: &sunrise_client_render::gfx::Frame<'_>) -> FrameGeometry {
     FrameGeometry {
         entities: bytemuck::cast_slice(frame.entities).to_vec(),
         glowing: bytemuck::cast_slice(frame.glowing).to_vec(),

@@ -4,6 +4,7 @@
 pub(crate) mod tests {
 
 use super::*;
+    use sunrise_sim::advancements::Frame;
 
 use crate::game::client_side::advancement_toast::{Toast, toast_label};
 

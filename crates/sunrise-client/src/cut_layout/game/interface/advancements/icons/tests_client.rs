@@ -1,8 +1,7 @@
 use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
-use sunrise_gameplay::game::server_side::advancements::icons::tests::assert_icon;
-use sunrise_gameplay::game::server_side::advancements::icons::tests::batch;
-use sunrise_gameplay::game::server_side::advancements::icons::tests::fixture;
-use sunrise_gameplay::game::server_side::advancements::icons::tests::glint_vertices;
+#[path = "helpers.rs"]
+mod helpers;
+use helpers::{assert_icon, batch, fixture, glint_vertices};
 use std::{collections::BTreeSet, sync::Arc};
 use sunrise_core::nbt::Tag;
 use sunrise_protocol::{

@@ -84,7 +84,7 @@ fn startup_recipe_uses_registered_condition() {
                 Vec::new(),
                 None,
                 &root,
-                &sunrise_gameplay_common::game::Settings::default(),
+                &sunrise_client_render::settings::Settings::default(),
                 std::time::Instant::now(),
                 false,
                 sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer,

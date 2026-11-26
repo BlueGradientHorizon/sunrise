@@ -1881,7 +1881,7 @@ use sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_t
             for z in -2..=2 {
                 game.server
                     .streaming
-                    .insert_remote(&mut game.world, Chunk::empty(x, z));
+                    .insert_remote(&mut game.common.world, Chunk::empty(x, z));
             }
         }
     }

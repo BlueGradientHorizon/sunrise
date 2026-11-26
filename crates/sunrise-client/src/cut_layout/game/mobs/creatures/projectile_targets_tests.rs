@@ -143,16 +143,7 @@ pub(in crate::game) fn reset_arena(game: &mut sunrise_gameplay::game::ServerGame
     game.tick_server(false).unwrap();
 }
 
-#[derive(Clone, Copy)]
-pub(in crate::game) enum TrackedTarget {
-    Stand(u32),
-    Painting(u32),
-    Frame(u32),
-    Cushion(u32),
-    Falling(u32),
-    ExplicitKnot(u32),
-    NaturalKnot { id: u32, pig_id: u32 },
-}
+pub(in crate::game) use sunrise_gameplay::game::server_side::creatures_server::projectile_targets_tests::TrackedTarget;
 
 #[derive(Clone, Copy)]
 pub(in crate::game) enum TrackedProj {

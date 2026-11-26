@@ -7,11 +7,13 @@ use sunrise_client_gameplay::game::client_side::native_panel::tests::frame;
 
 use sunrise_client_gameplay::game::client_side::native_panel::tests::search_as;
 
-use sunrise_gameplay_common::game::client_side::native_panel::tests::HEARD;
+use sunrise_client_gameplay::game::client_side::native_panel::tests::HEARD;
 
-use sunrise_gameplay_common::game::client_side::native_panel::tests::heard;
+use sunrise_client_gameplay::game::client_side::native_panel::tests::Listener;
 
-use sunrise_gameplay_common::game::client_side::native_panel::tests::stack;
+use sunrise_client_gameplay::game::client_side::native_panel::tests::heard;
+
+use sunrise_client_gameplay::game::client_side::native_panel::tests::stack;
 
 /// `panel_search` in a game: only the owner's own call counts, and the
     /// owner hears its text through the typing event on the first frame that

@@ -44,6 +44,8 @@ pub(in crate::game) mod setup_anim_tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     pub(in crate::game) static HEARD: AtomicUsize = AtomicUsize::new(0);
+    use sunrise_gameplay_common::game::armor_stands_common::TYPE_ID;
+
     pub(in crate::game) struct Listener;
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for Listener {

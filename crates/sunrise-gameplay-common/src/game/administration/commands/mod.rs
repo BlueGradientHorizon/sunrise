@@ -12,8 +12,7 @@ pub mod peaceful_tests {
 
     pub const TRADER: &str = "peaceful_test:trader";
 
-    #[cfg(test)]
-pub(in crate::game) fn trader_egg() -> ItemStack {
+    pub fn trader_egg() -> ItemStack {
         let mut stack = ItemStack::new("minecraft:cow_spawn_egg", 1);
         stack.data_mut().set_other(
             "minecraft:entity_data",

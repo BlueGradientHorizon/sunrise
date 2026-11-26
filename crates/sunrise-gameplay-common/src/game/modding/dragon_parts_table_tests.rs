@@ -1,4 +1,4 @@
-use sunrise_gameplay_common::game::dragon_parts_table::{DragonPartsTable, DragonSlot};
+use super::{DragonPartsTable, DragonSlot};
 
 impl DragonPartsTable {
     #[cfg(test)]
@@ -93,8 +93,8 @@ mod tests {
 #[cfg(test)]
 mod lifecycle_tests {
     use super::*;
-    use sunrise_gameplay_common::game::Vec3;
-    use sunrise_gameplay_common::game::dragon_common::Dragon;
+    use crate::game::Vec3;
+    use crate::game::dragon_common::Dragon;
     #[test]
     fn dragon_slot_tracks_registration_not_temporary_loans() {
         let mut slot = DragonSlot::default();

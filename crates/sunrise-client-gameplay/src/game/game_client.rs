@@ -319,7 +319,7 @@ impl crate::game::ClientGame<'_> {
     /// Extract every particle group after the frame's entity, screen and hand callbacks.
     /// Item model callbacks can clear during extraction too: roll back only this tail of
     /// geometry (including GPU jobs and outlines), never the frame's ordinary entities.
-    pub(in crate::game::client_side) fn client_particle_geometry(
+    pub(in crate::game) fn client_particle_geometry(
         &mut self,
         camera: glam::DVec3,
         alpha: f64,
@@ -542,7 +542,7 @@ impl crate::game::ClientGame<'_> {
         true
     }
     /// ItemEntityRenderer: items bob and spin; blocks render as small cubes.
-    pub(in crate::game::client_side) fn entity_geometry(
+    pub(in crate::game) fn entity_geometry(
         &mut self,
         camera: glam::DVec3,
         alpha: f64,

@@ -73,7 +73,7 @@ impl crate::game::ClientGame<'_> {
         self.client.remote = Some(r);
     }
     #[inline(always)]
-    pub(in crate::game::client_side) fn game_side_client(
+    pub(in crate::game) fn game_side_client(
         &self,
     ) -> (Option<u128>, Option<mod_api::LevelRef>, bool) {
         let level = self.common.native_lifecycle.epoch().and_then(|epoch| {

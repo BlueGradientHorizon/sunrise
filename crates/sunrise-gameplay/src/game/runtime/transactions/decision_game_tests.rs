@@ -92,7 +92,7 @@ fn nested_real_game_commit_then_trap_rolls_back_next_placement_succeeds() {
                     |host| {
                         let identity = host.identity;
                         host.game.storage_scope(|game, _| {
-                            let mut inner = GameHost { game, identity };
+                            let mut inner = GameHost::new(game, identity);
                             inner.game.journal_set_block([0, 64, 0], dirt);
                             menu.edit(&mut inner, |s| {
                                 s.slots[2] = Some(ItemStack::new("minecraft:dirt", 2))
@@ -235,7 +235,7 @@ fn only_root_commit_publishes_real_listener_and_plan_drops_in_order() {
                         ));
                         let identity = host.identity;
                         host.game.storage_scope(|game, _| {
-                            let mut inner = GameHost { game, identity };
+                            let mut inner = GameHost::new(game, identity);
                             inner.defer(Effect::Drop(
                                 [0, 64, 0],
                                 ItemStack::new("minecraft:dirt", 2),

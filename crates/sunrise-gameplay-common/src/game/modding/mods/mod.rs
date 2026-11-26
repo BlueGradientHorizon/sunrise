@@ -536,9 +536,9 @@ impl std::fmt::Display for DeclarationFailures {
 impl std::error::Error for DeclarationFailures {}
 
 #[derive(Clone, Default)]
-pub(in crate::game) struct NativeDeclared {
-    pub(in crate::game) refusals: Vec<DeclarationRefusal>,
-    pub(in crate::game) batches: BTreeMap<&'static str, DeclaredContent>,
+pub struct NativeDeclared {
+    pub refusals: Vec<DeclarationRefusal>,
+    pub batches: BTreeMap<&'static str, DeclaredContent>,
 }
 
 impl NativeDeclared {
@@ -712,9 +712,9 @@ pub enum ServedContentStage {
 
 #[derive(Debug)]
 pub struct ServedContentLoadError {
-    pub(in crate::game) mod_id: String,
-    pub(in crate::game) stage: ServedContentStage,
-    pub(in crate::game) detail: String,
+    pub mod_id: String,
+    pub stage: ServedContentStage,
+    pub detail: String,
 }
 
 impl std::fmt::Display for ServedContentLoadError {

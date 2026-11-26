@@ -975,6 +975,10 @@ impl ServerGame<'_> {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+use sunrise_gameplay_common::game::tables::GameItems as _;
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
+use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1 as _;
 use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest;
 
     use super::super::BlockEntity;
@@ -1186,6 +1190,8 @@ use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest
     
 
     
+
+    pub type Offer = (usize, ItemStack);
 
     /// Two guests' trade on a menu, as the docs' recipe has it: each offer's index must still
     /// hold exactly what was offered, and goes whole to the other player, or nothing moves.

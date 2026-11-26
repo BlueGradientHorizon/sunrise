@@ -2147,10 +2147,10 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn test_title_mut(&mut self) -> &mut Option<sunrise_client::title::Title> {
         &mut self.client.title.0
     }
-    pub(in crate::game) fn test_renderer(&self) -> Option<&sunrise_gameplay_common::game::Renderer> {
+    pub(in crate::game) fn test_renderer(&self) -> Option<&sunrise_client_render::gfx::Renderer> {
         self.client.renderer.0.as_deref()
     }
-    pub(in crate::game) fn test_renderer_mut(&mut self) -> &mut Option<Box<sunrise_gameplay_common::game::Renderer>> {
+    pub(in crate::game) fn test_renderer_mut(&mut self) -> &mut Option<Box<sunrise_client_render::gfx::Renderer>> {
         &mut self.client.renderer.0
     }
     pub(in crate::game) fn test_window_mut(

@@ -327,10 +327,17 @@ impl crate::game::ServerGame<'_> {
 }
 
 #[cfg(test)]
+#[path = "native_living_writes_observer_tests.rs"]
+mod observer_tests;
+
+#[cfg(test)]
+#[path = "native_living_writes_client.rs"]
+mod use_fixture_tests;
+
+#[cfg(test)]
 pub(in crate::game) mod tests {
+    use super::observer_tests::tests::Uses;
     use super::super::native_entity_refs::tests::with_game;
-    use super::super::native_living_flags::tests::{guest, guest_server, packets, sync_guests};
-    use super::super::native_living_position::tests::floor_and_zombies;
     use super::Stuck;
     use mod_api::client::first_person::Hand;
     use mod_api::{
@@ -345,7 +352,7 @@ pub(in crate::game) mod tests {
     use sunrise_sim::mobs::Mob;
 
     #[allow(unused_imports)]
-    pub(in crate::game) use crate::game::client_side::native_living_writes_client::tests::with_uses;
+    pub(in crate::game) use super::use_fixture_tests::tests::with_uses;
 
     #[test]
     #[ignore = "daily"]

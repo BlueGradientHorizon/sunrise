@@ -2,7 +2,7 @@ use super::*;
 use std::path::Path;
 use sunrise_client_render::streaming::{MeshWorkerContext, WorkerContext};
 use sunrise_gameplay_common::game::api_values::{self, TryIntoApi};
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use crate::game::resource_tables::DYNAMIC_TEXTURE_POOL_OVERRIDE;
 use sunrise_gameplay_common::game::resource_tables::PackParts;
 use sunrise_level::chunk_streamer::ChunkWorkerContext;
@@ -492,7 +492,7 @@ impl PlainTexts {
 /// Read where the atlas is built: at the first load and on a resource reload.
 #[cfg(feature = "client")]
 pub fn dynamic_texture_pool() -> bool {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     if let Some(pool) = DYNAMIC_TEXTURE_POOL_OVERRIDE.get() {
         return pool;
     }

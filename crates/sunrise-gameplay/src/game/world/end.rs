@@ -1188,9 +1188,6 @@ impl crate::game::ServerGame<'_> {
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
-    use crate::game::{
-        client_side::end_client::eye_quad,
-    };
     use sunrise_gameplay_common::game::end_state::{exact_teleport, flash_pose};
     use sunrise_level::containers::EndGateway;
 

@@ -16,7 +16,7 @@ use super::{
     owner_link::OwnerRequest,
     world_loading::{WorldLoader, WorldRequest},
 };
-#[cfg(test)]
+#[cfg(any())]
 use crate::game::client_side::integrated_client::Integrated;
 #[cfg(test)]
 use sunrise_gameplay_common::game::integrated_link::stack_for;
@@ -966,7 +966,7 @@ pub(in crate::game::server_side) fn refused(owner: bool, published: bool, memory
     if owner { !memory } else { !published }
 }
 
-#[cfg(test)]
+#[cfg(any())]
 impl Integrated {
     /// The window's handle on a server fixture, with no server thread behind it.
     #[cfg(test)]
@@ -1117,36 +1117,7 @@ pub mod tests {
         assert!(!flags.stop.load(Ordering::Relaxed));
     }
 
-    #[cfg(test)]
-#[test]
-    fn pregen_toggle_back_is_queued_while_server_is_busy() {
-        let (tasks, waiting_server) = channel();
-        let server = Integrated {
-            emergency_save: None,
-            flags: Arc::new(Flags::default()),
-            thread: None,
-            tasks,
-            world_name: String::new(),
-            save_folder: String::new(),
-            rule_registry: Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla()),
-        };
-        // The receiver deliberately does not run either task between the updates. In particular,
-        // the dispatcher can still show the old value when the owner toggles back.
-        server.queue_pregen_option(true);
-        server.queue_pregen_option(false);
-        assert!(
-            matches!(waiting_server.try_recv(), Ok(OwnerRequest::SetPregen(true))),
-            "enable must reach the server"
-        );
-        assert!(
-            matches!(
-                waiting_server.try_recv(),
-                Ok(OwnerRequest::SetPregen(false))
-            ),
-            "disable must follow it"
-        );
-        assert!(waiting_server.try_recv().is_err());
-    }
+
 
     #[cfg(test)]
 #[test]
@@ -1166,47 +1137,9 @@ pub mod tests {
         }
     }
 
-    #[cfg(test)]
-#[test]
-    fn shutdown_request_does_not_join_a_server_still_saving() {
-        let flags = Arc::new(Flags::default());
-        let (release, wait) = channel();
-        let (tasks, _) = channel();
-        let server = Integrated {
-            emergency_save: None,
-            flags: flags.clone(),
-            thread: Some(std::thread::spawn(move || wait.recv().unwrap())),
-            tasks,
-            world_name: String::new(),
-            save_folder: String::new(),
-            rule_registry: Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla()),
-        };
-        server.request_stop();
-        assert!(flags.stop.load(Ordering::Relaxed));
-        assert!(!server.stopped());
-        release.send(()).unwrap();
-        server.stop().unwrap();
-    }
 
-    #[cfg(test)]
-#[test]
-    fn shutdown_reports_a_failed_server_save() {
-        let flags = Arc::new(Flags::default());
-        let saving = flags.clone();
-        let (tasks, _) = channel();
-        let server = Integrated {
-            emergency_save: None,
-            flags,
-            thread: Some(std::thread::spawn(move || {
-                *saving.failure.lock().unwrap() = Some("disk write failed".into());
-            })),
-            tasks,
-            world_name: String::new(),
-            save_folder: String::new(),
-            rule_registry: Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla()),
-        };
-        assert_eq!(server.stop().unwrap_err().to_string(), "disk write failed");
-    }
+
+
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;

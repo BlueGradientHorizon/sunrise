@@ -20,6 +20,7 @@ ab_glyph = { version = "0.2.32", optional = true }
 chrono = { version = "0.4.42", default-features = false, features = ["clock", "std"] }
 indexmap = "2"
 mod_api = { package = "sunrise-mod-vocab", path = "../sunrise-mod-vocab" }
+mod_platform = { package = "sunrise-mod-api", path = "../sunrise-mod-api", features = ["testing"], optional = true }
 png = "0.18"
 sunrise-assets = { path = "../sunrise-assets" }
 sunrise-bench = { path = "../sunrise-bench" }
@@ -74,7 +75,7 @@ sunrise-extras = ["client", "friends"]
 friends = ["dep:sunrise-friends"]
 controllers = ["client", "sunrise-client-lib/controllers", "sunrise-client-input/controllers", "dep:gilrs", "dep:sunrise-dualsense"]
 audio = ["client", "sunrise-client-lib/audio", "sunrise-client-render/audio"]
-test-support = ["sunrise-gameplay-common/test-support"]
+test-support = ["sunrise-gameplay-common/test-support", "dep:mod_platform"]
 client = ["dep:sunrise-theme", "dep:sunrise-optifine", "dep:wgpu", "dep:pollster", "dep:bytemuck", "dep:naga", "dep:ab_glyph"]
 default = ["client"]
 

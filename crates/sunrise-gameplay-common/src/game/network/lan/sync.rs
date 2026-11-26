@@ -354,8 +354,8 @@ pub fn cached_reload_sync() -> Option<Arc<SyncData>> {
 
 /// Keep lazy-cache admission aligned with the current packs even when no
 /// complete wire snapshot has been loaded yet. Damage definitions stay frozen.
-#[cfg(test)]
-pub(in crate::game) fn prepare_sync_reload(
+#[cfg(any(test, feature = "test-support"))]
+pub fn prepare_sync_reload(
     sync: &mut SyncCache,
     overlay: &sunrise_world::loot::PackOverlay,
 ) -> Option<Arc<SyncData>> {

@@ -207,3 +207,88 @@ pub(in crate::game) mod live_dungeon_spawner_tests {
     }
 }
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+
+#[cfg(test)]
+pub(in crate::game) mod source_tests {
+    use sunrise_core::nbt::{self, Limits, Tag};
+    use sunrise_world::compression::Compression;
+    use sunrise_gameplay::game::server_side::commands::place::read_template_data;
+    use std::{io::Write, path::PathBuf};
+    use sunrise_assets::resource_source::{Resource, ResourceSource};
+
+    #[test]
+    fn template_tags_read_archives_below_saved_world_structures() {
+        let root = std::env::temp_dir().join(format!(
+            "sunrise-command-template-source-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        struct Scratch(PathBuf);
+        impl Drop for Scratch {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let scratch = Scratch(root);
+        let bytes = |value: &str| {
+            let named = nbt::NamedTag {
+                name: "".into(),
+                tag: Tag::compound([("marker", Tag::String(value.into()))]),
+            };
+            Compression::Gzip
+                .encode(&nbt::write_named(&named, Limits::templates()).unwrap())
+                .unwrap()
+        };
+        let prepared = scratch.0.join("prepared.nbt");
+        let saved = scratch.0.join("saved/probe.nbt");
+        let jar = scratch.0.join("templates.jar");
+        std::fs::write(&prepared, bytes("base")).unwrap();
+        {
+            let mut archive = zip::ZipWriter::new(std::fs::File::create(&jar).unwrap());
+            archive
+                .start_file(
+                    "data/example/structure/probe.nbt",
+                    zip::write::SimpleFileOptions::default(),
+                )
+                .unwrap();
+            archive.write_all(&bytes("archive")).unwrap();
+            archive.finish().unwrap();
+        }
+        let source = ResourceSource::archive(&jar).unwrap();
+        let resource = Resource::file(source, "data/example/structure/probe.nbt".into());
+        let marker = |resource| {
+            read_template_data(&saved, &prepared, resource)
+                .unwrap()
+                .get("marker")
+                .cloned()
+                .unwrap()
+        };
+        assert_eq!(
+            marker(Some(resource.clone())),
+            Tag::String("archive".into())
+        );
+        std::fs::create_dir_all(saved.parent().unwrap()).unwrap();
+        std::fs::write(&saved, bytes("saved")).unwrap();
+        assert_eq!(marker(Some(resource.clone())), Tag::String("saved".into()));
+        std::fs::write(&saved, b"invalid gzip").unwrap();
+        assert_eq!(
+            marker(Some(resource.clone())),
+            Tag::String("archive".into())
+        );
+        std::fs::remove_file(&saved).unwrap();
+        assert!(
+            read_template_data(
+                &saved,
+                &prepared,
+                Some(Resource::bytes(b"invalid gzip".to_vec()))
+            )
+            .is_none()
+        );
+        assert_eq!(marker(None), Tag::String("base".into()));
+        std::fs::remove_file(&jar).unwrap();
+        assert_eq!(marker(Some(resource)), Tag::String("archive".into()));
+        assert!(!scratch.0.join("data").exists());
+    }
+}

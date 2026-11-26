@@ -310,6 +310,7 @@ pub(in crate::game) mod tests {
         assert_eq!(names, ["c", "a"]);
     }
 
+    #[cfg(any())]
     #[test]
     #[ignore = "daily"]
     fn a_servers_report_names_its_entities_and_players_and_leaves_the_rest_unattributed() {

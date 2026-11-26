@@ -1,7 +1,5 @@
 //! Read-only projections of the connected client's existing state.
 
-#[cfg(test)]
-use mod_api::prelude::*;
 use mod_api::{BlockBreakingState, BlockPos, ClientFrameStats, ClientServer, PlayerRef};
 use std::sync::Arc;
 use crate::game::client_side::remote_client::Remote;
@@ -185,6 +183,10 @@ fn tab_list(
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
+    #[cfg(test)]
+    use mod_api::prelude::*;
+    #[cfg(test)]
+    use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1;
     use super::super::native_entity_refs::tests::with_client_game;
     use super::*;
 
@@ -430,6 +432,17 @@ pub mod tests {
         });
     }
 
+    /// Lists this client's own player with `latency`, as the server's player info update does.
+    #[cfg(test)]
+    fn list_self(remote: &mut Remote, latency: i32) {
+        let mut me = sunrise_level::profile_lookup::TabPlayer::new(remote.profile, "SessionReadTest");
+        me.latency = latency;
+        remote.tab_players.insert(remote.profile, me);
+        remote.tab_game_modes
+            .entry(remote.profile)
+            .or_insert_with(|| Arc::new(std::sync::atomic::AtomicI32::new(0)));
+    }
+
     #[cfg(test)]
     #[test]
     #[ignore = "daily"]
@@ -443,9 +456,9 @@ pub mod tests {
                 None,
                 "not listed yet"
             );
-            game.client.remote.as_mut().unwrap().list_self(0);
+            list_self(game.client.remote.as_mut().unwrap(), 0);
             assert_eq!(game.client_session().client_latency(), Some(0));
-            game.client.remote.as_mut().unwrap().list_self(87);
+            list_self(game.client.remote.as_mut().unwrap(), 87);
             assert_eq!(game.client_session().client_latency(), Some(87));
 
             // A bow (use duration 72000) drawn in the main hand for 7 ticks.
@@ -455,7 +468,7 @@ pub mod tests {
                 game.local_item_use(),
                 Some(mod_api::ItemUse::new(mod_api::Hand::Main, 7, 71_993))
             );
-            game.using = Some((super::super::shield::OFFHAND_SLOT, 3));
+            game.using = Some((sunrise_gameplay_common::game::held_items::OFFHAND_SLOT, 3));
             assert_eq!(
                 game.local_item_use().map(|u| u.hand),
                 Some(mod_api::Hand::Off)
@@ -476,7 +489,7 @@ pub mod tests {
     fn local_player_status_tracks_mining_mood_and_refuses_other_handles() {
         with_client_game(|game| {
             let _server = logged_client(game);
-            let player = game.local_player().unwrap();
+            let player = PlayerIdentityGameExt1::local_player(game).unwrap();
             assert_eq!(player.block_breaking(game), Some(BlockBreakingState::Idle));
             game.client.ambience.moodiness = 0.375;
             assert_eq!(player.ambient_mood(game), Some(0.375));
@@ -514,7 +527,7 @@ pub mod tests {
                 .begin_open(mod_api::Authority::RemoteClient);
             assert_eq!(player.block_breaking(game), None, "the old epoch is stale");
             assert_eq!(player.ambient_mood(game), None);
-            let current = game.local_player().unwrap();
+            let current = PlayerIdentityGameExt1::local_player(game).unwrap();
             assert_eq!(current.ambient_mood(game), Some(0.0));
             game.options.execution_role =
                 super::super::execution_role::ExecutionRole::IntegratedServer;

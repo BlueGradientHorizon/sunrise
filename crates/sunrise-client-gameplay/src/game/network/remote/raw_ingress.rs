@@ -1,8 +1,10 @@
 //! Receiving-provider credit follows ordered events and decoder placeholders.
 use super::opening::RemoteOpening;
 #[cfg(test)]
-use super::{C, Received, play};
-#[cfg(test)]
+use super::{C, play};
+#[cfg(any(test, feature = "test-support"))]
+use super::Received;
+#[cfg(any(test, feature = "test-support"))]
 use std::time::{Duration, Instant};
 use sunrise_client_lib::net::Event;
 
@@ -29,9 +31,8 @@ pub(in crate::game) struct ListenerTurn {
     pub(in crate::game) packet_error: bool,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl crate::game::ClientGame<'_> {
-    #[cfg(test)]
     pub(in crate::game) fn wait_for_test_remote_event(&mut self, until: impl Fn(&Event) -> bool) {
         let deadline = Instant::now() + Duration::from_secs(5);
         let remote = self.client.remote.as_mut().unwrap();
@@ -55,9 +56,8 @@ impl crate::game::ClientGame<'_> {
 }
 
 #[cfg(feature = "client")]
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl crate::game::ClientGame<'_> {
-    #[cfg(test)]
     pub(in crate::game) fn acknowledge_test_configuration(&mut self) {
         self.wait_for_test_remote_event(|event| matches!(event, Event::FinishConfiguration(_)));
         self.poll_remote_events(true).unwrap();

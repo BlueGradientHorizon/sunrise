@@ -419,7 +419,7 @@ use sunrise_gameplay_common::game::server_side::block_edits::tests::columns_worl
 
 use sunrise_gameplay_common::game::server_side::block_edits::tests::edit;
 
-use sunrise_gameplay_common::game::server_side::block_edits::tests::height;
+use sunrise_gameplay_common::game::server_side::block_edits::tests::{height, names};
 
 use sunrise_gameplay_common::game::server_side::block_edits::tests::run;
 

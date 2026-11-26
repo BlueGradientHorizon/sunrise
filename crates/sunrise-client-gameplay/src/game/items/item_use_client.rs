@@ -108,6 +108,8 @@ pub(in crate::game) fn use_pose(
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
+    #[cfg(test)]
+    use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
     use sunrise_core::use_animation::UseAnimation;
 
     pub fn stand_in_first_person(game: &mut crate::game::ClientGame<'_>) {
@@ -178,7 +180,7 @@ pub mod tests {
                 )
                 .unwrap(),
             );
-            game.inventory[game.selected] = Some(sunrise_items::items::ItemStack::new(
+            game.common.inventory[game.common.selected] = Some(sunrise_items::items::ItemStack::new(
                 "minecraft:iron_sword",
                 1,
             ));

@@ -144,6 +144,22 @@ pub(in crate::game) mod tests {
     
 
     
+#[cfg(test)]
+/// What a listener read of the tags during its notice.
+    #[derive(Debug, PartialEq)]
+    pub(in crate::game) struct Seen {
+        pub(in crate::game) cause: TagsUpdateCause,
+        pub(in crate::game) items: TagMembers<mod_api::ItemKey>,
+        pub(in crate::game) empty_items: TagMembers<mod_api::ItemKey>,
+        pub(in crate::game) fluids: TagMembers<mod_api::FluidKey>,
+        pub(in crate::game) stone_in_block_tag: Option<bool>,
+        pub(in crate::game) dirt_in_block_tag: Option<bool>,
+        pub(in crate::game) stick_in_item_tag: Option<bool>,
+        pub(in crate::game) lava_in_fluid_tag: Option<bool>,
+    }
+#[cfg(test)]
+pub(in crate::game) struct Probe(pub(in crate::game) Arc<Mutex<Vec<Seen>>>);
+
     #[mod_api::__subscriptions]
     impl Hooks for Probe {
         fn tags_updated(&self, context: &dyn mod_api::ReloadContext, event: &mut TagsUpdatedEvent) {

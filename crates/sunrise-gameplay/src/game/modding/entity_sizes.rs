@@ -128,6 +128,7 @@ impl ServerGame<'_> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
+    use sunrise_gameplay_common::game::{collision_source::CollisionSourceGameExt1 as _, entity_sizes_common::EntitySizesCommonGameExt1 as _};
     use crate::game::native_entity_refs::tests::with_game;
     use mod_api::{EntitySizeEvent, Hooks, Host, Pose};
     use std::sync::{Arc, Mutex};
@@ -822,9 +823,6 @@ pub(in crate::game) mod tests {
         });
     }
 
-    #[allow(unused_imports)]
-    pub(in crate::game) use crate::game::client_side::entity_sizes_client::tests::white_outline;
-
     /// A server game with `Log` listening (`seen`), or with no listener at all.
     pub(in crate::game::server_side) fn with_server(
         listen: bool,
@@ -986,7 +984,7 @@ pub(in crate::game) mod tests {
                 )
                 .unwrap();
             let health = game.mobs.iter().find(|m| m.id == pig).unwrap().health;
-            game.falling.push(sunrise_gameplay_common::game::FallingBlock {
+            game.common.falling.push(sunrise_gameplay_common::game::FallingBlock {
                 size_answer: None,
                 attachment_lifetime: Default::default(),
                 rotation: [0.0; 2],

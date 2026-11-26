@@ -76,7 +76,7 @@ pub mod commands_server;
 #[path = "blocks/composter.rs"]
 pub mod composter;
 #[path = "items/consume.rs"]
-pub(in crate::game) mod consume;
+pub mod consume;
 #[path = "world/container_loot.rs"]
 pub(in crate::game) mod container_loot;
 #[path = "mobs/creaking.rs"]
@@ -221,6 +221,9 @@ pub(in crate::game) mod level_sounds;
 pub(in crate::game) mod level_tick;
 #[path = "world/levels.rs"]
 pub mod levels;
+#[cfg(test)]
+#[path = "world/world_session.rs"]
+mod world_session;
 #[path = "entities/lightning_server.rs"]
 pub(in crate::game) mod lightning_server;
 #[path = "mobs/living_attributes.rs"]
@@ -532,7 +535,7 @@ pub(in crate::game) mod scoreboard;
 #[path = "blocks/sculk_fixture.rs"]
 pub(in crate::game) mod sculk_fixture;
 #[path = "blocks/sculk_server.rs"]
-pub(in crate::game) mod sculk_server;
+pub mod sculk_server;
 #[path = "entities/seats.rs"]
 pub(in crate::game) mod seats;
 #[path = "server_side/server_effects.rs"]
@@ -1306,7 +1309,7 @@ pub struct ServerState {
     pub(in crate::game) cmds: ServerOnly<commands::extra::CommandExtras>,
     /// The retained server reload listeners of the last successful reload.
     pub(in crate::game::server_side) reload_resources: ServerOnly<mod_api::RetainedListeners>,
-    pub(in crate::game::server_side) combat: ServerOnly<combat::CombatTracker>,
+    pub(in crate::game) combat: ServerOnly<combat::CombatTracker>,
     /// Each guest's own `CombatTracker`, out of `combat` between turns.
     pub(in crate::game::server_side) guest_combat:
         ServerOnly<std::collections::HashMap<u32, combat::CombatTracker>>,
@@ -1768,7 +1771,14 @@ impl<'a> ServerGame<'a> {
         prepared: Option<resource_cpu_common::ServerCpuResources>,
     ) -> Result<Box<ServerConstructPrep>> {
         #[cfg(test)]
-        Self::initialize_mod_runtime_for_tests();
+        {
+            static INITIALIZED: std::sync::Once = std::sync::Once::new();
+            INITIALIZED.call_once(|| {
+                sunrise_gameplay_common::install_test_mod_platform!(mod_platform);
+                mod_platform::__private::initialize()
+                    .expect("engine test runtime initializes before mod dispatch");
+            });
+        }
         // A scoped hook on this thread asks this game's parts.
         mod_api::__private::mark_game_thread();
         let root = options.resources.clone();
@@ -1826,7 +1836,8 @@ impl<'a> ServerGame<'a> {
         let structure_spawns =
             sunrise_sim::mobs::spawn_selection::StructureSpawns::load(&prep.options.resources);
         #[cfg(test)]
-        let structure_spawns = resource_load::cached_structure_spawns(&prep.options.resources);
+        let structure_spawns =
+            sunrise_sim::mobs::spawn_selection::StructureSpawns::load(&prep.options.resources);
         let clock = FixedStep::default();
         let tick = sunrise_sim::parallel::TickThread::mint();
         let profile_resolver = profile_resolver();

@@ -1,6 +1,10 @@
 
 
 #[cfg(any(test, feature = "test-support"))]
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+#[cfg(test)]
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
+#[cfg(any(test, feature = "test-support"))]
 pub mod fake_action_tests {
 
 use sunrise_gameplay_common::game::native_server::fake_action_tests::on_top;

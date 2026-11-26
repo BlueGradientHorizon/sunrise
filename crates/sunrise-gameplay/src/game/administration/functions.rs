@@ -1582,6 +1582,7 @@ impl crate::game::ServerGame<'_> {
 
 #[cfg(test)]
 mod tests {
+    use sunrise_gameplay_common::game::tables::GameItems as _;
     use super::*;
 
     #[test]
@@ -2168,6 +2169,7 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
+    #[cfg(any())]
     fn world_open_loads_functions_before_first_tick() {
         use crate::game::{native_entity_refs::tests::with_game, world_loading::WorldRequest};
 

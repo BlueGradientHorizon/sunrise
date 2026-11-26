@@ -224,7 +224,7 @@ fn a_mod_draws_prepends_replaces_and_cancels_overlays() {
                 ASKED.lock().unwrap().drain(..).collect::<Vec<_>>(),
                 [Asked {
                     effect: Block,
-                    state: crate::game::api_values::TryIntoApi::try_into_api(&stone).unwrap(),
+                    state: sunrise_gameplay_common::game::api_values::TryIntoApi::try_into_api(&stone).unwrap(),
                     pos: BlockPos::new(0, 65, 0),
                     partial_tick: 0.25,
                     hide_gui: true,
@@ -281,7 +281,7 @@ fn a_mod_draws_prepends_replaces_and_cancels_overlays() {
                 ASKED.lock().unwrap().drain(..).collect::<Vec<_>>(),
                 [Asked {
                     effect: Fire,
-                    state: crate::game::api_values::TryIntoApi::try_into_api(&fire).unwrap(),
+                    state: sunrise_gameplay_common::game::api_values::TryIntoApi::try_into_api(&fire).unwrap(),
                     pos: BlockPos::new(0, 64, 0),
                     partial_tick: 0.25,
                     hide_gui: false,
@@ -583,7 +583,7 @@ fn waterlogged_eye_reports_default_water_at_the_eye_block() {
             .unwrap();
         assert_eq!(
             seen.state,
-            crate::game::api_values::TryIntoApi::try_into_api(&water).unwrap()
+            sunrise_gameplay_common::game::api_values::TryIntoApi::try_into_api(&water).unwrap()
         );
         assert_eq!(seen.pos, BlockPos::new(0, 65, 0));
     });
@@ -637,7 +637,7 @@ fn a_dead_players_water_overlay_uses_the_last_sample_after_removal() {
         game.client.camera_type = CameraType::FirstPerson;
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5)).unwrap());
         let chunk = Chunk::with_layout(0, 0, game.world.layout());
-        game.client.streaming.insert_remote(&mut game.world, chunk);
+        game.client.streaming.insert_remote(&mut game.common.world, chunk);
         let water = game
             .pack
             .assets

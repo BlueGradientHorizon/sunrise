@@ -1,5 +1,8 @@
 
 
+use super::world_loading;
+use sunrise_game_data::Result;
+
 #[cfg(test)]
 impl crate::game::ServerGame<'_> {
     #[cfg(test)]

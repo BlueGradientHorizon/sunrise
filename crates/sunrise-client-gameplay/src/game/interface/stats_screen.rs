@@ -936,7 +936,7 @@ mod tests {
     /// torch; water has no item).
     #[test]
     fn mined_blocks_count_under_the_item_that_places_them() {
-        let mut stats = super::super::stats::Stats::default();
+        let mut stats = sunrise_gameplay_common::stats::Stats::default();
         stats.add("mined", "minecraft:wheat", 3);
         stats.add("mined", "minecraft:redstone_wire", 5);
         stats.add("mined", "minecraft:wall_torch", 7);

@@ -410,9 +410,6 @@ pub(in crate::game) mod tests {
     use super::*;
     use sunrise_gameplay_common::game::dragon_common::Breath;
     use sunrise_gameplay_common::game::potions_common::{CloudSettings, PotionCloud};
-    use crate::game::server_side::potions_server::{
-        collect_dragon_breath, mob_can_be_affected, potion_cloud_from_nbt, potion_cloud_to_nbt,
-    };
     use sunrise_client::screen_effects::nausea_blend_added;
 
     

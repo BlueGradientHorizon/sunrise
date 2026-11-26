@@ -1,8 +1,11 @@
-
+#[cfg(any(test, feature = "test-support"))]
+thread_local! {
+    static DISPATCHES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
 
 impl crate::game::ServerGame<'_> {
-    #[cfg(test)]
-    pub(in crate::game) fn damage_item_dispatches(&self) -> usize {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn damage_item_dispatches(&self) -> usize {
         DISPATCHES.with(std::cell::Cell::get)
     }
 
@@ -19,7 +22,7 @@ impl crate::game::ServerGame<'_> {
         canceled: &mut bool,
         break_now: &mut bool,
     ) {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         DISPATCHES.with(|count| count.set(count.get() + 1));
         self.fire_damage_item(stack, entity, amount, canceled, break_now);
     }

@@ -2502,15 +2502,15 @@ pub mod fake_action_tests {
         boats_common::Boat, minecarts::CART_KEY_Y, minecarts::CartKind, minecarts::Minecart,
     };
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     /// A listener on `attack_entity` records the target's health where the hook
     /// runs; with `cancel` set it vetoes the blow.
-    pub(in crate::game) struct AttackWatcher {
-        pub(in crate::game) seen: std::sync::Arc<std::sync::Mutex<Vec<f32>>>,
-        pub(in crate::game) cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    pub struct AttackWatcher {
+        pub seen: std::sync::Arc<std::sync::Mutex<Vec<f32>>>,
+        pub cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for AttackWatcher {
         fn attack_entity(
@@ -2532,14 +2532,14 @@ pub mod fake_action_tests {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     /// A listener on `attack_entity` reads the attacking player's attack
     /// strength where the hook runs.
-    pub(in crate::game) struct ChargeWatcher(
-        pub(in crate::game) std::sync::Arc<std::sync::Mutex<Vec<Option<f32>>>>,
+    pub struct ChargeWatcher(
+        pub std::sync::Arc<std::sync::Mutex<Vec<Option<f32>>>>,
     );
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for ChargeWatcher {
         fn attack_entity(

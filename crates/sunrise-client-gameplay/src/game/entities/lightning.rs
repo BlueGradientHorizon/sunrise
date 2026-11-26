@@ -118,75 +118,9 @@ impl ClientGame<'_> {
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use super::*;
-    use crate::game::server_side::lightning_server::{in_viewer_box, thunder_strike_column};
-    use mod_api::{self, ServerHost};
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;
-    use sunrise_core::random::LegacyRandom;
     use sunrise_sim::mobs::{Anim, Brain, Mob, MobType, Species};
-    use sunrise_world::level::Ticks;
-
-    /// `LightningBolt.spawnFire` places nothing, and draws no extra sources,
-    /// unless `canSpreadFireAround` passes at the bolt (#11376).
-    #[test]
-    #[ignore = "daily"]
-    fn a_bolt_away_from_players_starts_no_fire() {
-        use sunrise_game_data::gamerules::Value;
-        super::super::native_entity_refs::tests::with_game(|game| {
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
-            game.block_ticks
-                .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
-                .unwrap();
-            let stone = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:stone")
-                .unwrap();
-            let air = game.res.facts().air;
-            game.world.set(8, 64, 8, stone).unwrap();
-            let bolt = [8.5, 65.0, 8.5];
-            // (radius, player's x): fires expected at the strike.
-            for (radius, player_x, fires) in [
-                (128, 12.5, true),
-                (1, 12.5, false),
-                (0, 8.5, false),
-                (-1, 1000.0, true),
-            ] {
-                game.world.set(8, 65, 8, air).unwrap();
-                game.ui
-                    .rules
-                    .set("fire_spread_radius_around_player", Value::Int(radius));
-                game.player = Some(
-                    sunrise_sim::motion::PlayerMotion::new(
-                        game.motion,
-                        Vec3::new(player_x, 65.0, 8.5),
-                    )
-                    .unwrap(),
-                );
-                let random = game.world.random.clone();
-                let mut bolt_random = LegacyRandom::new(0);
-                let set = game.bolt_fire(bolt, 4, &mut bolt_random);
-                let burning = game.world.block(8, 65, 8) != air;
-                assert_eq!((set > 0, burning), (fires, fires), "radius {radius}");
-                if !fires {
-                    // Neither the bolt nor level RNG draws when fire is disallowed.
-                    assert_eq!(bolt_random.next_long(), LegacyRandom::new(0).next_long());
-                    let mut before = random;
-                    assert_eq!(game.world.random.next_long(), before.next_long());
-                }
-            }
-        });
-    }
-
-    
-
-    
-
-    
 
     /// `Pig.thunderHit`: striking a pig with lightning converts it to a zombified
     /// piglin while preserving age (#7510).

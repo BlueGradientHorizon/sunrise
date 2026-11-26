@@ -23,16 +23,5 @@ struct Observer(std::sync::Arc<AttackBatch>);
             }
         }
     }
-pub fn receive_attacks(server: &mut sunrise_protocol::connection::Connection) -> Vec<i32> {
-        use sunrise_protocol::packets::play::Serverbound as S;
-        let mut ids = Vec::new();
-        loop {
-            let (id, payload) = server.recv().unwrap();
-            match S::decode(id, &payload).unwrap() {
-                S::Attack(attack) => ids.push(attack.id),
-                S::Punch(_) => return ids,
-                _ => {}
-            }
-        }
-    }
+
 }

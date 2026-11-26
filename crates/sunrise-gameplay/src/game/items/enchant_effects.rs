@@ -1799,7 +1799,6 @@ impl ServerGame<'_> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use crate::game::damage_item_tests::{Rule, with_wear_part};
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::mobs::{Mob, finalize};
 

@@ -1,9 +1,51 @@
 use crate::game::client_side::native_client_session::tests::logged_client;
 use super::super::native_entity_refs::tests::with_client_game;
 use super::*;
-use crate::game::remote::level_sound_tests::LocalTuner;
-use crate::game::remote::level_sound_tests::Request;
-use mod_api::SoundSource;
+#[derive(Debug, PartialEq)]
+pub(in crate::game) struct Request {
+    pub sound: String,
+    pub(in crate::game) source: SoundSource,
+    pub(in crate::game) emitter: Option<u32>,
+    pub(in crate::game) position: Option<[f64; 3]>,
+}
+pub(in crate::game) struct LocalTuner(pub(in crate::game) Arc<Mutex<Vec<Request>>>);
+#[mod_api::__subscriptions]
+impl mod_api::Hooks for LocalTuner {
+    fn play_level_sound_at_position(
+        &self,
+        host: HostSide<'_>,
+        e: &mut mod_api::PlayLevelSoundAtPositionEvent,
+    ) -> Flow {
+        assert!(matches!(host, HostSide::Client(_)));
+        self.0.lock().unwrap().push(Request {
+            sound: e.sound.to_string(),
+            source: *e.source,
+            emitter: None,
+            position: Some(e.position),
+        });
+        Flow::Cancel
+    }
+    fn play_level_sound_at_entity(
+        &self,
+        host: HostSide<'_>,
+        e: &mut mod_api::PlayLevelSoundAtEntityEvent,
+    ) -> Flow {
+        assert!(matches!(host, HostSide::Client(_)));
+        let sound = e.sound.to_string();
+        self.0.lock().unwrap().push(Request {
+            sound: sound.clone(),
+            source: *e.source,
+            emitter: Some(e.entity.id()),
+            position: None,
+        });
+        if sound == "minecraft:block.honey_block.slide" {
+            Flow::Continue
+        } else {
+            Flow::Cancel
+        }
+    }
+}
+use mod_api::{Flow, HostSide, SoundSource};
 use std::sync::Mutex;
 
 #[test]

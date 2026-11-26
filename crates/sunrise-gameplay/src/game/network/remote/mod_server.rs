@@ -1,6 +1,6 @@
-#[cfg(test)]
+#[cfg(any())]
 use crate::game::client_side::remote_client::RemoteInputWorld;
-#[cfg(test)]
+#[cfg(any())]
 use crate::game::client_side::remote_client::RemoteUseWorld;
 use std::sync::Arc;
 #[allow(unused_imports)]

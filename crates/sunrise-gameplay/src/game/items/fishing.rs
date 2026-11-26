@@ -1555,15 +1555,6 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
-#[cfg(test)]
-impl Hook {
-    #[cfg(test)]
-    pub(in crate::game::server_side) fn set_hooked_in(&mut self, id: u32) {
-        self.hooked_in = Some(id);
-        self.state = State::Hooked(id);
-    }
-}
-
 impl crate::game::ServerGame<'_> {
     /// The hooks guests track: each player's in the level.
     pub(in crate::game::server_side) fn lan_hook_states(&self, out: &mut States) {

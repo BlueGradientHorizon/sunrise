@@ -16,7 +16,7 @@ pub(in crate::game) mod item_count;
 pub mod items;
 pub(in crate::game) mod misc;
 pub(in crate::game) mod modprofile;
-pub(in crate::game) mod place;
+pub mod place;
 pub(in crate::game) mod players;
 pub(in crate::game) mod position_args;
 pub(in crate::game) mod pregen;
@@ -2369,6 +2369,7 @@ pub(in crate::game) mod forced_respawn_tests {
 
         mod_platform::testing::with_mods(Vec::new().into(), || {
             with_guests(|game| {
+                use sunrise_gameplay_common::game::{chat_common::ChatCommonGameExt1 as _, commands_common::CommandsCommonGameExt2 as _};
                 game.build_registries();
                 for x in -2..=2 {
                     for z in -2..=2 {

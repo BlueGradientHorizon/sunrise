@@ -3,17 +3,17 @@
 #[cfg(test)]
 pub(crate) mod join_order_tests {
 
-use sunrise_gameplay_common::game::server_side::entity_server::join_order_tests::at;
+use sunrise_gameplay_common::game::server_side::entity_server::join_order_tests::{Lists, at};
 
 use crate::game::client_side::entity_client::{DrawExtras, DrawFamily, DrawRun, draw_runs};
 
-use sunrise_gameplay_common::game::entity::{EntityHandle, EntityLists, JoinOrderError};
+use sunrise_gameplay_common::game::entity::EntityLists;
 
-use sunrise_gameplay_common::game::{boats_common::Boat, creatures::render_fixture::mob, fireworks::Rocket};
+use sunrise_gameplay_common::game::creatures::render_fixture::mob;
 
 use sunrise_sim::join_seq::{JoinList, JoinSeq};
 
-use sunrise_sim::mobs::{Mob, Species};
+use sunrise_sim::mobs::Species;
 
 fn runs(
         lists: &Lists,
@@ -107,5 +107,93 @@ fn runs(
                 range: 0..2
             }]
         );
+    }
+}
+
+#[cfg(test)]
+pub(in crate::game) mod render_bounds_tests {
+    use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::{boats_common::Boat, minecarts::{CartKind, Minecart}};
+    use sunrise_sim::entities::ArmorStand;
+    use crate::game::client_side::entity_client::RenderEntityBounds;
+    use sunrise_sim::entities::ItemFrame;
+
+    #[test]
+    fn armor_stand_bounds_include_raised_equipment_space() {
+        let mut stand = ArmorStand::new(1, Vec3::new(4.0, 64.0, -2.0), 90.0);
+        stand.show_arms = true;
+        stand.pose[2] = [180.0, 0.0, 45.0];
+        stand.equipment[0] = Some(sunrise_items::items::ItemStack {
+            item: "minecraft:iron_sword".into(),
+            count: 1,
+            damage: 0,
+            extra: None,
+        });
+        stand.equipment[5] = Some(sunrise_items::items::ItemStack {
+            item: "minecraft:banner".into(),
+            count: 1,
+            damage: 0,
+            extra: None,
+        });
+        let bounds = stand.render_bounds(0.5);
+        assert!(bounds.min_position().x <= 2.0);
+        assert!(bounds.max_position().x >= 6.0);
+        assert!(bounds.min_position().y <= 63.0);
+        assert!(bounds.max_position().y >= 69.0);
+        assert!(bounds.min_position().z <= -4.0);
+        assert!(bounds.max_position().z >= 0.0);
+    }
+
+    #[test]
+    fn boat_bounds_cover_the_rotated_paddle_sweep() {
+        let boat = Boat::new(2, "oak".into(), Vec3::new(0.0, 10.0, 0.0), 90.0);
+        let bounds = boat.render_bounds(0.5);
+        assert!(bounds.min_position().x <= -1.75);
+        assert!(bounds.max_position().x >= 1.75);
+        assert!(bounds.min_position().y <= 9.25);
+        assert!(bounds.max_position().y >= 11.5);
+        assert!(bounds.min_position().z <= -1.75);
+        assert!(bounds.max_position().z >= 1.75);
+    }
+
+    #[test]
+    fn item_frame_bounds_include_the_full_map_and_held_item_depth() {
+        let frame = ItemFrame {
+            attachment_lifetime: Default::default(),
+            join: Default::default(),
+            id: 3,
+            pos: [0, 0, 0],
+            facing: 5,
+            glow: false,
+            item: None,
+            rotation: 0,
+            drop_chance: 1.0,
+            fixed: false,
+            invisible: false,
+            check_interval: 0,
+            ticks: 0,
+            custom_name: None,
+            random: sunrise_core::random::LegacyRandom::new(0),
+        };
+        let bounds = frame.render_bounds(1.0);
+        assert!(bounds.min_position().x <= -0.71875);
+        assert!(bounds.max_position().x >= 0.78125);
+        assert!(bounds.min_position().y <= 0.0);
+        assert!(bounds.max_position().y >= 1.0);
+        assert!(bounds.min_position().z <= 0.0);
+        assert!(bounds.max_position().z >= 1.0);
+    }
+
+    #[test]
+    fn minecart_bounds_follow_custom_display_offset() {
+        let mut cart = Minecart::new(
+            4,
+            CartKind::Chest,
+            Vec3::new(0.0, 10.0, 0.0),
+        );
+        cart.custom_offset = Some(32);
+        let bounds = cart.render_bounds(1.0);
+        assert!(bounds.min_position().y <= 9.5);
+        assert!(bounds.max_position().y >= 12.8);
     }
 }

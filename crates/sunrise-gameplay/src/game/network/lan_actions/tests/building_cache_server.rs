@@ -1,4 +1,4 @@
-use crate::game::server_side::lan_actions_server::tick::building_cache_tests::Boxes;
+type Boxes = Vec<([f64; 3], [f64; 3])>;
 use {crate::game::*, sunrise_gameplay_common::game::{Dim, lan_actions}};
 
 /// The other players' boxes in the Builder's turn: what blocks its placing.

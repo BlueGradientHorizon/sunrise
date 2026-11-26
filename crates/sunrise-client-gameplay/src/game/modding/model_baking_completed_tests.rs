@@ -9,6 +9,7 @@ use mod_api::{
     ModEntry, ModelBakingCompletedEvent, ModelError, ModelRef, RegistrationContext,
     StandaloneModelsEvent, TextureAtlasStitchedEvent,
 };
+#[cfg(test)]
 use mod_platform::testing::with_mods;
 use std::sync::{Arc, Mutex};
 
@@ -111,6 +112,7 @@ pub fn reload(game: &mut crate::game::ClientGame<'_>) {
 /// before `client_setup`, and its standalone model resolves inside it while an unregistered name
 /// does not; a reload fires it once more before `client_resources_reloaded`, the handle from it
 /// resolves and the first load's is stale.
+#[cfg(test)]
 #[test]
 #[ignore = "daily"]
 fn a_client_mod_hears_model_baking_completed_once_per_load_and_keeps_its_handles() {
@@ -178,6 +180,7 @@ fn a_client_mod_hears_model_baking_completed_once_per_load_and_keeps_its_handles
 }
 
 /// Real Game/resource-load/model-registry proof, not a GPU render proof.
+#[cfg(test)]
 #[test]
 #[ignore = "daily"]
 fn standalone_bakers_resolve_as_one_model_and_republish_after_resource_reload() {
@@ -270,6 +273,7 @@ fn standalone_bakers_resolve_as_one_model_and_republish_after_resource_reload() 
 
 /// The production pack build and model publication each occupy the anchor in
 /// their respective phase, with neither apply running before all prepares.
+#[cfg(test)]
 #[test]
 #[ignore = "daily"]
 fn pack_reload_runs_listeners_on_both_sides_of_model_manager() {
@@ -467,6 +471,7 @@ fn pack_reload_runs_listeners_on_both_sides_of_model_manager() {
 
 /// A reload whose application is refused fires nothing: the mod hears no
 /// `model_baking_completed`, and the handle from the last successful load stays right.
+#[cfg(test)]
 #[test]
 #[ignore = "daily"]
 fn a_failed_reload_fires_no_model_baking_completed() {
@@ -516,6 +521,7 @@ fn a_failed_reload_fires_no_model_baking_completed() {
     });
 }
 
+#[cfg(test)]
 #[test]
 #[ignore = "daily"]
 fn a_panicking_publication_notice_does_not_stop_later_subscribers_or_recur() {

@@ -1325,7 +1325,7 @@ pub struct ClientState {
     /// The runs of `entity_geometry`'s ordered pass, kept to reuse their storage.
     pub(in crate::game::client_side) entity_runs: Vec<entity_client::DrawRun>,
     /// Which entity this frame's entity vertices belong to (`Frame::entity_motion`).
-    pub(in crate::game::client_side) entity_motion: std::cell::RefCell<Vec<(u32, u64)>>,
+    pub(in crate::game) entity_motion: std::cell::RefCell<Vec<(u32, u64)>>,
     /// The GPU-posed vertex count at each of `entity_motion`'s marks (`Frame::entity_motion_posed`).
     pub(in crate::game::client_side) entity_motion_posed: std::cell::RefCell<Vec<u32>>,
     pub(in crate::game::client_side) skin_frame:
@@ -2383,7 +2383,7 @@ pub(in crate::game) mod upload_pace;
 #[path = "interface/key_codes.rs"]
 pub(in crate::game) mod key_codes;
 
-#[cfg(any(test, all(feature = "client", feature = "test-support")))]
+#[cfg(all(feature = "client", any(test, feature = "test-support")))]
 pub mod test_key_codes {
     pub use super::key_codes::{
         drop_held_behind_dialog, gameplay_has_keyboard, glfw_button, glfw_modifiers, keyboard_button,
@@ -2552,7 +2552,14 @@ impl<'a> ClientGame<'a> {
         initial: Option<&mut Option<initial_client_models::InitialModelGeneration>>,
     ) -> Result<Box<ClientConstructPrep>> {
         #[cfg(test)]
-        Self::initialize_mod_runtime_for_tests();
+        {
+            static INITIALIZED: std::sync::Once = std::sync::Once::new();
+            INITIALIZED.call_once(|| {
+                sunrise_gameplay_common::install_test_mod_platform!(mod_platform);
+                mod_platform::__private::initialize()
+                    .expect("engine test runtime initializes before mod dispatch");
+            });
+        }
         // A scoped hook on this thread asks this game's parts.
         mod_api::__private::mark_game_thread();
         let root = options.resources.clone();

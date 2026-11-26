@@ -434,6 +434,7 @@ impl crate::game::ServerGame<'_> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
     #[test]
     #[ignore = "daily"]
     fn moves_and_pushes_a_live_mob() {

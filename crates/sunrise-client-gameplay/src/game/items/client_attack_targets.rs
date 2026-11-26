@@ -121,7 +121,18 @@ impl ClientGame<'_> {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-use sunrise_gameplay_common::game::client_side::client_attack_targets::tests::receive_attacks;
+pub fn receive_attacks(server: &mut sunrise_protocol::connection::Connection) -> Vec<i32> {
+        use sunrise_protocol::packets::play::Serverbound as S;
+        let mut ids = Vec::new();
+        loop {
+            let (id, payload) = server.recv().unwrap();
+            match S::decode(id, &payload).unwrap() {
+                S::Attack(attack) => ids.push(attack.id),
+                S::Punch(_) => return ids,
+                _ => {}
+            }
+        }
+    }
 
     use super::*;
 

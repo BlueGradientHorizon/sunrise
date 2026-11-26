@@ -1,6 +1,6 @@
 
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any())]
 #[cfg(feature = "client")]
 pub mod tests {
 
@@ -12,34 +12,6 @@ use sunrise_core::{geometry::Direction, position::BlockPos};
 
 use sunrise_items::items::ItemStack;
 
-/// What each `bonemeal` listener heard: the player, the target check
-    /// and the source. The test that reads it runs in a process of its own,
-    /// so no other test's events cross into it; a failed assertion doesn't
-    /// hide the next one behind poison.
-    static HEARD: Mutex<Vec<(Option<u128>, bool, BonemealSource)>> = Mutex::new(Vec::new());
-#[cfg(test)]
-#[mod_api::__subscriptions]
-    impl Hooks for Meal {
-        fn bonemeal(&self, _: HostSide, event: &mut BonemealEvent<'_>) -> Flow {
-            heard().push((event.player, event.valid_bonemeal_target, event.source));
-            if let Some(count) = self.count {
-                if count == 0 {
-                    *event.stack = None;
-                } else if let Some(stack) = event.stack.as_mut() {
-                    stack.set_count(count).unwrap();
-                }
-            }
-            let Some(successful) = self.cancel else {
-                return Flow::Continue;
-            };
-            event.successful = successful;
-            Flow::Cancel
-        }
-    }
-pub fn heard() -> MutexGuard<'static, Vec<(Option<u128>, bool, BonemealSource)>> {
-        HEARD.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-pub const CROP: BlockPos = BlockPos { x: 0, y: 64, z: 0 };
 /// A dispenser at (0, 64, 1) facing young wheat, with `meal` listening:
     /// what the slot holds after one dispense, and the wheat's age.
     pub fn dispense(meal: Meal, target: &str) -> (Option<ItemStack>, i32) {

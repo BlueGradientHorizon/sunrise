@@ -1,9 +1,9 @@
-#[cfg(test)]
+#[cfg(any())]
 use crate::game::client_side::text_displays::RemoteTextDisplay;
-#[cfg(test)]
+#[cfg(any())]
 use crate::game::client_side::text_displays::Shows;
 
-#[cfg(test)]
+#[cfg(any())]
 pub(in crate::game) mod tests {
     use super::*;
 

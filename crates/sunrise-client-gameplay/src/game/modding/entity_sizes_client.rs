@@ -214,15 +214,6 @@ impl ClientGame<'_> {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-    use crate::game::server_side::entity_sizes::tests::add_entity;
-    use crate::game::server_side::entity_sizes::tests::doubled;
-    use crate::game::server_side::entity_sizes::tests::entity_data;
-    use crate::game::server_side::entity_sizes::tests::in_fresh_process;
-    use crate::game::server_side::entity_sizes::tests::with_loopback_client;
-    use mod_api::Pose;
-
-    
-
     /// The F3+B outline's white edges: their lowest and highest corner.
     pub fn white_outline(
         game: &mut crate::game::ClientGame<'_>,

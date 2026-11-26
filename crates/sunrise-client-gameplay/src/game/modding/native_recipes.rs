@@ -21,15 +21,6 @@ use sunrise_sim::{
     stations::Smithing,
 };
 
-#[cfg(test)]
-impl RecipeTables {
-    pub(in crate::game) fn install_test_recipes(
-        &mut self,
-        recipes: sunrise_sim::crafting::Recipes,
-    ) {
-        self.synced = Some(recipes);
-    }
-}
 
 /// Item id -> its index in [`Recipes::items`].
 pub struct Index(HashMap<Arc<str>, u32>);
@@ -436,6 +427,7 @@ impl crate::game::ClientGame<'_> {
 #[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
+    use sunrise_gameplay_common::game::tables::GameItems as _;
     /// A part with a malformed serializer refuses the whole update: the
     /// valid last part after it publishes nothing, one refusal is reported
     /// when the update completes, and the next update is taken whole.

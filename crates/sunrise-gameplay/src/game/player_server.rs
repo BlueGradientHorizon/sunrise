@@ -639,7 +639,7 @@ impl crate::game::ServerGame<'_> {
     #[allow(dead_code)]
     pub(in crate::game) fn server_release_tick_targets(&mut self) {}
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(in crate::game) fn server_set_test_forced_hit(&mut self, hit: Option<Hit>) {
         self.server.forced_hit = hit;
     }

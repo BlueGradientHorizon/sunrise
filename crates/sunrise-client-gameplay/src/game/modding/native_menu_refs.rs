@@ -451,7 +451,7 @@ pub(in crate::game::client_side) fn creative_tab(
         let remote = game.client.remote.as_mut().unwrap();
         remote.level_load.finish();
         let mut body =
-            sunrise_sim::motion::PlayerMotion::new(game.motion, sunrise_core::geometry::Vec3::ZERO)
+            sunrise_sim::motion::PlayerMotion::new(game.common.motion, sunrise_core::geometry::Vec3::ZERO)
                 .unwrap();
         body.entity_id = remote.entity_id;
         game.player = Some(body);

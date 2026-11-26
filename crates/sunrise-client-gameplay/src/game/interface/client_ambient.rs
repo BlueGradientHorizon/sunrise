@@ -401,6 +401,7 @@ mod sprint_handle_tests {
                 "stone sprite missing"
             );
             game.client.particles.0.requested = Some(Vec::new());
+            use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
             let entity = game.entity(7).unwrap();
             let host: &mut dyn ClientHost = game;
             assert!(entity.sprint_particles(host));

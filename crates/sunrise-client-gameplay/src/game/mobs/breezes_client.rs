@@ -62,14 +62,9 @@ impl ClientGame<'_> {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-    use sunrise_client::{audio::Audio, settings::Settings};
-    use sunrise_gameplay_common::game::{Options, Progress, load_resources};
-    use std::sync::Arc;
-    use sunrise_core::geometry::Vec3;
-    use sunrise_level::chunk::Chunk;
-    use sunrise_sim::mobs::Mob;
-
-    
+    pub fn set_test_particle_camera(game: &mut crate::game::ClientGame<'_>, camera: [f64; 3]) {
+        game.client.particles.0.camera = camera;
+    }
 
     pub fn made_block_particles(game: &crate::game::ClientGame<'_>) -> u64 {
         game.client

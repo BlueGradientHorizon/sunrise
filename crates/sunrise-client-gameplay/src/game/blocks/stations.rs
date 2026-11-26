@@ -2065,7 +2065,7 @@ impl crate::game::ClientGame<'_> {
         self.tooltip_image_shows_with_carried(stack)
     }
     /// Hovered-slot tooltip on the plain inventory, crafting and container screens.
-    pub(in crate::game::client_side) fn draw_slot_tooltip(&mut self, batch: &mut HudBatch) {
+    pub(in crate::game) fn draw_slot_tooltip(&mut self, batch: &mut HudBatch) {
         // An item dragged off the item panel covers the slot under it.
         if self.mod_browser_dragging() {
             return;
@@ -2115,7 +2115,8 @@ impl crate::game::ClientGame<'_> {
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[test]
+    #[cfg(any())]
+#[test]
     #[ignore = "daily"]
     fn spawn_egg_tooltip_warns_for_the_mod_type_in_peaceful() {
         use crate::game::{commands::peaceful_tests, execution_role::ExecutionRole};

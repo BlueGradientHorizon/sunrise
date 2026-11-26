@@ -44,8 +44,6 @@ pub mod native_merchant_refs;
 #[path = "modding/native_menus.rs"]
 pub mod native_menus;
 
-#[path = "modding/native_living_writes.rs"]
-pub(in crate::game) mod native_living_writes;
 
 #[path = "modding/native_living_refs.rs"]
 pub mod native_living_refs;

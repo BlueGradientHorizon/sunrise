@@ -1,7 +1,7 @@
 
 
 #[cfg(feature = "client")]
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 thread_local! {
     pub(in crate::game) static DYNAMIC_TEXTURE_POOL_OVERRIDE: std::cell::Cell<Option<bool>> =
         const { std::cell::Cell::new(None) };

@@ -33,7 +33,7 @@ pub(in crate::game) fn replaced<F: Copy + 'static, R>(
 }
 
 /// The replacement's answer for whether `attacker` may hurt `victim`, when one is installed.
-pub(in crate::game) fn harm(attacker: i32, victim: i32) -> Option<bool> {
+pub fn harm(attacker: i32, victim: i32) -> Option<bool> {
     HARM.get().map(|answer| answer(attacker, victim))
 }
 

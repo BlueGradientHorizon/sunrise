@@ -52,7 +52,7 @@ use super::*;
     ) -> (f64, f64, bool) {
         use sunrise_sim::motion::MotionWorld;
         let before = game.player.as_ref().unwrap().velocity.x;
-        let crate::game::Game {
+        let sunrise_gameplay_common::game::CommonGame {
             world,
             pack,
             motion,
@@ -62,7 +62,7 @@ use super::*;
             collision,
             player,
             ..
-        } = game;
+        } = &mut game.common;
         let entities: [sunrise_core::geometry::Aabb; 0] = [];
         sunrise_sim::block_contact::in_level(
             sunrise_sim::parallel::TickThread::mint(),

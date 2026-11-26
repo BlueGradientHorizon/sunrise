@@ -24,7 +24,7 @@ pub(in crate::game) const IGNORE: &str = "needs prepared resources in SUNRISE_TE
 
 /// `new Random(2)`: `2 + nextInt(3)` is 3, then `nextFloat() * 360.0F` three times, then the
 /// next `nextInt()`. The same three draws with no listener, a cancel or a listener.
-pub(in crate::game) const SEED: i64 = 2;
+pub(in crate::game) use sunrise_gameplay::game::server_side::creatures_server::pending_birth_matrix_tests::SEED;
 pub(in crate::game) const YAWS: [f32; 3] = [105.61554, 324.52115, 1.4961791];
 pub(in crate::game) const NEXT_INT: i32 = 2_133_836_778;
 
@@ -79,7 +79,7 @@ pub(in crate::game) fn with_baby(
     mod_platform::testing::with_mods(mods, || with_game(run));
 }
 
-pub(in crate::game) const AT: [f64; 3] = [10.0, 64.0, 20.0];
+pub(in crate::game) use sunrise_gameplay::game::server_side::creatures_server::pending_birth_matrix_tests::AT;
 
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::server_side::creatures_server::pending_birth_tests::cube;
@@ -493,12 +493,7 @@ fn a_birth_panic_does_not_undo_or_misroute_a_biome_write_in_another_level() {
 
 /// Two cows bred directly, as `breeding_announces_the_orb_before_the_lower_id_child` does: the
 /// parents' ages are 6000 as the goal leaves them, the partner is in love.
-pub(in crate::game) fn breed_pair(
-    game: &mut sunrise_gameplay::game::ServerGame<'_>,
-    kind: &str,
-) -> (u32, u32, Option<u32>) {
-    breed_pair_credited(game, kind, false)
-}
+pub(in crate::game) use sunrise_gameplay::game::server_side::creatures_server::pending_birth_matrix_tests::breed_pair;
 
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::server_side::creatures_server::pending_birth_tests::breed_pair_credited;
