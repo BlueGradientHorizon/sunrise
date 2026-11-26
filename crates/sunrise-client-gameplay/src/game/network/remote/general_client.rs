@@ -49,7 +49,7 @@ impl RemoteGeneral {
 
 /// The rows the server shows the window, by network id, and the warnings already given.
 #[derive(Default)]
-pub(in crate::game) struct RemoteGenerals {
+pub struct RemoteGenerals {
     /// Client entity lookup order: inserts append; removing one keeps the others in order.
     pub rows: IndexMap<i32, RemoteGeneral>,
     /// Type keys this client's catalog does not hold, each warned about once.

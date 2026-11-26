@@ -41,7 +41,7 @@ pub(in crate::game) fn layer_color(
 
 /// Armor stand models and the humanoid layers of every equipment asset.
 #[derive(Default)]
-pub(in crate::game) struct ArmorStandAssets {
+pub struct ArmorStandAssets {
     /// Shared (`Arc`) so the GPU path (`mobs::skin`) keeps one stored copy of each.
     pub main: Option<Arc<Part>>,
     pub small: Option<Arc<Part>>,

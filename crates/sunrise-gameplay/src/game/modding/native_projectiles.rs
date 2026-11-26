@@ -24,7 +24,7 @@ pub(in crate::game) enum ImpactTarget {
 }
 
 /// A projectile's impact in one tick of `tick_projectiles`.
-pub(in crate::game) struct Impact {
+pub struct Impact {
     /// Where the projectile was in the tick's list.
     pub index: Option<usize>,
     /// The original flight's keep decision, once section movement has been accounted for.

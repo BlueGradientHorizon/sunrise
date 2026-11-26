@@ -49,7 +49,7 @@ pub struct Pickup {
 
 /// `ParticleEngine`'s ITEM_PICKUP group and the particles waiting to join it.
 #[derive(Default)]
-pub(in crate::game) struct Pickups {
+pub struct Pickups {
     pub live: Vec<Pickup>,
     added: Vec<Pickup>,
     /// The particles made so far, by kind of taken entity (for sunrise-ctl).
