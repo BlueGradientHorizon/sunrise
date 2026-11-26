@@ -12550,7 +12550,11 @@ impl Game<'_> {
     }
     /// Installs `renderer` and the handles mods reach it through.
     pub(in crate::game) fn set_renderer(&mut self, renderer: Renderer) {
-        self.mod_gpu = Some(renderer.mod_gpu().clone());
+        let gpu = renderer.mod_gpu();
+        if let Some(previous) = &self.mod_gpu {
+            gpu.continue_ids_from(previous);
+        }
+        self.mod_gpu = Some(gpu.clone());
         self.renderer = Some(renderer);
     }
 }

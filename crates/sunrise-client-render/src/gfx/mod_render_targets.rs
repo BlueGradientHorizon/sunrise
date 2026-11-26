@@ -10,8 +10,8 @@
 //! and storage usage; each mip level has its own single-level view (`GpuTextureView` with
 //! `baseMipLevel` and `mipLevels`) for rendering into, sampling and storage binding.
 //!
-//! Handles are generational and owner-checked. A target survives a resource reload and a world
-//! close: it is freed by [`mod_api::RenderTargetRef::release`] or when its mod unloads.
+//! Handles are generational and owner-checked. A target survives a same-device resource reload
+//! and a world close. It is freed on release, mod unload or device replacement.
 
 use mod_api::__private::game::Fields;
 use mod_api::{
@@ -157,7 +157,7 @@ struct ModRenderTarget {
 
 /// Generational store of mod-owned offscreen GPU render targets (`RenderTargetRef`).
 pub struct ModRenderTargets {
-    next_generation: u64,
+    pub(super) next_generation: u64,
     slots: Vec<Option<ModRenderTarget>>,
     next_view_id: u64,
     /// The textures of attachments freed since the last [`Self::take_released`].

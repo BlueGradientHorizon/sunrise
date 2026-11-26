@@ -1365,3 +1365,7 @@ mod clouds_reload_tests;
 #[cfg(test)]
 #[path = "core_shaders_reload_tests.rs"]
 mod core_shaders_reload_tests;
+
+#[cfg(test)]
+#[path = "retained_mod_gpu_tests.rs"]
+mod retained_mod_gpu_tests;
