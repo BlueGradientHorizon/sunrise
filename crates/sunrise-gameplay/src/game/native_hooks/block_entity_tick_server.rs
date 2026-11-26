@@ -23,7 +23,7 @@ pub(in crate::game) fn native_block_entity_tick(
     kind: mod_api::BlockEntityTypeKey,
     subject: mod_api::BlockEntityScope<'_>,
 ) {
-    sunrise_gameplay_common::game::native_hooks::fire::fire_block_entity_tick(kind, subject);
+    crate::game::native_hooks::fire::fire_block_entity_tick(kind, subject);
 }
 
 pub(in crate::game) fn valid_tick_subject(block: &str, entity: &EngineBlockEntity) -> bool {

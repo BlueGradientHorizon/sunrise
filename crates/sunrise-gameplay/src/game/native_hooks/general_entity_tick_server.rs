@@ -31,7 +31,7 @@ pub(in crate::game) struct GeneralTickAccess<'g, 'w, 'k> {
 pub(in crate::game) fn native_general_entity_tick(
     call: mod_api::__private::GeneralEntityTickCall<'_>,
 ) {
-    sunrise_gameplay_common::game::native_hooks::fire::fire_general_entity_tick(call);
+    crate::game::native_hooks::fire::fire_general_entity_tick(call);
 }
 
 impl EntityServerAccess for GeneralTickAccess<'_, '_, '_> {

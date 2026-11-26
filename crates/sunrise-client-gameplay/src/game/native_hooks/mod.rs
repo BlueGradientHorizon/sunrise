@@ -149,6 +149,7 @@ pub(in crate::game) mod fluid_tooltip;
 pub(in crate::game) mod flip_frame;
 
 pub(in crate::game) mod fire;
+pub(in crate::game) use fire::HotbarAttackIndicatorProgressCall;
 
 pub(in crate::game) mod extract_block_screen_effect;
 

@@ -5,7 +5,7 @@ pub(in crate::game) fn native_register_client_item_extensions(
     context: &mod_api::RegistrationContext,
     extensions: &mut Registration<'_>,
 ) {
-    sunrise_gameplay_common::game::native_hooks::fire::fire_register_client_item_extensions(context, |listen| {
+    crate::game::native_hooks::fire::fire_register_client_item_extensions(context, |listen| {
         extensions.register_listener(listen)
     });
 }
