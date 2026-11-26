@@ -788,7 +788,9 @@ mod tests {
             "{refused:?}"
         );
         assert!(
-            refused.iter().all(|r| !r.contains("not a block or sampler")),
+            refused
+                .iter()
+                .all(|r| !r.contains("not a block or sampler")),
             "{refused:?}"
         );
     }
