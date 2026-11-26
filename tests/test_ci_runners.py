@@ -175,9 +175,12 @@ class OwnRunnerTests(unittest.TestCase):
             if "pull_request" in on:
                 # The guard lives in the job's `if` upstream; dyna-ci.yml (ours)
                 # puts it in `runs-on`, before the self-hosted labels.
-                condition = job.get("if", "")
-                guarded = any(guard in condition or guard in value for guard in (FORK_GUARD, TRUSTED))
-                self.assertTrue(guarded, f"{where}: a fork's pull request")
+                comparisons = set()
+                if job.get("if"):
+                    comparisons |= parsed_expression(job["if"])[0]
+                if isinstance(value, str) and value.startswith("${{"):
+                    comparisons |= parsed_expression(value)[0]
+                self.assertTrue({FORK_GUARD, TRUSTED} & comparisons, f"{where}: a fork's pull request")
             if "pull_request_target" in on:
                 # main's code only: every checkout is main's.
                 self.assertEqual(len(checkouts(job)), sum(c.get("with", {}).get("ref") == "main" for c in checkouts(job)), where)
