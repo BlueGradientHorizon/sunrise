@@ -18,6 +18,8 @@ pub enum CustomArgumentKind {
     Word,
     /// The rest of the line, spaces included.
     Greedy,
+    /// An identifier as vanilla reads it, preserving the spelling for the custom parser.
+    Id,
     /// Brigadier's `StringArgumentType.string()` (`QUOTABLE_PHRASE`), read by
     /// [`Reader::read_string`]: one unquoted word, or one single- or double-quoted phrase, empty
     /// included, in which only the active quote and `\` are escaped. The parser receives the
@@ -281,8 +283,11 @@ pub enum ArgType {
     NbtPath,
     /// NbtTagArgument: any SNBT value (kept as text).
     NbtTag,
-    /// Vec2Argument: `x z` with `~` relative parts.
-    Vec2,
+    /// Vec2Argument: `x z` with `~` relative parts; `center` adds `0.5` to whole numbers
+    /// without a decimal point (`Vec2Argument.vec2()` vs `vec2(false)`).
+    Vec2 {
+        center: bool,
+    },
     /// ColumnPosArgument: block `x z`.
     ColumnPos,
     /// ParticleArgument: a particle id and its options (kept as text).
@@ -620,13 +625,19 @@ pub fn read_id(reader: &mut Reader) -> CmdResult<String> {
 }
 /// Identifier.read.
 pub fn read_identifier(reader: &mut Reader) -> CmdResult<String> {
+    let (_, (namespace, path)) = read_identifier_token(reader)?;
+    Ok(format!("{namespace}:{path}"))
+}
+
+/// Read the original token and its canonical namespace and path without allocating.
+fn read_identifier_token<'a>(reader: &mut Reader<'a>) -> CmdResult<(&'a str, (&'a str, &'a str))> {
     let start = reader.cursor;
     while reader.can_read() && is_id_char(reader.peek()) {
         reader.skip();
     }
     let raw = &reader.string[start..reader.cursor];
-    match parse_identifier(raw) {
-        Some(id) => Ok(id),
+    match sunrise_client_core::identifier::parse_identifier_parts(raw) {
+        Some(parts) => Ok((raw, parts)),
         None => {
             reader.cursor = start;
             Err(CommandError::tr_at("argument.id.invalid", &[], reader))
@@ -1765,15 +1776,10 @@ impl ArgType {
             ArgType::IntRange => Arg::IntRange(read_int_bounds(reader)?),
             ArgType::FloatRange => Arg::DoubleRange(read_double_bounds(reader)?),
             ArgType::Name(_) => Arg::Str(reader.read_string()?),
-            ArgType::Vec2 | ArgType::ColumnPos => {
-                let block = matches!(self, ArgType::ColumnPos);
-                let one = |reader: &mut Reader| {
-                    if block {
-                        parse_coord_int(reader)
-                    } else {
-                        // Vec2Argument.vec2(): integers are centred on the block.
-                        parse_coord_double(reader, true)
-                    }
+            ArgType::Vec2 { .. } | ArgType::ColumnPos => {
+                let one = |reader: &mut Reader| match self {
+                    ArgType::Vec2 { center } => parse_coord_double(reader, *center),
+                    _ => parse_coord_int(reader),
                 };
                 let x = one(reader)?;
                 if !reader.can_read() || reader.peek() != ' ' {
@@ -1913,6 +1919,7 @@ impl ArgType {
                         reader.cursor = reader.string.len();
                         text
                     }
+                    CustomArgumentKind::Id => read_identifier_token(reader)?.0.to_owned(),
                     // The number is checked as Brigadier's own type first; the mod's parser sees
                     // the digits it accepted.
                     CustomArgumentKind::Integer { min, max } => {
@@ -2078,7 +2085,7 @@ impl ArgType {
                     suggest_resources(builder, known, "");
                 }
             }
-            ArgType::Vec2 => suggest_coordinates(builder, reg, self, false),
+            ArgType::Vec2 { .. } => suggest_coordinates(builder, reg, self, false),
             ArgType::ColumnPos => suggest_coordinates(builder, reg, self, true),
             ArgType::Name(list) => {
                 let names = match *list {

@@ -75,7 +75,7 @@ fn a_part_hears_each_stop_of_its_items_use_once() {
                     game.tick_using();
                 }
                 assert!(game.using.is_none());
-                assert_eq!(heard(), [(true, None, true, 0)]);
+                assert_eq!(heard(), [(true, Some(game.own_entity_id()), true, 0)]);
             });
             // A release: the ticks of the use that were left.
             eating(|game| {
@@ -83,7 +83,7 @@ fn a_part_hears_each_stop_of_its_items_use_once() {
                 game.set_mapping_held("key.use", false);
                 game.tick_using();
                 assert!(game.using.is_none());
-                assert_eq!(heard(), [(true, None, true, left)]);
+                assert_eq!(heard(), [(true, Some(game.own_entity_id()), true, left)]);
                 assert_eq!(game.held().map(|s| s.count), Some(1), "not eaten");
             });
             // Another item in the hand: the apple's use stops, and the apple's part hears it.
@@ -92,10 +92,61 @@ fn a_part_hears_each_stop_of_its_items_use_once() {
                 *game.held_mut() = Some(ItemStack::new("minecraft:bow", 1));
                 game.tick_using();
                 assert!(game.using.is_none());
-                assert_eq!(heard(), [(true, None, true, left)]);
+                assert_eq!(heard(), [(true, Some(game.own_entity_id()), true, left)]);
                 // Nothing left to stop: no second stop.
                 game.tick_using();
                 assert!(heard().is_empty());
+            });
+        },
+    );
+}
+
+/// A server's client finishing a golden apple (`handleEntityEvent(9)`) whose slot no longer
+/// holds it once `living_entity_use_item_finish` returns (a listener put another stack there):
+/// the listener's stack stays, and `stopUsingItem` still ends the use, so the part hears
+/// `on_stop_using` once (`LivingEntity.completeUsingItem`).
+#[test]
+#[ignore = "daily"]
+fn a_replaced_finish_still_stops_the_use() {
+    use crate::game::{execution_role::ExecutionRole, native_entity_refs::tests};
+    use sunrise_client::motion::PlayerMotion;
+    use sunrise_core::geometry::Vec3;
+    use sunrise_protocol::connection::Pipe;
+    crate::game::in_own_process(
+        "game::stop_using_tests::a_replaced_finish_still_stops_the_use",
+        || {
+            let mods: mod_api::Mods = vec![mod_api::ModEntry::new("apple", Box::new(Parts))].into();
+            mod_platform::testing::with_mods(mods.clone(), || {
+                crate::game::api_values::install_parts(&mods).unwrap();
+                tests::with_game(|game| {
+                    game.options.execution_role = ExecutionRole::Client;
+                    let (local, _peer) = Pipe::pair();
+                    game.connect_local(local, "StopUsingTest").unwrap();
+                    let remote = game.remote.as_mut().unwrap();
+                    remote.logged_in = true;
+                    remote.entity_id = 71;
+                    game.player =
+                        Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
+                    tests::bind_local_player(game, 71, 0x0000_0001_0000_0002_0000_0003_0000_0004);
+                    game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
+                    game.selected = 0;
+                    game.screen = Screen::Playing;
+                    heard();
+                    let apple = ItemStack::new("minecraft:golden_apple", 1);
+                    let info = game.items().get(&apple.item).unwrap().clone();
+                    let replacement = ItemStack::new("minecraft:bread", 3);
+                    game.inventory[0] = Some(replacement.clone());
+                    game.remote_use_item_finished(0, &apple, &info);
+                    assert_eq!(
+                        game.inventory[0].as_ref(),
+                        Some(&replacement),
+                        "the listener's stack stays"
+                    );
+                    let stops = heard();
+                    assert_eq!(stops.len(), 1, "one stop: {stops:?}");
+                    assert!(!stops[0].0, "heard on the client");
+                    assert_eq!(stops[0].3, 0, "a finished use has no time left");
+                });
             });
         },
     );

@@ -1,9 +1,59 @@
 //! Shared eligibility and material resolution for worn humanoid equipment.
+use super::stock_layer_mask::StockLayerMask;
 use super::*;
+use mod_api::{ArmorLayerPass, ArmorLayerSlot, StockLayer};
 use sunrise_client::mobs::{
     finalize::EquipmentRead,
     render::{ArmorSlot, EquipmentModel},
 };
+
+pub(super) fn stock_armor_layer(slot: ArmorSlot, pass: ArmorLayerPass) -> StockLayer {
+    let slot = match slot {
+        ArmorSlot::Head => ArmorLayerSlot::Head,
+        ArmorSlot::Chest => ArmorLayerSlot::Chest,
+        ArmorSlot::Legs => ArmorLayerSlot::Legs,
+        ArmorSlot::Feet => ArmorLayerSlot::Feet,
+    };
+    StockLayer::Armor(slot, pass)
+}
+
+/// The model layers the mob's humanoid equipment renderer submits, in submission order.
+pub(super) const MOB_ARMOR: [(
+    sunrise_core::equipment_slot::EquipmentSlot,
+    &str,
+    &str,
+    ArmorSlot,
+); 4] = [
+    (
+        sunrise_core::equipment_slot::EquipmentSlot::Chest,
+        "chestplate",
+        "chest",
+        ArmorSlot::Chest,
+    ),
+    (
+        sunrise_core::equipment_slot::EquipmentSlot::Legs,
+        "leggings",
+        "legs",
+        ArmorSlot::Legs,
+    ),
+    (
+        sunrise_core::equipment_slot::EquipmentSlot::Feet,
+        "boots",
+        "feet",
+        ArmorSlot::Feet,
+    ),
+    (
+        sunrise_core::equipment_slot::EquipmentSlot::Head,
+        "helmet",
+        "head",
+        ArmorSlot::Head,
+    ),
+];
+
+pub(super) fn has_mob_armor_layer(mob: &Mob) -> bool {
+    !sunrise_client::mobs::render::avatar(mob)
+        && !sunrise_client::mobs::equine::is_equine(mob.species())
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum EquipmentPass {
@@ -105,51 +155,101 @@ impl Game<'_> {
         &self,
         mob: &Mob,
         pass: EquipmentPass,
+        hidden_layers: StockLayerMask,
     ) -> Vec<sunrise_client::mobs::render::Layer> {
         use sunrise_client::mobs::{finalize, render};
-        use sunrise_core::equipment_slot::EquipmentSlot::{Chest, Feet, Head, Legs};
-        if sunrise_items::equipment::ARMOR
-            .iter()
-            .all(|&slot| mob.extra.slot_stack(slot).is_none())
-            || render::avatar(mob)
-            || sunrise_client::mobs::equine::is_equine(mob.species())
-        {
+        if render::avatar(mob) {
             return Vec::new();
         }
         let mut out = Vec::new();
-        for (slot, layer, worn) in [
-            (Chest, "chestplate", "chest"),
-            (Legs, "leggings", "legs"),
-            (Feet, "boots", "feet"),
-            (Head, "helmet", "head"),
-        ] {
-            let Some(read) = finalize::equipment_slot(mob, slot) else {
+        if has_mob_armor_layer(mob)
+            && sunrise_items::equipment::ARMOR
+                .iter()
+                .any(|&slot| mob.extra.slot_stack(slot).is_some())
+        {
+            for (slot, layer, worn, _) in MOB_ARMOR {
+                let Some(read) = finalize::equipment_slot(mob, slot) else {
+                    continue;
+                };
+                let Some(piece) =
+                    self.equipment_piece(&read, worn, layer == "leggings", mob.is_baby())
+                else {
+                    continue;
+                };
+                let Some(key) = render::equipment_model_key(mob, layer) else {
+                    continue;
+                };
+                // The mob renderer resolves CEM textures before applying their emissive overlay.
+                // Do not submit the default texture's glow a second time here.
+                for material in self
+                    .equipment_materials(&piece, &read, pass)
+                    .into_iter()
+                    .filter(|m| !m.glows)
+                {
+                    let overlay = material.visible_overlay(piece.slot, hidden_layers);
+                    let mut layer = render::Layer::equipment(
+                        &key,
+                        material.binding.name,
+                        material.color,
+                        overlay.unwrap_or_default(),
+                    );
+                    // Keep the material's place for CEM's first-layer texture selection, even
+                    // when the material will not be submitted.
+                    layer.equipment_hidden = overlay.is_none();
+                    layer.equipment_model = material.model.map(|model| (model.clone(), piece.slot));
+                    layer.equipment_uv = material.final_texture.then_some(material.binding.uv);
+                    out.push(layer);
+                }
+            }
+        }
+        out.extend(self.body_equipment_layers(mob));
+        out
+    }
+
+    /// `SimpleEquipmentLayer` for the body armour of a horse, an undead horse or a nautilus: the
+    /// `horse_body` or `nautilus_body` layers of the equipment asset the stack's `equippable`
+    /// names (`EquipmentLayerRenderer`), in any namespace.
+    fn body_equipment_layers(&self, mob: &Mob) -> Vec<sunrise_client::mobs::render::Layer> {
+        use sunrise_client::mobs::{Species as S, render};
+        let (model, kind) = match mob.species() {
+            S::Horse => ("horse_armor#main", "horse_body"),
+            S::ZombieHorse | S::SkeletonHorse => ("undead_horse_armor#main", "horse_body"),
+            S::Nautilus | S::ZombieNautilus if !mob.is_baby() => {
+                ("nautilus_armor#main", "nautilus_body")
+            }
+            _ => return Vec::new(),
+        };
+        let Some(stack) = mob.extra.body_stack() else {
+            return Vec::new();
+        };
+        let Some(equippable) = sunrise_client::item_sync::equippable(stack, self.res.items())
+        else {
+            return Vec::new();
+        };
+        let Some(layers) = equippable
+            .asset_id
+            .as_ref()
+            .filter(|_| equippable.slot == "body")
+            .and_then(|asset| self.armor_stand_assets.equipment.get(asset))
+            .and_then(|kinds| kinds.get(kind))
+        else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for layer in layers {
+            let color = super::armor_stands::layer_color(
+                layer.dyeable,
+                layer.color_when_undyed,
+                Some(stack),
+            );
+            if color == 0 {
                 continue;
-            };
-            let Some(piece) = self.equipment_piece(&read, worn, layer == "leggings", mob.is_baby())
+            }
+            let Some((name, _)) = self.gui.atlas.sprites.get_key_value(layer.texture.as_str())
             else {
                 continue;
             };
-            let Some(key) = render::equipment_model_key(mob, layer) else {
-                continue;
-            };
-            // The mob renderer resolves CEM textures before applying their emissive overlay.
-            // Do not submit the default texture's glow a second time here.
-            for material in self
-                .equipment_materials(&piece, &read, pass)
-                .into_iter()
-                .filter(|m| !m.glows)
-            {
-                let mut layer = render::Layer::equipment(
-                    &key,
-                    material.binding.name,
-                    material.color,
-                    material.overlay,
-                );
-                layer.equipment_model = material.model.map(|model| (model.clone(), piece.slot));
-                layer.equipment_uv = material.final_texture.then_some(material.binding.uv);
-                out.push(layer);
-            }
+            out.push(render::Layer::equipment(model, name, color, 0));
         }
         out
     }
@@ -165,8 +265,29 @@ pub(super) struct EquipmentMaterial<'a> {
     pub color: u32,
     pub overlay: u32,
     pub glows: bool,
+    is_trim: bool,
     pub model: Option<&'a Arc<EquipmentModel>>,
     pub final_texture: bool,
+}
+
+impl EquipmentMaterial<'_> {
+    /// The visibility edit is applied after material and foil eligibility are resolved, so
+    /// hiding one pass cannot move the foil or a texture override to another material.
+    pub(super) fn visible_overlay(&self, slot: ArmorSlot, hidden: StockLayerMask) -> Option<u32> {
+        let pass = if self.is_trim {
+            ArmorLayerPass::Trim
+        } else {
+            ArmorLayerPass::Base
+        };
+        let foil =
+            self.overlay != 0 && !hidden.contains(stock_armor_layer(slot, ArmorLayerPass::Glint));
+        match (hidden.contains(stock_armor_layer(slot, pass)), foil) {
+            (false, true) => Some(self.overlay),
+            (false, false) => Some(0),
+            (true, true) => Some(sunrise_client_render::gfx::ARMOR_GLINT_ONLY_OVERLAY),
+            (true, false) => None,
+        }
+    }
 }
 
 pub(super) struct ResolvedEquipmentLayer<'a> {
@@ -280,6 +401,7 @@ impl EquipmentPiece<'_> {
                 color,
                 overlay: foil,
                 glows: false,
+                is_trim: false,
                 model,
                 final_texture,
             });
@@ -290,6 +412,7 @@ impl EquipmentPiece<'_> {
                     color,
                     overlay: 0,
                     glows: true,
+                    is_trim: false,
                     model,
                     final_texture,
                 });
@@ -301,6 +424,7 @@ impl EquipmentPiece<'_> {
                 color: 0xFFFF_FFFF,
                 overlay: self.overlay,
                 glows: false,
+                is_trim: true,
                 model: last_model,
                 final_texture: false,
             });
@@ -488,6 +612,108 @@ mod tests {
 mod material_tests {
     use super::tests::asset_layer;
     use super::*;
+    /// `EquipmentLayerRenderer` for a horse: a mod's body armour draws the `horse_body` layer of
+    /// the equipment asset its `equippable` names, in the asset's own namespace.
+    #[test]
+    #[ignore = "daily"]
+    fn a_horse_in_mod_body_armour_draws_its_namespaced_horse_body_layer() {
+        use sunrise_core::nbt::Tag;
+        let mut resources = None;
+        let mut game = crate::game::game_tests::tests::server_game(&mut resources);
+        let texture = "example:entity/equipment/horse_body/obsidian";
+        game.armor_stand_assets.equipment.insert(
+            "example:obsidian".into(),
+            HashMap::from([("horse_body".into(), vec![asset_layer(texture, false, None)])]),
+        );
+        game.gui.atlas.sprites.insert(
+            texture.into(),
+            sunrise_client::hud::Rect {
+                u0: 0.0,
+                v0: 0.0,
+                u1: 1.0,
+                v1: 1.0,
+                w: 64,
+                h: 64,
+            },
+        );
+        let kind = game.res.mob_types().get("minecraft:horse").unwrap().clone();
+        let mut horse = Mob::new(1, kind, sunrise_core::geometry::Vec3::ZERO, 0.0);
+        let mut armor = ItemStack::new("example:obsidian_horse_armor", 1);
+        armor.data_mut().set_other(
+            "minecraft:equippable",
+            Some(Tag::compound([
+                ("slot", Tag::String("body".into())),
+                ("asset_id", Tag::String("example:obsidian".into())),
+            ])),
+        );
+        horse.extra.set_body_stack(Some(armor));
+        let layers = game.mob_equipment_layers(&horse, EquipmentPass::Draw, StockLayerMask::EMPTY);
+        assert_eq!(layers.len(), 1);
+        assert_eq!(&*layers[0].model, "horse_armor#main");
+        assert_eq!(&*layers[0].texture, texture);
+    }
+
+    #[test]
+    fn armor_visibility_removes_only_the_chosen_pass_in_submission_order() {
+        use sunrise_client::mobs::render::ARMOR_GLINT;
+        use sunrise_client_render::gfx::ARMOR_GLINT_ONLY_OVERLAY;
+
+        let layers = [
+            asset_layer("base", false, None),
+            asset_layer("overlay", false, None),
+        ];
+        let piece = EquipmentPiece {
+            asset: "test:armor".into(),
+            slot: ArmorSlot::Chest,
+            kind: "humanoid",
+            layers: &layers,
+            overlay: ARMOR_GLINT,
+        };
+        let bind = |name| MaterialBinding {
+            name,
+            uv: [0.0, 0.0, 1.0, 1.0],
+        };
+        let materials = piece.materials(
+            None,
+            Some(bind("trim")),
+            |name| match name {
+                "base" => Some(bind("base")),
+                "overlay" => Some(bind("overlay")),
+                _ => None,
+            },
+            |_| None,
+        );
+        for (hide, expected) in [
+            (
+                None,
+                &[("base", 0), ("overlay", 0), ("trim", ARMOR_GLINT)][..],
+            ),
+            (Some(ArmorLayerPass::Base), &[("trim", ARMOR_GLINT)]),
+            (
+                Some(ArmorLayerPass::Glint),
+                &[("base", 0), ("overlay", 0), ("trim", 0)],
+            ),
+            (
+                Some(ArmorLayerPass::Trim),
+                &[
+                    ("base", 0),
+                    ("overlay", 0),
+                    ("trim", ARMOR_GLINT_ONLY_OVERLAY),
+                ],
+            ),
+        ] {
+            let mut hidden = StockLayerMask::EMPTY;
+            if let Some(pass) = hide {
+                hidden.insert(StockLayer::Armor(ArmorLayerSlot::Chest, pass));
+            }
+            let actual = materials
+                .iter()
+                .filter_map(|m| Some((m.binding.name, m.visible_overlay(piece.slot, hidden)?)))
+                .collect::<Vec<_>>();
+            assert_eq!(actual, expected, "{hide:?}");
+        }
+    }
+
     #[test]
     fn dyeable_without_default_uses_dye_or_skips_before_foil() {
         let layers = vec![

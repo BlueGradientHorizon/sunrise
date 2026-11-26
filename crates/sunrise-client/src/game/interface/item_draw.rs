@@ -69,6 +69,16 @@ impl item_render::ItemDrawEnv for Env<'_, '_> {
         super::native_special_renderers::draw_input(self.game, stack, context)
     }
 
+    fn render_type(
+        &self,
+        handle: mod_api::RenderTypeRef,
+    ) -> Result<
+        sunrise_client_render::mod_pipelines::ResolvedRenderType<'static>,
+        mod_api::RenderTypeError,
+    > {
+        self.game.pack.render.mod_pipelines.render_type_slot(handle)
+    }
+
     fn special_model_stack(
         &self,
         stack: &mod_api::ItemStack,

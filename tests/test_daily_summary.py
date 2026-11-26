@@ -36,7 +36,7 @@ GREEN_JOBS = [job("shards / plan"), job("shards / ignored-tests-shards (sunrise-
               job("windows-runtime-leases / test"),
               job("windows-runtime-leases / runtime-leases"), job("windows-runtime-leases / launcher-processes"),
               job("cargo-sunrise-mod / plan"),
-              job("machine-sample / route"), job("machine-sample / build"),
+              job("machine-sample / route"), job("machine-sample / build"), job("exporters / exporters"),
               job("sdk / fresh"), job("sdk / build linux"), job("sdk / build linux-server"),
               job("sdk / fresh"), job("sdk / build windows"), job("sdk / build macos"), job(PARITY_JOB)]
 # Every binstall archive the daily builds (cargo-sunrise-mod-build.yml), with no publish job: it never publishes.
@@ -954,8 +954,9 @@ class DailyWorkflowTests(unittest.TestCase):
         self.assertNotIn("permissions", jobs["sdk"], "the build leg publishes nothing")
         # The SDK is two calls named `sdk`: the Linux legs, which fn-replace-check needs alone, and the others.
         self.assertEqual(jobs["sdk"]["with"]["legs"], "linux")
+        # Only this call runs the C-source test on Windows and macOS; a Dev SDK build never does.
         self.assertEqual(jobs["sdk-windows-macos"]["with"], {"commit": "${{ needs.resolve.outputs.commit }}",
-                                                             "legs": "windows-macos"})
+                                                             "legs": "windows-macos", "c_source_test": "true"})
         self.assertEqual(jobs["sdk-windows-macos"]["name"], "sdk")
         self.assertEqual(summary.PART_OF, {"sdk-windows-macos": "sdk"})
         self.assertEqual(jobs["fn-replace-check"]["needs"], ["resolve", "sdk"])
@@ -1146,12 +1147,12 @@ class DailyWorkflowTests(unittest.TestCase):
                     self.assertIn(f"parity_required={required}", out.read_text().splitlines())
 
     def test_every_leg_is_a_called_workflow_with_the_commit(self):
-        # The summary's needs are the legs (daily_summary.daily_legs): each a called workflow given the resolved
-        # commit, and every called workflow is one of them.
+        # The summary's needs are the legs it judges (daily_summary.daily_legs): each a called workflow given
+        # the resolved commit. Publishing and the independent fuzz report are not legs it judges.
         jobs = self.workflow["jobs"]
         needs = jobs["summary"]["needs"]
         self.assertEqual(set(needs), {"resolve"} | {name for name, job in jobs.items() if "uses" in job
-                                                     and name not in ("sdk-publish", "nightly")})
+                                                     and name not in ("sdk-publish", "nightly", "fuzz")})
         for leg in needs:
             if leg == "resolve":
                 continue

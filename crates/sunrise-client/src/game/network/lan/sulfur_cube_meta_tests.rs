@@ -17,12 +17,14 @@ fn a_sulfur_cube_sends_its_fuse_at_19_and_from_bucket_at_20() {
     )
     .unwrap();
     // No attribute catalog: the rows' values stay as written.
-    let attributes = &sunrise_world::attributes::entity::Catalog::from_json(&serde_json::json!({
-        "data_version": sunrise_world::DATA_VERSION,
-        "attributes": [],
-        "entities": {},
-    }))
-    .unwrap();
+    let attributes = &std::sync::Arc::new(
+        sunrise_world::attributes::entity::Catalog::from_json(&serde_json::json!({
+            "data_version": sunrise_world::DATA_VERSION,
+            "attributes": [],
+            "entities": {},
+        }))
+        .unwrap(),
+    );
     let types = sunrise_client::mobs::MobTypes::load_for_server(&root, attributes).unwrap();
     let _ = std::fs::remove_dir_all(&root);
     let kind = std::sync::Arc::new(types.types["minecraft:sulfur_cube"].clone());
@@ -93,12 +95,14 @@ pub(in crate::game) fn run_a_loaded_sulfur_cube_fuse_matches_the_pinned_oracle()
         r#"{"minecraft:sulfur_cube":{"width":0.52,"height":0.52,"eye_height":0.325,"category":"monster","fire_immune":false,"attributes":{"minecraft:max_health":4.0}}}"#,
     )
     .unwrap();
-    let attributes = &sunrise_world::attributes::entity::Catalog::from_json(&serde_json::json!({
-        "data_version": sunrise_world::DATA_VERSION,
-        "attributes": [],
-        "entities": {},
-    }))
-    .unwrap();
+    let attributes = &std::sync::Arc::new(
+        sunrise_world::attributes::entity::Catalog::from_json(&serde_json::json!({
+            "data_version": sunrise_world::DATA_VERSION,
+            "attributes": [],
+            "entities": {},
+        }))
+        .unwrap(),
+    );
     let types = sunrise_client::mobs::MobTypes::load_for_server(&root, attributes).unwrap();
     let _ = std::fs::remove_dir_all(&root);
     let types: std::collections::HashMap<String, std::sync::Arc<sunrise_client::mobs::MobType>> =

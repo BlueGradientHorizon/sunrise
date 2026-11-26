@@ -632,7 +632,7 @@ fn registered_reads_the_candidate_packs_not_the_last_load() {
         DatapackField, DatapackFieldKind, DatapackRegistryDeclaration, DatapackRegistrySync,
     };
     use sunrise_assets::resource_source::ResourceSource;
-    use sunrise_client::datapack::{DataPack, DataStore, RegistryFiles, registry_files};
+    use sunrise_client::datapack::{DataPack, DataPacks, DataStore, RegistryFiles, registry_files};
     use sunrise_world::{conditions::LoadConditions, loot::PackOverlay};
 
     let root = tempfile::tempdir().unwrap();
@@ -738,7 +738,7 @@ fn registered_reads_the_candidate_packs_not_the_last_load() {
             counter.fetch_add(1, Ordering::SeqCst);
             Ok(true)
         })]);
-    let tags: Vec<_> = DataStore::load(&[&packs[0], &packs[1]])
+    let tags: Vec<_> = DataStore::load(&DataPacks::new(&[&packs[0], &packs[1]]))
         .files
         .into_iter()
         .collect();
@@ -753,9 +753,15 @@ fn registered_reads_the_candidate_packs_not_the_last_load() {
     };
     let mut first = view();
     let winners = registry_files(&[&packs[0], &packs[1]], &keys).unwrap();
-    let admitted =
-        admit_datapack_registries(root.path(), &overlay, &mut first, &declarations, &winners)
-            .unwrap();
+    let admitted = admit_datapack_registries(
+        root.path(),
+        &overlay,
+        &mut first,
+        &declarations,
+        &winners,
+        &mut mod_api::__private::NoVanillaValueDecoder,
+    )
+    .unwrap();
     assert_eq!(admitted.entries("test:c_left").unwrap(), ["test:seed"]);
     assert_eq!(admitted.entries("test:b_right").unwrap(), ["test:holder"]);
     assert_eq!(admitted.entries("test:d_first").unwrap(), ["test:first"]);
@@ -779,6 +785,7 @@ fn registered_reads_the_candidate_packs_not_the_last_load() {
         &mut next,
         &declarations,
         &RegistryFiles::new(),
+        &mut mod_api::__private::NoVanillaValueDecoder,
     )
     .unwrap();
     let next = next.conditions(&base);
@@ -796,9 +803,15 @@ fn registered_reads_the_candidate_packs_not_the_last_load() {
     );
     let winners = registry_files(&[&packs[0], &packs[1]], &keys).unwrap();
     let mut refused = view();
-    let error =
-        admit_datapack_registries(root.path(), &overlay, &mut refused, &declarations, &winners)
-            .unwrap_err();
+    let error = admit_datapack_registries(
+        root.path(),
+        &overlay,
+        &mut refused,
+        &declarations,
+        &winners,
+        &mut mod_api::__private::NoVanillaValueDecoder,
+    )
+    .unwrap_err();
     assert!(
         error.contains("pack file/top, file data/test/test/a_downstream/off.json"),
         "{error}"
@@ -856,6 +869,7 @@ fn unsynced_registry_admits_conditional_payloads_and_tags_without_worldgen_limit
         &mut view,
         &[declaration],
         &winners,
+        &mut mod_api::__private::NoVanillaValueDecoder,
     )
     .unwrap();
     let set = DatapackRegistrySet::from_candidate(admitted);

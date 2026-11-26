@@ -1960,23 +1960,33 @@ impl Mob {
                 speed
             }
         } else {
-            self.flying_speed(w.loop_context)
+            self.flying_speed(w.loop_context, w.side)
         }
     }
     /// `LivingEntity.getSpeed`, through the `living_speed` hook.
     fn speed(&self, w: &MobWorld) -> f32 {
         let mut speed = self.ai.speed;
-        crate::motion::native_living_speed(w.loop_context, self.id, &self.kind.id, &mut speed);
+        let side = w.side;
+        let reads = || side.hit_reads();
+        let living = crate::health::LivingLend::mob(self, &reads);
+        crate::motion::native_living_speed(w.loop_context, living, &mut speed);
         speed
     }
-    /// `LivingEntity.getFlyingSpeed`, through the `living_flying_speed` hook.
-    fn flying_speed(&self, context: &sunrise_world::native_load_context::LoopContext) -> f32 {
+    /// `LivingEntity.getFlyingSpeed`, through the `living_flying_speed` hook, whose view reads
+    /// `side`'s tables.
+    fn flying_speed(
+        &self,
+        context: &sunrise_world::native_load_context::LoopContext,
+        side: &dyn crate::motion::SideLevel,
+    ) -> f32 {
         let mut speed = if super::equine::controlled(self) {
             self.ai.speed * 0.1
         } else {
             0.02
         };
-        crate::motion::native_living_flying_speed(context, self.id, &self.kind.id, &mut speed);
+        let reads = || side.hit_reads();
+        let living = crate::health::LivingLend::mob(self, &reads);
+        crate::motion::native_living_flying_speed(context, living, &mut speed);
         speed
     }
     /// `LivingEntity.getEffectiveGravity`: the gravity, floored to 0.01 while a
@@ -2475,7 +2485,10 @@ impl Mob {
     pub(crate) fn jump_power_with(&self, w: &MobWorld, multiplier: f32) -> f32 {
         let mut power = self.attrs.jump_strength as f32 * multiplier * self.block_jump_factor(w)
             + self.jump_boost_power();
-        crate::motion::native_living_jump_power(w.loop_context, self.id, &self.kind.id, &mut power);
+        let side = w.side;
+        let reads = || side.hit_reads();
+        let living = crate::health::LivingLend::mob(self, &reads);
+        crate::motion::native_living_jump_power(w.loop_context, living, &mut power);
         power
     }
     /// `LivingEntity.getJumpBoostPower`: amplifier + 1 times 0.1, or 0.0 without the effect.
@@ -4512,12 +4525,13 @@ mod tests {
         let mut m = Mob::new(1, kind, Vec3::ZERO, 0.0);
         // Flying speed needs only the hook context, not prepared vanilla resources.
         let context = crate::test_resources::server_loop_context();
+        let side = crate::motion::dry_side();
         m.ai.speed = 0.3;
-        assert_eq!(m.flying_speed(context), 0.02, "no rider");
+        assert_eq!(m.flying_speed(context, side), 0.02, "no rider");
         m.rider = Some(super::super::equine::Rider::default());
-        assert_eq!(m.flying_speed(context), 0.02, "unsaddled");
+        assert_eq!(m.flying_speed(context, side), 0.02, "unsaddled");
         m.extra.set_saddled(true);
-        assert_eq!(m.flying_speed(context), 0.3_f32 * 0.1);
+        assert_eq!(m.flying_speed(context, side), 0.3_f32 * 0.1);
     }
     /// `Drowned.isPushedByFluid` is `!isSwimming()`; water animals, turtles and nautiluses answer false, land mobs true.
     #[test]

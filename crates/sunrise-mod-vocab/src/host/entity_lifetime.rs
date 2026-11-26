@@ -32,6 +32,15 @@ pub trait EntityLifetimeBackend {
     /// respawn or a dimension change starts at 0 when it is admitted, before the server's
     /// first teleport.
     fn entity_tick_count(&self, entity: EntityRef) -> Option<i32>;
+    /// Side: both.
+    /// Whether the entity is alive (`Entity.isAlive`): not removed, and for a living entity
+    /// (`LivingEntity.isAlive`: a player, a mob, an armor stand, the dragon) its health above
+    /// 0, so a dying mob reads false from the tick its health reaches 0 while its death
+    /// animation still plays. NeoForge mods call the same vanilla method. On a client it reads
+    /// the client's copy: the local player's health from the server, another living entity's
+    /// synced health (`LivingEntity.DATA_HEALTH_ID`). None, not false, for a stale handle and
+    /// for an entity whose body the client doesn't keep.
+    fn entity_is_alive(&self, entity: EntityRef) -> Option<bool>;
 }
 /// The handles' writes of the `entity_lifetime` area, implemented by the game and reached through [`BackendMut`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait

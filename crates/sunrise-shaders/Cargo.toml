@@ -8,6 +8,7 @@ description = "Shader packs (the shaders/ folder format): reading packs, their .
 
 [dependencies]
 sunrise-core = { path = "../sunrise-core" }
+sunrise-glsl = { path = "../sunrise-glsl" }
 naga = { version = "30.0.1", features = ["glsl-in"] }
 half = "2"
 png = "0.18"

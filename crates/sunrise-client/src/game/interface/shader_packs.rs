@@ -1,8 +1,8 @@
 //! Shader packs: the one picked on Options > Sunrise Settings > Shader Packs, or
 //! `SUNRISE_SHADER_PACK=<name>` (development; it wins over the pick), runs `shaderpacks/<name>`
-//! (a folder or a zip beside `options.txt`) over the world; Sunrise's own packs go to
-//! `game/modding/native_shaders.rs`. The programs of the current dimension's folder are loaded when the
-//! dimension changes (spec 1.2).
+//! (a folder or a zip beside `options.txt`) over the world. The programs of the current
+//! dimension's folder are loaded when the dimension changes (spec 1.2). A pick in the removed
+//! WGSL format is turned off with a note (`shader_pack_unsupported`).
 
 use super::remote_camera::CameraFogEffects;
 use sunrise_client::camera::CameraFluid;
@@ -10,8 +10,9 @@ use sunrise_client::gfx::pack_uniforms::{PackInputs, PlayerStatus, ViewEntity};
 use sunrise_client::mod_list::ModList;
 use sunrise_client::shader_options::ShaderOptions;
 use sunrise_client::text::Text;
-use sunrise_shader_api::Api;
-use sunrise_shaders::{BlockIds, Macros, Pack, Properties, dimension_folder_named, load_post};
+use sunrise_shaders::{
+    BlockIds, BlockLayers, Macros, Pack, Properties, dimension_folder_named, load_post,
+};
 
 use super::native_shaders::{fingerprint, outcome, refused, remember};
 use super::{Dim, Game, Screen};
@@ -33,10 +34,6 @@ pub(super) fn read_shader_options(
     language: &str,
     macros: &Macros,
 ) -> Option<ShaderOptions> {
-    // Native options come from the manifest; the shared screen opens either kind.
-    if name.starts_with("sunrise:") {
-        return None;
-    }
     let pack = match Pack::open(&Game::shader_packs_dir().join(name)) {
         Ok(pack) => pack,
         Err(e) => {
@@ -163,63 +160,35 @@ pub(crate) struct PickedPack {
     pub draws_flat: bool,
     /// Its passes read the solid quads' vertices (`pack_reads_vertices`): they start wide.
     pub starts_wide: bool,
-    /// It is a shader API 0.2 pack under `SUNRISE_HDR_FRAME=float`, with its `[frame] blend`:
-    /// the frame is float.
-    pub linear: Option<sunrise_shader_api::Blend>,
-    /// Under `SUNRISE_HDR_FRAME=float`, with no pack available or a 0.2 one: the frame is the
-    /// layered float one where HDR output is on (the renderer decides, `FrameRequest::hdr_float`).
+    /// Under `SUNRISE_HDR_FRAME=float`, with no pack available: the frame is the layered float
+    /// one where HDR output is on (the renderer decides, `FrameRequest::hdr_float`).
     pub hdr_float: bool,
 }
 impl PickedPack {
     /// What it asks of the renderer's frame.
     pub(crate) fn frame(self) -> sunrise_client::gfx::FrameRequest {
-        sunrise_client::gfx::FrameRequest::new()
-            .with_linear_pack(self.linear.is_some())
-            .with_linear_blend(self.linear == Some(sunrise_shader_api::Blend::Linear))
-            .with_hdr_float(self.hdr_float)
+        sunrise_client::gfx::FrameRequest::new().with_hdr_float(self.hdr_float)
     }
 }
 
 pub(super) fn picked_pack_shape(settings: &sunrise_client::settings::Settings) -> PickedPack {
     let picked = picked_pack(settings);
     let dir = Game::shader_packs_dir();
-    let path = if dev_pack().is_some() {
-        dir.join(picked)
-    } else {
-        sunrise_client::shader_pack_list::resolve(&dir, picked).1
-    };
+    let path = dir.join(picked);
+    let switch = super::native_shaders::linear_frame_switch();
     let active = !picked.is_empty()
-        && (!super::native_shaders::linear_frame_switch()
-            || (path.exists() && outcome(&path) != Some(None)))
+        && !sunrise_client::shader_pack_list::unsupported(&dir, picked)
+        && (!switch || (path.exists() && outcome(&path) != Some(false)))
         && path
             .file_name()
             .is_none_or(|f| !active_pack(&f.to_string_lossy(), &settings.mods).is_empty());
-    let linear = (active && super::native_shaders::linear_frame_switch())
-        .then(|| sunrise_shader_api::Pack::read_manifest(&path).ok())
-        .flatten()
-        .filter(|m| m.api == sunrise_shader_api::Api::V0_2)
-        .map(|m| m.blend);
+    // A pack draws the terrain flat where the device can, and its passes read the solid quads'
+    // vertices: the sections are laid out so.
     PickedPack {
-        draws_flat: active && pack_draws_flat(&path),
-        starts_wide: active && pack_reads_vertices(&path),
-        linear,
-        hdr_float: (!active || linear.is_some()) && super::native_shaders::linear_frame_switch(),
+        draws_flat: active,
+        starts_wide: active,
+        hdr_float: !active && switch,
     }
-}
-
-/// Whether the pack at `path` has passes that draw the terrain flat where the device can,
-/// reading translucent quads beside their section's solid ones: a `shaders/` pack, taken to
-/// draw terrain, or one of Sunrise's own with a `[shadow]` pass.
-fn pack_draws_flat(path: &std::path::Path) -> bool {
-    !sunrise_shader_api::package::is_pack(path)
-        || sunrise_shader_api::Pack::read_manifest(path).is_ok_and(|m| m.shadow.is_some())
-}
-
-/// Whether the pack at `path` reads the solid quads as vertices, not their compact records: a
-/// `shaders/` pack, taken to draw terrain. Sunrise's own read the records, `[displacement]`
-/// too (gfx/displace.rs).
-fn pack_reads_vertices(path: &std::path::Path) -> bool {
-    !sunrise_shader_api::package::is_pack(path)
 }
 
 // A native mod can bundle a pack as `native-<mod-id>`; its Mods toggle controls it too.
@@ -235,7 +204,7 @@ pub(super) fn active_pack<'a>(picked: &'a str, mods: &ModList) -> &'a str {
     }
 }
 
-/// A selected pack may read resource-pack material maps, whether native or GLSL.
+/// A selected pack may read resource-pack material maps.
 pub(super) fn picks_material_pack(settings: &sunrise_client::settings::Settings) -> bool {
     let dev = std::env::var("SUNRISE_SHADER_PACK").ok();
     let picked = active_pack(
@@ -246,11 +215,10 @@ pub(super) fn picks_material_pack(settings: &sunrise_client::settings::Settings)
         return false;
     }
     let dir = Game::shader_packs_dir();
-    let path = if dev.is_some() {
-        dir.join(picked)
-    } else {
-        sunrise_client::shader_pack_list::resolve(&dir, picked).1
-    };
+    if sunrise_client::shader_pack_list::unsupported(&dir, picked) {
+        return false;
+    }
+    let path = dir.join(picked);
     path.file_name()
         .is_none_or(|f| !active_pack(&f.to_string_lossy(), &settings.mods).is_empty())
 }
@@ -261,6 +229,11 @@ pub(super) fn picks_material_pack(settings: &sunrise_client::settings::Settings)
 pub(super) struct PackIds {
     entities: HashMap<String, i32>,
     blocks: BlockIds,
+    /// `block.properties`' `layer.*` rules (4.2), as the terrain meshes them.
+    pub(super) layers: super::pack_layers::PackLayers,
+    /// `terrain_state_ids` of the loaded pack: two ids per block state, the model's then the
+    /// fluid's (the renderer holds the same table).
+    terrain_states: Vec<i32>,
     /// `blockEntityId` by block state, filled as states are drawn.
     block_states: RefCell<HashMap<u32, i32>>,
     /// The id of a name the file lacks: 65535, or 0 without the file.
@@ -285,6 +258,18 @@ pub(super) struct PackIds {
     pub(super) separate_ao: bool,
 }
 
+impl PackIds {
+    /// The pack's `block.properties` id for the block state at registry index `state`, the
+    /// model id the terrain carries; `None` when the file gives it none or the index is past
+    /// the registry.
+    fn block_state_id(&self, state: usize) -> Option<i32> {
+        self.terrain_states
+            .get(state.checked_mul(2)?)
+            .copied()
+            .filter(|id| *id >= 0)
+    }
+}
+
 #[cfg(test)]
 impl PackIds {
     pub(super) fn with_entity_ids<'a>(ids: impl IntoIterator<Item = (&'a str, i32)>) -> Self {
@@ -298,7 +283,33 @@ impl PackIds {
     }
 }
 
+/// The id table is read only while a `shaders/` (Iris-format) pack is loaded and rendering:
+/// `pack_ids` outlives the panorama and is set before the pack's pipelines finish building.
+fn running_block_state_id(
+    active: bool,
+    kind: Option<&str>,
+    ids: Option<&PackIds>,
+    state_idx: usize,
+) -> Option<i32> {
+    if !active || kind != Some("iris") {
+        return None;
+    }
+    ids?.block_state_id(state_idx)
+}
+
 impl Game<'_> {
+    /// `RenderAssets::shader_pack_block_id`: the running `shaders/` pack's `block.properties` id
+    /// for the block state at registry index `state_idx`, or `None` while no pack runs (the
+    /// panorama and a pack still loading included) or the pack gives it none.
+    pub(in crate::game) fn active_block_state_id(&self, state_idx: usize) -> Option<i32> {
+        running_block_state_id(
+            self.shader_pack_active(),
+            self.renderer.as_ref().and_then(|r| r.shader_pack_kind()),
+            self.pack_ids.as_ref(),
+            state_idx,
+        )
+    }
+
     /// Loads the pack for the current dimension when it changed, and returns this frame's
     /// inputs to the pack's uniforms.
     pub(super) fn shader_pack_inputs(
@@ -330,20 +341,27 @@ impl Game<'_> {
             self.streaming.separate_ao = separate_ao;
             self.all_sections_changed();
         }
+        // Its `layer.*` rules (4.2), none without a pack: in the frame after it loads or drops, as
+        // the flags above, so one meshing of every section takes them all.
+        self.sync_pack_layers();
         let selected = picked_pack(&self.settings).to_owned();
-        let path = self.native_shaders.resolve_path(
-            &Self::shader_packs_dir(),
-            &selected,
-            dev_pack().is_some(),
-        );
+        let dir = Self::shader_packs_dir();
+        let path = dir.join(&selected);
+        let unsupported = sunrise_client::shader_pack_list::unsupported(&dir, &selected);
+        if unsupported {
+            self.shader_pack_unsupported(&selected);
+        }
         let file = path.file_name().unwrap_or_default().to_string_lossy();
-        let picked = if selected.is_empty() || active_pack(&file, &self.settings.mods).is_empty() {
+        let picked = if selected.is_empty()
+            || unsupported
+            || active_pack(&file, &self.settings.mods).is_empty()
+        {
             String::new()
         } else {
             path.to_string_lossy().into_owned()
         };
         if self.native_shaders.picked != picked {
-            self.native_shaders.select(&picked);
+            self.native_shaders.picked = picked.clone();
             self.set_translucent_layers(Vec::new());
             self.pack_ids = None;
             if let Some(renderer) = &mut self.renderer {
@@ -356,7 +374,7 @@ impl Game<'_> {
         {
             match report {
                 Ok(Some((programs, notes))) => {
-                    remember(&path, fingerprint(&path), Some(Api::V0_1));
+                    remember(&path, fingerprint(&path), true);
                     for note in notes {
                         log::warn!("shader pack {name}: {note}");
                     }
@@ -367,7 +385,7 @@ impl Game<'_> {
                         started.elapsed().as_millis()
                     );
                 }
-                Ok(None) => remember(&path, fingerprint(&path), None),
+                Ok(None) => remember(&path, fingerprint(&path), false),
                 // Stopped because it isn't wanted any more: not the pack's failure.
                 Err(refused) if refused.is_cancelled() => {}
                 Err(refused) => {
@@ -392,12 +410,7 @@ impl Game<'_> {
             Dim::Nether => -1,
             Dim::End => 1,
         };
-        if (dev_pack().is_none() && selected.starts_with("sunrise:"))
-            || sunrise_shader_api::package::is_pack(&path)
-        {
-            // One of Sunrise's own packs (game/modding/native_shaders.rs).
-            self.tick_native_shader_pack(&path);
-        } else if let Some(renderer) = &mut self.renderer
+        if let Some(renderer) = &mut self.renderer
             && renderer.shader_pack_dimension() != Some(dimension)
             && !(super::native_shaders::linear_frame_switch() && refused(&path, fingerprint(&path)))
         {
@@ -457,8 +470,10 @@ impl Game<'_> {
                             biomes.list.iter().map(|b| b.name.as_str()).collect();
                         post.custom.set_biomes(&names);
                         let text = pack.read_text("block.properties").unwrap_or_default();
-                        let ids = BlockIds::parse(&Properties::parse(&text, &macros));
-                        for note in &ids.notes {
+                        let block_properties = Properties::parse(&text, &macros);
+                        let ids = BlockIds::parse(&block_properties);
+                        let layers = BlockLayers::parse(&block_properties);
+                        for note in ids.notes.iter().chain(&layers.notes) {
                             log::warn!("shader pack {name}: block.properties: {note}");
                         }
                         let text = pack.read_text("entity.properties");
@@ -495,10 +510,15 @@ impl Game<'_> {
                             missing_entity: if text.is_some() { 65535 } else { 0 },
                             missing_block: if ids.is_empty() { 0 } else { 65535 },
                             blocks: ids.clone(),
+                            layers: super::pack_layers::PackLayers::new(name, layers),
+                            terrain_states: Vec::new(),
                             block_states: RefCell::default(),
                         });
                         let started_ids = std::time::Instant::now();
                         let table = terrain_state_ids(self.pack.assets.registry, &ids);
+                        if let Some(pack_ids) = &mut self.pack_ids {
+                            pack_ids.terrain_states.clone_from(&table);
+                        }
                         log::info!(
                             "shader pack {name}: mc_Entity for {} of {} block states in {} ms",
                             table.chunks(2).filter(|p| p[0] != -1).count(),
@@ -511,7 +531,7 @@ impl Game<'_> {
                         renderer.load_shader_pack(dimension, post, table, name.to_owned(), started);
                     }
                     Err(e) => {
-                        remember(&path, fingerprint(&path), None);
+                        remember(&path, fingerprint(&path), false);
                         self.pack_ids = None;
                         log::warn!("shader pack {name}: {e}");
                         // Without a pack this can't fail.
@@ -587,7 +607,6 @@ impl Game<'_> {
                 self.pack.clouds.0,
             ) as f32
                 * 0.030_000_001,
-            mod_params: self.native_shader_params_now(partial),
             status,
             end_flash,
             end_flash_direction,
@@ -730,7 +749,7 @@ impl Game<'_> {
     /// says so.
     fn shader_pack_failed(&mut self, name: &str, dimension: i32, error: &str) {
         let path = Self::shader_packs_dir().join(name);
-        remember(&path, fingerprint(&path), None);
+        remember(&path, fingerprint(&path), false);
         log::error!("shader pack {name}: turned off: {error}");
         self.pack_ids = None;
         if let Some(renderer) = &mut self.renderer {
@@ -746,6 +765,24 @@ impl Game<'_> {
             format!("Shader pack {name} could not be loaded and was turned off"),
             0xFF5555,
         ));
+    }
+
+    /// Turns off the pick `name` in the removed WGSL format: no pack runs in its place, and the
+    /// chat says so once. A saved pick falls back to no pack and is saved so; the developer
+    /// override (`SUNRISE_SHADER_PACK`) stays as it is.
+    fn shader_pack_unsupported(&mut self, name: &str) {
+        if dev_pack().is_none() {
+            self.settings.set_shader_pick("");
+            self.settings.save(&Self::options_path());
+        }
+        if self.native_shaders.noted != name {
+            self.native_shaders.noted = name.to_owned();
+            log::warn!("shader pack {name}: no longer supported (the WGSL format)");
+            self.system_message(Text::tr(
+                sunrise_client::shader_pack_list::UNSUPPORTED_NOTE,
+                &[&name],
+            ));
+        }
     }
 
     /// Whether the game's vignette draws: the option, unless the loaded pack turns it off.
@@ -1062,183 +1099,46 @@ mod terrain_source_tests {
             [-1, -1, -1, -1, 211, 223, 223, 223, 223, 223, -1, -1]
         );
         assert_eq!(terrain_state_ids(&registry, &BlockIds::default()), [-1; 12]);
+
+        let pack = |ids: &BlockIds| PackIds {
+            terrain_states: terrain_state_ids(&registry, ids),
+            ..Default::default()
+        };
+        let signal = pack(&ids);
+        // The model's id, not the fluid's: state 3 is water level 0, state 4 level 1.
+        assert_eq!(signal.block_state_id(1), Some(31));
+        assert_eq!(signal.block_state_id(2), Some(47));
+        assert_eq!(signal.block_state_id(3), Some(59));
+        assert_eq!(signal.block_state_id(4), Some(61));
+        assert_eq!(signal.block_state_id(5), Some(73));
+        assert_eq!(signal.block_state_id(0), None);
+        assert_eq!(signal.block_state_id(6), None);
+        assert_eq!(signal.block_state_id(usize::MAX), None);
+        assert_eq!(pack(&BlockIds::default()).block_state_id(1), None);
+        assert_eq!(PackIds::default().block_state_id(1), None);
     }
-}
-
-/// Votes from distinct blocks, so adding states cannot change a shared sprite's material.
-#[derive(Default)]
-struct BlockIdVotes<'a>(BTreeMap<(u32, i32), (bool, std::collections::BTreeSet<&'a str>)>);
-
-impl<'a> BlockIdVotes<'a> {
-    fn add(&mut self, layer: u32, id: i32, name: &'a str, sprite: Option<&str>) {
-        // Containers share the still sprite. Its fluid owns it just as a block
-        // named exactly like its sprite does; a lower container id must not win.
-        let owner = sprite
-            .and_then(|s| s.strip_prefix("block/"))
-            .map(|s| match s {
-                "lava_still" | "lava_flow" => "lava",
-                "water_still" | "water_flow" => "water",
-                _ => s,
-            });
-        let named = owner == Some(name.strip_prefix("minecraft:").unwrap_or(name));
-        let v = self.0.entry((layer, id)).or_default();
-        v.0 |= named;
-        v.1.insert(name);
-    }
-
-    fn write(self, table: &mut [i32]) {
-        let mut best = BTreeMap::new();
-        for ((layer, id), (named, blocks)) in self.0 {
-            let candidate = (named, blocks.len(), -id);
-            let b = best.entry(layer).or_insert(candidate);
-            if candidate > *b {
-                *b = candidate;
-            }
-        }
-        for (layer, (_, _, id)) in best {
-            if let Some(slot) = table.get_mut(layer as usize * 2) {
-                *slot = -id;
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-mod block_id_tests {
-    use super::BlockIdVotes;
 
     #[test]
-    fn fluid_sprites_keep_their_fluid_material_when_a_container_uses_them() {
-        let mut votes = BlockIdVotes::default();
-        // Our runtime probe: cauldron 17, lava 29. The lower container id used to
-        // win the still sprite's tie, while the flow sprite already read 29.
-        for (layer, sprite) in [(0, "lava_still"), (1, "lava_flow")] {
-            votes.add(
-                layer,
-                29,
-                "minecraft:lava",
-                Some(&format!("block/{sprite}")),
-            );
-        }
-        votes.add(0, 17, "minecraft:lava_cauldron", Some("block/lava_still"));
-        // Water's still sprite is also shared by containers and waterlogged models.
-        votes.add(2, 31, "minecraft:water", Some("block/water_still"));
-        votes.add(2, 17, "minecraft:water_cauldron", Some("block/water_still"));
-        votes.add(
-            2,
-            17,
-            "minecraft:other_container",
-            Some("block/water_still"),
+    fn running_block_state_id_needs_a_running_iris_pack() {
+        let ids = PackIds {
+            terrain_states: vec![-1, -1, 31, -1],
+            ..Default::default()
+        };
+        assert_eq!(
+            running_block_state_id(true, Some("iris"), Some(&ids), 1),
+            Some(31)
         );
-        let mut table = [-1; 8];
-        votes.write(&mut table);
-        assert_eq!(table, [29, -1, 29, -1, 31, -1, -1, -1]);
-    }
-
-    #[test]
-    fn shared_model_sprites_still_use_distinct_blocks_and_the_named_owner() {
-        let mut votes = BlockIdVotes::default();
-        for _ in 0..20 {
-            votes.add(0, 3, "minecraft:many_states", Some("block/shared"));
-        }
-        votes.add(0, 9, "minecraft:one", Some("block/shared"));
-        votes.add(0, 9, "minecraft:two", Some("block/shared"));
-        votes.add(1, 20, "minecraft:oak_leaves", Some("block/oak_leaves"));
-        votes.add(1, 3, "minecraft:one", Some("block/oak_leaves"));
-        votes.add(1, 3, "minecraft:two", Some("block/oak_leaves"));
-        let mut table = [-1; 4];
-        votes.write(&mut table);
-        assert_eq!(table, [9, -1, 20, -1]);
-    }
-}
-
-/// `mc_Entity` (x, y) of each block sprite layer, as (id, fluid) pairs: terrain vertices carry
-/// their sprite layer, not their block. A layer takes the id of the block named like its sprite
-/// (`block/oak_leaves` for `oak_leaves`, and still/flow sprites for their fluid), else the id
-/// most blocks drawing it share (ties: the lowest); -1 when no block drawing it has one.
-/// y is 1 for the fluid sprites, 0 otherwise (`fluid_pairs`).
-pub(super) fn block_id_table(pack: &super::PackResources, ids: &BlockIds) -> Vec<i32> {
-    let layers = pack
-        .render
-        .sprite_layers
-        .values()
-        .max()
-        .map_or(0, |l| l + 1) as usize;
-    let sprite = |name: &str| pack.render.sprite_layers.get(name).copied();
-    let fluids = ["water_still", "water_flow", "lava_still", "lava_flow"]
-        .map(|f| sprite(&format!("minecraft:block/{f}")));
-    let mut table = fluid_pairs(layers, fluids.into_iter().flatten());
-    if ids.is_empty() {
-        return table;
-    }
-    let registry = pack.assets.registry;
-    let catalog = &pack.render.model_catalog;
-    // (layer, id) -> (a block named like the sprite, the blocks).
-    let mut votes = BlockIdVotes::default();
-    for i in 0..registry.len() {
-        let state_id = sunrise_world::registry::BlockStateId(i as u32);
-        let Some(state) = registry.state(state_id) else {
-            continue;
-        };
-        let Some(id) = ids.id(&state.name, |k| state.properties.get(k).map(String::as_str)) else {
-            continue;
-        };
-        let block = state.name.strip_prefix("minecraft:").unwrap_or(&state.name);
-        let mut vote = |layer: u32| {
-            votes.add(
-                layer,
-                id,
-                &state.name,
-                pack.layer_names.get(&layer).map(String::as_str),
-            );
-        };
-        // Fluids draw from their own sprites.
-        let fluid = match block {
-            "water" => ["water_still", "water_flow"],
-            "lava" => ["lava_still", "lava_flow"],
-            _ => ["", ""],
-        };
-        for f in fluid.iter().filter(|f| !f.is_empty()) {
-            if let Some(l) = sprite(&format!("minecraft:block/{f}")) {
-                vote(l);
-            }
-        }
-        let origin = sunrise_core::position::BlockPos::new(0, 0, 0);
-        for (_, model) in catalog.collect(state_id, origin).unwrap_or_default() {
-            for face in &model.faces {
-                vote(face.layer);
-            }
-        }
-    }
-    votes.write(&mut table);
-    table
-}
-
-/// `layers` (id, fluid) pairs before the ids are known: id -1, and `mc_Entity.y` 1 for the
-/// `fluids` layers, 0 for the others. Iris 1.11.7, with probe packs of ours (#10452), gave
-/// terrain y 1 on water and lava, and 0 on every other block, whether `block.properties`
-/// maps it or not.
-fn fluid_pairs(layers: usize, fluids: impl IntoIterator<Item = u32>) -> Vec<i32> {
-    let mut table: Vec<i32> = std::iter::repeat_n([-1, 0], layers).flatten().collect();
-    for l in fluids {
-        if let Some(slot) = table.get_mut(l as usize * 2 + 1) {
-            *slot = 1;
-        }
-    }
-    table
-}
-
-#[cfg(test)]
-mod fluid_pair_tests {
-    use super::fluid_pairs;
-
-    /// Iris 1.11.7's `mc_Entity.y` in terrain (probe packs of ours, #10452): 1 on water and
-    /// lava, 0 on every other block; the ids start at -1 (no id) until `block.properties` gives
-    /// them.
-    #[test]
-    fn terrain_reads_y_1_on_fluids_and_0_elsewhere() {
-        assert_eq!(fluid_pairs(4, [1, 3]), [-1, 0, -1, 1, -1, 0, -1, 1]);
-        assert_eq!(fluid_pairs(2, []), [-1, 0, -1, 0]);
+        // Loaded but suppressed (title screen) or not yet rendering.
+        assert_eq!(
+            running_block_state_id(false, Some("iris"), Some(&ids), 1),
+            None
+        );
+        assert_eq!(running_block_state_id(true, None, Some(&ids), 1), None);
+        assert_eq!(
+            running_block_state_id(true, Some("native"), Some(&ids), 1),
+            None
+        );
+        assert_eq!(running_block_state_id(true, Some("iris"), None, 1), None);
     }
 }
 
@@ -1265,14 +1165,13 @@ mod rendered_item_tests {
 
 #[cfg(test)]
 mod native_pack_tests {
-    use super::{active_pack, pack_draws_flat, pack_reads_vertices, picked_pack_shape};
+    use super::{active_pack, picked_pack_shape};
     use sunrise_client::mod_list::{Installed, ModList, NativePage};
 
     #[test]
     fn unknown_pack_is_optimistic_but_refusal_owner_and_presence_override_it() {
-        use crate::game::native_shaders::{fingerprint, remember};
+        use crate::game::native_shaders::{fingerprint, linear_frame_switch, remember};
         use sunrise_client::settings::Settings;
-        use sunrise_shader_api::{Api, Blend};
         let mut settings = Settings::default();
         settings.sunrise.hdr = sunrise_client_render::graphics::HdrMode::On;
         settings.mods.installed.push(Installed {
@@ -1286,86 +1185,33 @@ mod native_pack_tests {
         let root =
             std::env::temp_dir().join(format!("sunrise-frame-policy-{}", std::process::id()));
         let path = root.join("native-frame_owner");
-        std::fs::create_dir_all(&path).unwrap();
-        std::fs::write(path.join(sunrise_shader_api::MANIFEST),
-            "schema = 1\nid = \"fixture\"\nname = \"Fixture\"\nversion = \"1\"\napi = \"0.2\"\n[[post]]\nfile = \"p.wgsl\"\n").unwrap();
+        std::fs::create_dir_all(path.join("shaders")).unwrap();
         settings.sunrise.shader_pack = path.to_string_lossy().into_owned();
-        let switch = crate::game::native_shaders::linear_frame_switch();
-        // A 0.2 pack with HDR on asks for the layered frame, as no pack does.
+        let switch = linear_frame_switch();
+        // A pack nobody answered for draws; it asks no float frame.
         let shape = picked_pack_shape(&settings);
-        assert_eq!(shape.linear, switch.then_some(Blend::Gamma));
+        assert!(shape.draws_flat && shape.starts_wide);
+        assert!(!shape.hdr_float);
+        remember(&path, fingerprint(&path), true);
+        assert!(!picked_pack_shape(&settings).hdr_float);
+        // Refused, the frame is the one no pack asks for.
+        remember(&path, fingerprint(&path), false);
+        let shape = picked_pack_shape(&settings);
+        assert_eq!(shape.draws_flat, !switch);
         assert_eq!(shape.hdr_float, switch);
-        for api in [Api::V0_1, Api::V0_2] {
-            let manifest = path.join(sunrise_shader_api::MANIFEST);
-            let text = std::fs::read_to_string(&manifest).unwrap();
-            std::fs::write(
-                &manifest,
-                text.replace("api = \"0.2\"", &format!("api = \"{api}\""))
-                    .replace("api = \"0.1\"", &format!("api = \"{api}\"")),
-            )
-            .unwrap();
-            remember(&path, fingerprint(&path), Some(api));
-            let shape = picked_pack_shape(&settings);
-            assert_eq!(shape.linear.is_some(), switch && api == Api::V0_2);
-            assert_eq!(shape.hdr_float, switch && api == Api::V0_2);
-        }
-        // The frame's blend comes with it: the frame a pack that changes it asks for is
-        // another, so the game makes the renderer again (`follow_frame`).
-        let manifest = path.join(sunrise_shader_api::MANIFEST);
-        let text = std::fs::read_to_string(&manifest).unwrap();
-        std::fs::write(&manifest, text.clone() + "[frame]\nblend = \"linear\"\n").unwrap();
-        remember(&path, fingerprint(&path), Some(Api::V0_2));
-        let shape = picked_pack_shape(&settings);
-        assert_eq!(shape.linear, switch.then_some(Blend::Linear));
-        assert_eq!(shape.frame().linear_blend(), switch);
-        std::fs::write(&manifest, text).unwrap();
-        remember(&path, fingerprint(&path), Some(Api::V0_2));
-        assert!(!picked_pack_shape(&settings).frame().linear_blend());
+        remember(&path, fingerprint(&path), true);
+        // Its mod off, it does not run.
         settings.mods.disabled.insert("frame_owner".into());
         let shape = picked_pack_shape(&settings);
-        assert_eq!(shape.linear, None);
+        assert!(!shape.draws_flat && !shape.starts_wide);
         assert_eq!(shape.hdr_float, switch);
         settings.mods.disabled.clear();
-        assert_eq!(picked_pack_shape(&settings).linear.is_some(), switch);
-        remember(&path, fingerprint(&path), None);
-        assert_eq!(picked_pack_shape(&settings).hdr_float, switch);
-        remember(&path, fingerprint(&path), Some(Api::V0_2));
+        assert!(picked_pack_shape(&settings).draws_flat);
+        // Gone, it does not run under the switch.
         std::fs::remove_dir_all(root).unwrap();
         let missing = picked_pack_shape(&settings);
-        assert_eq!(missing.linear, None);
+        assert_eq!(missing.draws_flat, !switch);
         assert_eq!(missing.hdr_float, switch);
-    }
-
-    #[test]
-    fn shaders_packs_and_packs_with_a_shadow_pass_draw_flat() {
-        let root = std::env::temp_dir().join(format!("sunrise-flat-packs-{}", std::process::id()));
-        // A folder without a manifest is a `shaders/` pack; with one, a pack of Sunrise's own.
-        let pack = |name: &str, manifest: Option<&str>| {
-            let dir = root.join(name);
-            std::fs::create_dir_all(&dir).unwrap();
-            if let Some(extra) = manifest {
-                std::fs::write(dir.join("material.wgsl"), "").unwrap();
-                let text = format!(
-                    "schema = 1\nid = \"{name}\"\nname = \"{name}\"\nversion = \"1\"\napi = \"{}\"\n\
-                     [material]\nfile = \"material.wgsl\"\n{extra}",
-                    sunrise_shader_api::API
-                );
-                std::fs::write(dir.join(sunrise_shader_api::MANIFEST), text).unwrap();
-            }
-            dir
-        };
-        assert!(pack_draws_flat(&pack("shaders_pack", None)));
-        assert!(!pack_draws_flat(&pack("unshadowed", Some(""))));
-        assert!(pack_draws_flat(&pack("shadowed", Some("[shadow]\n"))));
-        // Only a `shaders/` pack reads the solid quads' vertices: a material, a shadow pass
-        // and `[displacement]` start in the compact layout.
-        assert!(pack_reads_vertices(&root.join("shaders_pack")));
-        assert!(!pack_reads_vertices(&root.join("shadowed")));
-        assert!(!pack_reads_vertices(&pack(
-            "displaced",
-            Some("[displacement]\n")
-        )));
-        std::fs::remove_dir_all(&root).ok();
     }
 
     #[test]
@@ -1383,20 +1229,6 @@ mod native_pack_tests {
         assert_eq!(active_pack(owned, &mods), owned);
         mods.disabled.insert("sunrise_better_visuals".into());
         assert_eq!(active_pack(owned, &mods), "");
-        let root =
-            std::env::temp_dir().join(format!("sunrise-bundled-shader-{}", std::process::id()));
-        let pack = root.join(owned);
-        std::fs::create_dir_all(&pack).unwrap();
-        std::fs::write(pack.join(sunrise_shader_api::MANIFEST),
-            "schema = 1\nid = \"bundled\"\nname = \"Bundled\"\nversion = \"1\"\napi = \"0.1\"\n[[post]]\nfile = \"p.wgsl\"\n").unwrap();
-        let (key, path) = sunrise_client::shader_pack_list::resolve(&root, owned);
-        assert_eq!(key, "sunrise:bundled");
-        assert_eq!(path, pack);
-        assert_eq!(
-            active_pack(&path.file_name().unwrap().to_string_lossy(), &mods),
-            ""
-        );
-        std::fs::remove_dir_all(root).unwrap();
         assert_eq!(active_pack("golden_hour", &mods), "golden_hour");
         mods.installed[0].native = None;
         assert_eq!(active_pack(owned, &mods), owned);

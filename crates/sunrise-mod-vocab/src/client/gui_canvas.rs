@@ -167,6 +167,24 @@ pub trait GuiCanvas {
     /// to commit.
     fn item(&mut self, stack: &ItemStack, at: [f32; 2], seed: i32) -> Result<(), GuiDrawError>;
 
+    /// [`Self::item`] with every vertex it draws, the enchantment glint's included, multiplied
+    /// by straight-alpha ARGB `argb`: a fading pickup icon, a translucent ghost item in a recipe
+    /// preview, a dimmed unavailable slot. `0xFFFFFFFF` draws exactly what [`Self::item`] draws,
+    /// and a zero alpha (`argb >> 24 == 0`) draws nothing, as [`Self::text`] does: the item is
+    /// not drawn at all, so its model hooks do not run for that call. An OptiFine CIT glint
+    /// layer of a resource pack takes the tint's alpha only, as its own colour comes from the
+    /// pack. The current
+    /// pose and scissor apply as for [`Self::item`]. Vanilla 26.3's `GuiGraphicsExtractor.item`
+    /// always draws opaque (its item blit's colour is `-1`); this is the multiplier
+    /// `RenderSystem.setShaderColor` gave around `GuiGraphics.renderItem` before 1.21.6.
+    fn item_tinted(
+        &mut self,
+        stack: &ItemStack,
+        at: [f32; 2],
+        seed: i32,
+        argb: u32,
+    ) -> Result<(), GuiDrawError>;
+
     /// Draw the stack's bar, cooldown, count and custom item decorations at `at`, in that order.
     /// In an item decorator's canvas or its children, this paints only the standard bar, cooldown
     /// and count, without invoking item decorators again.
@@ -207,16 +225,24 @@ pub trait GuiCanvas {
 
     /// `GuiGraphicsExtractor.blit` of a standalone texture, a picture outside the GUI atlas such
     /// as a guide book's chapter art, at `dst = [x, y, w, h]`, tinted by ARGB `argb`, under the
-    /// current pose and scissor. `id` is the exact resource (`mymod:textures/gui/chapter.png`),
+    /// current pose and scissor.
+    ///
+    /// One lookup rule for `id`: a live dynamic texture of that id
+    /// (`ClientRenderClientHost::create_dynamic_texture`, of any mod: drawing has no owner check)
+    /// is drawn, nearest with repeat and one mip level; otherwise `id` is the exact resource (`mymod:textures/gui/chapter.png`),
     /// read from the active resource stack, mod packs included, never rewritten: name the
     /// `textures/` folder and `.png` yourself. The quad samples `region.uv / region.tex` to
     /// `(region.uv + region.src) / region.tex` unclamped, as `innerBlit` does (a negative extent
     /// flips that axis), with the sampler the winning `.png.mcmeta` sets: `blur` filters
     /// linearly, `clamp` clamps to the edge, else nearest and repeat, no mipmaps. The image loads
-    /// on first use and stays loaded until the next resource reload. A missing or undecodable
-    /// image, or a `.png.mcmeta` vanilla cannot read, draws vanilla's missing texture in its
-    /// place rather than refusing. A non-finite `uv` is refused with
-    /// [`GuiDrawError::NotFinite`] and a zero `tex` side with [`GuiDrawError::BadBlitRegion`].
+    /// on first use and stays loaded until the next resource reload. An `id` that names neither a
+    /// live dynamic texture nor a resource in the stack when this is called is refused with
+    /// [`GuiDrawError::UnknownTexture`] and draws nothing. An image that is there but undecodable,
+    /// or a `.png.mcmeta` vanilla cannot read, draws vanilla's missing texture in its
+    /// place rather than refusing, and so does a dynamic texture released after this call
+    /// and before the frame draws, as vanilla's `TextureManager.release` leaves its id. A
+    /// non-finite `uv` is refused with [`GuiDrawError::NotFinite`] and a zero `tex` side with
+    /// [`GuiDrawError::BadBlitRegion`].
     fn texture(
         &mut self,
         id: &Identifier,

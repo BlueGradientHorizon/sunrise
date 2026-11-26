@@ -100,7 +100,7 @@ impl Attack {
         }
     }
     /// The current player's source, shared by every phase and equipment continuation.
-    pub fn player_source<'a>(&self, damage_type: &'a str, causing: i32) -> HurtSource<'a> {
+    pub fn player_source<'a>(&'a self, damage_type: &'a str, causing: i32) -> HurtSource<'a> {
         let melee = direct_entity_source(damage_type);
         HurtSource {
             damage_type,
@@ -112,6 +112,7 @@ impl Attack {
                     self.projectile_direct(damage_type)
                 }
             }),
+            direct_type: self.direct_type.as_deref(),
             position: self.position,
         }
     }
@@ -197,7 +198,7 @@ pub fn melee(kind: DamageKind) -> bool {
 /// is a mob, or the player whose attack the level lends. The direct entity is
 /// the attacker in melee, or the projectile when this damage type names one
 /// (`arrow`, `wither_skull`). `magic()` does not, even during the impact.
-pub fn mob_source(damage: &Damage, attack: &Attack) -> HurtSource<'static> {
+pub fn mob_source<'a>(damage: &Damage, attack: &'a Attack) -> HurtSource<'a> {
     let causing = match damage.attacker {
         Some(Who::Mob(id)) => id as i32,
         Some(Who::Player) => attack.attacker,
@@ -222,6 +223,7 @@ pub fn mob_source(damage: &Damage, attack: &Attack) -> HurtSource<'static> {
         } else {
             attack.projectile_direct(damage_type)
         },
+        direct_type: attack.direct_type.as_deref(),
         position: damage.from,
     }
 }

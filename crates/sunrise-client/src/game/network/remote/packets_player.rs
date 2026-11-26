@@ -9,6 +9,7 @@ impl Game<'_> {
         }
         // Configuration's tags, over the block ids the parts just bound.
         self.install_remote_tags();
+        self.refresh_face_visibility_tags();
         self.refresh_render_visibility();
         self.test_highlights.clear();
         // handleLogin: `debugSubscriber.clear()`.
@@ -382,9 +383,9 @@ impl Game<'_> {
                             .or_insert_with(|| Arc::new(std::sync::atomic::AtomicI32::new(0)));
                         if let Some(t) = e.properties.iter().find(|p| p.name == "textures") {
                             // Keep the raw property until the services keys settle.
-                            r.skin_textures
-                                .entry(e.uuid)
-                                .or_insert_with(|| Arc::new(PlayerTextures::new(t.clone())));
+                            r.skin_textures.entry(e.uuid).or_insert_with(|| {
+                                Arc::new(PlayerTextures::new(e.uuid, t.clone()))
+                            });
                         }
                     }
                 }

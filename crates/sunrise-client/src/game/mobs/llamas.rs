@@ -31,7 +31,11 @@ impl Game<'_> {
             loved = true;
         }
         if m.health < m.attrs.max_health {
-            m.heal(&self.loop_context, heal);
+            m.heal(
+                &self.loop_context,
+                &|| crate::game::entity::hit_reads_of!(self),
+                heal,
+            );
             used = true;
         }
         let mut happy = false;

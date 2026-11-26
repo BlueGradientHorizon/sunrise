@@ -465,7 +465,7 @@ pub(crate) fn restore_modifier_order<Row: Clone>(
 }
 
 /// The transient seed in its insertion order, independent of the built equipment map.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct TransientModifiers(Vec<(Arc<str>, Modifier)>);
 
 impl TransientModifiers {
@@ -668,8 +668,8 @@ impl LivingAttributes {
         self.built_or_build(catalog, entity, seed)?.modifiers(name)
     }
 
-    /// The map, built from `seed` if this is its first use.
-    fn built_or_build(
+    /// The map, built from `seed` if this is its first use, and kept.
+    pub fn built_or_build(
         &self,
         catalog: &Arc<Catalog>,
         entity: &str,

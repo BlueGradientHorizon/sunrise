@@ -22,6 +22,33 @@ pub trait EntityPositionBackend {
     /// for the kinds that don't turn. API 373.
     fn entity_rotation(&self, entity: EntityRef) -> Option<[f32; 2]>;
     /// Side: both.
+    /// Where the entity was when its current tick began (`Entity.xo`, `yo`, `zo`): what
+    /// `Entity.setOldPosAndRot` stored in `Entity.commonTick`, which the level's entity pass
+    /// (`ServerLevel.tickNonPassenger`, `ClientLevel.tickNonPassenger`, and `tickPassenger` for
+    /// a rider) runs before the entity's own tick, and a teleport or a load also sets. Between
+    /// two ticks it is the position the last tick started from, so a move this tick made goes
+    /// from here to [`EntityRef::position`]; [`EntityRef::position_at`] eases between them as
+    /// `Entity.getPosition(float)` does. NeoForge mods read the same vanilla fields.
+    ///
+    /// A server's player is snapped wherever the server moves it (`absSnapTo` for an accepted
+    /// move and after `ServerGamePacketListenerImpl.tickPlayer`), so it reads its position.
+    /// On a client, the local player's own (where the camera eases from), and the client's
+    /// copy of every entity it ticks; an entity the client tracks without a body of its own
+    /// answers from the copy [`EntityRef::position`] reads. None for a stale handle or an
+    /// entity whose body the client doesn't keep.
+    fn entity_previous_position(&self, entity: EntityRef) -> Option<[f64; 3]>;
+    /// Side: both.
+    /// The yaw and pitch in degrees when the entity's current tick began (`Entity.yRotO`,
+    /// `xRotO`), in the order of [`EntityRef::rotation`]: what `Entity.setOldPosAndRot` stored,
+    /// as for [`EntityRef::previous_position`]. `Entity.turn` moves them with the view, and a
+    /// projectile's `ProjectileUtil.rotateTowardsMovement` and `ProjectileDeflection.REVERSE`
+    /// shift them, as vanilla does. A renderer eases from here to the rotation
+    /// (`Entity.getViewYRot(float)`, `getViewXRot(float)`). NeoForge mods read the same vanilla
+    /// fields. On a client, the local player's and those of every entity the client keeps a
+    /// body for, as [`EntityRef::rotation`] answers. None for a stale handle or an entity
+    /// whose body the client doesn't keep.
+    fn entity_previous_rotation(&self, entity: EntityRef) -> Option<[f32; 2]>;
+    /// Side: both.
     /// Whether the entity stands on a block (`Entity.onGround`). API 379.
     /// On a client, the local player's own predicted flag (the one it sends); for another
     /// kept entity, including a tracked player, its client copy's flag. Neither is server

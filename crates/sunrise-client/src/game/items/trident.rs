@@ -31,6 +31,8 @@ pub(super) fn remote_tick(
     owner_eye: Option<Vec3>,
 ) {
     t.previous = t.position;
+    t.previous_yaw = t.yaw;
+    t.previous_pitch = t.pitch;
     t.shake -= i32::from(t.shake > 0);
     if t.in_ground_time > 4 {
         t.dealt_damage = true;
@@ -280,6 +282,8 @@ impl Game<'_> {
             needs_sync: false,
             yaw: 0.0,
             pitch: 0.0,
+            previous_yaw: 0.0,
+            previous_pitch: 0.0,
             in_ground: false,
             in_ground_time: 0,
             life: 0,
@@ -316,6 +320,9 @@ impl Game<'_> {
         trident.velocity = projectile.velocity;
         trident.yaw = projectile.yaw;
         trident.pitch = projectile.pitch;
+        // Projectile.shoot ends with yRotO = getYRot(), xRotO = getXRot().
+        trident.previous_yaw = trident.yaw;
+        trident.previous_pitch = trident.pitch;
         self.tridents.push(trident);
         self.player_projectile_shot();
         // level.playSound(null, trident, sound, PLAYERS, 1, 1).
@@ -598,9 +605,31 @@ impl Game<'_> {
     fn tick_tridents_in_scope(&mut self, transaction: &mut Option<TransactionFrame>) {
         let catchers = self.trident_catchers();
         let ticking = self.entity_ticking_area();
+        let mut round = self.native_tick_round();
+        // The trident whose tick just ended, whatever ended it: it hears its Post before the
+        // next one's Pre.
+        let mut told = None;
+        // EntityTickList copy-on-iterate: while a listener may remove tridents, the round visits
+        // the tridents that were there when it began, each found again by its join.
+        let joins: Option<Vec<_>> = round
+            .told_listening()
+            .then(|| self.tridents.iter().map(|t| t.join).collect());
+        let mut turns = joins.iter().flatten();
         let mut i = 0;
         let mut through = None;
-        while i < self.tridents.len() {
+        loop {
+            if let Some(id) = told.take() {
+                self.native_tick_post_one(&round, id, "minecraft:trident");
+            }
+            if joins.is_some() {
+                let Some(&join) = turns.next() else { break };
+                let Some(at) = self.tridents.locate(join) else {
+                    continue;
+                };
+                i = at;
+            } else if i >= self.tridents.len() {
+                break;
+            }
             let t = &self.tridents[i];
             let target = Target::Trident(t.id);
             if through.is_some_and(|last| t.join > last)
@@ -616,8 +645,28 @@ impl Game<'_> {
                 i += 1;
                 continue;
             }
+            let (id, join) = (self.tridents[i].id, self.tridents[i].join);
+            if !self.native_tick_pre_one(&mut round, id, "minecraft:trident") {
+                i += 1;
+                continue;
+            }
+            // The Pre's listener may have removed tridents.
+            if self.tridents.get(i).is_none_or(|t| t.join != join) {
+                let Some(at) = self.tridents.locate(join) else {
+                    continue;
+                };
+                i = at;
+            }
+            // A removal the listener queued: nothing ticks, nothing hears a Post.
+            if self.removal_pending(&target) || self.persist.removals.contains(&target) {
+                i += 1;
+                continue;
+            }
+            told = Some(id);
             let mut t = self.tridents.remove(i);
             t.previous = t.position;
+            t.previous_yaw = t.yaw;
+            t.previous_pitch = t.pitch;
             t.age += 1;
             // AbstractArrow.tick: `if (shakeTime > 0) --shakeTime;`.
             t.shake -= i32::from(t.shake > 0);
@@ -795,6 +844,8 @@ impl Game<'_> {
                             let (velocity, yaw) = breeze_deflect(t.velocity, t.yaw, jitter);
                             t.velocity = velocity;
                             t.yaw = yaw;
+                            // ProjectileDeflection.REVERSE turns the old yaw by the same angle.
+                            t.previous_yaw += 170.0 + jitter * 20.0;
                             t.deflected_by = Some(breeze_id);
                         }
                     } else {
@@ -996,6 +1047,7 @@ impl Game<'_> {
                             damage_type: "minecraft:trident",
                             causing,
                             direct: t.id as i32,
+                            direct_type: Some("minecraft:trident"),
                             position: Some([t.previous.x, t.previous.y, t.previous.z]),
                         };
                         let hurt_living = hurt_mob
@@ -1197,6 +1249,9 @@ impl Game<'_> {
                 self.close_storage_frame(frame, true);
             }
             i += 1;
+        }
+        if let Some(id) = told {
+            self.native_tick_post_one(&round, id, "minecraft:trident");
         }
     }
     /// ThrownTridentRenderer.

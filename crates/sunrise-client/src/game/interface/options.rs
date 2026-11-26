@@ -504,27 +504,7 @@ impl Game<'_> {
                     use sunrise_client::clipboard::Clipboard;
                     self.clipboard.set(&text);
                 }
-                Event::BrowseMods => {
-                    let ui = &mut self.ui.options.mod_browser;
-                    self.mod_jobs.browse(ui, Self::game_dir());
-                }
-                Event::InstallMod(id) => {
-                    if self.player.is_none() {
-                        let ui = &mut self.ui.options.mod_browser;
-                        self.mod_jobs.install(ui, Self::game_dir(), id);
-                    }
-                }
-                // The website, through ConfirmLinkScreen as other links.
-                Event::OpenModPage(url) => self.confirm_trusted_link(&url, Screen::Options),
                 Event::ListShaderPacks => {
-                    let (key, _) = sunrise_client::shader_pack_list::resolve(
-                        &Self::shader_packs_dir(),
-                        &self.settings.sunrise.shader_pack,
-                    );
-                    if key != self.settings.sunrise.shader_pack {
-                        self.settings.sunrise.shader_pack = key;
-                        self.settings.save(&Self::options_path());
-                    }
                     self.settings.shader_packs =
                         sunrise_client::shader_pack_list::scan(&Self::shader_packs_dir());
                 }
@@ -532,11 +512,6 @@ impl Game<'_> {
                 Event::ShaderPack => self.settings.save(&Self::options_path()),
                 Event::OpenShaderOptions => self.open_shader_options(),
                 Event::ShaderOptions => self.save_shader_options(),
-                Event::NativePackOptions(i) => {
-                    if let Some(pack) = self.settings.shader_packs.get(i) {
-                        pack.save_values(&Self::shader_packs_dir());
-                    }
-                }
                 Event::OpenShaderPackFolder => {
                     let dir = Self::shader_packs_dir();
                     let _ = std::fs::create_dir_all(&dir);
@@ -629,11 +604,12 @@ impl Game<'_> {
             self.settings.sunrise.save(dir);
         }
         self.hold_fullbright();
+        let vsync = self.effective_vsync();
         let s = &self.settings;
         if let Some(r) = self.renderer.as_mut() {
             r.gamma = s.gamma as f32;
             r.improved_transparency = s.improved_transparency;
-            r.set_present_mode(s.vsync, s.sunrise.present_mode);
+            r.set_present_mode(vsync, s.sunrise.present_mode);
             r.animated_textures = s.sunrise.animated_textures;
             r.screenshot_quality = s.sunrise.screenshot_quality;
             r.set_mipmap_levels(s.mipmap_levels.max(0) as u32);
@@ -754,12 +730,11 @@ impl Game<'_> {
     /// the last non-empty pick, resuming restores it, and the off state survives a restart.
     /// With `SUNRISE_SHADER_PACK` set the developer override wins and the key does nothing.
     /// Invalidation stays with the normal selection path: the next frame's `shader_pack_inputs`
-    /// sees the changed pick and drops or loads the pack itself, for either pack kind.
+    /// sees the changed pick and drops or loads the pack itself.
     pub(super) fn toggle_shader_pack(&mut self) {
         let present = |key: &str| {
-            sunrise_client::shader_pack_list::resolve(&Self::shader_packs_dir(), key)
-                .1
-                .exists()
+            let dir = Self::shader_packs_dir();
+            !sunrise_client::shader_pack_list::unsupported(&dir, key) && dir.join(key).exists()
         };
         let plan = plan_shader_toggle(
             &self.settings.sunrise.shader_pack,
@@ -954,7 +929,8 @@ mod resize_state_tests {
                 super::super::native_entity_refs::tests::with_client_game(|game| {
                     game.options.offscreen = true;
                     game.window = Some(window.clone());
-                    game.renderer = Some(game.new_renderer(window.clone()).unwrap());
+                    let renderer = game.new_renderer(window.clone()).unwrap();
+                    game.set_renderer(renderer);
                     game.renderer.as_mut().unwrap().resize(960, 1080);
                     game.settings.gui_scale = scale;
                     game.settings.force_unicode = false;

@@ -38,12 +38,11 @@
     "sunrise.app": "the macOS app bundle's name",
     "sunrise.mods.dev": "a translation key",
     "crates/sunrise-attestation/src/lib.rs github.com": "Fulcio repository and workflow URI prefix matched locally, never contacted",
-    "crates/sunrise-attestation/src/lib.rs token.actions.githubusercontent.com": "OIDC issuer identity matched in a certificate, never contacted"
+    "crates/sunrise-attestation/src/lib.rs token.actions.githubusercontent.com": "OIDC issuer identity matched in a certificate, never contacted",
+    "crates/sunrise-jar-fetch/src/lib.rs modrinth.com": "Modrinth version page URL prefix matched locally, never contacted"
   },
   "allowed": [
     "crates/sunrise-client-render/src/pack_browser.rs api.modrinth.com",
-    "crates/sunrise-client/src/mod_registry.rs horizon-rust.github.io",
-    "crates/sunrise-client/src/mod_registry.rs playsunrise.net",
     "crates/sunrise-mod-registry/src/github.rs api.github.com",
     "crates/sunrise-mod-registry/src/github.rs github.com",
     "crates/sunrise-mod-registry/src/github.rs uploads.github.com",

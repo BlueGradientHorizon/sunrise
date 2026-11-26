@@ -1525,6 +1525,8 @@ impl Game<'_> {
                             row.rotation[1] = entity_pitch(pitch);
                         }
                     }
+                    // Entity.teleportSetPosition ends with setOldPosAndRot.
+                    row.previous_rotation = row.rotation;
                 }
             }
             Target::Guest(_) => {
@@ -1687,6 +1689,7 @@ impl Game<'_> {
             Target::Crystal(id) => {
                 if let Some(c) = self.crystals.iter_mut().find(|c| c.id == id) {
                     (c.position, c.fall.0) = (v, true); // performTeleport: setOnGround(true)
+                    c.previous = v;
                 }
             }
             Target::Dragon(id) => {
@@ -2126,9 +2129,11 @@ impl Game<'_> {
                 let Some(Arg::Resource(marker)) = ctx.get("timemarker").cloned() else {
                     return Ok(0);
                 };
-                let Some((m, target)) = (clock == "minecraft:overworld")
-                    .then(|| self.ui.markers.get(&marker).copied())
-                    .flatten()
+                let Some((m, target)) = self
+                    .ui
+                    .markers
+                    .get(&(clock.clone(), marker.clone()))
+                    .copied()
                     .and_then(|m| Some((m, m.resolve(total)?)))
                 else {
                     return Err(err(
@@ -2218,9 +2223,12 @@ impl Game<'_> {
                 let Some(Arg::Resource(timeline)) = ctx.get("timeline").cloned() else {
                     return Ok(0);
                 };
-                let Some(period) = (clock == "minecraft:overworld")
-                    .then(|| self.ui.timelines.get(&timeline).copied())
-                    .flatten()
+                let Some(period) = self
+                    .ui
+                    .timelines
+                    .get(&timeline)
+                    .filter(|(c, _)| c == &clock)
+                    .map(|(_, period)| *period)
                 else {
                     return Err(err(
                         "commands.time.wrong_timeline_for_clock",
@@ -2931,7 +2939,8 @@ impl Game<'_> {
         tag: &sunrise_core::nbt::Tag,
         entity: &mut sunrise_client::containers::BlockEntity,
     ) -> bool {
-        let pending = matches!(entity, sunrise_client::containers::BlockEntity::Chest(_))
+        let block = self.data_block_name([key.0, key.1, key.2]);
+        let pending = sunrise_client::save::randomizable_container(entity, &block)
             .then(|| sunrise_client::save::PendingContainerLoot::from_tag(tag))
             .flatten();
         let mut changed = false;
@@ -2942,16 +2951,20 @@ impl Game<'_> {
         });
         changed
     }
-    /// Raw NBT inspection overlays metadata without unpacking the inventory.
+    /// Raw NBT inspection overlays metadata without unpacking the inventory: a container's
+    /// table, which a slotless mod block entity at `block` never has (its `LootTable` field is
+    /// its own).
     pub(super) fn write_pending_loot(
         world: &sunrise_client::world::World,
         key: (i32, i32, i32),
+        block: &str,
         tag: &mut sunrise_core::nbt::Tag,
     ) {
-        if !matches!(
-            world.block_entities.get(&key),
-            Some(sunrise_client::containers::BlockEntity::Chest(_))
-        ) {
+        if !world
+            .block_entities
+            .get(&key)
+            .is_some_and(|entity| sunrise_client::save::randomizable_container(entity, block))
+        {
             return;
         }
         if let sunrise_core::nbt::Tag::Compound(map) = tag {
@@ -4257,7 +4270,9 @@ impl Game<'_> {
                     }
                     _ => 0,
                 };
-                self.lan_broadcast_command_chat(sender, &name, id, &message, None);
+                if !self.lan_broadcast_command_chat(sender, &name, id, &message, None) {
+                    return Err(err("command.failed", &[]));
+                }
                 Ok(1)
             }
             _ => {
@@ -4265,6 +4280,19 @@ impl Game<'_> {
                 let name = self.source_display_name();
                 let targets = self.entities(ctx, "targets", true)?;
                 let count = targets.len() as i32;
+                // ChatType.bind throws for a missing type before anything is sent.
+                let incoming_type = match &self.lan {
+                    Some(host) => {
+                        let (Some(incoming), Some(_)) = (
+                            host.hub.chat_type_id("msg_command_incoming"),
+                            host.hub.chat_type_id("msg_command_outgoing"),
+                        ) else {
+                            return Err(err("command.failed", &[]));
+                        };
+                        Some(incoming)
+                    }
+                    None => None,
+                };
                 for target in targets {
                     let target_name = match target {
                         Target::Player => self.player_display_name(),
@@ -4302,7 +4330,9 @@ impl Game<'_> {
                             // The target's copy is private chat with the incoming whisper
                             // type, shown only to players who show chat (`Hub::whisper`).
                             let bound = sunrise_protocol::packets::play::ChatTypeBound {
-                                chat_type: host.hub.chat_type_id("msg_command_incoming"),
+                                chat_type: incoming_type
+                                    .expect("a hub's incoming type was checked above")
+                                    .network_id() as i32,
                                 name: sunrise_client::lan::data::component_nbt(&name.component()),
                                 target: None,
                             };
@@ -4343,10 +4373,14 @@ impl Game<'_> {
 
     /// MessageArgument: `@p`-style selectors in a message become names.
     pub(super) fn expand_selectors(&mut self, raw: &str) -> Text {
-        let mut out = Text::empty();
+        // `MessageArgument.Message.resolveComponent`: no selector part leaves the whole text as one
+        // literal; otherwise the text before the first part is the literal root and each part and
+        // each non-empty stretch after it is appended as a sibling.
+        let mut out: Option<Text> = None;
+        let mut pending = String::new();
         let mut rest = raw;
         while let Some(at) = rest.find('@') {
-            out.push(&rest[..at]);
+            pending.push_str(&rest[..at]);
             let mut reader = Reader::new(&rest[at..]);
             match (sunrise_client::command::ArgType::Entity {
                 single: false,
@@ -4356,22 +4390,35 @@ impl Game<'_> {
             {
                 Ok(Arg::Entity(s)) if reader.cursor > 1 => {
                     let found = self.select(&s);
+                    let text =
+                        out.get_or_insert_with(|| Text::literal(std::mem::take(&mut pending)));
+                    if !pending.is_empty() {
+                        text.push(std::mem::take(&mut pending));
+                    }
                     for (i, t) in found.iter().enumerate() {
                         if i > 0 {
-                            out.push(", ");
+                            text.push(", ");
                         }
-                        out.push(self.target_name(*t));
+                        text.push(self.target_name(*t));
                     }
                     rest = &rest[at + reader.cursor..];
                 }
                 _ => {
-                    out.push("@");
+                    pending.push('@');
                     rest = &rest[at + 1..];
                 }
             }
         }
-        out.push(rest);
-        out
+        pending.push_str(rest);
+        match out {
+            None => Text::literal(pending),
+            Some(mut text) => {
+                if !pending.is_empty() {
+                    text.push(pending);
+                }
+                text
+            }
+        }
     }
 }
 
