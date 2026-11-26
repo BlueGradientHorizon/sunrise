@@ -36,7 +36,7 @@ on:
         type: boolean
         default: true
       dev:
-        description: A Dev release's build (nightly-build.yml kind dev), whose macOS leg BLACKSMITH_DEV_MACOS may move
+        description: A Dev release's build (nightly-build.yml kind dev), whose legs BLACKSMITH_DEV and BLACKSMITH_DEV_MACOS may move
         type: boolean
         default: false
 permissions:
@@ -77,10 +77,11 @@ jobs:
     # Blacksmith's machines (owner, 2026-11-18), the same images as GitHub's with the Rust cache beside them: 16 vCPUs
     # for Linux and Windows, the 12-vCPU M4 for macOS. The repository variable
     # BLACKSMITH=off puts every leg back on GitHub's `os`. Every leg is a fresh machine: nothing of a pull
-    # request's earlier jobs is on it. BLACKSMITH_DEV_MACOS=on (the owner's switch; unset or anything else is off) puts
-    # a Dev release's macOS leg alone back on Blacksmith while BLACKSMITH stays off.
+    # request's earlier jobs is on it. BLACKSMITH_DEV=on (the owner's switch; unset or anything else is off) puts
+    # every leg of a Dev release back on Blacksmith while BLACKSMITH stays off; BLACKSMITH_DEV_MACOS=on does so for
+    # its macOS leg alone.
     runs-on: >-
-      ${{ (vars.BLACKSMITH != 'off' || (inputs.dev && matrix.mac && vars.BLACKSMITH_DEV_MACOS == 'on'))
+      ${{ (vars.BLACKSMITH != 'off' || (inputs.dev && (vars.BLACKSMITH_DEV == 'on' || (matrix.mac && vars.BLACKSMITH_DEV_MACOS == 'on'))))
       && matrix.blacksmith || matrix.os }}
     # The fork's cold client + headless builds need both feature variants; keep upstream's limits unchanged.
     # GitHub's macOS runner builds Sunrise's game cold: 60 minutes ran out mid-build (nightly dry run
