@@ -1,101 +1,18 @@
 //! Raw plugin channels against a vanilla-shaped peer (no Sunrise offer): sends,
 //! fan-out to every declaring mod in load order, the vanilla size limits in both
 //! directions, undeclared channels and the load-time collision refusal.
-use super::*;
 use crate::lan::{NetEvent, PlayerSender};
-use mod_api::{Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes, Registrar};
-use sunrise_protocol::packets::{custom_payload::CustomPayload, play};
-
-pub(super) const CHANNEL: &str = "voicechat:secret";
-const SEND_ONLY: &str = "bungeecord:main";
-
-struct Listener;
-impl IPayloadHandler for Listener {
-    fn handle(
-        &self,
-        _: PayloadBytes,
-        _: &mut dyn IPayloadContext,
-    ) -> Result<(), mod_api::PayloadHandleError> {
-        Ok(())
-    }
-}
-struct Declares {
-    receives: bool,
-    send_only: bool,
-}
-#[mod_api::__subscriptions]
-impl Hooks for Declares {
-    fn register(&self, registrar: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
-        let mut payloads = registrar.payload_handlers();
-        let mut raw = payloads.registrar("1");
-        if self.receives {
-            raw.play_raw(PayloadId(CHANNEL.into()), Some(Arc::new(Listener)));
-        }
-        if self.send_only {
-            raw.play_raw(PayloadId(SEND_ONLY.into()), None);
-        }
-    }
-}
-struct Typed;
-impl IPayloadHandler for Typed {
-    fn handle(
-        &self,
-        _: PayloadBytes,
-        _: &mut dyn IPayloadContext,
-    ) -> Result<(), mod_api::PayloadHandleError> {
-        Ok(())
-    }
-}
-#[mod_api::__subscriptions]
-impl Hooks for Typed {
-    fn register(&self, registrar: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
-        registrar
-            .payload_handlers()
-            .registrar("1")
-            .play_to_server(PayloadId(CHANNEL.into()), Arc::new(Typed));
-    }
-}
-
-/// Two receiving mods and a send-only one, with a vanilla peer admitted
-/// without an offer, as `finish_without_offer` admits it.
-pub(super) fn with_vanilla_peer(run: impl FnOnce(Arc<Transport>)) {
-    let mods = vec![
-        ModEntry::new(
-            "voicechat",
-            Box::new(Declares {
-                receives: true,
-                send_only: false,
-            }),
-        ),
-        ModEntry::new(
-            "voicebridge",
-            Box::new(Declares {
-                receives: true,
-                send_only: true,
-            }),
-        ),
-    ];
-    mod_platform::testing::with_mods(mods.into(), || {
-        mod_platform::__private::part_tests::install_parts_fixture(mod_api::__private::mods())
-            .unwrap();
-        let transport = Transport::capture(Side::Server).unwrap();
-        assert!(
-            !transport.local.has_mod_declarations(),
-            "raw channels are never offered"
-        );
-        assert!(transport.connection.is_some(), "raw-only still keeps state");
-        transport.accept(&[]).unwrap();
-        transport.finish_configuration().unwrap();
-        run(transport)
-    });
-}
-
-pub(super) fn serverbound(channel: &str, len: usize) -> CustomPayload {
-    CustomPayload {
-        channel: channel.into(),
-        data: vec![7; len],
-    }
-}
+use crate::raw_payloads::vanilla_peer_support::{
+    CHANNEL, Declares, SEND_ONLY, Typed, serverbound, with_vanilla_peer,
+};
+use crate::raw_payloads::*;
+use mod_api::{
+    Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes, PayloadId, PayloadSendError,
+    Registrar,
+};
+use std::sync::Arc;
+use sunrise_protocol::packets::play;
+use sunrise_protocol::payload_negotiation::Phase;
 
 #[test]
 fn a_raw_channel_reaches_every_declaring_mod_in_load_order() {
@@ -111,21 +28,13 @@ fn a_raw_channel_reaches_every_declaring_mod_in_load_order() {
         let endpoint = Endpoint::server(sender);
         for incoming in deliveries {
             assert!(incoming.raw);
-            dispatch(
+            dispatch_server(
                 incoming,
                 endpoint.clone(),
-                MainQueue::Server {
-                    events: events.clone(),
-                    endpoint: endpoint.clone(),
-                    conn: Some(1),
-                },
+                ServerQueue::new(events.clone(), endpoint.clone(), Some(1)),
             );
         }
-        let main = MainQueue::Server {
-            events,
-            endpoint: endpoint.clone(),
-            conn: Some(1),
-        };
+        let main = ServerQueue::new(events.clone(), endpoint.clone(), Some(1));
         let mut owners = Vec::new();
         for _ in 0..2 {
             let turn = receiver.take_turn();
@@ -144,7 +53,7 @@ fn a_raw_channel_reaches_every_declaring_mod_in_load_order() {
             }
             // Dropping the main delivery releases its receiving turn. The pooled
             // receiver's maintenance turn, not that drop, dispatches the next one.
-            dispatch_pending(&endpoint, &main);
+            dispatch_pending_server(&endpoint, &main);
         }
         assert!(receiver.take_turn().is_empty());
         assert_eq!(owners, ["voicechat", "voicebridge"]);
@@ -316,17 +225,15 @@ fn network_raw_failures_drop_only_the_failing_copy() {
         mod_platform::testing::with_mods(mods.into(), || {
             mod_platform::__private::part_tests::install_parts_fixture(mod_api::__private::mods())
                 .unwrap();
-            let transport = Transport::capture(Side::Server).unwrap();
+            let transport =
+                Transport::capture(Side::Server, crate::raw_payloads::TEST_RECORD_OVERHEAD)
+                    .unwrap();
             transport.accept(&[]).unwrap();
             transport.finish_configuration().unwrap();
             let (sender, _) = PlayerSender::payload_executor_test_sender(transport.clone());
             let endpoint = Endpoint::server(sender);
             let (events, _receiver) = crate::lan::event_channel();
-            let queue = || MainQueue::Server {
-                events: events.clone(),
-                endpoint: endpoint.clone(),
-                conn: Some(1),
-            };
+            let queue = || ServerQueue::new(events.clone(), endpoint.clone(), Some(1));
             let deliver = || {
                 let Ok(Classified::Raw(deliveries)) =
                     Incoming::classify(&transport, Phase::Play, serverbound(CHANNEL, 1))
@@ -337,7 +244,7 @@ fn network_raw_failures_drop_only_the_failing_copy() {
                     // Raw registration selects Main. Exercise the physical network executor
                     // with the same per-owner receivers, whose main path has its own test.
                     incoming.receiver.thread = mod_api::HandlerThread::Network;
-                    dispatch(incoming, endpoint.clone(), queue());
+                    dispatch_server(incoming, endpoint.clone(), queue());
                 }
             };
             deliver();
