@@ -1353,7 +1353,6 @@ mod tests {
             [
                 "Cargo.toml",
                 "README.md",
-                "page.toml",
                 "src/lib.rs",
                 "sunrise-mod.toml"
             ]

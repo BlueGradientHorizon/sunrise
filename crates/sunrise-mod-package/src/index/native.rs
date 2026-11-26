@@ -45,6 +45,11 @@ impl Bundle {
                     "{other} and {name} differ only by case, which a Windows or macOS extraction cannot keep apart"
                 ));
             }
+            // The tools from Nov 25 until this rule packed the registry page as source. It is no
+            // part of the package: it is left out, not staged and not refused.
+            if mod_source::package::page_file(&name) {
+                continue;
+            }
             let source = crate::manifest::source_file(&name);
             let own = name == crate::manifest::MANIFEST
                 || name == USES_FILE
@@ -274,6 +279,30 @@ mod tests {
             assert!(crate::Package::read_zip(&mut zip).is_ok(), "{name}");
             std::fs::remove_file(path).unwrap();
         }
+    }
+
+    #[test]
+    fn a_registry_page_packed_as_source_is_left_out() {
+        let bundle = read(
+            "page",
+            &manifest(),
+            &[
+                ("page.toml", b"summary = 'x'"),
+                ("page/runes.jpg", b"\xff\xd8\xff"),
+                ("src/page/mod.rs", b"fn page() {}"),
+            ],
+        )
+        .unwrap();
+        let names: Vec<_> = bundle.files.keys().map(String::as_str).collect();
+        assert_eq!(
+            names,
+            [
+                "Cargo.toml",
+                "src/lib.rs",
+                "src/page/mod.rs",
+                crate::manifest::MANIFEST
+            ]
+        );
     }
 
     #[test]
