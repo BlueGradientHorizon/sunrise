@@ -287,6 +287,11 @@ impl Expanded {
         &self.files[0]
     }
 
+    /// The id of each file pasted into the stage, in the order first read.
+    pub fn includes(&self) -> &[String] {
+        &self.files[1..]
+    }
+
     /// The error at byte `at` of [`Expanded::text`], at the file and line that byte came from.
     /// Sunrise's own lines, or no byte, name the stage file with no line.
     pub fn error_at(&self, at: Option<usize>, message: String) -> Error {
