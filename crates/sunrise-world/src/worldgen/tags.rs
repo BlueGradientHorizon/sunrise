@@ -114,18 +114,6 @@ pub struct BuiltTags<T> {
     pub tags: BTreeMap<String, Vec<T>>,
     pub missing: BTreeMap<String, Vec<TagEntryWithSource>>,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TagBuildError {
-    TooManyTags,
-}
-impl std::fmt::Display for TagBuildError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::TooManyTags => "tag definitions exceed 8192 entries",
-        })
-    }
-}
-impl std::error::Error for TagBuildError {}
 impl TagDefinitions {
     /// Start a registry's definitions with its built-in convention tags, before
     /// applying prepared resources and higher-priority pack layers.
@@ -185,20 +173,10 @@ impl TagDefinitions {
     pub fn definitions(&self) -> &BTreeMap<String, Vec<TagEntryWithSource>> {
         &self.entries
     }
-    /// Build the bounded worldgen table. Missing required references
-    /// invalidate their own tags, not unrelated tags.
-    pub fn build<T: Clone + Ord>(
-        &self,
-        lookup: impl FnMut(&str, bool) -> Option<T>,
-    ) -> Result<BuiltTags<T>, TagBuildError> {
-        if self.entries.len() > 8192 {
-            return Err(TagBuildError::TooManyTags);
-        }
-        Ok(self.bind(lookup))
-    }
-
-    /// Bind the tags of a registry without a worldgen table size limit.
-    /// Element lookup receives the entry's required flag, as in vanilla.
+    /// Bind a registry's merged tag definitions in dependency order.
+    /// Element lookup receives the entry's required flag. Missing optional
+    /// entries are ignored; tags with missing required entries are omitted
+    /// from `BuiltTags::tags` and reported in `BuiltTags::missing`.
     pub fn bind<T: Clone + Ord>(
         &self,
         mut lookup: impl FnMut(&str, bool) -> Option<T>,
