@@ -5148,6 +5148,8 @@ mod tests {
                         Tag::String("".into()),
                     ]),
                 );
+                // Black text (the default) is the picture's own black: dye it so it shows.
+                front.insert("color".into(), Tag::String("white".into()));
                 sign.insert("front_text".into(), Tag::Compound(front));
                 let rendered = [
                     ("minecraft:chest", "minecraft:chest", Compound::new()),
