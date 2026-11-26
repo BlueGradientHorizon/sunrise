@@ -555,6 +555,7 @@ dependencies = [
  "sha2 0.10.9",
  "sunrise-addresses",
  "sunrise-attestation",
+ "sunrise-glsl",
  "sunrise-jar-fetch",
  "sunrise-mod-api-gen",
  "sunrise-mod-package",
