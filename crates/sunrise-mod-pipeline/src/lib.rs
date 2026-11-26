@@ -224,18 +224,6 @@ pub struct ProgramSources<'a> {
 pub const DEFAULT_VERTEX_INPUTS: [(&str, &str); 3] =
     [("Position", "vec3"), ("UV0", "vec2"), ("Color", "vec4")];
 
-/// The vertex inputs `(name, glsl_type)` the vanilla [`mod_vocab::VertexFormat`]s provide, read
-/// from those formats' own attributes. Only `VertexFormat::position_tex_color` exists, the
-/// format of a pipeline that registers no vertex binding, so this is `Position`, `UV0` and
-/// `Color` with the GLSL types their attribute formats give.
-pub fn vanilla_vertex_inputs() -> Vec<(String, &'static str)> {
-    mod_vocab::VertexFormat::position_tex_color()
-        .attributes
-        .into_iter()
-        .map(|attribute| (attribute.name, attribute.format.glsl_type()))
-        .collect()
-}
-
 /// Bind-group set index for mod-declared `BindGroupLayout` entries (set 0 stays vanilla's shared
 /// bindings from `BindGroupLayouts.java`).
 pub const MOD_BIND_GROUP_SET: u32 = 1;

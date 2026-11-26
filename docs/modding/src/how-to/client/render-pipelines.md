@@ -149,11 +149,10 @@ code, a `.fsh` with no `.vsh` beside it is checked against `minecraft:core/posit
 and a program referencing `sampleSprite`, `pipeline_sprite.glsl`, `SpriteRect`, or `Sampler0` is
 checked as textured.
 
-The check reads the vertex `in`s your `.vsh` declares and takes each against the vertex formats
-the game provides (`Position` as `vec3`, `UV0` as `vec2`, `Color` as `vec4`): it does not assume
-you declare all three. An `in` whose name and type no such format provides is refused, by name,
-at its line. Which inputs the game binds, and from which vertex bindings, the pipeline's
-registered format decides when your mod registers it; the check does not run that code.
+The check reads the vertex `in`s your `.vsh` declares, each on its own: it does not assume the
+default format's three. It refuses only an `in` of a type no vertex attribute can have (a
+`mat4`, say). Which inputs the game binds, and from which vertex bindings, the format your
+pipeline registers decides when your mod registers it; the check does not run that code.
 
 ## 3. Resolve and draw
 
