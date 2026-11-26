@@ -2,7 +2,9 @@
 
 pub mod dynamic_panel {
     // ANCHOR: dynamic_panel
-    use mod_api::{ClientHost, DynamicTextureError, GuiRenderPostEvent, Hooks, Identifier};
+    use mod_api::{
+        ClientHost, DynamicTextureError, GuiBlitRegion, Hooks, Identifier, RenderGuiPostEvent,
+    };
 
     const PANEL: &str = "mymod:dynamic/panel";
 
@@ -14,16 +16,33 @@ pub mod dynamic_panel {
         host.create_dynamic_texture(&id, width as u32, height as u32, &rgba)
     }
 
+    /// Redraw the gauge's rows, 4 to 11, without sending the rest of the image again.
+    pub fn redraw_gauge(host: &mut dyn ClientHost) -> Result<(), DynamicTextureError> {
+        let id = Identifier::parse(PANEL).unwrap();
+        let rows = [200, 60, 60, 255].repeat(64 * 8);
+        host.update_dynamic_texture_region(&id, [0, 4], [64, 8], &rows)
+    }
+
     #[derive(Default)]
     struct PanelHud;
 
     #[mod_api::sunrise_mod]
     impl Hooks for PanelHud {
-        fn gui_render_post(&self, _: &dyn ClientHost, event: &mut GuiRenderPostEvent<'_>) {
-            // The whole image (`src` in its own pixels), stretched over 128 by 64 GUI pixels.
-            event
-                .batch
-                .sprite(PANEL, [0.0, 0.0, 64.0, 32.0], [8.0, 8.0, 128.0, 64.0], None);
+        fn render_gui_post(&self, _: &dyn ClientHost, event: &mut RenderGuiPostEvent<'_>) {
+            // The whole image (`tex` is its size), stretched over 128 by 64 GUI pixels.
+            let id = Identifier::parse(PANEL).unwrap();
+            let _ = event.draw.draw_gui(&mut |canvas| {
+                canvas.texture(
+                    &id,
+                    [8.0, 8.0, 128.0, 64.0],
+                    GuiBlitRegion {
+                        uv: [0.0, 0.0],
+                        src: [64, 32],
+                        tex: [64, 32],
+                    },
+                    0xFFFF_FFFF,
+                )
+            });
         }
     }
     // ANCHOR_END: dynamic_panel
@@ -147,7 +166,7 @@ pub mod screens {
         y: f32,
     ) -> Result<TextLayoutSize, GuiDrawError> {
         // ANCHOR: scaled_text_lines
-        // From a menu screen draw callback, gui_render_post or another drawing hook.
+        // From a menu screen draw callback, render_gui_post or another drawing hook.
         let scale = 2.0;
         let spec = TextLayoutSpec {
             max_width: 120.0,

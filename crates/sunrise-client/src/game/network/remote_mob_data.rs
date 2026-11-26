@@ -11,7 +11,7 @@ use sunrise_client::mobs::{
 };
 use sunrise_client::particles::{ParticleOptions, ParticleType};
 use sunrise_protocol::entity_data::{ParticleData, Particles, Value};
-use sunrise_protocol::registry::{Builtin, Dynamic};
+use sunrise_protocol::registry::Builtin;
 use sunrise_world::registry::BlockStateId;
 
 /// The values `apply` takes from one SetEntityData packet, by vanilla's entry
@@ -409,33 +409,60 @@ fn tropical_fish(m: &mut Mob, packed: i32) {
 /// synchronized registry (the variants of the cat, wolf, frog, pig, cow,
 /// chicken and zombie nautilus) or count game time (a wolf's anger).
 /// `game_time` is the client level's.
-fn apply_registry_data(
-    m: &mut Mob,
-    values: &[(u8, i32, Value)],
-    registries: &Dynamic,
-    game_time: i64,
-) {
+fn apply_registry_data(m: &mut Mob, values: &[(u8, i32, Value)], game_time: i64) {
     let species = m.species();
     for (index, _, value) in values {
-        let registry = match (species, *index, value) {
-            (Species::Cat, 20, Value::Id(_)) => "minecraft:cat_variant",
-            (Species::Wolf, 23, Value::Id(_)) => "minecraft:wolf_variant",
-            (Species::Frog, 18, Value::Id(_)) => "minecraft:frog_variant",
-            (Species::Pig, 19, Value::Id(_)) => "minecraft:pig_variant",
-            (Species::Cow, 18, Value::Id(_)) => "minecraft:cow_variant",
-            (Species::Chicken, 18, Value::Id(_)) => "minecraft:chicken_variant",
-            (Species::ZombieNautilus, 21, Value::Id(_)) => "minecraft:zombie_nautilus_variant",
+        match (species, *index, value) {
+            (Species::Cat, 20, Value::Id(id)) => {
+                m.extra.cat_variant = Some(sunrise_client::lan::data::RegistryRef::new(*id as u32));
+            }
+            (Species::Cat, 24, Value::Id(id)) => {
+                m.extra.cat_sound_variant =
+                    Some(sunrise_client::lan::data::RegistryRef::new(*id as u32));
+            }
+            (Species::Wolf, 23, Value::Id(id)) => {
+                m.extra.wolf_variant =
+                    Some(sunrise_client::lan::data::RegistryRef::new(*id as u32));
+            }
+            (Species::Wolf, 24, Value::Id(id)) => {
+                m.extra.wolf_sound_variant =
+                    Some(sunrise_client::lan::data::RegistryRef::new(*id as u32));
+            }
+            (Species::Frog, 18, Value::Id(id)) => {
+                m.extra.frog_variant =
+                    Some(sunrise_client::lan::data::RegistryRef::new(*id as u32));
+            }
+            (Species::Pig, 19, Value::Id(id)) => {
+                m.extra.pig_variant = Some(sunrise_client::lan::data::RegistryRef::new(*id as u32));
+            }
+            (Species::Pig, 20, Value::Id(id)) => {
+                m.extra.pig_sound_variant =
+                    Some(sunrise_client::lan::data::RegistryRef::new(*id as u32));
+            }
+            (Species::Cow, 18, Value::Id(id)) => {
+                m.extra.cow_variant = Some(sunrise_client::lan::data::RegistryRef::new(*id as u32));
+            }
+            (Species::Cow, 19, Value::Id(id)) => {
+                m.extra.cow_sound_variant =
+                    Some(sunrise_client::lan::data::RegistryRef::new(*id as u32));
+            }
+            (Species::Chicken, 18, Value::Id(id)) => {
+                m.extra.chicken_variant =
+                    Some(sunrise_client::lan::data::RegistryRef::new(*id as u32));
+            }
+            (Species::Chicken, 19, Value::Id(id)) => {
+                m.extra.chicken_sound_variant =
+                    Some(sunrise_client::lan::data::RegistryRef::new(*id as u32));
+            }
+            (Species::ZombieNautilus, 21, Value::Id(id)) => {
+                m.extra.zombie_nautilus_variant =
+                    Some(sunrise_client::lan::data::RegistryRef::new(*id as u32));
+            }
             // Wolf.DATA_ANGER_END_TIME: the angry texture while it lies ahead.
             (Species::Wolf, 22, Value::Long(end)) => {
                 m.extra.anger = (end - game_time).clamp(0, i64::from(i32::MAX)) as i32;
-                continue;
             }
-            _ => continue,
-        };
-        if let Value::Id(id) = value
-            && let Some(name) = registries.name(registry, *id)
-        {
-            m.extra.variant = finalize::variant_index(species, name);
+            _ => {}
         }
     }
 }
@@ -511,7 +538,7 @@ impl Game<'_> {
         if let Some(m) = self.mob_index.get_mut(&mut self.mobs, id as u32) {
             let stare_sound =
                 super::villager_client::receive(m, values, &r.builtin, r.entity_id, &professions);
-            apply_registry_data(m, values, &r.registries, self.world.game_time);
+            apply_registry_data(m, values, self.world.game_time);
             if let Some(pos) = sleeping_pos {
                 m.extra.sleeping_pos = pos;
                 if pos.is_some()
@@ -527,8 +554,7 @@ impl Game<'_> {
                 m.extra.ints[1] = code;
             }
             if let Some(at) = stare_sound {
-                self.audio
-                    .play_unshared("minecraft:entity.enderman.stare", Some(at), 2.5, 1.0);
+                self.play_audio_unshared("minecraft:entity.enderman.stare", Some(at), 2.5, 1.0);
             }
         }
     }
@@ -562,6 +588,7 @@ pub(in crate::game) mod tests {
         use sunrise_client::mobs::{Anim, Brain, Flags, MobType, Part};
         let species = match kind {
             "minecraft:cow" => Species::Cow,
+            "minecraft:frog" => Species::Frog,
             "minecraft:axolotl" => Species::Axolotl,
             "minecraft:dolphin" => Species::Dolphin,
             "minecraft:cod" => Species::Cod,
@@ -752,6 +779,7 @@ pub(in crate::game) mod tests {
                     view_distance: 10,
                     chunks: &chunks,
                     sources: None,
+                    far: &[],
                     tracker: &mut tracker,
                     out: &mut packets,
                 }],
@@ -939,6 +967,7 @@ pub(in crate::game) mod tests {
                     view_distance: 10,
                     chunks: &chunks,
                     sources: None,
+                    far: &[],
                     tracker: &mut tracker,
                     out: &mut packets,
                 }],
@@ -1640,13 +1669,14 @@ pub(in crate::game) mod tests {
             r#"{"minecraft:sulfur_cube":{"width":0.52,"height":0.52,"eye_height":0.325,"category":"monster","fire_immune":false,"attributes":{"minecraft:max_health":4.0}}}"#,
         )
         .unwrap();
-        let attributes =
-            &sunrise_world::attributes::entity::Catalog::from_json(&serde_json::json!({
+        let attributes = &std::sync::Arc::new(
+            sunrise_world::attributes::entity::Catalog::from_json(&serde_json::json!({
                 "data_version": sunrise_world::DATA_VERSION,
                 "attributes": [],
                 "entities": {},
             }))
-            .unwrap();
+            .unwrap(),
+        );
         let types = sunrise_client::mobs::MobTypes::load_for_server(&root, attributes).unwrap();
         let _ = std::fs::remove_dir_all(&root);
         let kind = std::sync::Arc::new(types.types["minecraft:sulfur_cube"].clone());
@@ -1781,6 +1811,9 @@ pub(in crate::game) mod tests {
     }
 }
 
+#[cfg(test)]
+#[path = "remote_mob_data/frog_variant_meta_tests.rs"]
+mod frog_variant_meta_tests;
 #[cfg(test)]
 #[path = "remote_mob_data/pet_pose_meta_tests.rs"]
 mod pet_pose_meta_tests;

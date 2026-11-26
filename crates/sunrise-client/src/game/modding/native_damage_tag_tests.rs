@@ -34,7 +34,7 @@ impl Hooks for Probe {
     ) -> Flow {
         let tags = level.tags();
         // Keys first made here, after the world bound its tags.
-        let key = |name: &str| tags.key(&Identifier::parse(name).unwrap()).unwrap();
+        let key = |name: &str| tags.key(&Identifier::parse(name).unwrap()).unwrap().typed();
         let mut reads = self.0.lock().unwrap();
         let damage_type = event.source.damage_type;
         let members = reads
@@ -86,7 +86,13 @@ fn a_hit_listener_reads_its_damage_type_tags_as_bound() {
             bind_local_player(game, 7, 7);
             game.set_game_mode(GameMode::Survival);
             for damage_type in TYPES {
-                game.hurt_player_from(2.0, None, damage_type, Some(None), false);
+                game.hurt_player_from(
+                    2.0,
+                    None,
+                    damage_type,
+                    crate::game::creatures::KnownCause::None,
+                    false,
+                );
             }
             let reads = reads.lock().unwrap();
             let seen: Vec<_> = reads

@@ -68,7 +68,15 @@ impl Game<'_> {
     }
     fn schedule_command_block(&mut self, pos: Pos) {
         let at = BlockPos::new(pos.0, pos.1, pos.2);
-        self.with_level(|b, level, ticks| b.schedule_tick(level, ticks, at, 1));
+        if self.captures_placement() {
+            let state = self.world.block(pos.0, pos.1, pos.2);
+            let block = self.res.behaviours().block(state);
+            self.after_commit(super::transactions::After::LevelWrite(Box::new(
+                super::journal_level_write::PendingWrite::BlockTick(self.dim, at, block, 1),
+            )));
+        } else {
+            self.with_level(|b, level, ticks| b.schedule_tick(level, ticks, at, 1));
+        }
     }
     /// `isAutomatic` of the command block at `pos`, before new data loads.
     pub(super) fn command_block_auto(&self, pos: Pos) -> bool {
@@ -156,6 +164,10 @@ impl Game<'_> {
         };
         let saved = |c: &CommandBlock| (c.track_output, c.auto, c.powered, c.condition_met);
         let before = self.command_block(pos).map(saved);
+        let staged = self.captures_placement();
+        if staged {
+            self.journal_block_entity(pos);
+        }
         let auto = command_block::automatic_block(name);
         if defaults && let Some(c) = command_block_mut(&mut self.world, pos) {
             c.track_output = feedback;
@@ -173,7 +185,12 @@ impl Game<'_> {
             self.schedule_command_block(pos);
         }
         if self.command_block(pos).map(saved) != before {
-            self.world.modified.insert((pos.0 >> 4, pos.2 >> 4));
+            let chunk = (pos.0 >> 4, pos.2 >> 4);
+            if staged {
+                self.journal_chunk_save(chunk, super::transactions::SaveChunkScope::Level);
+            } else {
+                self.world.modified.insert(chunk);
+            }
         }
     }
 
@@ -308,6 +325,7 @@ impl Game<'_> {
                 dimension: self.dim,
                 origin_dimension: self.dim,
                 origin_player: false,
+                native_output: None,
                 level: None,
                 block: Some(pos),
                 cart: None,
@@ -576,7 +594,7 @@ impl Game<'_> {
             .find(|(_, x, y, bw)| ui::hovered(self.cursor, *x, *y, *bw, 20.0))
             .map(|b| b.0);
         if hit.is_some() {
-            self.audio.play_button_click();
+            self.play_audio_button_click();
         }
         match hit {
             Some(Button::Output) => {

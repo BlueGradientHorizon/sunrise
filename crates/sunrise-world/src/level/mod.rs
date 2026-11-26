@@ -324,6 +324,10 @@ pub struct LevelEventPlayer(pub u128);
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LevelSoundSource {
     Blocks,
+    /// `BlockItem.place`: blocks source, excluding the player predicting the placement.
+    BlockPlacement {
+        except: Option<u32>,
+    },
 }
 
 /// Side effects reported to the caller, in vanilla call order.
@@ -495,6 +499,27 @@ pub trait LevelAccess: BlockEntityNeighbors {
     ) -> Option<bool> {
         None
     }
+    /// NeoForge's `HasFluidInteraction.test` of the native interaction the engine registered as
+    /// `handler`, for the liquid at `pos` against its neighbour `relative`. The default has none.
+    fn fluid_interaction_test(
+        &self,
+        _handler: u32,
+        _pos: BlockPos,
+        _relative: BlockPos,
+        _fluid: FluidState,
+    ) -> bool {
+        false
+    }
+    /// NeoForge's `FluidInteraction.interact` of that handler, which writes the level itself.
+    fn fluid_interaction_interact(
+        &mut self,
+        _ticks: &mut Ticks,
+        _handler: u32,
+        _pos: BlockPos,
+        _relative: BlockPos,
+        _fluid: FluidState,
+    ) {
+    }
     /// Returns the state to place for a liquid conversion, or None to cancel.
     fn fluid_place_block(
         &self,
@@ -628,17 +653,15 @@ pub trait LevelAccess: BlockEntityNeighbors {
     fn allow_bell_ring(&self, _pos: BlockPos) -> bool {
         true
     }
-    /// The sound type `state`, just placed at `pos`, plays its place sound from
-    /// (`IBlockExtension.getSoundType`): `sounds`, its own, unless a mod's block part answers
-    /// another (`BlockItem.place`, asked with the placing player, or none when nothing places
-    /// it, such as a dispenser). The default keeps the block's own.
-    fn place_sound_type(
+    /// The contextual placement event and base levels, if a block part changes them
+    /// (`BlockItem.place`, asked with the placer or with no entity for a dispenser).
+    fn override_place_sound(
         &self,
         _pos: BlockPos,
         _state: BlockStateId,
-        sounds: Arc<data::Sounds>,
-    ) -> Arc<data::Sounds> {
-        sounds
+        _placer: Option<u32>,
+    ) -> Option<data::BlockSound> {
+        None
     }
     fn allow_cauldron_level_change(
         &self,
@@ -1479,8 +1502,12 @@ pub trait GameplayStateSource {
     fn unsigned(&self, name: &str) -> u64;
     fn number(&self, name: &str) -> f64;
     fn text(&self, name: &str) -> &str;
-    fn sound_number(&self, name: &str) -> f64;
-    fn sound_id(&self, name: &str) -> &str;
+    /// The state's placement sound. Raw JSON resolves its event at load; the
+    /// typed gameplay projection already holds the resolved event.
+    fn placement_sound(
+        &self,
+        resolve: &mut dyn FnMut(&str) -> std::io::Result<mod_api::SoundEventKey>,
+    ) -> std::io::Result<data::BlockSound>;
 }
 
 /// Immutable vanilla block-behaviour tables. Build once with [`Behaviours::load`].
@@ -1552,6 +1579,37 @@ impl Behaviours {
     }
     pub fn data(&self, state: BlockStateId) -> &BlockData {
         self.block_data(self.table.block(state))
+    }
+    /// The four physical properties (`Solid`, `Replaceable`, `Liquid`, `SolidRender`) in
+    /// `BlockProperty` order, bound from the loaded behaviour tables.
+    pub fn bound_physical_properties(&self) -> [crate::block_properties::BoundBlockProperty; 4] {
+        use crate::block_properties::{BlockProperty, BoundBlockProperty};
+        let states: Arc<[u8]> = self
+            .facts
+            .iter()
+            .map(|fact| {
+                let mut mask = 0u8;
+                if fact.flags & data::state_flags::SOLID != 0 {
+                    mask |= 1;
+                }
+                if fact.flags & data::state_flags::REPLACEABLE != 0 {
+                    mask |= 2;
+                }
+                if fact.flags & data::state_flags::LIQUID != 0 {
+                    mask |= 4;
+                }
+                if fact.flags & data::state_flags::SOLID_RENDER != 0 {
+                    mask |= 8;
+                }
+                mask
+            })
+            .collect();
+        [
+            BoundBlockProperty::from_flags(states.clone(), BlockProperty::Solid),
+            BoundBlockProperty::from_flags(states.clone(), BlockProperty::Replaceable),
+            BoundBlockProperty::from_flags(states.clone(), BlockProperty::Liquid),
+            BoundBlockProperty::from_flags(states, BlockProperty::SolidRender),
+        ]
     }
     pub fn block(&self, state: BlockStateId) -> BlockId {
         self.table.block(state)
@@ -1668,16 +1726,22 @@ impl Behaviours {
     }
 
     /// Finish the paused write. If the host ran block-entity removal, pass its number of
-    /// jukebox neighbor updates; otherwise the ordinary removal runs here.
+    /// jukebox neighbor updates; otherwise the ordinary removal runs here. `ensure_entity`
+    /// runs at the end of `LevelChunk.setBlockState`, after `onPlace`, before notifications.
     pub fn finish_block_write<L: LevelAccess + ?Sized>(
         &self,
         level: &mut L,
         ticks: &mut Ticks,
         write: BlockWrite,
         removal_updates: Option<u8>,
+        ensure_entity: impl FnOnce(&mut L, BlockPos, BlockStateId),
     ) -> bool {
-        self.sim(level, ticks)
-            .finish_block_write(write, removal_updates, flags::UPDATE_LIMIT)
+        self.sim(level, ticks).finish_block_write(
+            write,
+            removal_updates,
+            flags::UPDATE_LIMIT,
+            ensure_entity,
+        )
     }
     /// `CopperChestBlock.getFromCopperBlock(copperBlock, facing, level, pos)`.
     pub fn copper_chest_from_block<L: LevelAccess + ?Sized>(
@@ -1700,6 +1764,20 @@ impl Behaviours {
         moved_by_piston: bool,
     ) -> bool {
         self.sim(level, ticks).remove_block(pos, moved_by_piston)
+    }
+    /// `Block.spawnDestroyParticles`: fire has no event and straw beds use their own.
+    pub fn destroy_particle_event(&self, state: BlockStateId) -> Option<i32> {
+        let data = self.data(state);
+        if data.is(classes::Class::StrawBed) {
+            Some(2014)
+        } else if data.is(classes::Class::BaseFire)
+            || data.is(classes::Class::Fire)
+            || data.is(classes::Class::SoulFire)
+        {
+            None
+        } else {
+            Some(2001)
+        }
     }
     /// `Level.destroyBlock(pos, dropResources)`: destroy particles (2001),
     /// optional drops, and replacement by the block's fluid.
@@ -1826,6 +1904,21 @@ impl Behaviours {
         state: BlockStateId,
     ) -> bool {
         self.sim(level, ticks).can_survive(state, pos)
+    }
+    /// Read `BlockState.canSurvive` without retaining any tick or wire-cache changes. The live
+    /// signal inputs are read from `signal_reads`; effects requested by the evaluator stay in a
+    /// fresh scratch queue that is dropped before returning.
+    pub fn can_survive_read_only<L: LevelAccess + ?Sized>(
+        &self,
+        level: &mut L,
+        signal_reads: &Ticks,
+        pos: BlockPos,
+        state: BlockStateId,
+    ) -> bool {
+        let mut ticks = Ticks::default();
+        let mut sim = self.sim(level, &mut ticks);
+        sim.signal_reads = Some(signal_reads);
+        sim.can_survive(state, pos)
     }
     /// `BlockState.updateShape(level, ticks, pos, direction, neighbourPos,
     /// neighbourState, random)`: the state `state` at `pos` would take after its

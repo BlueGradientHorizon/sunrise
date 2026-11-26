@@ -6,6 +6,9 @@ level, position, block state, and `include_data`, true when a creative player pi
 player reads such as `event.player.food(host).map(|food| food.level)`. The request does not include
 a client hit face. Return `None` to keep the game's item.
 
+A server mod reads the same answer, with that player acting, through `PlayerRef::clone_item_stack`
+(see its documentation in the [API reference](../../reference/api.md)).
+
 ## Breaking-crack display
 
 `BlockPart::break_progress_positions(host, event)` supplies extra positions for a
@@ -158,7 +161,9 @@ generation's structures, `/place template`, the structure block, jigsaw blocks a
 template snapshots. `event.state` is already mirrored, `event.pos` is where it goes and
 `event.rotation` the template's turn. `event.rotated` starts at the game's own turned state; set
 it to another state of the same block, for example
-`context.state_with_property(event.state, "facing", "north")`.
+`context.state_with_property(event.state, "facing", "north")`. Read the value to turn with
+`context.state_property(event.state, "facing")` (vanilla's `state.getValue(FACING)`), an owned
+`String`, or `None` for a key the state does not have.
 
 Jigsaw connector discovery is different from block placement: matching and expansion read
 the connector's plain rotated state, without calling `BlockPart::rotate`, as
@@ -329,7 +334,8 @@ is not empty, passing the fluid (`FluidState`) and its position. The contract is
 
 Normally rain on the block above, session water tickets and dry-out work as usual. With no Part on the farmland the
 scan is vanilla's. When the content owner's subscribed rule is [switched off](../disabled-content.md), only earlier
-enabled Parts or an enabled mod's session water ticket can wet the block. Rain and dry-out are held, not trampling.
+enabled Parts or an active session water ticket (tickets attributed to a disabled mod are cleared on disable) can wet
+the block. Rain and dry-out are held, not trampling.
 Bookshelf slot-occupancy flags and the last-interacted slot are transactional storage bookkeeping,
 not notification effects. Aborting restores them with the items. Changed observers, comparator
 ticks and data-send requests already issued still survive that abort.
@@ -387,5 +393,5 @@ explicit state and position, or `event.level.add_terrain_particle(host, state, s
 velocity)` for an individual piece of debris. The debris uses the supplied state's material and
 samples its tint at `source_pos`, which can differ from the spawn point. These helpers don't
 redispatch the hit or destroy Part or play a sound, but can ask block tint sources. Read the
-supplied state's outline with `event.level.block_shape` if you need to sample it. The hit helper
-uses the same random stream as `event.random`.
+supplied state's outline with `event.level.visit_block_shape` if you need to sample it. The hit
+helper uses the same random stream as `event.random`.

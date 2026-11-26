@@ -372,7 +372,6 @@ impl Game<'_> {
             keep
         });
         self.server_packs.notifiers = notifiers;
-        self.drive_mod_browser();
         // A reload waits for the world's resources (`reload_packs`).
         if self.rest_loader.is_some() {
             return;
@@ -556,10 +555,14 @@ impl Game<'_> {
             .with_title_color(sunrise_client::hud::rgba(255, 85, 85, 255));
             // Audio playback notices retain the player's existing F1 visibility rule.
             let hide_with_f1 = matches!(report.hook, "AudioStream::read" | "AudioStream::drop");
-            self.toast_manager.queued.push_back(Toast::Diagnostic {
-                toast,
-                hide_with_f1,
-            });
+            let clock = sunrise_client::toasts::ToastClock::of(self.clock.still());
+            self.toast_manager.post(
+                clock,
+                Toast::Diagnostic {
+                    toast,
+                    hide_with_f1,
+                },
+            );
         }
     }
 
@@ -573,7 +576,7 @@ impl Game<'_> {
             .answer_at(self.cursor);
         match answer {
             Some(yes) => {
-                self.audio.play_button_click();
+                self.play_audio_button_click();
                 self.answer_pack_prompt(yes)?;
                 Ok(true)
             }

@@ -442,15 +442,15 @@ of the frame ([#8750](https://github.com/horizon-rust/horizon/issues/8750)).
   using an item, riding, running out of air.
 - A shader pack's own buffers, kept from frame to frame, take `sunrise-ctl screenshot-sequence
   FRAMES STEP_MS PATH`: the pack starts over (its buffers, images, shadow maps, smoothed values and
-  custom uniforms, or a Sunrise pack's `history` and eased values) and draws FRAMES frames on a set
+  custom uniforms) and draws FRAMES frames on a set
   clock, frame n at n frames and (n - 1) × STEP_MS milliseconds (0 since the frame before on frame
   1, STEP_MS after; a decimal, `16.666667` for 60 fps). The last is written as `screenshot PATH`
   writes it (with its `-hdr.png` under HDR output), and the reply, once it is, names the pack and
   the last frame's clock. Without a pack it draws the frames all the same. It needs the world
   frozen, far terrain (LOD Distance), TAA, frame generation and the shadow cache off and chunk fade
   0, and says so otherwise. While it runs, commands that would change the scene are refused, a
-  change to the camera, the world, the settings, the pack or the window's size ends it with an
-  error, `screenshot-sequence cancel` stops it and `quit` quits.
+  change to the camera (compared with the first extracted frame), the world, the settings, the pack
+  or the window's size ends it with an error, `screenshot-sequence cancel` stops it and `quit` quits.
 - Not covered: temporal AA and frame generation (they build on earlier frames: turn them off),
   custom entity model animations, native mods, and what eases on the wall clock for a moment
   (toasts, the boss bar's fill, chunks fading in, the spyglass): wait for them to settle. Frame

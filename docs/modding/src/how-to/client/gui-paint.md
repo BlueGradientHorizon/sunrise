@@ -42,6 +42,8 @@ for a blank or fully transparent label.
 ## Items
 
 Call `canvas.item(&stack, at, seed)` to draw a stack's model in a 16-pixel slot, passing the seed to
+
+Use `canvas.item_tinted` to multiply the item and its glint by an ARGB colour tint.
 its model resolver. Call `canvas.item_decorations(&stack, at, None)` to add its bar, cooldown,
 count and custom decoration, in that order. An optional `Some(label)` replaces the count text.
 An `item_bar` override supplies a signed width in pixels. As in vanilla, the bar's foreground

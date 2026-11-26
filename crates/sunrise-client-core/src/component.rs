@@ -471,7 +471,9 @@ pub(crate) fn rendered_bytes(text: &Text, inherited: Option<&Style>) -> usize {
                 Some(ClickEvent::ChangePage(_) | ClickEvent::ShowDialog(_)) | None => 0,
             };
             let object = match &style.inline_object {
-                Some(InlineObject::Player { fallback, .. }) => fallback.len(),
+                Some(
+                    InlineObject::Player { fallback, .. } | InlineObject::Dynamic { fallback, .. },
+                ) => fallback.len(),
                 Some(InlineObject::Atlas {
                     atlas,
                     sprite,

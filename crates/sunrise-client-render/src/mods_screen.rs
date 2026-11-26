@@ -335,10 +335,9 @@ impl ModsScreen {
                 description: installed.description.clone(),
                 icon: has_icon.then_some(key),
                 index: Some(index),
-                config: installed
-                    .native
-                    .as_ref()
-                    .is_some_and(|page| !page.settings.is_empty()),
+                config: installed.native.as_ref().is_some_and(|page| {
+                    (page.own_screen && mods.is_on(index)) || !page.settings.is_empty()
+                }),
                 status,
                 note,
             });
@@ -1256,6 +1255,7 @@ mod tests {
                 label: "Open".into(),
                 tooltip: None,
                 value: crate::mod_list::NativeSettingValue::Toggle(true),
+                category: None,
             }],
             ..NativePage::default()
         };

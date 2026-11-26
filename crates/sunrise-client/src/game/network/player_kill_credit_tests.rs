@@ -125,13 +125,13 @@ fn kill(game: &mut Game<'_>, attacker: Attacker, ty: &str) {
         let known = match attacker {
             Attacker::Player(id, name) => {
                 g.note_player_attacker(ty, id, Text::literal(name), None);
-                None
+                crate::game::creatures::KnownCause::None
             }
-            Attacker::Mob(id) => Some(id),
-            Attacker::None => None,
+            Attacker::Mob(id) => crate::game::creatures::KnownCause::Entity(id),
+            Attacker::None => crate::game::creatures::KnownCause::None,
         };
         assert!(
-            g.hurt_player_from(100.0, Some([22.5, 100.0, 9.5]), ty, Some(known), false),
+            g.hurt_player_from(100.0, Some([22.5, 100.0, 9.5]), ty, known, false),
             "the guest is hurt"
         );
         assert_eq!(g.player.as_ref().unwrap().health.health(), 0.0);
@@ -612,6 +612,7 @@ fn a_victim_advancement_matches_the_displaced_killers_facts() {
                     }
                 }
             }] }).into(),
+            player: None,
         }],
         requirements: vec![vec!["killed".into()]],
         rewards: Rewards::default(),

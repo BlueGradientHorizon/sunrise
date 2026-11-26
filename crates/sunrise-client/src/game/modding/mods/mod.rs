@@ -32,7 +32,6 @@ use sunrise_world::{
 struct ContentRequest<'a> {
     path: &'a Path,
     manifest: &'a sunrise_mod_package::Manifest,
-    declared: Vec<String>,
     admitted: Option<&'a package_files::PackageContent>,
 }
 
@@ -80,16 +79,13 @@ fn read_contents(
         |ContentRequest {
              path,
              manifest,
-             declared,
              admitted,
          }| {
             let content = match admitted {
-                Some(source) => source.read_declaring(manifest, declared),
-                None => sunrise_mod_package::Content::read_declaring(path, manifest, declared),
+                Some(source) => source.read(manifest),
+                None => sunrise_mod_package::Content::read(path, manifest),
             };
-            if declared.is_empty()
-                && let Ok(content) = &content
-            {
+            if let Ok(content) = &content {
                 remember_verdict(path, content);
             }
             content
@@ -105,6 +101,8 @@ pub(super) struct CodeSwitches {
 
 #[derive(Clone, Default)]
 pub(super) struct ModsState {
+    /// The instance's native mod settings, shared by the window and its integrated server.
+    pub(super) settings: crate::game::native_hooks::mod_settings::SharedSettings,
     pub(super) active_condition_root: Option<Arc<()>>,
     pub(super) load_condition_candidate: Option<sunrise_world::conditions::LoadConditions>,
     pub(super) load_conditions:
@@ -153,6 +151,10 @@ pub(super) struct ModsState {
     /// The entries of the mods' datapack registries this world session has published, at the
     /// generation of the load or reload that built them; `None` when no mod declared one.
     pub(super) datapack_registries: Option<Arc<mod_api::DatapackRegistrySet>>,
+    /// Decoded vanilla codec values (`IntProvider`, `BlockStateProvider`, `BlockPredicate`,
+    /// `HolderSet`) for [`Self::datapack_registries`], swapped atomically on load and `/reload`.
+    pub(super) datapack_vanilla_values:
+        Option<Arc<super::native_datapack_values::DatapackVanillaValues>>,
 }
 
 impl ModsState {
@@ -368,7 +370,7 @@ impl ModsState {
 }
 
 mod item_data_load;
-pub(super) use item_data_load::{LoadRole, load_item_data};
+pub(super) use item_data_load::{LoadRole, capture_load_settings, load_item_data};
 
 /// The built-in registries' names in ID order, with Sunrise's own data components.
 fn builtin_registry_names(root: &Path) -> sunrise_client::Result<BTreeMap<String, Vec<String>>> {
@@ -383,23 +385,39 @@ fn builtin_registry_names(root: &Path) -> sunrise_client::Result<BTreeMap<String
     Ok(registries)
 }
 
+fn registration_registry_names(
+    root: &Path,
+) -> sunrise_client::Result<BTreeMap<String, Vec<String>>> {
+    use sunrise_client_core::potions::{EFFECTS, namespaced};
+    let mut registries = builtin_registry_names(root)?;
+    // Effects resolve against the engine table even if the prepared report omits an entry.
+    registries.insert(
+        "minecraft:mob_effect".into(),
+        EFFECTS
+            .iter()
+            .map(|def| namespaced(def.id).to_owned())
+            .collect(),
+    );
+    Ok(registries)
+}
+
 /// Capture registration's stable registries, settings and stock capability type owners.
 pub(super) fn install_registration_data(
     root: &Path,
+    directory: PathBuf,
     runtime_files: BTreeMap<String, Arc<dyn mod_api::RuntimeFileSource>>,
     package_files: BTreeMap<String, Arc<dyn mod_api::PackageFileSource>>,
 ) -> sunrise_client::Result<()> {
     let packages = mod_api::__private::loaded_mods();
-    let directory = mod_api::InstanceDirectory::from_path(&Game::game_dir())
-        .expect("the host path has an encoding the mod API carries");
     (mod_api::__private::platform::platform()?.install_registration_data)(
         mod_api::__private::RegistrationData::new(
-            builtin_registry_names(root)?,
+            registration_registry_names(root)?,
             sunrise_world::native_load_context::capture_settings(
                 &Game::mod_data_root(),
                 packages.ids(),
             ),
-            directory,
+            mod_api::InstanceDirectory::from_path(&directory)
+                .expect("the host path has an encoding the mod API carries"),
             crate::entry::runtime_environment::get().clone(),
         )
         .with_capability_coverage(coverage::builtin, coverage::block_entity)
@@ -420,15 +438,37 @@ fn builtin_registries(root: &Path) -> sunrise_client::Result<sunrise_protocol::r
 /// With no mod registering any, nothing is installed, which every reader
 /// treats as no custom components, and `registries.json` isn't read.
 pub(super) fn register_components(root: &std::path::Path) -> sunrise_client::Result<()> {
-    let mut names = Vec::new();
-    Game::native_component_types(&RegistrationContext::new(), &mut names);
-    if names.is_empty() {
+    let mut entries = Vec::new();
+    Game::native_component_types(&RegistrationContext::new(), &mut entries);
+    if entries.is_empty() {
         return Ok(());
     }
     let builtin = builtin_registries(root)?;
     let types = builtin
         .get("minecraft:data_component_type")
         .ok_or("missing data component registry")?;
+    let mut seen = std::collections::HashMap::<String, &'static str>::with_capacity(entries.len());
+    let mut names = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let id = entry.answer;
+        let mod_id = entry.mod_id;
+        if sunrise_core::identifier::Identifier::parse_namespaced(&id).is_none() {
+            return Err(format!("mod {mod_id}: invalid native component name {id:?}").into());
+        }
+        if types.names.contains(&id) {
+            return Err(format!(
+                "mod {mod_id}: native component {id} conflicts with a built-in data component type"
+            )
+            .into());
+        }
+        if let Some(first) = seen.insert(id.clone(), mod_id) {
+            return Err(format!(
+                "mod {mod_id}: duplicate native component {id} (already registered by mod {first})"
+            )
+            .into());
+        }
+        names.push(id);
+    }
     let first = i32::try_from(types.names.len())?;
     sunrise_protocol::item::custom::install(first, names)
         .map_err(|error| format!("invalid native component registration: {error}"))?;
@@ -463,10 +503,6 @@ impl DeclarationFailures {
                 DeclarationError::InvalidId { id } => {
                     Text::translate("sunrise.mods.declaration.invalid_id", &[quoted(id)])
                 }
-                DeclarationError::UnownedNamespace { id, namespace } => Text::translate(
-                    "sunrise.mods.declaration.unowned_namespace",
-                    &[quoted(id), quoted(namespace)],
-                ),
                 DeclarationError::Rejected { id, reason } => Text::translate(
                     "sunrise.mods.declaration.rejected",
                     &[quoted(id), Text::literal(reason.clone())],
@@ -830,6 +866,7 @@ pub(super) fn register_client_presentations(
     register_dimension_transition_screens(role);
     register_entity_spectator_shaders(role);
     register_render_pipelines(role, vanilla_root)?;
+    register_pipeline_modifiers(role)?;
     register_entity_renderers(role);
     Ok(())
 }
@@ -863,8 +900,8 @@ pub(super) fn register_preset_editors(role: ExecutionRole) {
     sunrise_client::title::preset_editors::register(editors);
 }
 
-/// Keep the mods' render pipeline registrations once at startup, before resources load: every
-/// load builds them from its own shader files.
+/// Keep the mods' render pipeline and custom render type registrations once at startup, before
+/// resources load: every load builds them from its own shader files.
 fn register_render_pipelines(
     role: ExecutionRole,
     vanilla_root: &Path,
@@ -873,8 +910,28 @@ fn register_render_pipelines(
         return Ok(());
     }
     let mut pipelines = Vec::new();
-    Game::native_register_render_pipelines(&RegistrationContext::new(), &mut pipelines);
+    let mut render_types = Vec::new();
+    let mut compute_pipelines = Vec::new();
+    Game::native_register_render_pipelines(
+        &RegistrationContext::new(),
+        &mut pipelines,
+        &mut render_types,
+        &mut compute_pipelines,
+    );
     sunrise_client_render::mod_pipelines::register(pipelines, vanilla_root)?;
+    sunrise_client_render::mod_pipelines::register_render_types(render_types, vanilla_root)?;
+    sunrise_client_render::mod_compute::register(compute_pipelines)?;
+    Ok(())
+}
+
+/// Keep the mods' pipeline modifier registrations once at startup, before resources load.
+fn register_pipeline_modifiers(role: ExecutionRole) -> sunrise_client::Result<()> {
+    if !role.is_client() {
+        return Ok(());
+    }
+    let mut modifiers = Vec::new();
+    Game::native_register_pipeline_modifiers(&RegistrationContext::new(), &mut modifiers);
+    sunrise_client_render::mod_pipelines::register_modifiers(modifiers)?;
     Ok(())
 }
 
@@ -1076,24 +1133,6 @@ fn content_layer_owner<'a>(
         .unwrap_or(layer_id)
 }
 
-/// Maps each admitted content layer's namespaces to its owning package ID:
-/// the serving native host for `served_by` content packages, otherwise the layer itself.
-fn content_owner_pairs<'a>(
-    mods: &'a [sunrise_client::mod_content::ContentMod],
-    selected: &'a [sunrise_mod_package::selection::SelectedPackage],
-) -> Vec<(&'a str, &'a str)> {
-    mods.iter()
-        .flat_map(|layer| {
-            let owner = content_layer_owner(&layer.id, selected);
-            layer
-                .content
-                .namespaces
-                .iter()
-                .map(move |namespace| (namespace.as_str(), owner))
-        })
-        .collect()
-}
-
 /// Builds the content overlay: every enabled or dev content mod's files
 /// merged over `root`. Registration of what the mods declare is
 /// [`content_root`]'s step.
@@ -1190,16 +1229,12 @@ fn content_overlay_with_refusals(
             ContentRequest {
                 path: source.path,
                 manifest: source.manifest,
-                declared: super::native_content_items::owned_item_ids(
-                    source.manifest,
-                    &declared.batches,
-                ),
                 admitted: admission.and_then(|a| a.package(&source.manifest.id, source.path)),
             }
         })
         .collect();
     let read = read_contents(&requests);
-    for (index, content) in order.into_iter().zip(read) {
+    for (&index, content) in order.iter().zip(read) {
         let source = &packages[index];
         let m = source.manifest;
         let content = match content {
@@ -1236,18 +1271,6 @@ fn content_overlay_with_refusals(
             jars: m.jar.clone(),
         };
         match mod_content::accept_mod(&mut mods, candidate, known) {
-            Ok(_) if source.content_only => {
-                content_mods.push(sunrise_client::save::level_mods::ModRecord {
-                    id: m.id.clone(),
-                    version: m.version.to_string(),
-                });
-                announced.push(announced_entry(
-                    &m.id,
-                    &m.version.to_string(),
-                    m.side,
-                    m.runtime.as_ref(),
-                ));
-            }
             Ok(_) => {}
             Err(e) if m.served_by.is_some() => {
                 return Err(Box::new(ServedContentLoadError {
@@ -1276,13 +1299,26 @@ fn content_overlay_with_refusals(
             return Err(DeclarationFailures::new(refusals).into());
         }
         admission?;
-        // A file item's remainder named a code-declared item that was refused: that mod
-        // alone is left out, not every content mod through the overlay's check.
-        for e in mod_content::drop_dangling_remainders(&mut mods) {
-            log::warn!("Sunrise: {e}");
-        }
     } else if !refusals.is_empty() {
         return Err(DeclarationFailures::new(refusals).into());
+    }
+    for (id, detail) in mod_content::drop_dangling_remainders(root, &mut mods)? {
+        if manifests
+            .iter()
+            .any(|m| m.id == id && m.served_by.is_some())
+        {
+            return Err(Box::new(ServedContentLoadError {
+                mod_id: id,
+                stage: ServedContentStage::Admit,
+                detail,
+            }));
+        }
+        // A built native package keeps its code and Parts only with the content it declared:
+        // refusing the content refuses the package, so no dependent starts without it.
+        if sources.native.built().iter().any(|native| native.id == id) {
+            return Err(format!("{id}: native content refused at admission: {detail}").into());
+        }
+        log::warn!("Sunrise: mod {id} content not loaded: {detail}");
     }
     for m in &manifests {
         let suppliers: Vec<&sunrise_mod_package::Manifest> = std::iter::once(*m)
@@ -1351,6 +1387,25 @@ fn content_overlay_with_refusals(
         &overrides,
     )
     .map_err(|error| error.to_string())?;
+    for &index in &order {
+        let source = &packages[index];
+        if !source.content_only || !mods.iter().any(|loaded| loaded.id == source.manifest.id) {
+            continue;
+        }
+        let m = source.manifest;
+        content_mods.push(sunrise_client::save::level_mods::ModRecord {
+            id: m.id.clone(),
+            version: m.version.to_string(),
+        });
+        if announce {
+            announced.push(announced_entry(
+                &m.id,
+                &m.version.to_string(),
+                m.side,
+                m.runtime.as_ref(),
+            ));
+        }
+    }
     let cache = sunrise_client::logging::cache_dir();
     // Content admission and the live code-dispatch boundary jointly determine
     // what loaded. Namespaces and raw startup metadata cannot answer this.
@@ -1483,15 +1538,28 @@ pub(in crate::game) fn content_root(
     }
     register_mob_effects(&overlay.mods, &sources.selected);
     resolve_particle_providers(overlay.root.source())?;
+    // A package whose content was refused is not admitted: an optional dependent's effect Part
+    // on it is dropped, while an admitted provider that lacks the effect is still refused.
+    let provider_admitted = |package: &str| {
+        package == "minecraft"
+            || overlay.mods.iter().any(|content| content.id == package)
+            || sources
+                .native
+                .built()
+                .iter()
+                .any(|native| native.id == package)
+    };
     mod_api::__private::resolve_effects(
         sunrise_client_core::potions::all_effects()
             .map(|def| sunrise_client_core::potions::namespaced(def.id)),
         |id| sunrise_client_core::potions::effect(id).map(|def| def.index),
+        provider_admitted,
     )
     .map_err(|errors| errors.join("\n"))?;
-    mod_api::__private::validate_effect_part_owners(|id| {
-        sunrise_client_core::potions::effect(id)?.owner
-    })
+    mod_api::__private::validate_effect_part_owners(
+        |id| sunrise_client_core::potions::effect(id)?.owner,
+        provider_admitted,
+    )
     .map_err(|errors| errors.join("\n"))?;
     let behavior: serde_json::Value =
         sunrise_world::json_file::read(&overlay.root.prepared().join("block-behaviours.json"))?;
@@ -1520,10 +1588,34 @@ pub(in crate::game) fn content_root(
     sunrise_client::mod_content::set_fluid_interactions(&overlay.mods);
     // Freeze ownership with the startup registries, before preparing Parts. Pack and data
     // reloads can change layers but cannot replace the registered blocks and block entity types.
-    mod_api::__private::install_content_owners(content_owner_pairs(
-        &overlay.mods,
-        &sources.selected,
-    ));
+    mod_api::__private::install_content_owners(
+        overlay.mods.iter().flat_map(|m| {
+            let owner = content_layer_owner(&m.id, &sources.selected);
+            m.content
+                .blocks
+                .iter()
+                .map(move |block| (block.id.as_str(), owner))
+        }),
+        overlay.mods.iter().flat_map(|m| {
+            m.content.items.iter().map(|item| item.id.as_str()).chain(
+                m.content
+                    .blocks
+                    .iter()
+                    .filter(|block| block.item)
+                    .map(|block| block.id.as_str()),
+            )
+        }),
+        overlay.mods.iter().flat_map(|m| {
+            let owner = content_layer_owner(&m.id, &sources.selected);
+            m.content
+                .block_entity_types
+                .iter()
+                .map(move |kind| (kind.id.as_str(), owner))
+        }),
+        sunrise_client::containers::mod_menu_types()
+            .iter()
+            .map(|menu| (menu.id, content_layer_owner(menu.owner, &sources.selected))),
+    );
     Ok(overlay.root)
 }
 
@@ -1589,12 +1681,25 @@ fn register_block_entity_types(
                 .map(|block| (block.clone(), kind.id.clone()))
         })
         .collect();
-    let mut types = BlockEntityTypes::new(membership, names.clone());
+    let mut types = BlockEntityTypes::new(
+        membership,
+        names.clone(),
+        mods.iter().flat_map(|m| {
+            m.content
+                .block_entity_types
+                .iter()
+                .map(|kind| kind.id.clone())
+        }),
+    );
     let blocks = builtin.get("minecraft:block");
+    let content_blocks: std::collections::HashSet<&str> = mods
+        .iter()
+        .flat_map(|m| m.content.blocks.iter().map(|block| block.id.as_str()))
+        .collect();
     for block in blocks
         .into_iter()
         .flat_map(|ids| &ids.names)
-        .filter(|name| name.starts_with("minecraft:"))
+        .filter(|name| !content_blocks.contains(name.as_str()))
     {
         if let Some(kind) = sunrise_client::lan::chunks::block_entity_type(block) {
             types.template(block.clone(), block.clone(), kind.to_owned());
@@ -1608,7 +1713,12 @@ fn register_block_entity_types(
     mod_api::__private::resolve_block_entity_types(types.names(), |id| types.key(id))
         .map_err(|errors| errors.join("\n"))?;
     types.bind_tick_parts(|id| {
-        mod_api::__private::block_entity_type_listens(mod_api::HookId::BlockEntityTick, id)
+        let key = mod_api::__private::block_entity_type_key(id);
+        let bind = |hook| key.filter(|_| mod_api::__private::block_entity_type_listens(hook, id));
+        (
+            bind(mod_api::HookId::BlockEntityTick),
+            bind(mod_api::HookId::BlockEntityClientTick),
+        )
     });
     let additions: Vec<(String, String)> = if let Some(current) = block_entity_types::current() {
         current
@@ -1744,7 +1854,8 @@ fn register_mob_effects(
     selected: &[sunrise_mod_package::selection::SelectedPackage],
 ) {
     use sunrise_client::brewing::{self, Category};
-    use sunrise_mod_package::content::EffectCategory;
+    use sunrise_mod_package::content::{EffectCategory, ModifierOperation};
+    use sunrise_world::attributes::Operation;
     let effects = mob_effect_entries(mods, selected);
     if effects.is_empty() {
         return;
@@ -1759,13 +1870,23 @@ fn register_mob_effects(
             EffectCategory::Harmful => Category::Harmful,
             EffectCategory::Neutral => Category::Neutral,
         };
-        (
-            e.id.clone(),
-            e.color,
-            category,
-            e.sort_order,
-            owner.to_owned(),
-        )
+        let modifiers = e
+            .attribute_modifiers
+            .iter()
+            .map(|m| {
+                let operation = match m.operation {
+                    ModifierOperation::AddValue => Operation::AddValue,
+                    ModifierOperation::AddMultipliedBase => Operation::AddMultipliedBase,
+                    ModifierOperation::AddMultipliedTotal => Operation::AddMultipliedTotal,
+                };
+                (m.attribute.clone(), m.id.clone(), m.amount, operation)
+            })
+            .collect();
+        brewing::ModEffect {
+            sort_order: e.sort_order,
+            modifiers,
+            ..brewing::ModEffect::new(&e.id, e.color, category, owner)
+        }
     }));
     if !set
         && brewing::mod_effects()
@@ -1972,10 +2093,15 @@ fn not_built(
     paths.sort();
     let mut out: Vec<Installed> = Vec::new();
     for path in paths {
-        let Ok(bundle) = sunrise_mod_package::index::native::Bundle::read(&path) else {
+        // The row names the mod, so the manifest is all it needs: the package's other entries,
+        // its source among them, stay unread.
+        let Ok(package) = sunrise_mod_package::Package::read(&path) else {
             continue;
         };
-        let m = bundle.manifest;
+        if !package.is_native() {
+            continue;
+        }
+        let m = package.manifest;
         let listed = rows.iter().chain(&out).any(|row| row.id == m.id);
         if !listed && !built.iter().any(|b| b.id == m.id) {
             out.push(Installed {
@@ -2034,19 +2160,48 @@ impl Game<'_> {
         Ok(())
     }
 
-    pub(super) fn prepare_loop_context(
+    /// The settings the candidate generation under `resources` reads, captured once. The
+    /// reload listeners registered for it and its loop readers are built from this capture.
+    pub(super) fn capture_candidate_settings(
         &self,
         resources: &std::path::Path,
-    ) -> sunrise_client::Result<PreparedLoopContext> {
-        let side = self.options.execution_role.loop_side();
+    ) -> sunrise_client::Result<sunrise_world::native_load_context::SettingsCapture> {
         let inventory = sunrise_mod_package::enabled::EnabledMods::read(resources)?;
+        // EnabledMods yields ids in sorted order.
         let ids: Vec<_> = if self.is_logical_server() {
             inventory.server_ids().collect()
         } else {
             inventory.client_ids().collect()
         };
-        let item_data = self.res.core.item_data.context();
-        Ok(self.loop_context_readers(item_data.loop_context(side, ids.iter().copied())))
+        let registered = super::native_hooks::mod_settings::registered_setting_keys()
+            .filter(|(owner, _)| ids.binary_search(owner).is_ok());
+        Ok(sunrise_world::native_load_context::SettingsCapture::new(
+            &Self::mod_data_root(),
+            ids.iter().copied(),
+            registered,
+        ))
+    }
+
+    pub(super) fn prepare_loop_context(
+        &self,
+        resources: &std::path::Path,
+    ) -> sunrise_client::Result<PreparedLoopContext> {
+        Ok(self.prepare_loop_context_from(self.capture_candidate_settings(resources)?))
+    }
+
+    /// The loop readers of a generation over the capture it was prepared from.
+    pub(super) fn prepare_loop_context_from(
+        &self,
+        captured: sunrise_world::native_load_context::SettingsCapture,
+    ) -> PreparedLoopContext {
+        let side = self.options.execution_role.loop_side();
+        let context = self
+            .res
+            .core
+            .item_data
+            .context()
+            .loop_context_with_capture(side, captured);
+        self.loop_context_readers(context)
     }
 
     fn loop_context_readers(
@@ -2071,13 +2226,15 @@ impl Game<'_> {
         self.protect_condition_root();
         self.loop_context = context.game;
         self.refresh_recipe_property_context();
-        self.setting_overrides.borrow_mut().clear();
         if let Some(audio) = context.audio {
             self.audio.set_loop_context(audio);
         }
         if let Some(worldgen) = context.worldgen {
             sunrise_world::native_worldgen_hooks::publish_context(Arc::new(worldgen));
         }
+        // Populate or reload the live settings store directly from
+        // this generation's captured LoopContext snapshot (never a second disk scan).
+        self.sync_native_settings_from_loop_context();
     }
 
     /// Stage a fresh root when admission changes or registered conditions need reevaluation.
@@ -2175,8 +2332,9 @@ impl Game<'_> {
                 .capture_code_switches(&self.settings.mods.disabled);
         }
         // A mod with a native version built in says so instead, and isn't news.
-        self.list_native_mods();
+        // The switches first: a row's config screen is offered only while its mod is on.
         self.sync_native_switches();
+        self.list_native_mods();
         let built = self.mods.native.built();
         let built_mods = native_mods_detail(built);
         if let Some(list) = built_mods {
@@ -2199,11 +2357,10 @@ impl Game<'_> {
             .clone()
             .unwrap_or_else(|| self.settings.mods.enabled.clone())
     }
-    /// The player turned content mods on or off (Options > Mods, or an
-    /// install from Browse Mods): those with only assets and data apply now,
+    /// The player turned content mods on or off in Options > Mods: those with only assets and data apply now,
     /// through the resource reload and then the
     /// server's data reload (`mods_reloaded`); those that add blocks, items or
-    /// worldgen wait for a restart, and the Mods page says so.
+    /// worldgen wait for a restart.
     pub(super) fn switch_mods(&mut self) {
         let Some(applied) = self.mods.applied.clone() else {
             return;
@@ -2216,13 +2373,11 @@ impl Game<'_> {
         let content = &self.mods.content_ids;
         let mut next = wanted.clone();
 
-        let mut waiting = Vec::new();
         for id in applied.symmetric_difference(&wanted) {
             if !content.contains(id) || self.mods.live_ids.contains(id) {
                 continue;
             }
             log::info!("Sunrise: mod {id} needs a restart to switch");
-            waiting.push(id.clone());
             if applied.contains(id) {
                 next.insert(id.clone());
             } else {
@@ -2234,12 +2389,7 @@ impl Game<'_> {
             .reconcile_code_switches(&self.settings.mods.disabled);
         for id in host_waiting {
             log::info!("Sunrise: serving host mod {id} needs a restart to switch");
-            if !waiting.contains(&id) {
-                waiting.push(id);
-            }
         }
-        self.ui.options.mods_note = (!waiting.is_empty())
-            .then(|| lang::tr("sunrise.mods.switch.restart", &[&waiting.join(", ")]));
         let changed = applied
             .symmetric_difference(&next)
             .any(|id| content.contains(id));
@@ -2318,6 +2468,13 @@ impl Game<'_> {
         self.instance_groups
             .borrow_mut()
             .retire_disabled(&effective);
+        self.prepared_items.borrow_mut().retire_disabled(&effective);
+        if let Some(renderer) = &self.renderer {
+            renderer.retire_disabled_mod_meshes(&effective);
+            renderer.retire_disabled_mod_uniforms(&effective);
+            renderer.retire_unloaded_mod_storage(&effective);
+            renderer.retire_unloaded_mod_render_targets(&effective);
+        }
         self.mods.apply_code_switches(&effective);
     }
 }
@@ -2370,12 +2527,14 @@ pub(super) fn living_mod_types()
     std::fs::create_dir_all(&root).unwrap();
     std::fs::write(root.join("entity-types.json"), table).unwrap();
     // No attribute catalog: the rows' values stay as written.
-    let attributes = &sunrise_world::attributes::entity::Catalog::from_json(&serde_json::json!({
-        "data_version": sunrise_world::DATA_VERSION,
-        "attributes": [],
-        "entities": {},
-    }))
-    .unwrap();
+    let attributes = &Arc::new(
+        sunrise_world::attributes::entity::Catalog::from_json(&serde_json::json!({
+            "data_version": sunrise_world::DATA_VERSION,
+            "attributes": [],
+            "entities": {},
+        }))
+        .unwrap(),
+    );
     let types = sunrise_client::mobs::MobTypes::load_for_server(&root, attributes).unwrap();
     let _ = std::fs::remove_dir_all(&root);
     types
@@ -2412,26 +2571,25 @@ pub(in crate::game) fn collect_poi_extensions(
     let mut additions = Vec::new();
     let mut refusals = Vec::new();
     for (poi, predicate) in extensions.into_entries() {
-        let record = mod_api::StatePredicateRecord::from(&predicate);
-        let block = match record.target {
-            mod_api::StatePredicateTarget::Block(block) => block,
-            mod_api::StatePredicateTarget::Tag(_) => {
-                refusals.push(format!(
-                    "{poi} asked for a block tag's states; an addition names a block"
-                ));
+        let Some(block) = predicate.block_key() else {
+            refusals.push(format!(
+                "{poi} asked for a block tag's states; an addition names a block"
+            ));
+            continue;
+        };
+        let name = match mod_api::BlockMetadata::name(metadata, block) {
+            Ok(name) => name,
+            Err(error) => {
+                refusals.push(format!("{poi} could not resolve its block: {error:?}"));
                 continue;
             }
-        };
-        // The predicate was built on this metadata, so its block is known.
-        let Ok(name) = mod_api::BlockMetadata::name(metadata, block) else {
-            continue;
         };
         for index in 0..registry.len() {
             let state = registry
                 .state(sunrise_world::registry::BlockStateId(index as u32))
                 .expect("registry index is in bounds");
             if state.name == name
-                && record.constraints.iter().all(|constraint| {
+                && predicate.constraints().iter().all(|constraint| {
                     state.properties.get(constraint.name.as_str()) == Some(&constraint.value)
                 })
             {
@@ -2494,27 +2652,11 @@ pub(in crate::game) fn collect_cauldron_fluid_contents(
     (contents, refusals)
 }
 
-/// Registered callbacks indexed directly by the slots resolved in enchantment content.
-pub(in crate::game) static ENCHANTMENT_DAMAGE_EFFECTS: std::sync::OnceLock<
-    Vec<std::sync::Arc<dyn mod_api::EnchantmentDamageEffect>>,
-> = std::sync::OnceLock::new();
-
-pub(super) fn register_enchantment_damage_effects() {
-    let mut effects = mod_api::EnchantmentDamageRegistry::default();
-    Game::native_register_enchantment_damage_effects(
-        &mod_api::RegistrationContext::new(),
-        &mut effects,
-    );
-    let (ids, callbacks): (Vec<_>, Vec<_>) = effects
-        .into_entries()
-        .into_iter()
-        .map(|(id, effect)| (id.to_string(), effect))
-        .unzip();
-    sunrise_items::enchant::register_damage_effects(ids);
-    assert!(
-        ENCHANTMENT_DAMAGE_EFFECTS.set(callbacks).is_ok(),
-        "damage effects already registered"
-    );
+/// Install the frozen type registries before selected enchantment definitions are loaded.
+pub(super) fn register_enchantment_effects() {
+    let mut effects = mod_api::__private::EnchantmentEffectRegistry::default();
+    Game::native_register_enchantment_effects(&mod_api::RegistrationContext::new(), &mut effects);
+    sunrise_items::enchant::install_effect_types(effects);
 }
 
 #[cfg(test)]
@@ -2606,7 +2748,7 @@ pub(in crate::game) mod tests {
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for DeclaresBadContent {
             fn blocks(&self, _: &RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
-                let _ = event.register(mod_api::Block::new("foreign:lamp", "minecraft:stone"));
+                let _ = event.register(mod_api::Block::new("foreign:Bad Lamp", "minecraft:stone"));
             }
             fn items(&self, _: &RegistrationContext, event: &mut mod_api::ItemsEvent<'_>) {
                 let _ = event.register(mod_api::Item::new("Bad Key", "minecraft:stick"));
@@ -2633,9 +2775,8 @@ pub(in crate::game) mod tests {
                         DeclarationRefusal::new(
                             "maker",
                             DeclarationKind::Block,
-                            DeclarationError::UnownedNamespace {
-                                id: "foreign:lamp".into(),
-                                namespace: "foreign".into(),
+                            DeclarationError::InvalidId {
+                                id: "foreign:Bad Lamp".into(),
                             }
                         ),
                         DeclarationRefusal::new(
@@ -2700,14 +2841,13 @@ pub(in crate::game) mod tests {
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for Declares {
             fn blocks(&self, _: &RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
-                let _ = event.register(mod_api::Block::new("foreign:lamp", "minecraft:stone"));
                 event
-                    .register(mod_api::Block::new("tool", "minecraft:stone"))
+                    .register(mod_api::Block::new("foreign:tool", "minecraft:stone"))
                     .unwrap();
             }
             fn items(&self, _: &RegistrationContext, event: &mut mod_api::ItemsEvent<'_>) {
                 event
-                    .register(mod_api::Item::new("tool", "minecraft:stick"))
+                    .register(mod_api::Item::new("foreign:tool", "minecraft:stick"))
                     .unwrap();
                 let mut item = mod_api::Item::new("bad_component", "minecraft:stick");
                 item.components
@@ -2722,21 +2862,10 @@ pub(in crate::game) mod tests {
                     .err()
                     .expect("invalid native batch must refuse startup");
                 let report = error.downcast_ref::<DeclarationFailures>().unwrap();
-                assert_eq!(report.0.len(), 3, "{:?}", report.0);
-                assert_eq!(
-                    report.0[0],
-                    DeclarationRefusal::new(
-                        "maker",
-                        DeclarationKind::Block,
-                        DeclarationError::UnownedNamespace {
-                            id: "foreign:lamp".into(),
-                            namespace: "foreign".into()
-                        }
-                    )
-                );
+                assert_eq!(report.0.len(), 2, "{:?}", report.0);
                 for (record, id, detail) in [
-                    (&report.0[1], "maker:tool", "block's item"),
-                    (&report.0[2], "maker:bad_component", "maker:unknown"),
+                    (&report.0[0], "foreign:tool", "block's item"),
+                    (&report.0[1], "maker:bad_component", "maker:unknown"),
                 ] {
                     assert_eq!(
                         (&*record.mod_id, record.kind),
@@ -2749,6 +2878,84 @@ pub(in crate::game) mod tests {
                     );
                 }
             },
+        );
+    }
+
+    #[test]
+    fn native_component_registration_refuses_a_builtin_key() {
+        struct DeclaresDamage;
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for DeclaresDamage {
+            fn component_types(
+                &self,
+                _: &RegistrationContext,
+                event: &mut mod_api::ComponentTypesEvent<'_>,
+            ) {
+                event.register("minecraft:damage".into());
+            }
+        }
+        let root =
+            std::env::temp_dir().join(format!("sunrise-component-builtin-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("registries.json"),
+            r#"{"minecraft:data_component_type":{"entries":{"minecraft:damage":{"protocol_id":0}}}}"#,
+        )
+        .unwrap();
+        let result = mod_platform::testing::with_mods(
+            vec![mod_api::ModEntry::new("maker", Box::new(DeclaresDamage))].into(),
+            || register_components(&root),
+        );
+        std::fs::remove_dir_all(root).unwrap();
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "mod maker: native component minecraft:damage conflicts with a built-in data component type"
+        );
+    }
+
+    #[test]
+    fn native_component_registration_names_submitting_and_earlier_mods_on_duplicate() {
+        struct Declares(&'static str);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Declares {
+            fn component_types(
+                &self,
+                _: &RegistrationContext,
+                event: &mut mod_api::ComponentTypesEvent<'_>,
+            ) {
+                event.register(self.0.into());
+            }
+        }
+        let root = std::env::temp_dir().join(format!(
+            "sunrise-component-duplicate-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("registries.json"),
+            r#"{"minecraft:data_component_type":{"entries":{"minecraft:damage":{"protocol_id":0}}}}"#,
+        )
+        .unwrap();
+        let duplicate = mod_platform::testing::with_mods(
+            vec![
+                mod_api::ModEntry::new("first", Box::new(Declares("shared:charge"))),
+                mod_api::ModEntry::new("second", Box::new(Declares("shared:charge"))),
+            ]
+            .into(),
+            || register_components(&root),
+        );
+        let invalid = mod_platform::testing::with_mods(
+            vec![mod_api::ModEntry::new("broken", Box::new(Declares("bare")))].into(),
+            || register_components(&root),
+        );
+        std::fs::remove_dir_all(root).unwrap();
+        assert_eq!(
+            duplicate.unwrap_err().to_string(),
+            "mod second: duplicate native component shared:charge (already registered by mod first)"
+        );
+        assert_eq!(
+            invalid.unwrap_err().to_string(),
+            "mod broken: invalid native component name \"bare\""
         );
     }
 
@@ -2831,7 +3038,7 @@ pub(in crate::game) mod tests {
         impl mod_api::Hooks for DeclaresBlock {
             fn blocks(&self, _: &RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
                 event
-                    .register(mod_api::Block::new("test:blastproof", "minecraft:stone"))
+                    .register(mod_api::Block::new("foreign:blastproof", "minecraft:stone"))
                     .unwrap();
             }
         }
@@ -2844,7 +3051,7 @@ pub(in crate::game) mod tests {
                 native_declared().batches["test"]
                     .blocks
                     .iter()
-                    .any(|b| b.get().id == "test:blastproof")
+                    .any(|b| b.get().id == "foreign:blastproof")
             );
         });
         mod_platform::testing::with_mods(Vec::new().into(), || {
@@ -3023,36 +3230,11 @@ pub(in crate::game) mod tests {
         assert!(!live_ids.contains("runes"));
         assert!(live_ids.contains("plain"));
 
-        // content_owner_pairs maps served namespaces to the host and disables with the host.
-        let mut runes_content = sunrise_mod_package::Content::declared("runes");
-        runes_content.namespaces.push("runes_extra".into());
-        let layers = vec![
-            sunrise_client::mod_content::ContentMod {
-                id: "horizon_java".into(),
-                content: sunrise_mod_package::Content::declared("horizon_java"),
-                jars: Vec::new(),
-            },
-            sunrise_client::mod_content::ContentMod {
-                id: "runes".into(),
-                content: runes_content,
-                jars: Vec::new(),
-            },
-            sunrise_client::mod_content::ContentMod {
-                id: "plain".into(),
-                content: sunrise_mod_package::Content::declared("plain"),
-                jars: Vec::new(),
-            },
-        ];
-        let owners = content_owner_pairs(&layers, &valid_state.selected);
-        assert_eq!(
-            owners,
-            [
-                ("horizon_java", "horizon_java"),
-                ("runes", "horizon_java"),
-                ("runes_extra", "horizon_java"),
-                ("plain", "plain"),
-            ]
-        );
+        // Installed served content belongs to its host, not to the spelling of a registry key.
+        let hosted = content_layer_owner("runes", &valid_state.selected);
+        let plain = content_layer_owner("plain", &valid_state.selected);
+        assert_eq!(hosted, "horizon_java");
+        assert_eq!(plain, "plain");
         struct Quiet;
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for Quiet {}
@@ -3061,12 +3243,25 @@ pub(in crate::game) mod tests {
             vec![mod_api::ModEntry::new("horizon_java", Box::new(Quiet))].into(),
             || {
                 assert!(mod_api::__private::set_mod_enabled("horizon_java", false));
-                mod_api::__private::install_content_owners(owners.iter().copied());
-                assert!(mod_api::__private::content_owner_disabled("runes:altar"));
-                assert!(mod_api::__private::content_owner_disabled(
+                mod_api::__private::install_content_owners(
+                    [],
+                    [],
+                    [
+                        ("runes:altar", hosted),
+                        ("runes_extra:rune", hosted),
+                        ("plain:block", plain),
+                    ],
+                    [],
+                );
+                assert!(mod_api::__private::block_entity_owner_disabled(
+                    "runes:altar"
+                ));
+                assert!(mod_api::__private::block_entity_owner_disabled(
                     "runes_extra:rune"
                 ));
-                assert!(!mod_api::__private::content_owner_disabled("plain:block"));
+                assert!(!mod_api::__private::block_entity_owner_disabled(
+                    "plain:block"
+                ));
             },
         );
 
@@ -3114,9 +3309,11 @@ pub(in crate::game) mod tests {
         assert_eq!(load_err.mod_id, "runes");
         assert_eq!(load_err.stage, ServedContentStage::Read);
 
-        // A served package whose crafting_remainder names an owned-namespace item passes
-        // package-only Content::read (build/check), yet fatally fails load-time content_overlay
-        // if the serving host never declares that item.
+        // A served package's file passes parsing, but a remainder not supplied by any
+        // registered item still refuses load during overlay construction.
+        std::fs::write(base.join("facts.json"), r#"{"states":[],"defaults":{}}"#).unwrap();
+        std::fs::write(base.join("gameplay-facts.json"), r#"{"states":[]}"#).unwrap();
+        std::fs::write(base.join("items.json"), r#"{"minecraft:mushroom_stew":{}}"#).unwrap();
         let runes_missing_remainder = make_content(
             "runes-missing-rem.smod",
             "id='runes'\nname='Runes'\nversion='1.0.0'\napi='0.2'\nside='both'\ncapabilities=['registries']\nserved_by='horizon_java'\n",
@@ -3138,12 +3335,13 @@ pub(in crate::game) mod tests {
         let err = content_overlay(&base, &missing_rem_state, &store)
             .err()
             .unwrap();
-        let load_err = err
-            .downcast_ref::<ServedContentLoadError>()
-            .expect("undeclared host crafting_remainder fails load fatally");
+        let load_err = err.downcast_ref::<ServedContentLoadError>().unwrap();
         assert_eq!(load_err.mod_id, "runes");
-        assert_eq!(load_err.stage, ServedContentStage::Read);
-        assert!(load_err.detail.contains("runes:host_bowl"), "{load_err}");
+        assert_eq!(load_err.stage, ServedContentStage::Admit);
+        assert_eq!(
+            load_err.detail,
+            r#"runes:stew: crafting_remainder "runes:host_bowl" is not an item"#
+        );
 
         // accept_mod error (unknown component) on a served content package is fatal.
         let runes_bad_component = make_content(
@@ -3421,7 +3619,7 @@ pub(in crate::game) mod tests {
                     1,
                     &[],
                 );
-                *self.outcome.lock().unwrap() = Some(result);
+                *self.outcome.lock().unwrap() = Some(result.map(|_| ()));
             }
         }
 
@@ -4033,7 +4231,12 @@ pub(in crate::game) mod tests {
             ]
             .into(),
             || {
-                mod_api::__private::install_content_owners([("runes", "horizon_java")]);
+                mod_api::__private::install_content_owners(
+                    [],
+                    [],
+                    [("runes:altar", "horizon_java")],
+                    [],
+                );
                 active.apply_code_switches(&wanted_disabled);
                 assert!(mod_api::__private::mod_index_on(
                     mod_api::__private::mod_index("horizon_java").unwrap()
@@ -4041,7 +4244,9 @@ pub(in crate::game) mod tests {
                 assert!(!mod_api::__private::mod_index_on(
                     mod_api::__private::mod_index("plain_native").unwrap()
                 ));
-                assert!(!mod_api::__private::content_owner_disabled("runes:altar"));
+                assert!(!mod_api::__private::block_entity_owner_disabled(
+                    "runes:altar"
+                ));
             },
         );
 
@@ -4253,12 +4458,14 @@ pub(in crate::game) mod tests {
             || {
                 mod_platform::testing::with_mods(mods.clone(), || {
                     mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
-                    mod_api::__private::resolve_effects(["runes:ward"], |id| {
-                        (id == "runes:ward").then_some(0)
-                    })
+                    mod_api::__private::resolve_effects(
+                        ["runes:ward"],
+                        |id| (id == "runes:ward").then_some(0),
+                        |_| true,
+                    )
                     .unwrap();
                     let effect = mod_api::__private::effect_key("runes:ward").unwrap();
-                    mod_api::__private::validate_effect_part_owners(owner_of).expect(
+                    mod_api::__private::validate_effect_part_owners(owner_of, |_| true).expect(
                         "the serving host and its dependent may attach to the served effect",
                     );
 
@@ -4310,7 +4517,7 @@ pub(in crate::game) mod tests {
         let unrelated: mod_api::Mods = vec![WardTick::<2>::entry("third", &trace)].into();
         mod_platform::testing::with_mods(unrelated.clone(), || {
             mod_platform::__private::part_tests::install_parts_fixture(&unrelated).unwrap();
-            let refused = mod_api::__private::validate_effect_part_owners(owner_of)
+            let refused = mod_api::__private::validate_effect_part_owners(owner_of, |_| true)
                 .expect_err("unrelated mod without dependency on serving host must be refused");
             assert_eq!(refused.len(), 1, "{refused:?}");
             assert!(
@@ -4332,6 +4539,10 @@ pub(in crate::game) mod tests {
         );
         assert!(collect_key_mappings(ExecutionRole::IntegratedServer, &declared).is_empty());
         assert!(collect_key_mappings(ExecutionRole::DedicatedServer, &declared).is_empty());
+    }
+
+    mod content_admission {
+        include!("content_admission_tests.rs");
     }
 
     mod inventory {
@@ -4634,8 +4845,10 @@ pub(in crate::game) mod tests {
         // attribute map and fields (`take_attribute_row`).
         let mut types = living_mod_types();
         let ghoul = types.get_mut("ruby:ghoul").unwrap();
-        Arc::make_mut(ghoul)
-            .take_attribute_row(Arc::new(merged.entity_row("ruby:ghoul").unwrap()), &merged);
+        Arc::make_mut(ghoul).take_attribute_row(
+            Arc::new(merged.entity_row("ruby:ghoul").unwrap()),
+            &Arc::new(merged.clone()),
+        );
         let ghoul = Mob::new(7, types["ruby:ghoul"].clone(), Vec3::ZERO, 0.0);
         assert_eq!(ghoul.health, 55.0, "the spawn's health");
         assert_eq!(ghoul.attrs.max_health, 55.0);
@@ -4820,8 +5033,10 @@ pub(in crate::game) mod tests {
         let mut types = living_mod_types();
         let ghoul = types.get_mut("ruby:ghoul").unwrap();
         assert_eq!(ghoul.max_health, 40.0, "the content row's own value");
-        Arc::make_mut(ghoul)
-            .take_attribute_row(Arc::new(merged.entity_row("ruby:ghoul").unwrap()), &merged);
+        Arc::make_mut(ghoul).take_attribute_row(
+            Arc::new(merged.entity_row("ruby:ghoul").unwrap()),
+            &Arc::new(merged.clone()),
+        );
         let ghoul = Mob::new(7, types["ruby:ghoul"].clone(), Vec3::ZERO, 0.0);
         assert_eq!(
             ghoul.health, 20.0,
@@ -4977,6 +5192,44 @@ pub(in crate::game) mod tests {
         .err()
         .unwrap();
         assert!(error.contains("ruby:ghoul"), "{error}");
+    }
+
+    /// #4473: a content mod's effect may declare modifiers on the attributes
+    /// the complete catalog has, vanilla's or a mod's; another refuses the
+    /// load, naming the effect and the attribute.
+    #[test]
+    fn a_declared_effect_modifier_on_an_unknown_attribute_refuses_the_load() {
+        use sunrise_client::brewing::{self, EffectDef};
+        use sunrise_world::attributes::{Operation, entity::Catalog};
+
+        let catalog = Catalog::from_json(&serde_json::json!({
+            "data_version": sunrise_world::DATA_VERSION,
+            "attributes": [
+                {"id": "minecraft:luck", "default": "0000000000000000", "min": "c090000000000000", "max": "4090000000000000", "syncable": true},
+                {"id": "ruby:mana", "default": "0000000000000000", "min": "0000000000000000", "max": "4090000000000000", "syncable": true}
+            ],
+            "entities": {"minecraft:player": {}}
+        }))
+        .unwrap();
+        let effect = |modifiers| EffectDef {
+            id: "ruby:stun",
+            modifiers,
+            ..*brewing::effect("slowness").unwrap()
+        };
+        let check = |effects: &[EffectDef]| {
+            super::super::resource_load::check_effect_modifier_attributes(&catalog, effects)
+        };
+        const KNOWN: &[brewing::EffectModifier] = &[
+            ("minecraft:luck", "ruby:a", 1.0, Operation::AddValue),
+            ("ruby:mana", "ruby:b", 1.0, Operation::AddValue),
+        ];
+        const UNKNOWN: &[brewing::EffectModifier] =
+            &[("ruby:stamina", "ruby:c", 1.0, Operation::AddValue)];
+        assert_eq!(check(&[effect(KNOWN), effect(&[])]), Ok(()));
+        assert_eq!(
+            check(&[effect(KNOWN), effect(UNKNOWN)]),
+            Err("mob effect ruby:stun: attribute_modifiers: unknown attribute ruby:stamina".into())
+        );
     }
 
     /// A content mod's type from the wandering trader, the neutral template
@@ -5350,6 +5603,65 @@ pub(in crate::game) mod tests {
         std::env::set_current_dir(std::env::temp_dir()).unwrap();
     }
 
+    /// A built native package whose own content declares a remainder that is not an item is
+    /// refused with the package: its code and Parts never start without the content it declared.
+    #[test]
+    #[ignore = "daily"]
+    fn a_built_native_package_with_a_missing_remainder_is_refused_whole() {
+        const MODE: &str = "SUNRISE_NATIVE_REMAINDER_TEST";
+        if std::env::var_os(MODE).is_none() {
+            run_in_child(
+                "game::mods::tests::a_built_native_package_with_a_missing_remainder_is_refused_whole",
+                MODE,
+            );
+            return;
+        }
+        let f = Fixture::new("native-missing-remainder");
+        let text = format!(
+            "id='machine_sample'\nname='machine_sample'\nversion='0.3.0'\napi='0.2'\nside='both'\ncapabilities=['registries']\n[native]\ngame='26.3'\nsunrise='{}'\nmixins='{}'\n",
+            "a".repeat(40),
+            "b".repeat(40)
+        );
+        let code: &[(&str, &[u8])] = &[
+            ("Cargo.toml", b"[package]\nname='example'\nversion='1'\n"),
+            ("src/lib.rs", b"pub fn hooks() {}"),
+            (
+                "data/machine_sample/sunrise/item/stew.json",
+                br#"{"template":"minecraft:mushroom_stew","crafting_remainder":"machine_sample:missing_bowl"}"#,
+            ),
+        ];
+        let path = f.0.join("machine_sample.smod");
+        std::fs::write(
+            &path,
+            sunrise_mod_package::Package::write_files(&text, code).unwrap(),
+        )
+        .unwrap();
+        let selected: Arc<[sunrise_mod_package::selection::SelectedPackage]> =
+            vec![sunrise_mod_package::selection::SelectedPackage {
+                package: sunrise_mod_package::Package::read(&path).unwrap(),
+                path,
+            }]
+            .into();
+        let sources = ModsState {
+            native: Arc::new(f.runtime()),
+            selected,
+            ..Default::default()
+        };
+        let base = f.0.join("vanilla");
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join("sunrise-resources.json"), "{}").unwrap();
+        std::fs::write(base.join("facts.json"), r#"{"states":[],"defaults":{}}"#).unwrap();
+        std::fs::write(base.join("gameplay-facts.json"), r#"{"states":[]}"#).unwrap();
+        std::fs::write(base.join("items.json"), r#"{"minecraft:mushroom_stew":{}}"#).unwrap();
+        let error = content_overlay(&base, &sources, &f.0.join("jars"))
+            .err()
+            .unwrap();
+        assert_eq!(
+            error.to_string(),
+            r#"machine_sample: native content refused at admission: machine_sample:stew: crafting_remainder "machine_sample:missing_bowl" is not an item"#
+        );
+    }
+
     #[test]
     #[ignore = "daily"]
     fn a_shared_missing_jar_stops_native_load_and_refuses_each_content_mod_row() {
@@ -5514,32 +5826,79 @@ pub(in crate::game) mod tests {
     /// that does.
     #[test]
     fn a_root_without_mob_effects_does_not_freeze_the_registry() {
-        use sunrise_client::{brewing, mod_content::ContentMod};
-        // Another test may have set the process-wide list already.
-        if !brewing::mod_effects().is_empty() {
-            return;
-        }
+        use sunrise_client::brewing;
+        let _scope = sunrise_client_core::potions::isolate_mod_effects();
         let f = Fixture::new("no-effects");
+        register_mob_effects(&[plain_mod(&f, None)], &[]);
+        assert!(brewing::register_mod_effects([brewing::ModEffect::new(
+            "test:effect",
+            0,
+            brewing::Category::Neutral,
+            "test-potions",
+        )]));
+    }
+
+    /// #4473: a declared effect registers with its `attribute_modifiers`,
+    /// each operation by its codec name.
+    #[test]
+    fn a_declared_effect_registers_its_attribute_modifiers() {
+        use sunrise_world::attributes::Operation;
+        let _scope = sunrise_client_core::potions::isolate_mod_effects();
+        let f = Fixture::new("effect-modifiers");
+        let stun = r#"{"category": "harmful", "color": 1, "attribute_modifiers": [
+            {"attribute": "minecraft:movement_speed", "id": "plain:stun_speed", "amount": -1.0, "operation": "add_multiplied_total"},
+            {"attribute": "minecraft:armor", "id": "plain:stun_armor", "amount": 2.5, "operation": "add_value"},
+            {"attribute": "minecraft:scale", "id": "plain:stun_scale", "amount": 0.5, "operation": "add_multiplied_base"}]}"#;
+        register_mob_effects(&[plain_mod(&f, Some(stun))], &[]);
+        let stun = sunrise_client::brewing::effect("plain:stun").unwrap();
+        assert_eq!(
+            stun.modifiers,
+            [
+                (
+                    "minecraft:movement_speed",
+                    "plain:stun_speed",
+                    -1.0,
+                    Operation::AddMultipliedTotal
+                ),
+                (
+                    "minecraft:armor",
+                    "plain:stun_armor",
+                    2.5,
+                    Operation::AddValue
+                ),
+                (
+                    "minecraft:scale",
+                    "plain:stun_scale",
+                    0.5,
+                    Operation::AddMultipliedBase
+                ),
+            ]
+        );
+    }
+
+    /// A content mod `plain` in `f`, declaring the effect `plain:stun` when given.
+    fn plain_mod(f: &Fixture, stun: Option<&str>) -> sunrise_client::mod_content::ContentMod {
         std::fs::write(
             f.0.join("sunrise-mod.toml"),
-            "id = 'plain'\nname = 'plain'\nversion = '1.0'\napi = '0.2'\ncapabilities = ['registries']\n",
+            "id = 'plain'
+name = 'plain'
+version = '1.0'
+api = '0.2'
+capabilities = ['registries']
+",
         )
         .unwrap();
+        if let Some(stun) = stun {
+            let dir = f.0.join("data/plain/sunrise/mob_effect");
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("stun.json"), stun).unwrap();
+        }
         let package = sunrise_mod_package::Package::read(&f.0).unwrap();
-        let plain = ContentMod {
+        sunrise_client::mod_content::ContentMod {
             id: "plain".into(),
             content: sunrise_mod_package::content::Content::read(&f.0, &package.manifest).unwrap(),
             jars: Vec::new(),
-        };
-        register_mob_effects(&[plain], &[]);
-        // The list `potions::tests` registers, so it holds whichever test runs first.
-        assert!(brewing::register_mod_effects([(
-            "test:effect".to_owned(),
-            0,
-            brewing::Category::Neutral,
-            None,
-            "test-potions".into()
-        )]));
+        }
     }
 }
 
@@ -5581,7 +5940,6 @@ mod concurrent_content_tests {
             .map(|(path, package)| ContentRequest {
                 path,
                 manifest: &package.manifest,
-                declared: Vec::new(),
                 admitted: None,
             })
             .collect();

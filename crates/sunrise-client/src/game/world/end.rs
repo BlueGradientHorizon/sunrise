@@ -395,8 +395,7 @@ impl Game<'_> {
             false
         });
         for at in shattered {
-            self.audio
-                .play("minecraft:entity.ender_eye.death", Some(at), 1.0, 1.0);
+            self.play_audio("minecraft:entity.ender_eye.death", Some(at), 1.0, 1.0);
             self.level_event_at(2003, at.map(|v| v.floor() as i32), 0);
         }
     }
@@ -464,19 +463,27 @@ impl Game<'_> {
 
     /// The environment attributes of the current dimension.
     pub(super) fn dim_environment(&self) -> &Environment {
-        Self::level_environment(self.remote.as_ref(), &self.res, &self.dimension_type().id)
+        Self::level_environment(
+            self.remote.as_ref(),
+            &self.res,
+            self.dim.id(),
+            &self.dimension_type().id,
+        )
     }
 
     /// A field-level borrow for the client tick, which also mutably borrows its particles.
     pub(super) fn level_environment<'a>(
         remote: Option<&'a Remote>,
         resources: &'a Resources,
+        level: &str,
         dimension_type: &str,
     ) -> &'a Environment {
         // A client of a server takes the type the server sent, built-in levels included.
         remote
             .and_then(|r| r.level_environment.as_deref())
-            .unwrap_or_else(|| resources.environment_of(dimension_type))
+            .unwrap_or_else(|| {
+                Environment::for_level(level, resources.environment_of(dimension_type))
+            })
     }
 
     /// SkyRenderer.renderEndFlash, drawn after the renderer's resident sky mesh: its quad, if
@@ -675,7 +682,7 @@ impl Game<'_> {
                 flash.x_angle,
                 flash.y_angle,
             );
-            self.audio.play_instance_after(instance, 30);
+            self.play_audio_instance_after(instance, 30);
         }
     }
 
@@ -1418,8 +1425,7 @@ impl Game<'_> {
         });
         let r = self.world.random.next_float();
         let pitch = 0.33 + r * (0.5 - 0.33);
-        self.audio
-            .play("minecraft:entity.ender_eye.launch", Some(at), 1.0, pitch);
+        self.play_audio("minecraft:entity.ender_eye.launch", Some(at), 1.0, pitch);
         // CriteriaTriggers.USED_ENDER_EYE, against the feature's block.
         let (dx, dz) = (
             at[0] - f64::from(nearest.x * 16),
@@ -1448,8 +1454,7 @@ impl Game<'_> {
                 return true;
             }
             let at = eye.position.to_array();
-            self.audio
-                .play("minecraft:entity.ender_eye.death", Some(at), 1.0, 1.0);
+            self.play_audio("minecraft:entity.ender_eye.death", Some(at), 1.0, 1.0);
             if eye.survive {
                 // new ItemEntity(level, x, y, z, item): random spread, 0.2 up.
                 let vx = self.world.random.next_double() * 0.2 - 0.1;

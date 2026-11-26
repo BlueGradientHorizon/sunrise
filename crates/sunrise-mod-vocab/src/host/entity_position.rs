@@ -10,7 +10,8 @@ pub trait EntityPositionBackend {
     /// The entity's position (`Entity.position`): its feet, the middle of
     /// its box for a painting or an item frame. A client display uses its current tick
     /// position after movement interpolation, not the packet destination or draw-frame
-    /// pose. Returns `None` for an unresolved handle.
+    /// pose. Returns `None` for an unresolved handle. An experience orb visited in
+    /// a parked level can be read without putting its level in place.
     fn entity_position(&self, entity: EntityRef) -> Option<[f64; 3]>;
     /// Side: server.
     /// The block the entity's position is in (`Entity.blockPosition`). API
@@ -20,6 +21,33 @@ pub trait EntityPositionBackend {
     /// The entity's yaw and pitch in degrees (`Entity.getYRot`, `getXRot`); 0
     /// for the kinds that don't turn. API 373.
     fn entity_rotation(&self, entity: EntityRef) -> Option<[f32; 2]>;
+    /// Side: both.
+    /// Where the entity was when its current tick began (`Entity.xo`, `yo`, `zo`): what
+    /// `Entity.setOldPosAndRot` stored in `Entity.commonTick`, which the level's entity pass
+    /// (`ServerLevel.tickNonPassenger`, `ClientLevel.tickNonPassenger`, and `tickPassenger` for
+    /// a rider) runs before the entity's own tick, and a teleport or a load also sets. Between
+    /// two ticks it is the position the last tick started from, so a move this tick made goes
+    /// from here to [`EntityRef::position`]; [`EntityRef::position_at`] eases between them as
+    /// `Entity.getPosition(float)` does. NeoForge mods read the same vanilla fields.
+    ///
+    /// A server's player is snapped wherever the server moves it (`absSnapTo` for an accepted
+    /// move and after `ServerGamePacketListenerImpl.tickPlayer`), so it reads its position.
+    /// On a client, the local player's own (where the camera eases from), and the client's
+    /// copy of every entity it ticks; an entity the client tracks without a body of its own
+    /// answers from the copy [`EntityRef::position`] reads. None for a stale handle or an
+    /// entity whose body the client doesn't keep.
+    fn entity_previous_position(&self, entity: EntityRef) -> Option<[f64; 3]>;
+    /// Side: both.
+    /// The yaw and pitch in degrees when the entity's current tick began (`Entity.yRotO`,
+    /// `xRotO`), in the order of [`EntityRef::rotation`]: what `Entity.setOldPosAndRot` stored,
+    /// as for [`EntityRef::previous_position`]. `Entity.turn` moves them with the view, and a
+    /// projectile's `ProjectileUtil.rotateTowardsMovement` and `ProjectileDeflection.REVERSE`
+    /// shift them, as vanilla does. A renderer eases from here to the rotation
+    /// (`Entity.getViewYRot(float)`, `getViewXRot(float)`). NeoForge mods read the same vanilla
+    /// fields. On a client, the local player's and those of every entity the client keeps a
+    /// body for, as [`EntityRef::rotation`] answers. None for a stale handle or an entity
+    /// whose body the client doesn't keep.
+    fn entity_previous_rotation(&self, entity: EntityRef) -> Option<[f32; 2]>;
     /// Side: both.
     /// Whether the entity stands on a block (`Entity.onGround`). API 379.
     /// On a client, the local player's own predicted flag (the one it sends); for another
@@ -41,11 +69,10 @@ pub trait EntityPositionBackend {
     /// The yaw of the entity's head (`Entity.getYHeadRot`): a mob's or a
     /// player's own, zero for the kinds without a head.
     fn entity_head_yaw(&self, entity: EntityRef) -> Option<f32>;
-    /// Side: server.
-    /// The yaw of the entity's body (`LivingEntity.yBodyRot`) in degrees as
-    /// vanilla keeps it, not normalized: the direction its drawn body faces,
-    /// which its head turns against. Mobs only: None for players and every
-    /// other kind, and for a stale handle.
+    /// Side: both.
+    /// The entity's current body yaw (`LivingEntity.yBodyRot`) in degrees, without wrapping.
+    /// On a server this reads the named living entity. On a client it reads the local player.
+    /// None for a stale handle or an entity with no available living body.
     fn entity_body_yaw(&self, entity: EntityRef) -> Option<f32>;
     /// Side: server.
     /// The horizontal direction the entity faces (`Entity.getDirection`):
@@ -57,6 +84,15 @@ pub trait EntityPositionBackend {
 #[doc(hidden)]
 #[sunrise_mod_api_macros::host_area]
 pub trait EntityPositionBackendMut {
+    /// Side: server.
+    /// Sets the current body yaw in degrees (`LivingEntity.setYBodyRot`). It does not
+    /// wrap the angle, teleport the entity, or force a packet. Silverfish and endermites
+    /// also turn their view; armor stands change their previous body/view yaw and their
+    /// head yaw, leaving their current body yaw alone. False for stale handles or when the
+    /// server keeps no living body for this entity. Returns `Err(LevelWriteError::Unavailable)`
+    /// when the host cannot write living state.
+    fn entity_set_body_yaw(&mut self, entity: EntityRef, yaw: f32)
+    -> Result<bool, LevelWriteError>;
     /// Side: server.
     /// `Entity.setOnGround`: set the live body's ground flag and check supporting
     /// blocks under its current footprint without moving it. False clears retained

@@ -27,7 +27,7 @@ use sunrise_client::{
     particles::{ParticleOptions, ParticleType},
     random_source,
     scoreboard::pushable_by,
-    sound_engine::{BLOCKS, CartSound, PlayResult, SoundInstance, Sounds},
+    sound_engine::{BLOCKS, CartSound, PlayResult, SoundInstance},
 };
 use sunrise_core::{
     geometry::{Aabb, Vec3, trig},
@@ -1318,6 +1318,7 @@ impl Game<'_> {
             &c.ground,
             &mut c.velocity,
         );
+        let (writes, hurts) = super::entity::split_contact_hurts(writes);
         super::entity::apply_contact_writes(
             writes,
             &mut c.velocity,
@@ -1325,6 +1326,7 @@ impl Game<'_> {
             Some(&mut c.stuck),
             None,
         );
+        self.queue_vehicle_contact_hurts(super::commands::Target::Cart(c.id), hurts);
         if c.push_by_bubble_column(
             &self.world,
             self.pack.assets.registry,
@@ -1525,6 +1527,20 @@ impl Game<'_> {
             }
             // MinecartSpawner.tick: `BaseSpawner.serverTick` at the cart's block.
             CartKind::Spawner => {
+                if c.spawner.as_ref().is_some_and(|s| s.spawn_delay <= 0)
+                    && (mod_api::__private::listened(mod_api::HookId::MobSpawnPositionCheck)
+                        || mod_api::__private::listened(mod_api::HookId::FinalizeSpawn))
+                    && let Some(i) = cart_at(&self.carts, c.id, slot)
+                {
+                    // push_from_ticked_cart stored the moved cart. Bring its stored
+                    // fluid state up to date for the shared spawner hooks; mutable
+                    // hooks cannot touch it until the tick finishes.
+                    self.carts.update(i, |stored| {
+                        stored.velocity = c.velocity;
+                        stored.in_water = c.in_water;
+                        stored.fall_distance = c.fall_distance;
+                    });
+                }
                 if let Some(mut spawner) = c.spawner.take() {
                     let key = (
                         c.position.x.floor() as i32,
@@ -1601,8 +1617,7 @@ impl Game<'_> {
         let id = c.id as i32;
         self.lan_entity_event(id, TNT_PRIME_EVENT, at);
         if !self.entity_silent(c.id) {
-            self.audio
-                .play_on(BLOCKS, "minecraft:entity.tnt.primed", Some(at), 1.0, 1.0);
+            self.play_audio_on(BLOCKS, "minecraft:entity.tnt.primed", Some(at), 1.0, 1.0);
         }
     }
     /// `MinecartTNT.handleEntityEvent`: event 70 calls `primeFuse`, which on a
@@ -1972,7 +1987,15 @@ impl Game<'_> {
             // stored cart keeps its slots for whatever reads them meanwhile.
             let (due, section_step) =
                 self.with_entity_held_out(id, |game| section_steps::tick(game, id, i, &mut index));
+            // A contact hurt lands on the stored row, not the ticked copy.
+            if self.apply_vehicle_contact_hurts(super::commands::Target::Cart(id)) {
+                continue;
+            }
             section_steps::tell(self, id, section_step);
+            // A hook may have removed the cart during its tick: the cart's tick stops here.
+            if cart_at(&self.carts, id, i).is_none() {
+                continue;
+            }
             if due {
                 self.perform_cart_command(id);
                 index.forget_carts();
@@ -2041,7 +2064,7 @@ impl Game<'_> {
         for cart in &carts {
             if !self.cart_sounds.contains(&cart.id) {
                 let instance = SoundInstance::minecart(cart, random_source::create());
-                let (_, res) = self.audio.play_instance(instance, false);
+                let (_, res) = self.play_audio_instance(instance, false);
                 if res != PlayResult::NotStarted {
                     self.cart_sounds.insert(cart.id);
                 }
@@ -2055,7 +2078,7 @@ impl Game<'_> {
             for underwater in [true, false] {
                 let instance =
                     SoundInstance::riding_minecart(cart, underwater, random_source::create());
-                let (_, res) = self.audio.play_instance(instance, false);
+                let (_, res) = self.play_audio_instance(instance, false);
                 if res == PlayResult::NotStarted {
                     started = false;
                 }
@@ -2086,6 +2109,14 @@ impl Game<'_> {
         let id = self.carts[i].id;
         let result =
             self.with_entity_held_out(id, |game| section_steps::tick_riding(game, id, i, intent));
+        // A contact hurt lands on the stored row, not the ticked copy; a
+        // breaking hit removes the cart and releases its seat.
+        if self.apply_vehicle_contact_hurts(super::commands::Target::Cart(id)) {
+            if self.riding == Some(id) && !self.persist.removed_vehicles.contains_key(&id) {
+                self.riding = None;
+            }
+            return true;
+        }
         let Some((_, alive, cart_step, player_step)) = result else {
             return true;
         };
@@ -2860,7 +2891,8 @@ impl Game<'_> {
         }
     }
     /// The model of a block drawn by its block-entity renderer, as a chest
-    /// minecart shows its chest and a block display its special block.
+    /// minecart shows its chest and a block display its special block. `light` is the
+    /// level's packed `sky << 4 | block` byte: see [`special_light`].
     pub(super) fn special_block_model(
         &self,
         state: BlockStateId,
@@ -2868,36 +2900,66 @@ impl Game<'_> {
         light: u8,
         out: &mut Vec<Vertex>,
     ) {
-        let lid = |_: [i32; 3]| 0.0;
-        let scene = sunrise_client::block_entity_render::Scene {
-            camera: glam::DVec3::ZERO,
-            sign_outline: sunrise_client::block_entity_render::SignOutline::None,
-            orientation: glam::Quat::IDENTITY,
-            anim: &|_| sunrise_client::block_entity_render::BlockAnim::default(),
-            texts: None,
-            partial: 0.0,
-            game_time: self.world.game_time,
-            max_y: self.world.shape.max_y() - 1,
-            world: &self.world,
-            sprites: &self.gui.atlas.sprites,
-            emissive: &self.gui.atlas.emissive,
-            translucent_sprites: &self.gui.atlas.translucent,
-            atlas_revision: self.gui.atlas.revision,
-            nether: self.nether_lighting(),
-            lid: &lid,
-            sign: &|_| None,
-            banner: &|_| Vec::new(),
-            skull: &|_| None,
-            glyph: &|c| self.gui.atlas.glyph_cell(c),
-            glyphs: self.gui.atlas.font.epoch(),
-            font: Some(&self.gui.atlas.font),
-            inline_images: None,
-            dynamic_visible: None,
-        };
-        self.res
-            .block_entity_render()
-            .render_state(&scene, state.0, m, light, out);
+        render_default_state(
+            self.res.block_entity_render(),
+            &self.gui,
+            &self.world,
+            self.world.game_time,
+            self.nether_lighting(),
+            state,
+            m,
+            light,
+            out,
+        );
     }
+}
+/// What `renderer` draws for block state `state` with no block entity data, as
+/// [`Game::special_block_model`] does, in `world` at `game_time`: shared with
+/// `StandaloneGeometry`, which sizes the special part before any level is loaded.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn render_default_state(
+    renderer: &sunrise_client::block_entity_render::BlockEntityRenderer,
+    gui: &super::UiResources,
+    world: &sunrise_client::world::World,
+    game_time: i64,
+    nether: bool,
+    state: BlockStateId,
+    m: glam::Mat4,
+    light: u8,
+    out: &mut Vec<Vertex>,
+) {
+    let lid = |_: [i32; 3]| 0.0;
+    let scene = sunrise_client::block_entity_render::Scene {
+        camera: glam::DVec3::ZERO,
+        sign_outline: sunrise_client::block_entity_render::SignOutline::None,
+        orientation: glam::Quat::IDENTITY,
+        anim: &|_| sunrise_client::block_entity_render::BlockAnim::default(),
+        texts: None,
+        partial: 0.0,
+        game_time,
+        max_y: world.shape.max_y() - 1,
+        world,
+        sprites: &gui.atlas.sprites,
+        emissive: &gui.atlas.emissive,
+        translucent_sprites: &gui.atlas.translucent,
+        atlas_revision: gui.atlas.revision,
+        nether,
+        lid: &lid,
+        sign: &|_| None,
+        banner: &|_| Vec::new(),
+        skull: &|_| None,
+        glyph: &|c| gui.atlas.glyph_cell(c),
+        glyphs: gui.atlas.font.epoch(),
+        font: Some(&gui.atlas.font),
+        inline_images: None,
+        dynamic_visible: None,
+    };
+    renderer.render_state(&scene, state.0, m, light, out);
+}
+/// Packed vertex light as the level's `sky << 4 | block` byte that
+/// [`Game::special_block_model`] takes: the inverse of `block_entity_render::vertex_light`.
+pub(super) fn special_light(light: u32) -> u8 {
+    ((((light & 0xFF) / 16) << 4) | (((light >> 8) & 0xFF) / 16)) as u8
 }
 /// Saving and loading.
 impl Minecart {

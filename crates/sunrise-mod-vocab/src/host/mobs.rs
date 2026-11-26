@@ -14,10 +14,6 @@ pub trait MobsHost {
 #[sunrise_mod_api_macros::host_area]
 pub trait MobsServerHost {
     /// Side: server.
-    /// Kills mob `id` as `/kill` does: it falls and drops its loot. False for
-    /// no such living mob or another dimension.
-    fn kill_mob(&mut self, dimension: &str, id: u32) -> bool;
-    /// Side: server.
     /// The entity as the ender dragon, or None for another kind, a stale
     /// handle or a client.
     fn dragon(&self, entity: EntityRef) -> Option<DragonRef>;
@@ -242,17 +238,18 @@ pub trait MobsBackendMut {
     /// cauldron is raised onto its rim, and with avoid-sun a ground navigation
     /// cuts at the first node that can see the sky. The path is finished once
     /// its next-node index reaches the node count; [`mob_is_done`](MobsBackend::mob_is_done)
-    /// is true when there is no path or it is finished. A supplied path keeps
-    /// no recompute target, so a block change on it or the stuck check drops
-    /// it and no search is ever run in its place (stricter than vanilla, which
-    /// re-searches to the previous target); the per-node timeout drops it as
-    /// well. Only non-finite coordinates and speeds are refused; there is no
-    /// cap on the node count, and unloaded or out-of-world nodes are neither
-    /// refused nor clamped: a finite coordinate at the edge of the `i32` range
-    /// saturates when it is floored to its block, and every block step after
-    /// it (the classifier's neighbours, the floor under a node, the follower's
-    /// waypoint) saturates too, so no mod input panics the engine. As in
-    /// vanilla, the mob's own goals may replace the path next tick. Refuses
+    /// is true when there is no path or it is finished. As in vanilla, taking
+    /// the path leaves the navigation's recompute target (the target it last
+    /// searched for) as it was: a block change on the path re-searches to that
+    /// target, and with none the path is kept. The stuck check and the per-node
+    /// timeout drop it, as they drop any path. Only non-finite coordinates and
+    /// speeds are refused; there is no cap on the node count, and unloaded or
+    /// out-of-world nodes are neither refused nor clamped: a finite coordinate
+    /// at the edge of the `i32` range saturates when it is floored to its
+    /// block, and every block step after it (the classifier's neighbours, the
+    /// floor under a node, the follower's waypoint) saturates too, so no mod
+    /// input panics the engine. As in vanilla, the mob's own goals may replace
+    /// the path next tick. Refuses
     /// with a [`MoveToPathError`]: `NotFinite` for such a coordinate or speed,
     /// `Unavailable` for a stale or unavailable mob, a client, and the dragon
     /// (which flies by its phase and keeps no navigation), and `Empty` when
@@ -394,6 +391,25 @@ pub trait MobsBackendMut {
     /// as in vanilla: the wish waits until it runs again. False for a stale
     /// or unavailable mob, a client, and the dragon.
     fn mob_jump(&mut self, mob: MobRef) -> bool;
+    /// Side: server.
+    /// `Mob.doHurtTarget(level, target)`, the strike a melee goal ends with, on a target the mod
+    /// chooses, as a NeoForge or Fabric mod calls it: the attack damage of the mob and its
+    /// weapon (`EnchantmentHelper.modifyDamage`), the hurt with a `mob_attack` source and every
+    /// damage hook it fires, the `attack_knockback` push and the mob's slow-down after it, the
+    /// weapon's enchantment effects (fire aspect...), `setLastHurtMob` and the attack sound,
+    /// with each species' override (`Zombie`'s fire, `IronGolem`'s toss, `Bee`'s sting,
+    /// `Hoglin`'s throw, `Warden`'s sonic boom cooldown, `Creeper`'s, which does nothing and
+    /// answers true...). Nothing else of the goal runs: no swing (the goal's
+    /// `swingForAttack`), reach, sight or cooldown check.
+    ///
+    /// Answers vanilla's `wasHurt`: whether the target took the hit. The target is a player
+    /// or a mob of the mob's level. Refused with [`AttackRefused`] before anything runs:
+    /// `Stale` (also for the dragon and on a client), `OtherLevel`, `Busy` (a player's turn,
+    /// a transaction or another such call is running, or the mob is held out of the level for
+    /// its own tick) and `Unsupported` (the mob itself, or a target that is neither a player
+    /// nor a mob: an armor stand, a boat, an item frame...).
+    fn mob_do_hurt_target(&mut self, mob: MobRef, target: EntityRef)
+    -> Result<bool, AttackRefused>;
     /// Side: server.
     /// `Mob.restrictTo(pos, radius)`: the home area the mob keeps to — its
     /// own stroll and wander goals pick their positions inside it, as a

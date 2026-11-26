@@ -42,8 +42,23 @@ impl Resources {
     pub(super) fn recipes(&self) -> &Recipes {
         &self.rest().recipes
     }
-    pub(super) fn transformers(&self) -> &sunrise_client::block_transform::Transformers {
-        &self.rest().transformers
+    pub(super) fn transformers(&self) -> Arc<sunrise_client::block_transform::Transformers> {
+        self.rest()
+            .transformers
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+    /// Publish the open world's `block_transformer` registry, replacing the last world's.
+    pub(super) fn set_transformers(
+        &self,
+        transformers: Arc<sunrise_client::block_transform::Transformers>,
+    ) {
+        *self
+            .rest()
+            .transformers
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = transformers;
     }
     pub(super) fn biomes(&self) -> &Arc<Biomes> {
         &self.core.biomes
@@ -73,8 +88,17 @@ impl Resources {
     pub(super) fn providers(&self) -> &Providers {
         &self.rest().providers
     }
+    pub(super) fn test_environments(&self) -> &HashMap<String, test_environments::Environment> {
+        &self.rest().test_environments
+    }
+    pub(super) fn test_instances(&self) -> &HashMap<String, test_instances::TestDef> {
+        &self.rest().test_instances
+    }
     pub(super) fn block_entity_render(&self) -> &BlockEntityRenderer {
         &self.rest().block_entity_render
+    }
+    pub(super) fn try_block_entity_render(&self) -> Option<&BlockEntityRenderer> {
+        self.rest.get().map(|rest| &rest.block_entity_render)
     }
     pub(super) fn animate(&self) -> &sunrise_client::animate_tick::AnimateTables {
         &self.rest().animate
@@ -106,10 +130,9 @@ impl Resources {
     pub(super) fn motion(&self) -> &MotionResources {
         &self.core.motion
     }
-    /// The variant registries finalizeSpawn selects from
-    /// (`data/minecraft/<registry>`), shared with world generation.
-    pub fn spawn_registries(&self) -> &sunrise_client::mobs::finalize::SpawnRegistries {
-        &self.core.spawn_registries
+    /// The prepared vanilla variant tables for families on `REGISTRY_KINDS`.
+    pub fn variants(&self) -> &sunrise_client::mobs::variants::VariantTables {
+        &self.core.variants
     }
     pub(super) fn threads(&self) -> usize {
         self.core.threads
@@ -181,21 +204,22 @@ impl Game<'_> {
     }
 }
 
-/// Whether the HUD atlas packs the pool of dynamic texture slots: whenever a client mod is
-/// loaded, since any of them can call `ClientHost::create_dynamic_texture`, with
-/// no mixin and no opt-in (#4437). A game with no mod packs no slot and its atlas does not grow.
-/// Read where the atlas is built: at the first load and on a resource reload.
-pub(in crate::game) fn dynamic_texture_pool() -> bool {
-    !mod_api::__private::mods().is_empty()
-}
-
 impl UiResources {
     /// The resolved resource generation, including the base layer and pack filters, over the
     /// game's own resources at `vanilla` (which tell the packs' core shaders from the game's).
     /// Its splash pool is empty until `with_splashes`.
+    #[cfg(test)]
     pub fn load(
         root: &sunrise_assets::resource_source::ResourceSource,
         vanilla: &Path,
+    ) -> Result<Self> {
+        Self::load_with_limit(root, vanilla, sunrise_client::hud::MAX_ATLAS_SIZE)
+    }
+    /// Build the title resources within the supplied device texture dimension.
+    pub fn load_with_limit(
+        root: &sunrise_assets::resource_source::ResourceSource,
+        vanilla: &Path,
+        max_atlas_size: u32,
     ) -> Result<Self> {
         // The title screen waits for both: the panorama's six faces decode
         // beside the atlas.
@@ -205,10 +229,9 @@ impl UiResources {
                     sunrise_client::gfx::panorama::Faces::load(root, root)
                 })
             });
-            let pool = dynamic_texture_pool();
             let game = sunrise_assets::resource_source::ResourceSource::directory(vanilla.into());
             let atlas = startup::time("ui.atlas", || {
-                HudAtlas::build_over_with_dynamic_textures(root, root, &game, pool)
+                HudAtlas::build_over_and_limit(root, root, &game, max_atlas_size)
             });
             let panorama = panorama
                 .join()
@@ -221,6 +244,26 @@ impl UiResources {
             })
         })
     }
+    /// The provisional dimensions may have refused sprites even when the base HUD itself fits.
+    /// Rebuild the final stitch from the accepted staged source on either limit change.
+    pub(super) fn stitch_for_device(
+        &mut self,
+        source: &sunrise_assets::resource_source::ResourceSource,
+        vanilla: &Path,
+        limit: u32,
+    ) -> Result<bool> {
+        if self.atlas.stitch_limit == Some(limit) {
+            return Ok(false);
+        }
+        let game =
+            sunrise_assets::resource_source::ResourceSource::directory(vanilla.to_path_buf());
+        let mut atlas = HudAtlas::build_over_and_limit(source, source, &game, limit)?;
+        atlas.font.uniform = self.atlas.font.uniform;
+        atlas.font.japanese = self.atlas.font.japanese;
+        self.atlas = atlas;
+        Ok(true)
+    }
+
     /// The title's splash pool from `stack` (`sunrise_client::splashes::pool`).
     pub fn with_splashes(
         mut self,

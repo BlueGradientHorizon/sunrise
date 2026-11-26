@@ -83,8 +83,6 @@ pub struct PackInputs {
     /// times vanilla's 0.03 blocks a tick). Iris 1.11.7 gives it, though ShaderDoc doesn't list
     /// it: observed with a probe pack, three game times 0.03 apart per tick.
     pub cloud_time: f32,
-    /// The values native mods hand their packs (`frame.mods`, `native_shader_params`).
-    pub mod_params: [[f32; 4]; 8],
     /// The player's state, for Iris's status uniforms.
     pub status: PlayerStatus,
     /// The End flash: its intensity, 0..1 (0 outside the End), and its direction from the
@@ -740,6 +738,28 @@ fn shadow_ortho(shadow: &Shadow) -> (Mat4, Mat4) {
     (projection, invert_affine(projection))
 }
 
+/// `shadowProjection` and its inverse for this frame: `shadow_ortho`'s, or the perspective
+/// `shadow_camera` gives with `shadowMapFov`.
+fn shadow_projection(frame: &Frame, shadow: &Shadow) -> (Mat4, Mat4) {
+    match shadow.fov {
+        Some(_) => {
+            let light = shadow_light(frame, shadow);
+            let (_, projection) = shadow_camera(light, frame.camera, shadow);
+            (projection, projection.inverse())
+        }
+        None => shadow_ortho(shadow),
+    }
+}
+
+/// The `shadowModelView` and `shadowProjection` a pack reads this frame, in that order, for a
+/// mod that draws into the shadow pass.
+pub fn shadow_view(frame: &Frame, shadow: &Shadow) -> (Mat4, Mat4) {
+    (
+        shadow_model_view(frame, shadow).0,
+        shadow_projection(frame, shadow).0,
+    )
+}
+
 /// JOML's `Matrix4f.invertAffine()`, operation by operation.
 fn invert_affine(m: Mat4) -> Mat4 {
     let g = |c: usize, r: usize| m.col(c)[r];
@@ -859,7 +879,7 @@ impl FrameUniforms {
         // match it bit for bit in our probes): fragments on a texel boundary of the shadow map
         // then read the same texel as in Iris (#8464).
         let (rotation, rotation_inverse) =
-            crate::joml::view_rotation_matrix(frame.yaw, frame.pitch);
+            crate::joml::view_rotation_matrix(frame.yaw, frame.pitch, frame.roll);
         let (view, view_inverse) = if frame.bob == Mat4::IDENTITY && frame.spin == Mat4::IDENTITY {
             (rotation, rotation_inverse)
         } else {
@@ -946,14 +966,7 @@ impl FrameUniforms {
             ),
             None => (frame.sky.fog_color, frame.distance * 0.9, frame.distance),
         };
-        let light = shadow_light(frame, &self.shadow);
-        let (shadow_projection, shadow_projection_inverse) = match self.shadow.fov {
-            Some(_) => {
-                let (_, projection) = shadow_camera(light, frame.camera, &self.shadow);
-                (projection, projection.inverse())
-            }
-            None => shadow_ortho(&self.shadow),
-        };
+        let (shadow_projection, shadow_projection_inverse) = shadow_projection(frame, &self.shadow);
         let (shadow_view, shadow_view_inverse) = shadow_model_view(frame, &self.shadow);
         let day_time = inputs.day_time.rem_euclid(24000) as i32;
         let world_day = inputs.day_time.div_euclid(24000);
@@ -2899,6 +2912,7 @@ in vec3 result; out vec4 color; void main() { color = vec4(result, 1.0); }",
             camera: glam::DVec3::new(0.5, 100.0, 0.5),
             yaw: 0.0,
             pitch: 10.0,
+            roll: 0.0,
             fov_degrees: 85.0,
             eye: glam::DVec3::ZERO,
             eye_rotation: [0.0; 2],

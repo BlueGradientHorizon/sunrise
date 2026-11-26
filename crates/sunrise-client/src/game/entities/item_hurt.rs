@@ -35,6 +35,7 @@ impl Game<'_> {
             causing: causing_id,
             direct: entity_id(direct),
             position,
+            direct_type: None,
         };
         if self.item_damage_kind(id, source, causing).is_none()
             || !self.item_stack_takes_damage(&item.stack, damage_type)
@@ -48,7 +49,7 @@ impl Game<'_> {
             if mod_api::__private::item_listens(mod_api::HookId::ItemDestroyed, &item.stack.item) {
                 self.item_destroyed_damage = Some((item.id, damage_type.to_owned()));
             } else {
-                let contents = item.hurt(0).unwrap_or_default();
+                let contents = item.hurt(self.res.items(), 0).unwrap_or_default();
                 self.spawn_destroyed_contents(
                     contents.into_iter().map(|stack| (stack, at)).collect(),
                 );

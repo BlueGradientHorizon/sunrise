@@ -33,6 +33,9 @@ pub(super) struct Rocket {
     pub(super) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
     /// `Entity.yRot` and `xRot` (`/tp`, `/data get ... Rotation`).
     pub rotation: [f32; 2],
+    /// `Entity.yRotO` and `xRotO`: the rotation when its tick began (`setOldPosAndRot`), which
+    /// `Projectile.updateRotation` eases from and a deflection turns with the rotation.
+    pub(super) previous_rotation: [f32; 2],
     /// When it joined its list (`sunrise_client::join_seq`); set by the list.
     pub(super) join: sunrise_client::join_seq::JoinSeq,
     /// Its entity id: from the entity counter on the server, the server's on
@@ -97,6 +100,7 @@ impl Rocket {
             size_answer: None,
             attachment_lifetime: Default::default(),
             rotation: [0.0, 0.0],
+            previous_rotation: [0.0, 0.0],
             join: Default::default(),
             id,
             position,
@@ -178,6 +182,7 @@ impl Rocket {
             size_answer: None,
             attachment_lifetime: Default::default(),
             rotation: r.rotation,
+            previous_rotation: r.rotation,
             join: Default::default(),
             id: 0,
             position: r.position,
@@ -211,6 +216,7 @@ impl Rocket {
     pub(super) fn load_nbt(&mut self, r: RocketNbt) {
         let loaded = Self::from_nbt(r);
         self.rotation = loaded.rotation;
+        self.previous_rotation = loaded.rotation;
         self.has_been_shot = loaded.has_been_shot;
         self.silent = loaded.silent;
         self.position = loaded.position;
@@ -230,6 +236,7 @@ impl Rocket {
     /// caller).
     pub(super) fn remote_step(&mut self, motion: sunrise_client::motion::BodyMotion<'_>) {
         self.previous = self.position;
+        self.previous_rotation = self.rotation;
         if self.attached_to.is_none() {
             let mut scene = SceneCollisions {
                 world: motion.world,
@@ -262,20 +269,21 @@ impl Rocket {
         self.life += 1;
     }
     /// The end of `Projectile.shoot`: yaw and pitch are set straight from the
-    /// shot's motion (the old rotation follows, as `rotation` is the old one
-    /// on the next tick).
+    /// shot's motion, and the old rotation (`yRotO`, `xRotO`) to them.
     fn turn_to_shot(&mut self) {
         let v = self.velocity;
         let horizontal = (v.x * v.x + v.z * v.z).sqrt();
         let atan2 = sunrise_core::geometry::trig::atan2_degrees;
         self.rotation = [atan2(v.x, v.z), atan2(v.y, horizontal)];
+        self.previous_rotation = self.rotation;
     }
-    /// `Projectile.updateRotation`: a fifth of the way from `old` (yaw,
+    /// `Projectile.updateRotation`: a fifth of the way from the old rotation (yaw,
     /// pitch) toward its motion's direction, the short way round.
-    fn update_rotation(&mut self, old: [f32; 2]) {
+    fn update_rotation(&mut self) {
         let v = self.velocity;
         let horizontal = (v.x * v.x + v.z * v.z).sqrt();
         let atan2 = sunrise_core::geometry::trig::atan2_degrees;
+        let old = self.previous_rotation;
         self.rotation = [
             sunrise_client::arrows::lerp_rotation(old[0], atan2(v.x, v.z)),
             sunrise_client::arrows::lerp_rotation(old[1], atan2(v.y, horizontal)),
@@ -564,6 +572,7 @@ impl Game<'_> {
             size_answer: None,
             attachment_lifetime: Default::default(),
             rotation: [0.0, 0.0],
+            previous_rotation: [0.0, 0.0],
             join: Default::default(),
             id,
             position: at,
@@ -721,7 +730,6 @@ impl Game<'_> {
     }
     pub(super) fn tick_rockets(&mut self) {
         let ticking = self.entity_ticking_area();
-        let hears_impacts = !self.rockets.is_empty() && self.native_hears_impacts();
         let mut i = 0;
         while i < self.rockets.len() {
             // ServerLevel.tick: only entities in entity-ticking chunks tick.
@@ -736,7 +744,7 @@ impl Game<'_> {
             // list tail twice per entity, which is O(n^2) for a crowd of rockets.
             let id = self.rockets[i].id;
             let rocket = self.rockets[i].clone();
-            let kept = self.tick_rocket(i, rocket, hears_impacts);
+            let kept = self.tick_rocket(i, rocket);
             // A hook may have added or removed rockets: resume right after this one
             // where it stands, or at `i` when it is gone.
             i = if !kept {
@@ -753,21 +761,21 @@ impl Game<'_> {
     }
     /// One tick of `r`, a clone of the resident rocket at `index`. Returns whether the
     /// rocket stays in the list; one that explodes or was removed has left it.
-    fn tick_rocket(&mut self, index: usize, mut r: Rocket, hears_impacts: bool) -> bool {
+    fn tick_rocket(&mut self, index: usize, mut r: Rocket) -> bool {
         let (id, join) = (r.id, r.join);
-        let (mut old_rotation, hit) =
-            self.with_entity_held_out(id, |game| game.advance_rocket(&mut r));
+        let hit = self.with_entity_held_out(id, |game| game.advance_rocket(&mut r));
         let deflected = matches!(hit, ProjectileHit::Entity { who: Who::Mob(id), .. }
             if self.mobs.iter().any(|m| m.id == id && m.alive() && m.species() == Species::Breeze));
-        let canceled = if !deflected && hears_impacts && !matches!(hit, ProjectileHit::None) {
-            let Some((rocket, canceled)) = self.rocket_impact(index, r, hit) else {
-                return false;
+        let canceled =
+            if !deflected && !matches!(hit, ProjectileHit::None) && self.native_hears_impacts() {
+                let Some((rocket, canceled)) = self.rocket_impact(index, r, hit) else {
+                    return false;
+                };
+                r = rocket;
+                canceled
+            } else {
+                false
             };
-            r = rocket;
-            canceled
-        } else {
-            false
-        };
         let explodes_on_hit = !canceled
             && !deflected
             && match hit {
@@ -794,7 +802,7 @@ impl Game<'_> {
                 if r.last_deflected_by != Some(id) {
                     let rot = 170.0 + r.random.next_float() * 20.0;
                     r.rotation[0] += rot;
-                    old_rotation[0] += rot;
+                    r.previous_rotation[0] += rot;
                     r.velocity = r.velocity.scale(-0.5);
                     r.last_deflected_by = Some(id);
                     let sound = super::level_sounds::LevelSound::new(
@@ -837,10 +845,10 @@ impl Game<'_> {
             }
         }
         // FireworkRocketEntity.tick runs updateRotation, launch sound, life++, spark even after impact.
-        r.update_rotation(old_rotation);
+        r.update_rotation();
         let at = [r.position.x, r.position.y, r.position.z];
         if r.life == 0 && !r.silent {
-            self.audio.play(
+            self.play_audio(
                 "minecraft:entity.firework_rocket.launch",
                 Some(at),
                 3.0,
@@ -864,10 +872,10 @@ impl Game<'_> {
         true
     }
 
-    fn advance_rocket(&mut self, r: &mut Rocket) -> ([f32; 2], ProjectileHit) {
+    fn advance_rocket(&mut self, r: &mut Rocket) -> ProjectileHit {
+        // Entity.commonTick's setOldPosAndRot: where updateRotation eases from.
         r.previous = r.position;
-        // Entity.baseTick's setOldRot: where updateRotation eases from.
-        let old_rotation = r.rotation;
+        r.previous_rotation = r.rotation;
         // Projectile.tick: the first tick posts the shot, with its owner.
         if !r.has_been_shot {
             let at = [r.position.x, r.position.y, r.position.z];
@@ -944,7 +952,7 @@ impl Game<'_> {
             }
         }
         self.entity_powder_snow_particles(r.previous, r.position, r.bounds(), r.velocity, false);
-        (old_rotation, hit)
+        hit
     }
 
     /// Refuse a removed target before carrying its owning slot into a tick clone.
@@ -1183,6 +1191,11 @@ impl Game<'_> {
     ) {
         let mut attack = self.attack_of_who(attacker);
         attack.projectile = Some(rocket_id as i32);
+        attack.enchantment_direct = Some(sunrise_client::health::EnchantmentActor {
+            id: rocket_id as i32,
+            kind: "minecraft:firework_rocket".into(),
+            motion: None,
+        });
         attack.projectile_kind = sunrise_client::health::DirectEntity::Projectile;
         attack.projectile_type = Some("minecraft:firework_rocket");
         for &(id, amount) in hits {
@@ -1332,7 +1345,13 @@ impl Game<'_> {
         self.combat.projectile_direct =
             Some(Text::translate("entity.minecraft.firework_rocket", &[]));
         let at = [from.x, from.y, from.z];
-        self.hurt_player_from(amount, Some(at), "minecraft:fireworks", Some(None), false);
+        self.hurt_player_from(
+            amount,
+            Some(at),
+            "minecraft:fireworks",
+            crate::game::creatures::KnownCause::None,
+            false,
+        );
     }
     /// `FireworkEntityRenderer.submit`: the item (GROUND) facing the camera,
     /// lit at the rocket's light probe.

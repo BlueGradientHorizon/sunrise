@@ -171,6 +171,41 @@ impl GameGuiCanvas<'_, '_> {
     }
 }
 
+/// Multiplies the vertices from `start` on by `tint` (packed ABGR), as `item_tinted` does. An
+/// OptiFine CIT glint layer's vertices (`Blend::CitGlint`) carry the layer's slot in red and its
+/// intensity in alpha, so only their alpha is multiplied, by the tint's alpha: the slot stays,
+/// and the layer fades with the item.
+fn tint_vertices(batch: &mut HudBatch, start: usize, tint: u32) {
+    let cit: Vec<std::ops::Range<usize>> = batch
+        .blends
+        .iter()
+        .filter(|(range, blend)| {
+            matches!(blend, crate::hud::Blend::CitGlint(_)) && range.end as usize > start
+        })
+        .map(|(range, _)| range.start as usize..range.end as usize)
+        .collect();
+    let alpha = tint | 0x00FF_FFFF;
+    for (i, vertex) in batch.vertices.iter_mut().enumerate().skip(start) {
+        let tint = if cit.iter().any(|range| range.contains(&i)) {
+            alpha
+        } else {
+            tint
+        };
+        vertex.color = multiply_abgr(vertex.color, tint);
+    }
+}
+
+/// Two packed colours multiplied channel by channel, as a shader multiplies a vertex colour by
+/// `ColorModulator`: `u32::MAX` leaves `color` unchanged.
+fn multiply_abgr(color: u32, tint: u32) -> u32 {
+    let channel = |shift: u32| {
+        let product = ((color >> shift) & 0xFF) * ((tint >> shift) & 0xFF);
+        // Rounded division by 255, exact for every product of two bytes.
+        ((product + 128 + ((product + 128) >> 8)) >> 8) << shift
+    };
+    channel(0) | channel(8) | channel(16) | channel(24)
+}
+
 /// The opposite corner of a finite `[x, y, w, h]`, including finite endpoint arithmetic.
 fn rect_end([x, y, w, h]: [f32; 4]) -> Result<[f32; 2], GuiDrawError> {
     let end = [x + w, y + h];
@@ -331,6 +366,25 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
         })
     }
 
+    fn item_tinted(
+        &mut self,
+        stack: &ItemStack,
+        at: [f32; 2],
+        seed: i32,
+        argb: u32,
+    ) -> Result<(), GuiDrawError> {
+        if argb >> 24 == 0 {
+            return Ok(());
+        }
+        let start = self.batch.vertices.len();
+        self.item(stack, at, seed)?;
+        let tint = abgr(argb);
+        if tint != u32::MAX {
+            tint_vertices(self.batch, start, tint);
+        }
+        Ok(())
+    }
+
     fn item_decorations(
         &mut self,
         stack: &ItemStack,
@@ -436,7 +490,9 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
             dst,
             color: argb,
         };
-        self.paint(|batch, _| quad.paint_blit(batch, uv, src, tex, blend))
+        self.paint(|batch, atlas| {
+            quad.paint_blit(batch, atlas.blit_atlas_page(texture), uv, src, tex, blend)
+        })
     }
 
     fn texture(
@@ -453,7 +509,18 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
         if tex.contains(&0) {
             return Err(GuiDrawError::BadBlitRegion);
         }
-        self.paint(|batch, atlas| batch.texture(atlas, id, dst, uv, [src, tex], abgr(argb)))
+        // A live dynamic texture first, then the resource stack, as one id space; an id in
+        // neither is refused here, and only one released after this call draws the missing texture.
+        let dynamic = self.game.and_then(|game| game.dynamic_textures.get(id));
+        if dynamic.is_none() && !self.atlas.has_texture(id) {
+            return Err(GuiDrawError::UnknownTexture);
+        }
+        self.paint(|batch, atlas| match dynamic {
+            Some((handle, size)) => {
+                batch.dynamic_texture(handle, size, dst, uv, [src, tex], abgr(argb))
+            }
+            None => batch.texture(atlas, id, dst, uv, [src, tex], abgr(argb)),
+        })
     }
 
     fn player_face(
@@ -486,13 +553,134 @@ mod tests {
     use crate::resource_source::ResourceSource;
     use std::panic::{AssertUnwindSafe, catch_unwind};
 
+    /// The multiply rounds to the nearest byte for every pair of channels, and white is neutral.
+    #[test]
+    fn multiplying_packed_colours_rounds_each_channel() {
+        for a in 0..=255u32 {
+            for b in 0..=255u32 {
+                let want = ((a * b) as f64 / 255.0).round() as u32;
+                assert_eq!(multiply_abgr(a, b), want, "{a} * {b}");
+                assert_eq!(multiply_abgr(a << 24, b << 24), want << 24, "{a} * {b}");
+            }
+        }
+        assert_eq!(multiply_abgr(0x8040_20FF, u32::MAX), 0x8040_20FF);
+        assert_eq!(multiply_abgr(0xFFFF_FFFF, 0x80FF_0000), 0x80FF_0000);
+    }
+
+    /// A CIT glint layer's vertices keep their slot (red) and take only the tint's alpha on their
+    /// intensity; every other vertex is multiplied by the whole tint.
+    #[test]
+    fn a_tint_keeps_a_cit_glint_layers_slot() {
+        let mut batch = HudBatch::scratch([320, 240]);
+        let quad = |batch: &mut HudBatch, color: u32| {
+            batch.quad_glint(
+                [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+                [[0.0; 2]; 4],
+                [[0.0; 2]; 4],
+                color,
+            );
+        };
+        // Drawn before the item: not tinted.
+        quad(&mut batch, 0xFF00_00FF);
+        let start = batch.vertices.len();
+        quad(&mut batch, u32::MAX);
+        let cit = batch.vertices.len();
+        // Slot 7 at intensity 200: red 7, alpha 200 (packed ABGR).
+        quad(&mut batch, 0xC800_0007);
+        batch.blend_since(cit, HudBlend::CitGlint(0));
+        let tint = abgr(0x80FF_4000);
+        tint_vertices(&mut batch, start, tint);
+        let colors: Vec<u32> = batch.vertices.iter().map(|v| v.color).collect();
+        assert!(colors[..start].iter().all(|&c| c == 0xFF00_00FF));
+        assert!(colors[start..cit].iter().all(|&c| c == tint));
+        // 200 * 128 / 255 rounds to 100; the slot stays 7.
+        assert!(
+            colors[cit..].iter().all(|&c| c == 0x6400_0007),
+            "{colors:x?}"
+        );
+    }
+
+    /// `item_tinted` multiplies every vertex `item` draws, the enchantment glint's included (the
+    /// glint shader multiplies by its white vertex colour): opaque white draws `item` itself and
+    /// a zero alpha draws nothing.
+    #[test]
+    #[ignore = "daily"]
+    fn a_tinted_item_multiplies_the_vertices_the_item_draws() {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
+            // The glint options a frame captures (full strength), as a frame drawing items has.
+            game.glint_frame = sunrise_client::item_render::GlintFrame {
+                millis: 0,
+                speed: 1.0,
+                alpha: 1.0,
+                sprite: game
+                    .gui
+                    .atlas
+                    .sprites
+                    .contains_key("misc/enchanted_glint_item"),
+            };
+            assert!(
+                game.glint_frame.sprite,
+                "the glint's sprite is in the atlas"
+            );
+            // A plain item, and one that always has the glint.
+            for (item, foil) in [
+                ("minecraft:diamond_sword", false),
+                ("minecraft:enchanted_golden_apple", true),
+            ] {
+                let stack = mod_api::ItemStack::new(mod_api::__private::item_key(item).unwrap(), 1)
+                    .unwrap();
+                let draw = |argb: Option<u32>| {
+                    let mut batch = HudBatch::scratch([320, 240]);
+                    GameGuiCanvas::draw(
+                        &mut batch,
+                        &game.gui.atlas,
+                        Some(&*game),
+                        None,
+                        &mut |root| match argb {
+                            None => root.item(&stack, [4.0, 4.0], 0),
+                            Some(argb) => root.item_tinted(&stack, [4.0, 4.0], 0, argb),
+                        },
+                    )
+                    .unwrap();
+                    batch
+                        .vertices
+                        .iter()
+                        .map(|v| (v.pos, v.uv, v.color))
+                        .collect::<Vec<_>>()
+                };
+                let plain = draw(None);
+                assert!(!plain.is_empty());
+                assert_eq!(draw(Some(0xFFFF_FFFF)), plain);
+                assert!(draw(Some(0x00FF_FFFF)).is_empty());
+                let tint = 0x80FF_4000;
+                let tinted = draw(Some(tint));
+                assert_eq!(tinted.len(), plain.len());
+                for ((pos, uv, color), (plain_pos, plain_uv, plain_color)) in
+                    tinted.iter().zip(&plain)
+                {
+                    assert_eq!((pos, uv), (plain_pos, plain_uv));
+                    assert_eq!(*color, multiply_abgr(*plain_color, abgr(tint)));
+                }
+                // The glint's quads (atlas U at 2 or more, the shader's glint marker) are drawn white,
+                // so tinted they carry the tint itself, which the glint shader multiplies by.
+                let glint: Vec<u32> = tinted
+                    .iter()
+                    .filter(|(_, uv, _)| uv[0] >= 2.0)
+                    .map(|&(_, _, color)| color)
+                    .collect();
+                assert_eq!(!glint.is_empty(), foil, "{item}");
+                assert!(glint.iter().all(|&color| color == abgr(tint)), "{item}");
+            }
+        });
+    }
+
     #[test]
     fn gui_groups_clip_posed_leaves_and_restore_vertices_and_blends_on_abort() {
         let mut atlas = HudAtlas::build(&ResourceSource::directory(
             "/nonexistent/sunrise-test-assets".into(),
         ))
         .unwrap();
-        atlas.live.insert(
+        atlas.sprites.insert(
             "test:canvas".into(),
             Rect {
                 u0: 0.25,
@@ -657,7 +845,7 @@ mod tests {
         );
         atlas.gui.insert("test:removed".into(), GuiSprite::Missing);
         atlas.sprites.insert("test:removed".into(), rect);
-        atlas.live.insert("test:live".into(), rect);
+        atlas.sprites.insert("test:live".into(), rect);
 
         let mut batch = HudBatch::scratch([320, 240]);
         GameGuiCanvas::draw(&mut batch, &atlas, None, None, &mut |root| {
@@ -728,6 +916,10 @@ mod tests {
             GuiDrawError::UnknownTexture,
         );
         let standalone = mod_api::Identifier::parse("test:textures/gui/standalone.png").unwrap();
+        refuses(
+            &mut |gui| gui.texture(&standalone, DST, REGION, WHITE),
+            GuiDrawError::UnknownTexture,
+        );
         for (region, error) in [
             (
                 GuiBlitRegion {
@@ -761,7 +953,7 @@ mod tests {
             "/nonexistent/sunrise-test-assets".into(),
         ))
         .unwrap();
-        atlas.live.insert(
+        atlas.sprites.insert(
             "test:mirror".into(),
             Rect {
                 u0: 0.25,

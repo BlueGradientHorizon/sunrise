@@ -143,7 +143,7 @@ impl Game<'_> {
             }
         }
         self.observe_light_edits();
-        self.ask_edited_light_emission();
+        self.ask_edited_light_emission(self.dim);
         let camera_pos = self.visual_camera_position();
         if let (Some(map), Some(pos), Some(lod)) = (&self.lod_blue_map, camera_pos, &mut self.lod) {
             map.set_center(pos[0].floor() as i32, pos[2].floor() as i32);
@@ -167,6 +167,9 @@ impl Game<'_> {
             } else {
                 Ok(())
             };
+        }
+        if self.is_logical_server() {
+            self.prune_disabled_async_chunk_requests();
         }
         let areas = self.streaming.extra.len();
         // The configuration connection is not a guest and owns no player area.
@@ -210,8 +213,7 @@ impl Game<'_> {
                 match step {
                     sunrise_client::streaming::PlanStep::Ready(plan) => break plan,
                     sunrise_client::streaming::PlanStep::Save { chunk, resume } => {
-                        self.native_late_full_chunk_snapshot(&chunk);
-                        self.streaming.save_finished(chunk);
+                        self.save_late_full_chunk(chunk);
                         step = self.streaming.resume_plan_update(&mut self.world, resume);
                     }
                 }
@@ -233,7 +235,6 @@ impl Game<'_> {
                     .filter(|key| self.world.modified.contains(key))
                     .filter_map(|key| self.world.chunks.get(key)),
             );
-            self.native_full_chunk_snapshots(&chunks);
             let (entities, refused_entities) = self.unloading_entity_snapshots(keys);
             let mut counts = Vec::new();
             if mod_api::__private::listened(mod_api::HookId::EntitiesUnload) {
@@ -268,7 +269,6 @@ impl Game<'_> {
         }
         let (commit, protos) = self.streaming.prepare_commit(&mut self.world, &mut plan);
         let unloaded_columns = plan.unloading_columns();
-        self.native_proto_snapshots(&protos);
         self.streaming.submit_protos(protos);
         let (mut uploads, unloaded) = sunrise_client::spans::time("streaming", || {
             self.streaming.complete_commit(&mut self.world, commit)
@@ -287,12 +287,15 @@ impl Game<'_> {
                 .mesh_frame(|| streaming.viewed_mesh_source(), std::time::Instant::now());
         }
         sunrise_client::spans::time("spawn_fresh_chunks", || self.spawn_fresh_chunks());
-        self.ask_loaded_light_emission();
+        self.ask_loaded_light_emission(0);
         // Vanilla saves the chunk before its unload hook and drops its block entities afterwards.
         sunrise_client::spans::time("mods_chunks_changed", || {
             self.native_chunks_loaded();
             self.native_chunks_unloaded(&unloaded);
         });
+        if self.is_logical_server() {
+            self.process_async_chunk_requests();
+        }
         if let Some(lod) = &mut self.lod {
             self.lod_observe
                 .extend(uploads.iter().map(|upload| (upload.key.0, upload.key.2)));
@@ -370,20 +373,17 @@ impl Game<'_> {
             let g = &self.settings.sunrise;
             let budgeted = g.chunk_updates > 0 || g.upload_budget_kib > 0;
             let mut raw_flight = self.flight.as_mut().filter(|flight| flight.raw);
-            let vertex_bytes = |mesh: &sunrise_client::mesher::SectionMesh| {
-                ((mesh.solid.len() + mesh.translucent.len())
-                    * std::mem::size_of::<sunrise_client::mesher::TerrainVertex>())
-                    as u64
-            };
             // The meshes, once copied, are freed by a worker (`Streaming::free`).
             if !budgeted && self.pending_uploads.is_empty() && uploads.len() <= AUTO_UPLOADS_AT_ONCE
             {
                 sunrise_client::spans::time("upload", || {
                     for upload in &uploads {
                         if self.streaming.can_publish_mesh(&self.world, upload) {
+                            // What the renderer copies for it, a pack's beside the vertices.
+                            let bytes = renderer.mesh_upload_bytes(&upload.mesh);
                             renderer.upload(upload.key, &upload.mesh);
                             if let Some(flight) = raw_flight.as_deref_mut() {
-                                flight.note_mesh_uploads(1, vertex_bytes(&upload.mesh));
+                                flight.note_mesh_uploads(1, bytes);
                             }
                         }
                     }
@@ -448,7 +448,8 @@ impl Game<'_> {
                     if auto.is_some_and(|time| count > 0 && started.elapsed() >= time) {
                         break;
                     }
-                    let size = vertex_bytes(mesh);
+                    // What the renderer copies for it, a pack's beside the vertices.
+                    let size = renderer.mesh_upload_bytes(mesh);
                     if (limit > 0 && count >= limit)
                         || (budget > 0 && bytes > 0 && bytes + size > budget)
                     {
