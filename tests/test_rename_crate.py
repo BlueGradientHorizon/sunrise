@@ -89,7 +89,3 @@ let registry = "https://github.com/horizon-rust/horizon-mods";
         self.assertEqual(rename.rewrite("crates/sunrise-client/assets/sunrise/lang/en_us.json", translation), translation)
         self.assertEqual(rename.rewrite("roadmap/roadmap.toml", 'dev = "sunrise-mods/native/"'),
                          'dev = "sunrise-mods/native/"')
-
-
-if __name__ == "__main__":
-    unittest.main()

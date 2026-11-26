@@ -176,7 +176,3 @@ class RepositoryHygieneTests(unittest.TestCase):
         self.write("victim.txt", "safe\n" + NOTICES[1] + "\n")
         self.assertNotEqual(self.run_check().returncode, 0)
         self.assertEqual(self.run_check(script=mutant).returncode, 0)
-
-
-if __name__ == "__main__":
-    unittest.main()

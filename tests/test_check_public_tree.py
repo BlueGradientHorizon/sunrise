@@ -115,7 +115,3 @@ class CommercialDenylistTests(unittest.TestCase):
             self.assertEqual(check(directory).returncode, 0)
             history = check(directory, "--history")
             self.assertEqual(history.returncode, 0, history.stderr)
-
-
-if __name__ == "__main__":
-    unittest.main()
