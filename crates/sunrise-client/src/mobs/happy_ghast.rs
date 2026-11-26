@@ -620,7 +620,7 @@ pub fn ai_step(m: &mut Mob, w: &MobWorld) {
             || w.precipitation_at(x, y, z).is_some();
         let interval = if wet { 20 } else { 600 };
         if m.age.is_multiple_of(interval) {
-            m.heal(w.loop_context, 1.0);
+            m.heal(w.loop_context, &|| w.side.hit_reads(), 1.0);
         }
     }
     still_tick(m, w);

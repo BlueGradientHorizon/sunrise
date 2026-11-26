@@ -2,8 +2,13 @@
 
 pub trait Hooks {
     /// Slot placement, pickup and stack limits for registered vanilla and mod
-    /// menus; mounts use `sunrise:mount_inventory`, while player inventory and
-    /// the creative picker have no registered type. `slot` is the backing index,
+    /// menus; mounts use `sunrise:mount_inventory` and the player's own
+    /// `InventoryMenu` `minecraft:inventory` (vanilla gives it no `MenuType`),
+    /// while the creative picker has no registered type. The inventory has no
+    /// owner: every mod's Parts attached to it are asked, in mod order, and a
+    /// refusal from any of them stands. Its `container` is `Result` for menu
+    /// slot 0, `Grid` for the 2×2 grid (slots 1 to 4, row by row) and `Player`
+    /// for the rest. `slot` is the backing index,
     /// including player inventory slots. The slot's own answers arrive first;
     /// the maximum is bounded to 0–99 and the item limit (matching vanilla
     /// `Slot.getMaxStackSize` and `Container.getMaxStackSize`). Refusal also
@@ -35,8 +40,9 @@ pub trait Hooks {
     /// A client without this mod predicts vanilla here; the server corrects it.
     ///
     /// `may_pickup` is `Slot.mayPickup`, answered only for a registered mod
-    /// menu type (its own slots and the player's inventory slots in it); a
-    /// vanilla menu type keeps its slots' own answer. It is asked for the
+    /// menu type (its own slots and the player's inventory slots in it) and
+    /// for the player's own inventory menu; another vanilla menu type keeps its
+    /// slots' own answer. It is asked for the
     /// stack the slot holds, wherever the click would take from it: a pickup
     /// click on a slot that holds an item (after `item_stacked_on_other`,
     /// before any take, merge or exchange), quick move (once, on the clicked
@@ -64,7 +70,7 @@ pub trait Hooks {
         key = "menu",
         host = "read",
         cancellable = false,
-        version = 8,
+        version = 9,
         neoforge = "none (vanilla Slot.mayPlace and mayPickup; NeoForge adds no event or extension for it)"
     )]
     fn menu_slot_rules(

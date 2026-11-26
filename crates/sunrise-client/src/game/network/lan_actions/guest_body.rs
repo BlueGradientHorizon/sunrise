@@ -302,7 +302,11 @@ impl Game<'_> {
                     return;
                 };
                 player.health.advance_body_clock();
-                let _ = player.peaceful_regeneration(&game.loop_context, rules);
+                let _ = player.peaceful_regeneration(
+                    &game.loop_context,
+                    &|| crate::game::entity::hit_reads_of!(game),
+                    rules,
+                );
                 let _ = player.food_tick(
                     &game.loop_context,
                     crate::game::entity::damage_level_of!(
@@ -517,7 +521,11 @@ impl Game<'_> {
             let Some(player) = game.player.as_mut() else {
                 return (Vec::new(), None, ServerTravel::Continue);
             };
-            let _ = player.peaceful_regeneration(&game.loop_context, rules);
+            let _ = player.peaceful_regeneration(
+                &game.loop_context,
+                &|| crate::game::entity::hit_reads_of!(game),
+                rules,
+            );
             let _ = player.food_tick(
                 &game.loop_context,
                 crate::game::entity::damage_level_of!(

@@ -161,13 +161,13 @@ pub(crate) fn install() {
                     JUMPS.set(JUMPS.get() + 1);
                 }
             },
-            living_jump_power: |context, _, _, power| {
+            living_jump_power: |context, _, power| {
                 *power += context.setting("rules_mod", "stack").map_or(0.0, |_| 1.0);
             },
-            living_speed: |context, _, _, speed| {
+            living_speed: |context, _, speed| {
                 *speed += context.setting("rules_mod", "stack").map_or(0.0, |_| 2.0);
             },
-            living_flying_speed: |context, _, _, speed| {
+            living_flying_speed: |context, _, speed| {
                 *speed += context.setting("rules_mod", "stack").map_or(0.0, |_| 3.0);
             },
             block_jump_factor: |context, _, factor| {
@@ -179,6 +179,8 @@ pub(crate) fn install() {
             is_ladder: |context, _, _, _, ladder| {
                 *ladder |= context.setting("rules_mod", "stack").is_some();
             },
+            // Keeps the game's reach: the menu tests read vanilla's `stillValid` distance.
+            block_interaction_range: |_, _, _, _, _| {},
             makes_open_trapdoor_above_climbable: |context, _, _, _, climbable| {
                 *climbable |= context.setting("rules_mod", "stack").is_some();
             },
