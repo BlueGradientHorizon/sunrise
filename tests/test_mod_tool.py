@@ -49,7 +49,7 @@ class ToolFoldersTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             tools = Path(folder) / "tools"
             tools.mkdir()
-            (tools / "prebuilt_game.py").write_text("import os\nfrom tools import lab, unused_name\nimport release_file\n")
+            (tools / "prebuilt_game.py").write_text("import os\nfrom tools import lab, unused_name\nfrom tools.release_file import LAUNCHER_MIN\n")
             (tools / "lab.py").write_text("from tools import file_lock\n")
             (tools / "file_lock.py").write_text("import time\n")
             (tools / "release_file.py").write_text("")

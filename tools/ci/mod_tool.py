@@ -65,9 +65,9 @@ def crates(metadata: dict | None = None) -> list[str]:
 
 
 def build_inputs() -> list[str]:
-    """`BUILD_FILES`, `BUILD_PROGRAM` and every tools/ module it imports, transitively (`from tools import x`, or
-    `import x` / `from x import y` where tools/x.py exists), so a module the build starts to use is watched without
-    anyone editing a list here."""
+    """`BUILD_FILES`, `BUILD_PROGRAM` and every tools/ module it imports, transitively (`from tools import x`,
+    `from tools.x import y` or `import tools.x`), so a module the build starts to use is watched without anyone editing
+    a list here."""
     found, todo = set(), [BUILD_PROGRAM]
     while todo:
         path = todo.pop()
@@ -75,15 +75,14 @@ def build_inputs() -> list[str]:
             continue
         found.add(path)
         for node in ast.walk(ast.parse((ROOT / path).read_text())):
-            if isinstance(node, ast.ImportFrom) and node.module == "tools":
-                names = [alias.name for alias in node.names]
-            elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
-                names = [node.module]
+            if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                modules = [node.module, *(f"{node.module}.{alias.name}" for alias in node.names)]
             elif isinstance(node, ast.Import):
-                names = [alias.name for alias in node.names]
+                modules = [alias.name for alias in node.names]
             else:
                 continue
-            todo.extend(f"tools/{name}.py" for name in names if (ROOT / f"tools/{name}.py").is_file())
+            files = (f"{module.replace('.', '/')}.py" for module in modules if module.startswith("tools."))
+            todo.extend(file for file in files if (ROOT / file).is_file())
     return sorted({*BUILD_FILES, *found})
 
 
