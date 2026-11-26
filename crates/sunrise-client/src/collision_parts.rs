@@ -55,6 +55,9 @@ pub struct ModParts {
     /// The dimension id of the level being ticked, which every query names; none before the
     /// first tick.
     dimension: RefCell<Option<Arc<str>>>,
+    /// Each level's dimension id, shared between its ticks: a server ticks its levels in turn on
+    /// one thread, so switching levels looks one up rather than building it again.
+    dimensions: RefCell<HashMap<String, Arc<str>>>,
     /// Whether a part is running: a query made inside it gets the normal shape, never a nested
     /// call.
     busy: Cell<bool>,
@@ -69,6 +72,7 @@ impl ModParts {
         Self {
             context: RefCell::new(context),
             dimension: RefCell::new(None),
+            dimensions: RefCell::default(),
             busy: Cell::new(false),
             items: RefCell::default(),
             fluids: RefCell::default(),
@@ -82,7 +86,16 @@ impl ModParts {
         }
         let mut current = self.dimension.borrow_mut();
         if current.as_deref() != Some(dimension) {
-            *current = Some(dimension.into());
+            let mut dimensions = self.dimensions.borrow_mut();
+            let shared = match dimensions.get(dimension) {
+                Some(shared) => Arc::clone(shared),
+                None => Arc::clone(
+                    dimensions
+                        .entry(dimension.to_owned())
+                        .or_insert_with(|| dimension.into()),
+                ),
+            };
+            *current = Some(shared);
         }
     }
 
@@ -254,7 +267,8 @@ mod tests {
     }
 
     /// #6034: a query names the level it is made in, so a part keeping its own state by position
-    /// can tell two dimensions apart; a tick of another level names that one.
+    /// can tell two dimensions apart; a tick of another level names that one. A level's id is
+    /// shared between its ticks, not built again when the server comes back to it.
     #[test]
     fn a_query_names_the_dimension_of_the_level_being_ticked() {
         let parts = parts();
@@ -264,24 +278,36 @@ mod tests {
             *answer = Some(Box::new(move |query| {
                 record
                     .borrow_mut()
-                    .push(query.dimension().map(str::to_owned));
+                    .push(query.dimension().map(|id| (id.to_owned(), id.as_ptr())));
                 None
             }));
         });
         ask(&parts, 7, [1, 64, 1]);
         let context = Arc::new(loop_context());
-        parts.begin_tick(&context, "minecraft:overworld");
-        ask(&parts, 7, [1, 64, 1]);
-        parts.begin_tick(&context, "minecraft:the_nether");
-        ask(&parts, 7, [1, 64, 1]);
+        for dimension in [
+            "minecraft:overworld",
+            "minecraft:the_nether",
+            "minecraft:overworld",
+        ] {
+            parts.begin_tick(&context, dimension);
+            ask(&parts, 7, [1, 64, 1]);
+        }
+        let seen = seen.borrow();
+        let names: Vec<_> = seen
+            .iter()
+            .map(|named| named.as_ref().map(|(id, _)| id.as_str()))
+            .collect();
         assert_eq!(
-            *seen.borrow(),
+            names,
             [
                 None,
-                Some("minecraft:overworld".to_owned()),
-                Some("minecraft:the_nether".to_owned()),
+                Some("minecraft:overworld"),
+                Some("minecraft:the_nether"),
+                Some("minecraft:overworld"),
             ]
         );
+        let pointer = |at: usize| seen[at].as_ref().map(|(_, pointer)| *pointer);
+        assert_eq!(pointer(1), pointer(3), "the overworld's id is shared");
     }
 
     #[test]
