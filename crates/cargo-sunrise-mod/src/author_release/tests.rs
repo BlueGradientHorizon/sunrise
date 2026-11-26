@@ -1,6 +1,7 @@
 use super::*;
 
-const REPOSITORY: &str = "\
+const REPOSITORY: &str = "name = 'author/example'\n";
+const LEGACY_REPOSITORY: &str = "\
 name = 'author/example'
 [[package]]
 path = '.'
@@ -92,64 +93,52 @@ fn registry(url: &str) -> Result<Option<String>, String> {
         // Raw GitHub answers not found for a repository with no registration file.
         Some(f) if f.starts_with("repositories/") => return Ok(None),
         Some("release-workflow.toml") => format!("uses = '{USES}'"),
-        Some("projects/Ab3dE9xQ/project.toml") => "mod = 'example'\nkind = 'mod'\n".into(),
-        Some("projects/Ab3dE9xY/project.toml") => "mod = 'example'\nkind = 'native-mod'\n".into(),
-        _ => match url.strip_prefix("https://api.github.com/repos/") {
+        None => match url.strip_prefix("https://api.github.com/repos/") {
             Some(name) if name.eq_ignore_ascii_case("author/example") => r#"{"id":101}"#.into(),
+            Some("someone/fork") => r#"{"id":102}"#.into(),
             // GitHub's API answers not found for any other repository.
             Some(_) => return Ok(None),
             None => panic!("unexpected URL: {url}"),
         },
+        Some(_) => panic!("unexpected registry lookup: {url}"),
     }))
 }
 
 #[test]
-fn registration_is_the_repository_id_package_path_and_mod_id() {
-    for remote in [
-        "https://github.com/Author/example.git",
-        "ssh://git@github.com/author/example.git",
-        "git@github.com:author/example.git",
-    ] {
+fn release_preflight_requires_only_a_repository_row_for_origins_github_id() {
+    for row in [REPOSITORY, LEGACY_REPOSITORY] {
+        let fetch = |url: &str| match url {
+            "https://api.github.com/repos/author/renamed" => Ok(Some(r#"{"id":101}"#.into())),
+            "https://api.github.com/repos/author/example" => Ok(Some(r#"{"id":102}"#.into())),
+            _ if url.ends_with("/repositories/101.toml") => Ok(Some(row.into())),
+            _ => registry(url),
+        };
+        // The former name in the row doesn't matter; a new repository taking it doesn't qualify.
+        for origin in [
+            "https://github.com/author/renamed.git",
+            "ssh://git@github.com/author/renamed.git",
+            "git@github.com:author/renamed.git",
+        ] {
+            require_registered_repository(&fetch, origin).unwrap();
+        }
         assert_eq!(
-            registered(&registry, remote, "mods/example", "example").unwrap(),
-            "native-mod"
+            require_registered_repository(&fetch, "git@github.com:author/example.git"),
+            Err(NOT_REGISTERED.into())
         );
-        // The kind is reported, not required: the registry's pull request for a release of
-        // another kind changes the project's.
-        assert_eq!(
-            registered(&registry, remote, ".", "example").unwrap(),
-            "mod"
-        );
-        assert!(registered(&registry, remote, "mods", "example").is_err());
-        assert!(registered(&registry, remote, "mods/example", "other").is_err());
     }
-    assert!(
-        registered(
-            &registry,
-            "https://github.com.example/author/example",
-            ".",
-            "example"
-        )
-        .is_err()
-    );
-    // A repository registered under another name is found by its ID; a reused name is not trusted.
-    let fetch = |url: &str| match url {
-        "https://api.github.com/repos/author/renamed" => Ok(Some(r#"{"id":101}"#.into())),
-        "https://api.github.com/repos/author/example" => Ok(Some(r#"{"id":102}"#.into())),
-        _ => registry(url),
-    };
-    registered(&fetch, "git@github.com:author/renamed.git", ".", "example").unwrap();
-    // Repository 102 has no registration file.
     assert_eq!(
-        registered(&fetch, "git@github.com:author/example.git", ".", "example"),
+        require_registered_repository(&registry, "https://github.com.example/author/example"),
         Err(NOT_REGISTERED.into())
     );
-    let unknown = format!("unknown = true\n{REPOSITORY}");
-    let fetch = |url: &str| match url.ends_with("repositories/101.toml") {
-        true => Ok(Some(unknown.clone())),
+    let origin = "git@github.com:author/example.git";
+    let down = |url: &str| match url.ends_with("/repositories/101.toml") {
+        true => Err(format!("{url}: 503")),
         false => registry(url),
     };
-    assert!(registered(&fetch, "git@github.com:author/example.git", ".", "example").is_err());
+    assert_eq!(
+        require_registered_repository(&down, origin).unwrap_err(),
+        format!("{METADATA}/repositories/101.toml: 503")
+    );
 }
 
 #[test]

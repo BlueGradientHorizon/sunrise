@@ -20,7 +20,7 @@ const DEFAULT_WORKFLOW: &str = "sunrise-org/sunrise-mods/.github/workflows/relea
 const CALLER: &str = ".github/workflows/sunrise-release.yml";
 const CALLER_MARK: &str =
     "# Written by `cargo sunrise-mod release`, which rewrites it: edits here are replaced.\n";
-pub(crate) const NOT_REGISTERED: &str = "This repository isn't registered yet: register it at https://playsunrise.net/mods/submit, or with a Register issue on https://github.com/sunrise-org/sunrise-mods";
+const NOT_REGISTERED: &str = "This repository isn't registered yet: register it at https://playsunrise.net/mods/submit, or with a Register issue on https://github.com/sunrise-org/sunrise-mods";
 
 pub(crate) type Fetch<'a> = &'a dyn Fn(&str) -> Result<Option<String>, String>;
 
@@ -59,35 +59,6 @@ fn github_authorization(url: &str, var: impl Fn(&str) -> Option<String>) -> Opti
 pub(crate) fn registry_file(fetch: Fetch<'_>, name: &str) -> Result<String, String> {
     let url = format!("{}/{name}", sunrise_addresses::MOD_REGISTRY_METADATA);
     fetch(&url)?.ok_or_else(|| format!("{url}: not found"))
-}
-
-/// `registry/repositories/<numeric repository id>.toml`: one file per registered repository.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct Repository {
-    /// `owner/name`; a name can be reused after a rename: the ID in the file name is the identity.
-    pub(crate) name: String,
-    pub(crate) package: Vec<RegisteredPackage>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct RegisteredPackage {
-    path: String,
-    pub(crate) project: String,
-}
-
-/// The fields of `registry/projects/<project>/project.toml` a release must agree with.
-#[derive(Deserialize)]
-struct ProjectRecord {
-    #[serde(rename = "mod")]
-    mod_id: String,
-    kind: String,
-}
-
-#[derive(Deserialize)]
-pub(crate) struct GitHubRepository {
-    pub(crate) id: u64,
 }
 
 pub(crate) fn github_name(origin: &str) -> Option<String> {
@@ -130,36 +101,27 @@ fn pull_request_url(origin: &str, base: &str, head: &str) -> Option<String> {
         .map(|name| format!("https://github.com/{name}/compare/{base}...{head}?expand=1"))
 }
 
-/// The registered package this release is for: origin's repository, found by its numeric GitHub ID
-/// (a name can be reused after a rename), at exactly this package path, with the project record's
-/// mod ID. Returns the project's registered kind.
-fn registered(fetch: Fetch<'_>, origin: &str, path: &str, mod_id: &str) -> Result<String, String> {
+/// Resolve origin's stable GitHub ID, since a name can be reused after a rename.
+pub(crate) fn github_repository_id(fetch: Fetch<'_>, origin: &str) -> Result<u64, String> {
+    #[derive(Deserialize)]
+    struct GitHubRepository {
+        id: u64,
+    }
     let name = github_name(origin).ok_or(NOT_REGISTERED)?;
     let url = format!("https://api.github.com/repos/{name}");
     let text = fetch(&url)?.ok_or(NOT_REGISTERED)?;
     let GitHubRepository { id } = serde_json::from_str(&text).map_err(|e| format!("{url}: {e}"))?;
-    let file = format!("repositories/{id}.toml");
-    let url = format!("{}/{file}", sunrise_addresses::MOD_REGISTRY_METADATA);
-    let text = fetch(&url)?.ok_or(NOT_REGISTERED)?;
-    let repository: Repository =
-        toml::from_str(&text).map_err(|e| format!("registry/{file}: {e}"))?;
-    let package = repository
-        .package
-        .iter()
-        .find(|p| p.path == path)
-        .ok_or(NOT_REGISTERED)?;
-    let record = format!("projects/{}/project.toml", package.project);
-    let ProjectRecord {
-        mod_id: registered_id,
-        kind: registered_kind,
-    } = toml::from_str(&registry_file(fetch, &record)?)
-        .map_err(|e| format!("registry/{record}: {e}"))?;
-    if registered_id != mod_id {
-        return Err(format!(
-            "this package is registered as `{registered_id}`, but its manifest's id is `{mod_id}`"
-        ));
-    }
-    Ok(registered_kind)
+    Ok(id)
+}
+
+fn require_registered_repository(fetch: Fetch<'_>, origin: &str) -> Result<(), String> {
+    let id = github_repository_id(fetch, origin)?;
+    let url = format!(
+        "{}/repositories/{id}.toml",
+        sunrise_addresses::MOD_REGISTRY_METADATA
+    );
+    fetch(&url)?.ok_or(NOT_REGISTERED)?;
+    Ok(())
 }
 
 fn workflow(fetch: Fetch<'_>) -> Result<String, String> {
@@ -701,17 +663,7 @@ fn release(
     }) {
         return Err("origin's push URL carries credentials; remove them and use a Git credential helper or SSH".into());
     }
-    let kind = if project.manifest.native.is_some() {
-        "native-mod"
-    } else {
-        "mod"
-    };
-    let registered_kind = registered(fetch, &origin, &project.path, &project.manifest.id)?;
-    if registered_kind != kind {
-        println!(
-            "This release makes the project a {kind} (it is registered as a {registered_kind}): the registry's pull request for it changes the project's kind and removes its earlier releases."
-        );
-    }
+    require_registered_repository(fetch, &origin)?;
     let version = next_version(&project.manifest.version, requested)?;
     let tag = format!("{}v{version}", project.prefix);
     let tag_ref = format!("refs/tags/{tag}");
