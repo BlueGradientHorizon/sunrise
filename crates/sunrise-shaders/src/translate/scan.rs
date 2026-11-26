@@ -641,16 +641,15 @@ impl<'p> Stage<'p> {
             .map(|t| t.matches('\n').count())
             .sum();
         let o = self.pp.lines.get(line).copied().unwrap_or_default();
-        Error {
-            file: self
-                .pp
+        Error::new(
+            self.pp
                 .files
                 .get(o.file as usize)
                 .cloned()
                 .unwrap_or_default(),
-            line: o.line,
-            message: message.to_owned(),
-        }
+            o.line,
+            message,
+        )
     }
 
     /// Core names share the compatibility state for geometry, including shadow transforms.

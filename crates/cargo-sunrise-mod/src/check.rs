@@ -374,7 +374,10 @@ const OIT_INCLUDE: &str = "minecraft:shaders/include/oit.glsl";
 /// textured is in the mod's Rust code, so a program that uses `sampleSprite`, `SpriteRect` or
 /// `Sampler0` (or includes `pipeline_sprite.glsl`) in the text the translator reads, with its
 /// `#include`s inlined and its comments removed, is checked as textured; a name only in a
-/// comment is not. A program whose includes cannot be expanded is refused.
+/// comment is not. The vertex inputs are those of the vertex stage with its includes inlined
+/// ([`sunrise_mod_pipeline::ProgramBindings::vertex_inputs`]), and a program that includes
+/// `oit.glsl`, in its own text or through another include, is also checked against the
+/// order-independent transparency passes. A program whose includes cannot be expanded is refused.
 pub fn pipeline_shaders(
     files: &BTreeMap<String, Vec<u8>>,
     resources: Option<&Path>,
@@ -483,19 +486,13 @@ pub fn pipeline_shaders(
                 continue;
             }
         };
-        let vertex_inputs = match sunrise_mod_pipeline::extract_vertex_inputs(&vsh_text) {
-            Ok(v) => v,
-            Err(e) => {
-                refused.push(format!("{vertex_file}: {e}"));
-                continue;
-            }
-        };
-        let is_default = vertex_inputs.iter().all(|(n, t)| {
+        let is_default = program.vertex_inputs.iter().all(|(n, t)| {
             sunrise_mod_pipeline::DEFAULT_VERTEX_INPUTS
                 .iter()
                 .any(|(dn, dt)| dn == n && dt == t)
         });
-        let custom_refs: Vec<(&str, &str)> = vertex_inputs
+        let custom_refs: Vec<(&str, &str)> = program
+            .vertex_inputs
             .iter()
             .map(|(n, t)| (n.as_str(), t.as_str()))
             .collect();
@@ -520,19 +517,12 @@ pub fn pipeline_shaders(
             ..Default::default()
         };
         // A program joins the OIT passes by including `oit.glsl`, directly or through another
-        // include: watch the includes the translation resolves instead of reading the source.
-        // The stand-in fragment shader of a vertex-only file is no OIT program.
-        let includes_oit = std::sync::atomic::AtomicBool::new(false);
-        let watching = |id: &str| {
-            if id == OIT_INCLUDE {
-                includes_oit.store(true, std::sync::atomic::Ordering::Relaxed);
-            }
-            include(id)
-        };
-        if let Err(problems) = sunrise_mod_pipeline::translate(&sources, &options, &watching) {
+        // include: `program.includes` lists every file its stages' expansion read. The stand-in
+        // fragment shader of a vertex-only file is no OIT program.
+        if let Err(problems) = sunrise_mod_pipeline::translate(&sources, &options, &include) {
             refused.extend(problems.into_iter().map(|p| p.to_string()));
         } else if fsh_file.is_some()
-            && includes_oit.load(std::sync::atomic::Ordering::Relaxed)
+            && program.includes.iter().any(|id| id == OIT_INCLUDE)
             && let Err(problems) =
                 sunrise_mod_pipeline::translate_oit(&sources, &options, false, &include)
         {
@@ -768,6 +758,54 @@ mod tests {
         );
         let (count, refused) = pipeline_shaders(&files, None);
         assert_eq!((count, refused), (1, Vec::<String>::new()));
+    }
+
+    /// The vertex inputs are those of the stage with its includes inlined, as the translator
+    /// validates them: a vertex shader whose extra `in` comes from its own include is checked
+    /// against that input, not refused as undeclared.
+    #[test]
+    fn a_vertex_input_an_include_declares_is_the_programs() {
+        let vsh = "#version 330\n#include <minecraft:dynamictransforms.glsl>\n\
+            #include <minecraft:projection.glsl>\n#include <m:offset.glsl>\n\
+            in vec3 Position;\nin vec2 UV0;\nin vec4 Color;\n\
+            out vec2 texCoord0;\nout vec4 vertexColor;\n\
+            void main() { gl_Position = ProjMat * ModelViewMat * vec4(Position + Offset, 1.0); texCoord0 = UV0; vertexColor = Color; }\n";
+        let fsh = "#version 330\n\
+            in vec2 texCoord0;\nin vec4 vertexColor;\nout vec4 fragColor;\n\
+            void main() { fragColor = vertexColor; }\n";
+        let files: BTreeMap<String, Vec<u8>> = [
+            ("assets/m/shaders/include/offset.glsl", "in vec3 Offset;\n"),
+            ("assets/m/shaders/core/blur.vsh", vsh),
+            ("assets/m/shaders/core/blur.fsh", fsh),
+        ]
+        .map(|(name, text)| (name.to_owned(), text.as_bytes().to_vec()))
+        .into();
+        let (count, refused) = pipeline_shaders(&files, None);
+        assert_eq!((count, refused), (1, Vec::<String>::new()));
+    }
+
+    /// A fragment shader that includes `oit.glsl` only through an include of its own is checked
+    /// against the OIT passes: its body is refused there, as it is with the direct include.
+    #[test]
+    fn an_oit_include_reached_through_another_include_is_checked_against_the_oit_passes() {
+        let fsh = "#version 330\n#include <m:wrapped.glsl>\n\
+            in vec4 vertexColor;\nout vec4 fragColor;\n\
+            void main() {\n#ifdef OIT_ALPHA_ONLY\n\
+            executeAlphaOnlyPhase(gl_FragCoord.z, vertexColor.a);\n#else\n\
+            fragColor = sampleColorForAccumulation(vertexColor);\n#endif\n}\n";
+        let mut files = blur_program(fsh);
+        files.insert(
+            "assets/m/shaders/include/wrapped.glsl".to_owned(),
+            b"#include <minecraft:oit.glsl>\n".to_vec(),
+        );
+        let (count, refused) = pipeline_shaders(&files, None);
+        assert_eq!(count, 1);
+        assert!(
+            refused
+                .iter()
+                .any(|r| r.contains("blur.fsh") && r.contains("OIT depth_bounds")),
+            "{refused:?}"
+        );
     }
 
     fn fixture(name: &str) -> std::path::PathBuf {

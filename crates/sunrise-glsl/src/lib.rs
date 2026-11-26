@@ -508,13 +508,8 @@ pub fn translate(
     };
     let (vertex_text, fragment_text) =
         (stage(vertex, vertex_file)?, stage(fragment, fragment_file)?);
-    let base = other_binding_base(inputs).map_err(|message| {
-        vec![Error {
-            file: vertex_file.to_owned(),
-            line: 0,
-            message,
-        }]
-    })?;
+    let base =
+        other_binding_base(inputs).map_err(|message| vec![Error::new(vertex_file, 0, message)])?;
     let mut names = Names::new(base);
     let rewritten = |text: &Expanded, stage, names: &mut Names| {
         rewrite(text, stage, inputs, glue, names).map_err(|e| vec![in_stage(stage, e)])
@@ -909,13 +904,9 @@ pub fn translate_compute(
         fragment_finish: None,
         interface,
     };
-    let mut names = Names::new(other_binding_base(inputs).map_err(|message| {
-        vec![Error {
-            file: file.to_owned(),
-            line: 0,
-            message,
-        }]
-    })?);
+    let mut names = Names::new(
+        other_binding_base(inputs).map_err(|message| vec![Error::new(file, 0, message)])?,
+    );
     let code =
         rewrite(&expanded, ShaderStage::Compute, inputs, &glue, &mut names).map_err(|e| vec![e])?;
     // The directives run on the rewritten stage, the program's defines first, as for the other
@@ -923,11 +914,11 @@ pub fn translate_compute(
     let parsed = run_directives(&code, inputs.defines).map_err(|e| vec![e])?;
     let (module, info) = compile(ShaderStage::Compute, &parsed, &names, &|_| false, interface)?;
     let Some(entry) = module.entry_points.first() else {
-        return Err(vec![Error {
-            file: file.to_owned(),
-            line: 0,
-            message: "the compute shader has no `main`".to_owned(),
-        }]);
+        return Err(vec![Error::new(
+            file,
+            0,
+            "the compute shader has no `main`",
+        )]);
     };
     let workgroup_size = entry.workgroup_size;
     let uses_subgroup = module_uses_subgroup(&module);
@@ -1050,11 +1041,7 @@ pub struct ImportError {
 
 impl From<ImportError> for Error {
     fn from(e: ImportError) -> Self {
-        Error {
-            file: e.file,
-            line: e.line,
-            message: e.refusal.to_string(),
-        }
+        Error::new(e.file, e.line, e.refusal.to_string())
     }
 }
 
@@ -1468,8 +1455,9 @@ pub struct Resource<'a> {
 /// twice is listed twice). It finds them as `rewrite` does when it binds them, so a caller
 /// that needs to know which names a program declares (a static check, which has no layout to ask)
 /// never disagrees with the translator: a declaration is read whatever else is on its line, and
-/// whatever qualifier stands before `uniform`. The text is read as `rewrite` reads it: with
-/// comments gone and includes inlined ([`expand_includes`]).
+/// whatever real GLSL qualifier (interpolation, precision, `invariant`, memory) stands before
+/// `uniform`; any other word before it makes the statement no declaration. The text is read as
+/// `rewrite` reads it: with comments gone and includes inlined ([`expand_includes`]).
 pub fn resources(text: &str) -> Vec<Resource<'_>> {
     text.lines()
         .flat_map(declaration_lines)
@@ -1503,16 +1491,22 @@ pub fn resources(text: &str) -> Vec<Resource<'_>> {
         .collect()
 }
 
-/// The `in` declarations of a stage's text as `(name, type)`, in the order it declares them (a
-/// name declared twice is listed twice). They are found as [`resources`] finds its own: through
-/// the one declaration classifier, whatever else is on the line, and the text is read as
-/// `rewrite` reads it, with comments gone and includes inlined ([`expand_includes`]).
-pub fn stage_inputs(text: &str) -> Vec<(&str, &str)> {
+/// The `in` declarations of a stage's text as `(offset, name, type)`, in the order it declares
+/// them (a name declared twice is listed twice); `offset` is the byte of `text` where the name
+/// stands. They are found as [`resources`] finds its own: through the one declaration
+/// classifier, whatever else is on the line, and the text is read as `rewrite` reads it, with
+/// comments gone and includes inlined ([`expand_includes`]).
+pub fn stage_inputs(text: &str) -> Vec<(usize, &str, &str)> {
     text.lines()
         .flat_map(declaration_lines)
         .filter_map(declared)
         .filter_map(|declared| match declared {
-            Declared::Other(decl) if decl.storage == "in" => Some((decl.name, decl.ty)),
+            // The name is a slice of `text`, so its address gives its byte.
+            Declared::Other(decl) if decl.storage == "in" => Some((
+                decl.name.as_ptr() as usize - text.as_ptr() as usize,
+                decl.name,
+                decl.ty,
+            )),
             _ => None,
         })
         .collect()
@@ -1574,33 +1568,68 @@ struct Decl<'a> {
     name: &'a str,
 }
 
+/// The precision qualifiers, which GLSL takes before or after the storage word (`in highp vec4 X;`).
+const PRECISION_QUALIFIERS: [&str; 3] = ["highp", "mediump", "lowp"];
+
+/// The memory qualifiers of a declaration: before its storage word, or after it
+/// (`uniform readonly image2D img;`).
+const MEMORY_QUALIFIERS: [&str; 5] = ["readonly", "writeonly", "coherent", "volatile", "restrict"];
+
+/// The other qualifiers that may stand before a declaration's `in`, `out` or `uniform`:
+/// interpolation, auxiliary storage and `invariant`/`precise`.
+const LEADING_QUALIFIERS: [&str; 8] = [
+    "flat",
+    "smooth",
+    "noperspective",
+    "centroid",
+    "sample",
+    "patch",
+    "invariant",
+    "precise",
+];
+
+/// A line's leading `layout(...)` qualifier split off: what stood inside it (trimmed, empty
+/// without one) and the line after it. `None` for a `layout` with no closed parenthesis.
+fn layout_prefix(line: &str) -> Option<(&str, &str)> {
+    let line = line.trim();
+    let Some(after) = line.strip_prefix("layout") else {
+        return Some(("", line));
+    };
+    let after = after.trim_start().strip_prefix('(')?;
+    let close = after.find(')')?;
+    Some((after[..close].trim(), after[close + 1..].trim_start()))
+}
+
+/// The declaration `line` is, if it is one: a statement of `layout(...)`, then only real
+/// qualifiers (`LEADING_QUALIFIERS`, `PRECISION_QUALIFIERS`, `MEMORY_QUALIFIERS`), then `in`,
+/// `out` or `uniform`, then precision and memory qualifiers, the type and the name. Any other word before the storage word makes it some other statement
+/// (`x = in vec2 y;`, `return out vec4 c;`).
 fn declaration(line: &str) -> Option<Decl<'_>> {
-    let mut rest = line.trim();
-    let mut location = None;
-    let mut layout = "";
-    if let Some(after) = rest.strip_prefix("layout") {
-        let after = after.trim_start().strip_prefix('(')?;
-        let close = after.find(')')?;
-        layout = after[..close].trim();
-        location = after[..close].split(',').find_map(|q| {
-            let (key, value) = q.split_once('=')?;
-            (key.trim() == "location").then(|| value.trim().parse().ok())?
-        });
-        rest = after[close + 1..].trim_start();
-    }
+    let (layout, rest) = layout_prefix(line)?;
+    let location = layout.split(',').find_map(|q| {
+        let (key, value) = q.split_once('=')?;
+        (key.trim() == "location").then(|| value.trim().parse().ok())?
+    });
     let body = rest.strip_suffix(';')?.trim_end();
     let words: Vec<&str> = body.split_whitespace().collect();
     let storage_at = words
         .iter()
         .position(|w| matches!(*w, "in" | "out" | "uniform"))?;
-    // Memory qualifiers may follow the storage word too: `uniform readonly image2D img;`.
     let mut qualifiers = words[..storage_at].to_vec();
+    if !qualifiers.iter().all(|w| {
+        [
+            &LEADING_QUALIFIERS[..],
+            &PRECISION_QUALIFIERS,
+            &MEMORY_QUALIFIERS,
+        ]
+        .iter()
+        .any(|set| set.contains(w))
+    }) {
+        return None;
+    }
     let mut tail = &words[storage_at + 1..];
     while let [word, others @ ..] = tail
-        && matches!(
-            *word,
-            "readonly" | "writeonly" | "coherent" | "volatile" | "restrict"
-        )
+        && (PRECISION_QUALIFIERS.contains(word) || MEMORY_QUALIFIERS.contains(word))
     {
         qualifiers.push(*word);
         tail = others;
@@ -1708,21 +1737,14 @@ struct StorageBlock<'a> {
 
 /// The storage buffer block a line opens, if it opens one.
 fn storage_block(line: &str) -> Option<StorageBlock<'_>> {
-    let mut rest = line.trim();
-    let mut layout = "";
-    if let Some(after) = rest.strip_prefix("layout") {
-        let after = after.trim_start().strip_prefix('(')?;
-        let close = after.find(')')?;
-        layout = &after[..close];
-        rest = after[close + 1..].trim_start();
-    }
+    let (layout, mut rest) = layout_prefix(line)?;
     let word_end = |s: &str| s.find(|c: char| !is_ident(c)).unwrap_or(s.len());
     let mut qualifiers = Vec::new();
     loop {
         let (word, after) = rest.split_at(word_end(rest));
         let after = after.trim_start();
         match word {
-            "readonly" | "writeonly" | "coherent" | "volatile" | "restrict" => {
+            memory if MEMORY_QUALIFIERS.contains(&memory) => {
                 qualifiers.push(word);
                 rest = after;
             }
@@ -2229,7 +2251,9 @@ fn main_at(text: &str) -> impl Iterator<Item = usize> + '_ {
         .map(|r| r.start)
 }
 
-/// Parses and validates one stage; errors at the file and line each part of it came from.
+/// Parses and validates one stage; errors at the file and line each part of it came from. A
+/// block or sampler the stage reads that the pipeline does not provide is refused with its name
+/// in [`Error::unprovided`].
 fn compile(
     stage: ShaderStage,
     code: &Expanded,
@@ -2278,10 +2302,13 @@ fn compile(
             if provided(name) {
                 continue;
             }
-            return Err(vec![code.error_in(
-                module.global_variables.get_span(handle),
-                format!("{name} is not a block or sampler of this pipeline"),
-            )]);
+            return Err(vec![
+                code.error_in(
+                    module.global_variables.get_span(handle),
+                    format!("{name} is not a block or sampler of this pipeline"),
+                )
+                .with_unprovided(name),
+            ]);
         }
     }
     Ok((module, info))
@@ -3006,6 +3033,7 @@ mod tests {
             vec![Error {
                 file: VSH_FILE.into(),
                 line: 2,
+                unprovided: Some("Day".into()),
                 message: "vertex shader: Day is not a block or sampler of this pipeline".into(),
             }]
         );
@@ -3016,6 +3044,7 @@ mod tests {
             vec![Error {
                 file: FSH_FILE.into(),
                 line: 2,
+                unprovided: Some("Bounds".into()),
                 message: "fragment shader: Bounds is not a block or sampler of this pipeline"
                     .into(),
             }]
@@ -3074,7 +3103,114 @@ mod tests {
         let text = "in vec3 Position; in vec4 Color;\nuniform float u;\nvoid f() { } in vec2 UV0;\nout vec4 o;\n";
         assert_eq!(
             stage_inputs(text),
-            [("Position", "vec3"), ("Color", "vec4"), ("UV0", "vec2")]
+            [
+                (text.find("Position").unwrap(), "Position", "vec3"),
+                (text.find("Color").unwrap(), "Color", "vec4"),
+                (text.find("UV0").unwrap(), "UV0", "vec2"),
+            ]
+        );
+    }
+
+    /// Only real GLSL qualifiers may stand before `in`, `out` or `uniform`: a statement that has
+    /// another word there (an assignment, a `return`) is no declaration, and each real
+    /// qualifier form still is one.
+    #[test]
+    fn a_statement_with_junk_before_the_storage_word_is_no_declaration() {
+        let junk = "x = in vec2 y;\nreturn out vec4 c;\nreturn uniform sampler2D s;\n\
+            foo(a) uniform image2D img;\nint k in vec2 z;\n";
+        assert_eq!(resources(junk), []);
+        assert_eq!(stage_inputs(junk), []);
+        let real = "flat in uint a;\nsmooth in vec2 b;\nnoperspective in vec2 c;\n\
+            centroid in vec2 d;\nsample in vec2 e;\ninvariant out vec4 f;\n\
+            precise out vec4 g;\nlayout(location = 2) flat in int h;\n\
+            highp uniform sampler2D S;\nlowp in vec2 i;\nmediump in vec2 j;\n\
+            layout(rgba8) coherent volatile restrict writeonly uniform image2D Img;\n";
+        assert_eq!(
+            stage_inputs(real),
+            [
+                (real.find("a;").unwrap(), "a", "uint"),
+                (real.find("b;").unwrap(), "b", "vec2"),
+                (real.find("c;").unwrap(), "c", "vec2"),
+                (real.find("d;").unwrap(), "d", "vec2"),
+                (real.find("e;").unwrap(), "e", "vec2"),
+                (real.find("h;").unwrap(), "h", "int"),
+                (real.find("i;").unwrap(), "i", "vec2"),
+                (real.find("j;").unwrap(), "j", "vec2"),
+            ]
+        );
+        assert_eq!(
+            resources(real),
+            [
+                Resource {
+                    name: "S",
+                    kind: ResourceKind::Sampler2D
+                },
+                Resource {
+                    name: "Img",
+                    kind: ResourceKind::StorageImage {
+                        access: ImageAccess::WriteOnly
+                    }
+                },
+            ]
+        );
+    }
+
+    /// A preprocessor line is no declaration, whatever words it holds: the classifier lists
+    /// nothing from it, and the translator leaves it as it is (a loose `uniform` declaration
+    /// of an unknown name would be refused if it read as one).
+    #[test]
+    fn a_preprocessor_line_is_no_declaration() {
+        let text = "#version 330\n#define IN in vec3 X;\n#define U uniform float Nope;\n\
+            #define S uniform sampler2D T;\nvoid main() { }\n";
+        assert_eq!(resources(text), []);
+        assert_eq!(stage_inputs(text), []);
+        let read = |_: &str| -> Result<Option<String>, String> { Ok(None) };
+        let includes = includes(&read);
+        let inputs = Inputs {
+            blocks: &BLOCKS,
+            samplers: &SAMPLERS,
+            extra_set: 1,
+            extra_blocks: &[],
+            extra_samplers: &[],
+            extra_texel_buffers: &[],
+            extra_storage_buffers: &[],
+            extra_storage_images: &[],
+            push_constant_binding: None,
+            loose: &LOOSE,
+            defines: &[],
+            includes: &includes,
+        };
+        let expanded = expand_includes(text, VSH_FILE, "minecraft:shaders/core/", &includes, None)
+            .unwrap_or_else(|e| panic!("{e}"));
+        let rewritten = rewrite(
+            &expanded,
+            ShaderStage::Vertex,
+            &inputs,
+            &GLUE,
+            &mut Names::new(10),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        let rewritten = rewritten.text();
+        for line in text.lines().skip(1).take(3) {
+            assert!(rewritten.contains(&format!("{line}\n")), "{rewritten}");
+        }
+    }
+
+    /// GLSL takes a precision word after the storage word too (`in highp vec4 X;`): such a
+    /// line is a declaration of its type and name, as with the word before it.
+    #[test]
+    fn a_precision_word_after_the_storage_word_is_a_declaration() {
+        let text = "#version 330\nin highp vec4 X;\nuniform lowp sampler2D T;\nvoid main() { }\n";
+        assert_eq!(
+            stage_inputs(text),
+            [(text.find("X;").unwrap(), "X", "vec4")]
+        );
+        assert_eq!(
+            resources(text),
+            [Resource {
+                name: "T",
+                kind: ResourceKind::Sampler2D
+            }]
         );
     }
 
@@ -3286,6 +3422,7 @@ void main() { }
             vec![Error {
                 file: VSH_FILE.into(),
                 line: 2,
+                unprovided: Some("Lightmap".into()),
                 message: "vertex shader: Lightmap is not a block or sampler of this pipeline"
                     .into(),
             }]
@@ -3303,6 +3440,7 @@ void main() { }
             vec![Error {
                 file: VSH_FILE.into(),
                 line: 2,
+                unprovided: None,
                 message: "minecraft:shaders/include/nothing.glsl not found".into(),
             }]
         );
@@ -3317,6 +3455,7 @@ void main() { }
             vec![Error {
                 file: VSH_FILE.into(),
                 line: 3,
+                unprovided: None,
                 message: "minecraft:shaders/include/nothing.glsl not found".into(),
             }]
         );
@@ -3328,6 +3467,7 @@ void main() { }
             vec![Error {
                 file: VSH_FILE.into(),
                 line: 5,
+                unprovided: None,
                 message: "minecraft:shaders/include/nothing.glsl not found".into(),
             }]
         );
@@ -3353,6 +3493,7 @@ void main() { }
             vec![Error {
                 file: VSH_FILE.into(),
                 line: 3,
+                unprovided: None,
                 message: "minecraft:shaders/include/nothing.glsl: not text".into(),
             }]
         );
@@ -3564,6 +3705,7 @@ void main() { }
             vec![Error {
                 file: "demo:custom/core/test.vsh".into(),
                 line: 4,
+                unprovided: Some("Extra".into()),
                 message: "vertex shader: Extra is not a block or sampler of this pipeline".into(),
             }]
         );
