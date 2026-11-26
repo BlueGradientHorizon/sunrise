@@ -868,7 +868,11 @@ fn dropped_files_reach_a_mod_screen_whole_and_in_order() {
         let Seen::Dropped(_, paths) = &seen[0] else {
             unreachable!()
         };
-        assert_eq!(paths[1].to_str(), None, "the second path is still not UTF-8");
+        assert_eq!(
+            paths[1].to_str(),
+            None,
+            "the second path is still not UTF-8"
+        );
         assert!(
             game.mod_screen_open("input_route"),
             "observe only: the screen stays"
