@@ -422,6 +422,7 @@
   "sunrise.extras.sort.tooltip": "Сортирует инвентарь, сундуки, бочки, эндер-сундуки и шалкеры в порядке вкладок творческого режима, объединяя стопки.",
   "sunrise.extras.sort_key": "Клавиша сортировки",
   "sunrise.extras.sort_key.tooltip": "Сортирует часть под курсором. Нажмите, затем нажмите клавишу; Escape отменяет привязку.",
+  "sunrise.key.category": "Sunrise",
   "sunrise.extras.shader_pack_key": "Клавиша шейдер-пака",
   "sunrise.extras.shader_pack_key.tooltip": "Включает и выключает выбранный шейдер-пак. Нажми и нажми клавишу; Escape отвязывает. Выбор помнится между перезапусками.",
   "sunrise.extras.ui_sound_reserve": "Резерв каналов для звуков интерфейса",

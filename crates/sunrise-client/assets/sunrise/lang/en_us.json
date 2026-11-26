@@ -466,6 +466,7 @@
   "sunrise.extras.sort.tooltip": "Sorts the inventory, chests, barrels, ender chests and shulker boxes in creative tab order, merging stacks.",
   "sunrise.extras.sort_key": "Sort key",
   "sunrise.extras.sort_key.tooltip": "Sorts the part under the cursor. Click, then press a key; Escape unbinds it.",
+  "sunrise.key.category": "Sunrise",
   "sunrise.extras.shader_pack_key": "Shader pack key",
   "sunrise.extras.shader_pack_key.tooltip": "Turns the picked shader pack off and on. Click, then press a key; Escape unbinds it. The pick is remembered across restarts.",
   "sunrise.extras.ui_sound_reserve": "Keep channels for UI sounds",
