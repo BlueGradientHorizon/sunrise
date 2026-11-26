@@ -426,9 +426,6 @@ impl Registries {
 
 #[cfg(test)]
 mod tests {
-    /// A content mod's enchantment reaches the ids an item component's enchantment map is
-    /// checked against (#5607): the export's vanilla-only `by_registry` list no longer hides it,
-    /// and the export's tags stay.
     /// #6129: a mod's entries merged into the export after vanilla's are read in order, so a
     /// search finds every entry, vanilla's last one too.
     #[test]
@@ -458,6 +455,9 @@ mod tests {
         }
     }
 
+    /// A content mod's enchantment reaches the ids an item component's enchantment map is
+    /// checked against (#5607): the export's vanilla-only `by_registry` list no longer hides it,
+    /// and the export's tags stay.
     #[test]
     fn set_enchantment_ids_reach_the_registry_view_the_codecs_read() {
         let mut registries = Registries::default();
