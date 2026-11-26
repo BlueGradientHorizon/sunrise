@@ -1,0 +1,3 @@
+ids = ["method:RenderAssets::atlas_sprite_pixels"]
+why = "A blocks-atlas sprite larger than the texture budget lets the atlas array hold now comes back at its own size, the frame it starts on as the engine decoded it, not shrunk to the array's edge (#5814)."
+migrate = "A mod that assumed the pixels never exceed the array's edge reads the width and height it is given, as it already must for smaller sprites."
