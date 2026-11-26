@@ -382,10 +382,8 @@ def prepare(dest_root, keep_dir, *, key=None, manifest=None, expected=None, gene
             os.rename(staging, snapshot_dir)
             copy_snapshot(snapshot_dir, dest)
             prune_seed_keep(keep)
-        except Exception:
-            shutil.rmtree(staging, ignore_errors=True)
-            raise
         finally:
+            shutil.rmtree(staging, ignore_errors=True)  # already renamed away on success
             shutil.rmtree(scratch, ignore_errors=True)
     return {'key': key, 'status': 'miss', 'worlds': len(expected), 'elapsed': time.monotonic() - started}
 
