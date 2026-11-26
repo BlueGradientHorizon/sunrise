@@ -53,7 +53,7 @@ impl Game<'_> {
     /// The locator bar's tracked waypoints; None outside a logged-in client world.
     pub(super) fn native_client_waypoints(&self) -> Option<mod_api::ClientWaypoints> {
         self.native_session()?;
-        Some(waypoints(&self.waypoints))
+        Some(waypoints(&self.waypoints, self.camera_entity_position()))
     }
 
     /// The listed players' skins as the Tab overlay draws them; None outside a logged-in
@@ -235,12 +235,15 @@ impl ClientTabListEntry for TabEntryView<'_> {
 /// `ClientWaypointManager`'s table, in `forEachWaypoint`'s read order: farthest first by
 /// `distanceSquared` with a camera entity, no promised order without one, so the read cannot
 /// drift from what the bar draws.
-fn waypoints(waypoints: &sunrise_client::locator_bar::ClientWaypoints) -> mod_api::ClientWaypoints {
+fn waypoints(
+    waypoints: &sunrise_client::locator_bar::ClientWaypoints,
+    camera_entity_pos: Option<[f64; 3]>,
+) -> mod_api::ClientWaypoints {
     use sunrise_protocol::packets::play::{WaypointId, WaypointTarget};
-    let rows = waypoints.for_read(None);
+    let rows = waypoints.for_read(camera_entity_pos);
     let entries = rows
         .iter()
-        .map(|w| {
+        .filter_map(|w| {
             let id = match &w.id {
                 WaypointId::Uuid(uuid) => mod_api::ClientWaypointId::Uuid(*uuid),
                 WaypointId::Name(name) => mod_api::ClientWaypointId::Name(name.clone()),
@@ -253,18 +256,17 @@ fn waypoints(waypoints: &sunrise_client::locator_bar::ClientWaypoints) -> mod_ap
                 WaypointTarget::Chunk([x, z]) => mod_api::ClientWaypointTarget::Chunk([x, z]),
                 WaypointTarget::Azimuth(angle) => mod_api::ClientWaypointTarget::Azimuth(angle),
             };
-            // `Ident::read` validated the style on the wire; a malformed id fails through
-            // normal packet decoding, so the value carries as parsed, without a default.
-            let style = mod_api::Identifier::parse(&w.style)
-                .expect("the wire validator accepted this style");
-            mod_api::ClientWaypointEntry::new(
+            // A style the wire validator did not accept skips the entry instead of
+            // panicking on peer data.
+            let style = mod_api::Identifier::parse(&w.style).ok()?;
+            Some(mod_api::ClientWaypointEntry::new(
                 id,
                 target,
                 style,
                 // The packet stores the colour as ARGB; the API takes RGB, as
                 // `living_set_waypoint_color` does.
                 w.color.map(|c| (c as u32) & 0x00FF_FFFF),
-            )
+            ))
         })
         .collect();
     mod_api::ClientWaypoints::new(entries)
@@ -462,11 +464,12 @@ pub(super) mod tests {
             target,
         };
         let mut table = ClientWaypoints::default();
+        // Sent nearest-first, with the azimuth in the middle: nothing here depends on sent order.
         table.apply(&tracked(
             WaypointId::Uuid(7),
             "minecraft:default",
             Some(0xFF10_2030u32 as i32),
-            WaypointTarget::Block([4, 5, 6]),
+            WaypointTarget::Block([2, 64, 3]), // nearest
         ));
         table.apply(&tracked(
             WaypointId::Name("home".into()),
@@ -478,49 +481,66 @@ pub(super) mod tests {
             WaypointId::Uuid(9),
             "minecraft:default",
             Some(0xFF00_FF00u32 as i32),
-            WaypointTarget::Chunk([3, -2]),
+            WaypointTarget::Block([0, 64, 20]), // middle
         ));
-        let list = waypoints(&table);
+        table.apply(&tracked(
+            WaypointId::Uuid(11),
+            "minecraft:default",
+            Some(0xFF10_2040u32 as i32),
+            WaypointTarget::Block([30, 64, 0]), // farthest
+        ));
+        let list = waypoints(&table, Some([0.0, 64.0, 0.0]));
         assert_eq!(
             list.entries.len(),
-            3,
-            "every tracked waypoint, in sent order"
+            4,
+            "every tracked waypoint, in the bar's read order"
         );
-        let first = &list.entries[0];
-        assert_eq!(first.id, mod_api::ClientWaypointId::Uuid(7));
+        // With a camera at [0, 64, 0] the read is farthest first by squared distance from the
+        // block centres: the azimuth (no distance at all) first, then [30, 64, 0] (centre
+        // 930.75), [0, 64, 20] (420.75) and [2, 64, 3] (18.75) — the reverse of sent order.
+        let order: Vec<_> = list.entries.iter().map(|e| e.id.clone()).collect();
         assert_eq!(
-            first.target,
-            mod_api::ClientWaypointTarget::Block(mod_api::BlockPos::new(4, 5, 6))
+            order,
+            [
+                mod_api::ClientWaypointId::Name("home".into()),
+                mod_api::ClientWaypointId::Uuid(11),
+                mod_api::ClientWaypointId::Uuid(9),
+                mod_api::ClientWaypointId::Uuid(7),
+            ],
+            "the read shares the locator bar's farthest-first sort"
         );
-        assert_eq!(first.style.to_string(), "minecraft:default");
+        let azimuth = &list.entries[0];
+        assert_eq!(azimuth.target, mod_api::ClientWaypointTarget::Azimuth(0.5));
+        assert_eq!(azimuth.color, None, "no colour sent stays none");
+        let far = &list.entries[1];
         assert_eq!(
-            first.color,
-            Some(0x10_2030),
-            "ARGB on the wire reads as RGB"
+            far.target,
+            mod_api::ClientWaypointTarget::Block(mod_api::BlockPos::new(30, 64, 0))
         );
+        assert_eq!(far.style.to_string(), "minecraft:default");
+        assert_eq!(far.color, Some(0x10_2040), "ARGB on the wire reads as RGB");
+        let mid = &list.entries[2];
         assert_eq!(
-            list.entries[1].id,
-            mod_api::ClientWaypointId::Name("home".into())
+            mid.target,
+            mod_api::ClientWaypointTarget::Block(mod_api::BlockPos::new(0, 64, 20))
         );
+        assert_eq!(mid.color, Some(0x00_FF00));
+        let near = &list.entries[3];
         assert_eq!(
-            list.entries[1].target,
-            mod_api::ClientWaypointTarget::Azimuth(0.5)
+            near.target,
+            mod_api::ClientWaypointTarget::Block(mod_api::BlockPos::new(2, 64, 3))
         );
-        assert_eq!(list.entries[1].color, None, "no colour sent stays none");
-        assert_eq!(
-            list.entries[2].target,
-            mod_api::ClientWaypointTarget::Chunk([3, -2])
-        );
-        // Untracking drops the entry; the read follows the table.
+        assert_eq!(near.color, Some(0x10_2030));
+        // Untracking drops the entry; without a camera entity no order is promised.
         table.apply(&TrackedWaypoint {
             operation: waypoint_operation::UNTRACK,
-            id: WaypointId::Uuid(9),
+            id: WaypointId::Uuid(11),
             style: "minecraft:default".into(),
             color: None,
             target: WaypointTarget::Empty,
         });
-        let list = waypoints(&table);
-        assert_eq!(list.entries.len(), 2, "untracked waypoints leave the table");
+        let list = waypoints(&table, None);
+        assert_eq!(list.entries.len(), 3, "untracked waypoints leave the table");
         assert_eq!(
             list.entries[1].id,
             mod_api::ClientWaypointId::Name("home".into())
@@ -567,11 +587,7 @@ pub(super) mod tests {
                 (1, "skins/abc123".to_owned(), true),
                 (2, "skins/wide42".to_owned(), false),
                 // No resolved skin: the UUID's default body and its own slim flag.
-                (
-                    3,
-                    sunrise_client::tab_list::default_skin(3).to_owned(),
-                    sunrise_client::tab_list::default_skin(3).contains("/slim/")
-                ),
+                (3, "entity/player/slim/kai".to_owned(), true),
             ],
             "every drawn player's skin, and no skin for the uuid without a tab entry"
         );

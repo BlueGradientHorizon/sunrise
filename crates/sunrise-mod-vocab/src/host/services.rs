@@ -86,8 +86,9 @@ pub trait ClientSession {
     }
     /// Side: client.
     /// The locator bar's tracked waypoints: each waypoint's identifier, target, icon style and
-    /// icon colour, in the order the server sent them. What this client has been sent; None
-    /// outside a logged-in client world. Sends nothing.
+    /// icon colour, farthest first by squared distance from the camera entity when one
+    /// exists (ties in no promised order; no promised order without one). What this client
+    /// has been sent; None outside a logged-in client world. Sends nothing.
     fn client_waypoints(&self) -> Option<ClientWaypoints> {
         unimplemented!("ClientSession::client_waypoints")
     }
