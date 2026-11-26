@@ -86,7 +86,7 @@ class ServerStopTests(unittest.TestCase):
         self.assertEqual(calls, [120, None])
 
     def test_a_server_already_killed_with_its_stdin_closed_stops_without_an_error(self):
-        # What datafix_scene_12.populate leaves for build() and build_flat() to stop.
+        # A server may exit on its own before cleanup.
         server = worlds.Server.__new__(worlds.Server)
         server.process = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'], stdin=subprocess.PIPE, text=True)
         self.addCleanup(server.process.kill)
@@ -196,7 +196,7 @@ class BuildCleanupTests(unittest.TestCase):
             def __init__(self, *args):
                 pass
 
-            def stop(self):
+            def stop(self, *, save):
                 events.append('stopped')
                 if stop_error:
                     raise stop_error
@@ -246,7 +246,7 @@ class BuildFlatCleanupTests(unittest.TestCase):
             def wait(self, *args):
                 pass
 
-            def stop(self):
+            def stop(self, *, save):
                 events.append('stopped')
 
         def populate(server, Bot, *args):
@@ -283,19 +283,41 @@ class LegacyBuildTests(unittest.TestCase):
             (cwd / 'world').mkdir()
             return process
 
-        process = mock.Mock(stdout=['Done (\n'], returncode=None)
+        self.process = process = mock.Mock(stdout=['Done (\n'], returncode=None)
         process.poll.side_effect = lambda: process.returncode
         process.kill.side_effect = lambda: setattr(process, 'returncode', 1)
+        self.stop = stop = mock.Mock()
+
+        class RecordingServer(worlds.Server):
+            def stop(self, *args, **kwargs):
+                stop(*args, **kwargs)
+                super().stop(*args, **kwargs)
+
         self.enterContext(mock.patch.multiple(
             worlds, LOCAL=work, server_jar=mock.Mock(return_value=(Path('server.jar'), 1343, 340)),
             java=mock.Mock(return_value='java'), free_port=lambda: 12345,
             subprocess=SimpleNamespace(Popen=start, PIPE=subprocess.PIPE, STDOUT=subprocess.STDOUT),
-            time=SimpleNamespace(sleep=lambda seconds: None, time=worlds.time.time)))
+            Server=RecordingServer, time=SimpleNamespace(sleep=lambda seconds: None, time=worlds.time.time)))
         self.lab_actions = mock.Mock()
         self.enterContext(mock.patch.multiple(
             worlds.scene12, LAST={}, time=worlds.time, lab_actions=self.lab_actions,
             batch=mock.Mock(return_value=[['Time is 12'], ['Time is 12']]),
             make_player=lambda *args: lambda *args: mock.Mock()))
+
+    def assert_saved_shutdown(self):
+        self.stop.assert_called_once_with(save=False)
+        self.process.kill.assert_called_once_with()
+        self.process.wait.assert_called_once_with()
+        self.process.stdin.close.assert_called_once_with()
+        self.process.stdin.write.assert_not_called()  # a graceful stop would save over the last tick
+
+    def test_legacy_world_owner_ends_the_server_once_without_resaving(self):
+        worlds.build('1.12.2')
+        self.assert_saved_shutdown()
+
+    def test_flat_world_owner_ends_the_server_once_without_resaving(self):
+        worlds.scene12.build_flat(worlds)
+        self.assert_saved_shutdown()
 
     def test_lab_actions_oserror_reaches_the_caller(self):
         self.lab_actions.side_effect = ConnectionResetError('lab bot disconnected')

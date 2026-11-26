@@ -1745,8 +1745,8 @@ LAST = {}
 
 
 def populate(server, Bot, port, protocol, name, problems):
-    """Build the whole 1.12.2 scene and save it for good. Its bot leaves before the last tick; the caller closes any
-    bot that was left joined by a failure."""
+    """Build and save the legacy scene. Its bot leaves before the last tick; the owner stops the server without
+    saving again on success and closes any bot that was left joined by a failure."""
     harness = sys.modules[Bot.__module__]
     Player = make_player(Bot, varint, parse_varint, harness.mcstring)
     set_protocol(protocol)
@@ -1791,7 +1791,7 @@ def populate(server, Bot, port, protocol, name, problems):
     bot.leave()            # the player's data, statistics and advancements are written when the bot leaves
     time.sleep(2)
     # The last tick: transient states and entities, then the save. A normal stop would save the chunks again,
-    # after those states have changed (it ignores `save-off`), so the server is killed once the save is done.
+    # after those states have changed (it ignores `save-off`), so the owner kills the server once the save is done.
     # `time query gametime` before and after tells whether a tick ran in between (the server executes a queue of
     # console commands in one tick unless the queue runs dry); if so the content is wiped and placed again.
     slow = barrier()
@@ -1809,12 +1809,6 @@ def populate(server, Bot, port, protocol, name, problems):
     else:
         problems.append(('last tick', ['the transient states were not saved in one tick']))
     time.sleep(1)
-    server.process.kill()
-    server.process.wait()
-    try:
-        server.process.stdin.close()
-    except OSError:
-        pass
 
 
 # ------------------------------------------------------------------ after the server stopped
@@ -1899,6 +1893,7 @@ def build_flat(h, force=False):
     JoinedBot = h.tracked_bot(bots)
     old = (BX, BZ)
     set_origin(16, 16)
+    save_on_stop = True
     try:
         # A flat world's spawn is found far away; make it (64, 64), and let a bot visit the scene's area so that its chunks
         # are loaded (they stay loaded, being within the spawn radius).
@@ -1914,13 +1909,14 @@ def build_flat(h, force=False):
         visitor.leave()
         time.sleep(1)
         populate(server, JoinedBot, port, protocol, h.BOT, problems)
+        save_on_stop = False
     finally:
         try:
             for bot in bots:
                 bot.leave()
         finally:
             set_origin(*old)
-            server.stop()   # a failed stop still raises, after the bots are closed
+            server.stop(save=save_on_stop)
     fixtures(work / 'world')
     partial = target.with_name(target.name + '.partial')
     shutil.rmtree(partial, ignore_errors=True)
