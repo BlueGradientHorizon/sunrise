@@ -401,14 +401,9 @@ fn translate(
     );
     let vertex = vertex_bools.as_ref().unwrap_or(vertex);
     let fragment = fragment_bools.as_ref().unwrap_or(fragment);
-    // The boats' water patches' depth, read by our `main` (`GbuffersInputs::water_mask`).
-    let masked = gbuffers
-        .filter(|g| g.water_mask)
-        .map(|_| with_declaration(fragment, &format!("uniform sampler2D {WATER_MASK};")));
-    let fragment = masked.as_ref().unwrap_or(fragment);
-    // The boats' water patches (`GbuffersInputs::water_patches`): the vertex's camera-relative
-    // place to the fragment, and the patches' boxes.
-    let patches = gbuffers.is_some_and(|g| g.water_patches);
+    // The declarations each stage gets, put in once: the boats' water patches (`GbuffersInputs::
+    // water_patches`), the vertex's camera-relative place to the fragment and the patches' boxes,
+    // then the patches' depth (`GbuffersInputs::water_mask`) that our `main` reads.
     let varying = |pp: &Preprocessed, dir: &str| {
         let old = pp.version.as_ref().is_none_or(|(v, _)| *v < 130);
         format!(
@@ -416,18 +411,24 @@ fn translate(
             if old { "varying" } else { dir }
         )
     };
-    let patch_vertex = patches.then(|| with_declaration(vertex, &varying(vertex, "out")));
+    let mut vertex_declarations: Vec<String> = Vec::new();
+    let mut fragment_declarations: Vec<String> = Vec::new();
+    if gbuffers.is_some_and(|g| g.water_patches) {
+        vertex_declarations.push(varying(vertex, "out"));
+        fragment_declarations.push(varying(fragment, "in"));
+        fragment_declarations.push("uniform int sunriseWaterPatchCount;".to_owned());
+        fragment_declarations
+            .extend((0..2 * WATER_PATCHES).map(|k| format!("uniform vec4 sunriseWaterPatch{k};")));
+    }
+    if gbuffers.is_some_and(|g| g.water_mask) {
+        fragment_declarations.push(format!("uniform sampler2D {WATER_MASK};"));
+    }
+    let declared = |pp: &Preprocessed, declarations: &[String]| {
+        (!declarations.is_empty()).then(|| with_declaration(pp, &declarations.join("\n")))
+    };
+    let patch_vertex = declared(vertex, &vertex_declarations);
     let vertex = patch_vertex.as_ref().unwrap_or(vertex);
-    let patch_fragment = patches.then(|| {
-        let uniforms: String = std::iter::once("uniform int sunriseWaterPatchCount;".to_owned())
-            .chain((0..2 * WATER_PATCHES).map(|k| format!("uniform vec4 sunriseWaterPatch{k};")))
-            .collect::<Vec<_>>()
-            .join("\n");
-        with_declaration(
-            fragment,
-            &format!("{}\n{uniforms}", varying(fragment, "in")),
-        )
-    });
+    let patch_fragment = declared(fragment, &fragment_declarations);
     let fragment = patch_fragment.as_ref().unwrap_or(fragment);
     let mut v = Stage::scan(vertex, ShaderStage::Vertex);
     let mut f = Stage::scan(fragment, ShaderStage::Fragment);
