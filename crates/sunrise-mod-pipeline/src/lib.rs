@@ -521,7 +521,10 @@ pub fn extract_vertex_inputs(vertex: &str) -> Result<Vec<(String, String)>, Stri
         folder: INCLUDE_FOLDER,
         once: &["moj_import"],
     };
-    let expanded = sunrise_glsl::expand_includes(vertex, "", "", &includes, None)
+    // With defines, the expansion removes comments as the translator's does: a commented-out
+    // `in` is no input.
+    let defines = effective_defines(&[]);
+    let expanded = sunrise_glsl::expand_includes(vertex, "", "", &includes, Some(&defines))
         .map_err(|e| e.to_string())?;
     let decls = sunrise_glsl::stage_inputs(expanded.text());
     let mut seen = std::collections::HashSet::new();
@@ -1825,6 +1828,22 @@ void main() {{
             vec![("Real".to_owned(), ModBindingKind::CombinedImageSampler)]
         );
         assert_eq!(push_constant_size, 0);
+    }
+
+    /// A vertex input only in a line or block comment is no input: the comments go before the
+    /// declarations are read.
+    #[test]
+    fn a_commented_vertex_input_is_no_input() {
+        let vsh = "#version 330\n// in vec3 Commented;\nin vec3 Position; // in vec2 Trailing;\n\
+            /* in vec4 Block;\nin vec4 Spanning; */\nin vec2 UV0;\n\
+            void main() { gl_Position = vec4(Position, UV0.x); }\n";
+        assert_eq!(
+            extract_vertex_inputs(vsh).unwrap(),
+            [
+                ("Position".to_owned(), "vec3".to_owned()),
+                ("UV0".to_owned(), "vec2".to_owned())
+            ]
+        );
     }
 
     /// A program whose include cannot be expanded is refused with the include's error, not read
