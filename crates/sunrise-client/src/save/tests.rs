@@ -2639,7 +2639,7 @@ fn mod_block_entity_round_trips() {
 }
 
 #[test]
-fn mod_block_entity_extended_slots_round_trip_without_aliasing() {
+fn mod_block_entity_item_slots_round_trip_as_unsigned_bytes() {
     use crate::{
         containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields},
         items::ItemStack,
@@ -2650,10 +2650,11 @@ fn mod_block_entity_extended_slots_round_trip_without_aliasing() {
     let iron = ItemStack::new("minecraft:iron_ingot", 4);
     let dirt = ItemStack::new("minecraft:dirt", 7);
 
-    let mut items = vec![None; 257];
+    // A container holds at most 256 slots (`Registrar::block_container`): its rows carry
+    // vanilla's unsigned-byte slot, 255 as -1b.
+    let mut items = vec![None; 256];
     items[0] = Some(stone.clone());
     items[255] = Some(iron.clone());
-    items[256] = Some(dirt.clone());
     let entity = ModBlockEntity::new(
         "test:vault".into(),
         ModBlockEntityFields {
@@ -2670,17 +2671,16 @@ fn mod_block_entity_extended_slots_round_trip_without_aliasing() {
     assert_eq!(
         encoded.get("Items"),
         Some(&parse(
-            r#"[{Slot:0b,id:"minecraft:stone",count:3},{Slot:-1b,id:"minecraft:iron_ingot",count:4},{Slot:256,id:"minecraft:dirt",count:7}]"#
+            r#"[{Slot:0b,id:"minecraft:stone",count:3},{Slot:-1b,id:"minecraft:iron_ingot",count:4}]"#
         ))
     );
 
-    // Reloading with the declared shape restores slots 0, 255 and 256 with no aliasing.
+    // Reloading with the declared shape restores slots 0 and 255.
     let reloaded =
-        decode_mod_block_entity("test:vault".into(), &encoded, 257).expect("declared mod vault");
-    assert_eq!(reloaded.items.len(), 257);
+        decode_mod_block_entity("test:vault".into(), &encoded, 256).expect("declared mod vault");
+    assert_eq!(reloaded.items.len(), 256);
     assert_eq!(reloaded.items[0].as_ref(), Some(&stone));
     assert_eq!(reloaded.items[255].as_ref(), Some(&iron));
-    assert_eq!(reloaded.items[256].as_ref(), Some(&dirt));
     assert!(reloaded.nbt.get(&"Items".into()).is_none());
     assert_eq!(
         block_entity_encode::encode(
@@ -2692,62 +2692,19 @@ fn mod_block_entity_extended_slots_round_trip_without_aliasing() {
         encoded
     );
 
-    // Generic decode without a declared shape preserves low slots and leaves extended
-    // rows opaque without growing the modeled vector.
-    let (loaded_pos, BlockEntity::Mod(unknown)) =
-        decode_block_entity(&encoded).expect("unknown-block decode")
-    else {
-        panic!("expected mod block entity");
-    };
-    assert_eq!(loaded_pos, pos);
-    assert_eq!(unknown.items.len(), 256);
-    assert_eq!(unknown.items[0].as_ref(), Some(&stone));
-    assert_eq!(unknown.items[255].as_ref(), Some(&iron));
-    assert_eq!(
-        unknown.nbt.get(&"Items".into()),
-        Some(&parse(r#"[{Slot:256,id:"minecraft:dirt",count:7}]"#))
-    );
-    assert_eq!(
-        block_entity_encode::encode(
-            pos,
-            &BlockEntity::Mod(unknown),
-            "test:vault",
-            &Default::default(),
-        ),
-        encoded
-    );
-
-    // Rows outside the declared shape, invalid negative Ints, noncanonical compact Ints,
-    // duplicates, and slotless entries all remain opaque verbatim.
+    // Rows outside the declared shape, slots past a byte, Int slots that are not the byte
+    // form, duplicates and slotless entries all remain opaque verbatim.
     let mixed = parse(
-        r#"{id:"test:vault",x:4,y:64,z:-2,Items:[{Slot:0b,id:"minecraft:stone",count:3},{Slot:256,id:"minecraft:dirt",count:7},{Slot:257,id:"minecraft:gold_ingot",count:1},{Slot:1000000,id:"minecraft:diamond",count:1},{Slot:-1,id:"minecraft:coal",count:1},{Slot:1,id:"minecraft:sand",count:1},{raw:"no slot"}]}"#,
+        r#"{id:"test:vault",x:4,y:64,z:-2,Items:[{Slot:0b,id:"minecraft:stone",count:3},{Slot:256,id:"minecraft:dirt",count:7},{Slot:-1,id:"minecraft:coal",count:1},{Slot:1,id:"minecraft:sand",count:1},{Slot:5b,id:"minecraft:dirt",count:1},{Slot:5b,id:"minecraft:dirt",count:2},{Slot:9b,id:"minecraft:dirt",count:1},{raw:"no slot"}]}"#,
     );
-    let bounded = decode_mod_block_entity("test:vault".into(), &mixed, 257).expect("bounded vault");
-    assert_eq!(bounded.items.len(), 257);
+    let bounded = decode_mod_block_entity("test:vault".into(), &mixed, 9).expect("bounded vault");
     assert_eq!(bounded.items[0].as_ref(), Some(&stone));
-    assert_eq!(bounded.items[256].as_ref(), Some(&dirt));
+    assert!(bounded.items.iter().skip(1).all(Option::is_none));
     assert_eq!(
         bounded.nbt.get(&"Items".into()),
         Some(&parse(
-            r#"[{Slot:257,id:"minecraft:gold_ingot",count:1},{Slot:1000000,id:"minecraft:diamond",count:1},{Slot:-1,id:"minecraft:coal",count:1},{Slot:1,id:"minecraft:sand",count:1},{raw:"no slot"}]"#
+            r#"[{Slot:256,id:"minecraft:dirt",count:7},{Slot:-1,id:"minecraft:coal",count:1},{Slot:1,id:"minecraft:sand",count:1},{Slot:5b,id:"minecraft:dirt",count:1},{Slot:5b,id:"minecraft:dirt",count:2},{Slot:9b,id:"minecraft:dirt",count:1},{raw:"no slot"}]"#
         ))
-    );
-
-    // Duplicate extended slots stay opaque rather than modeling one over the other.
-    let dup_extended = parse(
-        r#"{id:"test:vault",x:4,y:64,z:-2,Items:[{Slot:256,id:"minecraft:stone",count:1},{Slot:256,id:"minecraft:dirt",count:1}]}"#,
-    );
-    let dup =
-        decode_mod_block_entity("test:vault".into(), &dup_extended, 257).expect("dup extended");
-    assert!(dup.items.is_empty());
-    assert_eq!(
-        block_entity_encode::encode(
-            pos,
-            &BlockEntity::Mod(Box::new(dup)),
-            "test:vault",
-            &Default::default(),
-        ),
-        dup_extended
     );
 
     // Slotless declared shape keeps Items verbatim in nbt.
@@ -2755,20 +2712,16 @@ fn mod_block_entity_extended_slots_round_trip_without_aliasing() {
     assert!(slotless.items.is_empty());
     assert_eq!(slotless.nbt.get(&"Items".into()), encoded.get("Items"));
 
-    // Opaque slot queries, claims and clears distinguish slot 0 from slot 256.
-    let opaque_pair = parse(
+    // Opaque slot queries and claims: writing slot 0 takes over its opaque row.
+    let opaque = parse(
         r#"{id:"test:vault",x:4,y:64,z:-2,Items:[{Slot:0b,raw:"low"},{Slot:256,raw:"high"}]}"#,
     );
     let mut claimed =
-        decode_mod_block_entity("test:vault".into(), &opaque_pair, 257).expect("opaque pair");
+        decode_mod_block_entity("test:vault".into(), &opaque, 256).expect("opaque rows");
     assert!(claimed.has_opaque_item_slot(0));
-    assert!(claimed.has_opaque_item_slot(256));
-    claimed.items.resize(257, None);
-    *claimed.item_slot_mut(0) = Some(stone.clone());
+    claimed.items.resize(256, None);
+    *claimed.item_slot_mut(0) = Some(dirt.clone());
     assert!(!claimed.has_opaque_item_slot(0));
-    assert!(claimed.has_opaque_item_slot(256));
-    *claimed.item_slot_mut(256) = Some(dirt.clone());
-    assert!(!claimed.has_opaque_item_slot(256));
     assert_eq!(
         block_entity_encode::encode(
             pos,
@@ -2778,7 +2731,7 @@ fn mod_block_entity_extended_slots_round_trip_without_aliasing() {
         )
         .get("Items"),
         Some(&parse(
-            r#"[{Slot:0b,id:"minecraft:stone",count:3},{Slot:256,id:"minecraft:dirt",count:7}]"#
+            r#"[{Slot:0b,id:"minecraft:dirt",count:7},{Slot:256,raw:"high"}]"#
         ))
     );
 
@@ -4348,13 +4301,13 @@ fn world_stem_compatibility_flags_unstable_and_customized_worlds() {
             },
         )
         .unwrap();
-        assert!(!world_gen_unstable(&dir), "{preset:?}");
+        assert!(!unstable(&dir), "{preset:?}");
         assert!(!is_old_customized_world(&dir));
         let _ = fs::remove_dir_all(dir);
     }
     // Without world_gen_settings there is nothing to ask about.
     let dir = gen_world("stem-none");
-    assert!(!world_gen_unstable(&dir) && !is_old_customized_world(&dir));
+    assert!(!unstable(&dir) && !is_old_customized_world(&dir));
     let _ = fs::remove_dir_all(dir);
 
     let dir = gen_world("stem-edit");
@@ -4377,13 +4330,13 @@ fn world_stem_compatibility_flags_unstable_and_customized_worlds() {
             ("biome", string("minecraft:plains")),
         ]);
     });
-    assert!(world_gen_unstable(&dir));
+    assert!(unstable(&dir));
     // The End on another dimension type.
     edit(&|tag| {
         let end = dimension(tag, "minecraft:the_end");
         *end.get_mut("type").unwrap() = string("minecraft:overworld");
     });
-    assert!(world_gen_unstable(&dir));
+    assert!(unstable(&dir));
     // Another noise settings in the Overworld is fine (amplified), in the Nether it is not.
     edit(&|tag| {
         let nether = dimension(tag, "minecraft:the_nether");
@@ -4393,7 +4346,7 @@ fn world_stem_compatibility_flags_unstable_and_customized_worlds() {
             .get_mut("settings")
             .unwrap() = string("minecraft:overworld");
     });
-    assert!(world_gen_unstable(&dir));
+    assert!(unstable(&dir));
     // A fourth dimension, and a missing builtin one.
     edit(&|tag| {
         if let Some(Tag::Compound(dimensions)) = tag.get_mut("dimensions") {
@@ -4401,13 +4354,13 @@ fn world_stem_compatibility_flags_unstable_and_customized_worlds() {
             dimensions.insert("mypack:moon".into(), end);
         }
     });
-    assert!(world_gen_unstable(&dir));
+    assert!(unstable(&dir));
     edit(&|tag| {
         if let Some(Tag::Compound(dimensions)) = tag.get_mut("dimensions") {
             dimensions.remove(&"minecraft:the_end".into());
         }
     });
-    assert!(world_gen_unstable(&dir));
+    assert!(unstable(&dir));
     // legacy_custom_options marks an old customized world.
     edit(&|tag| {
         if let Tag::Compound(map) = tag {
@@ -4424,7 +4377,7 @@ fn world_stem_compatibility_flags_unstable_and_customized_worlds() {
 fn world_stem_compatibility_reads_data_pack_dimensions() {
     let dir = gen_world("stem-datapack");
     write_world_gen_settings(&dir, 7, WorldGen::default()).unwrap();
-    assert!(!world_gen_unstable(&dir));
+    assert!(!unstable(&dir));
     let write = |pack: &str, file: &str, text: &str| {
         let path = dir.join("datapacks").join(pack).join(file);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -4437,27 +4390,27 @@ fn world_stem_compatibility_reads_data_pack_dimensions() {
         "data/mypack/dimension/moon.json",
         r#"{"type":"minecraft:the_end","generator":{"type":"minecraft:noise","settings":"minecraft:end","biome_source":{"type":"minecraft:the_end"}}}"#,
     );
-    assert!(world_gen_unstable(&dir));
+    assert!(unstable(&dir));
     // Disabled, it counts for nothing.
     fs::write(dir.join("datapacks.json"), r#"{"disabled":["file/p"]}"#).unwrap();
-    assert!(!world_gen_unstable(&dir));
+    assert!(!unstable(&dir));
     fs::remove_file(dir.join("datapacks.json")).unwrap();
     fs::remove_file(dir.join("datapacks/p/data/mypack/dimension/moon.json")).unwrap();
-    assert!(!world_gen_unstable(&dir));
+    assert!(!unstable(&dir));
     // A pack's Nether with another biome source replaces the saved vanilla one.
     write(
         "p",
         "data/minecraft/dimension/the_nether.json",
         r#"{"type":"minecraft:the_nether","generator":{"type":"minecraft:noise","settings":"minecraft:nether","biome_source":{"type":"minecraft:fixed","biome":"minecraft:plains"}}}"#,
     );
-    assert!(world_gen_unstable(&dir));
+    assert!(unstable(&dir));
     // And a vanilla-like one stays stable.
     write(
         "p",
         "data/minecraft/dimension/the_nether.json",
         r#"{"type":"minecraft:the_nether","generator":{"type":"minecraft:noise","settings":"minecraft:nether","biome_source":{"type":"minecraft:multi_noise","preset":"minecraft:nether"}}}"#,
     );
-    assert!(!world_gen_unstable(&dir));
+    assert!(!unstable(&dir));
     let _ = fs::remove_dir_all(dir);
 }
 
@@ -4491,7 +4444,7 @@ fn world_gen_settings_of_a_world_needing_file_fixes_are_read_in_memory() {
     assert!(needs_file_fixes(&dir));
     let read = world_gen_settings(&dir).expect("settings");
     assert!(read.get("dimensions").is_some());
-    assert!(!world_gen_unstable(&dir));
+    assert!(!unstable(&dir));
     let _ = fs::remove_dir_all(dir);
 }
 
@@ -5260,4 +5213,9 @@ fn a_chunk_from_before_1_17_loads_the_entities_it_keeps() {
     // There is no `entities/` record for it: these are all it has.
     assert!(save.load_entities(0, 0).unwrap().is_empty());
     let _ = std::fs::remove_dir_all(&world);
+}
+
+/// `world_gen_unstable` over the view of the packs the world selects.
+fn unstable(world: &Path) -> bool {
+    world_gen_unstable(world, &world_data_packs(world))
 }

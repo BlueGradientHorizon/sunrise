@@ -400,6 +400,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "bstr"
+version = "1.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a680398c10c7bc0488067c4612226ea905a85f607134b69f3068d505d58c4214"
+dependencies = [
+ "memchr",
+ "serde_core",
+]
+
+[[package]]
 name = "btoi"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -532,8 +542,11 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "dunce",
+ "getrandom 0.4.3",
  "libc",
  "lzma-rust2",
+ "object",
+ "png",
  "ring",
  "rustc-demangle",
  "semver",
@@ -542,6 +555,7 @@ dependencies = [
  "sha2 0.10.9",
  "sunrise-addresses",
  "sunrise-attestation",
+ "sunrise-jar-fetch",
  "sunrise-mod-api-gen",
  "sunrise-mod-package",
  "sunrise-mod-pipeline",
@@ -1524,6 +1538,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19fc433e8437a212d1b6f1e68c7824af3aed907da60afa994e7f542d18d12aa9"
 
 [[package]]
+name = "globset"
+version = "0.4.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "71217a07f20b48b4938c14203b77b610f8a7fa6762c3f75394a10c5f31e5aee0"
+dependencies = [
+ "aho-corasick",
+ "bstr",
+ "log",
+ "regex-automata",
+ "regex-syntax",
+]
+
+[[package]]
 name = "glow"
 version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1802,6 +1829,22 @@ checksum = "c0a05c691e1fae256cf7013d99dad472dc52d5543322761f83ec8d47eab40d2b"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "ignore"
+version = "0.4.35"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df0a7d5f105e76bda602bed0a44af048542d3c9af12ec35aaf16f106c6f34270"
+dependencies = [
+ "crossbeam-deque",
+ "globset",
+ "log",
+ "memchr",
+ "regex-automata",
+ "same-file",
+ "walkdir",
+ "winapi-util",
 ]
 
 [[package]]
@@ -4623,7 +4666,6 @@ dependencies = [
  "sunrise-perf-format",
  "sunrise-protocol",
  "sunrise-server-files",
- "sunrise-shader-api",
  "sunrise-shaders",
  "sunrise-system",
  "sunrise-telemetry",
@@ -4730,7 +4772,6 @@ dependencies = [
  "sunrise-perf-format",
  "sunrise-protocol",
  "sunrise-server-files",
- "sunrise-shader-api",
  "sunrise-shaders",
  "sunrise-telemetry",
  "sunrise-theme",
@@ -4798,7 +4839,6 @@ dependencies = [
  "sunrise-protocol",
  "sunrise-render-core",
  "sunrise-render-shaderpack",
- "sunrise-shader-api",
  "sunrise-shaders",
  "sunrise-system",
  "sunrise-theme",
@@ -4852,6 +4892,13 @@ version = "0.1.0"
 dependencies = [
  "crc32fast",
  "simd-adler32",
+]
+
+[[package]]
+name = "sunrise-dependency-rule"
+version = "0.1.0"
+dependencies = [
+ "semver",
 ]
 
 [[package]]
@@ -4996,6 +5043,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "sunrise-jar-fetch"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "sunrise-java-properties"
 version = "0.1.0"
 
@@ -5134,7 +5190,6 @@ dependencies = [
  "sunrise-mod-source",
  "sunrise-mod-surface",
  "sunrise-mod-vocab",
- "sunrise-shader-api",
  "syn 2.0.119",
  "tar",
  "tempfile",
@@ -5151,6 +5206,9 @@ name = "sunrise-mod-pipeline"
 version = "0.1.0"
 dependencies = [
  "naga",
+ "sunrise-glsl",
+ "sunrise-mod-vocab",
+ "wgpu-types",
 ]
 
 [[package]]
@@ -5176,6 +5234,7 @@ dependencies = [
 name = "sunrise-mod-source"
 version = "0.1.0"
 dependencies = [
+ "ignore",
  "proc-macro2",
  "quote",
  "sunrise-mod-surface",
@@ -5236,6 +5295,7 @@ dependencies = [
 name = "sunrise-native-build"
 version = "0.1.0"
 dependencies = [
+ "filetime",
  "flate2",
  "libc",
  "object",
@@ -5340,7 +5400,6 @@ dependencies = [
  "sunrise-perf-format",
  "sunrise-protocol",
  "sunrise-server-files",
- "sunrise-shader-api",
  "sunrise-shaders",
  "sunrise-system",
  "sunrise-telemetry",
@@ -5436,6 +5495,7 @@ dependencies = [
  "serde_json",
  "sha1",
  "sha2 0.10.9",
+ "sunrise-jar-fetch",
  "sunrise-mod-api",
  "sunrise-mod-api-gen",
  "sunrise-mod-package",
@@ -5465,6 +5525,7 @@ name = "sunrise-protocol"
 version = "0.1.0"
 dependencies = [
  "aes",
+ "base64 0.22.1",
  "flate2",
  "getrandom 0.3.4",
  "ipconfig",
@@ -5532,6 +5593,7 @@ dependencies = [
  "naga",
  "pollster",
  "serde_json",
+ "sha2 0.10.9",
  "smallvec",
  "sunrise-core",
  "sunrise-render-core",
@@ -5598,21 +5660,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sunrise-shader-api"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "naga",
- "png",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "sunrise-mod-pipeline",
- "toml",
- "zip",
-]
-
-[[package]]
 name = "sunrise-shaders"
 version = "0.1.0"
 dependencies = [
@@ -5620,6 +5667,7 @@ dependencies = [
  "naga",
  "png",
  "sunrise-core",
+ "sunrise-glsl",
  "zip",
 ]
 
@@ -5693,6 +5741,8 @@ dependencies = [
  "sunrise-mod-api-macros",
  "sunrise-mod-vocab",
  "sunrise-threads",
+ "tar",
+ "ureq",
  "xxhash-rust",
 ]
 

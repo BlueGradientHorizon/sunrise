@@ -239,7 +239,7 @@ impl Game<'_> {
         self.native_client_commands.pending_commands.clear();
         self.native_client_commands.pending_chats.clear();
         let chat_tree = self.chat_tree_for(None);
-        let services_keys = ServicesKeys::fetching();
+        let services_keys = self.fresh_services_keys();
         self.ui.registries.selector_tokens.clear();
         self.remote = Some(Remote {
             selector_metadata_supported: true,
@@ -247,6 +247,7 @@ impl Game<'_> {
             display_address: Remote::display_address_for(&session.address),
             session,
             brand: "unknown".into(),
+            datapack_vanilla_values: None,
             particle_packet_random: sunrise_client::random_source::create(),
             recipe_viewer: Default::default(),
             features: ["minecraft:vanilla".to_string()].into(),
@@ -255,7 +256,7 @@ impl Game<'_> {
             logged_out: false,
             attachments: HashMap::new(),
             colliders: HashMap::new(),
-            collider_shove_start: None,
+            collider_pass_start: None,
             carry_age: Default::default(),
             far_terrain: None,
             builtin,
@@ -265,6 +266,7 @@ impl Game<'_> {
                 .unwrap_or_else(|| "Connecting to the server...".into()),
             lang,
             registries: Arc::new(Dynamic::default()),
+            variants: Arc::new(sunrise_client::mobs::variants::VariantTables::default()),
             tags: None,
             enchantments: None,
             joined: false,
@@ -426,6 +428,12 @@ impl Game<'_> {
         self.stats = Default::default();
         Ok(())
     }
+    /// A joined client's trust keys, fetched off the game thread. Minecraft makes its
+    /// services once per run; a new set ends the skin verdicts made with the old one.
+    fn fresh_services_keys(&mut self) -> Arc<std::sync::Mutex<ServicesKeys>> {
+        self.skin_downloads.borrow_mut().forget_unpacked();
+        ServicesKeys::fetching()
+    }
     /// Prepare a client session and remote state to receive packets from a studio replay.
     /// A replayed or viewed world checks its players' signed properties as a joined
     /// client does.
@@ -435,7 +443,7 @@ impl Game<'_> {
         // has fetched.
         let services_keys = match &self.remote {
             Some(remote) => remote.services_keys.clone(),
-            None => ServicesKeys::fetching(),
+            None => self.fresh_services_keys(),
         };
         self.reset_client_item_use();
         self.realm_session = false;
@@ -536,6 +544,7 @@ impl Game<'_> {
             display_address: Remote::display_address_for(&session.address),
             session,
             brand: "sunrise-studio".into(),
+            datapack_vanilla_values: None,
             particle_packet_random: sunrise_client::random_source::create(),
             recipe_viewer: Default::default(),
             features: ["minecraft:vanilla".to_string()].into(),
@@ -543,13 +552,14 @@ impl Game<'_> {
             custom_books: false,
             attachments: HashMap::new(),
             colliders: HashMap::new(),
-            collider_shove_start: None,
+            collider_pass_start: None,
             carry_age: Default::default(),
             far_terrain: None,
             builtin,
             status: "Playing Studio Replay".into(),
             lang,
             registries: Arc::new(Dynamic::default()),
+            variants: Arc::new(sunrise_client::mobs::variants::VariantTables::default()),
             tags: None,
             enchantments: None,
             joined: false,
@@ -966,7 +976,7 @@ impl Game<'_> {
         self.track_remote_levels(&spawn.dimension);
         let r = self.remote.as_mut().unwrap();
         if !same {
-            r.collider_shove_start = None;
+            r.collider_pass_start = None;
             // A same-level respawn keeps the existing ClientLevel's seed and sea level.
             r.hashed_seed = spawn.seed;
             r.sea_level = spawn.sea_level;
@@ -1012,6 +1022,7 @@ impl Game<'_> {
         self.set_local_mode_with_previous(mode, previous);
         self.dim = Dim::from_id(&spawn.dimension);
         self.build_level_environments();
+        self.sync_timeline_registries();
         // ClientPacketListener.handleLogin / handleRespawn: the server's
         // Player.getLastDeathLocation, for the recovery compass.
         self.level.last_death = spawn

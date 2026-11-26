@@ -12,6 +12,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from tests.os_support import needs_runner_shell
 from tests.test_ci_concurrency import ROOT, yaml
 from tools import sunrise_mod_binstall
 from tools.ci import daily_summary as summary, parity_verdict
@@ -36,7 +37,7 @@ GREEN_JOBS = [job("shards / plan"), job("shards / ignored-tests-shards (sunrise-
               job("windows-runtime-leases / test"),
               job("windows-runtime-leases / runtime-leases"), job("windows-runtime-leases / launcher-processes"),
               job("cargo-sunrise-mod / plan"),
-              job("machine-sample / route"), job("machine-sample / build"),
+              job("machine-sample / route"), job("machine-sample / build"), job("exporters / exporters"),
               job("sdk / fresh"), job("sdk / build linux"), job("sdk / build linux-server"),
               job("sdk / fresh"), job("sdk / build windows"), job("sdk / build macos"), job(PARITY_JOB)]
 # Every binstall archive the daily builds (cargo-sunrise-mod-build.yml), with no publish job: it never publishes.
@@ -486,8 +487,10 @@ class DailySummaryTests(unittest.TestCase):
 
     def test_every_sdk_check_is_a_step_of_the_sdk_build(self):
         workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/prebuilt-game-build.yml").read_text()
+        # A cross-built macOS or Windows leg repeats the checks in `cross-check`; the `build` job keeps each once.
+        build = workflow.split("\n  build:\n", 1)[1].split("\n  cross-check:\n", 1)[0]
         for step in summary.SDK_CHECKS:
-            self.assertEqual(workflow.count(f"- name: {step}\n"), 1, step)
+            self.assertEqual(build.count(f"- name: {step}\n"), 1, step)
 
     def test_an_sdk_check_issue_closes_only_when_its_step_passed(self):
         title = "Daily: sdk API-source check (linux)"
@@ -954,8 +957,9 @@ class DailyWorkflowTests(unittest.TestCase):
         self.assertNotIn("permissions", jobs["sdk"], "the build leg publishes nothing")
         # The SDK is two calls named `sdk`: the Linux legs, which fn-replace-check needs alone, and the others.
         self.assertEqual(jobs["sdk"]["with"]["legs"], "linux")
+        # Only this call runs the C-source test on Windows and macOS; a Dev SDK build never does.
         self.assertEqual(jobs["sdk-windows-macos"]["with"], {"commit": "${{ needs.resolve.outputs.commit }}",
-                                                             "legs": "windows-macos"})
+                                                             "legs": "windows-macos", "c_source_test": "true"})
         self.assertEqual(jobs["sdk-windows-macos"]["name"], "sdk")
         self.assertEqual(summary.PART_OF, {"sdk-windows-macos": "sdk"})
         self.assertEqual(jobs["fn-replace-check"]["needs"], ["resolve", "sdk"])
@@ -1046,7 +1050,7 @@ class DailyWorkflowTests(unittest.TestCase):
                          "python tools/prebuilt_game.py pack prebuilt dist --stage-tool "
                          "target/prebuilt/tools/release/sunrise-stage${{ runner.os == 'Windows' && '.exe' || '' }}")
         self.assertEqual(steps["actions/upload-artifact@v4"]["with"]["name"], "sdk-leg-${{ matrix.name }}")
-        self.assertNotIn("env", build, "no hand-set archive name")
+        self.assertEqual(set(build.get("env", {})), {"CROSS", "SUNRISE_PREBUILT_TARGET"}, "no hand-set archive name")
 
         self.assertEqual(set(nightly.SDK_ASSETS) - set(nightly.SDK_ARCHIVES), {"sdk.json", "SHA256SUMS", "SHA256SUMS.sig"})
 
@@ -1118,11 +1122,14 @@ class DailyWorkflowTests(unittest.TestCase):
         self.assertIn("needs.summary.outputs.sdk_green == 'true'", jobs["sdk-publish"]["if"])
         self.assertNotIn("parity-report", jobs)
 
-    def test_every_writing_run_requires_parity_and_only_a_dry_run_leaves_it_out(self):
+    def test_the_parity_call_runs_when_the_resolve_job_requires_it(self):
         jobs = self.workflow["jobs"]
-        resolve = jobs["resolve"]
-        self.assertEqual(resolve["outputs"]["parity_required"], "${{ steps.commit.outputs.parity_required }}")
+        self.assertEqual(jobs["resolve"]["outputs"]["parity_required"], "${{ steps.commit.outputs.parity_required }}")
         self.assertIn("needs.resolve.outputs.parity_required == 'true'", jobs["parity"]["if"])
+
+    @needs_runner_shell
+    def test_every_writing_run_requires_parity_and_only_a_dry_run_leaves_it_out(self):
+        resolve = self.workflow["jobs"]["resolve"]
         with tempfile.TemporaryDirectory() as folder:
             folder = Path(folder)
             # A checked-in resolve job body exercised with a substitute git: an older commit of main writes too, so
@@ -1146,12 +1153,12 @@ class DailyWorkflowTests(unittest.TestCase):
                     self.assertIn(f"parity_required={required}", out.read_text().splitlines())
 
     def test_every_leg_is_a_called_workflow_with_the_commit(self):
-        # The summary's needs are the legs (daily_summary.daily_legs): each a called workflow given the resolved
-        # commit, and every called workflow is one of them.
+        # The summary's needs are the legs it judges (daily_summary.daily_legs): each a called workflow given
+        # the resolved commit. Publishing and the independent fuzz report are not legs it judges.
         jobs = self.workflow["jobs"]
         needs = jobs["summary"]["needs"]
         self.assertEqual(set(needs), {"resolve"} | {name for name, job in jobs.items() if "uses" in job
-                                                     and name not in ("sdk-publish", "nightly")})
+                                                     and name not in ("sdk-publish", "nightly", "fuzz")})
         for leg in needs:
             if leg == "resolve":
                 continue

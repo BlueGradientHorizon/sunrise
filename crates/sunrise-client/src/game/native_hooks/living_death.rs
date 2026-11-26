@@ -17,10 +17,13 @@ impl Game<'_> {
     }
 }
 /// `native_living_incoming_damage`'s entity, entity type and source for a hit.
-pub(in crate::game) fn hurt_server_args<'a>(
+pub(in crate::game) fn hurt_server_args<'a, 'b>(
     hurting: Hurting<'a>,
-    attack: &Attack,
-) -> (i32, &'a str, HurtSource<'a>) {
+    attack: &'b Attack,
+) -> (i32, &'a str, HurtSource<'b>)
+where
+    'a: 'b,
+{
     match hurting {
         Hurting::Player(entity, source) => (entity, "minecraft:player", source),
         Hurting::Mob(mob, damage) => (
@@ -77,6 +80,7 @@ impl Game<'_> {
                 causing: 0,
                 direct: 0,
                 position: None,
+                direct_type: None,
             },
             |(damage, _)| mob_source(&damage, &attack),
         );

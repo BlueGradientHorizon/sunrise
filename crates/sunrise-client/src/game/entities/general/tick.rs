@@ -227,6 +227,7 @@ impl Game<'_> {
     fn begin_general_row_tick(&mut self, index: usize, mount: Option<u32>) {
         let row = &mut self.resident_entities.general.rows[index];
         row.previous = row.position;
+        row.previous_rotation = row.rotation;
         row.boarding_cooldown = (row.boarding_cooldown - 1).max(0);
         if mount.is_some() {
             row.velocity = sunrise_core::geometry::Vec3::ZERO;

@@ -6,12 +6,31 @@ use super::*;
 pub(super) struct FrameAttempt<K = FrameKey>(Option<K>);
 
 /// The frame the renderer would be made with (`Renderer::requested_frame`), the pick's path,
-/// its outcome.
+/// whether the loader accepted it, and its HDR request (`PickedPack::hdr`).
 type FrameKey = (
     Option<sunrise_client::gfx::FrameConfiguration>,
     PathBuf,
-    Option<Option<sunrise_shader_api::Api>>,
+    Option<bool>,
+    Option<sunrise_shaders::Tonemap>,
 );
+
+/// Whether the frame is looked at again: the frame a renderer made now would draw in (`wanted`),
+/// the pick's `path`, the loader's `outcome` for it or its HDR request (`hdr`,
+/// `PickedPack::hdr`) changed since the last attempt.
+fn look_again<C: PartialEq>(
+    attempts: &mut FrameAttempt<(
+        Option<C>,
+        PathBuf,
+        Option<bool>,
+        Option<sunrise_shaders::Tonemap>,
+    )>,
+    wanted: Option<C>,
+    path: PathBuf,
+    outcome: Option<bool>,
+    hdr: Option<sunrise_shaders::Tonemap>,
+) -> bool {
+    attempts.changed((wanted, path, outcome, hdr))
+}
 
 impl<K: PartialEq> FrameAttempt<K> {
     // Remember attempts, including failures, until the requested configuration changes.
@@ -47,17 +66,17 @@ impl Game<'_> {
             None,
             self.settings.sunrise.api,
             self.settings.sunrise.translucent_batching,
-            self.settings.vsync,
+            self.effective_vsync(),
             &self.settings.sunrise,
-            shader_packs::picked_pack_shape(&self.settings),
+            self.picked_pack_shape(),
             self.renderer
                 .as_ref()
                 .map(|r| r.display_reading())
                 .unwrap_or_default(),
             self.settings.texture_atlas_settings(),
         )
-        .and_then(|(renderer, clouds)| {
-            clouds?;
+        .and_then(|(renderer, required)| {
+            required?;
             Ok(renderer)
         })
     }
@@ -70,35 +89,34 @@ impl Game<'_> {
             return;
         }
         let picked = shader_packs::picked_pack(&self.settings);
-        let path = self.native_shaders.resolve_path(
-            &Self::shader_packs_dir(),
-            picked,
-            shader_packs::dev_pack().is_some(),
-        );
+        let dir = Self::shader_packs_dir();
+        let path = dir.join(picked);
         let available = path.exists()
+            && !sunrise_client::shader_pack_list::unsupported(&dir, picked)
             && path.file_name().is_none_or(|f| {
                 !shader_packs::active_pack(&f.to_string_lossy(), &self.settings.mods).is_empty()
             });
         let outcome = if available {
             native_shaders::outcome(&path)
         } else {
-            Some(None)
+            Some(false)
         };
         // The renderer's offer can change while the game runs (Vulkan's formats follow desktop
         // HDR and the window's output), and the frame with it.
-        let request = shader_packs::picked_pack_shape(&self.settings).frame();
+        let shape = self.picked_pack_shape();
+        let request = shape.frame();
         let wanted = self
             .renderer
             .as_ref()
             .map(|r| r.requested_frame(&self.settings.sunrise, request));
-        if !self.frame_attempted.changed((wanted, path, outcome)) {
+        if !look_again(&mut self.frame_attempted, wanted, path, outcome, shape.hdr) {
             return;
         }
-        if self
-            .renderer
-            .as_ref()
-            .is_none_or(|r| r.frame_follows(&self.settings.sunrise, request))
-        {
+        let Some(renderer) = &mut self.renderer else {
+            return;
+        };
+        let follows = renderer.frame_follows(&self.settings.sunrise, request);
+        if !shader_packs::reconcile_pack_hdr(follows, &mut renderer.pack_hdr, shape.hdr) {
             return;
         }
         if let Err(e) = self.rebuild_renderer() {
@@ -241,7 +259,7 @@ impl Game<'_> {
     /// The renderer for the window, with the current block sprites, GUI
     /// atlas and world border texture.
     /// A new renderer's atlas holds only the pack's sprites: what was drawn into it at run time
-    /// (skins, maps, mods' dynamic textures, the themed UI's glyphs and corners) has to be drawn
+    /// (skins, maps, the themed UI's glyphs and corners) has to be drawn
     /// again.
     pub(super) fn forget_atlas_slots(&mut self) {
         self.skin_slots.forget();
@@ -249,7 +267,6 @@ impl Game<'_> {
         self.trim_slots.forget();
         self.map_patches.clear();
         self.text_patches.get_mut().clear();
-        self.dynamic_textures.forget_uploads();
         self.kept_block_entities.get_mut().clear();
         sunrise_client::ui_theme::reset_atlas();
     }
@@ -276,7 +293,8 @@ impl Game<'_> {
         // on their way carry them.
         self.border_renderer.invalidate();
         renderer.keep_pack_sources(self.streaming.shader_pack);
-        self.renderer = Some(renderer);
+        self.set_renderer(renderer);
+        self.bind_dynamic_textures();
         self.forget_atlas_slots();
         if !world_kept {
             self.clear_lod();
@@ -284,9 +302,6 @@ impl Game<'_> {
             let context = self.worker_context();
             self.streaming.reload_resources(&mut self.world, context);
         }
-        self.native_shaders = native_shaders::NativeShaders::picking(&std::mem::take(
-            &mut self.native_shaders.picked,
-        ));
         self.apply_ui_settings();
     }
 
@@ -304,8 +319,32 @@ impl Game<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::FrameAttempt;
-    use sunrise_shader_api::Api;
+    use super::{FrameAttempt, look_again};
+    use crate::game::shader_packs::reconcile_pack_hdr;
+    use std::path::PathBuf;
+    use sunrise_shaders::Tonemap;
+
+    /// Same frame, pick and loader outcome; only the pick's tone curve owner changes: the frame
+    /// is looked at again, and the renderer that keeps serving takes the new request.
+    #[test]
+    fn a_new_hdr_request_alone_is_looked_at_again() {
+        let mut attempts = FrameAttempt::default();
+        let path = PathBuf::from("pack");
+        let mut installed = Some(Tonemap::Pack);
+        let mut look =
+            |hdr| look_again(&mut attempts, Some("8-bit"), path.clone(), Some(true), hdr);
+        assert!(look(Some(Tonemap::Pack)));
+        assert!(!look(Some(Tonemap::Pack)));
+        assert!(look(Some(Tonemap::Sunrise)));
+        assert!(!reconcile_pack_hdr(
+            true,
+            &mut installed,
+            Some(Tonemap::Sunrise)
+        ));
+        assert_eq!(installed, Some(Tonemap::Sunrise));
+        assert!(!look(Some(Tonemap::Sunrise)));
+        assert!(look(None));
+    }
 
     #[test]
     fn failed_frame_attempt_waits_for_a_policy_or_setting_change() {
@@ -317,10 +356,10 @@ mod tests {
             ("8-bit", "p", None),
             // HDR output offered later, with HDR On: the frame is looked at again.
             ("float", "p", None),
-            ("float", "p", Some(Some(Api::V0_2))),
-            ("float", "p", Some(Some(Api::V0_2))),
-            ("float", "p", Some(None)),
-            ("float", "p", Some(None)),
+            ("float", "p", Some(true)),
+            ("float", "p", Some(true)),
+            ("float", "p", Some(false)),
+            ("float", "p", Some(false)),
             ("float", "q", None),
             ("8-bit", "q", None),
         ] {

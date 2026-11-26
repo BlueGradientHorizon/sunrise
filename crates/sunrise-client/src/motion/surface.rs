@@ -26,8 +26,9 @@ pub trait SideLevel {
     fn living_target_alive(&self, _id: u32) -> bool {
         false
     }
-    /// What a hit on that player needs to name and read the living entities it lends; none
-    /// where this side has no open world. Only a hit's level asks.
+    /// What a hit on that player needs to name and read the living entities it lends, and what
+    /// the view a heal or movement hook lends of an entity this side ticks needs; none where
+    /// this side has no open world. Only a hit's level and such a hook's listeners ask.
     fn hit_reads(&self) -> Option<crate::health::HitReads<'_>> {
         None
     }
@@ -49,6 +50,10 @@ pub trait SideLevel {
     /// The read-only block-state and fluid fact tables of this side. Only dry test/probe sides
     /// have no tables.
     fn block_states(&self) -> Option<mod_api::BlockStates<'_>> {
+        None
+    }
+    /// The world's frozen variant registries (server's world tables, or client's synced tables).
+    fn variant_tables(&self) -> Option<&crate::mobs::variants::VariantTables> {
         None
     }
 }
@@ -176,6 +181,22 @@ pub fn native_is_ladder(
     ladder: &mut bool,
 ) {
     crate::native_client_hooks::is_ladder(context, entity, pos, state, ladder);
+}
+
+/// Whether a block stops a sneaking player's slide down a climbable as scaffolding does
+/// (`IBlockExtension.isScaffolding`, which `LivingEntity.handleOnClimbable` asks of the block the
+/// player stands in) is being decided. `scaffolding` starts with the `minecraft:scaffolding`
+/// answer and the block's parts may change it. Fires on replayed ticks too, so a listener must be
+/// a pure function of its inputs.
+#[inline(never)]
+pub fn native_is_scaffolding(
+    context: &LoopContext,
+    entity: u32,
+    pos: BlockPos,
+    state: BlockStateId,
+    scaffolding: &mut bool,
+) {
+    crate::native_client_hooks::is_scaffolding(context, entity, pos, state, scaffolding);
 }
 
 /// The factors the `block_jump_factor` and `block_speed_factor` parts give the blocks an entity

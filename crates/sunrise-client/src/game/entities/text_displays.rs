@@ -421,6 +421,10 @@ impl RemoteTextDisplay {
     pub(super) fn position(&self) -> glam::DVec3 {
         self.position
     }
+    /// `Entity.xo`, `yo`, `zo`: where the display was when its tick began (`setOldPosAndRot`).
+    pub(super) fn previous_position(&self) -> glam::DVec3 {
+        self.previous
+    }
     /// `Display.shouldRenderAtSqrDistance`: strict `<`, uninterpolated position, live `view_range`.
     pub(super) fn in_range(&self, camera: glam::DVec3, view_scale: f64) -> bool {
         let range = f64::from(self.data.view_range) * 64.0 * view_scale;
@@ -1190,13 +1194,10 @@ impl Game<'_> {
                         .strip_prefix("minecraft:")
                         .is_some_and(has_special_model)
                     {
-                        let packed = ((((effective_light & 0xFF) / 16) << 4)
-                            | (((effective_light >> 8) & 0xFF) / 16))
-                            as u8;
                         self.special_block_model(
                             state,
                             pose.to_glam(),
-                            packed,
+                            super::minecarts::special_light(effective_light),
                             &mut translucent.scratch,
                         );
                     }
@@ -1381,7 +1382,7 @@ impl Game<'_> {
 
 /// Whether vanilla's built-in block models give this block a special model,
 /// drawn by its block-entity renderer.
-fn has_special_model(block: &str) -> bool {
+pub(super) fn has_special_model(block: &str) -> bool {
     matches!(
         block,
         "bell"

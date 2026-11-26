@@ -66,6 +66,26 @@ impl<'w> DryLevel<'w> {
 }
 
 impl crate::game::Game<'_> {
+    /// Capture the simulation's portion of `setPlacedBy` on the staged level.
+    pub(in crate::game) fn capture_placed_by(
+        &mut self,
+        pos: BlockPos,
+        state: BlockStateId,
+    ) -> (
+        Vec<sunrise_world::level::ticks::PlacementOperation>,
+        sunrise_core::random::LegacyRandom,
+    ) {
+        self.with_level_access(true, |behaviours, level, ticks| {
+            let mut dry = DryLevel::new(level);
+            dry.random = (*level.world.random).clone();
+            let operations =
+                behaviours.capture_placement_operations(&mut dry, ticks, |b, dry, ticks| {
+                    b.set_placed_by_state(dry, ticks, pos, state);
+                });
+            (operations, dry.random)
+        })
+    }
+
     /// Ask for the candidate state without spending the level random or scheduling live ticks.
     /// A directional context's `replace_clicked` is read from the level; a question vanilla
     /// throws on is refused (`Behaviours::state_for_resolved_placement`).
@@ -173,7 +193,7 @@ impl sunrise_world::level::LevelAccess for DryLevel<'_> {
         odds: &mut Option<(i32, i32)>,
     ) {
         if let Some(level) = self.base.fire_odds_level(self) {
-            level.native_fire_odds(level.base.dimension, state, pos, face, odds);
+            level.native_fire_odds(level.base.dimension(), state, pos, face, odds);
         }
     }
     #[inline]

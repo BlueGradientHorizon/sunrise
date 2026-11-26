@@ -13,17 +13,19 @@
 //!   and `data/`; a native mod is compiled first (`dev.rs`).
 //! - `release [<version>|patch|minor|major] [--check] [--pull-request]`, `release setup`: prepare or publish a tagged
 //!   release using the registry's shared workflow (`author_release.rs`).
+//! - `collection [--check]`: check a registry collection kept in this folder and propose it from the
+//!   author's fork of the registry (`collection.rs`).
 //! - `run [--game <sunrise-client>] [--resources <folder>] [--jars <dir>] [-- <game args>]`: build, then play with
 //!   the mod.
 //! - `check [--uses] [--release <tag>]` in a mod folder: the package rules, page and render pipeline
 //!   shaders; for a native mod, Rust and what the mod uses of its pinned build (`sdk_cmds.rs`).
 //! - `check <file> [--kind <kind>] [--attestation <bundle>] [--repository <id>] [--json]`: check a release package
-//!   (`.smod`, `.spack`, resource pack `.zip`, `.sshader`).
+//!   (`.smod`, `.spack`, resource pack `.zip`).
 //! - `hooks <text> [--all]`: search the pinned build's hooks (or every item) offline.
 //! - `sdk diff <build> <build>`: what changed in the surface between two builds.
 //! - `check [<file.smod>] --build <name> [--build <name>]…`: whether the mod fits each build; exit 0 when all
 //!   do, 1 when one does not, 2 when it cannot be told.
-//! - `use-jar <path>`: list an exact original Java jar as a passive asset/data source.
+//! - `use-jar <path | modrinth-url | <project> <version>>`: list an exact original Java jar as a passive asset/data source, downloading it from Modrinth when given a Modrinth reference.
 //! - `native-build < plan.json`: compile native mods against an unpacked SDK, as the launcher does
 //!   (docs/modding/src/reference/sdk/08-native-build.md).
 //! - `native-check < plan.json`: how native mods stand against one build before anything compiles (the same page).
@@ -33,6 +35,7 @@ use sunrise_mod_package::{Content, Manifest, Package, manifest::MANIFEST};
 mod author_release;
 mod bounded;
 mod check;
+mod collection;
 mod dev;
 mod help;
 mod internals;
@@ -43,6 +46,7 @@ mod page;
 mod registry_source;
 mod sdk_cmds;
 mod sdk_fetch;
+mod sdk_notes;
 mod self_update;
 mod uses_table;
 
@@ -59,7 +63,7 @@ const RUN_DIR: &str = "target/sunrise-mod/run";
 fn version_line() -> String {
     format!(
         "cargo-sunrise-mod commit {} native-contract {}",
-        env!("SUNRISE_TOOL_BUILT_FROM"),
+        sunrise_native_build::contract::TOOL_COMMIT,
         sunrise_native_build::contract::CONTRACT
     )
 }
@@ -102,6 +106,7 @@ fn main() -> ExitCode {
         }),
         Some("build") => build_command(entry, &args[1..]).map(drop),
         Some("release") => author_release::run(entry, Path::new("."), &args[1..]),
+        Some("collection") => collection::run(Path::new("."), &args[1..]),
         Some("run") => run(&args[1..]).map_err(|e| e.to_string()),
         Some("check") => match check_args(&args[1..]) {
             Ok(Check::Folder {

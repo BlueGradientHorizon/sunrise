@@ -184,6 +184,7 @@ pub fn start(
         sunrise_world::native_worldgen_hooks::NativeWorldgenHooks {
             alter_ground: crate::game::api_values::alter_ground,
             on_tree_grow: crate::game::native_tree_grow::on_tree_grow,
+            mirror: crate::game::native_rotate::mirror,
             rotate: crate::game::native_rotate::rotate,
             feature: crate::game::native_worldgen_parts::feature,
         },
@@ -253,13 +254,15 @@ pub(crate) fn install_client_hooks() {
         menu_still_valid_listens: |menu| {
             mod_api::__private::menu_listens(mod_api::HookId::MenuStillValid, menu)
         },
-        living_heal: |context, entity, amount, cancel| {
+        living_heal: |context, healed, amount, cancel| {
             if !mod_api::__private::listened(mod_api::HookId::LivingHeal) {
                 return;
             }
             let reader = sunrise_client_render::api_context::LoopReader(context);
             let context = reader.context();
-            mod_api::dispatch_living_heal(&context, entity, amount, cancel);
+            game::with_lent_view(healed, |view| {
+                mod_api::dispatch_living_heal(&context, healed.id(), view, amount, cancel);
+            });
         },
         living_breathe_heard: || mod_api::__private::listened(mod_api::HookId::LivingBreathe),
         has_mods: || !mod_api::__private::mods().is_empty(),
@@ -332,29 +335,47 @@ pub(crate) fn install_client_hooks() {
             let context = reader.context();
             mod_api::dispatch_living_jump(&context, entity, kind, velocity);
         },
-        living_jump_power: |context, entity, kind, power| {
+        living_jump_power: |context, living, power| {
             if !mod_api::__private::listened(mod_api::HookId::LivingJumpPower) {
                 return;
             }
             let reader = sunrise_client_render::api_context::LoopReader(context);
             let context = reader.context();
-            mod_api::dispatch_living_jump_power(&context, entity, kind, power);
+            game::with_lent_view(living, |view| {
+                mod_api::dispatch_living_jump_power(
+                    &context,
+                    living.id(),
+                    living.kind(),
+                    view,
+                    power,
+                );
+            });
         },
-        living_speed: |context, entity, kind, speed| {
+        living_speed: |context, living, speed| {
             if !mod_api::__private::listened(mod_api::HookId::LivingSpeed) {
                 return;
             }
             let reader = sunrise_client_render::api_context::LoopReader(context);
             let context = reader.context();
-            mod_api::dispatch_living_speed(&context, entity, kind, speed);
+            game::with_lent_view(living, |view| {
+                mod_api::dispatch_living_speed(&context, living.id(), living.kind(), view, speed);
+            });
         },
-        living_flying_speed: |context, entity, kind, speed| {
+        living_flying_speed: |context, living, speed| {
             if !mod_api::__private::listened(mod_api::HookId::LivingFlyingSpeed) {
                 return;
             }
             let reader = sunrise_client_render::api_context::LoopReader(context);
             let context = reader.context();
-            mod_api::dispatch_living_flying_speed(&context, entity, kind, speed);
+            game::with_lent_view(living, |view| {
+                mod_api::dispatch_living_flying_speed(
+                    &context,
+                    living.id(),
+                    living.kind(),
+                    view,
+                    speed,
+                );
+            });
         },
         block_jump_factor: |context, state, factor| {
             crate::game::block_jump_factor(context, state, factor);
@@ -364,6 +385,22 @@ pub(crate) fn install_client_hooks() {
         },
         is_ladder: |context, entity, pos, state, ladder| {
             crate::game::is_ladder(context, entity, pos, state, ladder);
+        },
+        block_interaction_range: |context, player, pos, buffer, within| {
+            if !mod_api::__private::listened(mod_api::HookId::BlockInteractionRange) {
+                return;
+            }
+            let reader = sunrise_client_render::api_context::LoopReader(context);
+            mod_api::dispatch_block_interaction_range(
+                &reader.context(),
+                player,
+                pos,
+                buffer,
+                within,
+            );
+        },
+        is_scaffolding: |context, entity, pos, state, scaffolding| {
+            crate::game::is_scaffolding(context, entity, pos, state, scaffolding);
         },
         makes_open_trapdoor_above_climbable:
             crate::game::native_trapdoor_ladder::makes_open_trapdoor_above_climbable,

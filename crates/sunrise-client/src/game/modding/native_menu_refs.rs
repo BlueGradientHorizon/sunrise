@@ -128,11 +128,10 @@ impl Game<'_> {
             return None;
         }
         let name = self.native_client_menu_name(menu)?;
-        let renderer = self.renderer.as_ref()?;
-        let batch = super::HudBatch::new(
-            [renderer.config.width, renderer.config.height],
-            self.settings.gui_scale_inputs(),
-        );
+        // The framebuffer `Renderer::render` leaves behind while it has the renderer out, so a
+        // frame callback reads the boxes too.
+        let framebuffer = self.renderer_framebuffer()?;
+        let batch = super::HudBatch::new(framebuffer, self.settings.gui_scale_inputs());
         self.inventory_menu_slot_boxes(menu.fields().window, name, &batch)
     }
 
@@ -719,7 +718,7 @@ impl Game<'_> {
         let rules = match &guest.menu {
             None => LiveSlotRules {
                 kind: Kind::Inventory,
-                registry_id: None,
+                registry_id: Some(sunrise_client::menu::INVENTORY_MENU),
                 pos: None,
                 main: &[],
                 main_second: &[],
@@ -1137,6 +1136,52 @@ mod tests {
         assert!(game.native_screen_shown());
     }
 
+    /// A frame callback reads the open inventory's slot boxes while `Renderer::render` has the
+    /// renderer out, from the framebuffer it left behind (#5864).
+    #[test]
+    #[ignore = "daily"]
+    fn slot_boxes_are_read_during_a_frame() {
+        with_panel(0, |game, _| {
+            // In the world, past the level load: the inventory is a screen hooks see.
+            game.remote.as_mut().unwrap().level_load.finish();
+            game.title = None;
+            game.player = Some(
+                sunrise_client::motion::PlayerMotion::new(
+                    game.motion,
+                    sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5),
+                )
+                .unwrap(),
+            );
+            game.screen = super::super::Screen::Inventory;
+            let menu = game
+                .player_container_menu(game.local_player().unwrap())
+                .unwrap();
+            assert!(game.renderer.is_none());
+            assert_eq!(game.menu_slot_boxes(menu), None, "no window, no boxes");
+            game.render_snapshot.set(Some(super::super::RenderSnapshot {
+                framebuffer: [800, 600],
+                prepared_generation: None,
+                staged_prepared_draws: 0,
+            }));
+            let batch = super::super::HudBatch::new([800, 600], game.settings.gui_scale_inputs());
+            assert!(
+                game.screen_hooks_open(),
+                "the open screen counts during a frame"
+            );
+            assert_eq!(game.native_client_menu_name(menu), Some("inventory"));
+            assert!(
+                game.inventory_menu_slot_boxes(0, "inventory", &batch)
+                    .is_some()
+            );
+            let boxes = game.menu_slot_boxes(menu).unwrap();
+            assert_eq!(boxes.len(), 46);
+            assert_eq!(
+                Some(boxes),
+                game.inventory_menu_slot_boxes(0, "inventory", &batch)
+            );
+        });
+    }
+
     #[test]
     #[ignore = "daily"]
     fn inventory_boxes_follow_menu_indices_and_the_input_layout() {
@@ -1191,7 +1236,10 @@ mod tests {
     fn offscreen_window(game: &mut Game<'_>) -> winit::event_loop::EventLoop<()> {
         let (event_loop, window) = crate::game::native_entity_refs::tests::test_window([320, 240]);
         game.options.offscreen = true;
-        game.renderer = Some(game.new_renderer(window).unwrap());
+        {
+            let renderer = game.new_renderer(window).unwrap();
+            game.set_renderer(renderer);
+        }
         let remote = game.remote.as_mut().unwrap();
         remote.level_load.finish();
         let mut body = sunrise_client::motion::PlayerMotion::new(

@@ -822,20 +822,25 @@ impl Conn {
         true
     }
 
-    /// The connection's clocks: a keep-alive due, a client that sent nothing
-    /// or took nothing for too long.
+    /// The connection's clocks: a keep-alive due, a network client that sent
+    /// nothing or took nothing for too long.
     fn sweep(&mut self, now: Instant) {
         if self.close_at.is_some() {
             return;
         }
-        if self
-            .stalled
-            .is_some_and(|t| now.duration_since(t) > self.timeout)
-        {
-            return self.end(now, "Disconnected");
-        }
-        if !self.left && now.duration_since(self.last_read) > self.timeout {
-            return self.end(now, sunrise_protocol::Error::timed_out().to_string());
+        // Only a network connection times out: `ServerConnectionListener.startTcpServerListener`
+        // puts a `ReadTimeoutHandler(30)` on its pipeline, while `startMemoryChannel`'s
+        // (`Connection.configureInMemoryPipeline`) has none.
+        if matches!(self.io, Io::Tcp(_)) {
+            if self
+                .stalled
+                .is_some_and(|t| now.duration_since(t) > self.timeout)
+            {
+                return self.end(now, "Disconnected");
+            }
+            if !self.left && now.duration_since(self.last_read) > self.timeout {
+                return self.end(now, sunrise_protocol::Error::timed_out().to_string());
+            }
         }
         if !self.draining
             && let Some(body) = self.session.tick(now)
@@ -1125,13 +1130,53 @@ mod tests {
     }
 
     #[test]
-    fn a_silent_client_times_out() {
-        let (a, b) = Pipe::pair();
-        let mut client = Connection::local(a);
-        let served = serve(Connection::local(b), quiet, Duration::from_millis(300));
+    #[ignore = "daily"]
+    fn a_silent_network_client_times_out() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let mut client = Connection::connect("127.0.0.1", port, Duration::from_secs(5)).unwrap();
+        let server = Connection::from_stream(listener.accept().unwrap().0).unwrap();
+        let served = serve(server, quiet, Duration::from_millis(300));
         assert_eq!(served.next(), Seen::Left("Timed out".into()));
         assert_eq!(served.next(), Seen::Closed);
         assert!(client.recv().is_err());
+    }
+
+    /// The integrated server's own client, over memory, has no read timeout: a silent one
+    /// stays connected well past it.
+    #[test]
+    fn a_silent_memory_client_stays_connected() {
+        let (a, b) = Pipe::pair();
+        let mut client = Connection::local(a);
+        let served = serve(Connection::local(b), quiet, Duration::from_millis(100));
+        assert!(
+            served
+                .seen
+                .recv_timeout(Duration::from_millis(500))
+                .is_err(),
+            "a memory connection timed out"
+        );
+        served.send(vec![body(3, 10)], None);
+        assert_eq!(client.recv().unwrap().0, 3);
+    }
+
+    /// Nor a write stall: a memory client that takes nothing while the pipe is full stays
+    /// connected well past the timeout, and is served once it reads.
+    #[test]
+    fn a_stalled_memory_client_stays_connected() {
+        let (a, b) = Pipe::pair();
+        let mut client = Connection::local(a);
+        let served = serve(Connection::local(b), quiet, Duration::from_millis(100));
+        // Past the pipe's capacity, so the server's writes wait for the client.
+        served.send(vec![body(3, 256 << 10)], None);
+        assert!(
+            served
+                .seen
+                .recv_timeout(Duration::from_millis(500))
+                .is_err(),
+            "a stalled memory connection was ended"
+        );
+        assert_eq!(client.recv().unwrap(), packet(&body(3, 256 << 10)));
     }
 
     /// A client that reads nothing holds its disconnect unwritten; a close

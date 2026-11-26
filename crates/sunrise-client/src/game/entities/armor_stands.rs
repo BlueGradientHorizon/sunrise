@@ -3,6 +3,7 @@
 //! of `hurtServer` (creative breaks at once), and `ArmorStandRenderer` with
 //! the default pose, the hit wobble and humanoid armor layers.
 use super::entity::Entity;
+use super::stock_layer_mask::StockLayerMask;
 use super::{Game, InteractTarget};
 use std::{collections::HashMap, sync::Arc};
 use sunrise_assets::resource_source::ResourceSource;
@@ -229,7 +230,14 @@ impl ArmorStandAssets {
                 let Ok(v) = v else { continue };
                 let id = format!("{namespace}:{name}");
                 let mut kinds = HashMap::new();
-                for kind in ["humanoid", "humanoid_leggings", "humanoid_baby", "wings"] {
+                for kind in [
+                    "humanoid",
+                    "humanoid_leggings",
+                    "humanoid_baby",
+                    "wings",
+                    "horse_body",
+                    "nautilus_body",
+                ] {
                     // Every layer of the kind: leather's overlay is layer 1.
                     let layers: Vec<super::equipment_piece::EquipmentAssetLayer> = v["layers"]
                         [kind]
@@ -284,7 +292,7 @@ impl ArmorStandAssets {
         self.equipment = fresh.equipment;
         self.extensions = fresh.extensions;
         self.trim_overrides = fresh.trim_overrides;
-        self.trims = fresh.trims;
+        self.trims.reloaded(fresh.trims);
         self.root = fresh.root;
     }
     /// `TrimTextureKey`: the trim texture on the given humanoid layer.
@@ -313,25 +321,41 @@ impl Game<'_> {
     }
     /// `HumanoidArmorLayer` for the player: (model, texture rect, colour,
     /// overlay) of each worn piece, head to feet.
-    pub(super) fn player_armor_layers(&self) -> Vec<WornLayer<'_>> {
-        self.stack_armor_layers(&self.armor)
+    pub(super) fn player_armor_layers(&self, hidden_layers: StockLayerMask) -> Vec<WornLayer<'_>> {
+        self.stack_armor_layers(&self.armor, hidden_layers)
     }
     /// `HumanoidArmorLayer` for worn stacks (head to feet), trims included.
-    pub(super) fn stack_armor_layers(&self, armor: &[Option<ItemStack>; 4]) -> Vec<WornLayer<'_>> {
+    pub(super) fn stack_armor_layers(
+        &self,
+        armor: &[Option<ItemStack>; 4],
+        hidden_layers: StockLayerMask,
+    ) -> Vec<WornLayer<'_>> {
         self.armor_layers(
             armor
                 .each_ref()
                 .map(|s| s.as_ref().map(EquipmentRead::resident)),
+            hidden_layers,
         )
     }
     /// `HumanoidArmorLayer` for another player's model: the armour it wears
     /// (`extra.equipment`, head to feet).
-    pub(super) fn worn_armor_layers(&self, m: &Mob) -> Vec<WornLayer<'_>> {
+    pub(super) fn worn_armor_layers(
+        &self,
+        m: &Mob,
+        hidden_layers: StockLayerMask,
+    ) -> Vec<WornLayer<'_>> {
         use sunrise_core::equipment_slot::EquipmentSlot::{Chest, Feet, Head, Legs};
-        self.armor_layers([Head, Chest, Legs, Feet].map(|slot| finalize::equipment_slot(m, slot)))
+        self.armor_layers(
+            [Head, Chest, Legs, Feet].map(|slot| finalize::equipment_slot(m, slot)),
+            hidden_layers,
+        )
     }
     /// The layers of the armour items `worn`, head to feet.
-    fn armor_layers(&self, worn: [Option<EquipmentRead<'_>>; 4]) -> Vec<WornLayer<'_>> {
+    fn armor_layers(
+        &self,
+        worn: [Option<EquipmentRead<'_>>; 4],
+        hidden_layers: StockLayerMask,
+    ) -> Vec<WornLayer<'_>> {
         let assets = &self.armor_stand_assets;
         let mut out = Vec::new();
         for (item, (layer, slot)) in worn.into_iter().zip([
@@ -354,13 +378,16 @@ impl Game<'_> {
                 &stack,
                 super::equipment_piece::EquipmentPass::Draw,
             ) {
+                let Some(overlay) = material.visible_overlay(piece.slot, hidden_layers) else {
+                    continue;
+                };
                 out.push((
                     material.model.map_or(WornModel::Vanilla(part), |model| {
                         WornModel::Override(model, piece.slot)
                     }),
                     material.binding.uv,
                     material.color,
-                    material.overlay,
+                    overlay,
                     material.glows,
                 ));
             }
@@ -530,6 +557,7 @@ impl Game<'_> {
             loaded.previous_yaw = stand.previous_yaw;
             loaded.previous_body_yaw = stand.previous_body_yaw;
             loaded.pitch = 0.0;
+            loaded.previous_pitch = 0.0;
             loaded.previous = loaded.position;
             stand = loaded;
         }
@@ -887,6 +915,7 @@ impl Game<'_> {
             causing: attacker,
             direct: attacker,
             position: None,
+            direct_type: None,
         };
         if super::entity::damage_level_of!(self, self.combat.attack(), no_push, None)
             .invulnerability_check(
@@ -1043,7 +1072,14 @@ impl Game<'_> {
         // `isPassengerOfSameVehicle` leaves those riders out.
         let mut obstacles: Option<sunrise_client::entities::ObstacleGrid> = None;
         let mut nearby = Vec::new();
+        let mut round = self.native_tick_round();
+        // The stand whose turn just ended: it hears its Post before the next one's Pre.
+        let mut told = None;
         for join in joins {
+            if let Some(id) = told.take() {
+                self.settle_armor_stand_turn(&mut drowned, &mut dead);
+                self.native_tick_post_one(&round, id, TYPE_ID);
+            }
             let Some(i) = self.armor_stands.locate(join) else {
                 continue;
             };
@@ -1055,6 +1091,19 @@ impl Game<'_> {
                 continue;
             }
             let id = self.armor_stands[i].id;
+            // ServerLevel.tick skips an entity that `isRemoved`, here one whose removal is queued.
+            let target = super::commands::Target::Stand(id);
+            if self.target_removed(&target) || !self.native_tick_pre_one(&mut round, id, TYPE_ID) {
+                continue;
+            }
+            // The Pre's listener may have removed stands, this one included.
+            if self.target_removed(&target) {
+                continue;
+            }
+            let Some(i) = self.armor_stands.locate(join) else {
+                continue;
+            };
+            told = Some(id);
             self.armor_stands[i].enchantment_tick =
                 self.armor_stands[i].enchantment_tick.wrapping_add(1);
             if !self.armor_stands[i].equipment.is_empty() {
@@ -1095,6 +1144,7 @@ impl Game<'_> {
             let a = &mut self.armor_stands[i];
             a.previous = a.position;
             a.previous_yaw = a.yaw;
+            a.previous_pitch = a.pitch;
             a.previous_head_yaw = a.head_yaw;
             // aiStep's freezing step (removeFrost) makes the speed instance.
             a.speed_instance = true;
@@ -1310,6 +1360,7 @@ impl Game<'_> {
                         causing: 0,
                         direct: 0,
                         position: None,
+                        direct_type: None,
                     };
                     sunrise_client::health::DamageLevel::of(
                         world,
@@ -1346,7 +1397,20 @@ impl Game<'_> {
                 a.impulse_grace -= 1;
             }
         }
-        for (id, bubbles) in drowned {
+        if let Some(id) = told {
+            self.settle_armor_stand_turn(&mut drowned, &mut dead);
+            self.native_tick_post_one(&round, id, TYPE_ID);
+        }
+        Ok(())
+    }
+    /// The end of a stand's own turn, before its Post: its drowning bubbles, then its death
+    /// (`LivingEntity.baseTick` and `tickDeath` run inside the stand's tick).
+    fn settle_armor_stand_turn(
+        &mut self,
+        drowned: &mut Vec<(u32, i32)>,
+        dead: &mut Vec<(u32, Option<&'static str>)>,
+    ) {
+        for (id, bubbles) in drowned.drain(..) {
             let Some((at, v)) = self.armor_stands.iter().find(|a| a.id == id).map(|a| {
                 (
                     [a.position.x, a.position.y, a.position.z],
@@ -1360,7 +1424,7 @@ impl Game<'_> {
                 self.drown_particles(at, v, 8);
             }
         }
-        for (id, damage_type) in dead.into_iter().rev() {
+        for (id, damage_type) in dead.drain(..) {
             match damage_type {
                 Some(damage_type) => {
                     if let Some(i) = self.armor_stands.iter().position(|a| a.id == id) {
@@ -1380,7 +1444,6 @@ impl Game<'_> {
                 }
             }
         }
-        Ok(())
     }
     /// `Entity.move(mover, delta)` for a stand with physics (not a marker or
     /// `NoGravity`). Mob lids act on the shulker's turn; block-entity lids act
@@ -1687,6 +1750,7 @@ impl Game<'_> {
             causing: causing_id as i32,
             direct: direct as i32,
             position,
+            direct_type: None,
         };
         if super::entity::damage_level_of!(self, self.combat.attack(), no_push, None)
             .invulnerability_check(
@@ -1956,6 +2020,7 @@ impl Game<'_> {
                 use_hand: None,
                 ticks_using_item: 0,
                 use_animation: mod_api::UseAnimation::None,
+                is_swinging: false,
                 main_arm_pose: mod_api::ArmPose::Empty,
                 off_arm_pose: mod_api::ArmPose::Empty,
             };

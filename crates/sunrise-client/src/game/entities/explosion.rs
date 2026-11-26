@@ -10,7 +10,12 @@ use mod_api::ExplosionStart;
 use std::{cmp::Ordering, collections::HashSet, io};
 use sunrise_client::health::DamageLevel;
 use sunrise_client::{
-    Result, blocks::Fluid, collisions::SceneCollisions, items::ItemStack, mobs::Who, text::Text,
+    Result,
+    blocks::{Fluid, VisualShape},
+    collisions::SceneCollisions,
+    items::ItemStack,
+    mobs::Who,
+    text::Text,
 };
 use sunrise_core::{
     geometry::{Vec3, VoxelShape},
@@ -37,22 +42,35 @@ pub(super) struct ExplosionCause {
     pub species: Option<sunrise_client::mobs::Species>,
 }
 
-/// Outline and interaction shape tables for [`ColliderRays`] when clipping with
-/// `RayBlockMode::Outline` or `BlockGetter.clipWithInteractionOverride`.
+/// Outline, visual and interaction shape tables for [`ColliderRays`] when clipping with
+/// `RayBlockMode::Outline`, `RayBlockMode::Visual` or `BlockGetter.clipWithInteractionOverride`.
 pub(super) struct ClipData<'a, 'r> {
     pub facts: &'a sunrise_client::blocks::BlockFacts,
     pub behaviours: &'a sunrise_world::level::Behaviours,
     pub tables: &'a sunrise_client::mesher::MeshTables,
     pub registry: &'r sunrise_world::registry::BlockRegistry,
 }
-/// `BlockGetter.clip` over a resident [`World`](sunrise_client::world::World):
-/// out-of-height cells and missing columns read as `world.air` without loading
-/// chunks (`ClientChunkCache.getChunk(..., true)` on clients and viewed worlds,
-/// and `PathNavigationRegion.getBlockState`/`getChunk` on immutable server views).
+/// A ray read a cell inside a column that is not loaded while [`ColliderRays::report_unloaded`]
+/// is set. `clip` turns it into `ClipOutcome::Unloaded`.
+#[derive(Debug)]
+pub(super) struct UnloadedColumn(pub BlockPos);
+impl std::fmt::Display for UnloadedColumn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "column of {:?} is not loaded", self.0)
+    }
+}
+impl std::error::Error for UnloadedColumn {}
+
+/// `BlockGetter.clip` over a resident [`World`](sunrise_client::world::World): out-of-height
+/// cells read as `world.air` (`BlockGetter.getBlockState`) and loads nothing. A missing column
+/// reads as `world.air` too (`ClientChunkCache.getChunk(..., true)` on clients and viewed worlds,
+/// and `PathNavigationRegion.getBlockState`/`getChunk` on immutable server views), unless
+/// `report_unloaded` asks for the ray to stop there with [`UnloadedColumn`].
 pub(super) struct ColliderRays<'a, 'r> {
     pub scene: SceneCollisions<'a, 'r>,
-    pub context: CollisionContext<'static>,
+    pub context: CollisionContext<'a>,
     pub clip_data: Option<ClipData<'a, 'r>>,
+    pub report_unloaded: bool,
 }
 impl RayWorld for ColliderRays<'_, '_> {
     type Error = io::Error;
@@ -63,11 +81,15 @@ impl RayWorld for ColliderRays<'_, '_> {
         if !world.shape.contains_y(p.y) {
             return Ok(world.air);
         }
-        Ok(world
-            .chunks
-            .get(&(p.x >> 4, p.z >> 4))
-            .filter(|chunk| chunk.section_index(p.y).is_some())
-            .map_or(world.air, |chunk| chunk.block(p.x & 15, p.y, p.z & 15)))
+        match world.chunks.get(&(p.x >> 4, p.z >> 4)) {
+            Some(chunk) => Ok(if chunk.section_index(p.y).is_some() {
+                chunk.block(p.x & 15, p.y, p.z & 15)
+            } else {
+                world.air
+            }),
+            None if self.report_unloaded => Err(io::Error::other(UnloadedColumn(p))),
+            None => Ok(world.air),
+        }
     }
     fn fluid_state(&mut self, _: BlockPos) -> io::Result<()> {
         Ok(())
@@ -78,6 +100,19 @@ impl RayWorld for ColliderRays<'_, '_> {
         p: BlockPos,
         mode: RayBlockMode,
     ) -> io::Result<VoxelShape> {
+        if mode == RayBlockMode::Visual {
+            // `BlockStateBase.getVisualShape`: the overriding classes answer here,
+            // every other block falls through to its collision shape below.
+            let Some(data) = &self.clip_data else {
+                return Err(io::Error::other("visual ray shape unavailable"));
+            };
+            match data.facts.get(state).visual_shape() {
+                VisualShape::Empty => return Ok(VoxelShape::empty()),
+                VisualShape::Block => return Ok(VoxelShape::block()),
+                VisualShape::Outline => return self.block_shape(state, p, RayBlockMode::Outline),
+                VisualShape::Collision => {}
+            }
+        }
         if mode == RayBlockMode::Outline {
             let Some(data) = &self.clip_data else {
                 return Err(io::Error::other("outline ray shape unavailable"));
@@ -571,6 +606,7 @@ impl Game<'_> {
                 },
                 false,
             ),
+            report_unloaded: false,
         };
         let (mut hits, mut count) = (0, 0);
         let mut xx = 0.0;
@@ -785,6 +821,7 @@ impl Game<'_> {
     fn explosion_hurt_player(
         &mut self,
         context: &ExplosionHookContext<'_>,
+        blast_attack: &sunrise_client::health::Attack,
         radius: f32,
         damage_type: &str,
         exploding: Option<u32>,
@@ -917,7 +954,7 @@ impl Game<'_> {
                 && let Ok(o) = p.hurt_caused_by(
                     crate::game::entity::damage_level_of!(
                         self,
-                        self.combat.attack(),
+                        blast_attack,
                         no_push,
                         crate::game::entity::player_victim_causer!(self, decision),
                         acting_equipment!(self)
@@ -963,11 +1000,11 @@ impl Game<'_> {
             let source = mod_api::entity::health::HurtSource {
                 damage_type,
                 causing: attacker.map_or(0, |(id, _)| *id as i32),
-                direct: 0,
-                position: None,
+                direct: blast_attack.direct.unwrap_or(0),
+                position: Some(center),
+                direct_type: None,
             };
-            let attack = self.current_attack();
-            self.after_block(outcome, (None, false), source, &attack);
+            self.after_block(outcome, (None, false), source, blast_attack);
         }
         self.finish_guest_damage();
         pushed
@@ -979,6 +1016,7 @@ impl Game<'_> {
     fn explosion_hurt_players(
         &mut self,
         context: &ExplosionHookContext<'_>,
+        blast_attack: &sunrise_client::health::Attack,
         radius: f32,
         damage_type: &str,
         exploding: Option<u32>,
@@ -995,6 +1033,7 @@ impl Game<'_> {
         } else {
             self.explosion_hurt_player(
                 context,
+                blast_attack,
                 radius,
                 damage_type,
                 exploding,
@@ -1017,6 +1056,7 @@ impl Game<'_> {
                 let push = self.as_guest(conn, |g| {
                     g.explosion_hurt_player(
                         context,
+                        blast_attack,
                         radius,
                         damage_type,
                         exploding,
@@ -1146,20 +1186,8 @@ impl Game<'_> {
             flying_knockback,
             player_cause: self.blast_player_cause(),
         };
-        let mut pushed = if listed {
-            // The list's own order reaches each player in the walk below.
-            Vec::new()
-        } else {
-            self.explosion_hurt_players(
-                &context,
-                radius,
-                damage_type,
-                exploding,
-                attacker.as_ref(),
-                blast_source.as_ref(),
-            )
-        };
-        // Mobs. `WitherBoss.hurtServer`: a wither shrugs off an undead cause.
+        // The blast's `DamageSource`, shared by every victim: the exploding or
+        // explicitly supplied direct entity, its class and the blast's centre.
         let (blast_direct_id, blast_direct_kind) = blast_source_spec.damage_direct.map_or(
             (0, sunrise_client::health::DirectEntity::Other),
             |(id, class)| (id as i32, class),
@@ -1167,10 +1195,10 @@ impl Game<'_> {
         let mut blast_attack = self.combat.attack().clone();
         blast_attack.direct = Some(blast_direct_id);
         blast_attack.direct_kind = Some(blast_direct_kind);
+        blast_attack.position = Some(center);
         if let Some(actor) = self.enchantment_actor(blast_direct_id) {
             blast_attack.enchantment_direct = Some(actor);
         }
-
         if blast_attack.attacker == 0
             && let Some(Some(cause)) = &self.combat.explicit_explosion_cause
             && cause.player
@@ -1188,6 +1216,21 @@ impl Game<'_> {
                 blast_attack.player_uuid = self.player_uuid_of(self.combat.blast_guest);
             }
         }
+        let mut pushed = if listed {
+            // The list's own order reaches each player in the walk below.
+            Vec::new()
+        } else {
+            self.explosion_hurt_players(
+                &context,
+                &blast_attack,
+                radius,
+                damage_type,
+                exploding,
+                attacker.as_ref(),
+                blast_source.as_ref(),
+            )
+        };
+        // Mobs. `WitherBoss.hurtServer`: a wither shrugs off an undead cause.
         let cause = self
             .combat
             .explicit_explosion_cause
@@ -1228,6 +1271,7 @@ impl Game<'_> {
                     causing: attacker.as_ref().map_or(0, |(id, _)| *id as i32),
                     direct: exploding.map_or(0, |id| id as i32),
                     position: Some(center),
+                    direct_type: None,
                 };
                 let creative = self.creative_damage_source_id(source.causing);
                 let vanilla = self.saved_refuses_damage($id as u32, damage_type, creative);
@@ -1258,6 +1302,7 @@ impl Game<'_> {
                 if self.blast_is_player(id) {
                     pushed.extend(self.explosion_hurt_players(
                         &context,
+                        &blast_attack,
                         radius,
                         damage_type,
                         exploding,
@@ -1695,6 +1740,7 @@ impl Game<'_> {
                     causing: causing as i32,
                     direct: causing as i32,
                     position: Some(center),
+                    direct_type: None,
                 };
                 let creative = self.creative_damage_source_id(source.causing);
                 let vanilla = self.saved_refuses_damage(id, damage_type, creative);

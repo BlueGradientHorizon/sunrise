@@ -765,6 +765,7 @@ impl Game<'_> {
                     causing: attack.attacker,
                     direct: attack.attacker,
                     position: None,
+                    direct_type: None,
                 };
                 self.knock_back_armor_stand(id, knock, source, &attack);
                 continue;

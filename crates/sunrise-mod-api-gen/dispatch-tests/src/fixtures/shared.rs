@@ -74,6 +74,9 @@ trait ServerHost: Host {
     ) -> Option<item::transaction::TransactionError<core::convert::Infallible>> {
         None
     }
+    fn transaction_matches(&self, tx: Option<&()>) -> bool {
+        tx.is_none()
+    }
 }
 trait ClientHost: Host {}
 
@@ -291,7 +294,9 @@ mod generated {
     }
     include!(concat!(env!("OUT_DIR"), "/mod_api_generated.rs"));
     pub(super) use self::mod_api::InlineImageReplacement;
-    pub(super) use self::mod_api::{BlockFace, BlockKey, BlockState, CrosshairTarget};
+    // `living_heal` and the motion value hooks name the lent view unqualified.
+    pub(super) use self::mod_api::LivingView;
+    pub(super) use self::mod_api::{BlockFace, BlockKey, BlockState, CrosshairTarget, NameTagLine};
     use self::mod_api::{GuiCanvas, StandaloneModelRegistration};
     pub use sunrise_mod_api_macros::__subscriptions;
 }
@@ -370,11 +375,12 @@ fn enter_listener(entry: &'static ModEntry, hook: &'static str) -> ((), &'static
     ENTERED.with(|entered| entered.borrow_mut().push((index, hook)));
     ((), &*entry.hooks)
 }
-/// The side a mod declares (`side = "server"` mods are left out of a client-controlled body's movement hooks).
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum Side {
-    Server,
+    Both,
     Client,
+    Server,
 }
 struct ModEntry {
     id: &'static str,
@@ -386,7 +392,7 @@ impl ModEntry {
         Self {
             id,
             hooks,
-            side: Side::Client,
+            side: Side::Both,
         }
     }
 }

@@ -12,9 +12,9 @@ use std::{collections::HashSet, path::Path};
 use sunrise_world::loot::PackOverlay;
 
 pub use sunrise_client_core::potions::{
-    BASE_POTION_COLOR, Category, EFFECTS, EffectDef, POTIONS, PotionDef, all_effects,
-    description_id, effect, is_mod_effect, mod_effects, namespaced, potion, potion_color,
-    register_mod_effects, set_pack_colors,
+    BASE_POTION_COLOR, Category, EFFECTS, EffectDef, EffectModifier, ModEffect, POTIONS, PotionDef,
+    all_effects, description_id, effect, is_mod_effect, mod_effects, namespaced, potion,
+    potion_color, register_mod_effects, set_pack_colors,
 };
 /// `MobEffectUtil.formatDuration` at 20 TPS.
 pub fn format_duration(ticks: i32) -> String {
@@ -149,22 +149,26 @@ pub fn contents_empty(stack: &ItemStack) -> bool {
                 })
         })
 }
-/// Roman amplifier suffix (`potion.potency.N`) and duration lines of a potion.
+/// Roman amplifier suffix (`potion.potency.N`) and duration lines of a
+/// potion stack's `PotionContents.getAllEffects`: its potion's effects, then
+/// its `custom_effects`. "No Effects" for a potion with neither; nothing for
+/// a stack with no potion and no custom effect.
 pub fn tooltip(
-    potion: Option<&str>,
+    stack: &ItemStack,
     scale: f32,
     translate: &dyn Fn(&str) -> Option<String>,
 ) -> Vec<(String, Category)> {
-    let Some(def) = potion.and_then(self::potion) else {
-        return vec![];
-    };
-    if def.effects.is_empty() {
+    let effects = contents_effects(stack);
+    if effects.is_empty() {
+        if stack.potion().and_then(self::potion).is_none() {
+            return vec![];
+        }
         return vec![(
             translate("effect.none").unwrap_or_else(|| "No Effects".into()),
             Category::Neutral,
         )];
     }
-    effect_lines(def.effects.iter().copied(), scale, translate)
+    effect_lines(effects, scale, translate)
 }
 /// `PotionContents.addPotionTooltip`'s line per effect: its name, potency and
 /// scaled duration, for (effect id, duration, amplifier) entries.
@@ -819,7 +823,8 @@ mod tests {
         assert_eq!(format_duration(1800), "01:30");
         assert_eq!(format_duration(72000), "01:00:00");
         assert_eq!(format_tick_duration(9600, 40.0), "04:00");
-        let t = tooltip(Some("minecraft:strong_poison"), 1.0, &|_| None);
+        let poison = ItemStack::new("minecraft:potion", 1).with_potion("minecraft:strong_poison");
+        let t = tooltip(&poison, 1.0, &|_| None);
         assert_eq!(t[0].0, "poison II (00:21)");
         assert_eq!(POTIONS.len(), 46);
     }
@@ -972,7 +977,9 @@ mod tests {
         }
         let ru = crate::lang::Language::load(&[&root], "ru_ru");
         let translate = |key: &str| ru.get(key).map(str::to_owned);
-        let lines = tooltip(Some("minecraft:turtle_master"), 0.125, &translate);
+        let arrow =
+            ItemStack::new("minecraft:tipped_arrow", 1).with_potion("minecraft:turtle_master");
+        let lines = tooltip(&arrow, 0.125, &translate);
         assert_eq!(lines.len(), 2);
         assert!(lines[0].0.starts_with("Замедление IV ("), "{lines:?}");
         assert!(lines[1].0.starts_with("Сопротивление III ("), "{lines:?}");

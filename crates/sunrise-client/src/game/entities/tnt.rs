@@ -899,6 +899,11 @@ impl Game<'_> {
                     t.previous.y + (t.position.y - t.previous.y) * alpha,
                     t.previous.z + (t.position.z - t.previous.z) * alpha,
                 );
+                let [width, height, eye_height] = t
+                    .size_answer
+                    .filter(|s| s.vanilla == PrimedTnt::DIMENSIONS)
+                    .and_then(|s| s.size)
+                    .unwrap_or(PrimedTnt::DIMENSIONS);
                 let entity: mod_api::EntityRenderState =
                     mod_api::__private::built::EntityRenderState {
                         id: t.id,
@@ -906,6 +911,10 @@ impl Game<'_> {
                         age: t.ticks as f32 + partial,
                         yaw: t.rotation[0],
                         pitch: t.rotation[1],
+                        position: at.to_array(),
+                        size: [width, height],
+                        eye_height,
+                        distance_to_camera_sq: (at - camera).length_squared(),
                         living: None,
                         tnt_fuse: Some(fuse),
                         orb_value: None,
@@ -1066,6 +1075,7 @@ pub(super) fn tnt_general_seat(tnt: Vec3) -> Vec3 {
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
+    use crate::game::game_tests::tests::on_big_stack;
 
     #[test]
     fn saved_block_state_follows_the_model_instead_of_raw_input() {
@@ -2469,19 +2479,6 @@ pub(in crate::game) mod tests {
             }
             write_silence_output("bottles", &rows);
         });
-    }
-
-    /// Runs `test` on a thread with an 8 MiB stack. A Game's explosion and potion-impact paths
-    /// need more than the 2 MiB test thread in a Windows debug build, where those tests
-    /// overflowed it (4 MiB is enough).
-    fn on_big_stack(test: impl FnOnce() + Send + 'static) {
-        let thread = std::thread::Builder::new()
-            .stack_size(8 << 20)
-            .spawn(test)
-            .unwrap();
-        if let Err(panic) = thread.join() {
-            std::panic::resume_unwind(panic);
-        }
     }
 
     fn source_silence_game(

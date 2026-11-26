@@ -66,6 +66,16 @@ impl Game<'_> {
         pack.layer_names.get(&layer).cloned()
     }
 
+    /// [`Game::block_particle_sprite`] as the particle atlas names it: the block atlas's
+    /// `missingno` is packed there as `hud::MISSING_SPRITE`.
+    fn particle_atlas_sprite(sprite: String) -> String {
+        if sprite == "missingno" {
+            sunrise_client::hud::MISSING_SPRITE.into()
+        } else {
+            sprite
+        }
+    }
+
     fn particle_shape(&self, pos: [i32; 3], state: BlockStateId) -> Vec<[f64; 6]> {
         let mut boxes = Vec::new();
         let _ = self.visit_state_shape(
@@ -160,7 +170,10 @@ impl Game<'_> {
         let sprite = || {
             // BlockStateModelSet.getParticleMaterial uses the missing model when
             // the state has no model (e.g. air), not some other block's texture.
-            Self::block_particle_sprite(&self.pack, state).unwrap_or_else(|| "missingno".into())
+            Self::particle_atlas_sprite(
+                Self::block_particle_sprite(&self.pack, state)
+                    .unwrap_or_else(|| "missingno".into()),
+            )
         };
         let options = match ty {
             ParticleType::Block | ParticleType::DustPillar | ParticleType::BlockCrumble => {
@@ -208,7 +221,7 @@ impl Game<'_> {
         state: BlockStateId,
         pos: [i32; 3],
     ) -> Option<(String, u32)> {
-        let sprite = Self::block_particle_sprite(&self.pack, state)?;
+        let sprite = Self::particle_atlas_sprite(Self::block_particle_sprite(&self.pack, state)?);
         let tint = self.terrain_particle_tint(state, pos).unwrap_or(0xFFFFFF);
         Some((sprite, tint))
     }

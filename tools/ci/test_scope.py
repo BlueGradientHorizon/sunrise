@@ -96,13 +96,14 @@ READERS = {
     "sunrise-prepare": [
         "crates/sunrise-client/src/game/runtime/launch_api.rs", "mods/sunrise/src/test/java", "research-lock.json",
     ],
+    # The RSA key tests verify the client's signed-textures fixture.
+    "sunrise-protocol": ["crates/sunrise-client/src/game/network/remote/fixtures/signed_textures.json"],
     "sunrise-release-sign": [
         "tests/install_ps1_signature.ps1", "tools/ci/sign_native_build.sh", "tools/ci/sign_release.sh",
     ],
     "sunrise-server": [
         "crates/sunrise-theme/fonts", "crates/sunrise-theme/icons", "docs/api/server-reference.md",
     ],
-    "sunrise-shader-api": ["docs/api/shaders-reference.md", "docs/api/shaders-reference-0.2.md"],
     # Its daily stable-release test drives the release gate's Python through the real surface differ.
     "sunrise-stage": [
         "tests/stable_mod_api_integration.py", "tests/test_stable_mod_api.py", "tools/ci/nightly.py",
@@ -126,7 +127,7 @@ NOT_READS = {
     # The retained-SDK test writes a synthetic render.rs into its temporary archive, not this checkout.
     "cargo-sunrise-mod": {"crates/sunrise-mod-render/src/render.rs"},
     "sunrise-mod-vocab": {"."}, "sunrise-port-pack": {"mods"}, "sunrise-prepare": {"crates"},
-    # A package's source-file names (`package::source_file`), never this checkout's lock.
+    # A package's source-file names (`package::source_files`), never this checkout's lock.
     "sunrise-mod-source": {"Cargo.lock"},
     # shader_fuzz's `..` path parts, in the packs it writes and reads, beside its own seed pack.
     "sunrise-render-shaderpack": {"crates"},

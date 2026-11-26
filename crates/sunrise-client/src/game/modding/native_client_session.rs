@@ -71,6 +71,19 @@ impl Game<'_> {
     /// `setYRot` / `setXRot` of the local player by a client mod: yaw as given, pitch `% 360`
     /// clamped to -90..90, the previous angles moved by as much (`Entity.turn`). Sends nothing:
     /// the tick's player sync (`remote_send_state`) carries the look.
+    /// `Minecraft.rightClickDelay`, which `startUseItem` sets to 4 and the client tick counts
+    /// down; None outside a client world.
+    pub(in crate::game) fn right_click_delay(&self) -> Option<u32> {
+        (self.native_session().is_some() && self.player.is_some()).then_some(self.use_delay)
+    }
+    /// Sets `Minecraft.rightClickDelay`; false, changing nothing, outside a client world.
+    pub(in crate::game) fn set_right_click_delay(&mut self, ticks: u32) -> bool {
+        if self.native_session().is_none() || self.player.is_none() {
+            return false;
+        }
+        self.use_delay = ticks;
+        true
+    }
     pub(in crate::game) fn set_local_rotation(
         &mut self,
         yaw: f32,
@@ -345,6 +358,32 @@ pub(super) mod tests {
             }),
             ControlFlow::Break(())
         );
+    }
+
+    /// `LocalPlayer.permissionLevel` (#5529): on a client the local player's level is the one the
+    /// server's entity events 24 to 28 last set, and another player's is unknown.
+    #[test]
+    #[ignore = "daily"]
+    fn the_local_players_permission_level_follows_the_servers_events() {
+        use mod_api::{EntityRef, WorldEpoch};
+        use sunrise_protocol::packets::play::{self, Clientbound as C};
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            let _server = logged_client(game);
+            let player = game.local_player().unwrap();
+            assert_eq!(player.permission_level(game), Some(0));
+            for (event, level) in [(26, 2), (28, 4), (24, 0)] {
+                game.handle_packet(C::EntityEvent(play::EntityEvent { id: 7, event }))
+                    .unwrap();
+                assert_eq!(player.permission_level(game), Some(level), "event {event}");
+            }
+            // Another entity's event leaves the local player's level alone.
+            game.handle_packet(C::EntityEvent(play::EntityEvent { id: 8, event: 28 }))
+                .unwrap();
+            assert_eq!(player.permission_level(game), Some(0));
+            let epoch: WorldEpoch = player.entity().epoch();
+            let other = mod_api::__private::game::player_ref(EntityRef::new(epoch, 99), 5);
+            assert_eq!(other.permission_level(game), None);
+        });
     }
 
     pub(in crate::game) fn logged_client(

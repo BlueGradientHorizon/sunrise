@@ -60,13 +60,10 @@ above 8 is `OutOfRange { slot }`, a client with no world or player is `NoWorld`,
 back with `player_selected_slot` on the local player.
 
 `ClientHost::clipboard_text()` reads the system clipboard (`KeyboardHandler.getClipboard`, empty text when it
-holds none) and `ClientHost::set_clipboard_text(text)` writes it (`setClipboard`; empty text copies nothing). Both
-work only while the game handles a key, mouse or typed-text event, from the window or from the control socket
-(`sunrise-ctl key`, `mouse`, `type` and its clicks): a key, mouse or screen hook that fires inside one, such as
-Ctrl+V into a mod's own field. At any other moment (a tick, a frame, a packet) the read is `None` and the write
-is `false` with nothing copied, so no mod reaches the clipboard without the player doing something. Both are
-`None` and `false` on a server, and take `&self`, so a screen hook can call them. Vanilla's `KeyboardHandler`
-has no such rule: Sunrise adds it.
+holds none) and `ClientHost::set_clipboard_text(text)` writes it (`setClipboard`; empty text is ignored and
+leaves the clipboard unchanged). Both work from any client callback (a tick, a frame, a payload handler, an
+input event, a screen hook), as vanilla's `KeyboardHandler` does. Without a native window (a server or a
+headless host) the read is `None` and the write is `false`. Both take `&self`, so a screen hook can call them.
 
 ## Camera snapshots and perspective
 
@@ -203,10 +200,10 @@ open. Its block reads read the viewed level's own world, never the player's: `bl
 `has_collisions`, `visit_block_collision`, `get_enchant_power_bonus`, and the fluid reads built on `block_state` (`fluid_shape`, `fluid_height`,
 `fluid_height_for_camera`, `fluid_can_be_replaced_with`). So a mod can aim a ray or collide a box
 through a portal. `brightness` also reads the viewed level's own sky or block light, as sent by the
-server, not the light of the shown level. These reads never load a column. Direct block reads return
-`None` for a column the client doesn't hold; `clip` reads missing columns and out-of-height cells as
-air (`ClientChunkCache.getChunk(..., true)`), and `visit_block_collisions` and `has_collisions` skip
-missing columns and keep scanning the loaded ones.
+server, not the light of the shown level. These reads never load a column. Direct block reads return `None` for a column the client doesn't hold; `clip` stops at the first
+cell of a column the client doesn't hold with `ClipOutcome::Unloaded { at }`, reads out-of-height
+cells as air, and returns `Err(ClipError::StaleLevel)` for a stale handle; `visit_block_collisions`
+and `has_collisions` skip missing columns and keep scanning the loaded ones.
 
 `host.level` returns `None` while the server has the level closed, and reads from a retained handle
 return `None`. If the server reopens the level within the same client level, the old handle reads
@@ -362,3 +359,5 @@ against live handles, attackability, reach, held-item range and ordinary block o
 does not mine the block behind it; an empty list on a block or miss keeps the ordinary
 path. Each accepted hit uses normal attack packets and prediction. Server validation
 and cooldowns apply.
+
+`ClientHost::jump_riding_scale()` is how far the local player has charged the jump of its jumpable vehicle (`LocalPlayer.getJumpRidingScale`), 0.0 to 1.0; the jump bar draws the same value.

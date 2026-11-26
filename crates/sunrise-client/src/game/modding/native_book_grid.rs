@@ -3,8 +3,12 @@
 use super::Game;
 use mod_api::RecipeBookPlacement;
 use sunrise_client::{
-    menu::place::custom_plan::MenuPlacement, recipe_book::placement_sync::Refusal,
+    menu::{INVENTORY_MENU, place::custom_plan::MenuPlacement},
+    recipe_book::placement_sync::Refusal,
 };
+
+/// `InventoryMenu`'s crafting grid, by menu slot, row by row (its result is slot 0).
+const INVENTORY_GRID: [u16; 4] = [1, 2, 3, 4];
 
 impl Game<'_> {
     /// Ask the part of the open menu's type how to answer a click on `recipe`, with the player
@@ -34,6 +38,40 @@ impl Game<'_> {
             return Err(Refusal::Changed);
         }
         Ok(placement)
+    }
+
+    /// `AbstractCraftingMenu.handlePlacement` on the player's own `InventoryMenu`, taken over by
+    /// the Parts attached to [`INVENTORY_MENU`] that listen to `recipe_book_place`, with the
+    /// player swapped in. `Grid` is accepted only as the inventory's 2×2 crafting grid (menu
+    /// slots 1 to 4, row by row, clearing none but those), which runs the game's own placement
+    /// (vanilla's `super.handlePlacement`); any other `Grid` is refused with a warning and places
+    /// nothing, as `Nothing` does.
+    pub(super) fn inventory_book_place(
+        &mut self,
+        uuid: u128,
+        recipe: &str,
+        use_max_items: bool,
+        creative: bool,
+    ) -> RecipeBookPlacement {
+        match self.ask_mod_book_place(uuid, INVENTORY_MENU, recipe, use_max_items, creative) {
+            Ok(RecipeBookPlacement::Grid {
+                width,
+                height,
+                slots,
+                clear,
+            }) if !(width == 2
+                && height == 2
+                && slots == INVENTORY_GRID
+                && clear.iter().all(|slot| INVENTORY_GRID.contains(slot))) =>
+            {
+                log::warn!(
+                    "[recipe book] refused Grid placement for menu {INVENTORY_MENU} recipe {recipe}: only its 2x2 grid, slots {INVENTORY_GRID:?}, places",
+                );
+                RecipeBookPlacement::Nothing
+            }
+            Ok(placement) => placement,
+            Err(_) => RecipeBookPlacement::Nothing,
+        }
     }
 
     /// Resolve a `RecipeBookPlacement::Grid` answer against the menu's current state. Every

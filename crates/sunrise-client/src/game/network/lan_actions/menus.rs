@@ -117,13 +117,14 @@ impl Game<'_> {
         let Some(host) = self.lan.as_ref() else {
             return MenuOpen::Refused;
         };
-        let Some(items) = host
+        if host
             .hub
             .guest(conn)
             .and_then(|g| slots.read(&self.world, g))
-        else {
+            .is_none()
+        {
             return MenuOpen::Refused;
-        };
+        }
         // The block entity's createMenu: a shulker box opens a ShulkerBoxMenu
         // (not a 9x3 ChestMenu), whose slots refuse shulker boxes.
         let menu = match slots {
@@ -148,6 +149,27 @@ impl Game<'_> {
         let Some((uuid, name)) = host.hub.guest(conn).map(|g| (g.uuid, g.name.clone())) else {
             return MenuOpen::Refused;
         };
+        // A mod container's table waits for `RandomizableContainerBlockEntity.createMenu`;
+        // a vanilla container's rolled in its block's use.
+        let loot = matches!(slots, Slots::Block(k) if self.mod_menu_at(k).is_some()
+            && self.block_loot_pending(k));
+        // RandomizableContainerBlockEntity.canOpen: no spectator while a table waits, before
+        // the lock is asked; ServerPlayer.openMenu tells them in red on the action bar.
+        if loot && spectator {
+            let Some(host) = self.lan.as_ref() else {
+                return MenuOpen::Refused;
+            };
+            let message = sunrise_client::text::Text::translate("container.spectatorCantOpen", &[])
+                .with_color(sunrise_client::text::RED);
+            host.hub.send_to(
+                conn,
+                &C::SystemChat(play::SystemChat {
+                    content: sunrise_client::lan::data::component_nbt(&message.component()),
+                    overlay: true,
+                }),
+            );
+            return MenuOpen::Refused;
+        }
         let mut locked = false;
         for key in halves.iter().flatten().copied() {
             let mut check = self.container_locked_for(key, spectator, hand.as_ref());
@@ -227,6 +249,27 @@ impl Game<'_> {
             super::super::native_menus::open_menu_of(host, conn).map(|(window, ..)| window)
         });
         self.guest_replace_menu_then(conn, false, |game| {
+            // `createMenu` of an admitted open: `unpackLootTable(player)` with the opener's own
+            // state (their luck, `THIS_ENTITY` and advancements), then the menu reads the slots.
+            if loot {
+                let roll = |game: &mut Self| {
+                    let player = game.native_acting_player();
+                    game.unpack_loot(crate::game::container_loot::LootTarget::Block(pos), player);
+                };
+                if game.lan_acting == Some(conn) {
+                    roll(game);
+                } else if game.as_guest(conn, roll).is_none() {
+                    return Err(MenuOpen::Refused);
+                }
+            }
+            let Some(items) = game
+                .lan
+                .as_ref()
+                .and_then(|host| host.hub.guest(conn))
+                .and_then(|g| slots.read(&game.world, g))
+            else {
+                return Err(MenuOpen::Refused);
+            };
             // A mod menu type's block tells the client where it is, with what its
             // mod writes (`openMenu` with an extra-data writer); a stock menu
             // sends nothing more.

@@ -52,6 +52,26 @@ fn held_focus(
     }
 }
 
+/// The pointer's presence over the window and the window's occlusion, from the window system's
+/// events. A person's pointer moving inside the window says it is there, as an enter that came
+/// before the game listened would have; an agent's made-up moves say nothing of the pointer.
+fn track_window_state(
+    origin: input_trace::InputOrigin,
+    event: &WindowEvent,
+    hovered: &mut bool,
+    occluded: &mut bool,
+) {
+    match event {
+        WindowEvent::CursorEntered { .. } => *hovered = true,
+        WindowEvent::CursorLeft { .. } => *hovered = false,
+        WindowEvent::CursorMoved { .. } if origin == input_trace::InputOrigin::User => {
+            *hovered = true;
+        }
+        WindowEvent::Occluded(now) => *occluded = *now,
+        _ => {}
+    }
+}
+
 /// What a person's event does at an agent's window no one has clicked yet.
 #[derive(Debug, PartialEq)]
 enum Unclaimed {
@@ -126,16 +146,7 @@ impl Game<'_> {
         origin: input_trace::InputOrigin,
         retained_sample: Option<PointerSample>,
     ) {
-        let input = matches!(
-            event,
-            WindowEvent::KeyboardInput { .. }
-                | WindowEvent::MouseInput { .. }
-                | WindowEvent::MouseWheel { .. }
-                | WindowEvent::Ime(_)
-        );
-        self.with_user_input(input, |game| {
-            game.handle_window_event_as(event_loop, id, event, origin, retained_sample);
-        });
+        self.handle_window_event_as(event_loop, id, event, origin, retained_sample);
     }
 
     pub(super) fn handle_window_event_as(
@@ -155,6 +166,18 @@ impl Game<'_> {
         if !ours {
             return;
         }
+        // A drop belongs to the screen it was dropped on (`MouseHandler.onDrop`): its files
+        // reach that screen before any later event of this pass can change the screen.
+        if !matches!(event, WindowEvent::DroppedFile(_)) {
+            self.fire_dropped_files();
+        }
+        // The window's state, not input: kept whoever's turn it is.
+        track_window_state(
+            origin,
+            &event,
+            &mut self.window_hovered,
+            &mut self.window_occluded,
+        );
         if let Some(modifiers) = held_modifiers(origin, self.unclaimed_window, &event) {
             self.unclaimed_modifiers = Some(modifiers);
         }
@@ -301,6 +324,7 @@ impl Game<'_> {
     /// winit's `about_to_wait`: what happens between frames (stop requests, the closing
     /// save, world entry, the control socket, pads), then the next frame.
     pub(super) fn idle(&mut self, event_loop: &dyn EventLoopCtl) {
+        self.fire_dropped_files();
         let quit_requested = match self.client_quit.get() {
             ClientQuit::Running => sunrise_threads::stop_requests() > 0,
             ClientQuit::Requested => true,
@@ -498,7 +522,7 @@ impl ApplicationHandler for Game<'_> {
         } else {
             match renderer {
                 Ok(renderer) => {
-                    self.renderer = Some(renderer);
+                    self.set_renderer(renderer);
                     self.world_renderer_ready = true;
                 }
                 Err(error) => {
@@ -514,6 +538,7 @@ impl ApplicationHandler for Game<'_> {
         self.previous = Instant::now();
     }
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+        self.apply_pointer_grab_request();
         let key = if self.window.as_ref().is_some_and(|w| w.id() == id)
             && !self.scripted_run()
             && !self.unclaimed_window
@@ -544,13 +569,11 @@ impl ApplicationHandler for Game<'_> {
                 (_, false) => mod_api::KeyAction::Press,
                 (_, true) => mod_api::KeyAction::Repeat,
             };
-            // Still the key's handling: a mod's key hook may reach the clipboard.
-            self.with_user_input(true, |game| {
-                game.key_input(name, layout_key, raw_code, action, modifiers);
-            });
+            self.key_input(name, layout_key, raw_code, action, modifiers);
         }
     }
     fn device_event(&mut self, event_loop: &ActiveEventLoop, _: DeviceId, event: DeviceEvent) {
+        self.apply_pointer_grab_request();
         // Offscreen runs do not use native pointer motion.
         if self.pending_save.is_none()
             && !self.scripted_run()
@@ -558,25 +581,20 @@ impl ApplicationHandler for Game<'_> {
             && self.captured
             && self.focused
             && !self.options.offscreen
-            && self.screen == Screen::Playing
+            && (self.screen == Screen::Playing || self.mod_screen_grabs_pointer())
             && let DeviceEvent::MouseMotion { delta: (x, y) } = event
         {
-            if self.pad_radial_captures() {
+            if !self.mod_screen_grabs_pointer() && self.pad_radial_captures() {
                 return;
             }
             if x != 0.0 || y != 0.0 {
                 self.pad_yield_input(event_loop);
             }
-            // MouseHandler.onMove with the pointer grabbed; applied once per frame.
-            self.note_input(
-                input_trace::InputOrigin::User,
-                input_trace::TraceKind::Motion { x, y },
-            );
-            self.mouse.on_move(0.0, 0.0, x, y, true, true);
-            self.last_input = Instant::now();
+            self.grabbed_pointer_motion([x, y]);
         }
     }
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        self.apply_pointer_grab_request();
         // Every event-loop pass, drawn or not: a window that stops redrawing (a lost
         // device, an occluded window) must still end after a server crash.
         self.exit_after_server_crash();
@@ -619,6 +637,40 @@ mod tests {
             WindowEvent::ModifiersChanged(Modifiers::from(ModifiersState::empty())),
             WindowEvent::Ime(Ime::Commit("a".into())),
         ]
+    }
+
+    #[test]
+    fn the_window_tracks_the_pointer_over_it_and_its_occlusion() {
+        let device_id = DeviceId::dummy();
+        let moved = WindowEvent::CursorMoved {
+            device_id,
+            position: PhysicalPosition::new(10.0, 20.0),
+        };
+        let (mut hovered, mut occluded) = (false, false);
+        let mut track = |origin, event: &WindowEvent| {
+            track_window_state(origin, event, &mut hovered, &mut occluded);
+            (hovered, occluded)
+        };
+        // An agent's move says nothing of the person's pointer; theirs does.
+        assert_eq!(track(InputOrigin::Agent, &moved), (false, false));
+        assert_eq!(track(InputOrigin::User, &moved), (true, false));
+        let left = WindowEvent::CursorLeft { device_id };
+        assert_eq!(track(InputOrigin::User, &left), (false, false));
+        let entered = WindowEvent::CursorEntered { device_id };
+        assert_eq!(track(InputOrigin::User, &entered), (true, false));
+        assert_eq!(
+            track(InputOrigin::User, &WindowEvent::Occluded(true)),
+            (true, true)
+        );
+        // Focus and other events change neither.
+        assert_eq!(
+            track(InputOrigin::User, &WindowEvent::Focused(false)),
+            (true, true)
+        );
+        assert_eq!(
+            track(InputOrigin::User, &WindowEvent::Occluded(false)),
+            (true, false)
+        );
     }
 
     #[test]

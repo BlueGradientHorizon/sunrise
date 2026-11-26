@@ -42,8 +42,8 @@ pub trait Hooks {
     ///
     /// Version 4 allows every finite replacement delta without a per-axis limit.
     ///
-    /// Version 5: `MoveCause::Carried` also covers a translating collider shoving a body
-    /// in its path, not just carrying one standing on it.
+    /// Version 5: `MoveCause::Carried` also covers a translating or turning collider shoving a
+    /// body in its path, not just carrying one standing on it.
     ///
     /// Version 6: fires on both sides (`side = "both"`) wherever a side simulates
     /// the body or applies a non-`SelfMovement` push; a `side = "server"` mod's

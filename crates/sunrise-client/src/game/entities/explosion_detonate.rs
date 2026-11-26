@@ -285,6 +285,7 @@ mod tests {
                     join: Default::default(),
                     id: CRYSTAL,
                     position: Vec3::new(1.0, 1.0, 0.0),
+                    previous: Vec3::new(1.0, 1.0, 0.0),
                     rotation: [0.0, 0.0],
                     fire: 0,
                     show_bottom: false,

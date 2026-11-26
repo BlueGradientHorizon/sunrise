@@ -20,12 +20,17 @@ const DEFAULT_WORKFLOW: &str = "sunrise-org/sunrise-mods/.github/workflows/relea
 const CALLER: &str = ".github/workflows/sunrise-release.yml";
 const CALLER_MARK: &str =
     "# Written by `cargo sunrise-mod release`, which rewrites it: edits here are replaced.\n";
-const NOT_REGISTERED: &str = "This repository isn't registered yet: register it at https://playsunrise.net/mods/submit, or with a Register issue on https://github.com/sunrise-org/sunrise-mods";
+pub(crate) const NOT_REGISTERED: &str = "This repository isn't registered yet: register it at https://playsunrise.net/mods/submit, or with a Register issue on https://github.com/sunrise-org/sunrise-mods";
 
-type Fetch<'a> = &'a dyn Fn(&str) -> Result<Option<String>, String>;
+pub(crate) type Fetch<'a> = &'a dyn Fn(&str) -> Result<Option<String>, String>;
 
-fn fetch(url: &str) -> Result<Option<String>, String> {
-    match sunrise_proxy::get(url, &[("User-Agent", "cargo-sunrise-mod")], None) {
+pub(crate) fn fetch(url: &str) -> Result<Option<String>, String> {
+    let authorization = github_authorization(url, |name| std::env::var(name).ok());
+    let mut headers = vec![("User-Agent", "cargo-sunrise-mod")];
+    if let Some(authorization) = &authorization {
+        headers.push(("Authorization", authorization));
+    }
+    match sunrise_proxy::get(url, &headers, None) {
         Ok(response) => response
             .into_string()
             .map(Some)
@@ -35,7 +40,23 @@ fn fetch(url: &str) -> Result<Option<String>, String> {
     }
 }
 
-fn registry_file(fetch: Fetch<'_>, name: &str) -> Result<String, String> {
+/// `Bearer <token>` for a GitHub API request (`https://api.github.com/`) when `GH_TOKEN` or
+/// `GITHUB_TOKEN` is set, in that order as the GitHub CLI reads them, so a batch of releases is
+/// not held to the 60 unauthenticated requests an hour. No other host is sent the token, and
+/// `sunrise_proxy::get` does not carry it to a redirect's destination.
+fn github_authorization(url: &str, var: impl Fn(&str) -> Option<String>) -> Option<String> {
+    if !url.starts_with("https://api.github.com/") {
+        return None;
+    }
+    ["GH_TOKEN", "GITHUB_TOKEN"]
+        .into_iter()
+        .filter_map(var)
+        .map(|token| token.trim().to_owned())
+        .find(|token| !token.is_empty())
+        .map(|token| format!("Bearer {token}"))
+}
+
+pub(crate) fn registry_file(fetch: Fetch<'_>, name: &str) -> Result<String, String> {
     let url = format!("{}/{name}", sunrise_addresses::MOD_REGISTRY_METADATA);
     fetch(&url)?.ok_or_else(|| format!("{url}: not found"))
 }
@@ -43,18 +64,17 @@ fn registry_file(fetch: Fetch<'_>, name: &str) -> Result<String, String> {
 /// `registry/repositories/<numeric repository id>.toml`: one file per registered repository.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Repository {
-    // A name can be reused after a rename: the ID in the file name is the identity.
-    #[serde(rename = "name")]
-    _name: String,
-    package: Vec<RegisteredPackage>,
+pub(crate) struct Repository {
+    /// `owner/name`; a name can be reused after a rename: the ID in the file name is the identity.
+    pub(crate) name: String,
+    pub(crate) package: Vec<RegisteredPackage>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct RegisteredPackage {
+pub(crate) struct RegisteredPackage {
     path: String,
-    project: String,
+    pub(crate) project: String,
 }
 
 /// The fields of `registry/projects/<project>/project.toml` a release must agree with.
@@ -66,11 +86,11 @@ struct ProjectRecord {
 }
 
 #[derive(Deserialize)]
-struct GitHubRepository {
-    id: u64,
+pub(crate) struct GitHubRepository {
+    pub(crate) id: u64,
 }
 
-fn github_name(origin: &str) -> Option<String> {
+pub(crate) fn github_name(origin: &str) -> Option<String> {
     let url;
     let path = if origin.contains("://") {
         url = url::Url::parse(origin).ok()?;
@@ -509,9 +529,9 @@ impl Change {
 }
 
 #[derive(Default)]
-struct Git {
+pub(crate) struct Git {
     #[cfg(test)]
-    env: Vec<(&'static str, std::ffi::OsString)>,
+    pub(crate) env: Vec<(&'static str, std::ffi::OsString)>,
 }
 
 impl Git {
@@ -523,7 +543,7 @@ impl Git {
         cmd
     }
 
-    fn text(
+    pub(crate) fn text(
         &self,
         root: &Path,
         args: impl IntoIterator<Item: AsRef<OsStr>>,

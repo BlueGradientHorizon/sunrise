@@ -67,6 +67,7 @@ pub mod inventory_effects;
 pub mod java_text;
 mod jei_sprites;
 pub mod jigsaw_block;
+pub mod mod_hooks;
 pub mod moving_colliders;
 pub mod terrain_model;
 pub use sunrise_polytone::creative_tabs as polytone_creative_tabs;
@@ -87,8 +88,8 @@ pub mod mesher;
 pub mod mipmap;
 pub mod mod_animations;
 pub mod mod_block_state_models;
-pub mod mod_browser;
 pub mod mod_chunk_tickets;
+pub mod mod_compute;
 pub mod mod_list;
 pub mod mod_model_loaders;
 pub mod mod_pipelines;
@@ -156,6 +157,7 @@ pub mod sprites;
 pub mod streaming;
 pub mod structure_block;
 pub(crate) mod studio_ui;
+pub(crate) mod sunrise_ui;
 pub mod tab_list;
 pub mod test_block;
 pub mod test_instance_block;
@@ -204,6 +206,8 @@ pub mod render_slots;
 
 pub mod render_views;
 
+#[cfg(test)]
+mod glsl_spirv_dump_tests;
 #[cfg(test)]
 mod test_log;
 #[cfg(test)]

@@ -16,6 +16,9 @@ mod command_failure_tests;
 #[path = "native_server/command_shape_tests.rs"]
 mod command_shape_tests;
 #[cfg(test)]
+#[path = "native_server/profile_tests.rs"]
+mod profile_tests;
+#[cfg(test)]
 #[path = "native_server/provider_tests.rs"]
 mod provider_tests;
 #[path = "native_server/registered_commands.rs"]
@@ -32,7 +35,7 @@ use super::{Dim, Game, respawn_anchor::RespawnConfig};
 pub(super) use argument_kinds::{CommandArguments, command_arguments};
 use argument_kinds::{
     UNCENTERED, argument_type, bounded_parser, custom_parser, custom_value, dimension_value,
-    nbt_value, parsed_type, parser, positional_value, resource_parser,
+    nbt_value, parsed_type, parser, positional_value, resource_or_tag_parser, resource_parser,
 };
 use mod_api::__private::game::*;
 pub(super) use registered_commands::{
@@ -113,14 +116,24 @@ fn usage_nodes(
         if optional_seen && !optional {
             return Err(format!("`{usage}`: `{word}` follows an optional argument"));
         }
+        if client && kind == "game_profile" {
+            return Err(format!(
+                "`{usage}`: `game_profile` requires a server command"
+            ));
+        }
         let resource = kind
             .strip_prefix("resource:")
             .map(|registry| resource_parser(registry).map_err(|e| format!("`{usage}`: {e}")))
+            .transpose()?;
+        let resource_or_tag = kind
+            .strip_prefix("resource_or_tag:")
+            .map(|registry| resource_or_tag_parser(registry).map_err(|e| format!("`{usage}`: {e}")))
             .transpose()?;
         let bounded = bounded_parser(kind)
             .transpose()
             .map_err(|e| format!("`{usage}`: {e}"))?;
         let builtin = resource
+            .or(resource_or_tag)
             .or(bounded)
             .or_else(|| parser(kind).map(|(parser, properties, _)| (parser, properties)));
         let (parser, properties, greedy, custom) = match builtin {
@@ -147,12 +160,12 @@ fn usage_nodes(
         if !properties.is_null() {
             node["properties"] = properties;
         }
-        if kind == "vec3_uncentered" {
+        if matches!(kind, "vec3_uncentered" | "vec2_uncentered") {
             node[UNCENTERED] = true.into();
         }
-        // A registered type goes out as the Brigadier type its kind names, which an unmodded
-        // client can read; it and the free `id`, which has no list of its own, ask the server
-        // (the mods' `tab_complete`).
+        // A registered type goes out as the Brigadier or vanilla parser its kind names, which an
+        // unmodded client can read; it and the free `id`, which has no list of its own, ask the
+        // server (the mods' `tab_complete`).
         if custom.is_some() || kind == "id" {
             if let Some(id) = custom {
                 node["custom_argument"] = id.into();
@@ -729,7 +742,7 @@ impl Game<'_> {
         action: PlayerAction,
     ) -> Result<ActionOutcome, ActionRefused> {
         let (gi, conn) = self.fake_action_actor(player, action)?;
-        self.perform_fake_action(gi, conn, action)
+        self.beside_listener_journal(|game| game.perform_fake_action(gi, conn, action))
     }
 
     /// A machine's one use on the persistent actor, with its private state put back even
@@ -741,6 +754,16 @@ impl Game<'_> {
         setup: PlayerActionSetup,
     ) -> Result<ScopedActionResult, ActionRefused> {
         let (gi, conn) = self.fake_action_actor(player, action)?;
+        self.beside_listener_journal(|game| game.perform_scoped(gi, conn, action, setup))
+    }
+
+    fn perform_scoped(
+        &mut self,
+        gi: usize,
+        conn: u32,
+        action: PlayerAction,
+        setup: PlayerActionSetup,
+    ) -> Result<ScopedActionResult, ActionRefused> {
         if !setup.eye.iter().all(|v| v.is_finite())
             || !setup.yaw.is_finite()
             || !setup.pitch.is_finite()
@@ -844,7 +867,7 @@ impl Game<'_> {
             }
         };
         if !self.lan_guest_swaps.is_empty()
-            || !self.transactions.is_empty()
+            || !(self.transactions.is_empty() || self.in_level_tick_boundary_alone())
             || self.fake_action.acting()
         {
             return Err(ActionRefused::Busy);
@@ -861,6 +884,33 @@ impl Game<'_> {
             return Err(ActionRefused::InvalidTarget);
         }
         Ok((gi, conn))
+    }
+
+    /// Whether the only open transaction is the one a server level tick's dispatch opens around
+    /// each listener (#5750): a machine's fake player acts from its level tick.
+    pub(super) fn in_level_tick_boundary_alone(&self) -> bool {
+        LevelTickListeners::marked() && self.transactions.len() == 1
+    }
+
+    /// Runs a fake player's action outside the level tick listener's own transaction, as it ran
+    /// before that listener boundary existed: the action is no part of the listener's journal,
+    /// so the listener's failure doesn't undo the action itself, and the action's hooks open and
+    /// commit their own transactions. A rollback of the listener's own earlier writes still
+    /// puts back what they changed, over the action's result at the same place. With no
+    /// transaction open this is just `act`.
+    pub(super) fn beside_listener_journal<T>(&mut self, act: impl FnOnce(&mut Self) -> T) -> T {
+        if self.transactions.is_empty() {
+            return act(self);
+        }
+        let frames = std::mem::take(&mut *self.transactions);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _outside = LevelTickListeners::mark(false);
+            act(self)
+        }));
+        // Anything the action left open nests in the listener's transaction.
+        let inner = std::mem::replace(&mut *self.transactions, frames);
+        self.transactions.extend(inner);
+        result.unwrap_or_else(|panic| std::panic::resume_unwind(panic))
     }
 
     fn perform_fake_action(
@@ -2607,6 +2657,16 @@ impl Game<'_> {
                     .try_into_api()
                     .expect("command item validation resolves registered items"),
             ),
+            // `ResourceOrTagKeyArgument.Result`: `#` names a tag, else a resource.
+            Arg::Resource(id) if matches!(ty, Some(ArgType::ResOrTagKey(_))) => {
+                let (tag, name) = id
+                    .strip_prefix('#')
+                    .map_or((false, &*id), |name| (true, name));
+                Value::ResourceOrTag {
+                    tag,
+                    id: mod_api::Identifier::parse(name).map_err(|_| err("command.failed", &[]))?,
+                }
+            }
             Arg::Resource(id) => {
                 Value::Id(mod_api::Identifier::parse(&id).map_err(|_| err("command.failed", &[]))?)
             }
@@ -2788,6 +2848,9 @@ impl Game<'_> {
         for argument in context.args {
             let ty = parsed_type(&self.ui.dispatcher.0, &context.nodes, argument.range);
             let value = match argument.value {
+                value if matches!(ty, Some(ArgType::GameProfile)) => {
+                    Value::GameProfiles(self.mod_game_profiles(&value)?)
+                }
                 Arg::Entity(selector) => {
                     // The parsed node, not its name, determines cardinality: usages may
                     // repeat an argument name or use different kinds on separate branches.
@@ -3014,19 +3077,54 @@ impl ScopedPlayerState {
     }
 }
 
-/// A fake player's `perform_action` in progress: set for its length by [`Acting`], whose drop
-/// clears it on every exit, an early return or a panic unwinding through a mod's hook, and the
-/// effect it stopped, cleared as each action starts.
+thread_local! {
+    static LEVEL_TICK_LISTENERS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Marks a server level tick's listeners while they run, with nothing open around the one
+/// transaction their dispatch opens for each (#5750): a fake player's action may run inside
+/// that one (`player_perform_action`), not inside one the listener opened itself. Dropping it
+/// puts back the mark it replaced, also when the listeners unwind.
+pub(in crate::game) struct LevelTickListeners(bool);
+
+impl LevelTickListeners {
+    /// Sets the mark to `on` until the returned guard drops.
+    pub(in crate::game) fn mark(on: bool) -> Self {
+        Self(LEVEL_TICK_LISTENERS.with(|mark| mark.replace(on)))
+    }
+    /// Whether a level tick's listeners are running, marked.
+    fn marked() -> bool {
+        LEVEL_TICK_LISTENERS.with(std::cell::Cell::get)
+    }
+}
+
+impl Drop for LevelTickListeners {
+    fn drop(&mut self) {
+        LEVEL_TICK_LISTENERS.with(|mark| mark.set(self.0));
+    }
+}
+
+/// A fake player's `perform_action`, or a mod's `PlayerRef::attack` or `MobRef::do_hurt_target`,
+/// in progress: set for its length by [`Acting`], whose drop clears it on every exit, an early
+/// return or a panic unwinding through a mod's hook, and the effect it stopped, cleared as each
+/// action starts.
 #[derive(Default)]
 pub(super) struct FakeAction {
     acting: AtomicBool,
+    /// The action is `PlayerRef::attack`: `Player.attack` alone, without its packet's swing.
+    unswung: AtomicBool,
     /// The first effect stopped since the action started.
     blocked: Mutex<Option<FakeEffect>>,
 }
 impl FakeAction {
-    /// Whether a fake player's action is running.
+    /// Whether a fake player's action, or a mod's attack, is running.
     pub(super) fn acting(&self) -> bool {
         self.acting.load(Ordering::Relaxed)
+    }
+    /// Whether the action running is a mod's `PlayerRef::attack`, which `swing_arm` leaves
+    /// without a swing: vanilla's `Player.attack` has none, the swing is its packet's.
+    pub(in crate::game) fn unswung(&self) -> bool {
+        self.unswung.load(Ordering::Relaxed)
     }
     fn block(&self, effect: FakeEffect) {
         // The first effect stopped is the one the action answers.
@@ -3036,16 +3134,21 @@ impl FakeAction {
             .get_or_insert(effect);
     }
 }
-/// Marks a fake player's action as running until it drops.
-struct Acting(Arc<FakeAction>);
+/// Marks a fake player's action, or a mod's attack, as running until it drops.
+pub(super) struct Acting(Arc<FakeAction>);
 impl Acting {
-    fn start(action: &Arc<FakeAction>) -> Self {
+    pub(super) fn start(action: &Arc<FakeAction>) -> Self {
         *action
             .blocked
             .lock()
             .unwrap_or_else(PoisonError::into_inner) = None;
         action.acting.store(true, Ordering::Relaxed);
         Self(Arc::clone(action))
+    }
+    /// [`Self::start`] for a mod's `PlayerRef::attack`, which runs without a swing.
+    pub(super) fn start_unswung(action: &Arc<FakeAction>) -> Self {
+        action.unswung.store(true, Ordering::Relaxed);
+        Self::start(action)
     }
     /// The effect this action stopped, if any.
     fn blocked(&self) -> Option<FakeEffect> {
@@ -3059,6 +3162,7 @@ impl Acting {
 impl Drop for Acting {
     fn drop(&mut self) {
         self.0.acting.store(false, Ordering::Relaxed);
+        self.0.unswung.store(false, Ordering::Relaxed);
     }
 }
 
@@ -3729,8 +3833,8 @@ mod tests {
         }
     }
 
-    const POSITIONED: &str = "kinds <at:vec3> <by:vec3_uncentered> <column:column_pos> \
-         <look:rotation> <level:dimension> <tag:nbt>";
+    const POSITIONED: &str = "kinds <at:vec3> <by:vec3_uncentered> <flat:vec2> \
+         <flat_raw:vec2_uncentered> <column:column_pos> <look:rotation> <level:dimension> <tag:nbt>";
 
     #[test]
     fn position_rotation_dimension_and_nbt_kinds_are_vanillas_parsers() {
@@ -3740,6 +3844,8 @@ mod tests {
         for (name, parser) in [
             ("at", "minecraft:vec3"),
             ("by", "minecraft:vec3"),
+            ("flat", "minecraft:vec2"),
+            ("flat_raw", "minecraft:vec2"),
             ("column", "minecraft:column_pos"),
             ("look", "minecraft:rotation"),
             ("level", "minecraft:dimension"),
@@ -3747,7 +3853,11 @@ mod tests {
         ] {
             node = &node["children"][name];
             assert_eq!(node["parser"], parser, "{name}");
-            assert_eq!(node["uncentered"] == true, name == "by", "{name}");
+            assert_eq!(
+                node["uncentered"] == true,
+                matches!(name, "by" | "flat_raw"),
+                "{name}"
+            );
         }
     }
 
@@ -3756,6 +3866,16 @@ mod tests {
         let (_, _, problems) = tree(&[
             mod_api::Command::new("go <to:vec3>"),
             mod_api::Command::new("go <to:vec3_uncentered>"),
+        ]);
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(problems[0].contains("another kind"), "{problems:?}");
+    }
+
+    #[test]
+    fn vec2_and_vec2_uncentered_do_not_share_a_node() {
+        let (_, _, problems) = tree(&[
+            mod_api::Command::new("go <to:vec2>"),
+            mod_api::Command::new("go <to:vec2_uncentered>"),
         ]);
         assert_eq!(problems.len(), 1, "{problems:?}");
         assert!(problems[0].contains("another kind"), "{problems:?}");
@@ -3794,10 +3914,19 @@ mod tests {
                 rotation,
             )
         };
-        let relative = "kinds ~1 ~ ~-1 ~1 ~ ~-1 ~3 ~-4 ~10 ~-5 minecraft:the_nether {}";
+        let relative =
+            "kinds ~1 ~ ~-1 ~1 ~ ~-1 ~1 ~-2 ~1 ~-2 ~3 ~-4 ~10 ~-5 minecraft:the_nether {}";
         assert_eq!(
             value(relative, "at", "vec3"),
             mod_api::CommandArgumentValue::Vec3([11.0, 70.0, -3.0])
+        );
+        assert_eq!(
+            value(relative, "flat", "vec2"),
+            mod_api::CommandArgumentValue::Vec2([11.0, -4.0])
+        );
+        assert_eq!(
+            value(relative, "flat_raw", "vec2_uncentered"),
+            mod_api::CommandArgumentValue::Vec2([11.0, -4.0])
         );
         assert_eq!(
             value(relative, "column", "column_pos"),
@@ -3807,8 +3936,8 @@ mod tests {
             value(relative, "look", "rotation"),
             mod_api::CommandArgumentValue::Rotation([55.0, 25.0])
         );
-        // A whole `x` and `z` is centred by `vec3` and kept by `vec3_uncentered`.
-        let absolute = "kinds 5 64 -7 5 64 -7 0 0 0 0 minecraft:overworld {}";
+        // A whole `x` and `z` is centred by `vec3`/`vec2` and kept by `*_uncentered`.
+        let absolute = "kinds 5 64 -7 5 64 -7 5 7 5 7 0 0 0 0 minecraft:overworld {}";
         assert_eq!(
             value(absolute, "at", "vec3"),
             mod_api::CommandArgumentValue::Vec3([5.5, 64.0, -6.5])
@@ -3817,6 +3946,17 @@ mod tests {
             value(absolute, "by", "vec3_uncentered"),
             mod_api::CommandArgumentValue::Vec3([5.0, 64.0, -7.0])
         );
+        assert_eq!(
+            value(absolute, "flat", "vec2"),
+            mod_api::CommandArgumentValue::Vec2([5.5, 7.5])
+        );
+        assert_eq!(
+            value(absolute, "flat_raw", "vec2_uncentered"),
+            mod_api::CommandArgumentValue::Vec2([5.0, 7.0])
+        );
+        // `vec2` refuses local `^` coordinates, matching `Vec2Argument.parse`.
+        let local = "kinds 0 0 0 0 0 0 ^1 ^2 0 0 0 0 0 0 minecraft:overworld {}";
+        assert!(dispatcher.parse(local, &registries).executable().is_err());
     }
 
     #[test]
@@ -6029,6 +6169,8 @@ mod tests {
             mod_api::Command::new("c_bpos <p:block_pos>"),
             mod_api::Command::new("c_vec <v:vec3>"),
             mod_api::Command::new("c_vecu <v:vec3_uncentered>"),
+            mod_api::Command::new("c_vec2 <v:vec2>"),
+            mod_api::Command::new("c_vec2u <v:vec2_uncentered>"),
             mod_api::Command::new("c_col <c:column_pos>"),
             mod_api::Command::new("c_rot <r:rotation>"),
             mod_api::Command::new("c_nbt <n:nbt>"),
@@ -6170,6 +6312,16 @@ mod tests {
                 event
                     .commands
                     .push(mod_api::Command::op("cop", 2).executes_client(|_, _| Some(1)));
+                let tagged = self.heard.clone();
+                event.commands.push(
+                    mod_api::Command::new(
+                        "cbiome <biome:resource_or_tag:minecraft:worldgen/biome>",
+                    )
+                    .executes_client(move |_, invocation| {
+                        tagged.lock().unwrap().push(invocation.clone());
+                        Some(1)
+                    }),
+                );
                 event.commands.push(
                     mod_api::Command::new("cserver <target:player>")
                         .executes_client(|_, _| Some(1)),
@@ -6203,7 +6355,9 @@ mod tests {
                     assert!(chat_tree.find("cmach").is_some());
                     assert!(chat_tree.find("cpanic").is_some());
                     assert!(chat_tree.find("csibling").is_some());
-                    assert!(chat_tree.find("cop").is_none());
+                    // An operator-level client usage is in the tree behind its level (#5654).
+                    let cop = chat_tree.find("cop").expect("an operator client command");
+                    assert_eq!(chat_tree.nodes[cop].permission, 2);
                     assert!(chat_tree.find("cserver").is_none());
                     let tp = chat_tree.find("tp").expect("tp redirect preserved");
                     let tp_target = chat_tree.nodes[tp].redirect.expect("tp redirect preserved");
@@ -6212,8 +6366,36 @@ mod tests {
 
                     // Unregistered or rejected roots return false so they proceed to the server.
                     assert_eq!(game.run_client_native_command("unknown_root foo"), None);
+                    // Below its level the local player can't run it; at the level it runs.
+                    game.ui.registries.permission = 0;
                     assert_eq!(game.run_client_native_command("cop"), None);
+                    game.ui.registries.permission = 2;
+                    assert_eq!(
+                        game.run_client_native_command("cop"),
+                        Some(ClientCommandOutcome::Success(1))
+                    );
+                    game.ui.registries.permission = 0;
                     assert_eq!(game.run_client_native_command("cserver @a"), None);
+                    // A resource-or-tag argument tells a `#tag` from an id (#5654).
+                    for (text, tag, id) in [
+                        ("cbiome #minecraft:is_ocean", true, "minecraft:is_ocean"),
+                        ("cbiome minecraft:plains", false, "minecraft:plains"),
+                    ] {
+                        assert_eq!(
+                            game.run_client_native_command(text),
+                            Some(ClientCommandOutcome::Success(1)),
+                            "{text}"
+                        );
+                        let invocation = heard.lock().unwrap().pop().unwrap();
+                        assert_eq!(
+                            invocation.argument("biome"),
+                            Some(&mod_api::CommandArgumentValue::ResourceOrTag {
+                                tag,
+                                id: mod_api::Identifier::parse(id).unwrap(),
+                            }),
+                            "{text}"
+                        );
+                    }
 
                     // Typed client invocation parses custom arguments, coordinates and optionals.
                     assert_eq!(
@@ -6894,6 +7076,175 @@ pub(super) mod fake_action_tests {
                 .unwrap();
             assert_eq!(rod.outcome, ActionOutcome::Consumed, "the rod casts");
             assert!(game.hook.is_none(), "no hook is left for nobody to reel in");
+        });
+    }
+
+    /// A machine acts through its fake player from its level tick (#5750): the transaction the
+    /// level tick's dispatch opens around the listener doesn't make the action `Busy`, while
+    /// one the listener opens itself still does. Pre uses the scoped action Create's deployer
+    /// uses; post the plain one.
+    #[test]
+    #[ignore = "daily"]
+    fn a_level_tick_listener_acts_through_its_fake_player() {
+        use super::super::native_entity_refs::tests::with_game;
+        use mod_api::{
+            Hooks, HostSide, HostTransaction, LevelTickPostEvent, LevelTickPreEvent, ModEntry,
+            PlayerActionSetup,
+        };
+        use std::sync::{Arc, Mutex};
+
+        type Answer = Result<ActionOutcome, ActionRefused>;
+        #[derive(Default)]
+        struct Seen {
+            player: Option<PlayerRef>,
+            /// The scoped action from `level_tick_pre`, with the log it holds.
+            setup: Option<PlayerActionSetup>,
+            /// Whether the dispatch's transaction was open, then each answer: the action
+            /// straight from the listener, then the one inside the listener's own transaction.
+            answers: Vec<(&'static str, bool, Answer, Answer)>,
+        }
+        struct Deployer(Arc<Mutex<Seen>>);
+
+        #[mod_api::__subscriptions]
+        impl Hooks for Deployer {
+            fn level_tick_pre(&self, host: HostSide, _: &mut LevelTickPreEvent) {
+                let HostSide::Server(host) = host else { return };
+                let mut seen = self.0.lock().unwrap();
+                let (Some(player), Some(setup)) = (seen.player, seen.setup.clone()) else {
+                    return;
+                };
+                let boundary = !host.transaction_matches(None);
+                let direct = player
+                    .perform_action_scoped(host, on_top([0, 63, 1]), setup.clone())
+                    .map(|result| result.outcome);
+                let nested = HostTransaction::transaction(host, |host, _| {
+                    Ok::<_, ()>(
+                        player
+                            .perform_action_scoped(host, on_top([0, 63, -1]), setup)
+                            .map(|result| result.outcome),
+                    )
+                })
+                .unwrap();
+                seen.answers.push(("pre", boundary, direct, nested));
+            }
+            fn level_tick_post(&self, host: HostSide, _: &mut LevelTickPostEvent) {
+                let HostSide::Server(host) = host else { return };
+                let mut seen = self.0.lock().unwrap();
+                let Some(player) = seen.player else { return };
+                let boundary = !host.transaction_matches(None);
+                let direct = player.perform_action(host, on_top([1, 63, 0]));
+                let nested = HostTransaction::transaction(host, |host, _| {
+                    Ok::<_, ()>(player.perform_action(host, on_top([-1, 63, 0])))
+                })
+                .unwrap();
+                seen.answers.push(("post", boundary, direct, nested));
+            }
+        }
+
+        let seen = Arc::new(Mutex::new(Seen::default()));
+        let mods = vec![ModEntry::new("deployer", Box::new(Deployer(seen.clone())))].into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                let (player, ..) = fake(game, Some("minecraft:oak_log"), 0);
+                seen.lock().unwrap().player = Some(player);
+                seen.lock().unwrap().setup = Some(PlayerActionSetup::new(
+                    Some(crate::game::api_values::test_snapshot(&ItemStack::new(
+                        "minecraft:oak_log",
+                        1,
+                    ))),
+                    [0.5, 64.0 + f64::from(1.62_f32), 0.5],
+                    0.0,
+                    60.0,
+                    false,
+                ));
+                let level = game.level(game.dim.id()).unwrap();
+                game.native_level_tick_pre(level);
+                game.native_level_tick_post(level);
+                let used = |stage| {
+                    (
+                        stage,
+                        true,
+                        Ok(ActionOutcome::Consumed),
+                        Err(ActionRefused::Busy),
+                    )
+                };
+                assert_eq!(seen.lock().unwrap().answers, [used("pre"), used("post")]);
+                let log = game.level_block_property(level, [0, 64, 1], "axis");
+                assert_eq!(
+                    log,
+                    Some("y"),
+                    "the pre listener's scoped use placed its log"
+                );
+                let log = game.level_block_property(level, [1, 64, 0], "axis");
+                assert_eq!(log, Some("y"), "the post listener's use placed the log");
+                assert_eq!(held(game, 2), None);
+                assert!(!game.has_open_transaction());
+            });
+        });
+    }
+
+    /// A mod's `block_interaction_range` (#5824) decides a block's reach: a use 10 blocks away is
+    /// out of reach for vanilla, and goes through once a mod answers for that block, as a
+    /// remote-access block lets a player act on the blocks around it. A menu's still-valid
+    /// reach asks the same.
+    #[test]
+    #[ignore = "daily"]
+    fn a_mods_interaction_range_lets_a_player_act_on_a_far_block() {
+        use super::super::native_entity_refs::tests::with_game;
+        use mod_api::{BlockInteractionRangeEvent, Hooks, ModEntry};
+
+        const FAR: [i32; 3] = [10, 63, 0];
+        struct RemoteReach;
+        #[mod_api::__subscriptions]
+        impl Hooks for RemoteReach {
+            fn block_interaction_range(
+                &self,
+                _: &dyn mod_api::LoopContext,
+                event: &mut BlockInteractionRangeEvent,
+            ) {
+                let [x, y, z] = FAR;
+                if event.pos == mod_api::BlockPos::new(x, y, z) {
+                    event.within = true;
+                }
+            }
+        }
+
+        // The client library reaches the hook through the game's installed callbacks.
+        crate::entry::install_client_hooks();
+        with_game(|game| {
+            let (player, ..) = fake(game, Some("minecraft:oak_log"), 0);
+            let stone = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:stone")
+                .unwrap();
+            game.world.set(FAR[0], FAR[1], FAR[2], stone).unwrap();
+            let far = |game: &Game<'_>, pos: [i32; 3]| {
+                let host = game.lan.as_ref().unwrap();
+                let g = host.hub.guests.iter().find(|g| g.uuid == 2).unwrap();
+                g.within_interaction_range(&game.loop_context, pos, 4.0)
+            };
+            assert_eq!(
+                game.player_perform_action(player, on_top(FAR)),
+                Err(ActionRefused::OutOfReach)
+            );
+            assert!(!far(game, FAR));
+            let mods = vec![ModEntry::new("remote_reach", Box::new(RemoteReach))].into();
+            mod_platform::testing::with_mods(mods, || {
+                assert!(far(game, FAR));
+                assert!(
+                    !far(game, [10, 63, 3]),
+                    "only the block the mod answers for"
+                );
+                assert_eq!(
+                    game.player_perform_action(player, on_top(FAR)),
+                    Ok(ActionOutcome::Consumed)
+                );
+            });
+            let level = game.level(game.dim.id()).unwrap();
+            let log = game.level_block_property(level, [10, 64, 0], "axis");
+            assert_eq!(log, Some("y"), "the far use placed the log");
         });
     }
 
@@ -7710,6 +8061,11 @@ pub(super) mod fake_action_tests {
         with_game(|game| {
             let (player, conn, _) = fake(game, None, 0);
             game.as_guest(conn, |g| g.attack_ticks = 2).unwrap();
+            // The base attack speed, 4: a full charge takes 5 ticks.
+            assert_eq!(
+                game.player_current_item_attack_strength_delay(player),
+                Some(5.0)
+            );
             for partial in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
                 assert_eq!(game.player_attack_strength_scale(player, partial), None);
                 game.as_guest(conn, |g| {

@@ -6,9 +6,9 @@ use super::Game;
 use core::ops::ControlFlow;
 use mod_api::world::mod_chunk_tickets::ModTicket;
 use mod_api::{
-    BlockHit, BlockTransformPreview, ChunkRef, ChunkStatus, ClipBlock, ClipFluid, GlobalPos, Hand,
-    Identifier, LevelReadError, LevelRef, LightLayer, MapState, PlayerRef, RespawnData,
-    TicketController, TicketOwner, Vec3,
+    BlockHit, BlockTransformPreview, ChunkRef, ChunkStatus, ClipBlock, ClipFluid, ClipOutcome,
+    CollisionContext, GlobalPos, Hand, Identifier, LevelReadError, LevelRef, LightLayer, MapState,
+    PlayerRef, RespawnData, TicketController, TicketOwner, Vec3,
 };
 use sunrise_client::{streaming::Streaming, world::World};
 use sunrise_core::{geometry::Direction, position::BlockPos};
@@ -677,10 +677,7 @@ impl Game<'_> {
         if !self.level_in_place(at.level) {
             return Err(mod_api::LevelReadError::Unavailable);
         }
-        let view = super::native_level_signals::ReadLevel {
-            game: self,
-            level: at.level,
-        };
+        let view = super::native_level_signals::ReadLevel::new(self, at.level, &self.world);
         let Some(site) = view.capability_site(at) else {
             return Err(mod_api::LevelReadError::Unavailable);
         };
@@ -868,7 +865,7 @@ impl Game<'_> {
         if !self.level_in_place(level) {
             return None;
         }
-        let view = super::native_level_signals::ReadLevel { game: self, level };
+        let view = super::native_level_signals::ReadLevel::new(self, level, &self.world);
         Some(f(&self.res.behaviours().signals(&view, &self.block_ticks)))
     }
     /// How strongly the block at `pos` powers the block on its `direction` side, power it
@@ -1017,17 +1014,31 @@ impl Game<'_> {
         self.after_commit(super::transactions::After::Capabilities((x, y, z)));
         true
     }
-    /// Two-position empty-context collider segment clip (`level_clip` with `ClipBlock::Collider`
-    /// and `ClipFluid::None`): whether it misses, with no `LivingEntity.hasLineOfSight(Entity)`
-    /// 128-block entity admission check. None as for `level_clip`.
+    /// Two-position empty-context collider segment clip (`level_clip` with `ClipBlock::Collider`,
+    /// `ClipFluid::None` and `CollisionContext::Empty`): whether it misses, with no
+    /// `LivingEntity.hasLineOfSight(Entity)` 128-block entity admission check. None when the
+    /// clip is an error or runs into a column that is not loaded.
     pub(super) fn level_line_of_sight(
         &self,
         level: LevelRef,
         from: [f64; 3],
         to: [f64; 3],
     ) -> Option<bool> {
-        let hit = self.level_clip(level, from, to, ClipBlock::Collider, ClipFluid::None)?;
-        Some(hit.miss)
+        match self
+            .level_clip(
+                level,
+                from,
+                to,
+                ClipBlock::Collider,
+                ClipFluid::None,
+                CollisionContext::Empty,
+            )
+            .ok()?
+        {
+            ClipOutcome::Miss => Some(true),
+            ClipOutcome::Hit(_) => Some(false),
+            _ => None,
+        }
     }
     /// Whether `level` is a current handle on the server: what the world's own data (its
     /// respawn data and maps, shared by its levels) needs.
@@ -3705,7 +3716,7 @@ mod tests {
                 None
             );
             // The level view a block part's callback gets (`ReadLevel`), on the server.
-            let view = crate::game::native_level_signals::ReadLevel { game, level };
+            let view = crate::game::native_level_signals::ReadLevel::new(game, level, &game.world);
             assert_eq!(LevelHost::sky_darken(&view), Some(darken));
             let stale = LevelRef::new(WorldEpoch::new(u64::MAX), game.dim.key());
             assert_eq!(game.level_brightness(stale, LightLayer::Sky, lit), None);
@@ -3722,10 +3733,7 @@ mod tests {
             game.world.day_time = 18000;
             let darken = game.sky_darken();
             assert!(darken > 0, "night darkens the client's sky");
-            let view = crate::game::native_level_signals::ReadLevel {
-                game,
-                level: client,
-            };
+            let view = crate::game::native_level_signals::ReadLevel::new(game, client, &game.world);
             assert_eq!(LevelHost::sky_darken(&view), Some(darken));
         });
     }

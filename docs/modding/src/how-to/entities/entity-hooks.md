@@ -369,3 +369,10 @@ guests alike: there is no take animation, the stat and criterion run.
 For a quest counter or custom pickup sound, count the amount as it stood when the notice arrived:
 after any listener edits `remaining`, `original` less `remaining` need not equal what the inventory
 took.
+
+A client of a server never runs the server's pickup hooks. There, listen to the client hook
+`client_take_item_entity` (vanilla's `ClientPacketListener.handleTakeItemEntity`): the server told
+this client that `collector` took `amount` of `collected`, an item, orb, arrow or trident the client
+tracks. It runs before the client shrinks or removes `collected`, so the host still reads it.
+`collector` is the local player's entity for its own pickups, another player or a mob for theirs,
+and None when the client doesn't track the collector.

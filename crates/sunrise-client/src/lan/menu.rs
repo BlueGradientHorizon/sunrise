@@ -242,7 +242,7 @@ impl Menu {
     /// not asked. A menu whose backing block entities are gone closes without asking.
     pub fn still_valid(&self, context: &LoopContext, world: &World, guest: &Guest) -> bool {
         if !self.asks_still_valid {
-            return self.slots.still_valid(world, guest, self.pos);
+            return self.slots.still_valid(context, world, guest, self.pos);
         }
         let block = match self.slots {
             Slots::Block(k) | Slots::Double(k, _) => Some(k),
@@ -250,12 +250,12 @@ impl Menu {
             Slots::Native => None,
         };
         if block.is_some_and(|(_, y, _)| y == VEHICLE_KEY_Y) {
-            return self.slots.still_valid(world, guest, self.pos);
+            return self.slots.still_valid(context, world, guest, self.pos);
         }
         if !self.slots.valid(world) {
             return false;
         }
-        let mut valid = self.slots.in_reach(guest, self.pos);
+        let mut valid = self.slots.in_reach(context, guest, self.pos);
         let opening_item = self.opening_item.as_ref().map(|(hand, opening)| {
             let stack = match hand {
                 Hand::Main => guest.inventory.get(guest.selected).and_then(Option::as_ref),
@@ -488,18 +488,25 @@ impl Slots {
     /// `Container.stillValid` for the guest: the block entities are there
     /// and the guest is within reach of each (`stillValidBlockEntity`). The
     /// ender chest's block is `at` (`PlayerEnderChestContainer.activeChest`).
-    pub fn still_valid(self, world: &World, guest: &Guest, at: Option<(i32, i32, i32)>) -> bool {
-        self.valid(world) && self.in_reach(guest, at)
+    pub fn still_valid(
+        self,
+        context: &LoopContext,
+        world: &World,
+        guest: &Guest,
+        at: Option<(i32, i32, i32)>,
+    ) -> bool {
+        self.valid(world) && self.in_reach(context, guest, at)
     }
     /// The reach half of `still_valid`: the guest is within its block
-    /// interaction range plus 4 of each block behind the slots.
-    fn in_reach(self, guest: &Guest, at: Option<(i32, i32, i32)>) -> bool {
+    /// interaction range plus 4 of each block behind the slots, as a mod's
+    /// `block_interaction_range` may answer.
+    fn in_reach(self, context: &LoopContext, guest: &Guest, at: Option<(i32, i32, i32)>) -> bool {
         let ender_chest = if self == Slots::Ender { at } else { None };
         // A vehicle's container is kept under a key, not a block: the game
         // checks its reach to the vehicle (`isChestVehicleStillValid`).
-        self.halves()
-            .chain(ender_chest)
-            .all(|(x, y, z)| y == VEHICLE_KEY_Y || guest.within_block_range([x, y, z], 4.0))
+        self.halves().chain(ender_chest).all(|(x, y, z)| {
+            y == VEHICLE_KEY_Y || guest.within_interaction_range(context, [x, y, z], 4.0)
+        })
     }
     /// Container slot `n`.
     pub fn get(self, world: &World, guest: &Guest, mut n: usize) -> Option<ItemStack> {

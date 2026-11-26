@@ -167,6 +167,14 @@ pub enum RegistrationAppend {
     Attributed,
 }
 
+/// When an individual listener gets its own server journal.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ListenerTransaction {
+    Always,
+    WhenOpen,
+}
+
 /// One hook point: a moment the game tells mods about.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Hook {
@@ -223,6 +231,8 @@ pub struct Hook {
     pub stack_count: Option<StackCount>,
     /// Rebuild a listener event from its original inputs for every subscriber.
     pub event_per_listener: bool,
+    /// Undo a failing listener's writes before the dispatcher contains its unwind.
+    pub listener_transaction: Option<ListenerTransaction>,
     /// A setter callback skips its own reentry. A fault quarantines that subscriber without
     /// aborting an enclosing action that called the setter.
     pub independent_listener: bool,
@@ -349,6 +359,7 @@ struct HookEntry {
     stack_count: Option<StackCount>,
     #[serde(default)]
     event_per_listener: bool,
+    listener_transaction: Option<ListenerTransaction>,
     #[serde(default)]
     independent_listener: bool,
     inert: Option<String>,
@@ -611,6 +622,7 @@ impl Hook {
             engine_inert,
             stack_count: entry.stack_count,
             event_per_listener: entry.event_per_listener,
+            listener_transaction: entry.listener_transaction,
             independent_listener: entry.independent_listener,
         })
     }
@@ -998,6 +1010,7 @@ impl Hook {
             engine_inert: false,
             stack_count: None,
             event_per_listener: false,
+            listener_transaction: None,
             independent_listener: false,
         }
     }

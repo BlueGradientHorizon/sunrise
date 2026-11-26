@@ -1,3 +1,4 @@
+use super::stock_layer_mask::StockLayerMask;
 use super::*;
 use sunrise_client::mobs::{anim, render};
 
@@ -7,18 +8,71 @@ impl render::RenderDataSource for Game<'_> {
     }
 
     fn equipment_layers(&self, mob: &Mob) -> Vec<render::Layer> {
-        self.mob_equipment_layers(mob, super::equipment_piece::EquipmentPass::Draw)
+        self.mob_equipment_layers(
+            mob,
+            super::equipment_piece::EquipmentPass::Draw,
+            StockLayerMask::EMPTY,
+        )
     }
 
     fn equipment_inventory(&self, mob: &Mob) -> Vec<render::Layer> {
-        self.mob_equipment_layers(mob, super::equipment_piece::EquipmentPass::TextureInventory)
+        self.mob_equipment_layers(
+            mob,
+            super::equipment_piece::EquipmentPass::TextureInventory,
+            StockLayerMask::EMPTY,
+        )
     }
 
     fn humanoid_setup(&self) -> Option<&dyn anim::HumanoidSetup> {
         mod_api::__private::listened(mod_api::HookId::HumanoidSetupAnim)
             .then_some(self as &dyn anim::HumanoidSetup)
     }
+
+    fn variants(&self) -> Option<&sunrise_client::mobs::variants::VariantTables> {
+        Some(self.world_variants())
+    }
 }
+
+/// A living-entity draw adapter that lends a target's hidden stock-layer mask to the model
+/// renderer's equipment lookup, including on the GPU skinning path.
+pub(in crate::game) struct HiddenLayersData<'a, 'game> {
+    pub(in crate::game) game: &'a Game<'game>,
+    pub(in crate::game) hidden_layers: StockLayerMask,
+}
+
+impl render::RenderDataSource for HiddenLayersData<'_, '_> {
+    fn mob_data(&self) -> &sunrise_client::mobs::MobData {
+        self.game.res.mob_data()
+    }
+
+    fn equipment_layers(&self, mob: &Mob) -> Vec<render::Layer> {
+        self.game.mob_equipment_layers(
+            mob,
+            super::equipment_piece::EquipmentPass::Draw,
+            self.hidden_layers,
+        )
+    }
+
+    fn equipment_inventory(&self, mob: &Mob) -> Vec<render::Layer> {
+        self.game.mob_equipment_layers(
+            mob,
+            super::equipment_piece::EquipmentPass::TextureInventory,
+            StockLayerMask::EMPTY,
+        )
+    }
+
+    fn humanoid_setup(&self) -> Option<&dyn anim::HumanoidSetup> {
+        render::RenderDataSource::humanoid_setup(self.game)
+    }
+
+    fn variants(&self) -> Option<&sunrise_client::mobs::variants::VariantTables> {
+        render::RenderDataSource::variants(self.game)
+    }
+}
+
+#[cfg(test)]
+#[path = "tests/hidden_layers_variants_tests.rs"]
+mod hidden_layers_variants_tests;
 
 impl anim::HumanoidSetup for Game<'_> {
     fn before_arm_pose(&self, mob: &Mob, state: &anim::State<'_>, poses: &mut anim::Poses) {
@@ -39,6 +93,7 @@ impl anim::HumanoidSetup for Game<'_> {
             }),
             ticks_using_item: mob.extra.using_item,
             use_animation: mob.extra.use_animation,
+            is_swinging: mob.is_swinging(),
             main_arm_pose: main.try_into_api().unwrap(),
             off_arm_pose: off.try_into_api().unwrap(),
         };

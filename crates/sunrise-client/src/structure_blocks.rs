@@ -150,6 +150,18 @@ fn generated_block_entity(block: &str, nbt: &Compound) -> Option<BlockEntity> {
         }
     });
     let id = declared.or_else(|| fallback.as_ref().map(BlockEntity::id))?;
+    // A mod container loads as a saved one does: its declared slots, its table before
+    // its items.
+    if declared.is_some() && crate::save::block_mod_item_slots(block) > 0 {
+        let mut tag = nbt.clone();
+        tag.insert("id".into(), Tag::String(id.into()));
+        for axis in ["x", "y", "z"] {
+            tag.insert(axis.into(), Tag::Int(0));
+        }
+        return crate::save::decode_block_entity_for_block(&Tag::Compound(tag), block)
+            .map(|(_, entity)| entity)
+            .or(fallback);
+    }
     let mut tag = nbt.clone();
     // RandomizableContainer.tryLoadLootTable: with a table the items are not read.
     if declared.is_none() && text(&tag, "LootTable").is_some() {
@@ -181,22 +193,70 @@ pub fn block_entities(
     Vec<((i32, i32, i32), BlockEntity)>,
     std::collections::HashMap<(i32, i32, i32), crate::save::PendingContainerLoot>,
 ) {
-    let mut out = Vec::new();
-    let mut pending = std::collections::HashMap::new();
-    for (pos, nbt) in &chunk.block_entities {
+    let promoted = promote(&chunk.block_entities, |[x, y, z]| chunk.block_name(x, y, z));
+    (promoted.modelled, promoted.pending_loot)
+}
+
+/// A generated chunk's pending block-entity data, promoted as `LevelChunk` promotes its
+/// `pendingBlockEntities` when it becomes a full chunk.
+pub struct Promoted {
+    /// The block entities the client models, by position.
+    pub modelled: Vec<((i32, i32, i32), BlockEntity)>,
+    /// The loot tables their containers wait with (`RandomizableContainer`).
+    pub pending_loot: std::collections::HashMap<(i32, i32, i32), crate::save::PendingContainerLoot>,
+    /// The data of a block entity the client does not model, with its `id`, `x`, `y` and `z`,
+    /// kept as a loaded chunk keeps it.
+    pub unmodelled: Vec<Tag>,
+}
+
+/// `LevelChunk.promotePendingBlockEntity` for each of `pending` (absolute positions, in
+/// placement order), where `block_name` names the block at a position: the data becomes the
+/// block entity of that block, or is dropped if the block has none.
+pub fn promote<'b>(
+    pending: &[([i32; 3], Compound)],
+    block_name: impl Fn([i32; 3]) -> &'b str,
+) -> Promoted {
+    let mut promoted = Promoted {
+        modelled: Vec::new(),
+        pending_loot: std::collections::HashMap::new(),
+        unmodelled: Vec::new(),
+    };
+    for (pos, nbt) in pending {
         let [x, y, z] = *pos;
-        let Some(entity) = generated_block_entity(chunk.block_name(x, y, z), nbt) else {
+        let block = block_name(*pos);
+        if let Some((entity, loot)) = generated_container(block, nbt) {
+            if let Some(loot) = loot {
+                promoted.pending_loot.insert((x, y, z), loot);
+            }
+            promoted.modelled.push(((x, y, z), entity));
+            continue;
+        }
+        // The block entities Sunrise does not model (decorated pots with their sherds and loot
+        // table) stay as placed, as a loaded chunk's do.
+        let Some(id) = crate::lan::chunks::block_entity_type(block) else {
             continue;
         };
-        if matches!(entity, BlockEntity::Chest(_))
-            && let Some(loot) =
-                crate::save::PendingContainerLoot::from_tag(&Tag::Compound(nbt.clone()))
-        {
-            pending.insert((x, y, z), loot);
+        let mut nbt = nbt.clone();
+        nbt.insert("id".into(), Tag::String(id.into()));
+        for (key, v) in ["x", "y", "z"].into_iter().zip(pos) {
+            nbt.insert(key.into(), Tag::Int(*v));
         }
-        out.push(((x, y, z), entity));
+        promoted.unmodelled.push(Tag::Compound(nbt));
     }
-    (out, pending)
+    promoted
+}
+
+/// One generated block entity at `block`, and the loot table its container waits with
+/// (a chest's, or a mod container's: `RandomizableContainer`).
+pub fn generated_container(
+    block: &str,
+    nbt: &Compound,
+) -> Option<(BlockEntity, Option<crate::save::PendingContainerLoot>)> {
+    let entity = generated_block_entity(block, nbt)?;
+    let loot = crate::save::randomizable_container(&entity, block)
+        .then(|| crate::save::PendingContainerLoot::from_tag(&Tag::Compound(nbt.clone())))
+        .flatten();
+    Some((entity, loot))
 }
 
 #[cfg(test)]

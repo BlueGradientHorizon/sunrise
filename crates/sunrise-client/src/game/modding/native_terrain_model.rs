@@ -25,12 +25,13 @@ impl Game<'_> {
         if fields.generation != self.standalone_geometry.generation() {
             return Err(ModelError::StaleModel);
         }
-        let faces = self
+        let (faces, special) = self
             .standalone_geometry
             .instance_slot(fields.slot)
-            .and_then(|_| self.model_faces(fields.slot))
+            .and_then(|slot| Some((self.model_faces(fields.slot)?, slot.special)))
             .ok_or(ModelError::UnknownModel)?;
         let layers = &self.pack.render.sprite_layers;
+        let color = options.color;
         draw_terrain_model(
             draw,
             faces,
@@ -41,6 +42,11 @@ impl Game<'_> {
                     .copied()
             },
             options,
+            |pose, light, scope| {
+                if let Some(state) = special {
+                    self.special_model_part(state, pose, light, color, scope);
+                }
+            },
         );
         Ok(())
     }
@@ -75,13 +81,14 @@ fn engine_options(options: TerrainModelOptions<'_>) -> NativeModelRenderOptions<
     }
 }
 
-/// Appends each valid quad of `faces` under `draw`'s pose within `draw`'s device-derived batch
-/// capacity.
+/// Appends each valid quad of `faces` under `draw`'s pose, then `special`'s vertices under the
+/// same pose and light, within `draw`'s device-derived batch capacity.
 pub(super) fn draw_terrain_model(
     draw: &mut BlockEntityDraw,
     faces: &[BakedFace],
     sprite_layer: impl Fn(&str) -> Option<u32>,
     options: TerrainModelOptions<'_>,
+    special: impl FnOnce(glam::Mat4, u32, &mut sunrise_client::gfx::EntityQuadScope<'_>),
 ) {
     let pose = draw.pose();
     let light = draw.element_ambient();
@@ -99,6 +106,7 @@ pub(super) fn draw_terrain_model(
             sprite_layer,
             |quad| scope.submit_quad(quad),
         );
+        special(pose, light, &mut scope);
     }
     draw.lit_since(start, BlockEntityDraw::cell_centre, draw.light() & 0xffff);
 }
@@ -169,7 +177,7 @@ mod tests {
             Vec::new(),
         )
         .with_quad_budget(capacity, reserved_quads);
-        draw_terrain_model(&mut draw, faces, sprite, options);
+        draw_terrain_model(&mut draw, faces, sprite, options, |_, _, _| {});
         draw.into_vertices()
     }
 
@@ -266,7 +274,7 @@ mod tests {
             );
             draw.unlit(unlit);
             let options = TerrainModelOptions::default().with_shade(TerrainShade::Model);
-            draw_terrain_model(&mut draw, &faces, sprite, options);
+            draw_terrain_model(&mut draw, &faces, sprite, options, |_, _, _| {});
             draw.into_vertices()
         };
         let unlit = drawn(true);

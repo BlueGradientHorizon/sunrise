@@ -137,7 +137,13 @@ impl Game<'_> {
         let own = self.use_duration(&stack);
         let (mut duration, mut canceled) = (own, false);
         let hand = self.hand;
-        self.native_living_entity_use_item_start(&stack, None, hand, &mut duration, &mut canceled);
+        self.native_living_entity_use_item_start(
+            &stack,
+            Some(self.own_entity_id()),
+            hand,
+            &mut duration,
+            &mut canceled,
+        );
         let Some(ticks_set) = start_of(own, duration, canceled) else {
             return false;
         };
@@ -235,7 +241,7 @@ impl Game<'_> {
         if self.finish_drinking(slot, stack) {
             self.use_item_finished(stack);
             self.use_vibration(stack, "minecraft:item_interact_finish");
-            self.stopped_using(stack, None, hand, 0);
+            self.stopped_using(stack, Some(self.own_entity_id()), hand, 0);
             return;
         }
         self.using = None;
@@ -249,7 +255,7 @@ impl Game<'_> {
         self.use_item_finished(stack);
         // `LivingEntity.completeUsingItem` ends with `stopUsingItem`.
         self.use_vibration(stack, "minecraft:item_interact_finish");
-        self.stopped_using(stack, None, hand, 0);
+        self.stopped_using(stack, Some(self.own_entity_id()), hand, 0);
     }
     /// `LivingEntityUseItemEvent.Finish` after `finishUsingItem` of `stack`
     /// (no ticks left): the hand holds what a mod made the result.
@@ -257,7 +263,13 @@ impl Game<'_> {
         let mut result = self.held().cloned();
         let before = result.clone();
         let hand = self.hand;
-        self.native_living_entity_use_item_finish(stack, None, hand, 0, &mut result);
+        self.native_living_entity_use_item_finish(
+            stack,
+            Some(self.own_entity_id()),
+            hand,
+            0,
+            &mut result,
+        );
         if result != before {
             *self.held_mut() = result.filter(|s| s.count > 0);
         }
@@ -280,18 +292,28 @@ impl Game<'_> {
         self.apply_use_cooldown(stack);
         let mut result = self.finish_result(stack, info);
         let hand = hand_of(Some((slot, 0))).unwrap_or(self.hand);
-        self.native_living_entity_use_item_finish(stack, None, hand, 0, &mut result);
+        self.native_living_entity_use_item_finish(
+            stack,
+            Some(self.own_entity_id()),
+            hand,
+            0,
+            &mut result,
+        );
         let before = self.creative_stacks();
-        if !self.creative && stack.count == 1 && self.consumable(stack).is_some() {
-            if self.stack_in(slot) != Some(stack) {
-                return;
+        'write: {
+            if !self.creative && stack.count == 1 && self.consumable(stack).is_some() {
+                // A listener replaced the used-up stack: its stack stays, and only the
+                // hand write is skipped. `stopUsingItem` still ends the use below.
+                if self.stack_in(slot) != Some(stack) {
+                    break 'write;
+                }
+                *self.stack_in_mut(slot) = None;
+                self.player_item_destroyed(stack, Some(hand));
             }
-            *self.stack_in_mut(slot) = None;
-            self.player_item_destroyed(stack, Some(hand));
+            *self.stack_in_mut(slot) = result.filter(|s| s.count > 0);
+            self.remote_synced_since(&before);
         }
-        *self.stack_in_mut(slot) = result.filter(|s| s.count > 0);
-        self.remote_synced_since(&before);
-        self.stopped_using(stack, None, hand, 0);
+        self.stopped_using(stack, Some(self.own_entity_id()), hand, 0);
     }
     /// What `Item.finishUsingItem` leaves in the hand on a server's client: a
     /// stack that is not a consumable stays as it is (a spyglass); a
@@ -319,7 +341,13 @@ impl Game<'_> {
         let before = ticks_left(self.use_duration, ticks);
         let (mut remaining, mut canceled) = (before, false);
         let hand = self.used_hand().unwrap_or(self.hand);
-        self.native_living_entity_use_item_tick(stack, None, hand, &mut remaining, &mut canceled);
+        self.native_living_entity_use_item_tick(
+            stack,
+            Some(self.own_entity_id()),
+            hand,
+            &mut remaining,
+            &mut canceled,
+        );
         let (left, set) = tick_left(before, remaining, canceled, self.use_start.ticks_set);
         self.use_start.ticks_set = set;
         self.use_duration = duration_leaving(ticks, left);
@@ -331,7 +359,7 @@ impl Game<'_> {
         let using = self.using;
         let remaining = ticks_left(self.use_duration, ticks);
         if remaining > 0 {
-            self.native_on_use_tick(stack, None, remaining);
+            self.native_on_use_tick(stack, Some(self.own_entity_id()), remaining);
         }
         self.using == using
     }
@@ -351,7 +379,13 @@ impl Game<'_> {
         let mut canceled = false;
         let remaining = ticks_left(self.use_duration, ticks);
         let hand = self.hand;
-        self.native_living_entity_use_item_stop(stack, None, hand, remaining, &mut canceled);
+        self.native_living_entity_use_item_stop(
+            stack,
+            Some(self.own_entity_id()),
+            hand,
+            remaining,
+            &mut canceled,
+        );
         !canceled
     }
     /// A mod's `Item.releaseUsing` of `stack` used `ticks`: when it says it
@@ -359,7 +393,7 @@ impl Game<'_> {
     pub(super) fn mod_release_using(&mut self, stack: &ItemStack, ticks: u32) {
         let mut used = false;
         let remaining = ticks_left(self.use_duration, ticks);
-        self.native_release_using(stack, None, remaining, &mut used);
+        self.native_release_using(stack, Some(self.own_entity_id()), remaining, &mut used);
         if used {
             self.apply_use_cooldown(stack);
         }

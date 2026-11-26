@@ -896,6 +896,7 @@ impl<'r> Game<'r> {
             causing,
             direct: info.direct_id as i32,
             position: Some([info.position.x, info.position.y, info.position.z]),
+            direct_type: None,
         };
         let vanilla = self.saved_refuses_damage(id, info.damage_type, creative);
         crate::game::entity::damage_level_of!(self, self.combat.attack(), no_push, None)

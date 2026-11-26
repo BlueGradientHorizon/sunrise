@@ -203,6 +203,7 @@ class UntrustedBuildTests(unittest.TestCase):
 
     def setUp(self):
         self.game = (WORKFLOWS / "game-build.yml").read_text()
+        self.exporters = (WORKFLOWS / "exporters.yml").read_text()
 
     def test_no_nightly_build_is_trusted(self):
         # The train only starts `nightly build` (Nightly only since 2026-10-28); it builds nothing itself.
@@ -224,12 +225,14 @@ class UntrustedBuildTests(unittest.TestCase):
         # run on Dyna's runner for an untrusted build only, never sharing a trusted build with pull requests' jobs.
         self.assertNotIn("MAC_RUNNER", self.game)
         self.assertNotIn('"macOS"', self.game)
-        exporters = next(line for line in self.game.splitlines() if "runs-on:" in line and "NIGHTLY_EXPORTERS_RUNNER" in line)
+        self.assertNotIn('"macOS"', self.exporters)
+        exporters = next(line for line in self.exporters.splitlines() if "runs-on:" in line and "NIGHTLY_EXPORTERS_RUNNER" in line)
         self.assertIn("!inputs.trusted && vars.DYNA_CI_SELF_HOSTED == 'true' && vars.NIGHTLY_EXPORTERS_RUNNER", exporters)
 
     def test_a_trusted_build_never_reads_the_shared_sccache(self):
-        calls = self.game.count("bash tools/ci/runner-env.sh")
-        self.assertEqual(self.game.count("SUNRISE_NO_SCCACHE: ${{ inputs.trusted && '1' || '' }}"), calls)
+        both = self.game + self.exporters
+        calls = both.count("bash tools/ci/runner-env.sh")
+        self.assertEqual(both.count("SUNRISE_NO_SCCACHE: ${{ inputs.trusted && '1' || '' }}"), calls)
         env = (Path(__file__).resolve().parents[1] / "tools/ci/runner-env.sh").read_text()
         self.assertEqual(env.count('-z "${SUNRISE_NO_SCCACHE:-}"'), 2)
 
@@ -664,3 +667,49 @@ class VerifySumsTests(unittest.TestCase):
                 else:
                     with self.assertRaisesRegex(SystemExit, "is no Ed25519 public key"):
                         nightly.release_keys()
+
+
+class SdkBodyTests(unittest.TestCase):
+    def index(self, previous="p" * 40, changes=(), notes=(), source="breaking"):
+        surface = {"hash": "h"}
+        if previous:
+            surface.update(previous=previous, source=source, changes=list(changes), notes=list(notes))
+        return {"build": {"commit": "c" * 40}, "surface": surface}
+
+    def test_notes_naming_the_earliest_change_come_first(self):
+        notes = [{"ids": ["item:b"], "why": "WHY-LATE"},
+                 {"ids": ["item:z", "hook:a"], "why": "WHY-BREAKING", "migrate": "use the new hook"}]
+        body = nightly.sdk_body(self.index(changes=["hook:a", "item:b", "item:z"], notes=notes))
+        self.assertLess(body.index("WHY-BREAKING"), body.index("WHY-LATE"))
+        self.assertIn("Migrate: use the new hook", body)
+        self.assertIn("`hook:a`", body)
+        self.assertIn("Changes since sdk-" + "p" * 40, body)
+        self.assertIn("breaking", body)
+
+    def test_no_previous_says_there_is_no_comparison(self):
+        body = nightly.sdk_body(self.index(previous=None))
+        self.assertIn("c" * 40, body)
+        self.assertIn("no comparison", body)
+        self.assertNotIn("Changes since", body)
+
+    def test_the_body_stops_at_a_whole_note_under_the_cap(self):
+        notes = [{"ids": [f"item:{n}"], "why": f"NOTE-{n} " + "x" * 100} for n in range(10)]
+        changes = [f"item:{n}" for n in range(10)]
+        with mock.patch.object(nightly, "GITHUB_RELEASE_BODY_LIMIT", 800):
+            body = nightly.sdk_body(self.index(changes=changes, notes=notes))
+        self.assertLessEqual(len(body), 800)
+        self.assertIn("NOTE-0 ", body)
+        self.assertNotIn("NOTE-9 ", body)
+        shown = body.count("NOTE-")
+        self.assertIn(f"The remaining notes ({10 - shown}) are in sdk.json's `surface.notes`", body)
+        for n in range(shown):
+            self.assertIn("x" * 100, body.split(f"NOTE-{n} ")[1].split("\n")[0])
+
+    def test_changes_no_note_names_are_counted_not_listed(self):
+        changes = [f"item:{n}" for n in range(300)]
+        notes = [{"ids": ["item:0"], "why": "WHY"}]
+        body = nightly.sdk_body(self.index(changes=changes, notes=notes))
+        self.assertIn("299 changed records", body)
+        self.assertIn("cargo sunrise-mod sdk diff", body)
+        self.assertNotIn("item:1`", body)
+        self.assertNotIn("item:299", body)

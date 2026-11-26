@@ -181,13 +181,6 @@ impl Game<'_> {
                 &command.usage,
                 call,
             );
-            if command.level != 0 {
-                log::warn!(
-                    "Sunrise: mod {owner} client command `{}` was left out: it has an operator level",
-                    command.usage
-                );
-                continue;
-            }
             usages.push(command);
             executors.push(Some(executor));
         }
@@ -283,9 +276,10 @@ pub struct UiState {
     /// Overworld's while empty. The totals of the others are in `command_clocks`.
     pub active_clock: String,
     pub end_clock: WorldClock,
-    /// Time markers and timelines of the overworld clock.
-    pub markers: BTreeMap<String, TimeMarker>,
-    pub timelines: BTreeMap<String, Option<i64>>,
+    /// Time markers by `(clock_id, marker_id)` and timelines by `timeline_id -> (clock_id, period)`
+    /// from the world's `minecraft:timeline` registry.
+    pub markers: BTreeMap<(String, String), TimeMarker>,
+    pub timelines: BTreeMap<String, (String, Option<i64>)>,
     /// 0 peaceful .. 3 hard.
     pub difficulty: u8,
     /// Effective HUD visibility, which native mods can change.
@@ -431,10 +425,6 @@ struct ResourceIds {
     enchantments: Vec<String>,
     structures: Vec<String>,
     biomes: Vec<String>,
-    clocks: Vec<String>,
-    /// The overworld clock's timelines, their periods and time markers.
-    timelines: Vec<(String, Option<i64>)>,
-    markers: Vec<(String, TimeMarker)>,
 }
 static RESOURCE_IDS: Mutex<Vec<(PathBuf, Arc<ResourceIds>)>> = Mutex::new(Vec::new());
 
@@ -455,44 +445,6 @@ fn json_ids_in(dir: &Path) -> Vec<String> {
     out
 }
 
-/// The overworld clock's timelines (with their periods) and their time
-/// markers, read from `data/minecraft/timeline`.
-fn overworld_timelines(root: &Path) -> (Vec<(String, Option<i64>)>, Vec<(String, TimeMarker)>) {
-    let dir = root.join("data/minecraft/timeline");
-    let (mut timelines, mut markers) = (Vec::new(), Vec::new());
-    for name in json_ids_in(&dir) {
-        let path = dir.join(format!("{}.json", name.trim_start_matches("minecraft:")));
-        let Ok(v) =
-            serde_json::from_slice::<serde_json::Value>(&std::fs::read(path).unwrap_or_default())
-        else {
-            continue;
-        };
-        if v["clock"].as_str() != Some("minecraft:overworld") {
-            continue;
-        }
-        let period = v["period_ticks"].as_i64();
-        timelines.push((name.clone(), period));
-        for (marker, def) in v["time_markers"].as_object().into_iter().flatten() {
-            let (ticks, show) = match def {
-                serde_json::Value::Number(n) => (n.as_i64().unwrap_or(0), false),
-                other => (
-                    other["ticks"].as_i64().unwrap_or(0),
-                    other["show_in_commands"].as_bool().unwrap_or(false),
-                ),
-            };
-            markers.push((
-                marker.clone(),
-                TimeMarker {
-                    ticks,
-                    period,
-                    show,
-                },
-            ));
-        }
-    }
-    (timelines, markers)
-}
-
 fn resource_ids(root: &Path) -> Arc<ResourceIds> {
     let mut cache = RESOURCE_IDS.lock().unwrap_or_else(|e| e.into_inner());
     if let Some((_, ids)) = cache.iter().find(|(cached, _)| cached == root) {
@@ -500,7 +452,6 @@ fn resource_ids(root: &Path) -> Arc<ResourceIds> {
     }
     let data = root.join("data/minecraft");
     let entity_types = super::entity_type_rows::entity_type_rows(root).ids.clone();
-    let (timelines, markers) = overworld_timelines(root);
     let ids = Arc::new(ResourceIds {
         // `/recipe <id>` must suggest a content mod's recipes too.
         recipes: json_ids_of_every_namespace(root, "recipe"),
@@ -510,9 +461,6 @@ fn resource_ids(root: &Path) -> Arc<ResourceIds> {
         enchantments: json_ids_of_every_namespace(root, "enchantment"),
         structures: json_ids_in(&data.join("worldgen/structure")),
         biomes: json_ids_in(&data.join("worldgen/biome")),
-        clocks: json_ids_in(&data.join("world_clock")),
-        timelines,
-        markers,
     });
     cache.push((root.to_owned(), ids.clone()));
     ids
@@ -744,6 +692,9 @@ impl Game<'_> {
     pub(super) fn set_allow_commands(&mut self, allow: bool) {
         self.level.allow_commands = Some(allow);
         self.ui.registries.permission = owner_permission(allow);
+        if let Some(host) = self.lan.as_mut() {
+            host.hub.allow_commands = allow;
+        }
     }
     /// Commands the game issues itself (the server console, harnesses, the
     /// control socket) run at the owner's level whatever Allow Commands says.
@@ -872,8 +823,9 @@ impl Game<'_> {
         reg.enchantments = ids.enchantments.clone();
         reg.structures = ids.structures.clone();
         reg.biomes = ids.biomes.clone();
-        reg.clocks = ids.clocks.clone();
-        // The mods' clocks (`register_world_clock`) for `/time of`.
+        // The mods' clocks (`register_world_clock`) for `/time of`; the world's own
+        // join them when it opens (`sync_timeline_registries`).
+        reg.clocks = Vec::new();
         reg.clocks
             .extend(mod_api::__private::world_clock_declarations());
         reg.clocks.sort();
@@ -883,9 +835,6 @@ impl Game<'_> {
             "minecraft:the_end".into(),
         ];
         reg.players = vec![PLAYER_NAME.into()];
-        // Timelines of the overworld clock and their time markers.
-        self.ui.timelines = ids.timelines.iter().cloned().collect();
-        self.ui.markers = ids.markers.iter().cloned().collect();
         // Vanilla's built-in registries (mob effects, components, dialogs...).
         for dir in [&self.options.resources, &self.ui.vanilla_root] {
             if let Some(export) = command_export(dir, self.options.dedicated.is_none()) {
@@ -935,18 +884,12 @@ impl Game<'_> {
                 reg.persistent_components.push(name.to_owned());
             }
         }
-        reg.timelines = self.ui.timelines.keys().cloned().collect();
-        reg.time_markers = self
-            .ui
-            .markers
-            .iter()
-            .filter(|(_, m)| m.show)
-            .map(|(k, _)| k.clone())
-            .collect();
+        self.sync_timeline_registries();
         self.sync_enchantment_registries();
         // After the export, which keys the registry with vanilla's tags.
         self.sync_stat_registries();
         self.sync_pack_tag_ids();
+        self.sync_test_registry_ids();
     }
     /// The block the player is looking at, for coordinate suggestions, and
     /// the entity, for entity arguments (ClientSuggestionProvider).
@@ -1195,6 +1138,16 @@ impl Game<'_> {
         }
         // The Chat option's Hidden level takes the server's messages too.
         self.local_chat_line(text, Some(SYSTEM_INDICATOR), ChatSource::Server);
+    }
+    /// `ChatComponent.MAX_CHAT_HISTORY`, or the cap a mod set.
+    pub(super) fn chat_history_limit(&self) -> u32 {
+        u32::try_from(self.ui.chat.history_limit()).unwrap_or(u32::MAX)
+    }
+    /// A mod's chat history cap, clamped as [`sunrise_client::chat::Chat::set_history_limit`] says.
+    pub(super) fn set_chat_history_limit(&mut self, limit: u32) {
+        self.ui
+            .chat
+            .set_history_limit(usize::try_from(limit).unwrap_or(usize::MAX));
     }
     /// `ChatComponent.addClientSystemMessage`: a line the client adds itself.
     /// It joins the connection's chat and its history, with the system
@@ -1604,34 +1557,76 @@ impl Game<'_> {
             return;
         }
         if self.settings.chat_links_prompt {
-            self.open_screen_overlay("link_prompt", |game| game.link_prompt = Some(url));
+            self.open_screen_overlay("link_prompt", |game| game.link_prompt = Some(url.into()));
         } else {
             super::packs::open_uri(&url);
         }
     }
-    /// `ConfirmLinkScreen` (untrusted): the link and its warning over the
-    /// chat, answered yes to open it.
+    /// `ConfirmLinkScreen.confirmLinkNow` for a mod: the confirmation opens over whatever
+    /// screen is open, and either answer returns to it. The player's answer is the consent, so
+    /// the chat's link options do not apply (they gate chat click events only). Only http and
+    /// https pass, as `Util.parseAndValidateUntrustedUri` has it.
+    pub(in crate::game) fn confirm_link(
+        &mut self,
+        uri: &str,
+        trusted: bool,
+    ) -> Result<(), mod_api::OpenLinkError> {
+        use mod_api::OpenLinkError;
+        if !self.native_window() {
+            return Err(OpenLinkError::Unavailable);
+        }
+        if !sunrise_core::text::untrusted_http_url(uri) {
+            return Err(OpenLinkError::Invalid);
+        }
+        self.open_screen_overlay("link_prompt", |game| {
+            game.link_prompt = Some(LinkPrompt {
+                url: uri.to_owned(),
+                trusted,
+            });
+        });
+        Ok(())
+    }
+    /// `Blaze3D.openPath` for a mod: the desktop's handler at once, with no confirmation.
+    pub(in crate::game) fn open_path(&self, path: &Path) -> Result<(), mod_api::OpenPathError> {
+        use mod_api::OpenPathError;
+        if !self.native_window() {
+            return Err(OpenPathError::Unavailable);
+        }
+        sunrise_client::desktop::open_path(path).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                OpenPathError::NotFound
+            } else {
+                OpenPathError::Failed(error.to_string())
+            }
+        })
+    }
+    /// `ConfirmLinkScreen`: the link over the screen it was opened from, with its warning
+    /// unless trusted, answered yes to open it.
     fn link_prompt_layout(
         &self,
-        url: &str,
+        prompt: &LinkPrompt,
         size: (f32, f32),
     ) -> sunrise_client::confirm_screen::Choice {
-        let warning = Text::translate("chat.link.warning", &[]).with_color(0xFF_CCCC);
-        let message = Text::literal(url)
-            .append(Text::literal("\n"))
-            .append(warning);
+        let message = if prompt.trusted {
+            Text::literal(&prompt.url)
+        } else {
+            let warning = Text::translate("chat.link.warning", &[]).with_color(0xFF_CCCC);
+            Text::literal(&prompt.url)
+                .append(Text::literal("\n"))
+                .append(warning)
+        };
         // ConfirmLinkScreen.addButtons: yes, copy and no, 100 wide each.
         sunrise_client::confirm_screen::Choice::new(
             &self.gui.atlas.font,
             size,
-            &Text::translate("chat.link.confirm", &[]),
+            &Text::translate(prompt.title_key(), &[]),
             &message,
             3,
             100.0,
         )
     }
     pub(super) fn draw_link_prompt(&self, batch: &mut HudBatch) {
-        let Some(url) = &self.link_prompt else {
+        let Some(prompt) = &self.link_prompt else {
             return;
         };
         sunrise_client::widgets::cover_frame();
@@ -1640,46 +1635,42 @@ impl Game<'_> {
         sunrise_client::widgets::begin_screen(|| {
             super::screen_info::confirm(
                 "chat/confirm_link",
-                &super::screen_info::tr("chat.link.confirm", &[]),
-                url,
+                &super::screen_info::tr(prompt.title_key(), &[]),
+                &prompt.url,
             )
         });
         let atlas = &self.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         sunrise_client::ui::menu_background(batch, atlas, 0.0, 0.0, w, h, true);
-        let labels = [
-            Text::translate("gui.yes", &[]),
-            Text::translate("chat.copy", &[]),
-            Text::translate("gui.no", &[]),
-        ];
-        let mut layout = self.link_prompt_layout(url, (w, h));
+        let labels = prompt.button_keys().map(|key| Text::translate(key, &[]));
+        let mut layout = self.link_prompt_layout(prompt, (w, h));
         layout.declare_no(2);
         layout.draw(batch, atlas, self.cursor, &labels);
         self.draw_overlay_mounted_widgets(batch, "link_prompt");
     }
     /// The prompt's answer: the link opens on yes; either way the chat is back.
     pub(super) fn answer_link_prompt(&mut self, yes: bool) {
-        let Some(url) = self.link_prompt.take() else {
+        let Some(prompt) = self.link_prompt.take() else {
             return;
         };
         self.refresh_screen_widgets();
         if yes {
-            super::packs::open_uri(&url);
+            super::packs::open_uri(&prompt.url);
         }
     }
     pub(super) fn link_prompt_click(&mut self) -> bool {
-        let Some(url) = self.link_prompt.clone() else {
+        let Some(prompt) = self.link_prompt.clone() else {
             return false;
         };
         let pressed = self
-            .link_prompt_layout(&url, self.gui_size())
+            .link_prompt_layout(&prompt, self.gui_size())
             .pressed_at(self.cursor);
         if let Some(button) = pressed {
             self.play_audio_button_click();
             if button == LINK_COPY {
                 // ConfirmLinkScreen.copyToClipboard, then the callback's no.
                 use sunrise_client::clipboard::Clipboard;
-                self.clipboard.set(&url);
+                self.clipboard.set(&prompt.url);
             }
             self.answer_link_prompt(button == LINK_YES);
         }
@@ -2257,8 +2248,6 @@ impl Game<'_> {
         self.world.day_time = self.switch_clock(&clock);
         self.ui.chat.clear();
         self.build_registries();
-        // The world opens with its test instances (`Registries.TEST_INSTANCE`).
-        self.snapshot_test_defs();
         self.sync_rules();
         self.carrier_world_opened()
     }
@@ -2512,6 +2501,51 @@ fn owner_permission(allow_commands: bool) -> u8 {
 const LINK_YES: usize = 0;
 const LINK_COPY: usize = 1;
 
+/// A link waiting for the player's answer (`ConfirmLinkScreen`). `trusted` is vanilla's
+/// argument: it decides only the title, the warning line and the buttons' labels.
+#[derive(Clone)]
+pub(super) struct LinkPrompt {
+    url: String,
+    trusted: bool,
+}
+
+impl From<String> for LinkPrompt {
+    /// A chat click's link: untrusted.
+    fn from(url: String) -> Self {
+        Self {
+            url,
+            trusted: false,
+        }
+    }
+}
+
+impl From<&str> for LinkPrompt {
+    /// An untrusted link, as a chat click opens it.
+    fn from(url: &str) -> Self {
+        url.to_owned().into()
+    }
+}
+
+impl LinkPrompt {
+    /// `ConfirmLinkScreen.confirmMessage`'s title.
+    fn title_key(&self) -> &'static str {
+        if self.trusted {
+            "chat.link.confirmTrusted"
+        } else {
+            "chat.link.confirm"
+        }
+    }
+    /// The yes, copy and no labels: `GUI_YES` / `GUI_NO`, or `GUI_OPEN_IN_BROWSER` /
+    /// `GUI_CANCEL` when trusted; `GUI_COPY_TO_CLIPBOARD` either way.
+    fn button_keys(&self) -> [&'static str; 3] {
+        if self.trusted {
+            ["chat.link.open", "chat.copy", "gui.cancel"]
+        } else {
+            ["gui.yes", "chat.copy", "gui.no"]
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2662,43 +2696,6 @@ mod tests {
         assert_eq!(
             resource_ids(&root).recipes,
             ["minecraft:stick", "mymod:press/iron"]
-        );
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    /// Only the overworld clock's timelines count; a marker is a bare tick
-    /// count (hidden from commands) or an object that may show itself.
-    #[test]
-    fn overworld_timelines_and_markers() {
-        let root = std::env::temp_dir().join(format!("sunrise-timelines-{}", std::process::id()));
-        let dir = root.join("data/minecraft/timeline");
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(
-            dir.join("day.json"),
-            r#"{"clock":"minecraft:overworld","period_ticks":24000,
-                "time_markers":{"minecraft:noon":6000,
-                "minecraft:night":{"ticks":13000,"show_in_commands":true}}}"#,
-        )
-        .unwrap();
-        std::fs::write(
-            dir.join("other.json"),
-            r#"{"clock":"minecraft:the_end","time_markers":{"minecraft:x":1}}"#,
-        )
-        .unwrap();
-        std::fs::write(dir.join("broken.json"), "{").unwrap();
-        let (timelines, markers) = overworld_timelines(&root);
-        assert_eq!(timelines, [("minecraft:day".to_owned(), Some(24000))]);
-        let mut markers: Vec<_> = markers
-            .iter()
-            .map(|(name, m)| (name.as_str(), m.ticks, m.period, m.show))
-            .collect();
-        markers.sort();
-        assert_eq!(
-            markers,
-            [
-                ("minecraft:night", 13000, Some(24000), true),
-                ("minecraft:noon", 6000, Some(24000), false),
-            ]
         );
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -3315,7 +3312,7 @@ mod enchantment_snapshot_tests {
             .tags = tags.clone();
         let item_ids = game.ui.registries.ids("minecraft:item").to_vec();
         let effects = game.ui.registries.effects.clone();
-        game.sync_function_registries(&stack);
+        game.sync_function_registries();
         for phase in [0, 1] {
             if phase == 1 {
                 game.build_registries();
@@ -3350,7 +3347,7 @@ mod enchantment_snapshot_tests {
                 .get("h024:audit")
                 .is_none()
         );
-        game.sync_function_registries(&stack);
+        game.sync_function_registries();
         assert!(
             !game
                 .ui
@@ -3464,3 +3461,150 @@ mod damage_type_registry_tests {
 #[cfg(test)]
 #[path = "tests/end_clock_tests.rs"]
 mod end_clock_tests;
+
+#[cfg(test)]
+mod link_and_path_tests {
+    use super::*;
+    use mod_api::{ClientHost, ClientTickPreEvent, Hooks, ModEntry, OpenLinkError, OpenPathError};
+    use mod_platform::testing::with_mods;
+    use std::sync::{Arc, Mutex};
+
+    /// A mod that asks for a link from its client tick and keeps the answer.
+    struct Asker {
+        uri: &'static str,
+        trusted: bool,
+        answer: Arc<Mutex<Option<Result<(), OpenLinkError>>>>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for Asker {
+        fn client_tick_pre(&self, host: &mut dyn ClientHost, _: &mut ClientTickPreEvent) {
+            *self.answer.lock().unwrap() = Some(host.confirm_link(self.uri, self.trusted));
+        }
+    }
+
+    /// Runs one client tick of a mod that asks for `uri`, in a client game, and hands the
+    /// game and the answer to `check`.
+    fn ask(
+        uri: &'static str,
+        trusted: bool,
+        check: impl FnOnce(&mut Game<'_>, Result<(), OpenLinkError>),
+    ) {
+        let answer = Arc::new(Mutex::new(None));
+        let mods: mod_api::Mods = vec![ModEntry::new(
+            "linker",
+            Box::new(Asker {
+                uri,
+                trusted,
+                answer: answer.clone(),
+            }),
+        )]
+        .into();
+        with_mods(mods, || {
+            super::super::native_entity_refs::tests::with_game(|game| {
+                game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
+                game.options.headless = true;
+                game.native_client_tick_pre();
+                let result = answer.lock().unwrap().take().unwrap();
+                check(game, result);
+            });
+        });
+    }
+
+    /// From a tick, the confirmation opens holding the link, titled and labelled by `trusted`;
+    /// No (or Cancel) closes it and opens nothing.
+    #[test]
+    #[ignore = "daily"]
+    fn a_mod_asks_to_open_a_web_link() {
+        ask("https://example.com/a?b=c", false, |game, result| {
+            assert_eq!(result, Ok(()));
+            let prompt = game.link_prompt.clone().expect("the prompt opens");
+            assert_eq!(prompt.url, "https://example.com/a?b=c");
+            assert!(!prompt.trusted);
+            assert_eq!(prompt.title_key(), "chat.link.confirm");
+            assert_eq!(prompt.button_keys(), ["gui.yes", "chat.copy", "gui.no"]);
+            let was_playing = game.screen == Screen::Playing;
+            game.answer_link_prompt(false);
+            assert!(game.link_prompt.is_none());
+            assert_eq!(game.screen == Screen::Playing, was_playing);
+        });
+        ask("https://example.com/a?b=c", true, |game, result| {
+            assert_eq!(result, Ok(()));
+            let prompt = game.link_prompt.clone().expect("the prompt opens");
+            assert!(prompt.trusted);
+            assert_eq!(prompt.title_key(), "chat.link.confirmTrusted");
+            assert_eq!(
+                prompt.button_keys(),
+                ["chat.link.open", "chat.copy", "gui.cancel"]
+            );
+            game.answer_link_prompt(false);
+            assert!(game.link_prompt.is_none());
+        });
+    }
+
+    /// Only http and https open a prompt, the scheme in any case, whatever the chat's link
+    /// options say; nothing panics.
+    #[test]
+    #[ignore = "daily"]
+    fn a_mod_link_must_be_http_or_https() {
+        super::super::native_entity_refs::tests::with_game(|game| {
+            game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
+            game.options.headless = true;
+            (game.settings.chat_links, game.settings.chat_links_prompt) = (false, false);
+            assert_eq!(game.confirm_link("HTTPS://Example.com", false), Ok(()));
+            assert!(game.link_prompt.is_some());
+            game.answer_link_prompt(false);
+            for bad in [
+                "file:///etc/passwd",
+                "javascript:alert(1)",
+                "example.com",
+                "ftp://example.com",
+                "http://a b",
+            ] {
+                assert_eq!(
+                    game.confirm_link(bad, false),
+                    Err(OpenLinkError::Invalid),
+                    "{bad}"
+                );
+                assert!(game.link_prompt.is_none(), "{bad}");
+            }
+        });
+    }
+
+    /// A path that does not exist is refused before any process starts.
+    #[test]
+    #[ignore = "daily"]
+    fn open_path_refuses_a_missing_path() {
+        super::super::native_entity_refs::tests::with_game(|game| {
+            game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
+            game.options.headless = true;
+            let missing = std::env::temp_dir().join("sunrise-open-path-missing/never-created");
+            assert_eq!(game.open_path(&missing), Err(OpenPathError::NotFound));
+        });
+    }
+
+    /// Without a native window both methods answer `Unavailable`.
+    #[test]
+    #[ignore = "daily"]
+    fn link_and_path_are_unavailable_without_a_window() {
+        for role in [
+            super::super::execution_role::ExecutionRole::IntegratedServer,
+            super::super::execution_role::ExecutionRole::DedicatedServer,
+        ] {
+            super::super::native_entity_refs::tests::with_game_role(
+                super::super::native_entity_refs::tests::fixture_root(),
+                role,
+                |game| {
+                    assert_eq!(
+                        game.confirm_link("https://example.com", false),
+                        Err(OpenLinkError::Unavailable)
+                    );
+                    assert!(game.link_prompt.is_none());
+                    assert_eq!(
+                        game.open_path(Path::new(".")),
+                        Err(OpenPathError::Unavailable)
+                    );
+                },
+            );
+        }
+    }
+}
