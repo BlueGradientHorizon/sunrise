@@ -116,12 +116,17 @@ pub fn read_properties(
         return (listed, notes);
     }
     let mut properties = crate::Properties::parse(&text, &with_options(pack, macros));
-    // The settled lists, and the first read's notes that one of them was set again.
-    let settled = |key: Option<&String>| key.is_some_and(|k| FEATURE_LISTS.contains(&k.as_str()));
+    // The settled lists, back in file order: each before the first entry of a later line.
     for key in FEATURE_LISTS {
         properties.entries.retain(|e| e.key != key);
-        properties.entries.extend(listed.entry(key).cloned());
+        if let Some(entry) = listed.entry(key) {
+            let at = (properties.entries.iter()).position(|e| e.line > entry.line);
+            let at = at.unwrap_or(properties.entries.len());
+            properties.entries.insert(at, entry.clone());
+        }
     }
+    // And the first read's notes that one of them was set again.
+    let settled = |key: Option<&String>| key.is_some_and(|k| FEATURE_LISTS.contains(&k.as_str()));
     properties.notes.retain(|n| !settled(n.repeated.as_ref()));
     let repeated = listed.notes.iter().filter(|n| settled(n.repeated.as_ref()));
     properties.notes.extend(repeated.cloned());
@@ -780,9 +785,9 @@ mod tests {
     }
 
     /// A pack's own `#define` / `#undef` of an `IRIS_FEATURE_*` name inside `shaders.properties`
-    /// is its directive, applying from its line in that file only (decision D-6): a define lets
-    /// the first read reach a list behind it; an undef hides Sunrise's answer from that file's
-    /// later lines, not from the lines above it nor from the programs.
+    /// decides that file's conditionals from its line on (decision D-6): a define lets the first
+    /// read reach a list behind it; an undef hides Sunrise's answer from the later `#ifdef`s,
+    /// not from the lines above it nor from the programs.
     #[test]
     fn a_packs_own_directive_in_shaders_properties_applies_from_its_line() {
         let text = "#define IRIS_FEATURE_SSBO\n\
@@ -831,6 +836,65 @@ mod tests {
             .collect();
         assert_eq!(repeated, [(6, Some("screen"))]);
         assert_eq!(properties.get("screen"), Some("a"));
+    }
+
+    /// The settled lists keep their place in the file's order among the other entries.
+    #[test]
+    fn the_settled_lists_keep_their_place_in_the_file() {
+        let text = "a = 1\niris.features.optional = SSBO\nb = 2\n\
+                    #ifdef IRIS_FEATURE_SSBO\niris.features.optional = HIGHER_SHADOWCOLOR\n#endif\n\
+                    c = 3\niris.features.required = CUSTOM_IMAGES\nd = 4\n";
+        let pack = feature_pack(text, &[]);
+        let (properties, _) = read_properties(&pack, &mut crate::Macros::standard());
+        let keys: Vec<(&str, u32)> = (properties.entries.iter())
+            .map(|e| (e.key.as_str(), e.line))
+            .collect();
+        assert_eq!(
+            keys,
+            [
+                ("a", 1),
+                ("iris.features.optional", 2),
+                ("b", 3),
+                ("c", 7),
+                ("iris.features.required", 8),
+                ("d", 9)
+            ]
+        );
+    }
+
+    /// A list repeated in the first read whose earlier occurrence the second read doesn't
+    /// reach: the note that the later one counts is still there, from the first read.
+    #[test]
+    fn a_repeat_the_second_read_cannot_see_is_still_noted() {
+        let text = "#ifndef IRIS_FEATURE_SSBO\niris.features.optional = CUSTOM_IMAGES\n#endif\n\
+                    iris.features.optional = SSBO\n";
+        let pack = feature_pack(text, &[]);
+        let mut macros = crate::Macros::standard();
+        let (properties, _) = read_properties(&pack, &mut macros);
+        assert!(macros.is_defined("IRIS_FEATURE_SSBO"));
+        assert!(!macros.is_defined("IRIS_FEATURE_CUSTOM_IMAGES"));
+        let repeated: Vec<(u32, Option<&str>)> = (properties.notes.iter())
+            .map(|n| (n.line, n.repeated.as_deref()))
+            .collect();
+        assert_eq!(repeated, [(4, Some("iris.features.optional"))]);
+    }
+
+    /// A pack's `#undef` of an answer in `shaders.properties` decides the conditionals after it;
+    /// a value the load expands again with its own macros (`program.<name>.enabled`) still sees
+    /// the answer, as it sees every other macro the load has.
+    #[test]
+    fn an_undef_in_shaders_properties_hides_the_answer_from_conditionals_only() {
+        let text = "iris.features.optional = SSBO\n#undef IRIS_FEATURE_SSBO\n\
+                    #ifdef IRIS_FEATURE_SSBO\nguarded = 1\n#endif\n\
+                    program.composite.enabled = IRIS_FEATURE_SSBO\n";
+        let pack = feature_pack(text, &[("seen_ssbo", "SSBO")]);
+        let mut macros = crate::Macros::standard();
+        let (properties, _) = read_properties(&pack, &mut macros);
+        assert_eq!(properties.get("guarded"), None);
+        assert_eq!(
+            composite_uniforms(&pack, &properties, &macros),
+            ["seen_ssbo"]
+        );
     }
 
     #[test]

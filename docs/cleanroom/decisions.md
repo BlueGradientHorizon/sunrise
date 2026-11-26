@@ -218,16 +218,22 @@ the full list.
     pack's options and no feature macro, which settles the two lists; then the answers are defined and the file is
     read again, and that second read is the one the game uses. A list that only a feature macro reaches is not read.
     The programs and `block.properties`, `entity.properties` and `item.properties` see the answers. A pack that lists
-    no supported flag is read once, with the macros it had before.
+    no supported flag is read once, with the macros it had before, but for one exception that holds for every pack:
+    a line declaring an `IRIS_FEATURE_*` name (`#define IRIS_FEATURE_SSBO 1 // [0 1]`, `//#define
+    IRIS_FEATURE_SSBO`) is no longer one of its options (below).
   - What is decided by the lists after the read (the eight shadow colour buffers of `HIGHER_SHADOWCOLOR`) takes the
     lists of the first read, the ones the answers came from, even where the second read would hide or change them.
+    They keep their place in the file's order among the other entries.
   - `IRIS_FEATURE_*` names are Sunrise's answers alone: a pack's line declaring such a name is not an option. It is
     not listed among the pack's options, not defined for its property files, doesn't count as on in
     `program.<name>.enabled`, and a saved choice never rewrites it (a commented-out `//#define` stays commented out).
-  - The pack's own uncommented directives are read as written, in its programs and in `shaders.properties` alike: a
-    `#define` or `#undef` of such a name applies from its line to the end of that file, as any directive does. In
-    `shaders.properties` a `#define` there lets the first read reach a list behind it, and an `#undef` hides Sunrise's
-    answer from the file's later lines only, not from the programs.
+  - The pack's own uncommented directives are read as written. In a program, a `#define` or `#undef` of such a name
+    applies from its line to the end of that file, as any directive does. In `shaders.properties` it decides the
+    conditionals (`#if`, `#ifdef`, `#elif`) from its line on: a `#define` lets the first read reach a list behind it,
+    and an `#undef` hides Sunrise's answer from the later conditionals, not from the programs. The values the load
+    expands again with its own macros (`size.buffer.*`, `image.*`, `program.<name>.enabled`) are expanded with the
+    answers, as they are with every other macro of the load, so an `#undef` earlier in the file doesn't hide the
+    answer there.
   - A flag list set twice is noted as the lists were settled: the note that a later list "counts" comes from the first
     read for the two flag-list keys, and from the second read for every other key.
   - The same read serves every place that reads a pack's `shaders.properties`: the load, the HDR read made before
@@ -246,7 +252,10 @@ the full list.
   `options::tests::a_packs_option_named_as_a_feature_answer_changes_no_answer`,
   `options::tests::a_saved_choice_never_rewrites_a_feature_answer`,
   `options::tests::a_packs_own_directive_in_shaders_properties_applies_from_its_line`,
-  `options::tests::a_repeated_flag_list_is_noted_as_the_lists_were_settled`, and in `tests/it`
+  `options::tests::a_repeated_flag_list_is_noted_as_the_lists_were_settled`,
+  `options::tests::a_repeat_the_second_read_cannot_see_is_still_noted`,
+  `options::tests::the_settled_lists_keep_their_place_in_the_file`,
+  `options::tests::an_undef_in_shaders_properties_hides_the_answer_from_conditionals_only`, and in `tests/it`
   `reversed_culling_feature::requested_reversed_culling_loads_and_packs_take_the_path_it_guards` and
   `terrain_fade::fade_feature_negotiation_ignores_case_and_defines_the_written_macro` (`sunrise-shaders`);
   `game::shader_packs::native_pack_tests::the_hdr_read_and_the_options_page_see_the_features_the_pack_lists`
