@@ -103,9 +103,9 @@ pub struct BlockEntityTick<'g, 'a> {
     /// The block entity's position.
     pub pos: Pos,
     /// What it is, from the block entity the dispatch is about to tick.
-    pub(crate) kind: TickedKind,
+    pub kind: TickedKind,
     /// A mod's block entity's type, as a numeric wire ID; read through [`OwnBlockEntities`].
-    pub(in crate::game) mod_type: Option<u32>,
+    pub mod_type: Option<u32>,
 }
 
 #[allow(

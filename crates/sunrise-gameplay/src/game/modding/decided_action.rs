@@ -64,7 +64,7 @@ impl<S> Clone for Action<'_, S> {
     }
 }
 
-struct Reads {
+pub struct Reads {
     player_writes: u64,
 }
 

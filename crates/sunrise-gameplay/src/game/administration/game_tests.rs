@@ -176,7 +176,7 @@ impl Info {
 }
 
 /// One `GameTestBatch`.
-pub(in crate::game) struct Batch {
+pub struct Batch {
     pub index: i32,
     pub(in crate::game) environment: String,
     dimension: String,

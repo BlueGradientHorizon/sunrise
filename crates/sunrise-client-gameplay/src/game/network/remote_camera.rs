@@ -38,7 +38,7 @@ use sunrise_world::collision_context::EntityContextKind;
 
 /// Hurt and death timers carried by a living camera entity for `GameRenderer.bobHurt`.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub(in crate::game) struct CameraHurt {
+pub struct CameraHurt {
     pub hurt_time: i32,
     pub hurt_duration: i32,
     pub hurt_dir: f32,
@@ -103,7 +103,7 @@ pub(in crate::game) struct DetachedPlayerHud {
 
 /// Single resolved camera entity (`Minecraft.getCameraEntity`), live or detached.
 #[derive(Clone, Debug)]
-pub(in crate::game) struct ResolvedCameraEntity {
+pub struct ResolvedCameraEntity {
     pub entity_id: u32,
     /// Stored with the subject so a detached camera keeps its original identity.
     pub uuid: Option<u128>,

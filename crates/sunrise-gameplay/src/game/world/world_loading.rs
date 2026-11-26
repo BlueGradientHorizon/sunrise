@@ -15,13 +15,13 @@ pub struct WorldRequest {
     pub create: Option<sunrise_sim::world_options::WorldOptions>,
     pub rule_registry: Arc<sunrise_game_data::gamerules::RuleRegistry>,
     /// Where the server's region workers send their notices.
-    pub(in crate::game) chunk_reports: Arc<sunrise_sim::chunk_io::Reports>,
+    pub chunk_reports: Arc<sunrise_sim::chunk_io::Reports>,
     /// The account the world opens under, for an integrated server
     /// (`IntegratedServer.getSingleplayerProfile`): its name and UUID.
-    owner: Option<(String, u128)>,
+    pub owner: Option<(String, u128)>,
 }
 
-pub(in crate::game) struct PreparedWorld {
+pub struct PreparedWorld {
     pub save_root: PathBuf,
     /// The levels' shapes, from the world's dimension types.
     pub shapes: sunrise_level::chunk::LevelShapes,

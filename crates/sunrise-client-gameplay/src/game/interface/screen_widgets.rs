@@ -141,7 +141,7 @@ impl MountedScreenWidgets {
 }
 
 /// One widget mounted on the active screen, owned by the engine with per-widget panic isolation.
-pub(in crate::game) struct MountedWidgetEntry {
+pub struct MountedWidgetEntry {
     pub(in crate::game) id: ScreenWidgetId,
     pub(in crate::game) owner: CallbackOwner,
     pub(in crate::game) disabled: bool,

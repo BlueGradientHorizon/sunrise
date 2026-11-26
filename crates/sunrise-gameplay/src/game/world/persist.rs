@@ -103,7 +103,7 @@ pub enum EntitySnapshot {
 /// Runtime ownership paired with the serialized tree out of band. UUIDs are
 /// admission identities, not keys for matching these distinct object states.
 #[derive(Debug)]
-pub(in crate::game) struct TransferredVehicleTree {
+pub struct TransferredVehicleTree {
     source_id: u32,
     kind: VehicleTreeKind,
     pub name: String,
@@ -117,7 +117,7 @@ impl TransferredVehicleTree {
     }
 }
 
-pub(in crate::game) struct RestoredVehicleTree {
+pub struct RestoredVehicleTree {
     pub root: u32,
     pub by_source: HashMap<u32, u32>,
 }
@@ -134,7 +134,7 @@ enum VehicleTreeKind {
 
 /// The boundary has paired each modeled NBT node with exactly one captured
 /// object state before any destination object or attachment map is installed.
-struct PreparedVehicleTransfer {
+pub struct PreparedVehicleTransfer {
     source_id: u32,
     tag: Tag,
     kind: VehicleTreeKind,

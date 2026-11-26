@@ -3,7 +3,7 @@
 use super::Mining;
 
 #[cfg(feature = "client")]
-pub(in crate::game) struct ClientCrack {
+pub struct ClientCrack {
     pub pos: [i32; 3],
     pub stage: u8,
     pub updated_at: i64,

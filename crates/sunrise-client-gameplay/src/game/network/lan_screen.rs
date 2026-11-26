@@ -50,7 +50,7 @@ pub(in crate::game) struct WorldOptions {
 /// RestrictionsScreen or InWorldGameRulesScreen they opened (all return to
 /// the same options).
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum View {
+pub enum View {
     Options,
     LockQuestion,
     Restrictions,

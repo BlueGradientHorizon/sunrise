@@ -35,15 +35,15 @@ mod live_vehicle;
 /// own. The writes apply to the mob itself.
 pub struct GoalCx<'a, 'w> {
     pub m: &'a mut Mob,
-    w: &'a MobWorld<'w>,
-    host: &'a dyn Host,
+    pub w: &'a MobWorld<'w>,
+    pub host: &'a dyn Host,
 }
 
 /// What a handle names in the goal view: the ticking mob itself, the player
 /// the tick sees, another mob in the snapshot, or the separately simulated
 /// dragon. The ticking mob's own id never consults the taken list — the
 /// exception that makes any mob handle resolve in its own tick (#29's limit).
-enum Resolved<'a> {
+pub enum Resolved<'a> {
     Own,
     Player,
     Live(&'a Mob),

@@ -32,7 +32,7 @@ const NOT_ALLOWED: u32 = 0x80_8080;
 const HINT: u32 = 0xAA_AAAA;
 
 /// The open screen: its search box and the list's scroll.
-pub(in crate::game) struct DebugOptionsUi {
+pub struct DebugOptionsUi {
     pub search: EditBox,
     scroll: Scroll,
 }

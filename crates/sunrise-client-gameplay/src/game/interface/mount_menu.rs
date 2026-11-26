@@ -21,7 +21,7 @@ pub(in crate::game) use sunrise_gameplay_common::mount_rules::{
 
 /// The open mount menu: copies of the mount's slots, written back on every change.
 #[derive(Default)]
-pub(in crate::game) struct MountMenu {
+pub struct MountMenu {
     pub(in crate::game) open: Option<Open>,
 }
 impl MountMenu {

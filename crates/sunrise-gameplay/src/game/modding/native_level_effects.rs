@@ -14,17 +14,17 @@ use sunrise_world::registry::BlockStateId;
 
 /// Validated inputs for queueing or deferring a level or entity-bound native sound.
 pub struct NativeSoundRequest<'a> {
-    pub(in crate::game) level: LevelRef,
-    pub(in crate::game) sound: &'a str,
-    pub(in crate::game) at: [f64; 3],
-    pub(in crate::game) source: SoundSource,
-    pub(in crate::game) volume: f32,
-    pub(in crate::game) pitch: f32,
-    pub(in crate::game) except: Option<u32>,
-    pub(in crate::game) entity: Option<i32>,
+    pub level: LevelRef,
+    pub sound: &'a str,
+    pub at: [f64; 3],
+    pub source: SoundSource,
+    pub volume: f32,
+    pub pitch: f32,
+    pub except: Option<u32>,
+    pub entity: Option<i32>,
     /// The caller's seed (`ServerLevel.playSeededSound`), or `None` to draw the next one from
     /// the level's sound-seed stream when the sound is published (`Level.playSound`).
-    pub(in crate::game) seed: Option<i64>,
+    pub seed: Option<i64>,
 }
 
 impl crate::game::ServerGame<'_> {

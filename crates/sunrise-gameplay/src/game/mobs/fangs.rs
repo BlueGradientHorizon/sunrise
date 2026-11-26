@@ -235,8 +235,8 @@ pub(in crate::game::server_side) fn is_illager(s: Species) -> bool {
 /// One side of an ally check: whether it is an illager and its team.
 #[derive(Clone, Copy)]
 pub struct Party<'a> {
-    pub(in crate::game) illager: bool,
-    pub(in crate::game) team: Option<&'a sunrise_game_data::scoreboard::Team>,
+    pub illager: bool,
+    pub team: Option<&'a sunrise_game_data::scoreboard::Team>,
 }
 /// `AbstractIllager.considersEntityAsAlly(other)`: the base rule (the teams
 /// are allied), or an illager friend while both have no team.

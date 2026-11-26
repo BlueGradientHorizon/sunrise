@@ -911,11 +911,11 @@ impl ServerGame<'_> {
 /// The mount a rider gets off: its kind, where it stands, its box,
 /// `getBbWidth` and body yaw.
 pub struct Mount {
-    pub(in crate::game) species: Species,
-    pub(in crate::game) position: Vec3,
-    pub(in crate::game) bounds: Aabb,
-    pub(in crate::game) width: f32,
-    pub(in crate::game) yaw: f32,
+    pub species: Species,
+    pub position: Vec3,
+    pub bounds: Aabb,
+    pub width: f32,
+    pub yaw: f32,
 }
 impl Mount {
     pub(in crate::game::server_side) fn of(m: &Mob) -> Self {
@@ -939,10 +939,10 @@ pub(in crate::game) fn on_top(m: &Mob) -> Vec3 {
 /// The rider getting off: `getYRot`, `getBbWidth`, and
 /// `getLocalBoundsForPose` for each of `Player.getDismountPoses`.
 pub struct Rider {
-    pub(in crate::game) yaw: f32,
-    pub(in crate::game) width: f32,
-    pub(in crate::game) poses: Vec<(Pose, Dimensions)>,
-    pub(in crate::game) main_arm_left: bool,
+    pub yaw: f32,
+    pub width: f32,
+    pub poses: Vec<(Pose, Dimensions)>,
+    pub main_arm_left: bool,
 }
 /// `Player.getDismountPoses`: standing, crouching, then crawling.
 pub const DISMOUNT_POSES: [Pose; 3] =

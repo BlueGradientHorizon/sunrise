@@ -88,7 +88,7 @@ pub(in crate::game) fn register(renderers: BTreeMap<String, Arc<dyn EntityRender
 
 /// A mod's renderer or layer as a load resolved it, and whether it has failed (then it is asked no
 /// more until the next resource load resolves it again).
-pub(in crate::game) struct Resolved<T: ?Sized> {
+pub struct Resolved<T: ?Sized> {
     pub(in crate::game) inner: Arc<T>,
     pub(in crate::game) failed: AtomicBool,
 }

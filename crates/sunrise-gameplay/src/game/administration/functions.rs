@@ -20,7 +20,7 @@ use sunrise_sim::save;
 
 /// A `TimerQueue` event.
 #[derive(Clone, Debug, PartialEq)]
-pub(in crate::game) struct Scheduled {
+pub struct Scheduled {
     /// `ns:function`, or `#ns:tag` for a function tag.
     pub id: String,
     pub time: i64,
@@ -45,7 +45,7 @@ pub struct FnState {
 }
 /// What a function reported through `return`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(in crate::game) enum Outcome {
+pub enum Outcome {
     NoReturn,
     Value(i32),
     Fail,

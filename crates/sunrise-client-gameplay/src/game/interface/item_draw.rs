@@ -54,7 +54,7 @@ impl sunrise_client::hud_kit::icon::IconPainter for IconPainter<'_, '_> {
 
 /// The game's answers to what the resolver cannot read from the stack.
 #[cfg(feature = "client")]
-pub(in crate::game) struct Env<'a, 'g> {
+pub struct Env<'a, 'g> {
     game: &'a crate::game::ClientGame<'g>,
 }
 #[cfg(feature = "client")]
@@ -374,7 +374,7 @@ pub(in crate::game::client_side) fn local_time(pattern: &str) -> String {
 }
 
 /// Banner and shield pattern textures from the banner pattern registry.
-pub(in crate::game) struct Host<'a> {
+pub struct Host<'a> {
     banners: &'a sunrise_sim::banner::Banners,
     sprites: &'a HashMap<String, Rect>,
     skins: &'a RefCell<sunrise_client::skins::Downloader>,

@@ -5,7 +5,7 @@ use sunrise_gameplay_common::game::{Dim, commands_common::Target};
 use mod_api::CrosshairTarget;
 
 #[derive(Default)]
-pub(in crate::game) struct ClientPick {
+pub struct ClientPick {
     pub ray: Option<([f64; 3], [f64; 3])>,
     pub(in crate::game) epoch: Option<mod_api::WorldEpoch>,
     pub(in crate::game) dimension: Option<Dim>,

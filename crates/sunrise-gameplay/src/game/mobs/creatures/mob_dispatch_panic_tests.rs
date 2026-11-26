@@ -31,9 +31,9 @@ pub enum Case {
 }
 
 pub struct PanicOnDespawn {
-    pub(in crate::game) calls: Arc<AtomicUsize>,
-    pub(in crate::game) at: Option<usize>,
-    pub(in crate::game) force_allow: bool,
+    pub calls: Arc<AtomicUsize>,
+    pub at: Option<usize>,
+    pub force_allow: bool,
 }
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for PanicOnDespawn {

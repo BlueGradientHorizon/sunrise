@@ -321,7 +321,7 @@ mod tests {
 
     /// A game for `run_with_slots`: its loop states, and how often each loop ran.
     #[derive(Default)]
-    struct Owner {
+    pub struct Owner {
         states: LoopStates,
         slotted: u32,
         vanilla: u32,

@@ -11,7 +11,7 @@ use sunrise_level::signs_data::editor_sprite;
 use sunrise_protocol::packets::play::{self, Serverbound as S};
 use winit::keyboard::KeyCode;
 
-pub(in crate::game) struct SignEditor {
+pub struct SignEditor {
     pub pos: (i32, i32, i32),
     pub front: bool,
     pub line: usize,

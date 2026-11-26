@@ -15,7 +15,7 @@ use sunrise_gameplay_common::game::{
 /// stand (`GuestCrafting`), and the workstation. Each owner counts every access, so an action can
 /// tell that its menu was touched.
 #[derive(Default)]
-pub(in crate::game) struct GuestMenus {
+pub struct GuestMenus {
     /// The inventory menu, the crafting table and the machine menu.
     pub crafting: GuestCrafting,
     /// The workstation menu the guest has open (game/network/lan_stations.rs).

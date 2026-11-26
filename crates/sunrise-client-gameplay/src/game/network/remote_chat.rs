@@ -98,7 +98,7 @@ fn truncate_utf16(content: &str, max_units: usize) -> String {
 
 /// A connection's secure chat state, new with every login packet.
 #[derive(Default)]
-pub(in crate::game) struct SecureChat {
+pub struct SecureChat {
     /// LocalChatSession: the key pair it signs with, and its chain.
     session: Option<(Arc<ChatKeyPair>, Encoder)>,
     tracker: LastSeenTracker,

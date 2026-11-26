@@ -171,7 +171,7 @@ impl SpawnScratch {
 }
 
 /// A player in the level in place, as spawning and despawning see it.
-pub(in crate::game) struct LevelPlayer {
+pub struct LevelPlayer {
     pub(in crate::game) uuid: u128,
     pub position: Vec3,
     pub(in crate::game) bounds: Aabb,

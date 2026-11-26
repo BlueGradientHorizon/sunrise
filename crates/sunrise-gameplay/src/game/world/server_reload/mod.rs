@@ -16,7 +16,7 @@ use mod_api::__private::reload::PreparedStep;
 
 /// Everything one successful reload publishes: its apply steps, then the
 /// retained listeners' store.
-pub(in crate::game) struct PreparedServerReload {
+pub struct PreparedServerReload {
     pub(in crate::game) steps: Vec<PreparedReload>,
     pub(in crate::game) retained: Vec<RetainedEntry>,
     pub(in crate::game) loot: std::sync::Arc<mod_api::GlobalLootModifierManager>,

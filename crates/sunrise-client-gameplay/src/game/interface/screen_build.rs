@@ -24,25 +24,25 @@ use super::Screen;
 /// beside its build so one `ScreenState` holds both.
 #[derive(Clone)]
 pub struct ObservedScreen {
-    pub(in crate::game) id: &'static str,
+    pub id: &'static str,
     /// Not a `Screen` value: the title's own screen or an overlay drawn over
     /// gameplay (sign editor, book, dialog, prompt). `set_screen` never sees
     /// it open or close.
-    pub(in crate::game) overlay: bool,
-    pub(in crate::game) mod_screen: Option<String>,
-    pub(in crate::game) menu: Option<String>,
-    pub(in crate::game) menu_generation: Option<u64>,
+    pub overlay: bool,
+    pub mod_screen: Option<String>,
+    pub menu: Option<String>,
+    pub menu_generation: Option<u64>,
     /// Dialog, warning and waiting screens share one public id, not one receiver.
-    pub(in crate::game) dialog_key: Option<(bool, bool, Option<u64>)>,
-    pub(in crate::game) title: Option<std::sync::Arc<mod_api::Text>>,
-    pub(in crate::game) rect: [f32; 4],
+    pub dialog_key: Option<(bool, bool, Option<u64>)>,
+    pub title: Option<std::sync::Arc<mod_api::Text>>,
+    pub rect: [f32; 4],
     /// Actual GUI-scaled screen dimensions (`width`, `height`), used to detect
     /// viewport/GUI-scale resizes independently of a panel's `rect`.
-    pub(in crate::game) screen_size: [f32; 2],
-    pub(in crate::game) slots: usize,
-    pub(in crate::game) mouse: [f32; 2],
-    pub(in crate::game) partial_tick: f32,
-    pub(in crate::game) regions: Vec<mod_api::ScreenRegion>,
+    pub screen_size: [f32; 2],
+    pub slots: usize,
+    pub mouse: [f32; 2],
+    pub partial_tick: f32,
+    pub regions: Vec<mod_api::ScreenRegion>,
 }
 
 impl ObservedScreen {
@@ -160,7 +160,7 @@ pub struct PauseInputs {
 /// and drawn and hit-tested only while the player sleeps, so a sleeper's
 /// chat opening on a plain chat build needs no rebuild.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(in crate::game) struct ChatLayout {
+pub struct ChatLayout {
     pub leave_bed: (i32, i32, i32, i32),
 }
 
@@ -323,7 +323,7 @@ impl ScreenBuild {
 /// The last handled mouse press on a screen, for vanilla's 250ms double-click
 /// detection (`MouseHandler.LastClick`, `MouseHandler.java:101-106`).
 #[derive(Clone, Copy, Debug)]
-pub(in crate::game) struct LastScreenClick {
+pub struct LastScreenClick {
     time: u64,
     title_mode: Option<u64>,
     pub(in crate::game) screen_instance: u64,

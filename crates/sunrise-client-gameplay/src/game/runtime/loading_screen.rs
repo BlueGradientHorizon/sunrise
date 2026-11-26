@@ -70,40 +70,40 @@ pub fn run_event_loop(
 /// The loading screen's state while the worker loads the resources.
 #[cfg(feature = "client")]
 pub struct Loading {
-    pub(in crate::game) serve_integrated: Serve,
-    pub(in crate::game) run_component_harness: RunComponentHarness,
-    pub(in crate::game) profile_resolver: ProfileResolverFactory,
-    pub(in crate::game) session_verifier: SessionVerifier,
-    pub(in crate::game) window: Option<Arc<Window>>,
-    pub(in crate::game) renderer: Option<Renderer>,
+    pub serve_integrated: Serve,
+    pub run_component_harness: RunComponentHarness,
+    pub profile_resolver: ProfileResolverFactory,
+    pub session_verifier: SessionVerifier,
+    pub window: Option<Arc<Window>>,
+    pub renderer: Option<Renderer>,
     /// The boot screen's atlas, until the pack's GUI atlas replaces it.
     pub boot: sunrise_client::hud::HudAtlas,
     pub gui: Option<UiResources>,
     pub settings: Settings,
-    pub(in crate::game) fullscreen: sunrise_client::window::FullscreenState,
-    pub(in crate::game) video_modes: sunrise_client::window::VideoModeList,
+    pub fullscreen: sunrise_client::window::FullscreenState,
+    pub video_modes: sunrise_client::window::VideoModeList,
     pub options: Option<Options>,
     pub vanilla_root: PathBuf,
-    pub(in crate::game) pack_error: Option<String>,
-    pub(in crate::game) started: Instant,
-    pub(in crate::game) panorama_rotation: sunrise_client::gfx::panorama::Rotation,
-    pub(in crate::game) progress: Progress,
+    pub pack_error: Option<String>,
+    pub started: Instant,
+    pub panorama_rotation: sunrise_client::gfx::panorama::Rotation,
+    pub progress: Progress,
     /// The bar as drawn, easing toward `progress` (`LoadingOverlay.currentProgress`).
-    pub(in crate::game) bar: f32,
+    pub bar: f32,
     pub receiver: Receiver<LoaderMsg>,
     pub loaded:
         Option<std::result::Result<Loaded, super::resource_loader::LoaderFailure>>,
     /// The loader's `Done` arrived: its channel closing afterwards is expected.
-    pub(in crate::game) delivered: bool,
+    pub delivered: bool,
     pub handle: Option<JoinHandle<()>>,
-    pub(in crate::game) shown: bool,
+    pub shown: bool,
     /// When the menu bundle arrived (`set_ui`), and whether a title frame with
     /// it was presented since: the world renderer waits for that frame
     /// (`ready_for_handoff`).
     pub ui_at: Option<Instant>,
     pub title_drawn: bool,
     pub menu: startup_menu::StartupMenu,
-    pub(in crate::game) error: Option<Box<dyn std::error::Error>>,
+    pub error: Option<Box<dyn std::error::Error>>,
 }
 /// How long the handoff waits for the first title frame before building the
 /// world renderer anyway (a hidden window may never be asked to redraw).

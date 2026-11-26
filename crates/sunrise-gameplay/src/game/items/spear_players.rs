@@ -15,7 +15,7 @@ use {
 /// Another player a spear can reach in the acting player's turn, taken from
 /// the hub before it: `PiercingWeapon.canHitEntity` holds for them.
 #[derive(Clone, Copy)]
-pub(in crate::game) struct StabPlayer {
+pub struct StabPlayer {
     pub conn: u32,
     pub(in crate::game) entity_id: i32,
     pub(in crate::game) bounds: Aabb,

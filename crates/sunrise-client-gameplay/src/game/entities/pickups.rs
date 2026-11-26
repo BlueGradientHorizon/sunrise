@@ -39,7 +39,7 @@ pub(in crate::game) enum Collector {
     Mob(u32),
 }
 
-pub(in crate::game) struct Pickup {
+pub struct Pickup {
     pub taken: Taken,
     collector: Collector,
     life: u32,

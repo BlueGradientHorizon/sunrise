@@ -34,7 +34,7 @@ const WALKS_BEFORE_GRID: u32 = 8;
 /// What a stretch of vehicle ticks knows about the mobs, so a boat or a minecart reads the
 /// mobs near it and not every mob of the level ([`Game::mobs_meeting`]).
 #[derive(Default)]
-pub(in crate::game) struct VehicleMobs {
+pub struct VehicleMobs {
     /// The mobs' [`BoxReach`] with the mob count it was worked out for; None outside a stretch.
     reach: Cell<Option<(usize, BoxReach)>>,
     pub grid: RefCell<MobGrid>,

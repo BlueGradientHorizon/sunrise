@@ -28,7 +28,7 @@ use sunrise_protocol::{packets::configuration::ResourcePackPush, servers};
 
 /// `ClientCommonPacketListenerImpl.PackConfirmScreen`: the packs it asks
 /// about, whether the last one is required, and the server's message.
-pub(in crate::game) struct PackPrompt {
+pub struct PackPrompt {
     requests: Vec<(u128, String, String)>,
     required: bool,
     prompt: Option<Text>,
@@ -73,7 +73,7 @@ impl PackPrompt {
 
 /// The game's `DownloadedPackSource`.
 #[derive(Default)]
-pub(in crate::game) struct ServerPackState {
+pub struct ServerPackState {
     pub packs: ServerPacks,
     /// `downloads/` in the game folder, opened at the first download.
     queue: Option<download::Queue>,

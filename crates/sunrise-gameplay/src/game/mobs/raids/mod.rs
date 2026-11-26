@@ -87,9 +87,9 @@ pub(in crate::game) use sunrise_gameplay::custom_spawner::{section, sections_to_
 
 /// The level as a raid sees it, with this tick's village data.
 pub struct Lvl<'a, 'g> {
-    pub(in crate::game) game: &'a crate::game::ServerGame<'g>,
-    pub(in crate::game) difficulty: i32,
-    pub(in crate::game) centers: &'a HashSet<(i32, i32, i32)>,
+    pub game: &'a crate::game::ServerGame<'g>,
+    pub difficulty: i32,
+    pub centers: &'a HashSet<(i32, i32, i32)>,
 }
 impl RaidLevel for Lvl<'_, '_> {
     fn difficulty(&self) -> i32 {

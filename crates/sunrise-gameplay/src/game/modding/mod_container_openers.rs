@@ -5,7 +5,7 @@ use sunrise_sim::mobs::{Species, Who};
 
 type Pos = (i32, i32, i32);
 
-pub(in crate::game) struct ModContainerOpeners {
+pub struct ModContainerOpeners {
     pub count: u32,
     generation: u64,
     recheck: i64,

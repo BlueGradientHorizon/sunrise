@@ -71,7 +71,7 @@ impl Button {
     }
 }
 #[derive(Default)]
-pub(in crate::game) struct View {
+pub struct View {
     /// Visible tabs.
     pub tabs: Vec<Tab>,
     pub(in crate::game) buttons: Vec<Button>,
@@ -125,7 +125,7 @@ pub struct ViewerChannels {
 /// saw of the open menu: its window, its state id, and the inventory and
 /// grid. Any change there forgets them.
 #[derive(Default)]
-pub(in crate::game) struct TransferChecks {
+pub struct TransferChecks {
     pub(in crate::game) seen: Option<(i32, i32, Vec<Option<ItemStack>>)>,
     pub(in crate::game) answers: Vec<CheckAnswer>,
     /// The one request out: its tag, its recipe and when it went.

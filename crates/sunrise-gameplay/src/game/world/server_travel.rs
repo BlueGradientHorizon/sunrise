@@ -51,7 +51,7 @@ impl TravelCause {
 
 /// A trip under way: the player is in the destination's level, whose
 /// chunks are loading around `target`.
-pub(in crate::game) struct Trip {
+pub struct Trip {
     pub conn: u32,
     pub dim: Dim,
     /// The level the player came from: the vehicle it rides waits there

@@ -62,7 +62,7 @@ impl<S> Clone for PickupTarget<'_, S> {
 }
 
 /// What the click read: the journaled-write epoch before the listeners ran.
-struct PickupReads {
+pub struct PickupReads {
     writes: u64,
 }
 

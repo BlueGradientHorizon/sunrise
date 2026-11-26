@@ -17,7 +17,7 @@ const BUTTON_HEIGHT: f32 = 20.0;
 const SECTION_SPACE: f32 = 12.0;
 const LINE_HEIGHT: f32 = 9.0;
 
-pub(in crate::game) struct DemoIntro {
+pub struct DemoIntro {
     pub title: Text,
     pub messages: [Text; 2],
     pub buttons: [Text; 2],

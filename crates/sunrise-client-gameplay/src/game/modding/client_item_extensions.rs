@@ -33,7 +33,7 @@ pub(in crate::game) struct ArmorModel {
     pub slots: [Arc<Part>; 4],
 }
 
-pub(in crate::game) struct ArmorExtensions {
+pub struct ArmorExtensions {
     pub generation: u64,
     pub models: Vec<ArmorModel>,
     pub textures: Vec<String>,

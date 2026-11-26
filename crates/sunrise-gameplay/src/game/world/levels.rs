@@ -533,7 +533,7 @@ impl crate::game::ServerGame<'_> {
 /// tick rate manager's answer for this server tick, asked once before the
 /// levels (`MinecraftServer.tickServer`); `None` outside `tick_server`.
 #[derive(Clone, Copy)]
-pub(in crate::game) struct Pass {
+pub struct Pass {
     pub first: bool,
     pub last: bool,
     pub running: Option<bool>,
@@ -568,7 +568,7 @@ pub(in crate::game) fn server_tick_phases(levels: &[Dim]) -> impl Iterator<Item 
 }
 
 /// How long a server tick took and what it spent the time in.
-pub(in crate::game) struct TickTiming {
+pub struct TickTiming {
     pub wall_ms: f32,
     pub cpu_ms: Option<f32>,
     /// Spans recorded inside the tick only, in observation order.

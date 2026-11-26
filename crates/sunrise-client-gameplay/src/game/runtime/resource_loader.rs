@@ -435,7 +435,7 @@ pub struct Loaded {
     /// itself on the synchronous launch.
     pub entity_models: Option<Arc<sunrise_client::mobs::EntityModelDocument>>,
     #[cfg(feature = "client")]
-    pub(in crate::game) renderer_cpu: Option<sunrise_client::gfx::PreparedTextures>,
+    pub renderer_cpu: Option<sunrise_client::gfx::PreparedTextures>,
     pub root: PathBuf,
     pub pack_error: Option<String>,
     pub resources: Arc<Resources>,
@@ -480,7 +480,7 @@ impl LoaderMsg {
 }
 
 /// Only the startup report needs its error type preserved across threads.
-pub(in crate::game) enum LoaderFailure {
+pub enum LoaderFailure {
     Declarations(mods::DeclarationFailures),
     Other(String),
 }

@@ -14,7 +14,7 @@ use winit::{
 // winit key fields, without creating a window or sending operating-system keyboard events.
 #[test]
 fn xkb_f3_reaches_debug_press_repeat_release_and_binding_capture() {
-    struct Host(u32);
+    pub struct Host(u32);
     impl DebugHost for Host {
         fn screen(&self) -> OpenScreen {
             OpenScreen::None

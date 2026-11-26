@@ -38,11 +38,11 @@ use {crate::game::*, sunrise_gameplay_common::game::*};
 
 /// Window key parts used by IME and preset editor dispatch.
 pub struct WindowKeyInput<'a> {
-    pub(in crate::game) physical: PhysicalKey,
-    pub(in crate::game) state: ElementState,
-    pub(in crate::game) repeat: bool,
-    pub(in crate::game) text: Option<&'a str>,
-    pub(in crate::game) shortcut: Option<sunrise_client::clipboard::EditShortcut>,
+    pub physical: PhysicalKey,
+    pub state: ElementState,
+    pub repeat: bool,
+    pub text: Option<&'a str>,
+    pub shortcut: Option<sunrise_client::clipboard::EditShortcut>,
 }
 
 impl crate::game::ClientGame<'_> {

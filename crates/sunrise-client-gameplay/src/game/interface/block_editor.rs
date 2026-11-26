@@ -83,7 +83,7 @@ pub(in crate::game) enum Item {
 }
 
 /// What a press on a button does to the screen.
-pub(in crate::game) enum Outcome {
+pub enum Outcome {
     Stay,
     /// Send the packet and close.
     Send(S),

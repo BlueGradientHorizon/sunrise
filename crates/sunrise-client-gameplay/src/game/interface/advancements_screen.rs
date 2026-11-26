@@ -146,7 +146,7 @@ pub struct TabState {
     pub hovered: Option<usize>,
 }
 #[derive(Default)]
-pub(in crate::game) struct AdvUi {
+pub struct AdvUi {
     pub cache: Option<Cache>,
     /// The selected root in this screen, if present in its tabs.
     tab: Option<String>,
@@ -166,7 +166,7 @@ impl AdvUi {
     }
 }
 /// What the current frame shows: tabs and the connected widgets of the selected tab.
-struct View {
+pub struct View {
     pub tabs: Vec<usize>,
     pub tab: Option<usize>,
     pub widgets: Vec<usize>,

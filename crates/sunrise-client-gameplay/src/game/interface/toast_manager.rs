@@ -32,7 +32,7 @@ pub struct VisibleToast {
 }
 
 #[derive(Default)]
-pub(in crate::game) struct ToastManager {
+pub struct ToastManager {
     pub pending_mod: RefCell<Vec<mod_toasts::Pending>>,
     pub queued: VecDeque<Toast>,
     pub visible: Vec<VisibleToast>,

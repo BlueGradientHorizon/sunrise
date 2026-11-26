@@ -12,7 +12,7 @@ use sunrise_gameplay_common::game::native_hooks::level_sounds::GameHooks as _;
 
 /// A sound bound to an entity (`level.playSound(except, entity, ...)`),
 /// waiting for the end of the tick to be asked of the mods and sent.
-pub(in crate::game) struct BoundSound {
+pub struct BoundSound {
     pub name: String,
     pub at: [f64; 3],
     pub volume: f32,

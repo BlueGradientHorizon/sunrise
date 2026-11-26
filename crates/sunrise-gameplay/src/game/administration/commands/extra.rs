@@ -95,7 +95,7 @@ pub(in crate::game) mod fetchprofile_tests {
 }
 /// Server-side player and server state these commands keep.
 #[derive(Default)]
-pub(in crate::game) struct CommandExtras {
+pub struct CommandExtras {
     /// ServerPlayer.camera: the entity `/spectate` attached the view to.
     pub camera: Option<Target>,
     /// The cameras of the guests of a server, by connection

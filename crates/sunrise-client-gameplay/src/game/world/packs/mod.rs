@@ -922,7 +922,7 @@ pub fn stage_pack(
 /// Everything a pack reload builds on the CPU (`apply_staged_pack` finishes
 /// it on the render thread).
 #[cfg(feature = "client")]
-pub(in crate::game) struct StagedPack {
+pub struct StagedPack {
     pub root: PathBuf,
     pub waypoint_styles: sunrise_client::locator_bar::WaypointStyles,
     pub armor_stand_assets: crate::game::client_side::armor_stands_client::ArmorStandAssets,

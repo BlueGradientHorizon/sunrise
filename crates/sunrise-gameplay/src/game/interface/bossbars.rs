@@ -15,7 +15,7 @@ use sunrise_protocol::packets::play::{self, BossAction, Clientbound as C};
 use sunrise_sim::{mobs::Species, save, scoreboard_cmd::format_list};
 
 #[derive(Default)]
-pub(in crate::game) struct BossState {
+pub struct BossState {
     pub bars: BossBars,
     /// CustomBossEvents' default HashMap order, used only by the list reply.
     pub(in crate::game) listing: JavaHashMap<Identifier, usize>,
@@ -779,7 +779,7 @@ pub enum Scope {
     Global,
     Level(Dim),
 }
-pub(in crate::game) struct Viewer {
+pub struct Viewer {
     pub uuid: u128,
     pub(in crate::game) ints: [i32; 4],
     pub at: [f64; 3],

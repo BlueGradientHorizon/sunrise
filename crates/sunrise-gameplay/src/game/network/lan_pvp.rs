@@ -110,7 +110,7 @@ impl Strike {
 
 /// The attacker's pre-hit inputs retained until a sweep's actual victim is in place.
 #[derive(Clone)]
-struct SweepDamage {
+pub struct SweepDamage {
     weapon: sunrise_items::items::ItemStack,
     attacker: u32,
     base: f32,
@@ -124,25 +124,25 @@ struct SweepDamage {
 #[derive(Clone)]
 pub struct Sweep {
     /// The attacking guest (none: the host).
-    attacker: Option<u32>,
+    pub attacker: Option<u32>,
     /// The attacker's creative mode: their hit passes the victim's
     /// invulnerability (`DamageSource.isCreativePlayer`, #916).
-    creative: bool,
-    from: [f64; 3],
+    pub creative: bool,
+    pub from: [f64; 3],
     /// The damage after the enchantments and the attack strength.
-    damage: f32,
+    pub damage: f32,
     /// Custom effects need the actual victim, so keep their pre-hit input until each landing.
-    custom_damage: Option<SweepDamage>,
+    pub custom_damage: Option<SweepDamage>,
     /// The push along the attacker's yaw.
-    knockback: (f64, f64),
-    team: Option<sunrise_game_data::scoreboard::Team>,
+    pub knockback: (f64, f64),
+    pub team: Option<sunrise_game_data::scoreboard::Team>,
     /// The target's box grown by (1, 0.25, 1).
-    pub(in crate::game) hit_box: Aabb,
+    pub hit_box: Aabb,
     /// The entity id of the player the sweep started from, which it spares.
-    pub(in crate::game) skip: Option<i32>,
+    pub skip: Option<i32>,
     /// The weapon's `minecraft:ignite` (Fire Aspect) on each swept player, in
     /// seconds (`doPostAttackEffects` after a sweep hit lands).
-    ignite: f32,
+    pub ignite: f32,
 }
 
 impl Strike {

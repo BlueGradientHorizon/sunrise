@@ -29,7 +29,7 @@ impl Change {
 
 /// Client mods' sounds: those asked for since the last audio update, the changes asked of
 /// them, and each started one's engine instance by its handle.
-pub(in crate::game) struct ModSounds {
+pub struct ModSounds {
     /// The last handle given; handles are never reused.
     last: Cell<u64>,
     /// Sounds asked for (`play_local_sound`), with their handle and the ticks each

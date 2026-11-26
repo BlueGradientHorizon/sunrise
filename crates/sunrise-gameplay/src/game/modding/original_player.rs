@@ -106,7 +106,7 @@ impl AttachmentStore for RetainedOriginalAttachments {
 }
 
 /// Pre-copy state of the original `ServerPlayer`, lent directly to `player_clone`.
-pub(in crate::game) struct RetainedOriginalPlayer {
+pub struct RetainedOriginalPlayer {
     uuid: u128,
     position: [f64; 3],
     dimension: String,

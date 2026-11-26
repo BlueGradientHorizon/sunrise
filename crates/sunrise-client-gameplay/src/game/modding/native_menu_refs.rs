@@ -280,7 +280,7 @@ use sunrise_gameplay_common::game::in_own_process;
 pub(in crate::game) const PANEL: &str = "test:panel";
 
     #[cfg(test)]
-pub(in crate::game) struct Panel {
+pub struct Panel {
         pub(in crate::game) opening: Arc<Mutex<Option<(MenuRef, usize)>>>,
     }
     #[cfg(test)]

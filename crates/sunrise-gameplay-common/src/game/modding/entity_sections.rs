@@ -63,16 +63,16 @@ pub fn crossed(from: [f64; 3], to: [f64; 3]) -> bool {
 /// A section change a boundary found: the entity, its old and its new section.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Crossing {
-    pub(in crate::game) id: u32,
-    pub(in crate::game) old: [i32; 3],
-    pub(in crate::game) new: [i32; 3],
+    pub id: u32,
+    pub old: [i32; 3],
+    pub new: [i32; 3],
 }
 
 /// Where a boundary is: the world open and the level the entity is in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Scope {
     pub epoch: WorldEpoch,
-    pub(in crate::game) level: DimensionKey,
+    pub level: DimensionKey,
 }
 
 /// The section each entity is filed under, and the crossings not told yet.

@@ -181,7 +181,7 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
-pub(in crate::game) struct HintToast {
+pub struct HintToast {
     hint: Hint,
     pub lines: Vec<(sunrise_game_data::text::Text, bool)>,
     pub title_lines: usize,

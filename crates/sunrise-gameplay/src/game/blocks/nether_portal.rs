@@ -36,7 +36,7 @@ pub(in crate::game) const VEHICLE_DELAY: i32 = 10;
 pub(in crate::game) const PROJECTILE_DELAY: i32 = 2;
 
 /// One level's loaded state the portal search reads: the level in place or a parked one.
-pub(in crate::game) struct PortalSide<'a> {
+pub struct PortalSide<'a> {
     pub(in crate::game) dim: Dim,
     pub world: &'a sunrise_level::world::World,
     pub(in crate::game) border: &'a sunrise_level::worldborder::WorldBorder,
@@ -136,7 +136,7 @@ pub struct Arrival {
 
 /// The server's entity portal state.
 #[derive(Default)]
-pub(in crate::game) struct Portals {
+pub struct Portals {
     /// Items and mobs, by entity id.
     pub entities: HashMap<u32, PortalState>,
     /// Positions before this tick's moves, by entity id.

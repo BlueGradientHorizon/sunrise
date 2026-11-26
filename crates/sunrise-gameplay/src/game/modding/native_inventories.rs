@@ -30,7 +30,7 @@ pub enum NativeInventoryKind {
 /// whether it is the live one (the player is on the server) or their file's.
 #[allow(dead_code)]
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct NativeInventory {
+pub struct NativeInventory {
     pub slots: Vec<Option<ItemStack>>,
     pub online: bool,
 }

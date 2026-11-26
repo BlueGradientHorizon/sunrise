@@ -72,7 +72,7 @@ impl ContainerHooks for ReadFar {
 pub static READ_FAR: ReadFar = ReadFar(std::sync::atomic::AtomicUsize::new(0));
 #[cfg(test)]
 /// Takes nothing.
-    struct Pass;
+    pub struct Pass;
 #[cfg(test)]
 impl ContainerHooks for Pass {}
 pub static PASS: Pass = Pass;

@@ -52,7 +52,7 @@ pub(in crate::game) struct ProjectileHit {
 pub(in crate::game) type ProjectileShot = (Option<Who>, Option<u32>, [f64; 3]);
 
 /// A notified hit still waiting to be applied after the intervening callbacks.
-pub(in crate::game) struct PendingImpact {
+pub struct PendingImpact {
     keep: bool,
     canceled: bool,
     target: Option<ImpactTarget>,

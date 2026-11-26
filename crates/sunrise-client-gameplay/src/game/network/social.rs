@@ -14,7 +14,7 @@ use sunrise_level::profile_lookup::TabPlayer;
 use winit::keyboard::KeyCode;
 
 /// `PlayerSocialManager.hiddenPlayers` and the screen's state.
-pub(in crate::game) struct Social {
+pub struct Social {
     pub hidden: HashSet<u128>,
     /// `discoveredNamesToUUID`, the other way: the names of the players seen, so a hidden player
     /// who left is still listed by name.

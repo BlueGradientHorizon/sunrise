@@ -12,7 +12,7 @@ use std::sync::Arc;
 pub(crate) const RAYCAST_MAX: f32 = 1024.0;
 
 /// Client input captured by a main-hand item behavior, not a living entity's item use.
-pub(in crate::game) struct ActiveClientItemUse {
+pub struct ActiveClientItemUse {
     mod_id: &'static str,
     mod_index: usize,
     behavior: Arc<dyn ClientItemUseBehavior>,

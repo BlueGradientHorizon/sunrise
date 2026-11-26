@@ -18,7 +18,7 @@ use sunrise_sim::join_seq::{JoinSeq, Joined};
 
 /// Progress through this level tick's ordered entity turns.
 #[derive(Default, Clone)]
-pub(in crate::game) struct OrderedTicks {
+pub struct OrderedTicks {
     /// Joins at or above this started after the tick began; they tick next tick.
     /// The general rows' pass (`general/tick.rs`) shares the same cutoff.
     pub born: JoinSeq,
@@ -54,7 +54,7 @@ pub(in crate::game) struct OrderedTicks {
 
 /// The batches of the other kinds, in the order they tick.
 #[derive(Clone, Copy)]
-pub(in crate::game) enum Batch {
+pub enum Batch {
     ArmorStands,
     Boats,
     Carts,

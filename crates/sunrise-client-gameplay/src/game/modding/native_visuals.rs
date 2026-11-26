@@ -4,7 +4,7 @@ use sunrise_client::{dynamic_light, gizmos};
 /// Non-particle requests survive a late particle clear. Select the combined nearest
 /// lights only after particle extraction, so removed particles cannot displace them.
 #[derive(Default)]
-pub(in crate::game) struct FrameVisuals {
+pub struct FrameVisuals {
     item_lights: Vec<mod_api::ColoredLight>,
     mod_lights: Vec<mod_api::ColoredLight>,
 }

@@ -1994,16 +1994,16 @@ impl sunrise_sim::mobs::ModEffectTicks for crate::game::ServerGame<'_> {
 #[derive(Clone, Debug, Default)]
 pub struct PotionOwner {
     /// The thrower's name, when it has one.
-    pub(in crate::game) name: Option<Text>,
+    pub name: Option<Text>,
     /// The mob that threw it (a witch): the hurt is its kill credit, as
     /// `indirectMagic(potion, owner)` gives it. A player's throw is the
     /// potion's own and only `name`s the message.
-    pub(in crate::game) attacker: Option<u32>,
+    pub attacker: Option<u32>,
     /// A player threw it: the water damage `indirectMagic` deals is theirs.
-    pub(in crate::game) player: bool,
+    pub player: bool,
     /// On a server, the guest (by connection) who threw it: whose kill the mobs it hurts are
     /// (`LivingEntity.lastHurtByPlayer`).
-    pub(in crate::game) guest: Option<u32>,
+    pub guest: Option<u32>,
 }
 
 impl PotionOwner {

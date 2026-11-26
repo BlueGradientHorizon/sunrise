@@ -1059,7 +1059,7 @@ pub(in crate::game) mod tests {
     #[test]
     fn name_tag_culling_keeps_intersecting_entity_boxes_within_distance() {
         // A 90-degree camera looking down -Z, with near/far at 1/100.
-        struct View;
+        pub struct View;
         impl sunrise_client::gfx::Cull for View {
             fn intersects(&self, lo: glam::Vec3, hi: glam::Vec3) -> bool {
                 lo.z <= -1.0

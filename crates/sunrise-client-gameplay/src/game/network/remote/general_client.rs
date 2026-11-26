@@ -17,7 +17,7 @@ use sunrise_sim::join_seq::JoinSeq;
 
 /// One general row the server shows the window.
 #[derive(Clone, Debug, PartialEq)]
-pub(in crate::game) struct RemoteGeneral {
+pub struct RemoteGeneral {
     /// Admission to the level, even if the first attachment snapshot has yet to arrive.
     pub join: JoinSeq,
     /// The client's frozen catalog slot for the row's type.

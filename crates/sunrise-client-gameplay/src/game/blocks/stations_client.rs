@@ -152,7 +152,7 @@ pub(in crate::game) const EMPTY_TEMPLATE_ICONS: [&str; 2] = [
     "smithing_template_netherite_upgrade",
 ];
 
-pub(in crate::game) struct StationUi {
+pub struct StationUi {
     /// The box itself (`AnvilScreen`'s `EditBox` of 50, unbordered).
     pub(in crate::game::client_side) rename: sunrise_client::ui::EditBox,
     /// Stonecutter: the screen's first shown recipe index (`startIndex`).

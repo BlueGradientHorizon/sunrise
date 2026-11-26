@@ -25,7 +25,7 @@ use sunrise_level::containers::BlockEntity;
 use sunrise_sim::menu::Input;
 
 #[derive(Default)]
-pub(in crate::game) struct Tweaks {
+pub struct Tweaks {
     pub drag: Option<Drag>,
     /// Wheel steps not yet acted on (a trackpad scrolls in fractions).
     wheel: f32,

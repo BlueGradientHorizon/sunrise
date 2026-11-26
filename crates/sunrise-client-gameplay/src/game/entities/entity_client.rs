@@ -420,7 +420,7 @@ pub enum DrawFamily {
 /// Entities of one family, by list index, that joined back to back as far as the ordered
 /// pass is concerned.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(in crate::game) struct DrawRun {
+pub struct DrawRun {
     pub family: DrawFamily,
     pub(in crate::game) range: std::ops::Range<usize>,
 }

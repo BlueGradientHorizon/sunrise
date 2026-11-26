@@ -37,32 +37,32 @@ pub fn observed_overlay_id(
 pub struct OpenNativeScreen {
     /// Fixed for the opening; slot moves have their own revision.
     pub layout_revision: u64,
-    pub(in crate::game) slot_moves: SlotMoves,
-    pub(in crate::game) screen: mod_api::__private::OwnedMenuScreen,
+    pub slot_moves: SlotMoves,
+    pub screen: mod_api::__private::OwnedMenuScreen,
     pub menu: OpenNativeMenu,
     /// Installed as the window's screen, not merely staged for ScreenOpening.
-    pub(in crate::game) shown: bool,
+    pub shown: bool,
     /// The server closed the logical menu (`LocalPlayer.clientSideCloseContainer`),
     /// while the displayed screen stays whole through `screen_closing` or a veto
     /// until its removal runs (`AbstractContainerScreen` owns its own `menu`).
-    pub(in crate::game) detached: bool,
+    pub detached: bool,
 }
 
 /// The menu the screen presents: where its slots are stored, the opener,
 /// and the window's live data.
 pub struct OpenNativeMenu {
-    pub(in crate::game) key: Pos,
-    pub(in crate::game) window: i32,
+    pub key: Pos,
+    pub window: i32,
     pub generation: u64,
     /// The menu's type, which its screen factory is keyed by.
     pub name: String,
     /// The server title captured for this screen, kept if the logical menu closes first.
-    pub(in crate::game) title: Option<mod_api::Text>,
+    pub title: Option<mod_api::Text>,
     /// The mod block whose matching container opened the menu, if any.
     pub block: Option<String>,
     pub pos: Option<[i32; 3]>,
-    pub(in crate::game) mod_type: Option<&'static sunrise_level::containers::ModMenuType>,
-    pub(in crate::game) data: Vec<i32>,
+    pub mod_type: Option<&'static sunrise_level::containers::ModMenuType>,
+    pub data: Vec<i32>,
 }
 
 /// Where a mod moved the open screen's slots after it opened, over the
@@ -71,7 +71,7 @@ pub struct OpenNativeMenu {
 /// it, so drawing and hit-testing read one position within a frame and both
 /// take a move together from the next.
 #[derive(Default)]
-pub(in crate::game) struct SlotMoves {
+pub struct SlotMoves {
     /// Each moved slot's position, or None for a slot a mod hid.
     pub(in crate::game) committed:
         std::cell::RefCell<std::collections::HashMap<usize, Option<[f32; 2]>>>,

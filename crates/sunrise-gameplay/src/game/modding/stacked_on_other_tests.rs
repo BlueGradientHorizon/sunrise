@@ -19,18 +19,18 @@ use sunrise_sim::menu::Input;
 #[derive(Clone, Default)]
 pub struct Script {
     /// Put dirt in this inventory slot through the `Host` (its own nested transaction).
-    pub(in crate::game) write_dirt: Option<i32>,
+    pub write_dirt: Option<i32>,
     /// ...and take it out again at once.
-    pub(in crate::game) take_dirt_back: bool,
-    pub(in crate::game) panic: bool,
-    pub(in crate::game) cancel: bool,
-    pub(in crate::game) handled: bool,
+    pub take_dirt_back: bool,
+    pub panic: bool,
+    pub cancel: bool,
+    pub handled: bool,
     /// Set the cursor to this stack (item, count); `Some(None)` empties it.
-    pub(in crate::game) set_carried: Option<Option<(&'static str, u32)>>,
-    pub(in crate::game) set_clicked: Option<Option<(&'static str, u32)>>,
-    pub(in crate::game) take_clicked: Option<u32>,
-    pub(in crate::game) dirt_rule: Option<(bool, u32)>,
-    pub(in crate::game) write_scoreboard: bool,
+    pub set_carried: Option<Option<(&'static str, u32)>>,
+    pub set_clicked: Option<Option<(&'static str, u32)>>,
+    pub take_clicked: Option<u32>,
+    pub dirt_rule: Option<(bool, u32)>,
+    pub write_scoreboard: bool,
 }
 
 thread_local! {
@@ -1244,31 +1244,31 @@ pub mod item_part_tests {
 
     #[derive(Clone, Default)]
     pub struct PartScript {
-        pub(in crate::game) cancel_carried: bool,
-        pub(in crate::game) cancel_clicked: bool,
-        pub(in crate::game) handled: bool,
-        pub(in crate::game) carried_handled: Option<bool>,
-        pub(in crate::game) clicked_handled: Option<bool>,
-        pub(in crate::game) set_carried: Option<Option<(&'static str, u32)>>,
-        pub(in crate::game) set_clicked: Option<Option<(&'static str, u32)>>,
-        pub(in crate::game) take_clicked: Option<u32>,
-        pub(in crate::game) carried_phase_set_carried: Option<Option<(&'static str, u32)>>,
-        pub(in crate::game) carried_phase_set_clicked: Option<Option<(&'static str, u32)>>,
-        pub(in crate::game) carried_phase_take_clicked: Option<u32>,
-        pub(in crate::game) clicked_phase_set_carried: Option<Option<(&'static str, u32)>>,
-        pub(in crate::game) clicked_phase_set_clicked: Option<Option<(&'static str, u32)>>,
-        pub(in crate::game) clicked_phase_take_clicked: Option<u32>,
-        pub(in crate::game) panic_on_carried: bool,
-        pub(in crate::game) write_scoreboard: bool,
+        pub cancel_carried: bool,
+        pub cancel_clicked: bool,
+        pub handled: bool,
+        pub carried_handled: Option<bool>,
+        pub clicked_handled: Option<bool>,
+        pub set_carried: Option<Option<(&'static str, u32)>>,
+        pub set_clicked: Option<Option<(&'static str, u32)>>,
+        pub take_clicked: Option<u32>,
+        pub carried_phase_set_carried: Option<Option<(&'static str, u32)>>,
+        pub carried_phase_set_clicked: Option<Option<(&'static str, u32)>>,
+        pub carried_phase_take_clicked: Option<u32>,
+        pub clicked_phase_set_carried: Option<Option<(&'static str, u32)>>,
+        pub clicked_phase_set_clicked: Option<Option<(&'static str, u32)>>,
+        pub clicked_phase_take_clicked: Option<u32>,
+        pub panic_on_carried: bool,
+        pub write_scoreboard: bool,
     }
 
     #[derive(Clone, Debug, PartialEq, Eq)]
-    pub(in crate::game) struct PartObservation {
-        pub(in crate::game) tag: &'static str,
-        pub(in crate::game) direction: StackedOnOtherDirection,
+    pub struct PartObservation {
+        pub tag: &'static str,
+        pub direction: StackedOnOtherDirection,
         pub is_server: bool,
-        pub(in crate::game) primary: bool,
-        pub(in crate::game) carried: Option<(String, u32)>,
+        pub primary: bool,
+        pub carried: Option<(String, u32)>,
         pub clicked: Option<(String, u32)>,
     }
 

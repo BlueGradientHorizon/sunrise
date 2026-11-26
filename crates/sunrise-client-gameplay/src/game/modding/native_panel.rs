@@ -43,7 +43,7 @@ const SEARCH_LENGTH: usize = 50;
 pub(in crate::game) const DRAG_THRESHOLD: f32 = 4.0;
 
 /// The browser's overlay selected while painting its contents.
-pub(in crate::game) enum BrowserTooltip {
+pub enum BrowserTooltip {
     Text(String),
     Stack(ItemStack),
     Fluid(mod_api::FluidStack),
@@ -165,7 +165,7 @@ fn browser_overlay(
 
 /// Whose panel it is: a native mod's id.
 #[derive(Clone, Debug, PartialEq)]
-pub(in crate::game) enum Owner {
+pub enum Owner {
     Native(String),
 }
 impl Owner {
@@ -188,7 +188,7 @@ pub(in crate::game) struct Shown {
 
 /// The panel's state in the game.
 #[derive(Default)]
-pub(in crate::game) struct Panel {
+pub struct Panel {
     /// A native mod's panel: the last one to show something.
     native: Option<Shown>,
     /// The last native change.

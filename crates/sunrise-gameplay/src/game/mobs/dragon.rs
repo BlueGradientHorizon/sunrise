@@ -136,7 +136,7 @@ pub(in crate::game) struct Push {
 }
 
 #[derive(Default)]
-pub(in crate::game) struct Fight {
+pub struct Fight {
     pub loaded: bool,
     pub(in crate::game) needs_scan: bool,
     pub killed: bool,

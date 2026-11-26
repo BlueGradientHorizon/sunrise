@@ -50,7 +50,7 @@ pub(in crate::game) struct PlayerEvents {
 }
 
 #[derive(Default)]
-pub(in crate::game) struct SculkState {
+pub struct SculkState {
     /// The player's warning level toward a warden.
     pub tracker: WardenSpawnTracker,
     pub(in crate::game) tables: Tables,

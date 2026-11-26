@@ -21,7 +21,7 @@ use {
 pub(in crate::game) type Pos = (i32, i32, i32);
 
 /// The game's mobs as a heart sees them, taken out of the game for the tick.
-pub(in crate::game) struct Host<'a> {
+pub struct Host<'a> {
     pub(in crate::game) mobs: &'a mut sunrise_sim::join_seq::JoinList<Mob>,
     pub(in crate::game) added: Vec<Mob>,
     pub(in crate::game) uuids: &'a mut EntityUuids,

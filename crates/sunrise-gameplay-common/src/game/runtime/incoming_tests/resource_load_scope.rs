@@ -2,7 +2,7 @@
 use super::*;
 use std::sync::Arc;
 
-struct Owner;
+pub struct Owner;
 impl mod_api::Hooks for Owner {
     fn subscribed(&self) -> &'static [Option<mod_api::HookId>] {
         &[]
