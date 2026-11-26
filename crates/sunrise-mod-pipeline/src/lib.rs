@@ -1900,7 +1900,10 @@ void main() {{
         };
         let refused = extract_program_bindings(&sources(vsh, fsh), &[], &include)
             .expect_err("an unsupported vertex input type is refused");
-        assert_eq!(refused.file, "assets/example/shaders/include/attributes.glsl");
+        assert_eq!(
+            refused.file,
+            "assets/example/shaders/include/attributes.glsl"
+        );
         assert_eq!(refused.line, 1);
         assert!(
             refused.message.contains("`mat4` for `Matrix`"),
@@ -1946,12 +1949,14 @@ void main() {{
     /// A translator error in an included file names it by its asset path, as a stage file is.
     #[test]
     fn a_translator_error_in_an_include_names_its_asset_path() {
-        let include = |id: &str| match id {
+        let include = |id: &str| {
+            match id {
             "example:shaders/include/pick.glsl" => Ok(Some(
                 "uniform sampler2D MySampler0;\nvec4 pick() { return texture(MySampler0, vec2(0.0)); }\n"
                     .to_owned(),
             )),
             other => stub_include(other),
+        }
         };
         let fsh = "#version 330\n#include <example:pick.glsl>\nout vec4 fragColor;\n\
             void main() { fragColor = pick(); }\n";

@@ -63,7 +63,9 @@ impl Preprocessed {
     /// The pack file an origin names: `"?"` for an index outside [`Preprocessed::files`], which
     /// only a `Preprocessed` built by hand has.
     pub(crate) fn file_of(&self, origin: Origin) -> &str {
-        (self.files.get(origin.file as usize)).map_or("?", String::as_str)
+        self.files
+            .get(origin.file as usize)
+            .map_or("?", String::as_str)
     }
 
     /// The pack file and line output line `line` (from 0) came from; `None` past the last line.
