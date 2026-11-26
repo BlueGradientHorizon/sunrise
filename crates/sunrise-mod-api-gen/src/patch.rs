@@ -742,7 +742,7 @@ pub(crate) fn find(source: &mut Source, target: &str) -> Result<Found, (&'static
             .map_err(|why| ("E_MIXIN_TARGET_MISSING", why))?
             .items
             .clone();
-        found.extend(named(&items, at, &owner, trait_name.as_deref(), &name));
+        found.extend(named(&items, at, &owner, trait_name.as_deref(), name));
     }
     // Where the type is declared: the module a target names a method below the game crate by.
     let mut misnamed = None;
