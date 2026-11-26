@@ -1616,13 +1616,12 @@ impl Game<'_> {
                             let (x, z) = (min_x + dx, min_z + dz);
                             let mut y = self.world_surface(x, z);
                             let min_y = self.world.bottom_y();
-                            let color;
-                            if y <= min_y {
-                                color = self.default_map_color(
+                            let color = if y <= min_y {
+                                self.default_map_color(
                                     "minecraft:bedrock",
                                     11,
                                     BlockPos::new(x, 0, z),
-                                );
+                                )
                             } else {
                                 let mut state;
                                 loop {
@@ -1652,8 +1651,8 @@ impl Game<'_> {
                                         state = b.legacy_block(b.fluid(state));
                                     }
                                 }
-                                color = self.map_color_at(BlockPos::new(x, y, z), state);
-                            }
+                                self.map_color_at(BlockPos::new(x, y, z), state)
+                            };
                             self.check_banners(id, x, z);
                             height += f64::from(y) / f64::from(scale * scale);
                             add(color, 1);
