@@ -29,7 +29,7 @@ def expression_value(expression, github, inputs=None, matrix=None):
             return node.value
         if isinstance(node, ast.Name):
             return {"github": github, "inputs": inputs or {}, "matrix": matrix or {},
-                    "true": True, "false": False}[node.id]
+                    "env": {}, "true": True, "false": False}[node.id]
         if isinstance(node, ast.Attribute):
             return evaluate(node.value).get(node.attr, "")
         if isinstance(node, ast.Compare) and len(node.ops) == 1 and isinstance(node.ops[0], (ast.Eq, ast.NotEq)):

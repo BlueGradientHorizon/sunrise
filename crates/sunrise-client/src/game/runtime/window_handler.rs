@@ -146,16 +146,7 @@ impl Game<'_> {
         origin: input_trace::InputOrigin,
         retained_sample: Option<PointerSample>,
     ) {
-        let input = matches!(
-            event,
-            WindowEvent::KeyboardInput { .. }
-                | WindowEvent::MouseInput { .. }
-                | WindowEvent::MouseWheel { .. }
-                | WindowEvent::Ime(_)
-        );
-        self.with_user_input(input, |game| {
-            game.handle_window_event_as(event_loop, id, event, origin, retained_sample);
-        });
+        self.handle_window_event_as(event_loop, id, event, origin, retained_sample);
     }
 
     pub(super) fn handle_window_event_as(
@@ -174,6 +165,11 @@ impl Game<'_> {
         };
         if !ours {
             return;
+        }
+        // A drop belongs to the screen it was dropped on (`MouseHandler.onDrop`): its files
+        // reach that screen before any later event of this pass can change the screen.
+        if !matches!(event, WindowEvent::DroppedFile(_)) {
+            self.fire_dropped_files();
         }
         // The window's state, not input: kept whoever's turn it is.
         track_window_state(
@@ -573,10 +569,7 @@ impl ApplicationHandler for Game<'_> {
                 (_, false) => mod_api::KeyAction::Press,
                 (_, true) => mod_api::KeyAction::Repeat,
             };
-            // Still the key's handling: a mod's key hook may reach the clipboard.
-            self.with_user_input(true, |game| {
-                game.key_input(name, layout_key, raw_code, action, modifiers);
-            });
+            self.key_input(name, layout_key, raw_code, action, modifiers);
         }
     }
     fn device_event(&mut self, event_loop: &ActiveEventLoop, _: DeviceId, event: DeviceEvent) {

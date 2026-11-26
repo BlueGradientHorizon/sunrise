@@ -914,7 +914,17 @@ impl Game<'_> {
             .unwrap_or_else(|| self.res.biomes());
         let overrides = match &self.world_tables {
             Some(tables) => tables.biomes.overrides.clone(),
-            None => super::world_loading::worldgen_overrides_of(&self.fns.data).0,
+            None => {
+                let base_conditions = self.worldgen_base_conditions()?;
+                let mut enabled: Vec<_> = self.fns.enabled_packs_highest_first().collect();
+                enabled.reverse();
+                let conditions = super::load_conditions::worldgen_load_conditions(
+                    &base_conditions,
+                    &self.options.resources,
+                    &enabled,
+                );
+                super::world_loading::worldgen_overrides_of(&self.fns.data, &conditions)?.0
+            }
         };
         let (streaming, save, locator) = super::world_loading::make_streaming(
             &self.res,
@@ -952,6 +962,7 @@ impl Game<'_> {
         }
         world.fast_lava = self.dimension_type_of(dim).fast_lava;
         world.infiniburn = Some(self.resolve_level_infiniburn(self.dimension_type_of(dim)));
+        world.golem_heads = Some(self.resolve_golem_heads());
         Ok(Parked {
             world,
             streaming,

@@ -41,16 +41,6 @@ fn functions_store(stack: &PackStack) -> Result<DataStore, ReloadStageError> {
     for (id, e) in &store.errors {
         log::warn!("Sunrise: failed to load function {id}: {e}");
     }
-    if !store.refused.is_empty() {
-        return Err(ReloadStageError::DataSource(
-            store
-                .refused
-                .iter()
-                .map(|(entry, error)| format!("{entry}: {error}"))
-                .collect::<Vec<_>>()
-                .join("\n"),
-        ));
-    }
     Ok(store)
 }
 

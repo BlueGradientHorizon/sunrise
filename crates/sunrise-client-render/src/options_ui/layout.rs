@@ -126,7 +126,7 @@ impl OptionsUi {
                     ("options.skinCustomisation", Some(Page::Skin)),
                     ("options.sounds", Some(Page::Sound)),
                     // OptionsScreen's Video Settings button: VideoSettingsScreen. Sunrise's
-                    // graphics screen opens from the Extras page.
+                    // graphics settings are on Sunrise Settings.
                     ("options.video", Some(Page::Video)),
                     ("options.controls", Some(Page::Controls)),
                     ("options.language", Some(Page::Language)),
@@ -352,6 +352,60 @@ impl OptionsUi {
                         Act::ResetKey(name_static),
                     );
                     out.push(if s.keys.is_default(name) {
+                        inactive(reset)
+                    } else {
+                        reset
+                    });
+                    y += 20.0;
+                    rows.end(&mut out, y);
+                }
+                // Sunrise's own keys, under a category of their own after vanilla's: the same
+                // bindings the Extras and PvP pages set.
+                let sunrise: Vec<_> = crate::extras::KEYS
+                    .iter()
+                    .filter(|(_, caption)| {
+                        query.is_empty() || lang::get(caption).to_lowercase().contains(&query)
+                    })
+                    .collect();
+                if !sunrise.is_empty() {
+                    rows.begin(&out, y);
+                    out.push(section_title(tr(crate::extras::KEY_CATEGORY), y, w));
+                    y += 20.0;
+                    rows.end(&mut out, y);
+                }
+                for &&(name, caption) in &sunrise {
+                    rows.begin(&out, y);
+                    out.push(Widget {
+                        x: row_left + 2.0,
+                        y: y + 6.0,
+                        w: 200.0,
+                        h: 9.0,
+                        kind: WKind::Text {
+                            text: tr(caption),
+                            color: u32::MAX,
+                            centered: false,
+                        },
+                        list: false,
+                        row: 0,
+                    });
+                    let key = s.extras.key(name).unwrap_or("key.keyboard.unknown");
+                    let mut message = keybinds::display_name(key);
+                    if self.selected_key == Some(name) {
+                        message = Text::literal("> ")
+                            .append(message.with_style(&Style {
+                                color: Some(text::WHITE),
+                                underlined: Some(true),
+                                ..Style::default()
+                            }))
+                            .append(" <")
+                            .with_color(text::YELLOW);
+                    }
+                    let reset_x = scrollbar_x - 50.0 - 10.0;
+                    let change_x = reset_x - 5.0 - 75.0;
+                    out.push(button(change_x, y, 75.0, message, Act::Key(name)));
+                    let reset = button(reset_x, y, 50.0, tr("controls.reset"), Act::ResetKey(name));
+                    let default = crate::extras::Extras::default();
+                    out.push(if default.key(name) == s.extras.key(name) {
                         inactive(reset)
                     } else {
                         reset

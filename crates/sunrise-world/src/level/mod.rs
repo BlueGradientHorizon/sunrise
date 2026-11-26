@@ -1109,6 +1109,11 @@ pub trait LevelAccess: BlockEntityNeighbors {
     fn infiniburn(&self) -> Option<&data::BlockSet> {
         None
     }
+    /// The blocks of `sunrise:golem_heads`, resolved once for this level with the mods' and data packs'
+    /// members; None is an empty tag, so only `CarvedPumpkinBlock`'s own class completes a golem on place.
+    fn golem_heads(&self) -> Option<&data::BlockSet> {
+        None
+    }
     /// The level's dimension type.
     fn dimension_type(&self) -> &DimensionFacts {
         DimensionFacts::of_level(self.level_key())
@@ -1914,6 +1919,21 @@ impl Behaviours {
         let mut sim = self.sim(level, &mut ticks);
         sim.signal_reads = Some(signal_reads);
         sim.can_survive(state, pos)
+    }
+    /// `FireBlock.getIgniteOdds` and `getBurnOdds` of `state` at `pos`, asked from its side
+    /// `face`, as fire itself reads them: `(ignite, burn)`.
+    pub fn fire_odds_read_only<L: LevelAccess + ?Sized>(
+        &self,
+        level: &mut L,
+        signal_reads: &Ticks,
+        pos: BlockPos,
+        state: BlockStateId,
+        face: Direction,
+    ) -> (i32, i32) {
+        let mut ticks = Ticks::default();
+        let mut sim = self.sim(level, &mut ticks);
+        sim.signal_reads = Some(signal_reads);
+        sim.fire_odds(state, pos, face)
     }
     /// `BlockState.updateShape(level, ticks, pos, direction, neighbourPos,
     /// neighbourState, random)`: the state `state` at `pos` would take after its

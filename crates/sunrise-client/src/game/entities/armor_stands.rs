@@ -230,7 +230,14 @@ impl ArmorStandAssets {
                 let Ok(v) = v else { continue };
                 let id = format!("{namespace}:{name}");
                 let mut kinds = HashMap::new();
-                for kind in ["humanoid", "humanoid_leggings", "humanoid_baby", "wings"] {
+                for kind in [
+                    "humanoid",
+                    "humanoid_leggings",
+                    "humanoid_baby",
+                    "wings",
+                    "horse_body",
+                    "nautilus_body",
+                ] {
                     // Every layer of the kind: leather's overlay is layer 1.
                     let layers: Vec<super::equipment_piece::EquipmentAssetLayer> = v["layers"]
                         [kind]
@@ -2013,6 +2020,7 @@ impl Game<'_> {
                 use_hand: None,
                 ticks_using_item: 0,
                 use_animation: mod_api::UseAnimation::None,
+                is_swinging: false,
                 main_arm_pose: mod_api::ArmPose::Empty,
                 off_arm_pose: mod_api::ArmPose::Empty,
             };

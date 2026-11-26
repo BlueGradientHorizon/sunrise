@@ -578,6 +578,34 @@ pub trait BlockEntityDrawContext {
     fn fluid_box(&mut self, stack: &FluidStack, bounds: [f32; 6], options: FluidBoxOptions) {
         unimplemented!("BlockEntityDrawContext::draw_fluid_box")
     }
+    /// Draws `entity`, a block entity a mod carries (a moving structure's chest, sign, banner or
+    /// another mod's machine), under `draw`'s current pose and light, as vanilla's
+    /// `BlockEntityRenderDispatcher` extracts and submits one. The pose starts at the block's
+    /// lower north-west corner as in a block entity's own submit; the light is `draw.light`, which
+    /// the caller samples itself; the overlay is vanilla's `NO_OVERLAY`.
+    ///
+    /// A block entity of the game goes through the engine's vanilla renderer for its block state
+    /// (`entity.state`), read from `entity.fields.nbt`, with no case for any type. A mod's goes
+    /// to its registered [`BlockEntityPart`](crate::BlockEntityPart) submit with the entity as a
+    /// [`BlockEntityDataView`]. A type with no renderer draws nothing and returns `Ok(())`, as the
+    /// dispatcher does when it finds none.
+    ///
+    /// Nothing ticks. The renderer has no level, so what it reads from one is its default:
+    /// a double chest draws as a single closed chest, an enchanting table as its closed book
+    /// lying on it, a conduit inactive, an end portal and gateway on every face with no beam,
+    /// a banner's flag at rest, a beacon with no beam (its sections are computed in a tick it
+    /// never gets), and a spawner or a bed, which have no block entity renderer here, nothing.
+    /// Animations driven by tickers (chest lids, the bell's shake, the enchanting book, conduit
+    /// rotation) stay at rest: build a new [`SceneBlockEntity`] when the data changes. The dispatcher's `shouldRender` culling is skipped, since the caller's
+    /// entity was already culled; the block entity's own position is never used.
+    ///
+    /// Returns [`BlockEntityDrawRefusal::Nested`], drawing nothing, when called from inside a
+    /// mod's submit that `block_entity` itself dispatched. One level is allowed: input a mod
+    /// controls must never recurse without end, and a carried block entity is drawn from an
+    /// entity renderer, not from inside another block entity's draw.
+    fn block_entity(&mut self, entity: &SceneBlockEntity) -> Result<(), BlockEntityDrawRefusal> {
+        unimplemented!("BlockEntityDrawContext::block_entity")
+    }
 }
 /// What a [`BlockScreenEffectRenderer`](crate::BlockScreenEffectRenderer) draws with: quads in
 /// camera space, in blocks, with `+x` right, `+y` up and the camera at the origin looking down `-z`. It is the
@@ -668,13 +696,16 @@ pub trait WorldDrawContext {
     }
     /// Draw `draw.max_count` commands a compute shader wrote into a storage buffer
     /// (vanilla's `RenderPass.drawIndexedIndirect(commands, drawCount)` and `drawIndirect`), with
-    /// no CPU readback. The same draw on every backend and through a translated shader pack. See
-    /// [`IndirectDraw`] for the command layout. Everything is checked before anything is recorded
-    /// (never panics, never triggers a GPU validation error): pipeline liveness
+    /// no CPU readback, or with a count buffer as many as the GPU wrote, at most `max_count`. The
+    /// same draw on every backend and through a translated shader pack. See [`IndirectDraw`] for
+    /// the command layout. Everything is checked before anything is recorded (never panics,
+    /// never triggers a GPU validation error): pipeline liveness
     /// ([`PipelineDrawError::Pipeline`]), mesh ownership, liveness and strides
-    /// ([`PipelineDrawError::Mesh`]), the command buffer's handle ([`PipelineDrawError::Buffer`])
-    /// and its use as indirect arguments ([`PipelineDrawError::InvalidIndirect`]), and the
-    /// bindings. A `max_count` of zero is a legal no-op.
+    /// ([`PipelineDrawError::Mesh`]), the command and count buffers' handles
+    /// ([`PipelineDrawError::Buffer`]) and their use as indirect arguments
+    /// ([`PipelineDrawError::InvalidIndirect`]), a count buffer the adapter cannot read
+    /// ([`PipelineDrawError::UnsupportedIndirectCount`]), and the bindings. A `max_count` of
+    /// zero is a legal no-op.
     fn draw_indirect(&mut self, draw: &IndirectDraw<'_>) -> Result<(), PipelineDrawError> {
         let _ = draw;
         Err(PipelineDrawError::Pipeline(RenderPipelineError::Invalid))

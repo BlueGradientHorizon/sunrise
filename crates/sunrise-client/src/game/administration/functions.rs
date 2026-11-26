@@ -490,6 +490,7 @@ impl Game<'_> {
             };
             store.predicates = copy(tables.loot.predicates());
             store.item_modifiers = copy(tables.loot.item_modifiers());
+            store.slot_sources = copy(tables.loot.slot_sources());
         }
         self.sync_enchantment_registries();
         // A function's `loot ... loot <id>` names the reloaded packs' tables.
@@ -627,33 +628,35 @@ impl Game<'_> {
         // (`command-registries.json` lists only the game's own), and so do
         // its worldgen tag ids for the `#tag` completions. The packs are the
         // ones the world's worldgen is built from.
-        let (overrides, _) = sunrise_client::datapack::worldgen_overrides(&self.fns.data);
-        for (bundle, registry) in [
-            ("biomes", "minecraft:worldgen/biome"),
-            ("structures", "minecraft:worldgen/structure"),
-            ("structure_sets", "minecraft:worldgen/structure_set"),
-            ("template_pools", "minecraft:worldgen/template_pool"),
-            ("processor_lists", "minecraft:worldgen/processor_list"),
-        ] {
-            let entry = reg.by_registry.entry(registry.to_owned()).or_default();
-            for (id, _) in overrides.entries(bundle) {
-                if !entry.ids.contains(&id.to_owned()) {
-                    entry.ids.push(id.to_owned());
+        // Only ids are read here, so a failed `neoforge:conditions` entry is left
+        // out without `check_errors`: refusing the load is the world load's job.
+        if let Some(tables) = &self.world_tables {
+            let (overrides, _) =
+                sunrise_client::datapack::worldgen_overrides(&self.fns.data, &tables.conditions);
+            for (bundle, registry) in [
+                ("biomes", "minecraft:worldgen/biome"),
+                ("structures", "minecraft:worldgen/structure"),
+                ("structure_sets", "minecraft:worldgen/structure_set"),
+                ("template_pools", "minecraft:worldgen/template_pool"),
+                ("processor_lists", "minecraft:worldgen/processor_list"),
+            ] {
+                let entry = reg.by_registry.entry(registry.to_owned()).or_default();
+                for (id, _) in overrides.entries(bundle) {
+                    if !entry.ids.contains(&id.to_owned()) {
+                        entry.ids.push(id.to_owned());
+                    }
+                }
+                entry.ids.sort();
+            }
+            let entry = reg
+                .by_registry
+                .entry("minecraft:worldgen/biome".to_owned())
+                .or_default();
+            for (id, _, _) in overrides.tags("biome_tags") {
+                if !entry.tags.contains(&id.to_owned()) {
+                    entry.tags.push(id.to_owned());
                 }
             }
-            entry.ids.sort();
-        }
-        let entry = reg
-            .by_registry
-            .entry("minecraft:worldgen/biome".to_owned())
-            .or_default();
-        for (id, _, _) in overrides.tags("biome_tags") {
-            if !entry.tags.contains(&id.to_owned()) {
-                entry.tags.push(id.to_owned());
-            }
-        }
-        entry.tags.sort();
-        if let Some(tables) = &self.world_tables {
             entry.ids = tables
                 .biomes
                 .table
@@ -669,17 +672,17 @@ impl Game<'_> {
                 .flat_map(|tags| tags.keys().cloned())
                 .collect();
             entry.tags.sort();
-        }
-        let entry = reg
-            .by_registry
-            .entry("minecraft:worldgen/structure".to_owned())
-            .or_default();
-        for (id, _, _) in overrides.tags("structure_tags") {
-            if !entry.tags.contains(&id.to_owned()) {
-                entry.tags.push(id.to_owned());
+            let entry = reg
+                .by_registry
+                .entry("minecraft:worldgen/structure".to_owned())
+                .or_default();
+            for (id, _, _) in overrides.tags("structure_tags") {
+                if !entry.tags.contains(&id.to_owned()) {
+                    entry.tags.push(id.to_owned());
+                }
             }
+            entry.tags.sort();
         }
-        entry.tags.sort();
     }
 
     fn sync_schedule_registry(&mut self) {

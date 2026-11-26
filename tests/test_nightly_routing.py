@@ -11,6 +11,7 @@ import tempfile
 import textwrap
 import unittest
 
+from tests.os_support import needs_runner_shell
 from tests.test_ci_runners import jobs
 from tests.test_ci_concurrency import yaml
 
@@ -95,7 +96,7 @@ console.log(JSON.stringify(eval(expression)));
                 self.assertEqual(evaluate(timeout, row, trusted, repository), expected)
 
     @unittest.skipUnless(shutil.which("node"), "Node evaluates GitHub's JavaScript-style expressions")
-    def test_only_a_dev_releases_legs_follow_the_owners_blacksmith_switches(self):
+    def test_only_a_dev_releases_legs_follow_the_owners_blacksmith_and_dyna_switches(self):
         script = """const state = JSON.parse(require('fs').readFileSync(0, 'utf8'));
 const context = values => new Proxy(values, {get: (values, key) => values[key] ?? ''});
 const matrix = context(state.matrix), vars = context(state.vars), inputs = context(state.inputs);
@@ -106,6 +107,14 @@ console.log(JSON.stringify(eval(state.expression)));
         game = yaml.safe_load(GAME.read_text())["jobs"]["build"]
         builds = {"game": (game, game["strategy"]["matrix"]["include"]), "sdk": (prebuilt["jobs"]["build"], legs)}
         switches = [None, "off", "on", "true"]
+        platforms = ["DEV_ON_DYNA_LINUX", "DEV_ON_DYNA_WINDOWS", "DEV_ON_DYNA_MACOS"]
+
+        def runs_on(job, row, variables, dev):
+            state = {"expression": job["runs-on"][3:-2], "matrix": row, "vars": variables, "inputs": {"dev": dev}}
+            result = subprocess.run(["node", "-e", script], input=json.dumps(state), text=True,
+                                    capture_output=True, check=True)
+            return json.loads(result.stdout)
+
         for (what, (job, rows)), switch, every, dev in itertools.product(builds.items(), switches, switches, [False, True]):
             variables = {"BLACKSMITH": "off"}
             if switch is not None:
@@ -114,12 +123,24 @@ console.log(JSON.stringify(eval(state.expression)));
                 variables["BLACKSMITH_DEV"] = every
             for row in rows:
                 with self.subTest(build=what, switch=switch, every=every, dev=dev, leg=row["name"]):
-                    state = {"expression": job["runs-on"][3:-2], "matrix": row, "vars": variables, "inputs": {"dev": dev}}
-                    result = subprocess.run(["node", "-e", script], input=json.dumps(state), text=True,
-                                            capture_output=True, check=True)
                     blacksmith = dev and (every == "on" or (switch == "on" and row["os"] == "macos-15"))
-                    self.assertEqual(json.loads(result.stdout), row["blacksmith"] if blacksmith else row["os"])
+                    self.assertEqual(runs_on(job, row, variables, dev), row["blacksmith"] if blacksmith else row["os"])
 
+        # Each DEV_ON_DYNA_<platform>=on moves that platform's legs, game and SDK, to Dyna's runner in a Dev release
+        # whatever the Blacksmith switches say; no other leg moves, and nothing moves for a value but `on` or without dev.
+        for (what, (job, rows)), platform, value, blacksmiths, dev in itertools.product(
+                builds.items(), platforms, switches, [{}, {"BLACKSMITH_DEV": "on"}], [False, True]):
+            for row in rows:
+                with self.subTest(build=what, platform=platform, value=value, blacksmiths=blacksmiths, dev=dev, leg=row["name"]):
+                    variables = {"BLACKSMITH": "off", **blacksmiths, **({} if value is None else {platform: value})}
+                    expected = row["os"] if not blacksmiths else row["blacksmith"]
+                    if dev and value == "on" and row["dyna"] == platform:
+                        expected = "dyna-large"
+                    elif not dev:
+                        expected = row["os"]
+                    self.assertEqual(runs_on(job, row, variables, dev), expected)
+
+    @needs_runner_shell
     def test_any_missing_leg_holds_the_build(self):
         workflow_jobs = dict(jobs(GAME.read_text()))
         decide = workflow_jobs["legs"].split("        run: |\n", 1)[1].split("\n      # ", 1)[0].split("\n      - ", 1)[0]

@@ -512,6 +512,38 @@ impl Game<'_> {
         let gpu = self.mod_gpu().ok_or(mod_api::BufferError::Unavailable)?;
         gpu.storage_buffer_release(mod_api::content::crash::current_native_mod(), buffer)
     }
+    /// Record a copy of retained storage `buffer`'s range at this point of the compute node being
+    /// recorded.
+    pub(super) fn storage_buffer_request_readback(
+        &self,
+        buffer: mod_api::StorageBufferRef,
+        offset: u64,
+        len: u64,
+    ) -> Result<mod_api::ReadbackTicket, mod_api::BufferError> {
+        let gpu = self.mod_gpu().ok_or(mod_api::BufferError::Unavailable)?;
+        gpu.storage_buffer_request_readback(
+            mod_api::content::crash::current_native_mod(),
+            buffer,
+            offset,
+            len,
+        )
+    }
+    /// The bytes of a readback, none while it is in flight.
+    pub(super) fn readback_poll(
+        &self,
+        ticket: mod_api::ReadbackTicket,
+    ) -> Result<Option<Vec<u8>>, mod_api::BufferError> {
+        let gpu = self.mod_gpu().ok_or(mod_api::BufferError::Unavailable)?;
+        gpu.readback_poll(mod_api::content::crash::current_native_mod(), ticket)
+    }
+    /// Drop a pending readback.
+    pub(super) fn readback_release(
+        &self,
+        ticket: mod_api::ReadbackTicket,
+    ) -> Result<(), mod_api::BufferError> {
+        let gpu = self.mod_gpu().ok_or(mod_api::BufferError::Unavailable)?;
+        gpu.readback_release(mod_api::content::crash::current_native_mod(), ticket)
+    }
     /// Allocate a mod-owned offscreen [`mod_api::RenderTargetRef`] on the active renderer's device.
     pub(super) fn create_render_target(
         &self,
@@ -546,7 +578,15 @@ impl Game<'_> {
     /// The optional device features of the active device; all off without one.
     pub(super) fn render_capabilities(&self) -> mod_api::RenderCapabilities {
         self.mod_gpu().map_or_else(
-            || mod_api::__private::built::render_capabilities(false, Vec::new(), false, false),
+            || {
+                mod_api::__private::built::render_capabilities(
+                    false,
+                    Vec::new(),
+                    false,
+                    false,
+                    false,
+                )
+            },
             |gpu| gpu.render_capabilities(),
         )
     }
@@ -742,7 +782,7 @@ impl Game<'_> {
                     staged.push(StagedEntry::InlineUniform(bytes));
                 }
                 (
-                    mod_api::BindingKind::CombinedImageSampler { filter, .. },
+                    mod_api::BindingKind::CombinedImageSampler { sampler },
                     mod_api::BindingValue::Texture(source),
                 ) => match source {
                     mod_api::TextureSource::TransientTargetColor(target, attachment) => {
@@ -752,7 +792,8 @@ impl Game<'_> {
                         let Some(desc) = transients.get(target.raw() as usize) else {
                             return Err(PipelineDrawError::InvalidBinding);
                         };
-                        let filterable = filter == mod_api::SamplerFilter::Linear;
+                        let filterable =
+                            sunrise_client::gfx::mod_pipelines::sampler_filtering(&sampler);
                         if !sunrise_client::gfx::mod_frame_graph::validate_transient_color_binding(
                             desc,
                             *attachment,
@@ -773,7 +814,8 @@ impl Game<'_> {
                         let Some(desc) = transients.get(target.raw() as usize) else {
                             return Err(PipelineDrawError::InvalidBinding);
                         };
-                        let filterable = filter == mod_api::SamplerFilter::Linear;
+                        let filterable =
+                            sunrise_client::gfx::mod_pipelines::sampler_filtering(&sampler);
                         if !sunrise_client::gfx::mod_frame_graph::validate_transient_depth_binding(
                             desc, filterable,
                         ) {
@@ -818,7 +860,8 @@ impl Game<'_> {
                             }
                             mod_api::TextureSource::Lightmap => gpu.mod_lightmap_texture_view(),
                             mod_api::TextureSource::RenderTargetColor(target, attachment) => {
-                                let filterable = filter == mod_api::SamplerFilter::Linear;
+                                let filterable =
+                                    sunrise_client::gfx::mod_pipelines::sampler_filtering(&sampler);
                                 let (id, view, target_mips) = gpu.resolve_mod_render_target_color(
                                     owner,
                                     *target,
@@ -829,11 +872,13 @@ impl Game<'_> {
                                 (id, view)
                             }
                             mod_api::TextureSource::RenderTargetDepth(target) => {
-                                let filterable = filter == mod_api::SamplerFilter::Linear;
+                                let filterable =
+                                    sunrise_client::gfx::mod_pipelines::sampler_filtering(&sampler);
                                 gpu.resolve_mod_render_target_depth(owner, *target, filterable)?
                             }
                             mod_api::TextureSource::RenderTargetColorMip(view) => {
-                                let filterable = filter == mod_api::SamplerFilter::Linear;
+                                let filterable =
+                                    sunrise_client::gfx::mod_pipelines::sampler_filtering(&sampler);
                                 let (id, view, target_mips) = gpu
                                     .resolve_mod_render_target_color_mips(
                                         owner, *view, filterable,
@@ -1188,12 +1233,22 @@ impl Game<'_> {
         let buffer = gpu
             .resolve_mod_storage_buffer(owner, draw.indirect_buffer)
             .map_err(PipelineDrawError::Buffer)?;
+        let count = match draw.count_buffer {
+            Some((handle, offset)) => Some((
+                gpu.resolve_mod_storage_buffer(owner, handle)
+                    .map_err(PipelineDrawError::Buffer)?,
+                offset,
+            )),
+            None => None,
+        };
         sunrise_client::gfx::mod_pipelines::IndirectSource::new(
             topology,
             mesh,
             buffer,
             draw.indirect_offset,
             draw.max_count,
+            count,
+            gpu.multi_draw_indirect_count(),
         )
     }
     /// Record a GPU-driven [`mod_api::IndirectDraw`] for the world pass, after checking it.
@@ -1425,6 +1480,7 @@ impl Game<'_> {
             texel,
             kind,
         });
+        gpu.note_compute_dispatch();
         Ok(())
     }
 
@@ -2013,17 +2069,9 @@ impl Game<'_> {
                                 .copied()
                         },
                     );
-                }
-                if let Some(state) = special {
-                    self.special_model_part(
-                        state,
-                        pose,
-                        copy.light,
-                        copy.color,
-                        entities,
-                        capacity,
-                        reserved_quads,
-                    );
+                    if let Some(state) = special {
+                        self.special_model_part(state, pose, copy.light, copy.color, &mut scope);
+                    }
                 }
             }
         }
@@ -2451,102 +2499,118 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_special_block_state_draws_its_renderer_and_a_faded_copy_blends() {
-        let _fixture = sunrise_client::models::standalone_fixture(Vec::new());
-        super::super::native_entity_refs::tests::with_client_game(|game| {
-            let _restore = Restore;
-            let chest = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:chest")
-                .unwrap();
-            // `BuiltInBlockModels`: a chest is its block-state model plus its special renderer.
-            let model = game
-                .native_block_state_model(chest)
-                .expect("a chest resolves to its composite model");
-            let slot = mod_api::__private::game::Fields::fields(&model).slot;
-            let instance = game.standalone_geometry.instance_slot(slot).unwrap();
-            assert_eq!(instance.special, Some(chest));
-            // The chest's box reaches 14/16 up, so copies cull by the renderer's geometry.
-            assert!(instance.bounds[1][1] > 0.8, "{:?}", instance.bounds);
-            let camera = DVec3::new(0.0, 70.0, 0.0);
-            let mut draw = WorldGeometry::default();
-            draw.reset(camera.to_array(), Mat4::IDENTITY, [0.0, 0.0]);
-            context(game, &mut draw)
-                .draw_model_instances(
-                    model,
-                    &[
-                        ModelInstance::at([3.0, 70.0, 0.0], u32::MAX),
-                        ModelInstance::at([6.0, 70.0, 0.0], u32::MAX).with_color(0x80FF_FFFF),
-                    ],
-                )
-                .unwrap();
-            let mut entities = Vec::new();
-            game.commit_model_instances(&mut draw, camera, &mut entities);
-            let (opaque, faded): (Vec<&Vertex>, Vec<&Vertex>) =
-                entities.iter().partition(|vertex| vertex.pos[0] < 5.0);
-            assert!(!opaque.is_empty() && opaque.len() == faded.len());
-            assert!(
-                opaque.iter().all(
-                    |v| v.layer & sunrise_client::gfx::OIT_ENTITY == 0 && v.color >> 24 == 0xFF
-                )
-            );
-            assert!(
-                faded
-                    .iter()
-                    .all(|v| v.layer & sunrise_client::gfx::OIT_ENTITY != 0 && v.color >> 24 < 0xFF)
-            );
-            let registry = &game.pack.assets.registry;
-            let parse = |text| sunrise_client::block_sprites::parse_state(registry, text).unwrap();
-            let (left, gateway, table) = (
-                parse("chest[type=left]"),
-                parse("end_gateway"),
-                parse("enchanting_table"),
-            );
-            let special = |state, pose, color| {
-                let mut out = Vec::new();
-                game.special_model_part(
-                    state,
-                    pose,
-                    0xF0F0,
-                    color,
-                    &mut out,
-                    sunrise_client::gfx::EntityQuadCapacity::default_device(),
-                    0,
-                );
-                out
-            };
-            // The left half of a double chest draws alone, with no neighbour to pair with.
-            let out = special(left, Mat4::IDENTITY, u32::MAX);
-            assert!(!out.is_empty());
-            // Non-finite quads from a pose past the finite range are skipped.
-            let out = special(
-                chest,
-                Mat4::from_scale(Vec3::splat(f32::INFINITY)),
-                u32::MAX,
-            );
-            assert!(out.is_empty());
-            // EndCubeSpecialRenderer: all six faces, and the starfield stays opaque when faded.
-            let out = special(gateway, Mat4::IDENTITY, 0x80FF_FFFF);
-            assert_eq!(out.len(), 24);
-            assert!(
-                out.iter()
-                    .all(|v| v.layer & sunrise_client::gfx::OIT_ENTITY == 0)
-            );
-            // The enchanting table: its block-state faces, then the book.
-            let out = special(table, Mat4::IDENTITY, u32::MAX);
-            assert!(!out.is_empty());
-            let model = game.native_block_state_model(table).unwrap();
-            let slot = mod_api::__private::game::Fields::fields(&model).slot;
-            assert!(!game.model_faces(slot).unwrap().is_empty());
-            assert_eq!(
-                game.standalone_geometry
-                    .instance_slot(slot)
-                    .unwrap()
-                    .special,
-                Some(table)
-            );
-        });
+        crate::game::in_own_process(
+            "game::native_custom_geometry::tests::a_special_block_state_draws_its_renderer_and_a_faded_copy_blends",
+            || {
+                let _fixture = sunrise_client::models::standalone_fixture(Vec::new());
+                super::super::native_entity_refs::tests::with_client_game(|game| {
+                    let chest = game
+                        .pack
+                        .assets
+                        .registry
+                        .default_state("minecraft:chest")
+                        .unwrap();
+                    // `BuiltInBlockModels`: a chest is its block-state model plus its special renderer.
+                    let model = game
+                        .native_block_state_model(chest)
+                        .expect("a chest resolves to its composite model");
+                    let slot = mod_api::__private::game::Fields::fields(&model).slot;
+                    let instance = game.standalone_geometry.instance_slot(slot).unwrap();
+                    assert_eq!(instance.special, Some(chest));
+                    // The chest's box reaches 14/16 up, so copies cull by the renderer's geometry.
+                    assert!(instance.bounds[1][1] > 0.8, "{:?}", instance.bounds);
+                    let camera = DVec3::new(0.0, 70.0, 0.0);
+                    let mut draw = WorldGeometry::default();
+                    draw.reset(camera.to_array(), Mat4::IDENTITY, [0.0, 0.0]);
+                    context(game, &mut draw)
+                        .draw_model_instances(
+                            model,
+                            &[
+                                ModelInstance::at([3.0, 70.0, 0.0], u32::MAX),
+                                ModelInstance::at([6.0, 70.0, 0.0], u32::MAX)
+                                    .with_color(0x80FF_FFFF),
+                            ],
+                        )
+                        .unwrap();
+                    let mut entities = Vec::new();
+                    game.commit_model_instances(&mut draw, camera, &mut entities);
+                    let (opaque, faded): (Vec<&Vertex>, Vec<&Vertex>) =
+                        entities.iter().partition(|vertex| vertex.pos[0] < 5.0);
+                    assert!(!opaque.is_empty() && opaque.len() == faded.len());
+                    assert!(
+                        opaque
+                            .iter()
+                            .all(|v| v.layer & sunrise_client::gfx::OIT_ENTITY == 0
+                                && v.color >> 24 == 0xFF)
+                    );
+                    assert!(
+                        faded
+                            .iter()
+                            .all(|v| v.layer & sunrise_client::gfx::OIT_ENTITY != 0
+                                && v.color >> 24 < 0xFF)
+                    );
+                    let registry = &game.pack.assets.registry;
+                    let parse =
+                        |text| sunrise_client::block_sprites::parse_state(registry, text).unwrap();
+                    let (left, gateway, table) = (
+                        parse("chest[type=left]"),
+                        parse("end_gateway"),
+                        parse("enchanting_table"),
+                    );
+                    let special = |state, pose, color| {
+                        let mut out = Vec::new();
+                        game.special_model_part(
+                            state,
+                            pose,
+                            0xF0F0,
+                            color,
+                            &mut sunrise_client::gfx::EntityQuadScope::new(
+                                &mut out,
+                                sunrise_client::gfx::EntityQuadCapacity::default_device(),
+                                0,
+                            ),
+                        );
+                        out
+                    };
+                    // `ChestModel.createDoubleBodyLeftLayer`: bottom, lid and lock, each a cuboid with every
+                    // face but WEST (`allOfEnumExcept`), so 3 * 5 faces of 4 vertices; the half draws
+                    // alone, with no neighbour to pair with.
+                    let out = special(left, Mat4::IDENTITY, u32::MAX);
+                    assert_eq!(out.len(), 3 * 5 * 4);
+                    // `ChestModel.createSingleBodyLayer`: bottom, lid and lock, 3 * 6 faces of 4 vertices.
+                    let finite = special(chest, Mat4::IDENTITY, u32::MAX);
+                    assert_eq!(finite.len(), 3 * 6 * 4);
+                    // Every quad of a pose past the finite range is skipped, not the draw refused.
+                    let out = special(
+                        chest,
+                        Mat4::from_scale(Vec3::splat(f32::INFINITY)),
+                        u32::MAX,
+                    );
+                    assert_eq!(out.len(), 0);
+                    // EndCubeSpecialRenderer: all six faces, and the starfield stays opaque when faded.
+                    let out = special(gateway, Mat4::IDENTITY, 0x80FF_FFFF);
+                    assert_eq!(out.len(), 24);
+                    assert!(
+                        out.iter()
+                            .all(|v| v.layer & sunrise_client::gfx::OIT_ENTITY == 0)
+                    );
+                    // The enchanting table's book is `BookModel.createBodyLayer`: left_lid, right_lid,
+                    // seam, left_pages, right_pages and two flip pages, 7 cuboids of 6 faces of 4 vertices.
+                    let out = special(table, Mat4::IDENTITY, u32::MAX);
+                    assert_eq!(out.len(), 7 * 6 * 4);
+                    let model = game.native_block_state_model(table).unwrap();
+                    let slot = mod_api::__private::game::Fields::fields(&model).slot;
+                    assert!(!game.model_faces(slot).unwrap().is_empty());
+                    assert_eq!(
+                        game.standalone_geometry
+                            .instance_slot(slot)
+                            .unwrap()
+                            .special,
+                        Some(table)
+                    );
+                });
+            },
+        );
     }
 
     #[test]
@@ -4113,7 +4177,7 @@ mod tests {
             &[make_baked()],
             |_| Some(7),
             TerrainModelOptions::default(),
-            |_, _, _, _, _| {},
+            |_, _, _| {},
         );
         let mut entities = draw.into_vertices();
         assert_eq!(entities.len(), 4, "1 terrain model quad admitted");
@@ -4418,6 +4482,8 @@ mod tests {
         mesh: Option<mod_api::MeshRef>,
         uniform: Option<mod_api::UniformBufferRef>,
         storage: Option<mod_api::StorageBufferRef>,
+        pipeline: Option<RenderPipelineRef>,
+        draw: Option<mod_api::PreparedWorldDraw>,
     }
 
     /// Reaches the GPU through the host in the three frame hooks, each call unwrapped: a refusal
@@ -4426,6 +4492,28 @@ mod tests {
 
     #[mod_api::__subscriptions]
     impl Hooks for GpuProbe {
+        fn register_render_pipelines(
+            &self,
+            _: &mod_api::RegistrationContext,
+            event: &mut mod_api::RegisterRenderPipelinesEvent<'_>,
+        ) {
+            event.register(
+                mod_api::RenderPipeline::new(
+                    Identifier::parse("gpu_probe:sampled").unwrap(),
+                    Identifier::parse("gpu_probe:core/sampled").unwrap(),
+                    mod_api::PipelineBlend::Opaque,
+                    mod_api::WorldDepth::ThroughWalls,
+                )
+                .sampler(
+                    "ColorTex",
+                    mod_api::Sampler::new(
+                        mod_api::SamplerFilter::Nearest,
+                        mod_api::SamplerAddress::ClampToEdge,
+                    ),
+                ),
+            );
+        }
+
         fn frame_graph_setup(
             &self,
             host: &dyn ClientHost,
@@ -4452,9 +4540,10 @@ mod tests {
         fn prepare_render_buffers(
             &self,
             host: &dyn ClientHost,
-            _: &mut mod_api::PrepareRenderBuffersEvent<'_>,
+            event: &mut mod_api::PrepareRenderBuffersEvent<'_>,
         ) {
-            let init = [mod_api::MeshBufferInit::from_bytes(8, &[0; 32])];
+            // One quad of the default `PositionTexColor` format: 24 bytes a vertex.
+            let init = [mod_api::MeshBufferInit::from_bytes(24, &[0; 96])];
             let mesh = host
                 .create_mesh(&mod_api::MeshDescriptor::new(&init))
                 .unwrap();
@@ -4464,7 +4553,27 @@ mod tests {
                 .create_storage_buffer(&mod_api::StorageBufferDescriptor::new(64))
                 .unwrap();
             storage.write_range(host, 0, &[1; 16]).unwrap();
+            let pipeline = host
+                .render_assets()
+                .render_pipeline(&Identifier::parse("gpu_probe:sampled").unwrap())
+                .unwrap();
+            let target = self.0.lock().unwrap().target.unwrap();
+            let draw = event
+                .context
+                .draw_mesh(
+                    RenderLevelStage::AfterOpaqueFeatures,
+                    pipeline,
+                    mesh,
+                    mod_api::MeshDraw::vertices(0..4),
+                    &mod_api::DrawBindings::default().texture(
+                        "ColorTex",
+                        mod_api::TextureSource::RenderTargetColor(target, 0),
+                    ),
+                )
+                .unwrap();
             let mut handles = self.0.lock().unwrap();
+            handles.pipeline = Some(pipeline);
+            handles.draw = Some(draw);
             handles.mesh = Some(mesh);
             handles.uniform = Some(uniform);
             handles.storage = Some(storage);
@@ -4479,6 +4588,12 @@ mod tests {
                 return;
             }
             let handles = self.0.lock().unwrap();
+            event
+                .context
+                .world_pass()
+                .unwrap()
+                .draw(handles.draw.unwrap())
+                .unwrap();
             handles.mesh.unwrap().release(host).unwrap();
             handles.uniform.unwrap().release(host).unwrap();
             handles.storage.unwrap().release(host).unwrap();
@@ -4494,8 +4609,17 @@ mod tests {
     fn mod_gpu_handles_work_while_the_renderer_is_out_of_the_game() {
         use mod_api::__private::take_hook_panics;
         use mod_api::{BufferError, MeshError, RenderTargetError};
+        use sunrise_client::gfx::mod_pipelines::{PipelineDrawSource, ResolvedSet1Entry};
         use sunrise_client::gfx::world_primitives::FrameHooks;
 
+        // The mod's pipeline registration is process-global and published once: run in a child.
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::native_custom_geometry::tests::mod_gpu_handles_work_while_the_renderer_is_out_of_the_game",
+            "SUNRISE_MOD_GPU_FRAME_CHILD",
+            &["run"],
+        ) {
+            return;
+        }
         super::super::native_entity_refs::tests::with_client_game(|game| {
             let (_event_loop, window) =
                 crate::game::native_hooks::particle_count_tests::hidden_window();
@@ -4515,6 +4639,63 @@ mod tests {
             );
             let _ = take_hook_panics();
 
+            // The mod's sampler pipeline, registered and built from its GLSL as a resource load does.
+            let mut pipelines = Vec::new();
+            use mod_api::__private::game::RegistrationContextNew;
+            Game::native_register_render_pipelines(
+                &mod_api::RegistrationContext::new(),
+                &mut pipelines,
+                &mut Vec::new(),
+                &mut Vec::new(),
+            );
+            assert_eq!(pipelines.len(), 1);
+            let vanilla = tempfile::tempdir().unwrap();
+            std::fs::write(
+                vanilla.path().join("render-pipelines.json"),
+                r#"{"required":["minecraft:pipeline/solid_block"],"optional":["minecraft:pipeline/wireframe"]}"#,
+            )
+            .unwrap();
+            sunrise_client_render::mod_pipelines::register(pipelines, vanilla.path()).unwrap();
+            let shaders = tempfile::tempdir().unwrap();
+            let core = shaders.path().join("assets/gpu_probe/shaders/core");
+            std::fs::create_dir_all(&core).unwrap();
+            std::fs::write(
+                core.join("sampled.vsh"),
+                "#version 330\n\
+                 in vec3 Position;\n\
+                 in vec2 UV0;\n\
+                 in vec4 Color;\n\
+                 out vec2 vUv;\n\
+                 out vec4 vColor;\n\
+                 void main() {\n\
+                     gl_Position = vec4(Position.xy, 0.5, 1.0);\n\
+                     vUv = UV0;\n\
+                     vColor = Color;\n\
+                 }\n",
+            )
+            .unwrap();
+            std::fs::write(
+                core.join("sampled.fsh"),
+                "#version 330\n\
+                 uniform sampler2D ColorTex;\n\
+                 in vec2 vUv;\n\
+                 in vec4 vColor;\n\
+                 out vec4 fragColor;\n\
+                 void main() {\n\
+                     fragColor = texture(ColorTex, vUv) * vColor;\n\
+                 }\n",
+            )
+            .unwrap();
+            let mut render = sunrise_client_render::assets::RenderAssets::unpublished();
+            render.mod_pipelines = sunrise_client_render::mod_pipelines::Pipelines::load(
+                &sunrise_assets::resource_source::ResourceSource::directory(
+                    shaders.path().to_owned(),
+                ),
+                7,
+            )
+            .unwrap();
+            game.pack.render = std::sync::Arc::new(render);
+
             // `game.rs`'s `Game::render`: the renderer is out while its frame is drawn, the mod
             // GPU handles stay.
             let renderer_slot = game.renderer.take();
@@ -4528,21 +4709,50 @@ mod tests {
             {
                 let mut driver = GameWorldStageDriver::new(game, &camera, 0.0, &mut draw);
                 driver.on_frame_graph_setup(&[], false);
+                // The recorded pass draws into the mod render target the hook created.
+                let graph = driver.take_frame_graph().unwrap();
+                let created = handles.lock().unwrap().target.unwrap();
+                assert_eq!(graph.passes.len(), 1);
+                assert_eq!(graph.passes[0].label, "gpu_probe");
+                assert!(matches!(
+                    graph.passes[0].target,
+                    Some(mod_api::FrameTarget::Mod(t)) if t == created
+                ));
                 driver.on_prepare_render_buffers(&[], false, &mut Default::default());
-                driver.on_render_stage(RenderLevelStage::AfterOpaqueFeatures, &[], false);
+                let stage_draws: Vec<_> = driver
+                    .on_render_stage(RenderLevelStage::AfterOpaqueFeatures, &[], false)
+                    .iter()
+                    .map(|ranges| ranges.pipeline_draws.clone())
+                    .collect();
+                // The mesh draw sampling the mod target's colour is in the stage batch.
+                assert_eq!(stage_draws, vec![0..1]);
+                let batch = driver.prepared_primitives();
+                assert_eq!(batch.pipelines.draws.len(), 1);
+                let recorded = &batch.pipelines.draws[0];
+                assert_eq!(recorded.slot, 0);
+                assert!(matches!(recorded.source, PipelineDrawSource::Retained(_)));
+                assert!(matches!(
+                    recorded.bindings.as_ref().map(|b| b.entries.as_slice()),
+                    Some([ResolvedSet1Entry::Texture { mips: Some(_), .. }])
+                ));
             }
             let panics = take_hook_panics();
             assert!(panics.is_empty(), "{panics:?}");
             let made = handles.lock().unwrap();
             assert!(made.target.is_some() && made.mesh.is_some());
             assert!(made.uniform.is_some() && made.storage.is_some());
-            let (mesh, uniform, storage, target) = (
+            let (mesh, uniform, storage, target, pipeline) = (
                 made.mesh.unwrap(),
                 made.uniform.unwrap(),
                 made.storage.unwrap(),
                 made.target.unwrap(),
+                made.pipeline.unwrap(),
             );
             drop(made);
+
+            // The stage released every handle: a second release is refused.
+            assert!(game.mesh_release(mesh).is_err());
+            assert!(game.render_target_resize(target, [8, 8]).is_err());
 
             // The renderer's own textures that `TextureSource` binds resolve from the handles.
             let gpu = game.mod_gpu().unwrap();
@@ -4575,6 +4785,19 @@ mod tests {
                 Err(RenderTargetError::Unavailable)
             );
             assert_eq!(game.mesh_release(mesh), Err(MeshError::Unavailable));
+            assert_eq!(
+                game.native_world_draw_mesh(
+                    &mut draw,
+                    pipeline,
+                    mesh,
+                    mod_api::MeshDraw::vertices(0..4),
+                    &mod_api::DrawBindings::default().texture(
+                        "ColorTex",
+                        mod_api::TextureSource::RenderTargetColor(target, 0)
+                    ),
+                ),
+                Err(mod_api::PipelineDrawError::Mesh(MeshError::Unavailable))
+            );
             game.renderer = renderer_slot;
         });
     }

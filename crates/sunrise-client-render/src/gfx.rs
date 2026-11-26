@@ -116,6 +116,7 @@ pub use entity_batch::{
     TRANSLUCENT_ITEM_OVERLAY, TRANSLUCENT_PARTICLE_OVERLAY, WATER_MASK_OVERLAY, WORLD_TEXT_OVERLAY,
     WORLD_TEXT_POLYGON_OFFSET_OVERLAY, dynamic_texture_bits, is_native_terrain, mark_oit,
 };
+pub use entity_batch::{NAME_TAG_OVERLAY, NAME_TAG_SOLID_OVERLAY};
 use external::{shadow_box, shadow_runs};
 pub use frustum::{Cull, JoinedFrusta, ShadowCull};
 use frustum::{block_entities_within_reach, frustum, shadow_casters, taa_frustum};
@@ -246,6 +247,7 @@ pub mod mod_frame_graph;
 pub mod mod_gpu;
 pub mod mod_meshes;
 pub mod mod_pipelines;
+pub mod mod_readback;
 pub mod mod_render_targets;
 pub mod mod_storage;
 pub mod mod_uniforms;
