@@ -501,6 +501,7 @@ def sdk_body(index: dict) -> str:
     previous = surface.get("previous")
     if not previous:
         return head + "\nThis SDK has no comparison with an earlier one.\n"
+    # sdk.json leaves out an empty list; `source` is written with every `previous` (Index::compare).
     changes = surface.get("changes", [])
     notes = surface.get("notes", [])
     position = {id: at for at, id in reversed(list(enumerate(changes)))}
@@ -509,7 +510,7 @@ def sdk_body(index: dict) -> str:
     named = {id for note in notes for id in note["ids"]}
     unnamed = len([id for id in changes if id not in named])
     lines = [head, f"## Changes since sdk-{previous}\n",
-             f"Verdict: {surface.get('source', 'unchanged')}; {len(changes)} records changed.\n"]
+             f"Verdict: {surface['source']}; {len(changes)} records changed.\n"]
     if unnamed:
         lines.append(f"{unnamed} changed records are named by no note below; "
                      "`cargo sunrise-mod sdk diff` lists them.\n")
@@ -520,7 +521,7 @@ def sdk_body(index: dict) -> str:
             entry += f"  Migrate: {note['migrate']}\n"
         entry += "  " + ", ".join(f"`{id}`" for id in note["ids"]) + "\n"
         left = len(notes) - shown
-        cut = f"\nThe other {left} notes are in {SDK_INDEX}'s `surface.notes`.\n"
+        cut = f"\nThe remaining notes ({left}) are in {SDK_INDEX}'s `surface.notes`.\n"
         # The last note needs no room for the cut line after it.
         after = len(cut) if left > 1 else 0
         if len(body) + len(entry) + after > GITHUB_RELEASE_BODY_LIMIT:

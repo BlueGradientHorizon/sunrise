@@ -701,7 +701,7 @@ class SdkBodyTests(unittest.TestCase):
         self.assertIn("NOTE-0 ", body)
         self.assertNotIn("NOTE-9 ", body)
         shown = body.count("NOTE-")
-        self.assertIn(f"The other {10 - shown} notes are in sdk.json's `surface.notes`", body)
+        self.assertIn(f"The remaining notes ({10 - shown}) are in sdk.json's `surface.notes`", body)
         for n in range(shown):
             self.assertIn("x" * 100, body.split(f"NOTE-{n} ")[1].split("\n")[0])
 
