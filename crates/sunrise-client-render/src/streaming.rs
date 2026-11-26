@@ -9,10 +9,7 @@ use crate::{
     mesher::{MeshScratch, MeshTables, Region, SectionMesh},
     world::World,
 };
-use std::{
-    collections::HashSet,
-    sync::{Arc, Mutex, RwLock},
-};
+use std::sync::{Arc, Mutex, RwLock};
 use sunrise_core::biome::BiomeZoom;
 use sunrise_level::chunk_streamer::{
     AuxiliaryJobs, ChunkCommit, ChunkPlanResume, ChunkPlanStep, ChunkUpdate,
@@ -577,12 +574,12 @@ impl MeshStreamer {
     }
     /// Whether any chunk is queued or on its way from generation to a mesh.
     pub fn busy(&self) -> bool {
-        self.chunks.busy() || !self.meshing.is_empty()
+        self.chunks.chunks_in_flight() || !self.meshing.is_empty() || self.chunks.pending() != 0
     }
     /// Whether any queued, in-flight, cached proto or extra-area work remains
     /// for an idle parked server level to drain.
     pub fn has_idle_work(&self) -> bool {
-        self.chunks.has_idle_work() || !self.meshing.is_empty()
+        !self.meshing.is_empty() || self.chunks.has_idle_work()
     }
     /// Whether the near terrain is still coming in: chunks generating,
     /// decorating, finishing or being lit (or their neighbours' light views),
@@ -729,7 +726,7 @@ impl MeshStreamer {
             for key in far {
                 self.meshed.remove(key);
             }
-            let far: HashSet<(i32, i32)> = far.iter().copied().collect();
+            let far = commit.sweep_far_set();
             self.meshing.retain(|k, _| !far.contains(&(k.0, k.2)));
             self.compile_started
                 .retain(|k, _| !far.contains(&(k.0, k.2)));

@@ -588,6 +588,7 @@ pub struct ChunkPlanResume<O = NoOutput> {
 pub struct ChunkCommit {
     removed: Vec<Arc<Chunk>>,
     sweep_far: Vec<(i32, i32)>,
+    sweep_far_set: HashSet<(i32, i32)>,
     paused: bool,
 }
 impl ChunkCommit {
@@ -595,6 +596,7 @@ impl ChunkCommit {
         Self {
             removed: Vec::new(),
             sweep_far: Vec::new(),
+            sweep_far_set: HashSet::new(),
             paused: true,
         }
     }
@@ -603,6 +605,9 @@ impl ChunkCommit {
     }
     pub fn sweep_far(&self) -> &[(i32, i32)] {
         &self.sweep_far
+    }
+    pub fn sweep_far_set(&self) -> &HashSet<(i32, i32)> {
+        &self.sweep_far_set
     }
     pub fn into_removed(self) -> Vec<Arc<Chunk>> {
         self.removed
@@ -1612,6 +1617,7 @@ impl ChunkState {
         let mut removed = Vec::new();
         let mut proto_saves = Vec::new();
         let mut sweep_far = Vec::new();
+        let mut sweep_far_set = HashSet::new();
         if sweep {
             self.decoration_changed = true;
             for key in &far {
@@ -1625,10 +1631,10 @@ impl ChunkState {
                 self.light_snapshots.remove(key);
             }
             if !far.is_empty() {
-                let far_set: HashSet<(i32, i32)> = far.iter().copied().collect();
+                sweep_far_set = far.iter().copied().collect();
                 world
                     .dirty_sections
-                    .retain_columns(|x, z| !far_set.contains(&(x, z)));
+                    .retain_columns(|x, z| !sweep_far_set.contains(&(x, z)));
             }
             sweep_far = far;
             // Drop far proto chunks that are not checked out.
@@ -1675,6 +1681,7 @@ impl ChunkState {
             ChunkCommit {
                 removed,
                 sweep_far,
+                sweep_far_set,
                 paused: false,
             },
             proto_saves,
@@ -2592,6 +2599,7 @@ impl<A: AuxiliaryJobs> ChunkStreamer<A> {
         let ChunkCommit {
             removed,
             sweep_far: _,
+            sweep_far_set: _,
             paused,
         } = commit;
         if paused {
@@ -3997,6 +4005,7 @@ mod tests {
         ChunkCommit {
             removed: Vec::new(),
             sweep_far: Vec::new(),
+            sweep_far_set: HashSet::new(),
             paused: false,
         }
     }
