@@ -112,8 +112,8 @@ fn startup_binds_required_convention_tags() -> crate::Result<()> {
     let tag = behaviours
         .tag("test:startup_barrels")
         .expect("the startup gameplay tag must bind");
-    assert!(tag.contains(behaviours.block_of(barrel)));
-    assert!(!tag.contains(behaviours.block_of(stone)));
+    assert!(tag.contains(behaviours.table.block(barrel)));
+    assert!(!tag.contains(behaviours.table.block(stone)));
     assert_eq!(
         behaviours.fluid_tags.supports_lily_pad,
         FluidKind::Water.mask() | FluidKind::FlowingWater.mask(),
