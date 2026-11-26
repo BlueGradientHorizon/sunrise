@@ -1083,7 +1083,9 @@ impl Game<'_> {
         // before ServerLifecycleHooks.handleServerStarting(this).
         // The owner has not joined the player list. Save levels and metadata only.
         startup::time("server.initial_save", || {
-            self.begin_world_save(true)?;
+            if mod_api::__private::enabled_listened(mod_api::HookId::WorldSaveStart) {
+                self.begin_world_save(true)?;
+            }
             self.save_world_after_players(false)
         })?;
         Ok((pipe, self.level.name.clone()))

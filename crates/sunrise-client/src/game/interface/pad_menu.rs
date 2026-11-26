@@ -766,6 +766,7 @@ impl Game<'_> {
     #[inline(always)]
     pub(super) fn settle_pad_for_context_menu(&mut self) {
         self.direct_craft_stop();
+        self.screen_state.context_menu_input.take_pad_repeat_owned();
         let menu = &mut self.pad.menu;
         menu.armed = None;
         menu.trigger = None;
@@ -775,6 +776,14 @@ impl Game<'_> {
         menu.glide = None;
         menu.pending = None;
         menu.stick_scrolled = None;
+    }
+
+    /// Clear any pad direction repeat started by the context menu when it closes.
+    #[inline(always)]
+    pub(super) fn clear_context_menu_pad_repeat(&mut self) {
+        if self.screen_state.context_menu_input.take_pad_repeat_owned() {
+            self.pad.menu.repeat = None;
+        }
     }
 
     /// A button in a menu.
@@ -788,6 +797,7 @@ impl Game<'_> {
             if self.screen_state.context_menu_input.take_pad(button) {
                 if self.pad.menu.repeat.is_some_and(|r| r.0 == button) {
                     self.pad.menu.repeat = None;
+                    self.screen_state.context_menu_input.take_pad_repeat_owned();
                 }
                 return Ok(());
             }
@@ -849,21 +859,25 @@ impl Game<'_> {
                 Button::DPadUp => {
                     self.pad.menu.repeats = 0;
                     self.context_menu_key(KeyCode::ArrowUp);
+                    self.screen_state.context_menu_input.own_pad_repeat();
                     self.pad.menu.repeat = Some((button, Instant::now(), false));
                 }
                 Button::DPadDown => {
                     self.pad.menu.repeats = 0;
                     self.context_menu_key(KeyCode::ArrowDown);
+                    self.screen_state.context_menu_input.own_pad_repeat();
                     self.pad.menu.repeat = Some((button, Instant::now(), false));
                 }
                 Button::DPadLeft => {
                     self.pad.menu.repeats = 0;
                     self.context_menu_key(KeyCode::ArrowLeft);
+                    self.screen_state.context_menu_input.own_pad_repeat();
                     self.pad.menu.repeat = Some((button, Instant::now(), false));
                 }
                 Button::DPadRight => {
                     self.pad.menu.repeats = 0;
                     self.context_menu_key(KeyCode::ArrowRight);
+                    self.screen_state.context_menu_input.own_pad_repeat();
                     self.pad.menu.repeat = Some((button, Instant::now(), false));
                 }
                 Button::South => {
@@ -1586,6 +1600,9 @@ impl Game<'_> {
             menu.prompt = None;
             menu.prompt_restart = None;
             menu.prompt_crosshair = None;
+            self.screen_state
+                .context_menu_input
+                .clear_pad_stick_and_repeat();
             self.pad_show_os_pointer(true);
             return;
         }
@@ -1623,6 +1640,9 @@ impl Game<'_> {
             Vec::new()
         };
         let context_menu = self.context_menu_open();
+        if !context_menu {
+            self.clear_context_menu_pad_repeat();
+        }
         let focusing = focus_mode && !targets.is_empty();
         let resizing = self.pad_follow_resize(event_loop);
         let restarting = self.pad_prompt_frame(&targets);
@@ -1639,18 +1659,28 @@ impl Game<'_> {
             self.settings.controller.look_deadzone,
         );
         let state = self.pad.state;
-        if focusing || self.pad.menu.osk.is_some() || context_menu {
+        let left_radial = gamepad::radial(state.left, move_deadzone);
+        let mut stick_suppressed =
+            !context_menu && self.screen_state.context_menu_input.stick_owned();
+        if stick_suppressed && left_radial == [0.0, 0.0] {
+            self.screen_state.context_menu_input.release_stick();
+            self.pad.menu.stick = None;
+            stick_suppressed = false;
+        }
+        if stick_suppressed {
+            self.pad.menu.stick =
+                gamepad::stick_direction_held(left_radial, STICK_STEP, self.pad.menu.stick);
+        } else if focusing || self.pad.menu.osk.is_some() || context_menu {
             // The stick steps like the D-pad.
-            let dir = gamepad::stick_direction_held(
-                gamepad::radial(state.left, move_deadzone),
-                STICK_STEP,
-                self.pad.menu.stick,
-            );
+            let dir = gamepad::stick_direction_held(left_radial, STICK_STEP, self.pad.menu.stick);
             if dir != self.pad.menu.stick {
                 if let Some((b, ..)) = self.pad.menu.repeat
                     && Some(b) == self.pad.menu.stick
                 {
                     self.pad.menu.repeat = None;
+                    if context_menu {
+                        self.screen_state.context_menu_input.take_pad_repeat_owned();
+                    }
                 }
                 self.pad.menu.stick = dir;
                 if let Some(button) = dir {
@@ -1660,7 +1690,13 @@ impl Game<'_> {
                         self.pad.menu.repeats = 0;
                         self.pad_step(event_loop, button);
                     }
+                    if context_menu {
+                        self.screen_state.context_menu_input.own_pad_repeat();
+                        self.screen_state.context_menu_input.own_stick();
+                    }
                     self.pad.menu.repeat = Some((button, now, false));
+                } else if context_menu {
+                    self.screen_state.context_menu_input.release_stick();
                 }
             }
         } else {
@@ -1699,15 +1735,20 @@ impl Game<'_> {
             }
         }
         // Nothing scrolls under the on-screen keyboard; its right stick picks a
-        // suggestion only for the native chat editor.
-        let suggests = self.pad.menu.osk.is_some() && self.pad_chat_owns_keyboard();
-        let scroll = if let Some(keyboard) = self.pad.menu.osk.as_mut() {
-            if let Some(out) = keyboard.stick(state.right[1], suggests) {
-                self.pad_osk_output(out);
-            }
-            [0.0, 0.0]
-        } else {
+        // suggestion only for the native chat editor. An open context menu takes
+        // the right stick ahead of an already-open on-screen keyboard.
+        let scroll = if context_menu {
             gamepad::radial(state.right, look_deadzone)
+        } else {
+            let suggests = self.pad.menu.osk.is_some() && self.pad_chat_owns_keyboard();
+            if let Some(keyboard) = self.pad.menu.osk.as_mut() {
+                if let Some(out) = keyboard.stick(state.right[1], suggests) {
+                    self.pad_osk_output(out);
+                }
+                [0.0, 0.0]
+            } else {
+                gamepad::radial(state.right, look_deadzone)
+            }
         };
         let wheel = &mut self.pad.menu.wheel;
         wheel[0] += scroll[0] * self.settings.controller.scroll_speed * seconds;
@@ -1727,15 +1768,22 @@ impl Game<'_> {
             }
         }
         if let Some((button, since, repeating)) = self.pad.menu.repeat {
-            let wait = if repeating {
-                self.settings.controller.repeat_interval
+            if !context_menu
+                && (self.screen_state.context_menu_input.owns_pad(button)
+                    || self.screen_state.context_menu_input.stick_owned())
+            {
+                self.pad.menu.repeat = None;
             } else {
-                self.settings.controller.repeat_delay
-            };
-            if now.duration_since(since).as_secs_f32() >= wait {
-                self.pad.menu.repeat = Some((button, now, true));
-                self.pad.menu.repeats = self.pad.menu.repeats.saturating_add(1);
-                self.pad_step(event_loop, button);
+                let wait = if repeating {
+                    self.settings.controller.repeat_interval
+                } else {
+                    self.settings.controller.repeat_delay
+                };
+                if now.duration_since(since).as_secs_f32() >= wait {
+                    self.pad.menu.repeat = Some((button, now, true));
+                    self.pad.menu.repeats = self.pad.menu.repeats.saturating_add(1);
+                    self.pad_step(event_loop, button);
+                }
             }
         }
         if !context_menu {
@@ -2672,6 +2720,9 @@ impl Game<'_> {
     /// What a key of the on-screen keyboard does: the same as a typed key in
     /// the field that has focus.
     pub(super) fn pad_osk_output(&mut self, out: osk::Output) {
+        if self.context_menu_open() {
+            return;
+        }
         use osk::Output;
         let (key, text) = match &out {
             Output::Text(t) => (None, Some(t.as_str())),

@@ -278,6 +278,7 @@ fn the_dragons_killing_blow_fires_the_living_death_hooks() {
         damage_type: String,
         causing: i32,
         direct: i32,
+        direct_type: Option<String>,
         weapon: Option<mod_api::ItemStack>,
         health: Option<f32>,
     }
@@ -296,6 +297,7 @@ fn the_dragons_killing_blow_fires_the_living_death_hooks() {
         posts: Mutex<Vec<SeenPost>>,
         cancel: AtomicBool,
         discard: AtomicBool,
+        sit_on_death: AtomicBool,
     }
 
     struct Deaths(Arc<Probe>);
@@ -314,11 +316,17 @@ fn the_dragons_killing_blow_fires_the_living_death_hooks() {
                 damage_type: event.source.damage_type.to_owned(),
                 causing: event.source.causing,
                 direct: event.source.direct,
+                direct_type: event.source.direct_type.map(str::to_owned),
                 weapon: event.weapon.cloned(),
                 health,
             });
             if self.0.discard.load(Ordering::SeqCst) {
                 assert!(entity.discard(host), "listener discards the dragon");
+                return Flow::Continue;
+            }
+            if self.0.sit_on_death.load(Ordering::SeqCst) {
+                let dragon = host.dragon(entity).expect("dragon handle");
+                assert!(dragon.set_phase(host, DragonPhase::Hover));
                 return Flow::Continue;
             }
             if self.0.cancel.load(Ordering::SeqCst) {
@@ -351,14 +359,22 @@ fn the_dragons_killing_blow_fires_the_living_death_hooks() {
         probe.deaths.lock().unwrap().clear();
         probe.posts.lock().unwrap().clear();
     };
-    let spawn_one_hp = |game: &mut Game<'_>| -> u32 {
+    let holding = || Phase::Holding {
+        path: None,
+        target: None,
+        clockwise: false,
+    };
+    let spawn_with_phase = |game: &mut Game<'_>, phase: Phase| -> u32 {
         game.dragon.discard();
         let id = game
             .spawn_dragon_spawned([0.0, 80.0, 0.0], SpawnSite::Plain)
             .unwrap();
-        game.dragon.as_mut().unwrap().health = 1.0;
+        let d = game.dragon.as_mut().unwrap();
+        d.health = 1.0;
+        d.set_phase(phase);
         id
     };
+    let spawn_one_hp = |game: &mut Game<'_>| -> u32 { spawn_with_phase(game, holding()) };
 
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
@@ -367,12 +383,17 @@ fn the_dragons_killing_blow_fires_the_living_death_hooks() {
             game.player.as_mut().unwrap().entity_id = 55;
             game.level.player_uuid = Some(sunrise_client::lan::playerdata::uuid_ints(host_uuid));
 
-            // 1. Acceptance vs cancellation: health/phase transition and order against damage_post.
+            // 1a. Flying dragon: acceptance vs cancellation, health/phase, order, and 20-tick cleanup.
             for cancelled in [false, true] {
                 probe.cancel.store(cancelled, Ordering::SeqCst);
                 probe.discard.store(false, Ordering::SeqCst);
+                probe.sit_on_death.store(false, Ordering::SeqCst);
                 clear(&probe);
-                spawn_one_hp(game);
+                let id = spawn_one_hp(game);
+                game.fight.dragon_uuid = game.persist.uuids.get(&id).copied();
+                game.fight.killed = false;
+                game.fight.previously_killed = false;
+                game.orbs.clear();
                 game.hurt_dragon(
                     0,
                     50.0,
@@ -393,17 +414,35 @@ fn the_dragons_killing_blow_fires_the_living_death_hooks() {
                 drop(deaths);
                 if cancelled {
                     assert_eq!(d.health, 0.0, "cancelled death preserves zero-health body");
+                    assert!(d.death_canceled, "cancelled death records veto");
                     assert!(
-                        !matches!(d.phase, Phase::Dying { .. }),
+                        matches!(d.phase, Phase::Holding { .. }),
                         "cancelled death skips handleKillingBlow"
                     );
                     assert_eq!(*probe.order.lock().unwrap(), ["death", "damage_post"]);
+                    assert!(probe.posts.lock().unwrap().is_empty());
+                    // Advancing 20 ticks removes the unhealed body without XP or fight completion.
+                    for _ in 0..19 {
+                        game.tick_dragon();
+                    }
+                    assert!(game.dragon.is_some());
+                    assert_eq!(game.dragon.as_ref().unwrap().death_time, 19);
+                    assert!(game.orbs.is_empty());
+                    assert!(!game.fight.killed);
+                    game.tick_dragon();
+                    assert!(game.dragon.is_none(), "cancelled dragon removed at tick 20");
+                    assert!(game.orbs.is_empty(), "cancelled dragon drops no XP");
+                    assert!(
+                        !game.fight.killed,
+                        "cancelled dragon does not win the fight"
+                    );
                     assert!(probe.posts.lock().unwrap().is_empty());
                 } else {
                     assert_eq!(
                         d.health, 1.0,
                         "accepted death resets flying dragon to 1 health"
                     );
+                    assert!(!d.death_canceled);
                     assert!(
                         matches!(d.phase, Phase::Dying { .. }),
                         "accepted death enters dying flight"
@@ -423,7 +462,44 @@ fn the_dragons_killing_blow_fires_the_living_death_hooks() {
                 }
             }
 
-            // 2. Lethal projectile shot after the shooter switched items keeps projectile ID and saved weapon.
+            // 1b. Perched dragon: stays at 0 health on acceptance, skips post/credit on cancel.
+            for cancelled in [false, true] {
+                probe.cancel.store(cancelled, Ordering::SeqCst);
+                clear(&probe);
+                let kills_before = game.stats.get("killed", "minecraft:ender_dragon");
+                spawn_with_phase(game, Phase::Scanning { time: 0 });
+                game.hurt_dragon(
+                    0,
+                    50.0,
+                    true,
+                    Some(FightWho::Host),
+                    DamageKind::PlayerAttack,
+                );
+                let d = game.dragon.as_ref().unwrap();
+                assert_eq!(d.health, 0.0);
+                assert!(!matches!(d.phase, Phase::Dying { .. }));
+                if cancelled {
+                    assert!(d.death_canceled);
+                    assert_eq!(*probe.order.lock().unwrap(), ["death", "damage_post"]);
+                    assert!(probe.posts.lock().unwrap().is_empty());
+                    assert_eq!(
+                        game.stats.get("killed", "minecraft:ender_dragon"),
+                        kills_before
+                    );
+                } else {
+                    assert!(!d.death_canceled);
+                    assert_eq!(
+                        *probe.order.lock().unwrap(),
+                        ["death", "post", "damage_post"]
+                    );
+                    assert_eq!(
+                        game.stats.get("killed", "minecraft:ender_dragon"),
+                        kills_before + 1
+                    );
+                }
+            }
+
+            // 2a. Lethal projectile shot after the shooter switched items keeps projectile ID, type, and saved weapon.
             probe.cancel.store(false, Ordering::SeqCst);
             clear(&probe);
             spawn_one_hp(game);
@@ -449,8 +525,35 @@ fn the_dragons_killing_blow_fires_the_living_death_hooks() {
                 assert_eq!(deaths[0].damage_type, "minecraft:arrow");
                 assert_eq!(deaths[0].causing, 55);
                 assert_eq!(deaths[0].direct, 912);
+                assert_eq!(deaths[0].direct_type.as_deref(), Some("minecraft:arrow"));
                 assert_eq!(deaths[0].weapon.as_ref(), Some(&expected_bow));
             }
+
+            // 2b. Lethal blast carries producer direct ID and type to hooks while keeping baseline last_source.
+            clear(&probe);
+            spawn_one_hp(game);
+            game.explosion_hits_special(
+                [0.0, 80.0, 0.0],
+                6.0,
+                &[],
+                "minecraft:bad_respawn_point",
+                Some((930, Some("minecraft:end_crystal"))),
+            );
+            {
+                let deaths = probe.deaths.lock().unwrap();
+                assert_eq!(deaths.len(), 1);
+                assert_eq!(deaths[0].damage_type, "minecraft:bad_respawn_point");
+                assert_eq!(deaths[0].direct, 930);
+                assert_eq!(
+                    deaths[0].direct_type.as_deref(),
+                    Some("minecraft:end_crystal")
+                );
+            }
+            assert_eq!(
+                game.dragon.as_ref().unwrap().last_source,
+                Some(("minecraft:explosion", None, None)),
+                "baseline LAN damage source stays separate from hook blast payload"
+            );
 
             // 3. Lethal explicit-source hit carries its type, cause, and direct entity ID.
             clear(&probe);
@@ -493,7 +596,31 @@ fn the_dragons_killing_blow_fires_the_living_death_hooks() {
                 }]
             );
 
-            // 4. Discard-and-continue skips kill credit and living_death_post.
+            // 4a. Phase change during living_death with Continue rejects the stale lethal tail.
+            probe.sit_on_death.store(true, Ordering::SeqCst);
+            clear(&probe);
+            let kills_before = game.stats.get("killed", "minecraft:ender_dragon");
+            spawn_one_hp(game);
+            game.hurt_dragon(
+                0,
+                50.0,
+                true,
+                Some(FightWho::Host),
+                DamageKind::PlayerAttack,
+            );
+            {
+                let d = game.dragon.as_ref().unwrap();
+                assert_eq!(d.health, 0.0);
+                assert!(matches!(d.phase, Phase::Hover { .. }));
+            }
+            assert!(probe.posts.lock().unwrap().is_empty());
+            assert_eq!(
+                game.stats.get("killed", "minecraft:ender_dragon"),
+                kills_before
+            );
+            probe.sit_on_death.store(false, Ordering::SeqCst);
+
+            // 4b. Discard-and-continue skips kill credit and living_death_post.
             probe.discard.store(true, Ordering::SeqCst);
             clear(&probe);
             let kills_before = game.stats.get("killed", "minecraft:ender_dragon");

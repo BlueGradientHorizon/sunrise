@@ -490,8 +490,7 @@ fn two_callers_initialize_an_empty_sdk_cache_concurrently() {
     for round in 0..4 {
         let cache = root.path().join(format!("cache-{round}"));
         let metadata_start = std::sync::Barrier::new(2);
-        let slices_start = std::sync::Barrier::new(2);
-        let outputs: Vec<(NativeSdk, prebuilt::Package)> = std::thread::scope(|scope| {
+        let sdks: Vec<NativeSdk> = std::thread::scope(|scope| {
             let handles: Vec<_> = (0..2)
                 .map(|_| {
                     scope.spawn(|| {
@@ -507,6 +506,24 @@ fn two_callers_initialize_an_empty_sdk_cache_concurrently() {
                         .unwrap();
                         assert_eq!(sdk.index.build.commit, BUILD);
                         assert_eq!(fs::read(sdk.surface()).unwrap(), SURFACE_BYTES);
+                        sdk
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .map(|handle| handle.join().unwrap())
+                .collect()
+        });
+        assert_eq!(sdks[0].dir, sdks[1].dir);
+
+        let slices_start = std::sync::Barrier::new(2);
+        let outputs: Vec<(NativeSdk, prebuilt::Package)> = std::thread::scope(|scope| {
+            let handles: Vec<_> = sdks
+                .into_iter()
+                .map(|sdk| {
+                    let slices_start = &slices_start;
+                    scope.spawn(move || {
                         slices_start.wait();
                         let slices = sdk.slices(sdk::Side::Client, Route::Engine).unwrap();
                         assert_eq!(
@@ -532,7 +549,6 @@ fn two_callers_initialize_an_empty_sdk_cache_concurrently() {
         });
 
         let (sdk, slices) = &outputs[0];
-        assert_eq!(sdk.dir, outputs[1].0.dir);
         assert_eq!(slices, &outputs[1].1);
         let locks_dir = sdk.dir.join("locks");
         let mut lock_count = 0;

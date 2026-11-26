@@ -146,7 +146,14 @@ impl Game<'_> {
         origin: input_trace::InputOrigin,
         retained_sample: Option<PointerSample>,
     ) {
+        let prev_origin = self
+            .screen_state
+            .context_menu_input
+            .set_window_origin(origin.into());
         self.handle_window_event_as(event_loop, id, event, origin, retained_sample);
+        self.screen_state
+            .context_menu_input
+            .set_window_origin(prev_origin);
     }
 
     pub(super) fn handle_window_event_as(

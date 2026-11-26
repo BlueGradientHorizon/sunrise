@@ -114,6 +114,9 @@ impl Game<'_> {
         let held: Vec<KeyCode> = self.physical_keys.iter().copied().collect();
         let options = self.toggle_options();
         for key in held {
+            if self.context_menu_owns_any_key(key) {
+                continue;
+            }
             if let Some(name) = sunrise_client::keybinds::key_name(key) {
                 for slot in self.settings.keys.slots_for(name) {
                     let option =

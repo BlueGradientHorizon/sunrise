@@ -282,6 +282,10 @@ impl ExplosionSource {
         self.damage_direct_kind = kind;
         self
     }
+    pub(super) fn direct(&self) -> Option<(u32, Option<&'static str>)> {
+        self.damage_direct
+            .map(|(id, _)| (id, self.damage_direct_kind))
+    }
 }
 
 /// `ServerExplosion.hurtEntities`: an entity is hurt when its position is
@@ -1139,7 +1143,13 @@ impl Game<'_> {
         // reaches each entry's kind in the list's order.
         let listed = self.combat.blast_hit_list.is_some();
         if hurts && !listed {
-            self.explosion_hits_special(center, radius, blocks, damage_type);
+            self.explosion_hits_special(
+                center,
+                radius,
+                blocks,
+                damage_type,
+                blast_source_spec.direct(),
+            );
         }
         let diameter = f64::from(radius * 2.0);
         let damage = |dist: f64, exposure: f32| {
@@ -1322,6 +1332,7 @@ impl Game<'_> {
                         radius,
                         blocks,
                         damage_type,
+                        blast_source_spec.direct(),
                         diameter,
                         interaction,
                     );
@@ -1622,13 +1633,14 @@ impl Game<'_> {
         radius: f32,
         blocks: &[[i32; 3]],
         damage_type: &str,
+        blast_direct: Option<(u32, Option<&'static str>)>,
         diameter: f64,
         interaction: BlockInteraction,
     ) {
         if self.crystals.iter().any(|c| c.id == id)
             || self.dragon.as_ref().is_some_and(|d| d.id == id)
         {
-            self.explosion_hits_special(center, radius, blocks, damage_type);
+            self.explosion_hits_special(center, radius, blocks, damage_type, blast_direct);
         }
         if self.item_frames.iter().any(|f| f.id == id) {
             self.explosion_breaks_frames(center, diameter, interaction);

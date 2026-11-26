@@ -7,10 +7,12 @@
 //! in one turns that mod off instead of taking the game down.
 
 use super::Game;
-use crate::game::{api_values::TryIntoEngine, host::draw::GameDrawContext};
+use crate::game::{
+    api_values::TryIntoEngine, host::draw::GameDrawContext, input_trace::InputOrigin,
+};
 use mod_api::{__private::game::CallbackOwner, DrawContext, client::widgets::ContextMenuEntry};
 use std::collections::HashSet;
-use sunrise_client::{gamepad::Button as PadButton, hud::HudBatch};
+use sunrise_client::{gamepad::Button as PadButton, held::Source, hud::HudBatch};
 use winit::{event::MouseButton, keyboard::KeyCode};
 
 /// Height of a row without an icon, in GUI pixels.
@@ -31,28 +33,107 @@ const TEXT: u32 = 0xFFFF_FFFF;
 const DISABLED: u32 = 0xFF80_8080;
 const LINE: u32 = 0xFF50_5050;
 
+/// Mouse input source for press-to-release ownership isolation.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub(super) enum MouseSource {
+    #[default]
+    User,
+    Agent,
+    Game,
+}
+
+impl From<InputOrigin> for MouseSource {
+    fn from(origin: InputOrigin) -> Self {
+        match origin {
+            InputOrigin::User => Self::User,
+            InputOrigin::Agent => Self::Agent,
+            InputOrigin::Game => Self::Game,
+        }
+    }
+}
+
+/// Key input source for press-to-release ownership isolation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum KeySource {
+    Keyboard,
+    Pad,
+    Agent,
+}
+
+impl From<Source> for KeySource {
+    fn from(source: Source) -> Self {
+        match source {
+            Source::Keyboard => Self::Keyboard,
+            Source::Pad => Self::Pad,
+            Source::Agent => Self::Agent,
+        }
+    }
+}
+
 /// Press-to-release ownership for input consumed by a context menu, kept across menu close or
 /// screen replacement so releases and repeats never leak to the screen underneath.
 #[derive(Default)]
 pub(super) struct ContextMenuInput {
-    owned_buttons: HashSet<MouseButton>,
-    owned_keys: HashSet<KeyCode>,
+    window_origin: MouseSource,
+    owned_buttons: HashSet<(MouseSource, MouseButton)>,
+    owned_keys: HashSet<(KeySource, KeyCode)>,
     owned_pad: HashSet<PadButton>,
+    pad_repeat_owned: bool,
+    stick_owned: bool,
 }
 
 impl ContextMenuInput {
+    pub(super) fn set_window_origin(&mut self, origin: MouseSource) -> MouseSource {
+        std::mem::replace(&mut self.window_origin, origin)
+    }
+
+    pub(super) fn window_origin(&self) -> MouseSource {
+        self.window_origin
+    }
+
     pub(super) fn clear(&mut self) {
         self.owned_buttons.clear();
         self.owned_keys.clear();
         self.owned_pad.clear();
+        self.pad_repeat_owned = false;
+        self.stick_owned = false;
     }
 
     pub(super) fn own_pad(&mut self, button: PadButton) {
         self.owned_pad.insert(button);
     }
 
+    pub(super) fn owns_pad(&self, button: PadButton) -> bool {
+        !self.owned_pad.is_empty() && self.owned_pad.contains(&button)
+    }
+
     pub(super) fn take_pad(&mut self, button: PadButton) -> bool {
         !self.owned_pad.is_empty() && self.owned_pad.remove(&button)
+    }
+
+    pub(super) fn own_pad_repeat(&mut self) {
+        self.pad_repeat_owned = true;
+    }
+
+    pub(super) fn take_pad_repeat_owned(&mut self) -> bool {
+        std::mem::take(&mut self.pad_repeat_owned)
+    }
+
+    pub(super) fn own_stick(&mut self) {
+        self.stick_owned = true;
+    }
+
+    pub(super) fn stick_owned(&self) -> bool {
+        self.stick_owned
+    }
+
+    pub(super) fn release_stick(&mut self) {
+        self.stick_owned = false;
+    }
+
+    pub(super) fn clear_pad_stick_and_repeat(&mut self) {
+        self.pad_repeat_owned = false;
+        self.stick_owned = false;
     }
 }
 
@@ -100,6 +181,8 @@ struct LayoutCache {
     openers: Vec<Option<usize>>,
     boxes: Vec<LevelBox>,
     dirty: bool,
+    #[cfg(test)]
+    rebuilds: usize,
 }
 
 /// An open context menu.
@@ -148,6 +231,18 @@ pub(super) struct LevelBox {
     pub(super) max_scroll: f32,
 }
 
+impl LevelBox {
+    fn empty() -> Self {
+        Self {
+            rect: [0.0; 4],
+            content_rect: [0.0; 4],
+            rows: Vec::new(),
+            scroll: 0.0,
+            max_scroll: 0.0,
+        }
+    }
+}
+
 fn label_of(entry: &ContextMenuEntry) -> Option<String> {
     match entry {
         ContextMenuEntry::Action { label, .. } | ContextMenuEntry::Submenu { label, .. } => {
@@ -186,6 +281,21 @@ fn opens_submenu(entry: &ContextMenuEntry) -> bool {
 
 fn inside([mx, my]: [f32; 2], [x, y, w, h]: [f32; 4]) -> bool {
     mx >= x && my >= y && mx < x + w && my < y + h
+}
+
+/// Vertical offset and height of the scrollbar thumb inside a `ch`-tall content area.
+fn scrollbar_thumb(
+    ch: f32,
+    content_height: f32,
+    scroll: f32,
+    max_scroll: f32,
+) -> Option<(f32, f32)> {
+    if ch <= 0.0 || content_height <= 0.0 || max_scroll <= 0.0 {
+        return None;
+    }
+    let thumb_h = (ch * ch / content_height).clamp(6.0_f32.min(ch), ch);
+    let frac = (scroll / max_scroll).clamp(0.0, 1.0);
+    Some((frac * (ch - thumb_h), thumb_h))
 }
 
 fn truncate_label(label: &str, max_width: f32, width: &dyn Fn(&str) -> f32) -> String {
@@ -395,7 +505,10 @@ impl ContextMenu {
             return &self.cache.boxes;
         }
 
-        self.cache.boxes.clear();
+        self.cache.boxes.truncate(depth);
+        while self.cache.boxes.len() < depth {
+            self.cache.boxes.push(LevelBox::empty());
+        }
         for k in 0..depth {
             let (icons, nested, max_label_width, content_height) = {
                 let level = &self.cache.levels[k];
@@ -430,21 +543,21 @@ impl ContextMenu {
             let scroll = self.scroll[k].clamp(0.0, max_scroll);
             self.scroll[k] = scroll;
 
-            let [mut x, mut y] = match self.cache.boxes.last() {
-                None => self.at,
-                Some(parent) => {
-                    let opener = self.selected[k - 1]
-                        .and_then(|row| parent.rows.iter().find(|r| r.index == row))
-                        .map(|r| r.hit_rect)
-                        .unwrap_or(parent.rect);
-                    let right = parent.rect[0] + parent.rect[2];
-                    let x = if right + w <= size[0] {
-                        right
-                    } else {
-                        parent.rect[0] - w
-                    };
-                    [x, opener[1] - PAD]
-                }
+            let [mut x, mut y] = if k == 0 {
+                self.at
+            } else {
+                let parent = &self.cache.boxes[k - 1];
+                let opener = self.selected[k - 1]
+                    .and_then(|row| parent.rows.iter().find(|r| r.index == row))
+                    .map(|r| r.hit_rect)
+                    .unwrap_or(parent.rect);
+                let right = parent.rect[0] + parent.rect[2];
+                let x = if right + w <= size[0] {
+                    right
+                } else {
+                    parent.rect[0] - w
+                };
+                [x, opener[1] - PAD]
             };
             x = x.min((size[0] - w).max(0.0)).max(0.0);
             y = y.min((size[1] - h).max(0.0)).max(0.0);
@@ -453,22 +566,34 @@ impl ContextMenu {
             let content_bottom = content_top + visible_h;
             let content_rect = [x + 1.0, content_top, (w - 2.0).max(0.0), visible_h];
             let level = &self.cache.levels[k];
-            let mut rows = Vec::new();
-            for index in 0..level.rows.len() {
+            let level_box = &mut self.cache.boxes[k];
+            level_box.rect = [x, y, w, h];
+            level_box.content_rect = content_rect;
+            level_box.scroll = scroll;
+            level_box.max_scroll = max_scroll;
+            level_box.rows.clear();
+            let first = level
+                .content_tops
+                .partition_point(|&t| t <= scroll)
+                .saturating_sub(1);
+            for index in first..level.rows.len() {
                 let row_top = level.content_tops[index];
+                let screen_top = content_top + row_top - scroll;
+                if screen_top >= content_bottom {
+                    break;
+                }
                 let row_bottom = level
                     .content_tops
                     .get(index + 1)
                     .copied()
                     .unwrap_or(level.content_height);
-                let screen_top = content_top + row_top - scroll;
                 let screen_bottom = content_top + row_bottom - scroll;
                 let vis_top = screen_top.max(content_top);
                 let vis_bottom = screen_bottom.min(content_bottom);
                 if vis_bottom <= vis_top {
                     continue;
                 }
-                rows.push(VisibleRow {
+                level_box.rows.push(VisibleRow {
                     index,
                     rect: [
                         x + 1.0,
@@ -479,13 +604,10 @@ impl ContextMenu {
                     hit_rect: [x + 1.0, vis_top, (w - 2.0).max(0.0), vis_bottom - vis_top],
                 });
             }
-            self.cache.boxes.push(LevelBox {
-                rect: [x, y, w, h],
-                content_rect,
-                rows,
-                scroll,
-                max_scroll,
-            });
+        }
+        #[cfg(test)]
+        {
+            self.cache.rebuilds += 1;
         }
         self.cache.viewport = size;
         self.cache.at = self.at;
@@ -552,6 +674,7 @@ impl ContextMenu {
     /// Selects `row` of level `k`, closing deeper levels, and opens its nested menu when it
     /// is an enabled, non-empty submenu.
     fn select(&mut self, k: usize, row: Option<usize>, open_nested: bool) {
+        let closed_deeper = self.selected.len() > k + 1;
         self.selected.truncate(k + 1);
         self.scroll.truncate(k + 1);
         self.selected[k] = row;
@@ -562,7 +685,9 @@ impl ContextMenu {
             self.selected.push(None);
             self.scroll.push(0.0);
         }
-        self.cache.dirty = true;
+        if closed_deeper || (opens && open_nested) {
+            self.cache.dirty = true;
+        }
     }
 
     fn close_deepest_level(&mut self) {
@@ -648,6 +773,7 @@ impl Game<'_> {
         self.live_context_menu();
         let closed = self.screen_state.context_menu.take().is_some();
         if closed {
+            self.clear_context_menu_pad_repeat();
             self.sync_ime();
         }
         closed
@@ -682,6 +808,7 @@ impl Game<'_> {
             || self.observed_screen_view().is_none()
         {
             self.screen_state.context_menu = None;
+            self.clear_context_menu_pad_repeat();
             return false;
         }
         true
@@ -708,7 +835,13 @@ impl Game<'_> {
     /// A mouse button while a menu is open: presses are owned by the menu through their
     /// matching release (even if the press closes the menu or replaces the screen), while
     /// releases for presses the screen already owned pass through for drag/widget cleanup.
-    pub(super) fn context_menu_mouse(&mut self, button: MouseButton, pressed: bool) -> bool {
+    pub(super) fn context_menu_mouse(
+        &mut self,
+        source: MouseSource,
+        button: MouseButton,
+        pressed: bool,
+    ) -> bool {
+        let key = (source, button);
         if !pressed {
             return !self
                 .screen_state
@@ -719,7 +852,7 @@ impl Game<'_> {
                     .screen_state
                     .context_menu_input
                     .owned_buttons
-                    .remove(&button);
+                    .remove(&key);
         }
         if !self.live_context_menu() {
             if !self
@@ -731,14 +864,14 @@ impl Game<'_> {
                 self.screen_state
                     .context_menu_input
                     .owned_buttons
-                    .remove(&button);
+                    .remove(&key);
             }
             return false;
         }
         self.screen_state
             .context_menu_input
             .owned_buttons
-            .insert(button);
+            .insert(key);
         let (w, h) = self.gui_size();
         self.ensure_context_menu_layout([w, h]);
         let mouse = self.cursor();
@@ -803,22 +936,36 @@ impl Game<'_> {
         true
     }
 
-    /// Whether `key`'s current press is owned by the context menu (so its repeats/text/release
-    /// stay out of the screen underneath even after the menu closes).
+    /// Whether `key`'s current press from `source` is owned by the context menu (so its
+    /// repeats/text/release stay out of the screen underneath even after the menu closes).
     #[inline(always)]
-    pub(super) fn context_menu_owns_key(&self, key: KeyCode) -> bool {
+    pub(super) fn context_menu_owns_key(&self, source: Source, key: KeyCode) -> bool {
         !self.screen_state.context_menu_input.owned_keys.is_empty()
             && self
                 .screen_state
                 .context_menu_input
                 .owned_keys
-                .contains(&key)
+                .contains(&(source.into(), key))
+    }
+
+    /// Whether any input source currently holds a menu-owned press of `key` (excluded from
+    /// `restore_held_keys` on pointer recapture).
+    #[inline(always)]
+    pub(super) fn context_menu_owns_any_key(&self, key: KeyCode) -> bool {
+        !self.screen_state.context_menu_input.owned_keys.is_empty()
+            && self
+                .screen_state
+                .context_menu_input
+                .owned_keys
+                .iter()
+                .any(|(_, k)| *k == key)
     }
 
     /// Shared window/socket key press, repeat and release routing for the context menu.
     #[inline(always)]
     pub(super) fn context_menu_key_event(
         &mut self,
+        source: Source,
         key: KeyCode,
         pressed: bool,
         repeat: bool,
@@ -828,15 +975,20 @@ impl Game<'_> {
         {
             return false;
         }
+        let owned = (source.into(), key);
         if !pressed {
-            return self.screen_state.context_menu_input.owned_keys.remove(&key);
+            return self
+                .screen_state
+                .context_menu_input
+                .owned_keys
+                .remove(&owned);
         }
         if repeat {
             if self
                 .screen_state
                 .context_menu_input
                 .owned_keys
-                .contains(&key)
+                .contains(&owned)
             {
                 if self.live_context_menu() && matches!(key, KeyCode::ArrowUp | KeyCode::ArrowDown)
                 {
@@ -847,10 +999,16 @@ impl Game<'_> {
             return self.live_context_menu();
         }
         if !self.live_context_menu() {
-            self.screen_state.context_menu_input.owned_keys.remove(&key);
+            self.screen_state
+                .context_menu_input
+                .owned_keys
+                .remove(&owned);
             return false;
         }
-        self.screen_state.context_menu_input.owned_keys.insert(key);
+        self.screen_state
+            .context_menu_input
+            .owned_keys
+            .insert(owned);
         self.context_menu_key(key)
     }
 
@@ -909,6 +1067,7 @@ impl Game<'_> {
             Outcome::Stay => return,
             Outcome::Close => {
                 self.screen_state.context_menu = None;
+                self.clear_context_menu_pad_repeat();
                 self.sync_ime();
                 return;
             }
@@ -924,6 +1083,7 @@ impl Game<'_> {
             .map(|entry| std::mem::replace(entry, ContextMenuEntry::Separator));
         let owner = menu.owner.clone();
         drop(menu);
+        self.clear_context_menu_pad_repeat();
         self.sync_ime();
         let Some(ContextMenuEntry::Action { on_select, .. }) = picked else {
             return;
@@ -1001,11 +1161,13 @@ impl Game<'_> {
             {
                 let _ = draw.with_scissor(level.content_rect, &mut |draw| draw_rows(draw));
                 let [cx, cy, cw, ch] = level.content_rect;
-                if cached_level.content_height > 0.0 {
-                    let thumb_h = (ch * ch / cached_level.content_height).clamp(6.0, ch);
-                    let frac = level.scroll / level.max_scroll;
-                    let thumb_y = cy + frac * (ch - thumb_h);
-                    draw.fill([cx + cw - 2.0, thumb_y, 2.0, thumb_h], LINE);
+                if let Some((offset, thumb_h)) = scrollbar_thumb(
+                    ch,
+                    cached_level.content_height,
+                    level.scroll,
+                    level.max_scroll,
+                ) {
+                    draw.fill([cx + cw - 2.0, cy + offset, 2.0, thumb_h], LINE);
                 }
             } else {
                 draw_rows(&mut draw);
@@ -1300,15 +1462,32 @@ mod tests {
 
         // Repeated steady-state frame/hover layout calls do zero measurement work.
         calls.set(0);
+        let before_rebuilds = m.cache.rebuilds;
+        let rows_ptr = m.cache.boxes[0].rows.as_ptr();
         for _ in 0..10 {
             let _ = m.ensure_layout([200.0, 120.0], k1, &measure);
         }
         assert_eq!(calls.get(), 0, "steady-state frames reuse cached metrics");
+        assert_eq!(m.cache.rebuilds, before_rebuilds);
 
-        // Scrolling reuses cached text widths with zero re-measurement.
+        // Crossing ordinary rows does not invalidate or reallocate row geometry.
+        for row in 1..6 {
+            m.hover_at(Some((0, Some(row))));
+            let _ = m.ensure_layout([200.0, 120.0], k1, &measure);
+        }
+        assert_eq!(calls.get(), 0);
+        assert_eq!(
+            m.cache.rebuilds, before_rebuilds,
+            "ordinary hover changes keep cached boxes"
+        );
+        assert_eq!(m.cache.boxes[0].rows.as_ptr(), rows_ptr);
+
+        // Scrolling reuses cached text widths and the existing visible-row buffer.
+        let rows_cap = m.cache.boxes[0].rows.capacity();
         m.scroll_by(0, -3.0);
         let _ = m.ensure_layout([200.0, 120.0], k1, &measure);
         assert_eq!(calls.get(), 0, "scrolling reuses cached label widths");
+        assert!(m.cache.boxes[0].rows.capacity() >= rows_cap);
 
         // Opening a submenu measures only the newly opened child level.
         m.select(0, Some(0), true);
@@ -1320,5 +1499,27 @@ mod tests {
         let k2 = key(1, 1, 2);
         let _ = m.ensure_layout([200.0, 120.0], k2, &measure);
         assert_eq!(calls.get(), 121, "language bump invalidates cached levels");
+    }
+
+    #[test]
+    fn scrollbar_thumb_handles_tiny_viewports_without_panicking() {
+        let entries: Vec<_> = (0..12)
+            .map(|i| ContextMenuEntry::action(mod_api::Text::literal(format!("Row {i}")), noop()))
+            .collect();
+        let mut m = menu(entries);
+        let k = key(1, 1, 1);
+        for h in 7..=11 {
+            let boxes = m.ensure_layout([100.0, h as f32], k, &width);
+            let ch = boxes[0].content_rect[3];
+            assert!(ch > 0.0 && ch < 6.0);
+            let (offset, thumb_h) = scrollbar_thumb(
+                ch,
+                m.cache.levels[0].content_height,
+                boxes[0].scroll,
+                boxes[0].max_scroll,
+            )
+            .expect("thumb present for scrollable tiny viewport");
+            assert!(offset >= 0.0 && thumb_h > 0.0 && offset + thumb_h <= ch + 1e-4);
+        }
     }
 }

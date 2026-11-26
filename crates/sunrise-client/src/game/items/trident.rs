@@ -916,19 +916,23 @@ impl Game<'_> {
                                     kind: Some(
                                         &sunrise_client::projectiles::ProjectileKind::Trident,
                                     ),
+                                    entity_type: Some("minecraft:trident"),
+                                    attack: (id >= super::dragon::SPECIAL
+                                        && mod_api::__private::listened(
+                                            mod_api::HookId::LivingDeath,
+                                        ))
+                                    .then_some(&attack),
                                 };
                                 let hurt = |game: &mut Self| {
-                                    game.with_attack(attack.clone(), |game| {
-                                        game.hit_special_full(
-                                            id,
-                                            damage,
-                                            owner_who,
-                                            guest,
-                                            trident_source,
-                                            Some("minecraft:trident"),
-                                            Some(direct),
-                                        );
-                                    });
+                                    game.hit_special_full(
+                                        id,
+                                        damage,
+                                        owner_who,
+                                        guest,
+                                        trident_source,
+                                        Some("minecraft:trident"),
+                                        Some(direct),
+                                    );
                                 };
                                 if self.is_crystal_id(id) {
                                     // EndCrystal.hurtServer explodes before ThrownTrident.onHitEntity

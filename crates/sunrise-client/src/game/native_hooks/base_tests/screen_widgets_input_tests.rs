@@ -338,18 +338,6 @@ fn window_key(game: &mut Game<'_>, input: WindowKeyInput<'_>) {
     game.dispatch_window_key(&NoLoop, input, |_| false);
 }
 
-fn socket_key(game: &mut Game<'_>, key: KeyCode, pressed: bool) -> bool {
-    game.dispatch_screen_key(
-        &NoLoop,
-        key,
-        pressed,
-        false,
-        None,
-        sunrise_client::held::Source::Agent,
-    )
-    .unwrap()
-}
-
 fn publish_frame(game: &mut Game<'_>, frame: u64) {
     let renderer = game.renderer.as_ref().unwrap();
     let size = [renderer.config.width, renderer.config.height];
@@ -1060,7 +1048,36 @@ fn context_menu_overlay_draw_order_disposal_and_action_reopen() {
             with_menu.vertices.len() > book_verts,
             "context menu emits vertices after the book overlay"
         );
-        let menu_verts = &with_menu.vertices[book_verts..];
+        // Verify relative draw order: identifiable book vertices come strictly before menu border.
+        let last_book_idx = book_only
+            .vertices
+            .iter()
+            .rposition(|v| {
+                v.pos[0] >= 64.0 && v.pos[0] <= 256.0 && v.pos[1] >= 2.0 && v.pos[1] <= 194.0
+            })
+            .expect("book geometry present");
+        assert!(
+            with_menu.vertices[..book_verts]
+                .iter()
+                .zip(&book_only.vertices)
+                .all(|(a, b)| a.pos == b.pos && a.color == b.color),
+            "book geometry remains intact before the menu"
+        );
+        let menu_border = with_menu.vertices[book_verts].color;
+        assert!(
+            book_only.vertices.iter().all(|v| v.color != menu_border),
+            "menu border color is distinct from book geometry"
+        );
+        let first_menu_idx = with_menu
+            .vertices
+            .iter()
+            .position(|v| v.color == menu_border)
+            .expect("menu border drawn");
+        assert!(
+            last_book_idx < first_menu_idx,
+            "context menu draws after book geometry"
+        );
+        let menu_verts = &with_menu.vertices[first_menu_idx..];
         assert!(
             menu_verts.iter().all(|v| v.pos[0] >= 0.0
                 && v.pos[0] <= 320.0
@@ -1068,6 +1085,17 @@ fn context_menu_overlay_draw_order_disposal_and_action_reopen() {
                 && v.pos[1] <= 200.0),
             "menu clamps to the render batch's 320x200 GUI size"
         );
+
+        // Scrollable menu in a 7-11px-high GUI draws its scrollbar without panicking.
+        let tall: Vec<_> = (0..12)
+            .map(|i| ContextMenuEntry::action(ApiText::literal(format!("Row {i}")), |_| {}))
+            .collect();
+        assert!(game.open_context_menu([0.0, 0.0], tall));
+        for h in [7, 9, 11] {
+            let tiny = game.hud([100, h]);
+            assert!(!tiny.vertices.is_empty());
+        }
+        assert_eq!(drops.load(Ordering::SeqCst), 1);
 
         // Replacing an open menu drops the previous entries immediately.
         let drops2 = Arc::new(AtomicUsize::new(0));
@@ -1081,7 +1109,6 @@ fn context_menu_overlay_draw_order_disposal_and_action_reopen() {
                 }
             )],
         ));
-        assert_eq!(drops.load(Ordering::SeqCst), 1);
         assert_eq!(drops2.load(Ordering::SeqCst), 0);
 
         // Screen replacement clears and disposes the menu in bump_instance immediately.
@@ -1255,14 +1282,73 @@ fn context_menu_blocks_pointer_motion_drag_wheel_keyboard_ime_and_socket() {
         send(game, id, WindowEvent::Ime(Ime::Commit("日".into())));
         assert_eq!(game.ui.chat_screen.as_ref().unwrap().value(), "base");
 
-        // Control socket key goes through the menu before the focused Chat screen.
-        assert!(socket_key(game, KeyCode::ArrowDown, true));
-        assert!(socket_key(game, KeyCode::ArrowDown, false));
-        assert!(socket_key(game, KeyCode::Enter, true));
-        assert!(socket_key(game, KeyCode::Enter, false));
+        // Actual control socket `key` command goes through the menu before Chat.
+        send_key_control(game, "key down tap");
+        send_key_control(game, "key enter tap");
         assert!(picked.load(Ordering::SeqCst));
         assert_eq!(game.screen, Screen::Chat);
         assert_eq!(game.ui.chat_screen.as_ref().unwrap().value(), "base");
+
+        // With the chat on-screen keyboard already open, right-stick input and OSK output
+        // stay gated while the context menu is active and do not change chat history/suggestions.
+        game.ui.chat.add_recent("older");
+        game.settings.controller.enabled = true;
+        game.pad.in_use = true;
+        game.pad.menu.osk = Some(sunrise_client::osk::Keyboard::new(false));
+        let tall: Vec<_> = (0..12)
+            .map(|i| ContextMenuEntry::action(ApiText::literal(format!("Row {i}")), |_| {}))
+            .collect();
+        assert!(game.open_context_menu([20.0, 20.0], tall));
+        game.pad.state.right = [0.0, 1.0];
+        game.pad_menu_frame(&NoLoop);
+        game.pad_osk_output(sunrise_client::osk::Output::Previous);
+        assert_eq!(game.ui.chat_screen.as_ref().unwrap().value(), "base");
+        assert!(game.close_context_menu());
+        game.pad.state.right = [0.0, 0.0];
+        game.pad_menu_frame(&NoLoop);
+        game.pad.state.right = [0.0, 1.0];
+        game.pad_menu_frame(&NoLoop);
+        assert_eq!(game.ui.chat_screen.as_ref().unwrap().value(), "older");
+        game.pad.state.right = [0.0, 0.0];
+        game.pad.menu.osk = None;
+
+        // Over GameModeSwitcher: Escape, arrows and Enter route to the menu ahead of the
+        // switcher's debug_key handler in both window and control-socket `key` entry points.
+        game.open_gamemode_switcher();
+        assert_eq!(game.screen, Screen::GameModeSwitcher);
+        let sw_picked = Arc::new(AtomicBool::new(false));
+        let sw_picked_c = sw_picked.clone();
+        assert!(game.open_context_menu(
+            [60.0, 60.0],
+            vec![ContextMenuEntry::action(
+                ApiText::literal("Pick"),
+                move |_| {
+                    sw_picked_c.store(true, Ordering::SeqCst);
+                }
+            )],
+        ));
+        assert!(!game.debug_key(
+            KeyCode::Escape,
+            sunrise_client::debug_keys::KeyAction::Press
+        ));
+        assert_eq!(game.screen, Screen::GameModeSwitcher);
+        send_key_control(game, "key down tap");
+        send_key_control(game, "key enter tap");
+        assert!(sw_picked.load(Ordering::SeqCst));
+        assert_eq!(game.screen, Screen::GameModeSwitcher);
+
+        assert!(game.open_context_menu(
+            [60.0, 60.0],
+            vec![ContextMenuEntry::action(ApiText::literal("Stay"), |_| {})],
+        ));
+        send_key_control(game, "key escape down");
+        assert!(!game.context_menu_open());
+        assert_eq!(game.screen, Screen::GameModeSwitcher);
+        send_key_control(game, "key escape repeat");
+        send_key_control(game, "key escape up");
+        assert_eq!(game.screen, Screen::GameModeSwitcher);
+        send_key_control(game, "key escape tap");
+        assert_eq!(game.screen, Screen::Playing);
     });
 }
 
@@ -1283,7 +1369,8 @@ fn context_menu_tracks_mouse_key_and_controller_press_ownership() {
         assert!(game.mod_screen_open("input_route"));
         publish_frame(game, 1);
 
-        // Outside press closes the menu on mouse-down and swallows the matching mouse-up.
+        // Outside press closes the menu on mouse-down and swallows the matching mouse-up;
+        // a controller-generated (Game origin) release cannot steal User press ownership.
         assert!(game.open_context_menu(
             [100.0, 100.0],
             vec![ContextMenuEntry::action(ApiText::literal("Item"), |_| {})],
@@ -1292,20 +1379,33 @@ fn context_menu_tracks_mouse_key_and_controller_press_ownership() {
         take(state);
         send_mouse_button(game, id, MouseButton::Left, true);
         assert!(!game.context_menu_open());
+        game.handle_window_event(
+            &NoLoop,
+            id,
+            WindowEvent::MouseInput {
+                device_id: DeviceId::dummy(),
+                state: ElementState::Released,
+                button: MouseButton::Left,
+            },
+            InputOrigin::Game,
+        );
+        take(state);
         send_mouse_button(game, id, MouseButton::Left, false);
         assert!(
             take(state).is_empty(),
-            "mouse-up after menu-owned dismissal never reaches underlying screen"
+            "User mouse-up after menu-owned dismissal is still swallowed"
         );
 
         // Holding Escape after dismissing the menu swallows repeats and release so the screen
-        // underneath stays open.
+        // underneath stays open, even if a socket edge for Escape arrives in between.
         assert!(game.open_context_menu(
             [100.0, 100.0],
             vec![ContextMenuEntry::action(ApiText::literal("Item"), |_| {})],
         ));
         key(game, KeyCode::Escape, ElementState::Pressed);
         assert!(!game.context_menu_open());
+        assert_eq!(game.screen, Screen::Mod);
+        send_key_control(game, "key escape up");
         assert_eq!(game.screen, Screen::Mod);
         window_key(
             game,
@@ -1360,6 +1460,47 @@ fn context_menu_tracks_mouse_key_and_controller_press_ownership() {
             "armed mounted widget underneath must not activate"
         );
 
+        // Dismissing the menu via keyboard while a controller direction is held clears the
+        // menu's pending repeat and suppresses the held stick until neutral.
+        game.settings.controller.enabled = true;
+        game.pad.in_use = true;
+        game.pad.menu.focus = Some(mounted_button);
+        assert!(game.open_context_menu(
+            [100.0, 100.0],
+            vec![ContextMenuEntry::action(
+                ApiText::literal("HoldDir"),
+                |_| {}
+            )],
+        ));
+        game.pad_menu_button(&NoLoop, PadButton::DPadDown, true)
+            .unwrap();
+        key(game, KeyCode::Escape, ElementState::Pressed);
+        key(game, KeyCode::Escape, ElementState::Released);
+        assert!(!game.context_menu_open());
+        game.pad_menu_frame(&NoLoop);
+        assert_eq!(game.pad.menu.focus, Some(mounted_button));
+        game.pad_menu_button(&NoLoop, PadButton::DPadDown, false)
+            .unwrap();
+
+        assert!(game.open_context_menu(
+            [100.0, 100.0],
+            vec![ContextMenuEntry::action(
+                ApiText::literal("StickDir"),
+                |_| {}
+            )],
+        ));
+        game.pad.state.left = [0.0, -1.0];
+        game.pad_menu_frame(&NoLoop);
+        assert!(game.close_context_menu());
+        game.pad_menu_frame(&NoLoop);
+        assert_eq!(
+            game.pad.menu.focus,
+            Some(mounted_button),
+            "held stick stays suppressed until neutral after dismissal"
+        );
+        game.pad.state.left = [0.0, 0.0];
+        game.pad_menu_frame(&NoLoop);
+
         // East/Start dismisses menu without closing the mod screen underneath.
         game.pad.menu.focus = Some(mounted_button);
         game.pad.menu.armed = Some(mounted_button);
@@ -1376,6 +1517,32 @@ fn context_menu_tracks_mouse_key_and_controller_press_ownership() {
             .unwrap();
         assert!(!game.context_menu_open());
         assert_eq!(game.screen, Screen::Mod);
+
+        // Space-selected menu action that closes the mod screen and recaptures the pointer
+        // must not restore Space as held Jump while Space remains down.
+        let jump = VanillaMappingSlot::by_default_key(KeyCode::Space).unwrap();
+        assert!(game.open_context_menu(
+            [100.0, 100.0],
+            vec![ContextMenuEntry::action(
+                ApiText::literal("CloseScreen"),
+                |host| {
+                    host.close_screen();
+                }
+            )],
+        ));
+        key(game, KeyCode::ArrowDown, ElementState::Pressed);
+        key(game, KeyCode::ArrowDown, ElementState::Released);
+        game.physical_keys.insert(KeyCode::Space);
+        key(game, KeyCode::Space, ElementState::Pressed);
+        assert_eq!(game.screen, Screen::Playing);
+        assert!(game.captured);
+        assert!(
+            !game.vanilla_mappings.is_down(jump) && !game.keys.raw(&KeyCode::Space),
+            "menu-owned Space must not be restored as held Jump on pointer recapture"
+        );
+        game.physical_keys.remove(&KeyCode::Space);
+        key(game, KeyCode::Space, ElementState::Released);
+        assert!(!game.vanilla_mappings.is_down(jump) && !game.keys.raw(&KeyCode::Space));
     });
 }
 

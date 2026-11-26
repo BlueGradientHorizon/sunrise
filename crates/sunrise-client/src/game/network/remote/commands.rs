@@ -5,19 +5,23 @@ impl Game<'_> {
     /// `ClientPacketListener.handleCommandSuggestions`: forward the reply to the command edit box.
     pub(super) fn handle_command_suggestions(&mut self, packet: CommandSuggestions) {
         let current = sunrise_client::lang::current();
-        let empty = Language::default();
-        let lang = current
-            .as_deref()
-            .map(sunrise_client::lang::Language::map)
-            .or_else(|| self.remote.as_ref().map(|r| r.lang.as_ref()))
-            .unwrap_or(&empty);
+        let session = self.remote.as_ref().map(|r| r.lang.as_ref());
         let list: Vec<_> = packet
             .suggestions
             .into_iter()
             .map(|entry| {
                 (
                     entry.text,
-                    entry.tooltip.as_ref().map(|tag| plain(tag, lang)),
+                    entry.tooltip.as_ref().map(|tag| {
+                        plain_with(tag, |key| {
+                            current
+                                .as_deref()
+                                .and_then(|published| published.mod_entry(key))
+                                .or_else(|| {
+                                    session.and_then(|map| map.get(key).map(String::as_str))
+                                })
+                        })
+                    }),
                 )
             })
             .collect();
@@ -47,6 +51,22 @@ mod tests {
                 "en_us",
                 [("test.cmd.tip".into(), "pack tip".into())],
             ));
+            {
+                let _guard = mod_platform::content::crash::enter_native_mod(
+                    mod_api::content::crash::ModCall {
+                        id: "tip-mod",
+                        hook: "test",
+                        part: None,
+                    },
+                );
+                assert_eq!(
+                    game.set_translations(
+                        "en_us",
+                        vec![("test.cmd.tip".into(), "initial mod tip".into())],
+                    ),
+                    Some(1)
+                );
+            }
             let (client, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "cmd-suggestions-lang").unwrap();
             game.ui.registries.permission = 4;
@@ -126,6 +146,17 @@ mod tests {
                     .expect("suggestion tooltip drawn")
             };
 
+            assert_eq!(receive_tooltip(game, "test.cmd.tip"), "initial mod tip");
+            {
+                let _guard = mod_platform::content::crash::enter_native_mod(
+                    mod_api::content::crash::ModCall {
+                        id: "tip-mod",
+                        hook: "test",
+                        part: None,
+                    },
+                );
+                game.clear_translations();
+            }
             assert_eq!(receive_tooltip(game, "test.cmd.tip"), "pack tip");
             {
                 let _guard = mod_platform::content::crash::enter_native_mod(

@@ -808,16 +808,22 @@ impl Game<'_> {
                 super::narrator::narrate_key(&mut self.narration, key, action != "up");
                 // KeyboardHandler.keyPress: the debug keys see the physical key first.
                 let physical = key;
+                let repeat = action == "repeat";
+                let menu_modal = self.context_menu_open()
+                    || ((action == "up" || repeat)
+                        && self.context_menu_owns_key(Source::Agent, physical));
                 {
                     use sunrise_client::debug_keys::KeyAction;
                     if action == "up" {
                         self.press_modifier_key(key, false);
                         self.physical_keys.remove(&key);
-                        self.debug_key(key, KeyAction::Release);
+                        if !menu_modal {
+                            self.debug_key(key, KeyAction::Release);
+                        }
                     } else {
                         self.press_modifier_key(key, true);
                         self.physical_keys.insert(key);
-                        if self.debug_key(key, KeyAction::Press) {
+                        if !menu_modal && self.debug_key(key, KeyAction::Press) {
                             if action == "tap" {
                                 self.press_modifier_key(key, false);
                                 self.physical_keys.remove(&key);
@@ -827,16 +833,19 @@ impl Game<'_> {
                         }
                     }
                 }
-                let repeat = action == "repeat";
                 if action != "up" {
                     if self.screenshot_shortcut(physical, repeat) {
                         if action == "tap" {
                             self.press_modifier_key(physical, false);
                             self.physical_keys.remove(&physical);
-                            self.debug_key(
-                                physical,
-                                sunrise_client::debug_keys::KeyAction::Release,
-                            );
+                            if !self.context_menu_open()
+                                && !self.context_menu_owns_key(Source::Agent, physical)
+                            {
+                                self.debug_key(
+                                    physical,
+                                    sunrise_client::debug_keys::KeyAction::Release,
+                                );
+                            }
                         }
                         return ok();
                     }
@@ -861,7 +870,14 @@ impl Game<'_> {
                         self.settle_title_mode();
                         self.press_modifier_key(physical, false);
                         self.physical_keys.remove(&physical);
-                        self.debug_key(physical, sunrise_client::debug_keys::KeyAction::Release);
+                        if !self.context_menu_open()
+                            && !self.context_menu_owns_key(Source::Agent, physical)
+                        {
+                            self.debug_key(
+                                physical,
+                                sunrise_client::debug_keys::KeyAction::Release,
+                            );
+                        }
                     }
                     if !self.dispatch_screen_key(
                         event_loop,

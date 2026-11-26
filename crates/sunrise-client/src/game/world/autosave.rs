@@ -176,6 +176,9 @@ impl Game<'_> {
     #[inline(always)]
     pub(super) fn begin_world_save(&mut self, wait: bool) -> Result<()> {
         self.admit_level_save()?;
+        if !mod_api::__private::enabled_listened(mod_api::HookId::WorldSaveStart) {
+            return Ok(());
+        }
         struct Guard<'a, 'g>(&'a mut Game<'g>);
         impl Drop for Guard<'_, '_> {
             fn drop(&mut self) {

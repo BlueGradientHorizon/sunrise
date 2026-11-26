@@ -826,13 +826,13 @@ impl Game<'_> {
             // A trading window: its offers follow in a MerchantOffers packet.
             let title = {
                 let current = sunrise_client::lang::current();
-                let empty = Language::default();
-                let lang = current
-                    .as_deref()
-                    .map(sunrise_client::lang::Language::map)
-                    .or_else(|| self.remote.as_ref().map(|r| r.lang.as_ref()))
-                    .unwrap_or(&empty);
-                plain(&p.title, lang)
+                let session = self.remote.as_ref().map(|r| r.lang.as_ref());
+                plain_with(&p.title, |key| {
+                    current
+                        .as_deref()
+                        .and_then(|published| published.mod_entry(key))
+                        .or_else(|| session.and_then(|map| map.get(key).map(String::as_str)))
+                })
             };
             self.remote_open_merchant(p.container, title, menu_title(&p.title));
             return;
@@ -993,7 +993,7 @@ impl Game<'_> {
         if let Some(lang) = sunrise_client::lang::current()
             && let Some(r) = self.remote.as_mut()
         {
-            r.lang = Arc::new(lang.map().clone());
+            r.lang = Arc::new(lang.pack_map());
         }
     }
     /// A server's chest-like menu (`MenuType.GENERIC_9xN`): its rows and title.

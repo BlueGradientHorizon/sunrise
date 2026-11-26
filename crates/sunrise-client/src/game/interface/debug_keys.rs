@@ -97,6 +97,9 @@ impl Game<'_> {
         };
         let pressed = action != KeyAction::Release;
         let switcher_open = self.screen == Screen::GameModeSwitcher;
+        if switcher_open && self.context_menu_open() {
+            return false;
+        }
         if switcher_open && pressed {
             if name == self.settings.keys.get("key.debug.switchGameMode") {
                 if let Some(switcher) = &mut self.gamemode_switcher {

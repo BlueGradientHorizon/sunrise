@@ -886,6 +886,31 @@ impl Language {
     pub fn map(&self) -> &HashMap<String, String> {
         &self.map
     }
+    /// The resolved map without any run-time mod overrides: what a network session captures so
+    /// clearing or disabling a mod later falls back to the packs' values, not a stale override.
+    pub fn pack_map(&self) -> HashMap<String, String> {
+        let mut map = self.map.clone();
+        for (key, value) in &self.shadowed {
+            match value {
+                Some(value) => {
+                    map.insert(key.clone(), value.clone());
+                }
+                None => {
+                    map.remove(key);
+                }
+            }
+        }
+        map
+    }
+    /// The active run-time mod override for `key`, if an enabled mod supplied one on top of the
+    /// packs' entries.
+    pub fn mod_entry(&self, key: &str) -> Option<&str> {
+        if self.shadowed.contains_key(key) {
+            self.map.get(key).map(String::as_str)
+        } else {
+            None
+        }
+    }
     pub fn len(&self) -> usize {
         self.map.len() + self.components.len()
     }

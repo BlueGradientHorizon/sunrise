@@ -12765,7 +12765,10 @@ impl Game<'_> {
                 (_, false) => KeyAction::Press,
                 (_, true) => KeyAction::Repeat,
             };
-            if self.debug_key(key, action) {
+            let menu_modal = self.context_menu_open()
+                || (action != KeyAction::Press
+                    && self.context_menu_owns_key(Source::Keyboard, key));
+            if !menu_modal && self.debug_key(key, action) {
                 return true;
             }
         }
@@ -13474,8 +13477,13 @@ impl Game<'_> {
                     let code = glfw_button(button);
                     let modifiers = glfw_modifiers(self.modifiers);
                     let synthetic = self.pad_synthetic_input();
+                    let mouse_source = if synthetic {
+                        context_menu::MouseSource::Game
+                    } else {
+                        self.screen_state.context_menu_input.window_origin()
+                    };
                     // An open context menu takes every press (and its matching release) until it closes.
-                    if self.context_menu_mouse(button, pressed) {
+                    if self.context_menu_mouse(mouse_source, button, pressed) {
                         return Ok(());
                     }
                     let owned_release = std::mem::take(&mut self.container_owned_up);
@@ -14000,8 +14008,8 @@ impl Game<'_> {
         text: Option<&str>,
     ) -> Result<()> {
         let has_screen = self.observed_screen_view().is_some();
-        let menu_blocking =
-            self.context_menu_open() || key.is_some_and(|k| self.context_menu_owns_key(k));
+        let menu_blocking = self.context_menu_open()
+            || key.is_some_and(|k| self.context_menu_owns_key(Source::Keyboard, k));
         if let Some(key) = key
             && !self.dispatch_screen_key(
                 event_loop,
@@ -14035,7 +14043,7 @@ impl Game<'_> {
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
         source: Source,
     ) -> Result<bool> {
-        if self.context_menu_key_event(key, pressed, repeat) {
+        if self.context_menu_key_event(source, key, pressed, repeat) {
             return Ok(true);
         }
         let instance = self.screen_state.screen_instance;
