@@ -390,10 +390,11 @@ integer id (`mc_Entity`) for a block state, as Sunrise's shader-pack loader maps
 engine's own terrain carries for it, which a mod writes into its vertices so waving, emissive, water
 or translucent blocks shade like terrain. It is `None` unless a `shaders/` pack is loaded and
 rendering (the title screen and a pack still loading included), under a native pack, when the pack
-gives the state no id and for a state the live block-state index lacks. The answer changes when the
-active pack is loaded, switched or turned off, and no pack-reload signal exists yet:
-`shader_pack_active()` stays `true` when one pack replaces another, and nothing else tells a mod. Ask
-again when you need the id instead of caching it across frames. Item and entity ids
+gives the state no id and for a state the live block-state index lacks. The answer can change when
+the active pack is loaded, switched or turned off. `shader_pack_active()` alone cannot detect a
+switch: it can be `true` for both packs. To notice pack changes, compare the optional generation
+from `host.shader_pack_state().map(|state| state.generation)` each frame; see
+[Shadow pass, clouds and pack changes](#shadow-pass-clouds-and-pack-changes). Item and entity ids
 (`item.properties`, `entity.properties`) are not part of it.
 
 ### Your own vertex stage, and the main depth
@@ -435,6 +436,10 @@ and read unchanged by that frame's render callbacks:
 - `generation`: changes every time a pack is loaded, switched or turned off, and at no other time.
   Compare it each frame and re-read whatever you derived from the pack when it differs. It covers a
   pack switch that fires no resource reload.
+
+Known bug: a renderer rebuild resets the generation counter, so the first pack loaded on the new
+renderer can report the same generation as the pack before the rebuild
+([#6313](https://github.com/sunrise-org/sunrise/issues/6313)).
 
 `host.render_assets().pipeline_pack_bound(pipeline)` says whether the active pack compiled a program
 for the pipeline's `PackBinding`. It is `false` with no pack, for a stale or invalid handle, and when
