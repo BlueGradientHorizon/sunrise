@@ -56,6 +56,9 @@ impl render::RenderDataSource for Game<'_> {
             .get(TAG)
             .is_some_and(|members| members.contains(item))
     }
+    fn has_tool(&self, stack: &sunrise_client::items::ItemStack) -> bool {
+        self.items().has_tool(stack)
+    }
 }
 
 /// A living-entity draw adapter that lends a target's hidden stock-layer mask to the model
@@ -100,6 +103,10 @@ impl render::RenderDataSource for HiddenLayersData<'_, '_> {
 
     fn piglin_loves(&self, item: &str) -> bool {
         render::RenderDataSource::piglin_loves(self.game, item)
+    }
+
+    fn has_tool(&self, stack: &sunrise_client::items::ItemStack) -> bool {
+        render::RenderDataSource::has_tool(self.game, stack)
     }
 }
 
