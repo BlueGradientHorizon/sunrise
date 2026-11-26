@@ -1016,7 +1016,18 @@ pub(super) fn emit<'a>(
                                     )
                                 },
                             );
-                            ty = syn::parse_str(&format!("&mut {}", draw.surface))
+                            let surface = if package == Some(crate::GameplayPackage::Client) {
+                                match draw.surface.as_str() {
+                                    "crate::hud::HudBatch" => "sunrise_client_render::hud::HudBatch",
+                                    "crate::world_geometry::WorldGeometry" => {
+                                        "sunrise_client_lib::world_geometry::WorldGeometry"
+                                    }
+                                    other => other,
+                                }
+                            } else {
+                                &draw.surface
+                            };
+                            ty = syn::parse_str(&format!("&mut {surface}"))
                                 .map_err(|e| format!("{name}: invalid draw surface: {e}"))?;
                         } else {
                             engine_types(&mut ty, uses_carrier);

@@ -786,7 +786,11 @@ fn render_forwarders(
                     &entry.sig,
                     name,
                     read_stack,
-                    serialize_text,
+                    serialize_text.then_some(if split.is_some() {
+                        "sunrise_sim::api_text::to_serialized_engine"
+                    } else {
+                        "sunrise_client_lib::api_text::to_serialized_engine"
+                    }),
                     common,
                     items.as_deref(),
                 )?
@@ -1088,7 +1092,8 @@ fn gameplay_forwarder_plan<'a>(
                         entry
                             .attrs
                             .iter()
-                            .any(|attr| attr.path().is_ident("serialize_text")),
+                            .any(|attr| attr.path().is_ident("serialize_text"))
+                            .then_some("sunrise_sim::api_text::to_serialized_engine"),
                         package.common(),
                         if package == GameplayPackage::Common {
                             Some("Self::items(self)")
@@ -1206,7 +1211,8 @@ pub(crate) fn host_callees(
                     entry
                         .attrs
                         .iter()
-                        .any(|attr| attr.path().is_ident("serialize_text")),
+                        .any(|attr| attr.path().is_ident("serialize_text"))
+                        .then_some("sunrise_sim::api_text::to_serialized_engine"),
                     package.common(),
                     Some("__ITEMS_ROUTE_WITNESS__"),
                 )?;
@@ -1334,7 +1340,7 @@ fn boundary_arguments(
         sig,
         method,
         read_stack,
-        serialize_text,
+        serialize_text.then_some("sunrise_client_lib::api_text::to_serialized_engine"),
         "crate",
         Some("Self::items(self)"),
     )
@@ -1344,7 +1350,7 @@ fn boundary_arguments_with(
     sig: &syn::Signature,
     method: &str,
     read_stack: bool,
-    serialize_text: bool,
+    text_serializer: Option<&str>,
     common: &str,
     items: Option<&str>,
 ) -> Result<(String, String, bool), String> {
@@ -1387,13 +1393,13 @@ fn boundary_arguments_with(
                 format!("{method}: boundary conversion needs an explicit items receiver route")
             })
         };
-        let conversion = if text && serialize_text {
+        let conversion = if let Some(serializer) = text_serializer.filter(|_| text) {
             let reference = if matches!(&*arg.ty, Type::Reference(_)) {
                 ""
             } else {
                 "&"
             };
-            format!("sunrise_client_lib::api_text::to_serialized_engine({reference}{name})")
+            format!("{serializer}({reference}{name})")
         } else if text {
             format!("{name}.try_into_engine(&())")
         } else if optional_read_stack {
