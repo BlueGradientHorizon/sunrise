@@ -2136,11 +2136,11 @@ pub struct Sampler {
     /// The largest mip level of detail the sampler reads (`maxLod`): `Some(0.0)` reads only the
     /// base level. A value above `0.25` blends linearly between the two nearest levels, as
     /// vanilla does. `None` is [`Sampler::new`]'s: no limit, vanilla's absent `maxLod` (1000),
-    /// so it blends between levels too. A sampler that blends is a filtering one: to sample a
-    /// depth target, or an `R32Float` target where
-    /// [`RenderCapabilities::float32_filterable`] is false, set `Some(0.0)` with
-    /// [`SamplerFilter::Nearest`]. A value that is negative or not finite is refused with
-    /// [`BindGroupLayoutError::BadMaxLod`] when the layout is built.
+    /// so it blends between levels too. A depth texture, or an `R32Float` one where
+    /// [`RenderCapabilities::float32_filterable`] is false, cannot be filtered: the engine reads
+    /// it with nearest filtering and no blending between levels whatever this sampler says, so
+    /// [`Sampler::new`] binds to them as to any other texture. A value that is negative or not
+    /// finite is refused with [`BindGroupLayoutError::BadMaxLod`] when the layout is built.
     pub max_lod: Option<f32>,
 }
 
@@ -2652,7 +2652,7 @@ pub enum TextureSource<'a> {
     /// path) loaded from the active resource packs.
     StandaloneTexture(&'a Identifier),
     /// The active world pass's depth texture (usable only when the pipeline does not write
-    /// depth in the same pass).
+    /// depth in the same pass), read with nearest filtering whatever its sampler says.
     WorldDepth,
     /// Vanilla's active 16x16 lightmap texture.
     Lightmap,
@@ -2660,8 +2660,8 @@ pub enum TextureSource<'a> {
     /// [`RenderTargetRef`] created via
     /// [`crate::prelude::ClientRenderClientHost::create_render_target`].
     RenderTargetColor(RenderTargetRef, u8),
-    /// Depth aspect of a mod-owned offscreen [`RenderTargetRef`] (must be bound to a
-    /// non-filtering [`SamplerFilter::Nearest`] sampler).
+    /// Depth aspect of a mod-owned offscreen [`RenderTargetRef`], read with nearest filtering
+    /// whatever its sampler says.
     RenderTargetDepth(RenderTargetRef),
     /// A mip range of a colour attachment of a mod-owned offscreen [`RenderTargetRef`]
     /// (`GpuDevice.createTextureView(texture, baseMipLevel, mipLevels)`). A draw that samples a
@@ -2672,8 +2672,8 @@ pub enum TextureSource<'a> {
     /// allocated via [`crate::FrameGraphContext::create_transient`].
     TransientTargetColor(crate::TransientTargetId, u8),
     /// Depth aspect of a transient per-frame target allocated via
-    /// [`crate::FrameGraphContext::create_transient`] (must be bound to a non-filtering
-    /// [`SamplerFilter::Nearest`] sampler).
+    /// [`crate::FrameGraphContext::create_transient`], read with nearest filtering whatever its
+    /// sampler says.
     TransientTargetDepth(crate::TransientTargetId),
 }
 
@@ -2728,8 +2728,8 @@ pub enum RenderTargetFormat {
     Rgba8Unorm,
     /// 16-bit floating-point RGBA (`Rgba16Float`, filterable).
     Rgba16Float,
-    /// 32-bit single-channel floating-point (`R32Float`; bind with [`SamplerFilter::Nearest`]
-    /// unless the active adapter supports float32 filtering).
+    /// 32-bit single-channel floating-point (`R32Float`; read with nearest filtering unless the
+    /// active adapter supports float32 filtering, whatever the sampler says).
     R32Float,
 }
 
@@ -2755,7 +2755,7 @@ pub enum RenderTargetDepth {
 // no wire: local client render capabilities.
 pub struct RenderCapabilities {
     /// Whether `R32Float` textures can be sampled with a linear filter. Without it an
-    /// `R32Float` render target is bound with [`SamplerFilter::Nearest`] only.
+    /// `R32Float` render target is read with nearest filtering whatever its sampler says.
     pub float32_filterable: bool,
     /// The render target colour formats that support [`StorageImageAccess::ReadWrite`] storage
     /// images on this adapter. Whether a format supports [`StorageImageAccess::WriteOnly`] or

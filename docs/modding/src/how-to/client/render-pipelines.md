@@ -302,7 +302,7 @@ include `STORAGE_WRITE_ONLY`, `STORAGE_READ_ONLY` or `STORAGE_READ_WRITE` for th
 or access the adapter lacks is refused when the target is created, with
 `RenderTargetError::UnsupportedStorage`. `host.render_capabilities()` lists the formats with
 read-write storage in `read_write_storage`, and `float32_filterable` says whether an `R32Float`
-target can be sampled with `SamplerFilter::Linear`. A device refusal of the allocation itself is
+target can be sampled with `SamplerFilter::Linear`; where it cannot, the target is read with nearest filtering. A device refusal of the allocation itself is
 `RenderTargetError::Device`.
 
 A render target survives a resource reload and a world close, and is freed by
@@ -319,8 +319,9 @@ For anything else set the public fields of the descriptor: `address_u`, `address
 detail: a `max_lod` above `0.25` blends linearly between the two nearest mip levels (vanilla's
 `NEAREST_MIPMAP_LINEAR` and `LINEAR_MIPMAP_LINEAR`, and Vulkan's linear mipmap mode for `maxLod > 0.25`), and
 `Some(0.0)` reads only the base level. `None` is what `Sampler::new` gives: vanilla's absent `maxLod` (1000),
-so it blends between levels too. A sampler that blends is a filtering one: to sample a depth target, or an
-`R32Float` target where `float32_filterable` is false, set `max_lod = Some(0.0)` with `SamplerFilter::Nearest`.
+so it blends between levels too. A depth texture, or an `R32Float` one where `float32_filterable` is false,
+cannot be filtered: it is read with nearest filtering and no blending between levels whatever its sampler says,
+so `Sampler::new` binds to it like to any other texture.
 A negative or non-finite `max_lod` is `BindGroupLayoutError::BadMaxLod`. Anisotropy is not offered.
 
 A dynamic texture (see [Textures made at run time](dynamic-textures.md)) made with `mip_levels` above 1 is

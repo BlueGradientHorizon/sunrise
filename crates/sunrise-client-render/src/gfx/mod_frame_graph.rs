@@ -14,8 +14,7 @@ use super::mod_render_targets::{
 use super::world_primitives::WorldPrimitives;
 use mod_api::{
     FrameGraphError, FramePassDescriptor, FramePassId, FramePassRef, FrameTarget, OffscreenPass,
-    OitStage, RenderLevelStage, RenderTargetDepth, RenderTargetDescriptor, RenderTargetFormat,
-    TransientTargetId,
+    OitStage, RenderLevelStage, RenderTargetDepth, RenderTargetDescriptor, TransientTargetId,
 };
 use std::cmp::Reverse;
 use std::collections::{BTreeSet, BinaryHeap, HashMap, VecDeque};
@@ -1057,24 +1056,13 @@ fn resolve_dispatch_transients(
 }
 
 /// Validate a transient target sampler binding against its descriptor during draw recording.
-pub fn validate_transient_color_binding(
-    desc: &RenderTargetDescriptor,
-    attachment: u8,
-    filterable: bool,
-    float32_filterable: bool,
-) -> bool {
-    let Some(&fmt) = desc.color_targets.get(attachment as usize) else {
-        return false;
-    };
-    if filterable && fmt == RenderTargetFormat::R32Float && !float32_filterable {
-        return false;
-    }
-    true
+pub fn validate_transient_color_binding(desc: &RenderTargetDescriptor, attachment: u8) -> bool {
+    desc.color_targets.get(attachment as usize).is_some()
 }
 
 /// Validate a transient target depth sampler binding against its descriptor during draw recording.
-pub fn validate_transient_depth_binding(desc: &RenderTargetDescriptor, filterable: bool) -> bool {
-    !filterable && desc.depth != RenderTargetDepth::None
+pub fn validate_transient_depth_binding(desc: &RenderTargetDescriptor) -> bool {
+    desc.depth != RenderTargetDepth::None
 }
 
 #[cfg(test)]

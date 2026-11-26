@@ -224,17 +224,16 @@ forward! {
     pub fn render_capabilities(&self) -> RenderCapabilities;
     pub fn max_texture_dimension_2d(&self) -> u32;
     pub fn max_compute_workgroups_per_dimension(&self) -> u32;
-    pub fn float32_filterable(&self) -> bool;
     pub fn warn_frame_graph_cycle_once(&self, passes: &[String]);
     pub fn create_render_target(&self, owner: Option<&'static str>, desc: &RenderTargetDescriptor) -> Result<RenderTargetRef, RenderTargetError>;
     pub fn render_target_resize(&self, owner: Option<&'static str>, target: RenderTargetRef, size: [u32; 2]) -> Result<(), RenderTargetError>;
     pub fn render_target_size(&self, owner: Option<&'static str>, target: RenderTargetRef) -> Result<[u32; 2], RenderTargetError>;
     pub fn render_target_release(&self, owner: Option<&'static str>, target: RenderTargetRef) -> Result<(), RenderTargetError>;
     pub fn retire_unloaded_mod_render_targets(&self, unloaded: &BTreeSet<String>);
-    pub fn resolve_mod_render_target_color(&self, owner: Option<&'static str>, target: RenderTargetRef, attachment: u8, filterable: bool) -> Result<(u64, wgpu::TextureView, TargetMips), PipelineDrawError>;
-    pub fn resolve_mod_render_target_color_mips(&self, owner: Option<&'static str>, view: mod_api::RenderTargetMipView, filterable: bool) -> Result<(u64, wgpu::TextureView, TargetMips), PipelineDrawError>;
+    pub fn resolve_mod_render_target_color(&self, owner: Option<&'static str>, target: RenderTargetRef, attachment: u8) -> Result<(u64, wgpu::TextureView, TargetMips), PipelineDrawError>;
+    pub fn resolve_mod_render_target_color_mips(&self, owner: Option<&'static str>, view: mod_api::RenderTargetMipView) -> Result<(u64, wgpu::TextureView, TargetMips), PipelineDrawError>;
     pub fn resolve_mod_storage_image(&self, owner: Option<&'static str>, access: StorageImageAccess, image: StorageImageBinding) -> Result<(u64, wgpu::TextureView, wgpu::TextureFormat, TargetMips), PipelineDrawError>;
-    pub fn resolve_mod_render_target_depth(&self, owner: Option<&'static str>, target: RenderTargetRef, filterable: bool) -> Result<(u64, wgpu::TextureView), PipelineDrawError>;
+    pub fn resolve_mod_render_target_depth(&self, owner: Option<&'static str>, target: RenderTargetRef) -> Result<(u64, wgpu::TextureView), PipelineDrawError>;
     pub fn resolve_mod_render_target(&self, owner: Option<&'static str>, target: RenderTargetRef, mip_level: u32) -> Result<ResolvedOffscreenTarget, RenderTargetError>;
     pub(super) fn take_released_mod_render_targets(&self) -> Vec<u64>;
 }

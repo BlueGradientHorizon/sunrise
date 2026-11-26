@@ -6,9 +6,11 @@
 //! validation and internal error scopes, so a refusal is an `Err` or a log line and never an
 //! uncaptured device error.
 
-use super::mod_pipelines::{ResolvedSet1Entry, create_mod_sampler, sampler_filtering};
+use super::mod_pipelines::{
+    ResolvedSet1Entry, create_mod_sampler, in_mask, sampler_filtering, unfilterable_mask,
+};
 use crate::mod_compute::{BuiltCompute, ComputeSet, Refusal};
-use mod_api::{BindingKind, Sampler};
+use mod_api::BindingKind;
 use wgpu::util::DeviceExt;
 
 /// One recorded dispatch of a compute node. Inline uniform and texel byte ranges in `entries`
@@ -39,9 +41,8 @@ struct CompiledCompute {
     layout: wgpu::BindGroupLayout,
     /// The bind-group binding each declared entry starts at, in declaration order.
     bindings: Vec<(u32, BindingKind)>,
-    /// The device sampler of each set-1 sampler descriptor the pipeline declares, made once at
-    /// compile time.
-    samplers: std::collections::HashMap<Sampler, wgpu::Sampler>,
+    /// The device sampler of each sampled texture, by its binding, made once at compile time.
+    samplers: std::collections::HashMap<u32, wgpu::Sampler>,
     label: String,
 }
 
@@ -50,6 +51,11 @@ struct CompiledCompute {
 pub struct ModCompute {
     generation: u64,
     pipelines: Vec<Option<CompiledCompute>>,
+    /// What the load built, by slot, kept to compile the nearest-sampler variants in `masked`.
+    built: Vec<Option<BuiltCompute>>,
+    /// Pipelines compiled again for the [`unfilterable_mask`] of a dispatch that samples a depth
+    /// texture, by `(slot, mask)`, when it is first recorded; `None` for one the device refused.
+    masked: std::collections::HashMap<(usize, u64), Option<CompiledCompute>>,
     /// The slots whose dispatches were refused at record time and logged, so a persistent
     /// refusal logs once, not every frame.
     warned: std::collections::HashSet<u32>,
@@ -198,16 +204,20 @@ fn check_limits(device: &wgpu::Device, built: &BuiltCompute) -> Result<(), (Refu
     Ok(())
 }
 
+/// The pipeline of `built`. The sampled textures of the entries in the `unfilterable` mask
+/// ([`unfilterable_mask`]) are declared unfilterable and read through nearest samplers: the
+/// variant a dispatch binding a depth texture needs.
 fn compile(
     device: &wgpu::Device,
     built: &BuiltCompute,
+    unfilterable: u64,
 ) -> Result<CompiledCompute, (Refusal, String)> {
     check_limits(device, built)?;
     let compute = wgpu::ShaderStages::COMPUTE;
     let mut layout_entries = Vec::new();
     let mut bindings = Vec::new();
     let mut next = 0u32;
-    for entry in &built.bind_group_layout.entries {
+    for (position, entry) in built.bind_group_layout.entries.iter().enumerate() {
         bindings.push((next, entry.kind));
         match entry.kind {
             BindingKind::UniformBuffer { min_size } => {
@@ -224,7 +234,7 @@ fn compile(
                 next += 1;
             }
             BindingKind::CombinedImageSampler { sampler } => {
-                let filterable = sampler_filtering(&sampler);
+                let filterable = !in_mask(unfilterable, position) && sampler_filtering(&sampler);
                 layout_entries.push(wgpu::BindGroupLayoutEntry {
                     binding: next,
                     visibility: compute,
@@ -339,11 +349,14 @@ fn compile(
     }
     let samplers = bindings
         .iter()
-        .filter_map(|(_, kind)| match kind {
-            BindingKind::CombinedImageSampler { sampler } => Some(*sampler),
+        .enumerate()
+        .filter_map(|(position, (binding, kind))| match kind {
+            BindingKind::CombinedImageSampler { sampler } => Some((
+                *binding,
+                create_mod_sampler(device, sampler, in_mask(unfilterable, position)),
+            )),
             _ => None,
         })
-        .map(|sampler| (sampler, create_mod_sampler(device, &sampler)))
         .collect();
     Ok(CompiledCompute {
         pipeline,
@@ -368,7 +381,7 @@ impl ModCompute {
             .enumerate()
             .map(|(slot, built)| {
                 let built = built.as_ref()?;
-                match compile(device, built) {
+                match compile(device, built, 0) {
                     Ok(compiled) => Some(compiled),
                     Err((reason, error)) => {
                         if set.refuse(slot, reason) {
@@ -383,6 +396,8 @@ impl ModCompute {
                 }
             })
             .collect();
+        self.built = set.built().to_vec();
+        self.masked.clear();
         self.generation = set.generation();
         self.warned.clear();
     }
@@ -401,7 +416,37 @@ impl ModCompute {
         let mut buffers: Vec<(u32, wgpu::Buffer)> = Vec::new();
         let max_groups = device.limits().max_compute_workgroups_per_dimension;
         for dispatch in dispatches {
-            let Some(Some(compiled)) = self.pipelines.get(dispatch.slot as usize) else {
+            let slot = dispatch.slot as usize;
+            let mask = match self.pipelines.get(slot) {
+                Some(Some(base)) => unfilterable_mask(
+                    device,
+                    dispatch
+                        .entries
+                        .iter()
+                        .zip(base.bindings.iter().map(|(_, kind)| *kind)),
+                ),
+                _ => continue,
+            };
+            if mask != 0
+                && !self.masked.contains_key(&(slot, mask))
+                && let Some(Some(built)) = self.built.get(slot)
+            {
+                let variant = compile(device, built, mask)
+                    .inspect_err(|(_, error)| {
+                        log::warn!(
+                            "Sunrise: compute pipeline {} refused with nearest samplers for the unfilterable textures {mask:#b}: {error}",
+                            built.id
+                        );
+                    })
+                    .ok();
+                self.masked.insert((slot, mask), variant);
+            }
+            let compiled = if mask == 0 {
+                self.pipelines[slot].as_ref()
+            } else {
+                self.masked.get(&(slot, mask)).and_then(Option::as_ref)
+            };
+            let Some(compiled) = compiled else {
                 continue;
             };
             match &dispatch.kind {
@@ -472,9 +517,9 @@ impl ModCompute {
                     }
                     (
                         ResolvedSet1Entry::Texture { view, .. },
-                        BindingKind::CombinedImageSampler { sampler },
+                        BindingKind::CombinedImageSampler { .. },
                     ) => {
-                        let Some(sampler) = compiled.samplers.get(sampler) else {
+                        let Some(sampler) = compiled.samplers.get(binding) else {
                             ok = false;
                             break;
                         };
