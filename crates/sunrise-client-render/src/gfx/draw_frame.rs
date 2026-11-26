@@ -1871,10 +1871,10 @@ impl Renderer {
             - name_tag_quads;
         // Dynamic-texture quads sit after the terrain models and before banner patterns: their
         // first quad in the entity buffer, and their runs with one bind group each.
-        let dynamic_first =
-            text_end - text_solid_quads - glint_only_quads - banner_pattern_quads - dynamic_quads;
+        let section_first = super::entity_batch::dynamic_texture_start(&batch_counts.materials);
+        let dynamic_first = posed / 4 + section_first;
         if dynamic_quads > 0 {
-            let section_start = (dynamic_first - posed / 4) as usize * 4;
+            let section_start = section_first as usize * 4;
             self.dynamic_entity.prepare(
                 &self.device,
                 &mut self.uploads,

@@ -3130,7 +3130,10 @@ mod dynamic_quads {
             let counts = batch
                 .update_within(vertices, &[], &[], &[], &[], false, usize::MAX)
                 .materials;
-            let [.., solid, cutout, translucent] = counts;
+            let [solid, cutout, translucent] = counts[crate::gfx::entity_batch::DYNAMIC_MATERIALS]
+            else {
+                unreachable!("three dynamic-texture materials")
+            };
             // The dynamic materials are the only ones here, so they start the buffer.
             dynamic.prepare(
                 &device,

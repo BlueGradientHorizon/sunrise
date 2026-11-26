@@ -8,6 +8,7 @@ pub use sunrise_render_core::entity::{
     DYNAMIC_TEXTURE_TRANSLUCENT_OVERLAY, TEXT_NORMAL_SOLID_OVERLAY,
     TEXT_POLYGON_OFFSET_SOLID_OVERLAY, dynamic_texture_bits,
 };
+pub use sunrise_render_core::entity::{NAME_TAG_OVERLAY, NAME_TAG_SOLID_OVERLAY};
 
 /// Device-derived vertex and index byte capacities governing the combined entity batch.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -229,33 +230,68 @@ pub(super) struct EntityBatchCounts {
 const MATERIALS: usize = 26;
 // A subrange of the energy swirl pass, also drawn by secondary world views.
 const ARMOR_FOIL: usize = MATERIALS;
-const _: () = assert!(
-    TEXT_POLYGON_OFFSET_SOLID_OVERLAY != super::EXPLICIT_PARTICLE_OVERLAY
-        && TEXT_POLYGON_OFFSET_SOLID_OVERLAY != GLINT_ONLY_OVERLAY
-        && TEXT_POLYGON_OFFSET_SOLID_OVERLAY != BANNER_PATTERN_OVERLAY
-        && TEXT_NORMAL_SOLID_OVERLAY != super::EXPLICIT_PARTICLE_OVERLAY
-        && TEXT_NORMAL_SOLID_OVERLAY != GLINT_ONLY_OVERLAY
-        && TEXT_NORMAL_SOLID_OVERLAY != BANNER_PATTERN_OVERLAY
-        && NAME_TAG_OVERLAY != super::EXPLICIT_PARTICLE_OVERLAY
-        && NAME_TAG_OVERLAY != GLINT_ONLY_OVERLAY
-        && NAME_TAG_OVERLAY != BANNER_PATTERN_OVERLAY
-        && NAME_TAG_OVERLAY != TEXT_POLYGON_OFFSET_SOLID_OVERLAY
-        && NAME_TAG_OVERLAY != TEXT_NORMAL_SOLID_OVERLAY
-        && NAME_TAG_SOLID_OVERLAY != super::EXPLICIT_PARTICLE_OVERLAY
-        && NAME_TAG_SOLID_OVERLAY != GLINT_ONLY_OVERLAY
-        && NAME_TAG_SOLID_OVERLAY != BANNER_PATTERN_OVERLAY
-        && NAME_TAG_SOLID_OVERLAY != TEXT_POLYGON_OFFSET_SOLID_OVERLAY
-        && NAME_TAG_SOLID_OVERLAY != TEXT_NORMAL_SOLID_OVERLAY
-        && NAME_TAG_SOLID_OVERLAY != NAME_TAG_OVERLAY
-        && NAME_TAG_OVERLAY != DYNAMIC_TEXTURE_SOLID_OVERLAY
-        && NAME_TAG_OVERLAY != DYNAMIC_TEXTURE_CUTOUT_OVERLAY
-        && NAME_TAG_OVERLAY != DYNAMIC_TEXTURE_TRANSLUCENT_OVERLAY
-        && NAME_TAG_OVERLAY != ARMOR_GLINT_ONLY_OVERLAY
-        && NAME_TAG_SOLID_OVERLAY != DYNAMIC_TEXTURE_SOLID_OVERLAY
-        && NAME_TAG_SOLID_OVERLAY != DYNAMIC_TEXTURE_CUTOUT_OVERLAY
-        && NAME_TAG_SOLID_OVERLAY != DYNAMIC_TEXTURE_TRANSLUCENT_OVERLAY
-        && NAME_TAG_SOLID_OVERLAY != ARMOR_GLINT_ONLY_OVERLAY
-);
+/// The dynamic-texture materials, solid, cutout and translucent (`MATERIALS` order).
+pub(super) const DYNAMIC_MATERIALS: std::ops::Range<usize> = 21..24;
+/// A pack-drawn name tag's materials, solid then translucent.
+const NAME_TAG_MATERIALS: std::ops::Range<usize> = 24..26;
+/// Materials stored in [`EntityBatch::combined`] ahead of the dynamic-texture ones.
+const BEFORE_DYNAMIC: usize = 17;
+
+/// The first quad of the dynamic-texture materials in [`EntityBatch::combined`]: the quads of
+/// every material stored ahead of them, whatever is stored after (text, name tags).
+pub(super) fn dynamic_texture_start(materials: &[u32; MATERIALS]) -> u32 {
+    materials[..BEFORE_DYNAMIC].iter().sum()
+}
+/// Every overlay id a quad's material or shader branch reads, each named once: a new overlay
+/// that reuses one of them fails to build instead of drawing as the other.
+const _: () = assert!(distinct(&[
+    WATER_MASK_OVERLAY,
+    SHADOW_OVERLAY,
+    TRANSLUCENT_PARTICLE_OVERLAY,
+    TRANSLUCENT_ITEM_OVERLAY,
+    TRANSLUCENT_GLINT_ITEM_OVERLAY,
+    ENERGY_SWIRL_OVERLAY,
+    TEXT_POLYGON_OFFSET_OVERLAY,
+    DRAGON_RAYS_OVERLAY,
+    DISSOLVE_OVERLAY,
+    WORLD_TEXT_OVERLAY,
+    WORLD_TEXT_POLYGON_OFFSET_OVERLAY,
+    FLUID_OVERLAY,
+    TERRAIN_MODEL_SOLID_OVERLAY,
+    TERRAIN_MODEL_CUTOUT_OVERLAY,
+    TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY,
+    ADDITIVE_PARTICLE_OVERLAY,
+    TERRAIN_MODEL_TRANSLUCENT_OVERLAY,
+    super::EXPLICIT_PARTICLE_OVERLAY,
+    GLINT_ONLY_OVERLAY,
+    BANNER_PATTERN_OVERLAY,
+    TEXT_POLYGON_OFFSET_SOLID_OVERLAY,
+    TEXT_NORMAL_SOLID_OVERLAY,
+    DYNAMIC_TEXTURE_SOLID_OVERLAY,
+    DYNAMIC_TEXTURE_CUTOUT_OVERLAY,
+    DYNAMIC_TEXTURE_TRANSLUCENT_OVERLAY,
+    ARMOR_GLINT_ONLY_OVERLAY,
+    NAME_TAG_OVERLAY,
+    NAME_TAG_SOLID_OVERLAY,
+]));
+/// Whether no two of `ids` are equal, and none is a creeper swell code (16 to 31).
+const fn distinct(ids: &[u32]) -> bool {
+    let mut i = 0;
+    while i < ids.len() {
+        if ids[i] >= 16 && ids[i] < 32 {
+            return false;
+        }
+        let mut j = i + 1;
+        while j < ids.len() {
+            if ids[i] == ids[j] {
+                return false;
+            }
+            j += 1;
+        }
+        i += 1;
+    }
+    true
+}
 pub const TERRAIN_MODEL_SOLID_OVERLAY: u32 = 42;
 pub const TERRAIN_MODEL_CUTOUT_OVERLAY: u32 = 43;
 pub const TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY: u32 = 44;
@@ -326,14 +362,6 @@ pub const TRANSLUCENT_GLINT_ITEM_OVERLAY: u32 = 33;
 /// The overlay of text in `Font.DisplayMode.POLYGON_OFFSET` (text displays):
 /// drawn like an ordinary entity, pulled toward the camera.
 pub const TEXT_POLYGON_OFFSET_OVERLAY: u32 = 35;
-/// The overlays of a name tag's `Font.DisplayMode.NORMAL` copy when a pack's `core/text` draws
-/// it (`RenderTypes.text`, `RenderPipelines.TEXT`): opaque on no background, which
-/// `SubmitNodeCollection.canRenderAsSolid` puts in the solid phase, and translucent (a discrete
-/// tag on its background; `OIT_TEXT` under Improved Transparency). Their own materials, last,
-/// so the passes that draw the native entity layer (world views, a shader pack's shadow) draw
-/// them too.
-pub const NAME_TAG_SOLID_OVERLAY: u32 = 57;
-pub const NAME_TAG_OVERLAY: u32 = 56;
 /// A native world canvas, drawn after particles with normal text depth/culling.
 pub const WORLD_TEXT_OVERLAY: u32 = 39;
 /// The front of its eight-offset outlined text, using POLYGON_OFFSET.
@@ -387,11 +415,11 @@ fn material(layer: u32, oit: bool) -> usize {
         GLINT_ONLY_OVERLAY => return 18,
         TEXT_POLYGON_OFFSET_SOLID_OVERLAY => return 19,
         TEXT_NORMAL_SOLID_OVERLAY => return 20,
-        DYNAMIC_TEXTURE_SOLID_OVERLAY => return 21,
-        DYNAMIC_TEXTURE_CUTOUT_OVERLAY => return 22,
-        DYNAMIC_TEXTURE_TRANSLUCENT_OVERLAY => return 23,
-        NAME_TAG_SOLID_OVERLAY => return 24,
-        NAME_TAG_OVERLAY => return 25,
+        DYNAMIC_TEXTURE_SOLID_OVERLAY => return DYNAMIC_MATERIALS.start,
+        DYNAMIC_TEXTURE_CUTOUT_OVERLAY => return DYNAMIC_MATERIALS.start + 1,
+        DYNAMIC_TEXTURE_TRANSLUCENT_OVERLAY => return DYNAMIC_MATERIALS.start + 2,
+        NAME_TAG_SOLID_OVERLAY => return NAME_TAG_MATERIALS.start,
+        NAME_TAG_OVERLAY => return NAME_TAG_MATERIALS.start + 1,
         ARMOR_GLINT_ONLY_OVERLAY => return ARMOR_FOIL,
         _ => {}
     }
@@ -605,16 +633,18 @@ impl EntityBatch {
         // Dynamic-texture quads follow the terrain models, before banner patterns: solid and
         // cutout keep their submission order, translucent ones sort far to near
         // (`RenderTypes.entityTranslucent` sorts on upload).
-        for runs in &self.runs[21..23] {
+        for runs in &self.runs[DYNAMIC_MATERIALS.start..DYNAMIC_MATERIALS.end - 1] {
             for &(first, count) in runs {
                 self.combined
                     .extend_from_slice(&entities[first * 4..(first + count) * 4]);
             }
         }
-        append_sorted(&mut self.sort, &mut self.combined, entities, &self.runs[23]);
+        let translucent = &self.runs[DYNAMIC_MATERIALS.end - 1];
+        append_sorted(&mut self.sort, &mut self.combined, entities, translucent);
         // Classic `RenderTypes.textPolygonOffset` sorts on upload. `RenderTypes.text` (solid and
         // translucent), banner patterns and glint keep their submission order in either mode.
-        for (kind, runs) in self.runs.iter().enumerate().take(21).skip(17) {
+        let text = BEFORE_DYNAMIC..DYNAMIC_MATERIALS.start;
+        for (kind, runs) in self.runs.iter().enumerate().take(text.end).skip(text.start) {
             if kind == 19 && !oit {
                 append_sorted(&mut self.sort, &mut self.combined, entities, runs);
             } else {
@@ -625,7 +655,7 @@ impl EntityBatch {
             }
         }
         // A pack-drawn name tag's solid then translucent copies, last, in submission order.
-        for runs in &self.runs[24..26] {
+        for runs in &self.runs[NAME_TAG_MATERIALS] {
             for &(first, count) in runs {
                 self.combined
                     .extend_from_slice(&entities[first * 4..(first + count) * 4]);
@@ -1014,6 +1044,50 @@ mod tests {
         combined.extend_from_slice(&additive[..additive.len() / 4 * 4]);
         combined.extend_from_slice(&hand[..hand.len() / 4 * 4]);
         (combined, counts)
+    }
+
+    #[test]
+    fn dynamic_textures_start_where_they_are_stored_with_name_tags_after_them() {
+        // One quad per layer, in an order that stores differently: each quad's colour names it.
+        let layers = [
+            NAME_TAG_OVERLAY,
+            DYNAMIC_TEXTURE_SOLID_OVERLAY,
+            TEXT_NORMAL_SOLID_OVERLAY,
+            0,
+            NAME_TAG_SOLID_OVERLAY,
+            DYNAMIC_TEXTURE_TRANSLUCENT_OVERLAY,
+            BANNER_PATTERN_OVERLAY,
+            TERRAIN_MODEL_SOLID_OVERLAY,
+            DYNAMIC_TEXTURE_CUTOUT_OVERLAY,
+            GLINT_ONLY_OVERLAY,
+            SHADOW_OVERLAY,
+            NAME_TAG_OVERLAY,
+        ];
+        let entities: Vec<Vertex> = layers
+            .iter()
+            .enumerate()
+            .flat_map(|(i, &layer)| {
+                std::iter::repeat_n(
+                    Vertex {
+                        layer,
+                        color: i as u32,
+                        ..geometry(1, false)[0]
+                    },
+                    4,
+                )
+            })
+            .collect();
+        let mut batch = EntityBatch::default();
+        for oit in [false, true] {
+            let counts = batch.update(&entities, &[], &[], &[], oit);
+            let ids: Vec<u32> = batch.combined.iter().step_by(4).map(|v| v.color).collect();
+            // Stored: ordinary (3), shadow (10), terrain model (7), then the dynamic textures
+            // solid (1), cutout (8), translucent (5), then banner (6), glint (9), solid text (2)
+            // and the name tags, solid (4) then translucent (0, 11).
+            assert_eq!(ids, [3, 10, 7, 1, 8, 5, 6, 9, 2, 4, 0, 11]);
+            assert_eq!(dynamic_texture_start(&counts), 3);
+            assert_eq!(counts[DYNAMIC_MATERIALS], [1, 1, 1]);
+        }
     }
 
     fn geometry(quads: usize, mixed: bool) -> Vec<Vertex> {
