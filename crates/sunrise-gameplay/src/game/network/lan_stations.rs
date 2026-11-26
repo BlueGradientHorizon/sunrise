@@ -5,8 +5,6 @@
 //! data slot sync after each (`broadcastChanges`), and the inputs back into
 //! the inventory when the menu closes (`AbstractContainerMenu.clearContainer`).
 use crate::game::ServerGame;
-use mod_api::item::menu::AnvilCraftInputs;
-use sunrise_core::random::RandomSource;
 use sunrise_gameplay_common::game::{
     api_values::TryIntoApi,
     lan_menu_data::GuestStation,
@@ -14,6 +12,8 @@ use sunrise_gameplay_common::game::{
     stations_common::{Kind as StationKind, Station},
     transactions::After,
 };
+use mod_api::item::menu::AnvilCraftInputs;
+use sunrise_core::random::RandomSource;
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::BlockEntity;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
@@ -554,8 +554,7 @@ impl ServerGame<'_> {
                 } else {
                     let amount = take.vanilla_amount(&self.menu_env());
                     self.journal_level_random();
-                    sunrise_sim::stations::grindstone_xp_roll(amount, &mut self.common.world.random)
-                        as i32
+                    sunrise_sim::stations::grindstone_xp_roll(amount, &mut self.common.world.random) as i32
                 };
                 GrindstoneTakeEdits::initial(xp)
             };
@@ -615,7 +614,7 @@ impl ServerGame<'_> {
             if let Some(item) = gs
                 .menu
                 .slot(0)
-                .and_then(|item| TryIntoApi::try_into_api(item).ok())
+                .and_then(|item| super::api_values::TryIntoApi::try_into_api(item).ok())
             {
                 for (row, original) in drawn.iter().enumerate() {
                     if let Some(original_level) = *original {
@@ -827,8 +826,7 @@ impl ServerGame<'_> {
                 // its own host too (`lan.rs:165`), so this one path covers
                 // both single player and a LAN guest.
                 let original_carried = carried.clone();
-                let backing =
-                    backing.filter(|&pos| self.common.mod_menu_at(pos) == Some(menu.as_ref()));
+                let backing = backing.filter(|&pos| self.common.mod_menu_at(pos) == Some(menu.as_ref()));
                 let block = backing.map(|(x, y, z)| self.common.data_block_name([x, y, z]));
                 let mut accepted = false;
                 self.native_menu_button_valid(&menu, block.as_deref(), id, &mut accepted);
@@ -1038,11 +1036,7 @@ impl ServerGame<'_> {
     /// `BeaconBlockEntity.dataAccess`: the pyramid's levels and the powers
     /// (`BeaconMenu.encodeEffect`: the `mob_effect` id + 1, 0 for none).
     pub(in crate::game::server_side) fn beacon_data(&self, pos: [i32; 3]) -> [i32; 3] {
-        let Some(BlockEntity::Beacon(b)) = self
-            .common
-            .world
-            .block_entities
-            .get(&(pos[0], pos[1], pos[2]))
+        let Some(BlockEntity::Beacon(b)) = self.common.world.block_entities.get(&(pos[0], pos[1], pos[2]))
         else {
             return [0; 3];
         };
@@ -1143,11 +1137,8 @@ impl ServerGame<'_> {
         });
         let [primary, secondary] = powers.map(|p| p.map(|(_, n)| n));
         let mut select_sound = false;
-        if let Some(BlockEntity::Beacon(b)) = self
-            .common
-            .world
-            .block_entities
-            .get_mut(&(pos[0], pos[1], pos[2]))
+        if let Some(BlockEntity::Beacon(b)) =
+            self.common.world.block_entities.get_mut(&(pos[0], pos[1], pos[2]))
         {
             b.primary = primary.clone();
             b.secondary = secondary.clone();
@@ -1157,10 +1148,7 @@ impl ServerGame<'_> {
         if select_sound {
             self.beacon_sound(pos, "minecraft:block.beacon.power_select");
         }
-        self.common
-            .world
-            .modified
-            .insert((pos[0] >> 4, pos[2] >> 4));
+        self.common.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
     }
 
     /// `ServerPlayer.doTick`'s `stillValid`: a guest's station closes once its

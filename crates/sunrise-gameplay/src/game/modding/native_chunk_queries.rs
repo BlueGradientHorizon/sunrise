@@ -32,7 +32,7 @@ impl ServerGame<'_> {
             .native_level_world(chunk.level())?
             .chunks
             .get(&(x, z))?;
-        let states = sunrise_gameplay_common::game::api_values::block_state::current().ok()?;
+        let states = super::api_values::block_state::current().ok()?;
         let of_block = |id: u32| {
             states
                 .to_api(sunrise_world::registry::BlockStateId(id))

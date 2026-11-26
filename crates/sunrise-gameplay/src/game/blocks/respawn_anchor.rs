@@ -174,10 +174,9 @@ impl crate::game::ServerGame<'_> {
         pos: Option<[i32; 3]>,
         forced: bool,
     ) -> bool {
-        let (Some(player), Some(name)) = (
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_name.clone(),
-        ) else {
+        let (Some(player), Some(name)) =
+            (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
+        else {
             return false;
         };
         let mut cancel = false;
@@ -198,9 +197,8 @@ impl crate::game::ServerGame<'_> {
     /// unless a mod cancels the change (the answer is false then). A point
     /// replaces the fallback spawn, which the world spawn then stands for.
     pub(in crate::game) fn set_respawn_point(&mut self, config: Option<RespawnConfig>) -> bool {
-        let (dim, pos, forced) = config.map_or((self.common.dim, None, false), |c| {
-            (c.dim, Some(c.pos), c.forced)
-        });
+        let (dim, pos, forced) =
+            config.map_or((self.common.dim, None, false), |c| (c.dim, Some(c.pos), c.forced));
         if self.spawn_point_change(dim, pos, forced) {
             return false;
         }
@@ -258,11 +256,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `RespawnAnchorBlock.isWaterThatWouldFlow`.
     pub(in crate::game::server_side) fn water_would_flow(&self, p: [i32; 3]) -> bool {
-        let f = self
-            .common
-            .res
-            .facts()
-            .get(self.common.world.block(p[0], p[1], p[2]));
+        let f = self.common.res.facts().get(self.common.world.block(p[0], p[1], p[2]));
         if f.fluid != Fluid::Water {
             return false;
         }
@@ -272,8 +266,7 @@ impl crate::game::ServerGame<'_> {
         if f.fluid_level < 2 {
             return false;
         }
-        self.common
-            .res
+        self.common.res
             .facts()
             .get(self.common.world.block(p[0], p[1] - 1, p[2]))
             .fluid
@@ -292,8 +285,7 @@ impl crate::game::ServerGame<'_> {
             .into_iter()
             .any(|d| self.water_would_flow([pos[0] + d[0], pos[1], pos[2] + d[2]]));
         let above = self
-            .common
-            .res
+            .common.res
             .facts()
             .get(self.common.world.block(pos[0], pos[1] + 1, pos[2]))
             .fluid
@@ -330,8 +322,7 @@ impl crate::game::ServerGame<'_> {
         }
         // removeBlock(head), then the foot behind it if it is still this bed.
         let facing = self
-            .common
-            .pack
+            .common.pack
             .assets
             .registry
             .state(state)
@@ -346,8 +337,7 @@ impl crate::game::ServerGame<'_> {
         self.common.level_set(head, self.common.world.air)?;
         let foot = [head[0] + back[0], head[1], head[2] + back[2]];
         if self
-            .common
-            .res
+            .common.res
             .facts()
             .get(self.common.world.block(foot[0], foot[1], foot[2]))
             .name
@@ -538,8 +528,7 @@ impl crate::game::ServerGame<'_> {
         if !c.forced
             && consume
             && stand.is_some()
-            && let Some(next) =
-                self.anchor_with_charges(state, self.common.anchor_charges(state) - 1)
+            && let Some(next) = self.anchor_with_charges(state, self.common.anchor_charges(state) - 1)
         {
             self.common.level_set(c.pos, next)?;
         }
@@ -554,10 +543,7 @@ impl crate::game::ServerGame<'_> {
         c: RespawnConfig,
         found: Option<(Vec3, f32, f32)>,
     ) -> Option<(Vec3, f32, f32)> {
-        if !sunrise_gameplay_common::game::api_values::block_state::block_listens(
-            mod_api::HookId::RespawnPosition,
-            state,
-        ) {
+        if !super::api_values::block_state::block_listens(mod_api::HookId::RespawnPosition, state) {
             return found;
         }
         let mut position = found.map(|(p, yaw, pitch)| ([p.x, p.y, p.z], yaw, pitch));
@@ -616,8 +602,7 @@ impl crate::game::ServerGame<'_> {
         state: BlockStateId,
         who: Option<Who>,
     ) -> Result<()> {
-        let Some(next) = self.anchor_with_charges(state, self.common.anchor_charges(state) + 1)
-        else {
+        let Some(next) = self.anchor_with_charges(state, self.common.anchor_charges(state) + 1) else {
             return Ok(());
         };
         self.common.level_set(pos, next)?;

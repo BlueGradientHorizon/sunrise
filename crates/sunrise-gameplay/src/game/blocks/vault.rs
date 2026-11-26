@@ -76,8 +76,7 @@ impl ServerGame<'_> {
             .and_then(|s| VaultState::from_name(s))
             .unwrap_or_default();
         let ominous = block.properties.get("ominous").is_some_and(|v| v == "true");
-        let Some((lease, BlockEntity::Vault(vault))) = self.common.world.block_entities.take(&key)
-        else {
+        let Some((lease, BlockEntity::Vault(vault))) = self.common.world.block_entities.take(&key) else {
             return None;
         };
         Some(TakenVault {
@@ -165,8 +164,7 @@ impl ServerGame<'_> {
         drop(players);
         self.common.world.random = random;
         self.server.rand_sequences = sequences;
-        self.common
-            .world
+        self.common.world
             .block_entities
             .put(lease, BlockEntity::Vault(vault));
         Some(self.vault_events(key, events).map(|()| out))
@@ -196,7 +194,7 @@ impl ServerGame<'_> {
         let player = self.acting_uuid();
         let eject = VaultEject {
             player: self.killer_loot_entity(None),
-            tool: sunrise_gameplay_common::game::creatures::to_loot(&stack),
+            tool: super::creatures::to_loot(&stack),
             luck: self.acting_luck(),
         };
         let used = self.with_vault(

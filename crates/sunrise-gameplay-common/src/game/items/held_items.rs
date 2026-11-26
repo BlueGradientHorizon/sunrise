@@ -21,7 +21,11 @@ pub fn attack_reach(range: &serde_json::Value, creative: bool) -> (f32, f32, f32
 }
 
 /// `AttackRange.isInRange`: float bounds, then inclusive double comparison.
-pub fn attack_range_contains(range: &serde_json::Value, distance: f64, creative: bool) -> bool {
+pub(in crate::game) fn attack_range_contains(
+    range: &serde_json::Value,
+    distance: f64,
+    creative: bool,
+) -> bool {
     let (min, max, margin) = attack_reach(range, creative);
     in_attack_range(distance, (min, max, margin), 0.0)
 }
@@ -118,7 +122,12 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// `getAttributeValue` of an interaction range of the acting player.
-    pub fn interaction_range(&mut self, attribute: &str, survival: f64, creative: f64) -> f64 {
+    pub fn interaction_range(
+        &mut self,
+        attribute: &str,
+        survival: f64,
+        creative: f64,
+    ) -> f64 {
         let otherwise = if self.creative { creative } else { survival };
         self.player
             .as_mut()
@@ -133,7 +142,10 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// A stack's `minecraft:attack_range` component, with spear default fallback unless removed.
-    pub fn attack_range_component(&self, stack: &ItemStack) -> Option<serde_json::Value> {
+    pub fn attack_range_component(
+        &self,
+        stack: &ItemStack,
+    ) -> Option<serde_json::Value> {
         let view_stack = sunrise_sim::item_models::stack_view(stack);
         let view = self.pack.item_models.components_view(&view_stack);
         if let Some(val) = view.get("minecraft:attack_range") {
@@ -194,7 +206,10 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// `ThrowableProjectile.tick`'s `applyGravity` and `applyInertia`.
-    pub fn thrown_potion_motion(&self, t: &mut super::potions_common::ThrownPotion) {
+    pub fn thrown_potion_motion(
+        &self,
+        t: &mut super::potions_common::ThrownPotion,
+    ) {
         let gravity = if &*t.stack.item == "minecraft:experience_bottle" {
             0.07
         } else {
@@ -286,7 +301,10 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// `Player.isWithinAttackRange(mainHandItem, box, 3.0)` for the player in place.
-    pub fn within_attack_range(&mut self, target: &sunrise_core::geometry::Aabb) -> bool {
+    pub(in crate::game) fn within_attack_range(
+        &mut self,
+        target: &sunrise_core::geometry::Aabb,
+    ) -> bool {
         let Some(eye) = self.eye_position() else {
             return false;
         };
@@ -417,7 +435,11 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// `FishingHook.checkCollision` clips blocks on both sides of the connection.
-    pub fn hook_block_hit(&self, from: Vec3, to: Vec3) -> Option<sunrise_core::geometry::BlockHit> {
+    pub fn hook_block_hit(
+        &self,
+        from: Vec3,
+        to: Vec3,
+    ) -> Option<sunrise_core::geometry::BlockHit> {
         let mut scene = sunrise_level::collisions::SceneCollisions {
             world: &self.world,
             binding: self.collision,
@@ -1349,12 +1371,12 @@ impl<'__sg, G: crate::game::SideGame<'__sg>> HeldItemsGameExt1<'__sg> for G {}
 
 
 /// `ProjectileWeaponItem.ARROW_ONLY`: `stack.is(ItemTags.ARROWS)`.
-pub fn is_arrow(items: &sunrise_items::items::Items, stack: &ItemStack) -> bool {
+pub(in crate::game) fn is_arrow(items: &sunrise_items::items::Items, stack: &ItemStack) -> bool {
     items.item_in_tag("minecraft:arrows", &stack.item)
 }
 
 /// `Player.getProjectile`: off hand, main hand, else first arrows in inventory.
-pub fn projectile_slot(
+pub(in crate::game) fn projectile_slot(
     weapon: &str,
     hands: [(usize, Option<&ItemStack>); 2],
     inventory: &[Option<ItemStack>],
@@ -1544,13 +1566,19 @@ impl Drop for HarvestDispatch {
 
 /// The item of the stack in `selected` (`Player.tick`'s main-hand item), borrowed: a guest's
 /// tick compares it with the last one and clones it only when it changed.
-pub fn held_attack_item(inventory: &[Option<ItemStack>], selected: usize) -> Option<&Arc<str>> {
+pub fn held_attack_item(
+    inventory: &[Option<ItemStack>],
+    selected: usize,
+) -> Option<&Arc<str>> {
     inventory.get(selected)?.as_ref().map(|s| &s.item)
 }
 
 /// `LivingEntity.getItemBlockingWith`'s delay: an item that blocks attacks blocks once it has been
 /// used for `BlocksAttacks.blockDelayTicks` (`Math.round(seconds * 20)`) ticks.
-pub fn block_delay_passed(component: &sunrise_items::items::BlocksAttacks, ticks: u32) -> bool {
+pub fn block_delay_passed(
+    component: &sunrise_items::items::BlocksAttacks,
+    ticks: u32,
+) -> bool {
     ticks as i32 >= (component.delay_seconds * 20.0).round() as i32
 }
 

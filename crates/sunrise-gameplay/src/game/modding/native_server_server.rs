@@ -1,19 +1,5 @@
+use super::api_values::TryIntoApi;
 use super::{Dim, Game, commands::execute, respawn_anchor::RespawnConfig};
-use mod_api::__private::game::*;
-use mod_api::LevelRef;
-use mod_api::{
-    ActionOutcome, ActionRefused, FakeEffect, GameMode, GlobalPos, Identifier, PlayerAction,
-    PlayerActionSetup, PlayerRef, PlayerRespawnConfig, ScopedActionResult, Sidebar, TextFormError,
-    VirtualHost,
-};
-use serde_json::json;
-#[allow(unused_imports)]
-use std::sync::{LazyLock, Mutex, atomic::Ordering};
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
-use sunrise_command::{Arg, ArgType, Context};
-use sunrise_core::position::BlockPos;
-use sunrise_game_data::text::Text;
-use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use sunrise_gameplay_common::game::level_control_hooks::LevelControl;
 use sunrise_gameplay_common::game::native_server::Acting;
 use sunrise_gameplay_common::game::native_server::BaseTree;
@@ -29,6 +15,20 @@ use sunrise_gameplay_common::game::native_server::orb_meets;
 use sunrise_gameplay_common::game::native_server::ordered_box;
 use sunrise_gameplay_common::game::native_server::register_command_nodes;
 use sunrise_gameplay_common::game::native_server::system_chat;
+use mod_api::__private::game::*;
+use mod_api::LevelRef;
+use mod_api::{
+    ActionOutcome, ActionRefused, FakeEffect, GameMode, GlobalPos, Identifier, PlayerAction,
+    PlayerActionSetup, PlayerRef, PlayerRespawnConfig, ScopedActionResult, Sidebar, TextFormError,
+    VirtualHost,
+};
+use serde_json::json;
+#[allow(unused_imports)]
+use std::sync::{LazyLock, Mutex, atomic::Ordering};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use sunrise_command::{Arg, ArgType, Context};
+use sunrise_core::position::BlockPos;
+use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_sim::{
@@ -143,8 +143,7 @@ impl crate::game::ServerGame<'_> {
         }
         let epoch = self.common.native_lifecycle.epoch()?;
         if self
-            .common
-            .level
+            .common.level
             .player_uuid
             .map(sunrise_sim::lan::playerdata::ints_uuid)
             == Some(uuid)
@@ -202,10 +201,7 @@ impl crate::game::ServerGame<'_> {
         self.server.lan_acting_name.as_ref()?;
         self.server.lan_acting_permission?;
         Some(mod_api::__private::game::player_ref(
-            mod_api::EntityRef::new(
-                self.common.native_lifecycle.epoch()?,
-                self.native_acting_entity(),
-            ),
+            mod_api::EntityRef::new(self.common.native_lifecycle.epoch()?, self.native_acting_entity()),
             self.server.lan_acting_uuid?,
         ))
     }
@@ -376,8 +372,7 @@ impl crate::game::ServerGame<'_> {
             }
             if self.server.lan_acting_uuid.is_some()
                 || self
-                    .common
-                    .level
+                    .common.level
                     .player_uuid
                     .map(sunrise_sim::lan::playerdata::ints_uuid)
                     != Some(uuid)
@@ -618,8 +613,7 @@ impl crate::game::ServerGame<'_> {
         if self.server.serving.is_some()
             && self.server_player(player.uuid()) == Some(player)
             && self
-                .common
-                .level
+                .common.level
                 .player_uuid
                 .map(sunrise_sim::lan::playerdata::ints_uuid)
                 == Some(player.uuid())
@@ -677,11 +671,7 @@ impl crate::game::ServerGame<'_> {
         } else {
             Err(ActionRefused::Busy)
         };
-        let host = self
-            .server
-            .lan
-            .as_mut()
-            .expect("guest turns retain the host");
+        let host = self.server.lan.as_mut().expect("guest turns retain the host");
         let (held, other, position) = host.hub.guests.update(gi, |guest| {
             let held = guest
                 .inventory
@@ -1175,9 +1165,7 @@ impl crate::game::ServerGame<'_> {
                 SidebarContents::prepare(sidebar, &|item| items.contains_key(item)).map(Box::new)
             })
             .transpose()?;
-        self.after_commit(
-            sunrise_gameplay_common::game::transactions::After::PersonalSidebar(conn, contents),
-        );
+        self.after_commit(super::transactions::After::PersonalSidebar(conn, contents));
         Ok(true)
     }
 
@@ -1474,8 +1462,7 @@ impl crate::game::ServerGame<'_> {
         {
             return Vec::new();
         }
-        self.common
-            .orbs
+        self.common.orbs
             .iter()
             .filter(|o| o.count > 0)
             .map(|o| mod_api::ExperienceOrb {
@@ -1776,8 +1763,7 @@ impl crate::game::ServerGame<'_> {
 impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn cloning_guest(&self, uuid: u128) -> Option<&Guest> {
         let &(_, conn, _) = self
-            .common
-            .player_state
+            .common.player_state
             .cloning_players
             .iter()
             .rev()
@@ -1789,10 +1775,8 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn player_handle_read(&self, player: PlayerRef) -> Option<PlayerRead<'_>> {
         (self.common.native_lifecycle.epoch()? == player.fields().entity.epoch()).then_some(())?;
         if sunrise_gameplay_common::game::Side::lan_acting_fake(&self.server)
-            && sunrise_gameplay_common::game::Side::lan_acting_uuid(&self.server)
-                == Some(player.fields().uuid)
-            && sunrise_gameplay_common::game::Side::lan_acting_entity(&self.server)
-                == Some(player.fields().entity.id())
+            && sunrise_gameplay_common::game::Side::lan_acting_uuid(&self.server) == Some(player.fields().uuid)
+            && sunrise_gameplay_common::game::Side::lan_acting_entity(&self.server) == Some(player.fields().entity.id())
         {
             return Some(PlayerRead::Acting {
                 mode: Some(self.common.mode_id()),
@@ -1811,8 +1795,7 @@ impl crate::game::ServerGame<'_> {
             .get(guests.identity_index(player.fields().uuid, player.fields().entity.id())?)?;
         if !guest.placed
             || !guest.is_fake()
-            || sunrise_gameplay_common::game::Side::lan_guest_swaps(&self.server)
-                .contains(&guest.conn)
+            || sunrise_gameplay_common::game::Side::lan_guest_swaps(&self.server).contains(&guest.conn)
         {
             return None;
         }
@@ -1838,8 +1821,7 @@ impl crate::game::ServerGame<'_> {
                 host.hub.guests.simulation_iter().find(|guest| {
                     host.hub.online(guest)
                         && guest.uuid == uuid
-                        && !sunrise_gameplay_common::game::Side::lan_guest_swaps(&self.server)
-                            .contains(&guest.conn)
+                        && !sunrise_gameplay_common::game::Side::lan_guest_swaps(&self.server).contains(&guest.conn)
                 })
             })
         }) {
@@ -1848,8 +1830,7 @@ impl crate::game::ServerGame<'_> {
         if sunrise_gameplay_common::game::Side::lan_acting_uuid(&self.server).is_none()
             && self.server.serving.is_some()
             && self
-                .common
-                .level
+                .common.level
                 .player_uuid
                 .map(sunrise_sim::lan::playerdata::ints_uuid)
                 == Some(uuid)
@@ -1871,20 +1852,26 @@ impl crate::game::ServerGame<'_> {
 
 #[cfg(test)]
 pub(in crate::game) mod fake_action_tests {
-    use sunrise_gameplay_common::game::api_values::test_snapshot;
+use sunrise_gameplay_common::game::api_values::test_snapshot;
 
     use super::super::{respawn_anchor::RespawnConfig, stations::Kind, stations::Station};
     use super::{Acting, ActionOutcome, ActionRefused, FakeEffect, PlayerAction};
+    use sunrise_gameplay_common::game::native_server::fake_action_tests::AttackWatcher;
+    use sunrise_gameplay_common::game::native_server::fake_action_tests::ChargeWatcher;
     use crate::game::native_server::fake_action_tests::fake;
     use crate::game::native_server::fake_action_tests::health;
     use crate::game::native_server::fake_action_tests::held;
+    use sunrise_gameplay_common::game::native_server::fake_action_tests::on_top;
     use crate::game::native_server::fake_action_tests::place;
     use crate::game::native_server::fake_action_tests::zombie;
     use mod_api::{BlockHit, Hand};
-    use sunrise_gameplay_common::game::native_server::fake_action_tests::AttackWatcher;
-    use sunrise_gameplay_common::game::native_server::fake_action_tests::ChargeWatcher;
-    use sunrise_gameplay_common::game::native_server::fake_action_tests::on_top;
     use sunrise_items::items::ItemStack;
+
+    
+
+    
+
+    
 
     /// `attack_entity` runs at `Player.attack`'s start, before the blow and the
     /// swing's attack-strength reset (vanilla's `getAttackStrengthScale(0.5)`
@@ -2107,9 +2094,10 @@ pub(in crate::game) mod fake_action_tests {
             let uncharged = zombie(game, 5001, [-1.5, 64.0, 0.5]);
             let mut attack = |target, full_attack_charge| {
                 let mut setup = PlayerActionSetup::new(
-                    Some(sunrise_gameplay_common::game::api_values::test_snapshot(
-                        &ItemStack::new("minecraft:diamond_sword", 1),
-                    )),
+                    Some(sunrise_gameplay_common::game::api_values::test_snapshot(&ItemStack::new(
+                        "minecraft:diamond_sword",
+                        1,
+                    ))),
                     [0.5, 64.0 + f64::from(1.62_f32), 0.5],
                     0.0,
                     0.0,
@@ -2143,6 +2131,12 @@ pub(in crate::game) mod fake_action_tests {
             );
         });
     }
+
+    
+
+    
+
+    
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;

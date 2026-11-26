@@ -7,8 +7,8 @@
 //! Nothing here replays construction or draws randomness: a veto, a stale parent or an invalid
 //! list keeps every draw construction already made and spawns no child.
 
-use super::native_pending_children::{Children, PendingMob, valid_child};
 use crate::game::ServerGame;
+use super::native_pending_children::{Children, PendingMob, valid_child};
 use mod_api::PendingChildrenEdits;
 use sunrise_mod_runtime::{
     attachments::Attachments,
@@ -34,7 +34,10 @@ struct ParentState {
     tame: bool,
 }
 
-fn parent_state(game: &crate::game::ServerGame<'_>, id: u32) -> Option<ParentState> {
+fn parent_state(
+    game: &crate::game::ServerGame<'_>,
+    id: u32,
+) -> Option<ParentState> {
     if game.resident_target_dimension(super::commands::Target::Mob(id)) != Some(game.dim) {
         return None;
     }
@@ -98,17 +101,12 @@ impl ServerGame<'_> {
             .into_iter()
             .map(|mob| {
                 let id = mob.id;
-                let uuid = (id != 0)
-                    .then(|| self.common.persist.uuids.remove(&id))
-                    .flatten();
+                let uuid = (id != 0).then(|| self.common.persist.uuids.remove(&id)).flatten();
                 let attachments = match self.common.entity_attachments.get(&id) {
                     Some(held)
                         if id != 0 && !held.has_index_entries() && !held.has_index_binding() =>
                     {
-                        self.common
-                            .entity_attachments
-                            .remove(&id)
-                            .unwrap_or_default()
+                        self.common.entity_attachments.remove(&id).unwrap_or_default()
                     }
                     _ => Attachments::default(),
                 };
@@ -218,8 +216,7 @@ impl ServerGame<'_> {
             self.common.persist.uuids.insert(mob.id, uuid);
         }
         if !attachments.to_nbt().is_empty() {
-            self.common
-                .entity_attachments
+            self.common.entity_attachments
                 .entry(mob.id)
                 .or_default()
                 .replace_contents(attachments);
@@ -269,7 +266,7 @@ impl ServerGame<'_> {
         let dimension = self.common.dim.id();
         let (parent, kind, size) = (
             dying.id,
-            sunrise_gameplay_common::game::native_hooks::mob_kind(dying),
+            super::native_hooks::mob_kind(dying),
             dying.extra.size,
         );
         let _ = self.dispatch_pending_children(

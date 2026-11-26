@@ -86,8 +86,7 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn accepts_success(&self) -> bool {
         self.server.console_broadcast.is_some()
             || self
-                .common
-                .ui
+                .common.ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::SEND_COMMAND_FEEDBACK)
     }
@@ -171,8 +170,7 @@ impl crate::game::ServerGame<'_> {
         }
         let area = (0..3).map(|i| i64::from(size[i] + 1)).product::<i64>();
         let limit = self
-            .common
-            .ui
+            .common.ui
             .rules
             .int_at(sunrise_game_data::gamerules::vanilla::MAX_BLOCK_MODIFICATIONS);
         if area > i64::from(limit) {
@@ -225,12 +223,7 @@ impl crate::game::ServerGame<'_> {
         let strict = ctx.has("strict");
         // CloneCommands.clone sets every destination to a barrier first, so
         // each copied state but a barrier counts as placed.
-        let barrier = self
-            .common
-            .pack
-            .assets
-            .registry
-            .default_state("minecraft:barrier");
+        let barrier = self.common.pack.assets.registry.default_state("minecraft:barrier");
         let mut count = 0;
         for (_, to, s, payload) in copies {
             self.discard_clone_loot(to);
@@ -261,10 +254,7 @@ impl crate::game::ServerGame<'_> {
     }
     pub(in crate::game) fn clone_levels(&mut self, ctx: &Context) -> R<i32> {
         let here = self.common.dim;
-        let source_level = self
-            .server
-            .command_source
-            .map_or(self.common.dim, |s| s.dimension);
+        let source_level = self.server.command_source.map_or(self.common.dim, |s| s.dimension);
         // The coordinates, from the command's own source, before any level moves.
         let position = |name: &str| -> R<[i32; 3]> {
             let c = self
@@ -307,8 +297,7 @@ impl crate::game::ServerGame<'_> {
             .map(|i| i64::from(max[i] - min[i] + 1))
             .product::<i64>();
         let limit = self
-            .common
-            .ui
+            .common.ui
             .rules
             .int_at(sunrise_game_data::gamerules::vanilla::MAX_BLOCK_MODIFICATIONS);
         if area > i64::from(limit) {
@@ -328,8 +317,7 @@ impl crate::game::ServerGame<'_> {
         );
         let normalize_note = !strict
             && self
-                .common
-                .res
+                .common.res
                 .behaviours()
                 .data(state)
                 .is(sunrise_world::level::classes::Class::Note);
@@ -590,11 +578,7 @@ impl crate::game::ServerGame<'_> {
         match id {
             "say" => {
                 // A visible copy for the acting player goes with their captured output, in order.
-                let captured_for = self
-                    .server
-                    .chat_capture
-                    .as_ref()
-                    .and(self.server.lan_acting);
+                let captured_for = self.server.chat_capture.as_ref().and(self.server.lan_acting);
                 let capture_say = self
                     .lan_broadcast_source_say(&name, &message, captured_for)
                     .ok_or_else(|| err("command.failed", &[]))?;
@@ -616,11 +600,7 @@ impl crate::game::ServerGame<'_> {
             }
             "me" => {
                 if self.server.lan.is_some() {
-                    let captured_for = self
-                        .server
-                        .chat_capture
-                        .as_ref()
-                        .and(self.server.lan_acting);
+                    let captured_for = self.server.chat_capture.as_ref().and(self.server.lan_acting);
                     let capture_me = self
                         .lan_broadcast_source_emote(&name, &message, captured_for)
                         .ok_or_else(|| err("command.failed", &[]))?;
@@ -757,10 +737,7 @@ impl crate::game::ServerGame<'_> {
             Some(Arg::Coords(c)) => c.rotation(self.source_rotation()),
             _ => [0.0, 0.0],
         };
-        let dimension = self
-            .server
-            .command_source
-            .map_or(self.common.dim, |s| s.dimension);
+        let dimension = self.server.command_source.map_or(self.common.dim, |s| s.dimension);
         let [yaw, pitch] = self.set_world_spawn(dimension, pos, rot);
         let args = [
             Text::literal(pos[0].to_string()),
@@ -814,7 +791,7 @@ impl crate::game::ServerGame<'_> {
                 .spawn_mob_spawned(
                     &short,
                     pos,
-                    sunrise_gameplay_common::game::creatures::SpawnSite::Finalizing(
+                    super::creatures::SpawnSite::Finalizing(
                         sunrise_sim::mobs::spawn_rules::Reason::Command,
                     ),
                 )
@@ -852,17 +829,14 @@ impl crate::game::ServerGame<'_> {
                     self.server.next_entity += 1;
                     let id = self.server.next_entity;
                     let at = Vec3::new(pos[0], pos[1], pos[2]);
-                    let (drawn, uuid) =
-                        sunrise_gameplay_common::game::dragon_common::Crystal::own_draws();
+                    let (drawn, uuid) = sunrise_gameplay_common::game::dragon_common::Crystal::own_draws();
                     self.common.persist.uuids.insert(id, uuid);
                     let time = sunrise_gameplay_common::game::dragon_common::Crystal::start_time(
                         at,
                         drawn,
                         self.common.clock.still(),
                     );
-                    let crystal = sunrise_gameplay_common::game::dragon_common::Crystal::new(
-                        id, at, true, time,
-                    );
+                    let crystal = sunrise_gameplay_common::game::dragon_common::Crystal::new(id, at, true, time);
                     self.common.crystals.push(crystal);
                     // tryAddFreshEntityWithPassengers refused: ERROR_DUPLICATE_UUID.
                     if !self.native_joins_flush(false, id) {
@@ -1288,17 +1262,11 @@ impl crate::game::ServerGame<'_> {
             .unwrap_or_default();
         context.living = matches!(t, Target::Stand(_));
         if let Target::Item(id) = t {
-            context.dampens = self
-                .common
-                .dropped
-                .iter()
-                .find(|i| i.id == id)
-                .is_some_and(|i| {
-                    self.common
-                        .res
-                        .items()
-                        .item_in_tag("minecraft:dampens_vibrations", &i.stack.item)
-                });
+            context.dampens = self.common.dropped.iter().find(|i| i.id == id).is_some_and(|i| {
+                self.common.res
+                    .items()
+                    .item_in_tag("minecraft:dampens_vibrations", &i.stack.item)
+            });
         }
         // `Entity.kill` (and `EnderDragon.kill`, `ArmorStand.kill`,
         // `BlockAttachedEntity.kill`) removes the entity immediately with
@@ -1460,22 +1428,15 @@ impl crate::game::ServerGame<'_> {
         {
             candidates.push(Target::Dragon(d.id));
         }
+        candidates.extend(self.common.ominous_spawners.iter().map(|s| Target::Spawner(s.id)));
         candidates.extend(
-            self.common
-                .ominous_spawners
-                .iter()
-                .map(|s| Target::Spawner(s.id)),
-        );
-        candidates.extend(
-            self.common
-                .breath_clouds
+            self.common.breath_clouds
                 .iter()
                 .filter(|c| c.id != 0)
                 .map(|c| Target::Cloud(c.id)),
         );
         candidates.extend(
-            self.common
-                .bolts
+            self.common.bolts
                 .iter()
                 .filter(|b| b.id != 0)
                 .map(|b| Target::Bolt(b.id)),
@@ -1530,10 +1491,8 @@ impl crate::game::ServerGame<'_> {
         let to = self.common.experience.level;
         if from != to
             && mod_api::__private::listened(mod_api::HookId::PlayerLevelChange)
-            && let (Some(player), Some(name)) = (
-                self.server.lan_acting_uuid,
-                self.server.lan_acting_name.clone(),
-            )
+            && let (Some(player), Some(name)) =
+                (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
         {
             self.native_player_level_change(player, &name, from, to);
         }
@@ -1706,13 +1665,7 @@ impl crate::game::ServerGame<'_> {
         if let Some(uuid) = self.server.lan_acting_uuid {
             let name = self.acting_player_name().to_owned();
             let mut cancel = false;
-            self.native_player_game_mode_changed(
-                uuid,
-                &name,
-                self.common.mode,
-                &mut mode,
-                &mut cancel,
-            );
+            self.native_player_game_mode_changed(uuid, &name, self.common.mode, &mut mode, &mut cancel);
             if cancel || self.common.mode == mode {
                 return false;
             }
@@ -1743,8 +1696,7 @@ impl crate::game::ServerGame<'_> {
         });
         tracks
             && self
-                .common
-                .ui
+                .common.ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::COMMAND_BLOCK_OUTPUT)
     }
@@ -1786,8 +1738,7 @@ impl crate::game::ServerGame<'_> {
             }
             let (ns, path) = t.split_once(':').unwrap_or(("minecraft", &t));
             let file = self
-                .common
-                .options
+                .common.options
                 .resources
                 .join(format!("data/{ns}/tags/{registry}/{path}.json"));
             // The game's file and the world's packs' both count, entries
@@ -1943,10 +1894,9 @@ impl crate::game::ServerGame<'_> {
         if !mod_api::__private::listened(mod_api::HookId::PlayerXpChange) {
             return Some(amount);
         }
-        let (Some(player), Some(name)) = (
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_name.clone(),
-        ) else {
+        let (Some(player), Some(name)) =
+            (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
+        else {
             return Some(amount);
         };
         let (mut amount, mut cancel) = (amount, false);

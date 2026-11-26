@@ -66,10 +66,8 @@ impl ServerGame<'_> {
         fire: bool,
         interaction: super::explosion::BlockInteraction,
     ) -> u32 {
-        let damage_type = crate::game::creatures::damage_type(
-            DamageKind::Explosion,
-            self.blast_attacker().is_some(),
-        );
+        let damage_type =
+            super::creatures::damage_type(DamageKind::Explosion, self.blast_attacker().is_some());
         let start = self.explosion_start(center, radius, interaction, fire, damage_type);
         if self.explosion_start_cancelled(&start) {
             return 0;
@@ -85,12 +83,7 @@ impl ServerGame<'_> {
             // A listener only spares: what it takes out stays, what it adds is ignored.
             let mut told = targets.clone();
             // This block-only phase has no entity victims.
-            self.native_explosion_detonate(
-                self.common.dim.id(),
-                center,
-                &mut told,
-                &mut Vec::new(),
-            );
+            self.native_explosion_detonate(self.common.dim.id(), center, &mut told, &mut Vec::new());
             let kept: HashSet<[i32; 3]> = told.into_iter().collect();
             targets.retain(|p| kept.contains(p));
         }
@@ -98,11 +91,7 @@ impl ServerGame<'_> {
         let (min_y, max_y) = (self.common.world.bottom_y(), self.common.world.top_y());
         targets.retain(|p| {
             (min_y..max_y).contains(&p[1])
-                && self
-                    .common
-                    .world
-                    .chunks
-                    .contains_key(&(p[0] >> 4, p[2] >> 4))
+                && self.common.world.chunks.contains_key(&(p[0] >> 4, p[2] >> 4))
         });
         match self.explosion_block_step(&mut targets, radius, interaction, fire, &start) {
             Ok(hit) => hit as u32,

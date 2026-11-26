@@ -1,6 +1,4 @@
 use crate::game::ClientGame;
-use sunrise_core::geometry::{Aabb, Vec3};
-use sunrise_core::position::BlockPos;
 use sunrise_gameplay_common::game::{
     boats_common::Boat,
     collision_source::{Mover, boat, cart, cart_reach, player},
@@ -9,6 +7,8 @@ use sunrise_gameplay_common::game::{
     minecarts::Minecart,
     remote::passengers::passenger_root,
 };
+use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_core::position::BlockPos;
 use sunrise_sim::entities::{ArmorStand, Cushion, ItemEntity, ItemFrame, Painting};
 use sunrise_sim::join_seq::JoinSeq;
 use sunrise_sim::mobs::Mob;
@@ -221,15 +221,11 @@ impl ClientGame<'_> {
             .player_model_shown()
             .then(|| self.common.resident_entities.local_player.join());
         draw_runs(
-            sunrise_gameplay_common::game::entity::entity_lists_of!(self),
+            crate::game::entity::entity_lists_of!(self),
             DrawExtras {
                 local_player,
                 dragon: self.common.dragon.as_ref().map(|dragon| dragon.join),
-                crystals: if draw_crystals {
-                    &self.common.crystals
-                } else {
-                    &[]
-                },
+                crystals: if draw_crystals { &self.common.crystals } else { &[] },
                 general: self
                     .client
                     .remote
@@ -272,8 +268,7 @@ impl ClientGame<'_> {
         velocity: &mut Vec3,
     ) -> Vec<mod_api::EntityWrite> {
         let side = client_game_side!(self, self.game_side_client());
-        self.common
-            .body_motion(&side)
+        self.common.body_motion(&side)
             .step_on(entity, footprint, ground, velocity);
         Vec::new()
     }
@@ -316,8 +311,7 @@ impl ClientGame<'_> {
         match mover {
             Mover::Cart(c) => {
                 for o in self
-                    .common
-                    .carts
+                    .common.carts
                     .iter()
                     .filter(|o| o.id != c.id)
                     .map(|c| cart(|id, p, bounds| self.client_copy_box(id, p, bounds), c))
@@ -362,8 +356,7 @@ impl ClientGame<'_> {
                     }
                 }
                 for (c, target) in self
-                    .common
-                    .boats
+                    .common.boats
                     .iter()
                     .map(|b| {
                         (

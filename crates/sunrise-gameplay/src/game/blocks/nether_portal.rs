@@ -10,13 +10,13 @@
 //! cooldowns follow their level; shared `Arrival`s hold each traveller's
 //! saved compound until its destination chunks are loaded.
 use super::{Dim, Game, Result};
+use sunrise_gameplay_common::game::entity::{Entity as _, entity_lists_of, for_each_entity};
 use crate::game::entity_server::ServerEntity as _;
 use std::collections::HashMap;
 use sunrise_core::{
     geometry::{Aabb, Axis, Vec3},
     position::BlockPos,
 };
-use sunrise_gameplay_common::game::entity::{Entity as _, entity_lists_of, for_each_entity};
 use sunrise_level::fast_hash::FxHashMap;
 use sunrise_level::world::PendingEntity;
 use sunrise_sim::mobs::{Species, spawn_rules};
@@ -415,8 +415,7 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn may_enter(&self, target: Dim) -> bool {
         target != Dim::Nether
             || self
-                .common
-                .ui
+                .common.ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::ALLOW_ENTERING_NETHER_USING_PORTALS)
     }
@@ -622,12 +621,7 @@ impl crate::game::ServerGame<'_> {
             max_section,
         )?;
         let state = side.world.block(found.x, found.y, found.z);
-        let x_axis = self
-            .common
-            .res
-            .behaviours()
-            .portal_axis(state)
-            .unwrap_or(true);
+        let x_axis = self.common.res.behaviours().portal_axis(state).unwrap_or(true);
         let rectangle = largest_rectangle_around(
             found,
             if x_axis { Axis::X } else { Axis::Z },
@@ -840,8 +834,7 @@ impl crate::game::ServerGame<'_> {
         // SulfurCube.tickFuse runs before Entity.handlePortal. A cube removed
         // there must neither decrement its cooldown nor travel before its blast.
         let removed_before_portal: std::collections::HashSet<u32> = self
-            .common
-            .mobs
+            .common.mobs
             .iter()
             .filter(|_| !vehicles)
             .filter(|m| sunrise_sim::mobs::sulfur_cube::removes_before_portal_tick(m))
@@ -886,10 +879,7 @@ impl crate::game::ServerGame<'_> {
                 } else if let Some(m) = self.common.mobs.iter().find(|m| m.id == id) {
                     self.server.portals.carried_at.insert(id, m.position);
                 }
-                self.server
-                    .portals
-                    .carrying
-                    .push((self.common.dim, id, entry));
+                self.server.portals.carrying.push((self.common.dim, id, entry));
             } else {
                 self.send_through_portal(id, entry);
             }
@@ -1027,9 +1017,7 @@ impl crate::game::ServerGame<'_> {
         }
         let facts = self.common.res.facts();
         let mut y = pos[1];
-        while &*facts.get(self.common.world.block(pos[0], y, pos[2])).name
-            == "minecraft:nether_portal"
-        {
+        while &*facts.get(self.common.world.block(pos[0], y, pos[2])).name == "minecraft:nether_portal" {
             y -= 1;
         }
         // `BlockState.isValidSpawn(level, pos, ZOMBIFIED_PIGLIN)`: the same
@@ -1048,7 +1036,7 @@ impl crate::game::ServerGame<'_> {
             "minecraft:zombified_piglin",
             at,
             false,
-            sunrise_gameplay_common::game::creatures::SpawnSite::Finalizing(
+            super::creatures::SpawnSite::Finalizing(
                 sunrise_sim::mobs::spawn_rules::Reason::Structure,
             ),
         ) {
@@ -1382,8 +1370,7 @@ impl crate::game::ServerGame<'_> {
             return Some((Vec3::new(at[0], at[1], at[2]), width as f32, height as f32));
         }
         let p = self
-            .common
-            .creatures
+            .common.creatures
             .projectiles
             .iter()
             .find(|p| p.id == id && (is_arrow(p) || is_portal_projectile(p)))?;
@@ -1448,83 +1435,81 @@ impl crate::game::ServerGame<'_> {
             Orb,
             Projectile,
         }
-        let (mut tag, list, i) =
-            if let Some(i) = self.common.dropped.iter().position(|e| e.id == id) {
-                let uuid = self.uuid_for(id);
-                let tag = sunrise_sim::entity_nbt::item_entity_to_nbt(
-                    &self.common.dropped[i],
-                    uuid,
-                    self.common.persist_raw(id),
-                    self.items(),
-                );
-                (tag, List::Item, i)
-            } else if let Some(i) = self.common.tnts.iter().position(|t| t.id == id) {
-                (self.tnt_nbt(i), List::Tnt, i)
-            } else if let Some(i) = self.common.tridents.iter().position(|t| t.id == id) {
-                let uuid = self.uuid_for(id);
-                let tag = self.common.tridents[i].to_nbt(
-                    uuid,
-                    self.common.pack.assets.registry,
-                    self.common.persist_raw(id),
-                    self.common.res.items(),
-                );
-                (tag, List::Trident, i)
-            } else if let Some(i) = self.common.rockets.iter().position(|r| r.id == id) {
-                let uuid = self.uuid_for(id);
-                let tag = self.common.rockets[i].to_nbt(
-                    uuid,
-                    self.common.level.player_uuid,
-                    self.common.persist_raw(id),
-                    self.common.res.items(),
-                );
-                (tag, List::Rocket, i)
-            } else if let Some(i) = self.common.orbs.iter().position(|o| o.id == id) {
-                let uuid = self.uuid_for(id);
-                let tag = sunrise_sim::entity_nbt::orb_to_nbt(&self.common.orbs[i], uuid);
-                (tag, List::Orb, i)
-            } else {
-                let i = self
-                    .common
-                    .creatures
-                    .projectiles
-                    .iter()
-                    .position(|p| p.id == id && (is_arrow(p) || is_portal_projectile(p)))?;
-                let uuid = self.uuid_for(id);
-                let p = &self.common.creatures.projectiles[i];
-                let in_block = p
-                    .arrow
-                    .as_ref()
-                    .and_then(|a| a.last_state)
-                    .map(|s| self.common.state_to_nbt(s));
-                let raw = self.common.persist_raw(id);
-                let tag = sunrise_sim::entity_nbt::arrow_to_nbt(
+        let (mut tag, list, i) = if let Some(i) = self.common.dropped.iter().position(|e| e.id == id) {
+            let uuid = self.uuid_for(id);
+            let tag = sunrise_sim::entity_nbt::item_entity_to_nbt(
+                &self.common.dropped[i],
+                uuid,
+                self.common.persist_raw(id),
+                self.items(),
+            );
+            (tag, List::Item, i)
+        } else if let Some(i) = self.common.tnts.iter().position(|t| t.id == id) {
+            (self.tnt_nbt(i), List::Tnt, i)
+        } else if let Some(i) = self.common.tridents.iter().position(|t| t.id == id) {
+            let uuid = self.uuid_for(id);
+            let tag = self.common.tridents[i].to_nbt(
+                uuid,
+                self.common.pack.assets.registry,
+                self.common.persist_raw(id),
+                self.common.res.items(),
+            );
+            (tag, List::Trident, i)
+        } else if let Some(i) = self.common.rockets.iter().position(|r| r.id == id) {
+            let uuid = self.uuid_for(id);
+            let tag = self.common.rockets[i].to_nbt(
+                uuid,
+                self.common.level.player_uuid,
+                self.common.persist_raw(id),
+                self.common.res.items(),
+            );
+            (tag, List::Rocket, i)
+        } else if let Some(i) = self.common.orbs.iter().position(|o| o.id == id) {
+            let uuid = self.uuid_for(id);
+            let tag = sunrise_sim::entity_nbt::orb_to_nbt(&self.common.orbs[i], uuid);
+            (tag, List::Orb, i)
+        } else {
+            let i = self
+                .common.creatures
+                .projectiles
+                .iter()
+                .position(|p| p.id == id && (is_arrow(p) || is_portal_projectile(p)))?;
+            let uuid = self.uuid_for(id);
+            let p = &self.common.creatures.projectiles[i];
+            let in_block = p
+                .arrow
+                .as_ref()
+                .and_then(|a| a.last_state)
+                .map(|s| self.common.state_to_nbt(s));
+            let raw = self.common.persist_raw(id);
+            let tag = sunrise_sim::entity_nbt::arrow_to_nbt(
+                p,
+                uuid,
+                p.owner_uuid,
+                in_block,
+                raw,
+                self.common.res.items(),
+            )
+            .or_else(|| {
+                sunrise_sim::entity_nbt::fireball_to_nbt(
                     p,
                     uuid,
                     p.owner_uuid,
-                    in_block,
                     raw,
                     self.common.res.items(),
                 )
-                .or_else(|| {
-                    sunrise_sim::entity_nbt::fireball_to_nbt(
-                        p,
-                        uuid,
-                        p.owner_uuid,
-                        raw,
-                        self.common.res.items(),
-                    )
-                })
-                .or_else(|| {
-                    sunrise_sim::entity_nbt::throwable_to_nbt(
-                        p,
-                        uuid,
-                        p.owner_uuid,
-                        raw,
-                        self.common.res.items(),
-                    )
-                })?;
-                (tag, List::Projectile, i)
-            };
+            })
+            .or_else(|| {
+                sunrise_sim::entity_nbt::throwable_to_nbt(
+                    p,
+                    uuid,
+                    p.owner_uuid,
+                    raw,
+                    self.common.res.items(),
+                )
+            })?;
+            (tag, List::Projectile, i)
+        };
         super::persist::write_attachments(&mut tag, id, &self.common.entity_attachments);
         let state = self.take_transferred_entity_state(id);
         match list {
@@ -1731,11 +1716,8 @@ impl crate::game::ServerGame<'_> {
                 let at = self.end_portal_exit(&plan);
                 // EndPortalBlock.getPortalDestination: PLACE_PORTAL_TICKET.
                 self.place_portal_ticket(Self::chunk_of(at));
-                let turn = end_portal_rotation(
-                    !plan.from_end,
-                    [yaw, pitch],
-                    self.common.level.world_spawn_angle,
-                );
+                let turn =
+                    end_portal_rotation(!plan.from_end, [yaw, pitch], self.common.level.world_spawn_angle);
                 (at, motion, turn)
             } else {
                 let exit =
@@ -1779,8 +1761,7 @@ impl crate::game::ServerGame<'_> {
                 continue;
             }
             match self
-                .common
-                .world
+                .common.world
                 .loaded_entities
                 .iter_mut()
                 .find(|(k, _)| *k == key)
@@ -1824,8 +1805,7 @@ impl crate::game::ServerGame<'_> {
         let id = entity.id();
         if is_tnt {
             let location = self
-                .common
-                .resident_entities
+                .common.resident_entities
                 .table
                 .borrow_mut()
                 .server_admitted_identity(id, |at| self.locate_resident_owner(at))
@@ -1843,8 +1823,7 @@ impl crate::game::ServerGame<'_> {
                     if item.id == id {
                         arrival = Some(i);
                     }
-                    self.common
-                        .persist
+                    self.common.persist
                         .removals
                         .contains(&super::commands::Target::Item(item.id))
                 })
@@ -1866,8 +1845,7 @@ impl crate::game::ServerGame<'_> {
             items.retain(|item| {
                 !removed.next().unwrap()
                     || self
-                        .common
-                        .persist
+                        .common.persist
                         .removals
                         .contains(&super::commands::Target::Item(item.id))
             });
@@ -2013,14 +1991,23 @@ pub mod tests {
         atomic::{AtomicU32, Ordering},
     };
 
+    
+
     #[cfg(test)]
-    /// Cancels the travel of the entity whose id `spare` holds, and logs each
+/// Cancels the travel of the entity whose id `spare` holds, and logs each
     /// (entity, dimension, cause) it is asked.
     struct Gate {
         spare: Arc<AtomicU32>,
         heard: Arc<Mutex<Vec<(u32, String, String)>>>,
         discard: bool,
     }
+    
+
+    
+
+    
+
+    
 
     /// `Entity.setPortalCooldown` sets only the cooldown; the restart and
     /// the portal process use the same delay.
@@ -2060,7 +2047,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-    #[test]
+#[test]
     fn resolved_arrival_keeps_source_cooldown() {
         for cooldown in [2, 10, 300] {
             let mut tag = Tag::compound([("PortalCooldown", Tag::Int(cooldown))]);
@@ -2070,14 +2057,30 @@ pub mod tests {
         }
     }
 
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
     #[cfg(test)]
-    #[test]
+#[test]
     fn portal_transfer_pending_arrival_does_not_save_transient_tnt_immunity() {
         run_portal_transfer_pending_arrival_does_not_save_transient_tnt_immunity();
     }
 
     #[cfg(test)]
-    pub(in crate::game::server_side) fn run_portal_transfer_pending_arrival_does_not_save_transient_tnt_immunity()
+pub(in crate::game::server_side) fn run_portal_transfer_pending_arrival_does_not_save_transient_tnt_immunity()
      {
         let arrival = Arrival {
             plan: Plan::end_portal(
@@ -2099,7 +2102,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-    #[test]
+#[test]
     fn end_portals_lead_to_the_end_spawn_and_back_to_the_world_spawn() {
         let spawn = BlockPos::new(-7, 70, 12);
         for from in [Dim::Overworld, Dim::Nether] {
@@ -2118,7 +2121,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-    #[test]
+#[test]
     fn the_end_portal_shape_takes_falling_items_and_standing_mobs() {
         let portal = BlockPos::new(0, 100, 3);
         let at = |y| Vec3::new(0.5, y, 3.5);
@@ -2155,7 +2158,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-    #[test]
+#[test]
     fn end_portals_turn_entities_like_their_teleport_transition() {
         // Into the End: facing west, pitch kept.
         assert_eq!(
@@ -2174,7 +2177,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-    #[test]
+#[test]
     fn legacy_arrivals_keep_explicit_positive_counters_without_type_migration() {
         for old in [None, Some(0), Some(-1), Some(5)] {
             let mut tag = Tag::compound([("id", Tag::String("minecraft:oak_boat".into()))]);
@@ -2204,7 +2207,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-    #[test]
+#[test]
     fn waiting_arrivals_keep_their_end_destination_when_saved() {
         let tag = Tag::compound([("id", Tag::String("minecraft:cow".into()))]);
         // An exit to a world spawn set in the End stays an exit: no platform there.
@@ -2254,8 +2257,7 @@ impl crate::game::ServerGame<'_> {
         x_axis: bool,
     ) -> Option<([i32; 3], i32, i32)> {
         let name = |p: [i32; 3]| {
-            self.common
-                .res
+            self.common.res
                 .facts()
                 .get(self.common.world.block(p[0], p[1], p[2]))
                 .name

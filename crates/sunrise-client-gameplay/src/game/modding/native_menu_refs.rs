@@ -88,9 +88,7 @@ impl ClientGame<'_> {
             return None;
         }
         let kind = self.native_screen_menu_type(window, name);
-        let slot_id = |slot| {
-            sunrise_gameplay_common::game::inventory_screen_slot_with_type(name, slot, || kind)
-        };
+        let slot_id = |slot| sunrise_gameplay_common::game::inventory_screen_slot_with_type(name, slot, || kind);
         match kind {
             None => {
                 slot_id(0)?;
@@ -121,8 +119,7 @@ impl ClientGame<'_> {
             return Ok(None);
         }
         let merchant = self
-            .common
-            .station
+            .common.station
             .as_ref()
             .and_then(|station| station.merchant.as_ref())
             .ok_or(LevelReadError::Unavailable)?;
@@ -174,9 +171,8 @@ impl ClientGame<'_> {
     pub(in crate::game) fn client_menu_kind(&self, menu: MenuRef) -> Option<Option<String>> {
         let name = self.native_client_menu_name(menu)?;
         Some(
-            (name != "inventory"
-                && !name.starts_with(sunrise_gameplay_common::game::remote::MOUNT_MENU))
-            .then(|| name.to_owned()),
+            (name != "inventory" && !name.starts_with(super::remote::MOUNT_MENU))
+                .then(|| name.to_owned()),
         )
     }
 
@@ -186,9 +182,7 @@ impl ClientGame<'_> {
             return Some(kind.slot_count());
         }
         let count = (0..)
-            .map_while(|slot| {
-                sunrise_gameplay_common::game::inventory_screen_slot_with_type(name, slot, || None)
-            })
+            .map_while(|slot| sunrise_gameplay_common::game::inventory_screen_slot_with_type(name, slot, || None))
             .count();
         (count != 0).then_some(count)
     }
@@ -204,8 +198,7 @@ impl ClientGame<'_> {
         slot: usize,
     ) -> Option<Option<ItemStack>> {
         let name = self.native_client_menu_name(menu)?;
-        let index =
-            sunrise_gameplay_common::game::inventory_screen_slot(name, i32::try_from(slot).ok()?)?;
+        let index = sunrise_gameplay_common::game::inventory_screen_slot(name, i32::try_from(slot).ok()?)?;
         Some(self.slot_view(index))
     }
 }
@@ -217,12 +210,8 @@ pub(in crate::game) fn client_click_ops(
     if clicks.is_empty() {
         return None;
     }
-    let mapped_slot = |slot| {
-        sunrise_gameplay_common::game::inventory_screen_slot(
-            menu,
-            i32::from(i16::try_from(slot).ok()?),
-        )
-    };
+    let mapped_slot =
+        |slot| sunrise_gameplay_common::game::inventory_screen_slot(menu, i32::from(i16::try_from(slot).ok()?));
     let mut ops = Vec::new();
     for click in clicks {
         let op = match click {
@@ -277,7 +266,7 @@ pub(in crate::game) fn client_click_ops(
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-    use sunrise_gameplay_common::game::in_own_process;
+use sunrise_gameplay_common::game::in_own_process;
 
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
@@ -289,14 +278,14 @@ pub mod tests {
     use sunrise_sim::lan::{Joined, PlayerSender, guest::Guest};
 
     #[cfg(test)]
-    pub(in crate::game) const PANEL: &str = "test:panel";
+pub(in crate::game) const PANEL: &str = "test:panel";
 
     #[cfg(test)]
-    pub(in crate::game) struct Panel {
+pub(in crate::game) struct Panel {
         pub(in crate::game) opening: Arc<Mutex<Option<(MenuRef, usize)>>>,
     }
     #[cfg(test)]
-    #[mod_api::__subscriptions]
+#[mod_api::__subscriptions]
     impl mod_api::Hooks for Panel {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
             r.register_menu_screen(
@@ -340,7 +329,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-    pub(in crate::game::client_side) fn with_panel(
+pub(in crate::game::client_side) fn with_panel(
         slots: usize,
         test: impl FnOnce(&mut crate::game::ClientGame<'_>, &Mutex<Option<(MenuRef, usize)>>),
     ) {
@@ -367,9 +356,7 @@ pub mod tests {
                 || {
                     super::super::native_entity_refs::tests::with_client_game(|game| {
                         let _server =
-                            crate::game::client_side::native_client_session::tests::logged_client(
-                                game,
-                            );
+                            crate::game::client_side::native_client_session::tests::logged_client(game);
                         Arc::make_mut(&mut game.side.remote.as_mut().unwrap().builtin)
                             .registries
                             .insert(
@@ -384,7 +371,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-    pub(in crate::game::client_side) fn open_panel(game: &mut crate::game::ClientGame<'_>) {
+pub(in crate::game::client_side) fn open_panel(game: &mut crate::game::ClientGame<'_>) {
         use sunrise_protocol::packets::play::{Clientbound, OpenScreen};
         game.handle_packet(Clientbound::OpenScreen(OpenScreen {
             container: 1,
@@ -396,7 +383,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-    #[test]
+#[test]
     #[ignore = "daily"]
     fn inventory_boxes_follow_menu_indices_and_the_input_layout() {
         with_panel(0, |game, opening| {
@@ -437,7 +424,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-    pub(in crate::game::client_side) fn creative_tab(
+pub(in crate::game::client_side) fn creative_tab(
         game: &mut crate::game::ClientGame<'_>,
         pick: impl Fn(&sunrise_client::creative::Tab) -> bool,
     ) {
@@ -453,7 +440,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-    /// A hidden window's offscreen renderer over a joined level with the player's body in it,
+/// A hidden window's offscreen renderer over a joined level with the player's body in it,
     /// so the public screen reads have a window to lay the screen out in. The event loop
     /// returned holds the window.
     pub(in crate::game::client_side) fn offscreen_window(
@@ -473,7 +460,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-    pub(in crate::game::client_side) fn window_batch(
+pub(in crate::game::client_side) fn window_batch(
         game: &crate::game::ClientGame<'_>,
     ) -> super::super::HudBatch {
         let config = &game.client.renderer.0.as_ref().unwrap().config;
@@ -484,7 +471,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-    /// The creative screen's boxes, read through `MenuRef::slot_boxes`, are `InventoryMenu`'s
+/// The creative screen's boxes, read through `MenuRef::slot_boxes`, are `InventoryMenu`'s
     /// 46 slots where `CreativeModeInventoryScreen.selectTab` puts them, and each box's centre
     /// hovers its slot.
     #[test]
@@ -552,7 +539,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-    /// `screen_hovered_stack` gives a mod the hovered slot's whole stack, components included,
+/// `screen_hovered_stack` gives a mod the hovered slot's whole stack, components included,
     /// on the inventory screen and on both kinds of creative tab, where a catalog slot shows
     /// the scrolled list; nothing over an empty slot, the trash slot or the world.
     #[test]
@@ -675,7 +662,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-    #[test]
+#[test]
     #[ignore = "daily"]
     fn number_key_swaps_predict_with_the_undisplayed_hotbar() {
         use sunrise_gameplay_common::game::inventory_slots::MOD_MENU_SLOT_BASE;
@@ -696,7 +683,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-    #[test]
+#[test]
     fn client_click_actions_encode_vanilla_ops() {
         let actions = [
             MenuClick::Pickup {
@@ -770,7 +757,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-    #[test]
+#[test]
     fn client_click_actions_refuse_invalid_batches_before_prediction() {
         assert!(client_click_ops("inventory", &[], false).is_none());
         for invalid in [
@@ -832,7 +819,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-    #[test]
+#[test]
     #[ignore = "daily"]
     fn a_stack_is_thrown_from_the_eyes_as_player_drop_does() {
         use sunrise_core::geometry::Vec3;

@@ -28,6 +28,7 @@ use super::{
     sculk_server::SculkState,
     tnt_common::PrimedTnt,
 };
+use sunrise_gameplay_common::game::commands_common::{OtherEntity, Target};
 use mod_api::DimensionKey;
 use std::{
     collections::HashMap,
@@ -35,7 +36,6 @@ use std::{
     time::{Duration, Instant},
 };
 use sunrise_game_data::Result;
-use sunrise_gameplay_common::game::commands_common::{OtherEntity, Target};
 use sunrise_gameplay_common::{hoppers::HopperState, leash_knot::Knot};
 use sunrise_level::spans::time as span;
 use sunrise_level::world::World;
@@ -305,8 +305,7 @@ impl crate::game::ServerGame<'_> {
     ) -> super::entity_residency::SlotAccess<R> {
         use super::entity_residency::SlotAccess;
         let resolved = {
-            self.common
-                .resident_entities
+            self.common.resident_entities
                 .table
                 .borrow_mut()
                 .entity_lookup(dimension, id.get(), |at| {
@@ -413,12 +412,7 @@ impl crate::game::ServerGame<'_> {
         if self.level_target_by_uuid(self.common.dim, uuid).is_some() {
             return true;
         }
-        if self
-            .common
-            .resident_entities
-            .local_player
-            .location()
-            .is_none()
+        if self.common.resident_entities.local_player.location().is_none()
             && self.server.lan_acting.is_none()
             && self.common.player.is_some()
             && self.common.level.player_uuid == Some(uuid)
@@ -465,11 +459,7 @@ impl crate::game::ServerGame<'_> {
         let table = self.common.resident_entities.table.get_mut();
         table.reset();
         let journal = table.producer();
-        self.bind_resident_owners(
-            &journal,
-            self.common.dim.key(),
-            self.common.is_logical_server(),
-        );
+        self.bind_resident_owners(&journal, self.common.dim.key(), self.common.is_logical_server());
         self.bind_specialized_resident_owners(&journal);
         for (dim, parked) in &mut self.server.levels.0.parked {
             parked.bind_resident_owners(&journal, dim.key(), true);
@@ -518,8 +508,7 @@ impl crate::game::ServerGame<'_> {
 
     pub(in crate::game) fn server_resident_entity(&self, id: u32) -> EntityLookup<Target> {
         let found = self
-            .common
-            .resident_entities
+            .common.resident_entities
             .table
             .borrow_mut()
             .server_entity_lookup(id, |at| self.locate_server_resident_owner(at));
@@ -751,7 +740,10 @@ impl Levels {
 
     /// The world of the level not in place whose dimension is `dimension`, to
     /// change.
-    pub fn parked_world_mut_of(&mut self, dimension: &str) -> Option<&mut World> {
+    pub(in crate::game::server_side) fn parked_world_mut_of(
+        &mut self,
+        dimension: &str,
+    ) -> Option<&mut World> {
         self.parked
             .iter_mut()
             .find(|(dim, _)| dim.id() == dimension)
@@ -1053,8 +1045,7 @@ impl crate::game::ServerGame<'_> {
             self.server.level_shapes.get(dim.id()),
             seed,
             &self.common.level,
-            self.common
-                .world_biomes
+            self.common.world_biomes
                 .as_ref()
                 .unwrap_or_else(|| self.common.res.biomes())
                 .clone(),
@@ -1068,8 +1059,7 @@ impl crate::game::ServerGame<'_> {
             terrain.set_mob_maps(self.mob_map_snapshot());
             terrain.set_biome_keys(&self.biome_key_snapshot());
         }
-        let mut world =
-            sunrise_gameplay_common::game::authoritative_world_for_mods(&self.common.res, seed);
+        let mut world = sunrise_gameplay_common::game::authoritative_world_for_mods(&self.common.res, seed);
         world.attachments = save.load_attachments();
         world.shape = self.server.level_shapes.get(dim.id());
         world.fast_lava = self.common.dimension_type_of(dim).fast_lava;
@@ -1091,11 +1081,10 @@ impl crate::game::ServerGame<'_> {
         let mut starting_level = if starting_dim != Dim::Overworld {
             let mut overworld = self.open_level(Dim::Overworld)?;
             self.replace_level(Dim::Overworld, &mut overworld);
-            self.server.streaming.radius =
-                sunrise_gameplay_common::game::streaming_radius::streaming_radius_for(
-                    self.server.settings.render_distance,
-                    None,
-                );
+            self.server.streaming.radius = sunrise_gameplay_common::game::streaming_radius::streaming_radius_for(
+                self.server.settings.render_distance,
+                None,
+            );
             self.read_raids();
             Some(overworld)
         } else {
@@ -1112,11 +1101,10 @@ impl crate::game::ServerGame<'_> {
                 let mut level = self.open_level(dim)?;
                 let left = self.replace_level(dim, &mut level);
                 self.server.levels.0.parked.insert(left, level);
-                self.server.streaming.radius =
-                    sunrise_gameplay_common::game::streaming_radius::streaming_radius_for(
-                        self.server.settings.render_distance,
-                        None,
-                    );
+                self.server.streaming.radius = sunrise_gameplay_common::game::streaming_radius::streaming_radius_for(
+                    self.server.settings.render_distance,
+                    None,
+                );
                 self.read_raids();
             }
             self.native_level_opened(dim);
@@ -1212,8 +1200,7 @@ impl crate::game::ServerGame<'_> {
                 .all(|((cx, cz), reach)| {
                     (cz - reach..=cz + reach).all(|z| {
                         (cx - reach..=cx + reach).all(|x| {
-                            !levels.loaded_ticking(x, z)
-                                || super::ticking_chunk(&self.common.world, x, z)
+                            !levels.loaded_ticking(x, z) || super::ticking_chunk(&self.common.world, x, z)
                         })
                     })
                 });
@@ -1334,11 +1321,10 @@ impl crate::game::ServerGame<'_> {
             let left = self.replace_level(target, &mut p);
             self.server.levels.0.parked.insert(left, p);
             if opened {
-                self.server.streaming.radius =
-                    sunrise_gameplay_common::game::streaming_radius::streaming_radius_for(
-                        self.server.settings.render_distance,
-                        None,
-                    );
+                self.server.streaming.radius = sunrise_gameplay_common::game::streaming_radius::streaming_radius_for(
+                    self.server.settings.render_distance,
+                    None,
+                );
                 // ServerLevel's constructor reads the level's raids.
                 self.read_raids();
                 self.native_level_opened(target);
@@ -1525,8 +1511,7 @@ impl crate::game::ServerGame<'_> {
     /// levels. While `paused`, the network runs but player bodies do not.
     /// `ServerTickStart` and `ServerTickEnd` bracket the whole tick.
     pub(in crate::game) fn tick_server(&mut self, paused: bool) -> Result<()> {
-        self.common
-            .with_residency_tick(|game| game.tick_server_body(paused))
+        self.common.with_residency_tick(|game| game.tick_server_body(paused))
     }
 
     fn tick_server_body(&mut self, paused: bool) -> Result<()> {
@@ -1569,8 +1554,8 @@ impl crate::game::ServerGame<'_> {
             let _span = sunrise_level::spans::guard("mods_server_tick_start");
             self.native_lifecycle_server_tick_start(running);
         }
-        let observe_level = running.is_some()
-            && (self.server.serving.is_some() || self.common.options.dedicated.is_some());
+        let observe_level =
+            running.is_some() && (self.server.serving.is_some() || self.common.options.dedicated.is_some());
         let order = self.levels_to_tick();
         let n = order.len();
         let mut result = Ok(());
@@ -2035,8 +2020,7 @@ impl crate::game::ServerGame<'_> {
             }
             // A chunk-unload listener in an earlier built-in level can force a
             // chunk or otherwise activate this level before its turn.
-            if !self.server.levels.0.parked.contains_key(&dim)
-                || self.active_levels().contains(&dim)
+            if !self.server.levels.0.parked.contains_key(&dim) || self.active_levels().contains(&dim)
             {
                 if let Some(p) = self.server.levels.0.parked.get_mut(&dim) {
                     p.idle = 0;
@@ -2300,8 +2284,7 @@ impl crate::game::ServerGame<'_> {
         };
         let loaded = std::mem::take(&mut world.loaded_chunks);
         if self.common.pack.chunk_context.light.any_dynamic() {
-            let dimension =
-                sunrise_gameplay_common::game::light_emission::light_emission_dimension(level);
+            let dimension = sunrise_gameplay_common::game::light_emission::light_emission_dimension(level);
             for &(x, z, _) in &loaded {
                 self.ask_level_chunk_light_emission(Some(id), dimension, (x, z));
             }
@@ -2332,10 +2315,7 @@ impl crate::game::ServerGame<'_> {
         };
         slot.bind(
             map,
-            self.common
-                .attachment_indexes
-                .entry(self.common.dim)
-                .or_default(),
+            self.common.attachment_indexes.entry(self.common.dim).or_default(),
             mod_api::AttachmentHolder::Entity(mod_api::EntityRef::new(level.epoch(), id)),
         );
     }
@@ -2343,9 +2323,9 @@ impl crate::game::ServerGame<'_> {
 
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::in_own_process;
+use sunrise_gameplay_common::game::in_own_process;
 
-    use sunrise_gameplay_common::game::server_side::levels::tests::queue_unencodable_entity_record;
+use sunrise_gameplay_common::game::server_side::levels::tests::queue_unencodable_entity_record;
 
     use super::*;
 
@@ -2354,6 +2334,8 @@ mod tests {
         game.world.chunks.insert((0, 0), Arc::new(chunk));
         game.world.modified.insert((0, 0));
     }
+
+    
 
     #[test]
     #[ignore = "daily"]
@@ -2634,6 +2616,37 @@ mod tests {
             IdleAction::Close
         );
     }
+
+    
+
+    
+
+    
+
+    
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
 }
 
 impl crate::game::ServerGame<'_> {
@@ -2674,15 +2687,11 @@ impl crate::game::ServerGame<'_> {
             span("tick_functions", || self.tick_functions());
             self.common.world.game_time += 1;
             if self
-                .common
-                .ui
+                .common.ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::ADVANCE_WEATHER)
             {
-                self.common
-                    .world
-                    .weather
-                    .tick_timers(&mut self.common.world.random);
+                self.common.world.weather.tick_timers(&mut self.common.world.random);
             }
             self.common.world.weather.tick_levels();
         } else if self.common.clock.still() {

@@ -964,7 +964,7 @@ impl NaturalLevel for GameLevel<'_, '_> {
             return true;
         };
         let obstructs = |bounds| spawn_selection::blocks_spawn_shape(&shape, query, bounds);
-        let entities = sunrise_gameplay_common::game::entity::entity_lists_of!(self.game);
+        let entities = crate::game::entity::entity_lists_of!(self.game);
         !self
             .players
             .iter()
@@ -1083,8 +1083,7 @@ impl<'a> crate::game::ServerGame<'a> {
             COLLISION_EPSILON,
         ));
         !self
-            .common
-            .boats
+            .common.boats
             .iter()
             .any(|boat| boat.bounds().intersects(query))
             && !mob_collision(query)
@@ -1312,9 +1311,7 @@ impl<'a> crate::game::ServerGame<'a> {
         scratch.collect(
             players,
             |chunk| tickets.forces_natural_spawning(chunk),
-            |(cx, cz)| {
-                levels.loaded_ticking(cx, cz) && super::ticking_chunk(&self.common.world, cx, cz)
-            },
+            |(cx, cz)| levels.loaded_ticking(cx, cz) && super::ticking_chunk(&self.common.world, cx, cz),
         )
     }
     /// `NaturalSpawner.createState` for a pass over the level in place, under
@@ -1365,8 +1362,7 @@ impl<'a> crate::game::ServerGame<'a> {
         sunrise_level::spans::time("spawn_natural", || self.spawn_natural());
         // ServerChunkCache.tickChunks: the custom spawners tick only with spawn_mobs.
         if self
-            .common
-            .ui
+            .common.ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MOBS)
         {
@@ -1431,8 +1427,7 @@ impl<'a> crate::game::ServerGame<'a> {
             };
             laps.lap("sn_level");
             let counted: Vec<Counted> = self
-                .common
-                .mobs
+                .common.mobs
                 .iter()
                 .map(|m| Counted {
                     entity: &m.kind.id,
@@ -1581,12 +1576,19 @@ impl<'a> crate::game::ServerGame<'a> {
 
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::server_side::natural_spawning::tests::SULFUR_CUBE;
+use sunrise_gameplay_common::game::server_side::natural_spawning::tests::SULFUR_CUBE;
 
-    use sunrise_gameplay_common::game::server_side::natural_spawning::tests::with_checks;
+use sunrise_gameplay_common::game::server_side::natural_spawning::tests::with_checks;
 
     use super::*;
 
+    
+
+    
+
+    
+
+    
     fn player(x: f64, y: f64, z: f64, spectator: bool) -> LevelPlayer {
         LevelPlayer {
             uuid: 0,
@@ -1796,6 +1798,9 @@ mod tests {
         );
     }
 
+    
+    
+
     /// The placement check runs after vanilla's predicate (`default_result` is its answer), so
     /// its draws are vanilla's whatever a mod answers. The position check replaces vanilla's two
     /// checks: no listener and `Default` draw exactly as vanilla, `Succeed` and `Fail` draw nothing.
@@ -1886,7 +1891,8 @@ mod tests {
         spawner: Option<mod_api::Spawner>,
         mob: Option<MobReads>,
     }
-
+    
+    
     /// Records both spawn checks and answers the position check with `answer`, reading the lent
     /// mob and changing nothing else.
     struct ContextMod {
@@ -1930,7 +1936,12 @@ mod tests {
             *event.result = self.answer;
         }
     }
-
+    
+    
+    
+    
+    
+    
     /// A survival player standing at `at`, and empty lit chunks around the origin.
     fn spawn_check_world(game: &mut crate::game::ServerGame<'_>, at: Vec3) {
         use std::sync::Arc;
@@ -2219,6 +2230,10 @@ mod tests {
         });
     }
 
+    
+    
+    
+
     /// No listener and a listener that changes nothing finalize and draw as vanilla; a cancel
     /// skips finalization and its draws, the mob still spawning; `spawn_cancelled` adds no mob.
     #[test]
@@ -2269,6 +2284,9 @@ mod tests {
         });
     }
 
+    
+    
+
     /// A site vanilla makes without `finalizeSpawn` (an infested block's silverfish) is not
     /// told; one it finalizes is.
     #[test]
@@ -2303,6 +2321,9 @@ mod tests {
             });
         });
     }
+
+    
+    
 
     /// `ZombieHorse.finalizeSpawn` finalizes its rider with the horse's own
     /// `spawnReason`, a baby zombie's chicken with `JOCKEY`.
@@ -2339,6 +2360,9 @@ mod tests {
             });
         });
     }
+
+    
+    
 
     /// `MobDespawnEvent` wraps the whole of `Mob.checkDespawn`: `Default` and no
     /// listener leave vanilla's checks and their `nextInt(800)` draw as they
@@ -2381,14 +2405,13 @@ mod tests {
                         id,
                     ));
                     let pos = [mob.position.x, mob.position.y, mob.position.z];
-                    sunrise_gameplay_common::game::native_hooks::NativeHookHost { host: game }
-                        .native_mob_despawn(
-                            "minecraft:overworld",
-                            handle,
-                            &mob.kind.id,
-                            pos,
-                            &mut mob.despawn,
-                        );
+                    sunrise_gameplay_common::game::native_hooks::NativeHookHost { host: game }.native_mob_despawn(
+                        "minecraft:overworld",
+                        handle,
+                        &mob.kind.id,
+                        pos,
+                        &mut mob.despawn,
+                    );
                     let mut world = game.mob_world_base(&[]);
                     world.difficulty.effective = if peaceful { 0.0 } else { 2.0 };
                     let mut player = mob.position;
@@ -2457,6 +2480,15 @@ mod tests {
         });
     }
 
+    
+    
+    
+    
+    
+    
+    
+    
+
     /// The parts of the new mob's type answer the group size limit: a part's answer replaces
     /// vanilla's for its type and reason (the first part to answer wins), a part that does not
     /// answer, and a type with no part, leave it to vanilla.
@@ -2500,6 +2532,8 @@ mod tests {
             assert_eq!(ask("minecraft:cow", mod_api::SpawnReason::Natural), None);
         });
     }
+
+    
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

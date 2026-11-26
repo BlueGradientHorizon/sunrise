@@ -52,11 +52,7 @@ impl crate::game::ClientGame<'_> {
                 )
             });
             let player_collision = self.common.player.as_ref().filter(|_| !spectator).map(|p| {
-                let main_hand = self
-                    .common
-                    .inventory
-                    .get(self.common.selected)
-                    .and_then(Option::as_ref);
+                let main_hand = self.common.inventory.get(self.common.selected).and_then(Option::as_ref);
                 PlayerCollision {
                     y: p.position.y,
                     descending: p.velocity.y < 0.0,
@@ -70,8 +66,7 @@ impl crate::game::ClientGame<'_> {
                 }
             });
             let cart_boxes = self
-                .common
-                .carts
+                .common.carts
                 .iter()
                 .map(|c| {
                     let p = c.position;
@@ -82,8 +77,7 @@ impl crate::game::ClientGame<'_> {
                 })
                 .collect();
             let arrow_boxes = self
-                .common
-                .creatures
+                .common.creatures
                 .projectiles
                 .iter()
                 .filter(|p| p.arrow.is_some())
@@ -95,21 +89,18 @@ impl crate::game::ClientGame<'_> {
                 })
                 .collect();
             let fire_players: Vec<[f64; 3]> = self
-                .common
-                .player
+                .common.player
                 .iter()
                 .filter(|_| !spectator)
                 .map(|p| [p.position.x, p.position.y, p.position.z])
                 .collect();
             let trigger_hooks: Vec<(Aabb, bool)> = self
-                .common
-                .hook
+                .common.hook
                 .iter()
                 .map(|h| (h.bounds(), h.applies_block_effects()))
                 .collect();
             let trigger_extras: Vec<Aabb> = self
-                .common
-                .bolts
+                .common.bolts
                 .iter()
                 .map(|b| {
                     let at = Vec3::new(b.at[0], b.at[1], b.at[2]);
@@ -144,10 +135,7 @@ impl crate::game::ClientGame<'_> {
         let rules = self.common.level_rules();
         let api_level = self.native_client_level();
         let liquid_transaction_open = self.has_level_transaction();
-        let environment = self
-            .common
-            .res
-            .environment_of(&self.common.dimension_type().id);
+        let environment = self.common.res.environment_of(&self.common.dimension_type().id);
         let loot_storage = self.common.score.storage.snapshot();
 
         let mut scratch_gateways = Default::default();
@@ -162,13 +150,11 @@ impl crate::game::ClientGame<'_> {
         let mut scratch_native_particles = Vec::new();
 
         let items = self
-            .common
-            .server_items
+            .common.server_items
             .as_deref()
             .unwrap_or_else(|| self.common.res.items());
         let recipes = self
-            .common
-            .recipe_tables
+            .common.recipe_tables
             .synced
             .as_ref()
             .unwrap_or_else(|| self.common.res.recipes());
@@ -266,11 +252,7 @@ impl crate::game::ClientGame<'_> {
             drop_breaker_at: None,
             drop_into: None,
         };
-        let result = f(
-            self.common.res.behaviours(),
-            &mut level,
-            &mut self.common.block_ticks,
-        );
+        let result = f(self.common.res.behaviours(), &mut level, &mut self.common.block_ticks);
         drop(level);
         if !placement_preview
             && (!client_spill.piston_positions.is_empty() || !client_spill.removed.is_empty())
@@ -293,8 +275,7 @@ impl crate::game::ClientGame<'_> {
                         self.common.world.chest_openers.remove(&at);
                     }
                     if self
-                        .common
-                        .container
+                        .common.container
                         .is_some_and(|at| at == from || Some(at) == partner)
                     {
                         self.side_close_container();
@@ -302,9 +283,7 @@ impl crate::game::ClientGame<'_> {
                 }
                 PositionChange::Land { at } => {
                     if self.common.world.block_entities.get(&at).is_none() {
-                        self.common
-                            .world
-                            .set_block_entity_extras(at, Default::default());
+                        self.common.world.set_block_entity_extras(at, Default::default());
                         self.common.world.block_names.remove(&at);
                     }
                 }
@@ -357,9 +336,7 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn client_tick(&mut self) -> Result<()> {
         let client_level = self.client.remote.is_some();
         // Held through the carry too: a carried body's move asks the parts as its own does.
-        let _parts = client_level
-            .then(|| self.common.collision_parts())
-            .flatten();
+        let _parts = client_level.then(|| self.common.collision_parts()).flatten();
         // A client's tick of the level it shows holds the colliders as it began, then carries
         // its own player with the one it stands on.
         let _scope = client_level.then(|| {
@@ -410,7 +387,7 @@ impl crate::game::ClientGame<'_> {
         let table = self.common.resident_entities.table.get_mut();
         table.reset();
         let journal = table.producer();
-        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Mob,
             self.mobs,
             &journal,
@@ -419,7 +396,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Mob
             }
         );
-        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Item,
             self.dropped,
             &journal,
@@ -428,7 +405,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Item
             }
         );
-        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Orb,
             self.orbs,
             &journal,
@@ -437,7 +414,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Orb
             }
         );
-        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Stand,
             self.armor_stands,
             &journal,
@@ -446,7 +423,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Stand
             }
         );
-        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Frame,
             self.item_frames,
             &journal,
@@ -455,7 +432,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Frame
             }
         );
-        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Painting,
             self.paintings,
             &journal,
@@ -464,7 +441,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Painting
             }
         );
-        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Boat,
             self.boats,
             &journal,
@@ -473,7 +450,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Boat
             }
         );
-        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Cart,
             self.carts,
             &journal,
@@ -482,7 +459,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Cart
             }
         );
-        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Fangs,
             self.fangs.list,
             &journal,
@@ -491,7 +468,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Fangs
             }
         );
-        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Crystal,
             self.crystals,
             &journal,
@@ -500,7 +477,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Crystal
             }
         );
-        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Tnt,
             self.tnts,
             &journal,
@@ -509,7 +486,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Tnt
             }
         );
-        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Cushion,
             self.cushions,
             &journal,
@@ -518,7 +495,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Cushion
             }
         );
-        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Knot,
             self.resident_entities.knots,
             &journal,
@@ -527,7 +504,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Knot
             }
         );
-        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Falling,
             self.falling,
             &journal,
@@ -536,7 +513,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Falling
             }
         );
-        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Rocket,
             self.rockets,
             &journal,
@@ -545,7 +522,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Rocket
             }
         );
-        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Trident,
             self.tridents,
             &journal,
@@ -554,7 +531,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Trident
             }
         );
-        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Spawner,
             self.ominous_spawners,
             &journal,
@@ -563,7 +540,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Spawner
             }
         );
-        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Cloud,
             self.breath_clouds,
             &journal,
@@ -572,7 +549,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Cloud
             }
         );
-        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             Bolt,
             self.bolts,
             &journal,
@@ -581,7 +558,7 @@ impl crate::game::ClientGame<'_> {
                 kind: Kind::Bolt
             }
         );
-        sunrise_gameplay_common::game::resident_state::bind_resident_list!(
+        crate::game::resident_state::bind_resident_list!(
             General,
             self.resident_entities.general.rows,
             &journal,
@@ -612,14 +589,9 @@ impl crate::game::ClientGame<'_> {
             None,
         );
         self.common.resident_entities.local_player.rebind(&journal);
-        let body_id = self
-            .common
-            .player
-            .as_ref()
-            .map(|player| player.entity_id as u32);
+        let body_id = self.common.player.as_ref().map(|player| player.entity_id as u32);
         if self
-            .common
-            .resident_entities
+            .common.resident_entities
             .local_player
             .identity()
             .is_some_and(|identity| Some(identity.id.get()) != body_id)
@@ -644,8 +616,7 @@ impl crate::game::ClientGame<'_> {
         self.common.persist.transient.remove(&id);
         self.common.persist.uuids.remove(&id);
         self.common.persist.score_destroyed.remove(&id);
-        self.common
-            .forget_entity_initialization(mod_api::Holder::Entity(id));
+        self.common.forget_entity_initialization(mod_api::Holder::Entity(id));
         self.common.entity_attachments.remove(&id);
         self.common.entity_attachments.remove_collider(id);
         self.common.persist.raw.remove(&id);

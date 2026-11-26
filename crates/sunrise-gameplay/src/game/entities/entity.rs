@@ -1,10 +1,5 @@
 use super::nether_portal;
 use super::persist::ChunkKey;
-use std::collections::{HashMap, HashSet};
-use sunrise_core::geometry::{Aabb, Vec3};
-use sunrise_core::nbt::Tag;
-use sunrise_core::position::BlockPos;
-use sunrise_core::random::RandomSource as _;
 use sunrise_gameplay_common::game::entity::{
     Entity, EntityHandle, apply_contact_writes, armor_stand_size, entity_lists, entity_lists_of,
     for_each_entity,
@@ -13,6 +8,11 @@ use sunrise_gameplay_common::game::{
     FallingBlock, Game, boats_common::Boat, fireworks::Rocket, minecarts::Minecart,
     tnt_common::PrimedTnt,
 };
+use std::collections::{HashMap, HashSet};
+use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_core::nbt::Tag;
+use sunrise_core::position::BlockPos;
+use sunrise_core::random::RandomSource as _;
 use sunrise_sim::entities::{ArmorStand, ExperienceOrb, ItemEntity};
 use sunrise_sim::join_seq::{JoinSeq, Joined as _};
 use sunrise_sim::mobs::Mob;
@@ -680,7 +680,7 @@ macro_rules! define_server_entity_handles {
         /// Every list moved out of `Game`, for [`for_each_entity_mut`]: the
         /// world stays readable while the entities change.
         pub(in crate::game) struct TakenEntities {
-            $(pub(in crate::game) $field: sunrise_sim::join_seq::JoinList<$ty, { sunrise_gameplay_common::game::entity::direct_entity_edit!($kind) }>,)*
+            $(pub(in crate::game) $field: sunrise_sim::join_seq::JoinList<$ty, { $crate::game::entity::direct_entity_edit!($kind) }>,)*
         }
 
 
@@ -982,7 +982,7 @@ pub(crate) use walk_lists_mut;
 /// [`for_each_entity`] over [`TakenEntities`], with the entity mutable.
 macro_rules! for_each_entity_mut {
     ($lists:expr, $entity:ident => $body:block) => {
-        sunrise_gameplay_common::game::entity::entity_lists!(
+        $crate::game::entity::entity_lists!(
             $crate::game::entity_server::walk_lists_mut,
             $lists,
             $entity,
@@ -1019,7 +1019,7 @@ pub(crate) use save_lists;
 /// out, since `save_nbt` has no default.
 macro_rules! save_entities_of_every_kind {
     ($game:expr, $keys:expr, $out:expr, $include_transient:expr) => {
-        sunrise_gameplay_common::game::entity::entity_lists!(
+        $crate::game::entity::entity_lists!(
             $crate::game::entity_server::save_lists,
             $game,
             $keys,
@@ -1066,7 +1066,7 @@ pub(crate) use load_lists;
 /// has no default.
 macro_rules! load_entity_of_any_kind {
     ($game:expr, $kind:expr, $uuid:expr, $player:expr, $tag:expr, $transferred:expr) => {
-        sunrise_gameplay_common::game::entity::entity_lists!(
+        $crate::game::entity::entity_lists!(
             $crate::game::entity_server::load_lists,
             $game,
             $kind,
@@ -1096,11 +1096,8 @@ impl crate::game::ServerGame<'_> {
     }
     /// The type ids the boat kind loads.
     pub(in crate::game::server_side) fn loads_as_boat(&self, kind: &str) -> bool {
-        sunrise_gameplay_common::game::boats_common::registered_boat(
-            kind,
-            &self.common.res.items().component_registry,
-        )
-        .is_some()
+        sunrise_gameplay_common::game::boats_common::registered_boat(kind, &self.common.res.items().component_registry)
+            .is_some()
     }
     /// Whether `load_listed` loads `kind` as a vehicle that takes its mob
     /// riders (`take_mob_passengers`): a mob, boat, minecart or primed TNT.
@@ -1153,8 +1150,7 @@ impl crate::game::ServerGame<'_> {
 
     /// The ids of the entities that are not on the walk of `entity_lists!`.
     pub(in crate::game) fn entity_ids_off_walk(&self) -> impl Iterator<Item = u32> + '_ {
-        self.common
-            .cushions
+        self.common.cushions
             .iter()
             .map(|e| e.id)
             .chain(self.common.item_frames.iter().map(|e| e.id))
@@ -1166,15 +1162,12 @@ impl crate::game::ServerGame<'_> {
             .chain(self.common.crystals.iter().map(|e| e.id))
             .chain(self.common.dragon.iter().map(|e| e.id))
             .chain(
-                self.common
-                    .dragon
+                self.common.dragon
                     .iter()
                     .filter(|dragon| dragon.id != 0)
                     .flat_map(|dragon| {
                         (0..dragon.parts.len()).map(move |offset| {
-                            sunrise_gameplay_common::game::dragon_common::dragon_part_id(
-                                dragon.id, offset,
-                            )
+                            sunrise_gameplay_common::game::dragon_common::dragon_part_id(dragon.id, offset)
                         })
                     }),
             )
@@ -1731,8 +1724,8 @@ pub(in crate::game) mod load_claim_tests {
 #[cfg(test)]
 pub(in crate::game) mod trident_selector_tests {
     use super::Entity as _;
-    use sunrise_core::geometry::Vec3;
     use sunrise_gameplay_common::game::commands_common::Target;
+    use sunrise_core::geometry::Vec3;
     use sunrise_sim::thrown_trident::ThrownTrident;
 
     /// `@e`, `/kill` and `/data` reach a thrown trident like any other entity
@@ -1746,22 +1739,20 @@ pub(in crate::game) mod trident_selector_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod join_order_tests {
-    use sunrise_gameplay_common::game::server_side::entity_server::join_order_tests::at;
+use sunrise_gameplay_common::game::server_side::entity_server::join_order_tests::at;
 
-    use sunrise_gameplay_common::game::server_side::entity_server::join_order_tests::mixed;
+use sunrise_gameplay_common::game::server_side::entity_server::join_order_tests::mixed;
 
     use crate::game::client_side::entity_client::{DrawExtras, DrawFamily, DrawRun, draw_runs};
-    use sunrise_core::geometry::Vec3;
     use sunrise_gameplay_common::game::entity::{EntityHandle, EntityLists, JoinOrderError};
+    use {sunrise_gameplay_common::game::boats_common::Boat, sunrise_gameplay_common::game::creatures::render_fixture::mob, sunrise_gameplay_common::game::fireworks::Rocket};
+    use sunrise_core::geometry::Vec3;
     use sunrise_sim::entities::ArmorStand;
     use sunrise_sim::join_seq::{JoinList, JoinSeq};
     use sunrise_sim::mobs::{Mob, Species};
     use sunrise_sim::thrown_trident::ThrownTrident;
-    use {
-        sunrise_gameplay_common::game::boats_common::Boat,
-        sunrise_gameplay_common::game::creatures::render_fixture::mob,
-        sunrise_gameplay_common::game::fireworks::Rocket,
-    };
+
+    
 
     #[derive(Default)]
     struct Lists {
@@ -1772,6 +1763,12 @@ pub(in crate::game) mod join_order_tests {
         boats: JoinList<Boat, false>,
     }
 
+    
+
+    
+
+    
+
     /// The walk visits entities in the order they joined, not list by list.
     #[test]
     fn mixed_kinds_are_visited_in_join_order() {
@@ -1780,6 +1777,14 @@ pub(in crate::game) mod join_order_tests {
         // Walked list by list they would come in another order.
         assert_ne!(joined[0], EntityHandle::ArmorStand(0));
     }
+
+    
+
+    
+
+    
+
+    
 
     /// An entity taken out and put back (a tick takes its list) keeps its place.
     #[test]

@@ -1,6 +1,9 @@
 //! Block entity handles: storage writes join the journal; explicit world notifications happen
 //! immediately and survive abort. Raw mod storage writes and restores synthesize no notice.
 use crate::game::ServerGame;
+use sunrise_gameplay_common::game::native_block_entity_read::{
+    loaded_block_entity, mod_item_slots, mod_payload, save_with_metadata, save_without_metadata,
+};
 use mod_api::__private::game::*;
 use mod_api::{
     BlockEntityDataError, BlockEntityError, BlockEntityItemError, BlockEntityRef,
@@ -9,9 +12,6 @@ use mod_api::{
 use sunrise_core::nbt::{Compound, Tag};
 use sunrise_core::position::BlockPos;
 use sunrise_game_data::block_entity_nbt;
-use sunrise_gameplay_common::game::native_block_entity_read::{
-    loaded_block_entity, mod_item_slots, mod_payload, save_with_metadata, save_without_metadata,
-};
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::{BlockEntity, ModBlockEntity};
 use sunrise_sim::save;
@@ -49,13 +49,7 @@ impl ServerGame<'_> {
         entity: &BlockEntity,
         block: &str,
     ) -> Option<Compound> {
-        save_without_metadata(
-            &self.common.world,
-            key,
-            entity,
-            block,
-            self.common.res.items(),
-        )
+        save_without_metadata(&self.common.world, key, entity, block, self.common.res.items())
     }
 
     /// Opens a block entity's menu for a connected player (`ServerPlayer.openMenu`).
@@ -90,10 +84,8 @@ impl ServerGame<'_> {
         }
         let [x, y, z] = entity.fields().position;
         match self.open_block_menu(conn, (x, y, z)) {
-            sunrise_gameplay_common::game::lan_actions::MenuOpen::Stale => {
-                Err(BlockEntityError::Stale)
-            }
-            opened => Ok(opened == sunrise_gameplay_common::game::lan_actions::MenuOpen::Opened),
+            super::lan_actions::MenuOpen::Stale => Err(BlockEntityError::Stale),
+            opened => Ok(opened == super::lan_actions::MenuOpen::Opened),
         }
     }
 
@@ -111,21 +103,9 @@ impl ServerGame<'_> {
         {
             return Ok(false);
         }
-        let Some(mut tag) = self
-            .common
-            .world
-            .block_entities
-            .get(&key)
-            .and_then(|current| {
-                save_with_metadata(
-                    &self.common.world,
-                    key,
-                    current,
-                    &block,
-                    self.common.res.items(),
-                )
-            })
-        else {
+        let Some(mut tag) = self.common.world.block_entities.get(&key).and_then(|current| {
+            save_with_metadata(&self.common.world, key, current, &block, self.common.res.items())
+        }) else {
             return Ok(false);
         };
         match lock {
@@ -163,8 +143,7 @@ impl ServerGame<'_> {
     ) -> Option<((i32, i32, i32), String)> {
         let key = self.native_block_entity_write_key(entity)?;
         let block = self
-            .common
-            .pack
+            .common.pack
             .assets
             .registry
             .state(self.common.world.block(key.0, key.1, key.2))?
@@ -244,8 +223,7 @@ impl ServerGame<'_> {
         key: (i32, i32, i32),
         edit: impl FnOnce(&mut ModBlockEntity),
     ) {
-        let BlockEntity::Mod(block_entity) =
-            self.common.world.block_entities.get_mut(&key).unwrap()
+        let BlockEntity::Mod(block_entity) = self.common.world.block_entities.get_mut(&key).unwrap()
         else {
             unreachable!("resolved mod holder replaced before its write")
         };
@@ -306,7 +284,7 @@ impl ServerGame<'_> {
         }
         self.journal_chunk_save(
             (key.0 >> 4, key.2 >> 4),
-            sunrise_gameplay_common::game::transactions::SaveChunkScope::Level,
+            super::transactions::SaveChunkScope::Level,
         );
         Ok(true)
     }
@@ -351,18 +329,11 @@ impl ServerGame<'_> {
             return Ok(false);
         }
         let Some(old) = self
-            .common
-            .world
+            .common.world
             .block_entities
             .get(&key)
             .and_then(|current| {
-                save_with_metadata(
-                    &self.common.world,
-                    key,
-                    current,
-                    &block,
-                    self.common.res.items(),
-                )
+                save_with_metadata(&self.common.world, key, current, &block, self.common.res.items())
             })
             .map(Tag::Compound)
         else {
@@ -380,9 +351,7 @@ impl ServerGame<'_> {
         if !self.load_block_entity_data(key, &merged) {
             return Ok(false);
         }
-        if cleared
-            && let Some(BlockEntity::Mod(loaded)) = self.common.world.block_entities.get_mut(&key)
-        {
+        if cleared && let Some(BlockEntity::Mod(loaded)) = self.common.world.block_entities.get_mut(&key) {
             loaded.keep_shapes_cleared(true);
         }
         self.block_entity_updated(key);
@@ -424,12 +393,7 @@ impl ServerGame<'_> {
             return Err(mod_api::ContentsWatchError::NotSubscribed);
         }
         self.journal_block_entity((x, y, z));
-        let observer = self
-            .common
-            .world
-            .block_entities
-            .identity((x, y, z))
-            .unwrap();
+        let observer = self.common.world.block_entities.identity((x, y, z)).unwrap();
         self.common.world.block_entities.contents_watches.set(
             observer,
             (source.x, source.y, source.z),
@@ -471,8 +435,7 @@ impl ServerGame<'_> {
         {
             static WARNED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
             let block = self
-                .common
-                .pack
+                .common.pack
                 .assets
                 .registry
                 .state(state)
@@ -565,8 +528,7 @@ impl ServerGame<'_> {
             && !self.server.lan_acting_fake
             && !self.common.spectator()
             && self
-                .common
-                .container
+                .common.container
                 .is_some_and(|open| open == key || self.common.chest_other_half(open) == Some(key))
             && let Some(player) = self.native_acting_player()
             && !viewers.contains(&player)
@@ -589,8 +551,7 @@ impl ServerGame<'_> {
             .native_block_entity_write_target(entity)
             .ok_or(BlockEntityError::Stale)?;
         let nameable = self
-            .common
-            .world
+            .common.world
             .block_entities
             .get(&key)
             .is_some_and(|current| nameable(key, current, &block, self.common.res.items()));
@@ -602,11 +563,7 @@ impl ServerGame<'_> {
             Some(BlockEntity::Banner(banner)) => banner.name = name.map(str::to_owned),
             _ => {
                 match name {
-                    Some(name) => self
-                        .common
-                        .world
-                        .block_names
-                        .insert(key, Tag::String(name.into())),
+                    Some(name) => self.common.world.block_names.insert(key, Tag::String(name.into())),
                     None => self.common.world.block_names.remove(&key),
                 };
             }
@@ -690,7 +647,7 @@ fn nameable(
 
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::server_side::native_block_entity_refs::tests::compound;
+use sunrise_gameplay_common::game::server_side::native_block_entity_refs::tests::compound;
 
     use super::*;
     use mod_api::HostTransaction;
@@ -943,6 +900,14 @@ mod tests {
         assert!(loaded_block_entity(&world, below_pos).is_none());
     }
 
+    
+
+    
+
+    
+
+    
+
     #[test]
     #[ignore = "daily"]
     fn an_abort_puts_back_the_lock_and_the_loot_table_roll() {
@@ -1080,8 +1045,7 @@ mod tests {
             ));
 
             // A client's copy of the level is not the server's.
-            game.options.execution_role =
-                sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+            game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
             game.options.dedicated = None;
             assert!(!write(game, [0, 64, 0], api_stone, flags));
             assert_eq!(game.world.block(0, 64, 0), grown);

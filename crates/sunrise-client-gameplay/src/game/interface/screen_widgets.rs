@@ -4,6 +4,7 @@
 
 #[cfg(feature = "client")]
 use crate::game::host::draw::GameDrawContext;
+use sunrise_gameplay_common::game::{Game, api_values::TryIntoEngine};
 use mod_api::{
     __private::game::CallbackOwner,
     ScreenView, ScreenWidget, ScreenWidgetId, ScreenWidgets,
@@ -23,7 +24,6 @@ use sunrise_client::{
     widgets::{self, Kind, Narratable, Target},
 };
 use sunrise_game_data::text::{DARK_GRAY, Style, Text};
-use sunrise_gameplay_common::game::{Game, api_values::TryIntoEngine};
 use winit::keyboard::KeyCode;
 
 pub(in crate::game) struct MountedWidgetsInner {
@@ -172,7 +172,10 @@ impl MountedWidgetEntry {
     }
 
     #[cfg(feature = "client")]
-    pub(in crate::game) fn press_button(&mut self, game: &mut crate::game::ClientGame<'_>) -> bool {
+    pub(in crate::game) fn press_button(
+        &mut self,
+        game: &mut crate::game::ClientGame<'_>,
+    ) -> bool {
         let MountedWidgetKind::Button { state, on_press } = &mut self.kind else {
             return false;
         };
@@ -452,7 +455,7 @@ impl MountedWidgetEntry {
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// Run `ScreenEvent.Init.Post` to mount widgets on the initialized screen and apply focus.
-    pub fn init_screen_widgets(&mut self, view: &ScreenView<'_>) {
+    pub(in crate::game::client_side) fn init_screen_widgets(&mut self, view: &ScreenView<'_>) {
         if !mod_api::__private::listened(mod_api::HookId::ScreenInitPost) {
             return;
         }
@@ -507,12 +510,7 @@ impl crate::game::ClientGame<'_> {
             }
             // IDs issued to a failed listener are never reused.
         });
-        self.client
-            .screen_state
-            .0
-            .widgets
-            .next_id
-            .set(mount.next_id);
+        self.client.screen_state.0.widgets.next_id.set(mount.next_id);
         let initial_focus =
             initial_focus.and_then(|id| entries.iter().position(|entry| entry.id == id));
         let mut inner = self.client.screen_state.0.widgets.inner.borrow_mut();
@@ -546,7 +544,7 @@ impl crate::game::ClientGame<'_> {
     /// Clear and dispose all mounted widgets for the current screen without
     /// discarding `last_click` (same-instance resize rebuilds widgets while
     /// preserving `MouseHandler.LastClick`).
-    pub fn clear_screen_widgets(&mut self) {
+    pub(in crate::game::client_side) fn clear_screen_widgets(&mut self) {
         self.client.screen_state.0.widgets.clear();
         sunrise_client::preedit::reset();
         self.client.ime_area = None;
@@ -564,13 +562,7 @@ impl crate::game::ClientGame<'_> {
         }
         sunrise_client::preedit::reset();
         self.client.ime_area = None;
-        self.client
-            .screen_state
-            .0
-            .widgets
-            .inner
-            .borrow_mut()
-            .focused = target;
+        self.client.screen_state.0.widgets.inner.borrow_mut().focused = target;
         if let Some(old_idx) = previous {
             let disabled = {
                 let mut inner = self.client.screen_state.0.widgets.inner.borrow_mut();
@@ -666,13 +658,7 @@ impl crate::game::ClientGame<'_> {
         if entry.disabled || !entry.owner.is_enabled() {
             entry.disabled = true;
             self.client.screen_state.0.widgets.clear_links_for(idx);
-            self.client
-                .screen_state
-                .0
-                .widgets
-                .inner
-                .borrow_mut()
-                .entries[idx] = Some(entry);
+            self.client.screen_state.0.widgets.inner.borrow_mut().entries[idx] = Some(entry);
             return None;
         }
         let result = f(self, &mut entry);
@@ -891,7 +877,7 @@ impl crate::game::ClientGame<'_> {
     ) -> bool {
         let generation = self.client.screen_state.0.widgets.generation();
         let mouse = [x, y];
-        let modifiers = crate::game::client_side::key_codes::glfw_modifiers(self.client.modifiers);
+        let modifiers = super::glfw_modifiers(self.client.modifiers);
         let handled = self.mounted_widget_click(Some(id), mouse, 0, modifiers, false);
         if handled && self.client.screen_state.0.widgets.generation() == generation {
             self.mounted_widget_mouse_released(mouse, 0, modifiers);
@@ -997,13 +983,8 @@ impl crate::game::ClientGame<'_> {
                         && self.client.screen_state.0.widgets.generation() == generation
                     {
                         self.set_mounted_widget_focus(Some(idx));
-                        self.client
-                            .screen_state
-                            .0
-                            .widgets
-                            .inner
-                            .borrow_mut()
-                            .dragging = Some((idx, button));
+                        self.client.screen_state.0.widgets.inner.borrow_mut().dragging =
+                            Some((idx, button));
                     }
                     return true;
                 }
@@ -1051,13 +1032,8 @@ impl crate::game::ClientGame<'_> {
                     if handled && self.client.screen_state.0.widgets.generation() == generation {
                         self.set_mounted_widget_focus(Some(idx));
                         if button == 0 {
-                            self.client
-                                .screen_state
-                                .0
-                                .widgets
-                                .inner
-                                .borrow_mut()
-                                .dragging = Some((idx, button));
+                            self.client.screen_state.0.widgets.inner.borrow_mut().dragging =
+                                Some((idx, button));
                         }
                     }
                     return id.is_none() || handled;
@@ -1081,13 +1057,7 @@ impl crate::game::ClientGame<'_> {
         if drag_button != button {
             return false;
         }
-        self.client
-            .screen_state
-            .0
-            .widgets
-            .inner
-            .borrow_mut()
-            .dragging = None;
+        self.client.screen_state.0.widgets.inner.borrow_mut().dragging = None;
         if self.client.screen_state.0.widgets.focused_index() != Some(idx) {
             return false;
         }
@@ -1119,8 +1089,7 @@ impl crate::game::ClientGame<'_> {
         else {
             return false;
         };
-        if drag_button != button || self.client.screen_state.0.widgets.focused_index() != Some(idx)
-        {
+        if drag_button != button || self.client.screen_state.0.widgets.focused_index() != Some(idx) {
             return false;
         }
         self.with_mounted_widget(idx, |game, entry| match &mut entry.kind {

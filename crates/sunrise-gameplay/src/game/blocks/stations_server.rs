@@ -1,8 +1,8 @@
 //! Server-side workstation logic (opening/closing stations, anvil/grindstone/smithing
 //! side effects, experience levels, and brewing stand server ticking).
 use crate::game::ServerGame;
-use sunrise_core::random::RandomSource;
 use sunrise_gameplay_common::game::stations_common::{Kind, Station};
+use sunrise_core::random::RandomSource;
 use sunrise_items::items::ItemStack;
 use sunrise_level::{brewing, containers::BlockEntity};
 use sunrise_sim::stations;
@@ -102,36 +102,16 @@ impl ServerGame<'_> {
         if !creative && anvil && self.common.world.random.next_float() < 0.12 {
             match &*name {
                 "minecraft:anvil" => {
-                    let _ =
-                        self.common
-                            .set_state_named(pos, "minecraft:chipped_anvil", &["facing"]);
-                    self.native_anvil_damaged(
-                        self.common.dim.id(),
-                        pos,
-                        &name,
-                        "minecraft:chipped_anvil",
-                    );
+                    let _ = self.common.set_state_named(pos, "minecraft:chipped_anvil", &["facing"]);
+                    self.native_anvil_damaged(self.common.dim.id(), pos, &name, "minecraft:chipped_anvil");
                 }
                 "minecraft:chipped_anvil" => {
-                    let _ =
-                        self.common
-                            .set_state_named(pos, "minecraft:damaged_anvil", &["facing"]);
-                    self.native_anvil_damaged(
-                        self.common.dim.id(),
-                        pos,
-                        &name,
-                        "minecraft:damaged_anvil",
-                    );
+                    let _ = self.common.set_state_named(pos, "minecraft:damaged_anvil", &["facing"]);
+                    self.native_anvil_damaged(self.common.dim.id(), pos, &name, "minecraft:damaged_anvil");
                 }
                 _ => {
-                    let _ = self
-                        .common
-                        .world
-                        .set(pos[0], pos[1], pos[2], self.common.world.air);
-                    self.common
-                        .world
-                        .modified
-                        .insert((pos[0] >> 4, pos[2] >> 4));
+                    let _ = self.common.world.set(pos[0], pos[1], pos[2], self.common.world.air);
+                    self.common.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
                     self.native_anvil_damaged(self.common.dim.id(), pos, &name, "minecraft:air");
                     self.server_level_event_at(1029, pos, 0);
                     return true;
@@ -157,7 +137,7 @@ impl ServerGame<'_> {
         if xp > 0 {
             self.spawn_orbs(pos.map(|v| f64::from(v) + 0.5), xp);
         }
-        self.after_commit(sunrise_gameplay_common::game::transactions::After::GrindstoneEvent(pos));
+        self.after_commit(super::transactions::After::GrindstoneEvent(pos));
     }
 
     pub(in crate::game) fn give_or_drop(&mut self, stack: ItemStack) {
@@ -185,10 +165,8 @@ impl ServerGame<'_> {
             return;
         }
         if mod_api::__private::listened(mod_api::HookId::PlayerXpLevelChange)
-            && let (Some(player), Some(name)) = (
-                self.server.lan_acting_uuid,
-                self.server.lan_acting_name.clone(),
-            )
+            && let (Some(player), Some(name)) =
+                (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
         {
             let mut cancel = false;
             self.native_player_xp_level_change(player, &name, &mut levels, &mut cancel);
@@ -208,8 +186,7 @@ impl ServerGame<'_> {
             "close_station_server called on Client role"
         );
         if self
-            .common
-            .station
+            .common.station
             .as_ref()
             .is_some_and(|s| s.kind == Kind::Merchant)
             && let Some(stack) = self.common.carried.take()
@@ -287,8 +264,7 @@ impl ServerGame<'_> {
     pub(in crate::game::server_side) fn play_level_up(&mut self, amount: i32, level: i32) {
         if let Some(volume) = self.server.level_up_sound.give_levels(amount, level) {
             let at = self
-                .common
-                .player
+                .common.player
                 .as_ref()
                 .map(|p| [p.position.x, p.position.y, p.position.z]);
             if let Some(at) = at {
@@ -333,8 +309,7 @@ impl ServerGame<'_> {
             // A cancelled Pre fires Post itself, with the slots the mods left.
             let cancelled = matches!(asked, Some((_, true)));
             let rest = self.brewing_ingredient_remainder(pos, cancelled);
-            let Some(BlockEntity::Brewing(b)) = self.common.world.block_entities.get_mut(&pos)
-            else {
+            let Some(BlockEntity::Brewing(b)) = self.common.world.block_entities.get_mut(&pos) else {
                 return Ok(());
             };
             let brewing = &world_stations!(self).brewing;

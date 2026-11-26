@@ -8,9 +8,9 @@ use super::{
     Game,
     commands::{Target, place_summoned, strip_finalize_tree},
 };
+use sunrise_gameplay_common::game::commands_common::target_id;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::{Compound, Tag};
-use sunrise_gameplay_common::game::commands_common::target_id;
 
 /// Whether a position is one `/summon` takes.
 fn position_ok(pos: [f64; 3]) -> bool {
@@ -73,11 +73,7 @@ impl crate::game::ServerGame<'_> {
         place_summoned(&mut tag, pos);
         let from = self.common.mobs.len();
         let first = self.server.next_entity + 1;
-        let deferred = (
-            self.common.tnts.len(),
-            self.common.falling.len(),
-            self.common.rockets.len(),
-        );
+        let deferred = (self.common.tnts.len(), self.common.falling.len(), self.common.rockets.len());
         let target = self.spawn_entity_from_nbt(tag);
         // These roots take their id as they load, and a rocket has no command
         // Target variant. Select the newly appended root, never an older waiting entity.
@@ -195,12 +191,10 @@ impl crate::game::ServerGame<'_> {
         // Read before this call's own announcement is held: it reaches the entities to construct.
         let held_before = self.common.held_joins_through();
         if through.is_none()
-            && self.common.hold_announcement(
-                sunrise_gameplay_common::game::transactions::Announcement::Joins {
-                    loaded_from_disk,
-                    through: sunrise_sim::join_seq::JoinSeq::latest(),
-                },
-            )
+            && self.common.hold_announcement(super::transactions::Announcement::Joins {
+                loaded_from_disk,
+                through: sunrise_sim::join_seq::JoinSeq::latest(),
+            })
         {
             // What an earlier held flush of this level told is constructed already; with a toss
             // still asked it may have stopped short, so then everything since the mark is looked at.
@@ -236,17 +230,11 @@ impl crate::game::ServerGame<'_> {
                 &mut canceled,
             );
             let spawn = self
-                .common
-                .native_lifecycle
+                .common.native_lifecycle
                 .pending_item_spawns
                 .iter()
                 .position(|entry| entry.0 == id)
-                .map(|index| {
-                    self.common
-                        .native_lifecycle
-                        .pending_item_spawns
-                        .remove(index)
-                });
+                .map(|index| self.common.native_lifecycle.pending_item_spawns.remove(index));
             if canceled {
                 self.common.persist.joins_canceled += 1;
                 self.forget_entity(id);
@@ -277,8 +265,7 @@ impl crate::game::ServerGame<'_> {
         // Constructor writes were canonical but unbound before insertion.
         // The real lifetime is now resident, before join listeners query it.
         if self
-            .common
-            .entity_attachments
+            .common.entity_attachments
             .get(&id)
             .is_some_and(|map| map.has_index_entries())
             && let Err(error) = self.bind_resident_entity_attachments(id)
@@ -365,8 +352,7 @@ impl crate::game::ServerGame<'_> {
 
     fn remember_join(&mut self, id: u32, kind: String) {
         let index = self
-            .common
-            .persist
+            .common.persist
             .live
             .binary_search_by_key(&id, |entry| entry.0)
             .unwrap_or_else(|i| i);
@@ -386,17 +372,15 @@ impl crate::game::ServerGame<'_> {
             Slot::Walk(h) => {
                 super::entity::with_entity!(self, h, e => (e.native_type(), e.position()))
             }
-            Slot::Apart(Apart::Crystal(i)) => (
-                "minecraft:end_crystal".into(),
-                self.common.crystals[i].position,
-            ),
+            Slot::Apart(Apart::Crystal(i)) => {
+                ("minecraft:end_crystal".into(), self.common.crystals[i].position)
+            }
             Slot::Apart(Apart::Cushion(i)) => {
                 ("minecraft:cushion".into(), self.common.cushions[i].position)
             }
-            Slot::Apart(Apart::Painting(i)) => (
-                "minecraft:painting".into(),
-                block(self.common.paintings[i].pos),
-            ),
+            Slot::Apart(Apart::Painting(i)) => {
+                ("minecraft:painting".into(), block(self.common.paintings[i].pos))
+            }
             Slot::Apart(Apart::Frame(i)) => {
                 let f = &self.common.item_frames[i];
                 let kind = if f.glow {
@@ -412,10 +396,7 @@ impl crate::game::ServerGame<'_> {
             ),
             Slot::Apart(Apart::Dragon) => (
                 "minecraft:ender_dragon".into(),
-                self.common
-                    .dragon
-                    .as_ref()
-                    .map_or(Vec3::ZERO, |d| d.position),
+                self.common.dragon.as_ref().map_or(Vec3::ZERO, |d| d.position),
             ),
         }
     }
@@ -458,10 +439,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Entity `id` has left the level: told once, if mods were told it joined.
     pub(in crate::game::server_side) fn native_entity_left(&mut self, id: u32) {
-        if self
-            .common
-            .hold_announcement(sunrise_gameplay_common::game::transactions::Announcement::Left(id))
-        {
+        if self.common.hold_announcement(super::transactions::Announcement::Left(id)) {
             return;
         }
         self.entity_left_now(id);
@@ -484,9 +462,7 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn native_leaves_flush(&mut self) {
         self.native_removals_flush();
         if self.common.persist.live.is_empty()
-            || self.common.hold_announcement(
-                sunrise_gameplay_common::game::transactions::Announcement::Leaves,
-            )
+            || self.common.hold_announcement(super::transactions::Announcement::Leaves)
         {
             return;
         }
@@ -531,7 +507,20 @@ mod tests {
     use crate::game::native_entity_refs::tests::collect_entities_in;
     use mod_api::ServerHost;
 
+    
+
     // NBT loads assign ids; reinstall an unbound payload as a pending owner.
+    
+
+    
+
+    
+
+    
+
+    
+
+    
 
     #[test]
     fn a_passenger_without_a_position_stands_where_the_stack_is_summoned() {

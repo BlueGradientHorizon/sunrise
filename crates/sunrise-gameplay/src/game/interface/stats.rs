@@ -2,10 +2,10 @@
 //! mined, items used/crafted/broken/picked up/dropped and mobs killed or
 //! killed by, saved to `players/stats/<uuid>.json`, plus the phantom
 //! spawner that reads the time since rest (`PhantomSpawner`).
+use super::native_hooks::PhantomSpawnResult;
 use super::{Dim, Game};
 use std::path::PathBuf;
 use sunrise_core::{geometry::Vec3, identifier::Identifier, random::RandomSource};
-use sunrise_gameplay_common::game::PhantomSpawnResult;
 
 pub(in crate::game) use sunrise_gameplay_common::stats::{Stats, locate_player_json, player_json};
 use sunrise_gameplay_common::stats::{namespaced, stat_registry};
@@ -79,8 +79,7 @@ impl crate::game::ServerGame<'_> {
             return Identifier::parse_namespaced(registry)
                 .is_some_and(|registry| host.hub.synced_id(&registry, id).is_some());
         }
-        self.common
-            .ui
+        self.common.ui
             .registries
             .ids(registry)
             .iter()
@@ -109,10 +108,7 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn save_stats(&self) {
         if !self.common.stats.loaded
             || self.no_player_here()
-            || self
-                .server
-                .crash_save
-                .holds_interrupted(self.server.lan_acting)
+            || self.server.crash_save.holds_interrupted(self.server.lan_acting)
         {
             return;
         }
@@ -279,8 +275,7 @@ impl crate::game::ServerGame<'_> {
             feet[2],
         ));
         let in_water = self
-            .common
-            .res
+            .common.res
             .facts()
             .get(self.common.world.block(feet[0], feet[1], feet[2]))
             .fluid
@@ -293,8 +288,7 @@ impl crate::game::ServerGame<'_> {
         );
         let climbing = p.last_climbable.is_some() && d.y > 0.0;
         let riding = self.common.riding.map(|id| {
-            self.common
-                .mobs
+            self.common.mobs
                 .iter()
                 .find(|m| m.id == id)
                 .map(|m| m.species())
@@ -319,19 +313,9 @@ impl crate::game::ServerGame<'_> {
                 }
             }
             Some(Err(())) => {
-                if self
-                    .common
-                    .boats
-                    .iter()
-                    .any(|b| Some(b.id) == self.common.riding)
-                {
+                if self.common.boats.iter().any(|b| Some(b.id) == self.common.riding) {
                     self.award_custom_stat("boat_one_cm", total)
-                } else if self
-                    .common
-                    .carts
-                    .iter()
-                    .any(|c| Some(c.id) == self.common.riding)
-                {
+                } else if self.common.carts.iter().any(|c| Some(c.id) == self.common.riding) {
                     self.award_custom_stat("minecart_one_cm", total)
                 }
             }
@@ -385,8 +369,7 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         let r = &mut self.common.world.random;
-        self.common
-            .stats
+        self.common.stats
             .phantom_tick_add((60 + r.next_int_bound(60).unwrap_or(0)) * 20);
         if self.sky_darken() < 5 {
             return;
@@ -440,10 +423,7 @@ impl crate::game::ServerGame<'_> {
         let mut result = None;
         let mut phantoms = None;
         if let Some((player, name)) = identity {
-            phantoms = Some(phantom_group_size(
-                &mut self.common.world.random,
-                difficulty_id,
-            ));
+            phantoms = Some(phantom_group_size(&mut self.common.world.random, difficulty_id));
             self.native_player_spawn_phantoms(player, &name, pos, &mut result, &mut phantoms);
         }
         let attempt = match result.unwrap_or(PhantomSpawnResult::Default) {
@@ -459,9 +439,7 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         // `getCurrentDifficultyAt(playerPos).isHarderThan(random * 3)`.
-        let difficulty = self
-            .common
-            .local_difficulty([position.x, position.y, position.z]);
+        let difficulty = self.common.local_difficulty([position.x, position.y, position.z]);
         let r = &mut self.common.world.random;
         if difficulty.effective <= r.next_float() * 3.0 {
             return;
@@ -476,15 +454,14 @@ impl crate::game::ServerGame<'_> {
         let south = -10 + r.next_int_bound(21).unwrap_or(10);
         let at = [pos[0] + east, pos[1] + up, pos[2] + south];
         if !self
-            .common
-            .res
+            .common.res
             .facts()
             .is_air(self.common.world.block(at[0], at[1], at[2]))
         {
             return;
         }
-        let group = phantoms
-            .unwrap_or_else(|| phantom_group_size(&mut self.common.world.random, difficulty_id));
+        let group =
+            phantoms.unwrap_or_else(|| phantom_group_size(&mut self.common.world.random, difficulty_id));
         for _ in 0..group {
             let _ = self.spawn_mob(
                 "minecraft:phantom",
@@ -494,7 +471,7 @@ impl crate::game::ServerGame<'_> {
                     f64::from(at[2]) + 0.5,
                 ],
                 false,
-                sunrise_gameplay_common::game::creatures::SpawnSite::Finalizing(
+                super::creatures::SpawnSite::Finalizing(
                     sunrise_sim::mobs::spawn_rules::Reason::Natural,
                 ),
             );
@@ -511,6 +488,10 @@ fn phantom_group_size(random: &mut impl RandomSource, difficulty_id: i32) -> i32
 mod tests {
     use super::*;
     use std::path::Path;
+
+    
+
+    
 
     #[test]
     fn phantom_group_size_follows_difficulty() {

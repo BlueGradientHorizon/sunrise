@@ -68,7 +68,7 @@ pub enum Target {
 
 impl Target {
     /// A player, in place or not (`instanceof ServerPlayer`).
-    pub fn is_player(self) -> bool {
+    pub(in crate::game) fn is_player(self) -> bool {
         matches!(self, Target::Player | Target::Guest(_))
     }
 }
@@ -111,7 +111,11 @@ pub fn entity_pitch(pitch: f32) -> f32 {
 }
 
 /// `PositionMoveRotation.calculateAbsolute` and `TeleportCommand.performTeleport`.
-pub fn teleport_velocity(velocity: Vec3, relative: [bool; 3], fall_flying: bool) -> Vec3 {
+pub fn teleport_velocity(
+    velocity: Vec3,
+    relative: [bool; 3],
+    fall_flying: bool,
+) -> Vec3 {
     Vec3::new(
         if relative[0] { velocity.x } else { 0.0 },
         if relative[1] && fall_flying {
@@ -128,7 +132,7 @@ pub fn teleport_velocity(velocity: Vec3, relative: [bool; 3], fall_flying: bool)
 pub struct OtherEntity {
     /// Entity-owned registration metadata; content clones are detached.
     pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
-    pub join: sunrise_sim::join_seq::JoinSeq,
+    pub(in crate::game) join: sunrise_sim::join_seq::JoinSeq,
     pub id: u32,
     pub kind: String,
     pub position: Vec3,
@@ -142,7 +146,7 @@ pub struct OtherEntity {
     /// A summoned or loaded `minecraft:eye_of_ender`'s flight; None for every other kind.
     pub eye: Option<super::end_state::SummonedEye>,
     /// What `entity_size` answered at its last size refresh (`EntityEvent.Size`).
-    pub size_answer: Option<sunrise_sim::pose::SizeAnswer>,
+    pub(in crate::game) size_answer: Option<sunrise_sim::pose::SizeAnswer>,
 }
 
 sunrise_sim::impl_joined!(OtherEntity);
@@ -150,7 +154,9 @@ sunrise_mod_runtime::impl_attachment_lifetime!(OtherEntity);
 
 impl OtherEntity {
     /// Physical query bounds, not display rendering/culling dimensions.
-    pub fn display_marker_or_interaction_bounds(&self) -> Option<sunrise_core::geometry::Aabb> {
+    pub(in crate::game) fn display_marker_or_interaction_bounds(
+        &self,
+    ) -> Option<sunrise_core::geometry::Aabb> {
         let dimensions = self.vanilla_dimensions()?;
         let vanilla = if let Some(settings) = self.interaction {
             let mut interaction = crate::game::interactions_common::RemoteInteraction::new([
@@ -179,7 +185,7 @@ impl OtherEntity {
     /// `EntityDimensions.scalable(width, height)`, none for a display or a marker. None for
     /// every other kind the list keeps without simulating it (a leash knot, an eye of ender),
     /// which isn't asked.
-    pub fn vanilla_dimensions(&self) -> Option<[f32; 3]> {
+    pub(in crate::game) fn vanilla_dimensions(&self) -> Option<[f32; 3]> {
         if !matches!(
             self.kind.as_str(),
             "minecraft:block_display"
@@ -304,7 +310,10 @@ pub fn wrap_degrees(angle: f32) -> f32 {
 }
 
 /// Format the clickable context line under a syntax error, if the error has one.
-pub fn format_syntax_failure_context(e: &CommandError, command: &str) -> Option<Text> {
+pub fn format_syntax_failure_context(
+    e: &CommandError,
+    command: &str,
+) -> Option<Text> {
     let window = e.context_window()?;
     let suggest = Style {
         click: Some(text::ClickEvent::SuggestCommand(format!("/{command}"))),
@@ -573,7 +582,7 @@ pub enum Component {
 }
 
 impl Component {
-    pub fn named(name: &str) -> Option<Self> {
+    pub(in crate::game) fn named(name: &str) -> Option<Self> {
         match name.strip_prefix("minecraft:").unwrap_or(name) {
             "container" => Some(Self::Container),
             "bundle_contents" => Some(Self::Bundle),
@@ -581,7 +590,7 @@ impl Component {
             _ => None,
         }
     }
-    pub fn items(self, stack: &ItemStack) -> Vec<Option<ItemStack>> {
+    pub(in crate::game) fn items(self, stack: &ItemStack) -> Vec<Option<ItemStack>> {
         let Some(data) = stack.data() else {
             return Vec::new();
         };
@@ -605,7 +614,7 @@ impl Component {
     }
     /// ComponentSlotCollection writes a single normalized component back to
     /// its live parent; all unrelated parent components remain modeled.
-    pub fn store(self, stack: &mut ItemStack, mut slots: Vec<Option<ItemStack>>) {
+    pub(in crate::game) fn store(self, stack: &mut ItemStack, mut slots: Vec<Option<ItemStack>>) {
         for slot in &mut slots {
             if slot
                 .as_ref()

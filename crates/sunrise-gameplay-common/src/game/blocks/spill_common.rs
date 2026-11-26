@@ -24,7 +24,7 @@ pub struct Pending {
     pub(in crate::game) pot: HashMap<[i32; 3], [Option<ItemStack>; 4]>,
 }
 
-pub fn source_snapshot(
+pub(in crate::game) fn source_snapshot(
     mut saved: Tag,
     name: Option<Tag>,
     lock: Option<&Tag>,
@@ -75,18 +75,23 @@ pub fn world_source(
 }
 
 impl Pending {
-    pub fn source(
+    pub(in crate::game) fn source(
         &self,
         pos: [i32; 3],
     ) -> Option<std::sync::Arc<sunrise_world::loot::copy::BlockSource>> {
         self.sources.get(&pos).cloned()
     }
-    pub fn record_from(&mut self, world: &sunrise_level::world::World, pos: [i32; 3], saved: Tag) {
+    pub(in crate::game) fn record_from(
+        &mut self,
+        world: &sunrise_level::world::World,
+        pos: [i32; 3],
+        saved: Tag,
+    ) {
         let key = (pos[0], pos[1], pos[2]);
         let name = world.block_names.get(&key).cloned();
         self.record_source(pos, source_snapshot(saved, name, world.block_lock(key)));
     }
-    pub fn record_saved(&mut self, pos: [i32; 3], tag: &sunrise_core::nbt::Tag) {
+    pub(in crate::game) fn record_saved(&mut self, pos: [i32; 3], tag: &sunrise_core::nbt::Tag) {
         self.record_source(pos, source_snapshot(tag.clone(), None, None));
     }
     pub(in crate::game) fn record_source(
@@ -118,7 +123,7 @@ impl Pending {
     }
     /// The block entity's dynamic drops: a decorated pot's sherds, left,
     /// back, front then right (`DecoratedPotBlock.getDrops`).
-    pub fn dynamic(&self, pos: [i32; 3]) -> Vec<ItemStack> {
+    pub(in crate::game) fn dynamic(&self, pos: [i32; 3]) -> Vec<ItemStack> {
         self.pot
             .get(&pos)
             .map_or_else(Vec::new, |[back, left, right, front]| {
@@ -129,7 +134,7 @@ impl Pending {
                     .collect()
             })
     }
-    pub fn clear(&mut self, pos: [i32; 3]) {
+    pub(in crate::game) fn clear(&mut self, pos: [i32; 3]) {
         self.pot.remove(&pos);
         self.sources.remove(&pos);
     }
@@ -137,7 +142,7 @@ impl Pending {
 
 /// Constructor random retained while drop hooks edit a not-yet-joined item.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ItemRandom {
+pub(in crate::game) struct ItemRandom {
     pub own: (u64, Option<f64>),
     pub uuid: [i32; 4],
     pub bob: f32,
@@ -152,9 +157,9 @@ pub struct ItemRandom {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct DropState {
     pub(crate) thrower: Option<u128>,
-    pub target: Option<u128>,
+    pub(crate) target: Option<u128>,
     pub(crate) no_gravity: bool,
-    pub age: i32,
+    pub(crate) age: i32,
 }
 
 impl DropState {
@@ -176,7 +181,7 @@ impl DropState {
     }
     /// `item` as a fresh item entity with this state (`setThrower`, `setTarget`,
     /// `setNoGravity` and its age).
-    pub fn apply(
+    pub(in crate::game) fn apply(
         self,
         item: sunrise_sim::entities::ItemEntity,
     ) -> sunrise_sim::entities::ItemEntity {
@@ -215,11 +220,11 @@ pub fn prepare_item_random(velocity: Option<[f64; 3]>) -> ItemRandom {
 /// An item entity to add: where, its motion (None: `new ItemEntity`'s own
 /// random motion) and its pickup delay.
 pub struct Spawn {
-    pub random: Option<ItemRandom>,
-    pub stack: ItemStack,
-    pub pos: [f64; 3],
-    pub motion: Option<[f64; 3]>,
-    pub delay: u32,
+    pub(in crate::game) random: Option<ItemRandom>,
+    pub(in crate::game) stack: ItemStack,
+    pub(in crate::game) pos: [f64; 3],
+    pub(in crate::game) motion: Option<[f64; 3]>,
+    pub(in crate::game) delay: u32,
 }
 
 /// The block-entity context bound to a block break at the moment the break begins, so a
@@ -258,11 +263,11 @@ impl<'a> BlockDropEntity<'a> {
 /// Prepared engine item entity; API snapshots exist only while a listener runs.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BlockItemDrop {
-    pub random: Option<ItemRandom>,
-    pub stack: ItemStack,
-    pub position: [f64; 3],
-    pub velocity: [f64; 3],
-    pub pickup_delay: u32,
+    pub(in crate::game) random: Option<ItemRandom>,
+    pub(in crate::game) stack: ItemStack,
+    pub(in crate::game) position: [f64; 3],
+    pub(in crate::game) velocity: [f64; 3],
+    pub(in crate::game) pickup_delay: u32,
     /// The item-entity state a drop hook set.
     pub(in crate::game) state: DropState,
 }
@@ -282,7 +287,7 @@ impl BlockItemDrop {
 
     /// The constructor random the item entity joins with, carrying the state a hook set. A drop
     /// with no state set keeps its random as it was (none: drawn when it joins).
-    pub fn random_with_state(&self) -> Option<ItemRandom> {
+    pub(in crate::game) fn random_with_state(&self) -> Option<ItemRandom> {
         if self.state == DropState::default() {
             return self.random;
         }
@@ -473,39 +478,39 @@ impl mod_api::PreparedBlockDropsAccess for EnginePreparedDrops<'_> {
 
 pub struct BlockDrops {
     /// The item entities to add, as the mods left them.
-    pub items: Vec<BlockItemDrop>,
+    pub(in crate::game) items: Vec<BlockItemDrop>,
     /// The experience points to award at the block's centre.
-    pub experience: u32,
+    pub(in crate::game) experience: u32,
     /// A mod canceled the break's drops: `spawnAfterBreak` doesn't run.
     pub(in crate::game) canceled: bool,
 }
 
 #[derive(Default)]
 pub struct Spill {
-    pub piston_positions: Vec<super::piston_carry_common::PositionChange>,
-    pub spawns: Vec<Spawn>,
+    pub(in crate::game) piston_positions: Vec<super::piston_carry_common::PositionChange>,
+    pub(in crate::game) spawns: Vec<Spawn>,
     /// Experience orbs (`ExperienceOrb.award`): where and how much, each
     /// and the merge id it drew from the level random.
-    pub orbs: Vec<([f64; 3], u32, i32)>,
+    pub(in crate::game) orbs: Vec<([f64; 3], u32, i32)>,
     /// Block entities the behaviour removed, for the game's own follow-ups
     /// (open screens, playing songs).
-    pub removed: Vec<([i32; 3], BlockEntity)>,
+    pub(in crate::game) removed: Vec<([i32; 3], BlockEntity)>,
     /// Runs of `spawns` a player's use popped (a picked berry bush), for the
     /// mods' `native_loot_drops`.
-    pub used: Vec<UsedDrops>,
+    pub(in crate::game) used: Vec<UsedDrops>,
 }
 
 /// `spawns[start..end]` came from `table` at the block `pos` in `state`.
 pub struct UsedDrops {
-    pub start: usize,
-    pub end: usize,
-    pub pos: [i32; 3],
-    pub state: BlockStateId,
-    pub table: &'static str,
+    pub(in crate::game) start: usize,
+    pub(in crate::game) end: usize,
+    pub(in crate::game) pos: [i32; 3],
+    pub(in crate::game) state: BlockStateId,
+    pub(in crate::game) table: &'static str,
 }
 
 impl Spill {
-    pub fn is_empty(&self) -> bool {
+    pub(in crate::game) fn is_empty(&self) -> bool {
         self.piston_positions.is_empty()
             && self.spawns.is_empty()
             && self.orbs.is_empty()
@@ -875,7 +880,7 @@ impl GameLevel<'_> {
     /// `BlockDropsEvent`). Nothing is spawned here: the caller adds the
     /// entities and orbs, and a canceled break leaves both empty. The random
     /// draws happen with or without a listener, in vanilla's order.
-    pub fn block_dropped(
+    pub(in crate::game) fn block_dropped(
         &mut self,
         pos: BlockPos,
         state: BlockStateId,
@@ -1006,7 +1011,7 @@ impl GameLevel<'_> {
         self.finish_remove_entity(pos, old, removal)
     }
 
-    pub fn pre_remove_entity(
+    pub(in crate::game) fn pre_remove_entity(
         &mut self,
         pos: BlockPos,
         old: BlockStateId,
@@ -1161,7 +1166,7 @@ impl GameLevel<'_> {
         }
     }
 
-    pub fn finish_remove_entity(
+    pub(in crate::game) fn finish_remove_entity(
         &mut self,
         pos: BlockPos,
         old: BlockStateId,

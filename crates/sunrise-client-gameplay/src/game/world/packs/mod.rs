@@ -8,6 +8,7 @@ use crate::game::client_side::pack_discovery_client::{data_packs_with_icons, int
 use crate::game::client_side::resource_tables_client::{
     ClientPackResources, ClientResources, UiResources,
 };
+use sunrise_gameplay_common::game::packs_common::{cache_dir, reload_files};
 use mod_api::__private::game::*;
 use std::{
     path::{Path, PathBuf},
@@ -28,7 +29,6 @@ use sunrise_client_render::streaming::WorkerContext;
 #[cfg(feature = "client")]
 use sunrise_game_data::lang;
 use sunrise_game_data::text::{Style, Text};
-use sunrise_gameplay_common::game::packs_common::{cache_dir, reload_files};
 #[cfg(feature = "client")]
 use sunrise_level::assets::Assets;
 use sunrise_level::datapack::DataPack;
@@ -99,12 +99,9 @@ pub fn startup_root(
 ) -> sunrise_game_data::Result<PackRoots> {
     let mut all = packs::discover(vanilla, &packs_dir());
     all.extend(
-        sunrise_gameplay_common::game::pack_discovery::discover(
-            mod_api::PackType::ClientResources,
-            mod_sources,
-        )
-        .into_iter()
-        .map(into_resource_pack),
+        sunrise_gameplay_common::game::pack_discovery::discover(mod_api::PackType::ClientResources, mod_sources)
+            .into_iter()
+            .map(into_resource_pack),
     );
     let base = crate::game::client_side::mods_client::content_root(vanilla, mod_sources)?;
     Ok(PackRoots::for_selection(base, &all, selected, server))
@@ -203,7 +200,11 @@ pub(in crate::game::client_side) fn vanilla_info(vanilla: &Path) -> PackInfo {
 }
 /// Packs the Resource Packs screen lists: folder and built-in packs, then any
 /// active downloaded server (or world) packs, then vanilla.
-pub fn pack_infos(vanilla: &Path, server: &[Pack], additional: &[Pack]) -> Vec<PackInfo> {
+pub fn pack_infos(
+    vanilla: &Path,
+    server: &[Pack],
+    additional: &[Pack],
+) -> Vec<PackInfo> {
     let mut infos: Vec<PackInfo> = packs::discover(vanilla, &packs_dir())
         .iter()
         .map(info)
@@ -286,8 +287,7 @@ impl crate::game::ClientGame<'_> {
     }
     pub(in crate::game::client_side) fn resource_pack_infos(&mut self) -> Vec<PackInfo> {
         let additional: Vec<_> = self
-            .common
-            .discover_mod_packs(mod_api::PackType::ClientResources)
+            .common.discover_mod_packs(mod_api::PackType::ClientResources)
             .into_iter()
             .map(into_resource_pack)
             .collect();
@@ -300,22 +300,15 @@ impl crate::game::ClientGame<'_> {
     /// Whether all active packs preserve vanilla's block models. The server
     /// overlay sits above the local selection and must be included too.
     pub(in crate::game::client_side) fn model_packs_are_vanilla(&self) -> bool {
-        self.client
-            .settings
-            .sunrise
-            .vanilla_models_with_server_packs(
-                self.client
-                    .settings
-                    .resource_packs
-                    .iter()
-                    .map(String::as_str),
-                self.client
-                    .server_packs
-                    .0
-                    .active
-                    .iter()
-                    .map(|pack| pack.id.as_str()),
-            )
+        self.client.settings.sunrise.vanilla_models_with_server_packs(
+            self.client.settings.resource_packs.iter().map(String::as_str),
+            self.client
+                .server_packs
+                .0
+                .active
+                .iter()
+                .map(|pack| pack.id.as_str()),
+        )
     }
     /// The leaf mode that is safe for the current local and server packs.
     pub(in crate::game::client_side) fn effective_leaf_culling(
@@ -325,11 +318,7 @@ impl crate::game::ClientGame<'_> {
             .settings
             .sunrise
             .leaf_culling_effective_with_server_packs(
-                self.client
-                    .settings
-                    .resource_packs
-                    .iter()
-                    .map(String::as_str),
+                self.client.settings.resource_packs.iter().map(String::as_str),
                 self.client
                     .server_packs
                     .0
@@ -407,8 +396,7 @@ impl crate::game::ClientGame<'_> {
         log::warn!("Sunrise: resource reload failed: {error}");
         let mut all = packs::discover(&self.common.vanilla_root(), &packs_dir());
         all.extend(
-            self.common
-                .discover_mod_packs(mod_api::PackType::ClientResources)
+            self.common.discover_mod_packs(mod_api::PackType::ClientResources)
                 .into_iter()
                 .map(into_resource_pack),
         );
@@ -451,8 +439,7 @@ impl crate::game::ClientGame<'_> {
             self.client.pending_pack_reload = true;
             return Ok(());
         }
-        self.common
-            .join_world_rest()
+        self.common.join_world_rest()
             .map_err(|e| std::io::Error::other(e.to_string()))?;
         self.clear_device_keys();
         self.client.physical_keys.clear();
@@ -472,8 +459,7 @@ impl crate::game::ClientGame<'_> {
         )
         .filter(|p| {
             !self
-                .common
-                .mods
+                .common.mods
                 .native
                 .built()
                 .iter()
@@ -501,9 +487,7 @@ impl crate::game::ClientGame<'_> {
         // registering mod for crash attribution.
         let client_listeners = self.register_client_reload_listeners();
         let texture_atlases = super::client_reload::collect_texture_atlases();
-        crate::game::client_side::mods_client::register_fluid_models(
-            self.common.options.execution_role,
-        );
+        crate::game::client_side::mods_client::register_fluid_models(self.common.options.execution_role);
         let stage = move |progress: &sunrise_gameplay_common::game::Progress| {
             let Some(client_res) = client_res_slot.get() else {
                 return Err("client resources not loaded".to_owned());
@@ -848,32 +832,22 @@ pub fn stage_pack(
             // The sound events and the language are read here too, not in
             // the frame that applies the reload (about 20 ms of it).
             let (render, atlas, panorama, (sounds, language)) = std::thread::scope(|s| {
-                let atlas = sunrise_gameplay_common::game::resource_load::named_scope(
-                    s,
-                    "pack-assets",
-                    || {
-                        let game = sunrise_assets::resource_source::ResourceSource::directory(
-                            vanilla_root.to_path_buf(),
-                        );
-                        HudAtlas::build_over_with_dynamic_textures(&source, &source, &game, pool)
-                            .map_err(|e| e.to_string())
-                    },
-                );
-                let panorama = sunrise_gameplay_common::game::resource_load::named_scope(
-                    s,
-                    "pack-assets",
-                    || sunrise_client::gfx::panorama::Faces::load(&source, &source),
-                );
-                let small = sunrise_gameplay_common::game::resource_load::named_scope(
-                    s,
-                    "pack-assets",
-                    || {
-                        (
-                            sunrise_level::sound_events::SoundRegistry::load(&source),
-                            lang::Language::load(&[&source], &lang::code()),
-                        )
-                    },
-                );
+                let atlas = super::resource_load::named_scope(s, "pack-assets", || {
+                    let game = sunrise_assets::resource_source::ResourceSource::directory(
+                        vanilla_root.to_path_buf(),
+                    );
+                    HudAtlas::build_over_with_dynamic_textures(&source, &source, &game, pool)
+                        .map_err(|e| e.to_string())
+                });
+                let panorama = super::resource_load::named_scope(s, "pack-assets", || {
+                    sunrise_client::gfx::panorama::Faces::load(&source, &source)
+                });
+                let small = super::resource_load::named_scope(s, "pack-assets", || {
+                    (
+                        sunrise_level::sound_events::SoundRegistry::load(&source),
+                        lang::Language::load(&[&source], &lang::code()),
+                    )
+                });
                 (
                     sunrise_client::assets::RenderAssets::load(&resource_root, assets),
                     atlas.join(),

@@ -6,15 +6,15 @@
 //! `with_hand_item`, `health`, `max_health`, `attribute_value`, `attribute_base`,
 //! `attributes` and `attribute_modifiers`), which on a client answer for the
 //! local player from the client's own copy; and `effect`/`effects`.
+use crate::game::ServerGame;
 use super::commands::{Target, items::Owner};
 use super::living_attributes::AttributeWrite;
-use crate::game::ServerGame;
+use sunrise_gameplay_common::game::native_equipment_read::hand_slot;
 use mod_api::client::first_person::Hand;
 use mod_api::{
     AttributeModifier, AttributeOperation, Direction, EntityRef, EquipmentSlot, Identifier,
     LivingRef, ModifierLifetime,
 };
-use sunrise_gameplay_common::game::native_equipment_read::hand_slot;
 use sunrise_items::items::{EntityTypeTags, ItemStack};
 use sunrise_sim::health::{Attack, DamageLevel, HitEffects, Hurting, Knock, NO_ATTACK};
 use sunrise_sim::mobs::Who;
@@ -199,9 +199,7 @@ impl ServerGame<'_> {
         };
         let mut random = player.random.clone();
         let plan = self.prepare_knockback_credit(id as i32, None, attack);
-        let dimension = self
-            .resident_target_dimension(target)
-            .unwrap_or(self.common.dim);
+        let dimension = self.resident_target_dimension(target).unwrap_or(self.common.dim);
         let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
         let world = if dimension == self.common.dim {
             &mut self.common.world
@@ -225,7 +223,7 @@ impl ServerGame<'_> {
             None,
         ));
         let velocity = level.through_short_knockback(|level| {
-            sunrise_gameplay_common::game::creatures::knockback::player_knockback_velocity(
+            super::creatures::knockback::player_knockback_velocity(
                 player,
                 &mut random,
                 level,
@@ -259,12 +257,7 @@ impl ServerGame<'_> {
         source: mod_api::HurtSource<'_>,
         attack: &Attack,
     ) -> bool {
-        let Some(index) = self
-            .common
-            .armor_stands
-            .iter()
-            .position(|stand| stand.id == id)
-        else {
+        let Some(index) = self.common.armor_stands.iter().position(|stand| stand.id == id) else {
             return false;
         };
         let resistance = self.common.armor_stands[index]
@@ -420,8 +413,7 @@ impl ServerGame<'_> {
         attribute: &str,
         base: f64,
     ) -> f64 {
-        self.common
-            .motion
+        self.common.motion
             .attributes
             .definition(attribute)
             .map_or(base, |d| d.sanitize(base))
@@ -487,10 +479,7 @@ impl ServerGame<'_> {
             Target::Guest(conn) => {
                 let g = self.command_guest(conn)?;
                 let p = g.motion.as_deref()?;
-                Some(
-                    self.common
-                        .can_use_portal_of(p, g.vehicle.is_some(), g.sleeping),
-                )
+                Some(self.common.can_use_portal_of(p, g.vehicle.is_some(), g.sleeping))
             }
             Target::Mob(id) => {
                 let m = self.common.mobs.iter().find(|m| m.id == id && !m.removed)?;
@@ -620,12 +609,7 @@ impl ServerGame<'_> {
                 .is_some(),
             Some(Target::Mob(id)) => {
                 self.journal_mob_health(id);
-                let Some(m) = self
-                    .common
-                    .mobs
-                    .iter_mut()
-                    .find(|m| m.id == id && !m.removed)
-                else {
+                let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
                     return false;
                 };
                 let revived =
@@ -661,12 +645,7 @@ impl ServerGame<'_> {
                 })
                 .is_some(),
             Some(Target::Mob(id)) => {
-                let Some(m) = self
-                    .common
-                    .mobs
-                    .iter_mut()
-                    .find(|m| m.id == id && !m.removed)
-                else {
+                let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
                     return false;
                 };
                 m.heal(&self.common.loop_context, amount);
@@ -682,11 +661,7 @@ impl ServerGame<'_> {
     /// in whichever loaded level it is now (`credited_entity`).
     pub(in crate::game) fn living_kill_credit(&self, living: LivingRef) -> Option<EntityRef> {
         let credit = match self.native_living_target(living)? {
-            Target::Player => self
-                .server
-                .combat
-                .0
-                .player_credit(self.common.world.game_time),
+            Target::Player => self.server.combat.0.player_credit(self.common.world.game_time),
             Target::Guest(conn) => self
                 .server
                 .guest_combat
@@ -798,13 +773,7 @@ impl ServerGame<'_> {
                 let (_, join) = self.last_hurt_living_target(id)?;
                 self.common.armor_stands[self.common.armor_stands.locate(join)?].last_hurt_mob
             }
-            Target::Dragon(id) => {
-                self.common
-                    .dragon
-                    .as_ref()
-                    .filter(|d| d.id == id)?
-                    .last_hurt_mob
-            }
+            Target::Dragon(id) => self.common.dragon.as_ref().filter(|d| d.id == id)?.last_hurt_mob,
             _ => None,
         }
     }
@@ -891,23 +860,20 @@ impl ServerGame<'_> {
         }
         match target {
             Target::Mob(id) => {
-                self.common
-                    .mobs
+                self.common.mobs
                     .iter_mut()
                     .find(|mob| mob.id == id)?
                     .set_equipment_stack(slot as usize, updated);
             }
             Target::Stand(id) => {
-                self.common
-                    .armor_stands
+                self.common.armor_stands
                     .iter_mut()
                     .find(|stand| stand.id == id)?
                     .equipment
                     .set(slot as usize, updated);
             }
             Target::Dragon(id) => {
-                self.common
-                    .dragon
+                self.common.dragon
                     .as_mut()
                     .filter(|dragon| dragon.id == id)?
                     .equipment
@@ -1086,7 +1052,7 @@ impl ServerGame<'_> {
                         .flatten()
                 });
                 if defer {
-                    self.after_commit(sunrise_gameplay_common::game::transactions::After::Equip {
+                    self.after_commit(super::transactions::After::Equip {
                         at: [at.x, at.y, at.z],
                         sound,
                         equips: equippable.is_some(),
@@ -1111,14 +1077,12 @@ impl ServerGame<'_> {
         // of their own: the stand and the dragon (not silent, never spectators).
         let equip_event_at = match t {
             Target::Stand(id) => self
-                .common
-                .armor_stands
+                .common.armor_stands
                 .iter()
                 .find(|a| a.id == id)
                 .map(|a| (a.equipment.get(slot as usize), a.position, a.first_tick)),
             Target::Dragon(id) => self
-                .common
-                .dragon
+                .common.dragon
                 .as_ref()
                 .filter(|d| d.id == id)
                 .map(|d| (d.equipment.get(slot as usize), d.position, d.first_tick())),
@@ -1149,7 +1113,7 @@ impl ServerGame<'_> {
                 unreachable!("only a stand or the dragon gets here")
             };
             if defer {
-                self.after_commit(sunrise_gameplay_common::game::transactions::After::Equip {
+                self.after_commit(super::transactions::After::Equip {
                     at: [at.x, at.y, at.z],
                     sound,
                     equips: equippable.is_some(),
@@ -1238,10 +1202,7 @@ impl ServerGame<'_> {
         let Target::Mob(id) = self.native_living_target(living)? else {
             return None;
         };
-        self.common
-            .mobs
-            .iter()
-            .find(|m| m.id == id && m.is_tamable())
+        self.common.mobs.iter().find(|m| m.id == id && m.is_tamable())
     }
     /// Runs `f` as the player `target` names: the one acting now, or a guest
     /// in the level in place through `as_guest` (`native_as_player`). False
@@ -1297,13 +1258,34 @@ impl ServerGame<'_> {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-    use sunrise_gameplay_common::game::server_side::native_living_refs::tests::ZOMBIE_NBT;
+use sunrise_gameplay_common::game::server_side::native_living_refs::tests::ZOMBIE_NBT;
 
     use super::super::api_values::TryIntoApi;
     use super::*;
     use sunrise_core::geometry::Vec3;
 
-    pub fn summon_mob(game: &mut crate::game::ServerGame<'_>, kind: &str, nbt: &str) -> u32 {
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    
+
+    pub fn summon_mob(
+        game: &mut crate::game::ServerGame<'_>,
+        kind: &str,
+        nbt: &str,
+    ) -> u32 {
         match game
             .summon_with_nbt(kind, [0.5, 70.0, 0.5], nbt)
             .unwrap()
@@ -1316,7 +1298,10 @@ pub mod tests {
 
     /// A pig hurt by a zombie of [`ZOMBIE_UUID`] in the Overworld, with the
     /// Nether's spawn chunk forced loaded so it stays parked beside it.
-    pub fn hurt_pig(game: &mut crate::game::ServerGame<'_>) -> (u32, u32) {
+    pub fn hurt_pig(
+        game: &mut crate::game::ServerGame<'_>,
+    ) -> (u32, u32) {
+        use sunrise_gameplay_common::game::Dim;
         use std::sync::Arc;
         game.server.world_root = game.server.save.0.root.clone();
         game.enter_level(Dim::Nether).unwrap();
@@ -1338,8 +1323,11 @@ pub mod tests {
         (pig, zombie)
     }
 
-    pub fn send_to_the_nether(game: &mut crate::game::ServerGame<'_>, mob: u32) {
-        use {crate::game::vehicle_teleport::TeleportMotion, sunrise_gameplay_common::game::Dim};
+    pub fn send_to_the_nether(
+        game: &mut crate::game::ServerGame<'_>,
+        mob: u32,
+    ) {
+        use {sunrise_gameplay_common::game::Dim, crate::game::vehicle_teleport::TeleportMotion};
         assert!(
             game.teleport_vehicle_across(
                 Target::Mob(mob),
@@ -1354,8 +1342,34 @@ pub mod tests {
         assert_eq!(game.dim, Dim::Overworld);
     }
 
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
     #[cfg(test)]
-    #[test]
+#[test]
     fn alive_is_health_above_zero_as_in_vanilla() {
         assert!(alive_at(0.5));
         assert!(!alive_at(0.0));
@@ -1364,7 +1378,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-    #[test]
+#[test]
     fn air_and_zero_count_are_empty_on_write() {
         assert!(equipment_stack(Some(ItemStack::new("minecraft:air", 1))).is_none());
         assert!(equipment_stack(Some(ItemStack::new("minecraft:stone", 0))).is_none());
@@ -1372,7 +1386,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-    #[test]
+#[test]
     fn a_players_slots_come_from_its_inventory_armour_and_off_hand() {
         let stack = |id: &str| Some(ItemStack::new(id, 1));
         let inventory = vec![stack("minecraft:stone"), stack("minecraft:dirt")];
@@ -1400,14 +1414,35 @@ pub mod tests {
         assert_eq!(id(EquipmentSlot::Saddle), Some("minecraft:saddle"));
     }
 
+    
+
+    
+
+    
+
+    
+
     #[cfg(test)]
-    #[test]
+#[test]
     fn every_equipment_slot_has_its_own_item_command_name() {
         let names = EquipmentSlot::ALL.map(slot_name);
         for (i, n) in names.iter().enumerate() {
             assert!(!names[..i].contains(n), "{n} named twice");
         }
     }
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;

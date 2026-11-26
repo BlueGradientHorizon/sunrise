@@ -5,7 +5,12 @@ use sunrise_world::block_landing::FarmlandTrample;
 impl crate::game::ServerGame<'_> {
     /// Apply the owning-host decision inside `FarmlandBlock.fallOn`, while the
     /// landing is paused. The caller resumes fall damage even when this refuses.
-    pub(crate) fn trample_farmland(&mut self, entity: u32, player: bool, trample: FarmlandTrample) {
+    pub(in crate::game::server_side) fn trample_farmland(
+        &mut self,
+        entity: u32,
+        player: bool,
+        trample: FarmlandTrample,
+    ) {
         let FarmlandTrample {
             position: pos,
             state,
@@ -48,14 +53,12 @@ impl crate::game::ServerGame<'_> {
             } else {
                 Who::Mob(entity)
             };
-            self.after_commit(
-                sunrise_gameplay_common::game::transactions::After::BlockGameEvent(
-                    "minecraft:block_change",
-                    at,
-                    who,
-                    base,
-                ),
-            );
+            self.after_commit(sunrise_gameplay_common::game::transactions::After::BlockGameEvent(
+                "minecraft:block_change",
+                at,
+                who,
+                base,
+            ));
         }
     }
 }

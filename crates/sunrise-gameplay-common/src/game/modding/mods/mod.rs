@@ -120,10 +120,10 @@ pub(in crate::game) type ContentMaterializer =
 #[derive(Clone, Default)]
 pub struct ModsState {
     pub(in crate::game) active_condition_root: Option<Arc<()>>,
-    pub load_condition_candidate: Option<sunrise_world::conditions::LoadConditions>,
+    pub(in crate::game) load_condition_candidate: Option<sunrise_world::conditions::LoadConditions>,
     pub(in crate::game) load_conditions:
         Arc<std::sync::OnceLock<Result<crate::game::load_conditions::ConditionTable, String>>>,
-    pub profession_declarations:
+    pub(in crate::game) profession_declarations:
         Arc<std::sync::OnceLock<Vec<(String, mod_api::ProfessionDefinition)>>>,
     pub(in crate::game) loot_modifier_serializers:
         Arc<std::sync::OnceLock<super::global_loot_modifiers::Serializers>>,
@@ -136,30 +136,30 @@ pub struct ModsState {
     pub(in crate::game) content_base: Arc<std::sync::OnceLock<PathBuf>>,
     pub(in crate::game) content_materializer: Option<ContentMaterializer>,
     /// `--dev-mod PATH`: content mods always on.
-    pub dev: Vec<PathBuf>,
-    pub native: std::sync::Arc<sunrise_mod_package::runtime::Runtime>,
-    pub installation_side: sunrise_mod_package::manifest::Side,
+    pub(in crate::game) dev: Vec<PathBuf>,
+    pub(in crate::game) native: std::sync::Arc<sunrise_mod_package::runtime::Runtime>,
+    pub(in crate::game) installation_side: sunrise_mod_package::manifest::Side,
     pub(in crate::game) overrides_dir: PathBuf,
     pub(in crate::game) load_notices: Arc<Mutex<Vec<sunrise_mod_package::dependencies::Notice>>>,
-    pub selected: std::sync::Arc<[sunrise_mod_package::selection::SelectedPackage]>,
+    pub(in crate::game) selected: std::sync::Arc<[sunrise_mod_package::selection::SelectedPackage]>,
     /// The registration inventory and the file indexes it shares with startup content loading.
     pub(in crate::game) startup_admission: Option<Arc<package_files::StartupAdmission>>,
     /// The content mods the loaded resources were built with: a switch the
     /// game can apply live moves it to the player's choice (`switch_mods`).
-    pub applied: Option<std::collections::BTreeSet<String>>,
+    pub(in crate::game) applied: Option<std::collections::BTreeSet<String>>,
     /// A live switch's resource reload is running: when it applied, the server
     /// reloads its data from the new root. Its start, for the log.
-    pub live: Option<std::time::Instant>,
+    pub(in crate::game) live: Option<std::time::Instant>,
     /// The content mods installed, and those of them with only assets and
     /// data (`mod_content::live_switch`): they switch with a world open.
-    pub content_ids: std::collections::BTreeSet<String>,
-    pub live_ids: std::collections::BTreeSet<String>,
+    pub(in crate::game) content_ids: std::collections::BTreeSet<String>,
+    pub(in crate::game) live_ids: std::collections::BTreeSet<String>,
     /// The server's data comes from a root a live switch built, not the one
     /// `res` was loaded from: the world tables are built from it even with no
     /// data pack (`stage_world_tables`).
-    pub data_switched: bool,
+    pub(in crate::game) data_switched: bool,
     /// Structured load refusals, rendered only at the existing Mods-page boundary.
-    pub refused: Arc<Mutex<Vec<MissingJar>>>,
+    pub(in crate::game) refused: Arc<Mutex<Vec<MissingJar>>>,
     /// Served content packages withheld at startup because their `served_by` host was disabled:
     /// `(content_id, host_id)`.
     pub(in crate::game) disabled_served: Arc<[(String, String)]>,
@@ -167,11 +167,14 @@ pub struct ModsState {
     pub(in crate::game) restart_bound_hosts: BTreeSet<String>,
     /// The entries of the mods' datapack registries this world session has published, at the
     /// generation of the load or reload that built them; `None` when no mod declared one.
-    pub datapack_registries: Option<Arc<mod_api::DatapackRegistrySet>>,
+    pub(in crate::game) datapack_registries: Option<Arc<mod_api::DatapackRegistrySet>>,
 }
 
 impl ModsState {
-    pub fn capture_code_switches(&mut self, disabled: &std::collections::BTreeSet<String>) {
+    pub(in crate::game) fn capture_code_switches(
+        &mut self,
+        disabled: &std::collections::BTreeSet<String>,
+    ) {
         self.code_switches = Some(Arc::new(CodeSwitches {
             disabled: disabled.clone(),
             applied: Default::default(),
@@ -186,7 +189,7 @@ impl ModsState {
 
     /// Compute the effective disabled native set for the live session and any restart-bound
     /// serving hosts whose saved toggle differs from their applied startup state.
-    pub fn reconcile_code_switches(
+    pub(in crate::game) fn reconcile_code_switches(
         &self,
         wanted_disabled: &std::collections::BTreeSet<String>,
     ) -> (std::collections::BTreeSet<String>, Vec<String>) {
@@ -209,7 +212,7 @@ impl ModsState {
 
     /// Whether native mod `id` is effectively disabled in this running session (respecting
     /// restart-bound serving hosts).
-    pub fn code_disabled(
+    pub(in crate::game) fn code_disabled(
         &self,
         wanted_disabled: &std::collections::BTreeSet<String>,
         id: &str,
@@ -387,7 +390,7 @@ impl ModsState {
 
 pub(in crate::game) mod item_data_load;
 #[allow(unused_imports)]
-pub use item_data_load::{LoadRole, load_item_data};
+pub(in crate::game) use item_data_load::{LoadRole, load_item_data};
 
 /// The built-in registries' names in ID order, with Sunrise's own data components.
 pub(in crate::game) fn builtin_registry_names(
@@ -1739,13 +1742,13 @@ pub(in crate::game) struct PreparedLoopContext {
 
 /// What a live content mod switch changes on the server (`Game::apply_mods_reload`).
 pub struct ModsReload {
-    pub root: PathBuf,
-    pub data_source: sunrise_assets::resource_source::ResourceSource,
-    pub data_changes: sunrise_assets::resource_source::ResourceSource,
-    pub additional_data: Arc<[Arc<sunrise_level::datapack::DataPack>]>,
-    pub enabled: std::collections::BTreeSet<String>,
-    pub selected: Arc<[sunrise_mod_package::selection::SelectedPackage]>,
-    pub refused: Arc<Mutex<Vec<MissingJar>>>,
+    pub(in crate::game) root: PathBuf,
+    pub(in crate::game) data_source: sunrise_assets::resource_source::ResourceSource,
+    pub(in crate::game) data_changes: sunrise_assets::resource_source::ResourceSource,
+    pub(in crate::game) additional_data: Arc<[Arc<sunrise_level::datapack::DataPack>]>,
+    pub(in crate::game) enabled: std::collections::BTreeSet<String>,
+    pub(in crate::game) selected: Arc<[sunrise_mod_package::selection::SelectedPackage]>,
+    pub(in crate::game) refused: Arc<Mutex<Vec<MissingJar>>>,
 }
 
 impl crate::game::CommonGame<'_> {
@@ -2035,7 +2038,7 @@ pub fn living_mod_types_and_models() -> (
 /// resolved against `registry` once its block definitions are published and before any
 /// world's POI tables are built; collected again when the resources reload. Each refusal
 /// is logged once.
-pub fn extend_poi_types(registry: &sunrise_world::registry::BlockRegistry) {
+pub(in crate::game) fn extend_poi_types(registry: &sunrise_world::registry::BlockRegistry) {
     let (additions, refusals) = collect_poi_extensions(registry);
     for refusal in refusals
         .into_iter()
@@ -2098,7 +2101,9 @@ pub(in crate::game) fn collect_poi_extensions(
 /// (`native_register_cauldron_fluid_content`), resolved against `registry` once its block
 /// definitions are published, in one table with vanilla's water and lava, which the fluid
 /// capability reads; collected again when the resources reload. Each refusal is logged once.
-pub fn register_cauldron_fluid_contents(registry: &sunrise_world::registry::BlockRegistry) {
+pub fn register_cauldron_fluid_contents(
+    registry: &sunrise_world::registry::BlockRegistry,
+) {
     let (contents, refusals) = collect_cauldron_fluid_contents(registry);
     for refusal in refusals {
         log::warn!("Sunrise: cauldron fluid content refused: {refusal}");

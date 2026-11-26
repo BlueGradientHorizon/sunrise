@@ -4,16 +4,14 @@
 //! them through `ItemPlace`'s `with_stack`, `insert` and `extract`, which come here for these
 //! places; a block entity's slots, a stack inside an item and a mod's own places go through their handlers.
 use crate::game::ServerGame;
+use super::api_values::component_edit::{GearEdits, prepare_component_edit};
+use super::native_server::PlayerRead;
+use super::transactions::{After, DeferredEffect};
 use mod_api::__private::game::*;
 use mod_api::{
     CraftedByError, EquipmentSlot, ItemComponentEditor, ItemPlace, ItemPlaceEditError,
     ItemStackView, LivingRef, MenuSlotBacking, TransactionContext,
 };
-use sunrise_gameplay_common::game::api_values::component_edit::{
-    GearEdits, prepare_component_edit,
-};
-use sunrise_gameplay_common::game::native_server::PlayerRead;
-use sunrise_gameplay_common::game::transactions::{After, DeferredEffect};
 use {
     sunrise_items::items::ItemStack, sunrise_items::items::Items,
     sunrise_sim::first_person_sim::Hand, sunrise_sim::menu::Menu, sunrise_sim::mobs::finalize,
@@ -110,8 +108,7 @@ impl ServerGame<'_> {
             at(&b.position)
         } else {
             let m = self
-                .common
-                .mobs
+                .common.mobs
                 .iter_mut()
                 .find(|m| m.id == id && m.extra.chested)?;
             let size = sunrise_gameplay_common::mount_rules::mount_columns(m) * 3;
@@ -131,21 +128,11 @@ impl ServerGame<'_> {
             sunrise_gameplay_common::game::container_loot_level::LootTarget::Boat(id),
             None,
         );
-        let i = self
-            .common
-            .boats
-            .iter()
-            .position(|b| b.id == id && b.chest)?;
-        if let Some(super::BlockEntity::Chest(open)) =
-            self.common.world.block_entities.get_mut(&key)
-        {
+        let i = self.common.boats.iter().position(|b| b.id == id && b.chest)?;
+        if let Some(super::BlockEntity::Chest(open)) = self.common.world.block_entities.get_mut(&key) {
             return Some(edit(open, position));
         }
-        Some(
-            self.common
-                .boats
-                .update(i, |b| edit(&mut b.items, position)),
-        )
+        Some(self.common.boats.update(i, |b| edit(&mut b.items, position)))
     }
     /// Whether this game simulates a world: a client's copy has no places to write.
     pub(in crate::game::server_side) fn places_simulated(&self) -> bool {
@@ -204,8 +191,7 @@ impl ServerGame<'_> {
     pub(in crate::game) fn entity_container_size(&self, entity: u32) -> Option<usize> {
         self.entity_automation_size(entity).or_else(|| {
             let m = self
-                .common
-                .mobs
+                .common.mobs
                 .iter()
                 .find(|m| m.id == entity && m.extra.chested)?;
             Some(sunrise_gameplay_common::mount_rules::mount_columns(m) * 3)
@@ -236,11 +222,7 @@ impl ServerGame<'_> {
         if !self.places_simulated() {
             return None;
         }
-        (self
-            .common
-            .mobs
-            .iter()
-            .any(|m| m.id == entity && !m.removed)
+        (self.common.mobs.iter().any(|m| m.id == entity && !m.removed)
             || self.common.armor_stands.iter().any(|a| a.id == entity))
         .then_some(7)
     }
@@ -252,10 +234,7 @@ impl ServerGame<'_> {
         place: &ItemPlace,
         read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
     ) -> Option<()> {
-        sunrise_gameplay_common::game::native_equipment_read::lend_equipment(
-            self.game_stack_source(place)?,
-            read,
-        )
+        sunrise_gameplay_common::game::native_equipment_read::lend_equipment(self.game_stack_source(place)?, read)
     }
 
     /// Borrow the stack in a native place without initializing a player. Reading a chest
@@ -274,42 +253,34 @@ impl ServerGame<'_> {
         let stack = match place {
             ItemPlace::ItemEntity { id } => {
                 return self
-                    .common
-                    .dropped
+                    .common.dropped
                     .iter()
                     .find(|entity| entity.id == *id)
                     .map(|entity| EquipmentRead::resident(&entity.stack));
             }
             ItemPlace::EntitySlot { entity, slot } => {
                 if self
-                    .common
-                    .carts
+                    .common.carts
                     .iter()
                     .any(|c| c.id == *entity && c.kind.slots() > 0)
                 {
                     self.unpack_loot(
-                        sunrise_gameplay_common::game::container_loot_level::LootTarget::Cart(
-                            *entity,
-                        ),
+                        sunrise_gameplay_common::game::container_loot_level::LootTarget::Cart(*entity),
                         None,
                     );
                 } else if self.common.boats.iter().any(|b| b.id == *entity && b.chest) {
                     self.unpack_loot(
-                        sunrise_gameplay_common::game::container_loot_level::LootTarget::Boat(
-                            *entity,
-                        ),
+                        sunrise_gameplay_common::game::container_loot_level::LootTarget::Boat(*entity),
                         None,
                     );
                 }
                 let vehicle = self
-                    .common
-                    .carts
+                    .common.carts
                     .iter()
                     .find(|c| c.id == *entity && c.kind.slots() > 0)
                     .map(|cart| cart.items.as_slice())
                     .or_else(|| {
-                        self.common
-                            .boats
+                        self.common.boats
                             .iter()
                             .find(|b| b.id == *entity && b.chest)
                             .map(|boat| boat.items.as_slice())
@@ -323,8 +294,7 @@ impl ServerGame<'_> {
                     }
                 } else {
                     let mob = self
-                        .common
-                        .mobs
+                        .common.mobs
                         .iter()
                         .find(|m| m.id == *entity && m.extra.chested)?;
                     let size = sunrise_gameplay_common::mount_rules::mount_columns(mob) * 3;
@@ -340,12 +310,9 @@ impl ServerGame<'_> {
             ItemPlace::PlayerSlot { player, .. } | ItemPlace::PlayerHand { player, .. } => {
                 let (inventory, armor, selected, offhand) =
                     match self.native_item_place_player(*player)? {
-                        PlayerRead::Acting { .. } => (
-                            &self.common.inventory,
-                            &self.common.armor,
-                            self.common.selected,
-                            &self.common.offhand,
-                        ),
+                        PlayerRead::Acting { .. } => {
+                            (&self.common.inventory, &self.common.armor, self.common.selected, &self.common.offhand)
+                        }
                         PlayerRead::Guest(guest) => (
                             &guest.inventory,
                             &guest.armor,
@@ -426,11 +393,8 @@ impl ServerGame<'_> {
                     prepare(read, items)
                 };
                 let index = slot as usize;
-                let (equipment, mob_gear, prepared) = if let Some(mob) = self
-                    .common
-                    .mobs
-                    .iter_mut()
-                    .find(|m| m.id == entity && !m.removed)
+                let (equipment, mob_gear, prepared) = if let Some(mob) =
+                    self.common.mobs.iter_mut().find(|m| m.id == entity && !m.removed)
                 {
                     let prepared = prepare(finalize::equipment_slot(mob, slot))?;
                     (
@@ -438,9 +402,7 @@ impl ServerGame<'_> {
                         Some(&mut mob.extra.gear),
                         prepared,
                     )
-                } else if let Some(stand) =
-                    self.common.armor_stands.iter_mut().find(|a| a.id == entity)
-                {
+                } else if let Some(stand) = self.common.armor_stands.iter_mut().find(|a| a.id == entity) {
                     let prepared =
                         prepare(stand.equipment.get(index).map(EquipmentRead::resident))?;
                     (&mut stand.equipment, None, prepared)
@@ -530,11 +492,7 @@ impl ServerGame<'_> {
                 } else {
                     self.journal_player(player);
                     apply(
-                        slot.stack_mut(
-                            &mut self.common.inventory,
-                            &mut self.common.armor,
-                            &mut self.common.offhand,
-                        ),
+                        slot.stack_mut(&mut self.common.inventory, &mut self.common.armor, &mut self.common.offhand),
                         patch,
                     );
                 }
@@ -574,10 +532,7 @@ impl ServerGame<'_> {
                     });
                 } else {
                     self.journal_player(player);
-                    apply(
-                        self.common.carried.as_mut().expect("prepared cursor stack"),
-                        patch,
-                    );
+                    apply(self.common.carried.as_mut().expect("prepared cursor stack"), patch);
                 }
             }
             _ => return Err(ItemPlaceEditError::NotHeld),
@@ -621,8 +576,7 @@ impl ServerGame<'_> {
             None
         };
         let mut held = if let Some(stack) = &handler_stack {
-            sunrise_gameplay_common::game::api_values::stack_value(stack)
-                .map_err(|_| CraftedByError::Unavailable)?
+            super::api_values::stack_value(stack).map_err(|_| CraftedByError::Unavailable)?
         } else {
             // Read engine storage directly: its API snapshot omits the transient directive.
             match slot {
@@ -647,7 +601,7 @@ impl ServerGame<'_> {
                 game.register_made_maps(maps);
                 let written = match (handler_stack, slot) {
                     (Some(mut stack), _) => {
-                        use sunrise_gameplay_common::game::api_values::TryIntoApi;
+                        use super::api_values::TryIntoApi;
                         let processed = held
                             .try_into_api()
                             .map_err(|_| CraftedByError::Unavailable)?;
@@ -980,12 +934,7 @@ impl ServerGame<'_> {
         entity: u32,
         slot: EquipmentSlot,
     ) -> Option<Option<EquipmentRead<'_>>> {
-        if let Some(mob) = self
-            .common
-            .mobs
-            .iter()
-            .find(|m| m.id == entity && !m.removed)
-        {
+        if let Some(mob) = self.common.mobs.iter().find(|m| m.id == entity && !m.removed) {
             return Some(finalize::equipment_slot(mob, slot));
         }
         let stand = self.common.armor_stands.iter().find(|a| a.id == entity)?;
@@ -1025,7 +974,7 @@ impl ServerGame<'_> {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-    use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest;
+use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest;
 
     use super::super::BlockEntity;
     use super::super::api_values::TryIntoApi;
@@ -1072,6 +1021,18 @@ pub mod tests {
         game.lan_host(settings, net, config).unwrap();
     }
 
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
     /// A zombie mob, standing at the origin.
     pub fn zombie(game: &mut crate::game::ServerGame<'_>) -> u32 {
         let kind = game
@@ -1088,6 +1049,26 @@ pub mod tests {
         ));
         30
     }
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
 
     pub fn saved_mob_attribute(
         game: &crate::game::ServerGame<'_>,
@@ -1114,6 +1095,24 @@ pub mod tests {
             .unwrap()
             .clone()
     }
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
 
     /// The open menu of guest 1 (UUID 123).
     pub fn menu_of(game: &crate::game::ServerGame<'_>) -> MenuRef {
@@ -1147,6 +1146,34 @@ pub mod tests {
         moved
     }
 
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
     /// The guests' inventories, by connection.
     pub fn inventories(
         game: &crate::game::ServerGame<'_>,
@@ -1154,6 +1181,10 @@ pub mod tests {
         let guests = &game.server.lan.as_ref().unwrap().hub.guests;
         guests.iter().map(|g| g.inventory.clone()).collect()
     }
+
+    
+
+    
 
     /// Two guests' trade on a menu, as the docs' recipe has it: each offer's index must still
     /// hold exactly what was offered, and goes whole to the other player, or nothing moves.
@@ -1193,7 +1224,10 @@ pub mod tests {
 
     /// A seller with 3 diamonds in slot 0 and a buyer with 5 emeralds in slot 0, beside
     /// `buyer_rest` in every other slot and the off hand.
-    pub fn traders(game: &mut crate::game::ServerGame<'_>, buyer_rest: Option<ItemStack>) {
+    pub fn traders(
+        game: &mut crate::game::ServerGame<'_>,
+        buyer_rest: Option<ItemStack>,
+    ) {
         open_to_lan(game);
         let mut seller = guest(1);
         seller.inventory[0] = Some(ItemStack::new("minecraft:diamond", 3));
@@ -1211,6 +1245,29 @@ pub mod tests {
             .guests
             .extend([seller, buyer]);
     }
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    
+
+    
+
+    
+
+    
+
+    
+
+    
 
     /// A hopper at (0, 64, 0) facing `facing` holding `stack`, in an otherwise empty world.
     pub fn hopper_with(
@@ -1238,7 +1295,11 @@ pub mod tests {
             .insert((0, 64, 0), BlockEntity::Chest(slots));
     }
 
-    pub fn pig(game: &mut crate::game::ServerGame<'_>, id: u32, y: f64) {
+    pub fn pig(
+        game: &mut crate::game::ServerGame<'_>,
+        id: u32,
+        y: f64,
+    ) {
         let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
         game.mobs.push(sunrise_sim::mobs::Mob::new(
             id,
@@ -1248,15 +1309,33 @@ pub mod tests {
         ));
     }
 
-    pub fn hopper_slot(game: &crate::game::ServerGame<'_>) -> Option<ItemStack> {
+    pub fn hopper_slot(
+        game: &crate::game::ServerGame<'_>,
+    ) -> Option<ItemStack> {
         match game.world.block_entities.get(&(0, 64, 0)) {
             Some(BlockEntity::Chest(slots)) => slots[0].clone(),
             _ => panic!("the hopper is gone"),
         }
     }
 
+    
+
+    
+
+    
+
+    
+    
+    
+
+    
+
+    
+
     /// A chunk at the origin, open to LAN, with a full water cauldron at (2, 64, 0).
-    pub fn with_cauldron(game: &mut crate::game::ServerGame<'_>) -> mod_api::LevelRef {
+    pub fn with_cauldron(
+        game: &mut crate::game::ServerGame<'_>,
+    ) -> mod_api::LevelRef {
         use mod_api::BlockUpdateFlags;
         use sunrise_level::chunk::Chunk;
         open_to_lan(game);
@@ -1276,6 +1355,14 @@ pub mod tests {
         );
         level
     }
+
+    
+
+    
+
+    
+
+    
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;

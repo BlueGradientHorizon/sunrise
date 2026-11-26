@@ -15,7 +15,7 @@ use std::sync::Arc;
 use sunrise_sim::mobs::MobType;
 
 /// The item entities' type, as the hooks name it.
-pub const ITEM: &str = "minecraft:item";
+pub(in crate::game) const ITEM: &str = "minecraft:item";
 /// The players' type, as the hooks name it.
 pub const PLAYER: &str = "minecraft:player";
 
@@ -36,7 +36,7 @@ impl TickKind {
 
 /// The index in a family's list of the entity `is` picks out, looked for from `from` on first:
 /// the list keeps its order, though a mod's hook may have taken entities out of it.
-pub fn place<T>(list: &[T], from: usize, is: impl Fn(&T) -> bool) -> Option<usize> {
+pub(in crate::game) fn place<T>(list: &[T], from: usize, is: impl Fn(&T) -> bool) -> Option<usize> {
     let from = from.min(list.len());
     list[from..]
         .iter()
@@ -71,11 +71,11 @@ pub fn places_of(
 /// allocates nothing.
 #[derive(Default)]
 pub struct TickBuffers {
-    pub ids: Vec<u32>,
+    pub(in crate::game) ids: Vec<u32>,
     /// Empty between calls: it borrows the round's kinds only while a hook runs.
-    pub kinds: Vec<&'static str>,
+    pub(in crate::game) kinds: Vec<&'static str>,
     /// The types of entities whose rows hold them as their own strings, copied out for a call.
-    pub names: KindNames,
+    pub(in crate::game) names: KindNames,
 }
 
 /// Type names copied out of the rows that own them, so a hook is told them while the rows stay
@@ -122,14 +122,14 @@ enum Alone {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Told {
     /// Whether the tick hooks are listened to on this side: otherwise no Pre or Post is told.
-    pub listening: bool,
+    pub(in crate::game) listening: bool,
     /// Which entities are told alone instead of with their family.
     alone: Alone,
 }
 
 impl Told {
     /// Whether the tick hooks are listened to on this side.
-    pub fn listening(&self) -> bool {
+    pub(in crate::game) fn listening(&self) -> bool {
         self.listening
     }
     /// Whether a mob of type `kind` is told alone, around its own tick, not with its family.
@@ -143,7 +143,7 @@ impl Told {
     }
     /// Whether the entities of type `kind` are told alone. For a family of one type
     /// (`minecraft:item`) it is asked once for the family, not for each entity.
-    pub fn alone_kind(&self, kind: &str) -> bool {
+    pub(in crate::game) fn alone_kind(&self, kind: &str) -> bool {
         self.listening
             && match self.alone {
                 Alone::None => false,
@@ -159,7 +159,7 @@ impl Told {
 #[derive(Default)]
 pub struct TickRound {
     /// Whether the hooks are heard, and who is told alone.
-    pub told: Told,
+    pub(in crate::game) told: Told,
     /// Whether `entity_entering_section` is listened to on this server: each entity's position
     /// write is filed and told while its tick is still running.
     pub(in crate::game) sections: bool,
@@ -177,7 +177,7 @@ pub struct TickRound {
 
 impl TickRound {
     /// Whether a mod canceled the tick of entity `id`.
-    pub fn canceled(&self, id: u32) -> bool {
+    pub(in crate::game) fn canceled(&self, id: u32) -> bool {
         !self.canceled.is_empty() && self.canceled.contains(&id)
     }
     /// Whether a part ended the tick of item `id` (`on_entity_item_update`).
@@ -193,7 +193,7 @@ impl TickRound {
         self.sections
     }
     /// Whether the round keeps the entities that tick: a mod hears their ticks or their moves.
-    pub fn listening(&self) -> bool {
+    pub(in crate::game) fn listening(&self) -> bool {
         self.told.listening || self.sections
     }
     /// Whether a mob of type `kind` is told alone, around its own tick, not with its family.
@@ -201,12 +201,12 @@ impl TickRound {
         self.told.alone_mob(kind)
     }
     /// Whether the entities of type `kind` are told alone ([`Told::alone_kind`]).
-    pub fn alone_kind(&self, kind: &str) -> bool {
+    pub(in crate::game) fn alone_kind(&self, kind: &str) -> bool {
         self.told.alone_kind(kind)
     }
     /// The entity `id` of `kind` is about to tick with its family, which hears its Pre and its
     /// Posts together (`native_tick_pre_batch`).
-    pub fn add(&mut self, id: u32, kind: TickKind) {
+    pub(in crate::game) fn add(&mut self, id: u32, kind: TickKind) {
         if self.listening() {
             self.ticking.push((id, kind));
         }
@@ -235,7 +235,7 @@ impl TickRound {
     }
     /// The entity `id`, told its Pre, went before it ticked (an item merged into an earlier
     /// one): it hears no Post.
-    pub fn not_ticked(&mut self, id: u32) {
+    pub(in crate::game) fn not_ticked(&mut self, id: u32) {
         if self.listening() {
             self.ticking.retain(|(other, _)| *other != id);
         }
@@ -349,7 +349,11 @@ impl<'__sg, G: crate::game::SideGame<'__sg>> NativeTicksGameExt1<'__sg> for G {}
 impl TickBuffers {
     /// The buffers back, emptied: collecting a vector's own iterator into one of the same
     /// layout keeps its allocation, so the kinds' buffer outlives the borrow it held.
-    pub fn emptied(mut ids: Vec<u32>, mut kinds: Vec<&str>, mut names: KindNames) -> Self {
+    pub(in crate::game) fn emptied(
+        mut ids: Vec<u32>,
+        mut kinds: Vec<&str>,
+        mut names: KindNames,
+    ) -> Self {
         ids.clear();
         kinds.clear();
         names.clear();

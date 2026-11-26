@@ -3,12 +3,12 @@
 //! jockeys, strider jockeys, zombie horsemen) and the skeleton horse trap.
 //! Saving riders under `Passengers` lives in `persist.rs`.
 use crate::game::ServerGame;
+use sunrise_gameplay_common::game::passengers_common::{Riders, player_box_top};
 use std::collections::HashMap;
 use sunrise_core::{
     geometry::Vec3,
     random::{LegacyRandom, RandomSource},
 };
-use sunrise_gameplay_common::game::passengers_common::{Riders, player_box_top};
 use sunrise_sim::mobs::{Species, riders};
 
 /// The seconds a skeleton horse trap waits for a player: 15 minutes.
@@ -67,8 +67,7 @@ impl ServerGame<'_> {
             .filter(|m| !m.removed)
             .map(|m| (m.id, m.extra.mount))
             .collect();
-        self.common
-            .mobs
+        self.common.mobs
             .iter()
             .filter_map(|m| {
                 let mut mount = m.extra.mount;
@@ -102,15 +101,12 @@ impl ServerGame<'_> {
     /// Riders sit on their vehicles (`Entity.positionRider`), mobs or boats,
     /// and let go when the vehicle dies or is gone.
     pub(in crate::game) fn sync_riders(&mut self) {
-        if !self.common.persist.off_level.is_empty()
-            || !self.common.persist.removed_vehicles.is_empty()
-        {
+        if !self.common.persist.off_level.is_empty() || !self.common.persist.removed_vehicles.is_empty() {
             self.sync_retained_riders();
             self.position_riders();
             if !self.common.persist.removed_vehicles.is_empty()
                 || self
-                    .common
-                    .persist
+                    .common.persist
                     .off_level
                     .values()
                     .any(sunrise_gameplay_common::game::entity_memory::OffLevel::is_removed)
@@ -127,22 +123,17 @@ impl ServerGame<'_> {
                 m.extra.boarding_cooldown -= 1;
             }
         }
-        let boats: std::collections::HashSet<u32> =
-            self.common.boats.iter().map(|b| b.id).collect();
-        let carts: std::collections::HashSet<u32> =
-            self.common.carts.iter().map(|c| c.id).collect();
-        let cushions: std::collections::HashSet<u32> =
-            self.common.cushions.iter().map(|c| c.id).collect();
+        let boats: std::collections::HashSet<u32> = self.common.boats.iter().map(|b| b.id).collect();
+        let carts: std::collections::HashSet<u32> = self.common.carts.iter().map(|c| c.id).collect();
+        let cushions: std::collections::HashSet<u32> = self.common.cushions.iter().map(|c| c.id).collect();
         let tnts: std::collections::HashSet<u32> = self
-            .common
-            .tnts
+            .common.tnts
             .iter()
             .map(|t| t.id)
             .filter(|&id| id != 0)
             .collect();
         let index: HashMap<u32, usize> = self
-            .common
-            .mobs
+            .common.mobs
             .iter()
             .enumerate()
             .map(|(i, m)| (m.id, i))
@@ -163,10 +154,7 @@ impl ServerGame<'_> {
                     || index.get(&v).is_some_and(|&j| !self.common.mobs[j].removed)
                     || self.player_vehicle(v).is_some());
             if valid {
-                let place = (
-                    self.common.mobs[i].extra.vehicle_order,
-                    self.common.mobs[i].id,
-                );
+                let place = (self.common.mobs[i].extra.vehicle_order, self.common.mobs[i].id);
                 riding
                     .entry(v)
                     .and_modify(|first| *first = (*first).min(place))
@@ -266,22 +254,10 @@ impl ServerGame<'_> {
         if let Some(c) = self.common.carts.iter().find(|c| c.id == vehicle) {
             return Some(super::minecarts::cart_general_seat(c.position));
         }
-        if let Some(t) = self
-            .common
-            .tnts
-            .iter()
-            .find(|t| t.id == vehicle && t.id != 0)
-        {
-            return Some(sunrise_gameplay_common::game::tnt_common::tnt_general_seat(
-                t.position,
-            ));
+        if let Some(t) = self.common.tnts.iter().find(|t| t.id == vehicle && t.id != 0) {
+            return Some(sunrise_gameplay_common::game::tnt_common::tnt_general_seat(t.position));
         }
-        if let Some(v) = self
-            .common
-            .mobs
-            .iter()
-            .find(|m| m.id == vehicle && !m.removed)
-        {
+        if let Some(v) = self.common.mobs.iter().find(|m| m.id == vehicle && !m.removed) {
             let (index, count) = self.passenger_place(vehicle, rider);
             let attachment = Self::mob_passenger_attachment(v, false, index, count);
             return Some(riders::seat(attachment, 0.0, v.position, v.yaw));
@@ -397,8 +373,7 @@ impl ServerGame<'_> {
         self.common.seat_cushion_mobs(&riders);
         self.seat_static_mobs(&riders);
         let index: HashMap<u32, usize> = self
-            .common
-            .mobs
+            .common.mobs
             .iter()
             .enumerate()
             .map(|(i, m)| (m.id, i))
@@ -553,7 +528,7 @@ impl ServerGame<'_> {
                 "minecraft:skeleton_horse",
                 at,
                 true,
-                sunrise_gameplay_common::game::creatures::SpawnSite::Finalizing(
+                super::creatures::SpawnSite::Finalizing(
                     sunrise_sim::mobs::spawn_rules::Reason::Triggered,
                 ),
             ) else {
@@ -583,7 +558,7 @@ impl ServerGame<'_> {
             "minecraft:skeleton",
             at,
             true,
-            sunrise_gameplay_common::game::creatures::SpawnSite::Finalizing(
+            super::creatures::SpawnSite::Finalizing(
                 sunrise_sim::mobs::spawn_rules::Reason::Triggered,
             ),
         )?;
@@ -634,32 +609,52 @@ pub(in crate::game) mod player_seat_tests {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod nested_vehicle_discard_tests {
-    use sunrise_gameplay_common::game::server_side::passengers::nested_vehicle_discard_tests::VEHICLE_VALUE;
+use sunrise_gameplay_common::game::server_side::passengers::nested_vehicle_discard_tests::VEHICLE_VALUE;
 
     use super::*;
     use crate::game::native_entity_refs::tests::{collect_all_entities, collect_entities_in};
+    use {sunrise_gameplay_common::game::boats_common::Boat, sunrise_gameplay_common::game::entity_memory::OffLevel, crate::game::server_side::minecarts_server::CartHit};
     use std::sync::{
         Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     };
     use sunrise_sim::mobs::Mob;
-    use {
-        crate::game::server_side::minecarts_server::CartHit,
-        sunrise_gameplay_common::game::boats_common::Boat,
-        sunrise_gameplay_common::game::entity_memory::OffLevel,
-    };
 
+    
+    
+    
+    
+    
+    
     #[cfg(test)]
-    struct CancelUntilAllowed {
+struct CancelUntilAllowed {
         cancel: Arc<AtomicBool>,
         calls: Arc<AtomicUsize>,
     }
+    
+
+    
+    
+
+    
 
     #[cfg(test)]
-    struct CancelPlayerDismount {
+struct CancelPlayerDismount {
         cancel: Arc<AtomicBool>,
         calls: Arc<AtomicUsize>,
     }
+    
+
+    
+
+    
+
+    
+    
+
+    
+
+    
 
     pub fn set_vehicle_test_attachment(game: &mut crate::game::ServerGame<'_>) {
         // The real store path binds the resident owner's registration. Rebinding
@@ -669,33 +664,70 @@ pub mod nested_vehicle_discard_tests {
             .unwrap();
     }
 
+    
+
+    
+
     #[cfg(test)]
-    struct RemovalBoundaryObserver {
+struct RemovalBoundaryObserver {
         kind: &'static str,
         cancel: Arc<AtomicBool>,
         mounts: Arc<AtomicUsize>,
         leaves: Arc<AtomicUsize>,
         destroys: Arc<AtomicUsize>,
     }
+    
+
+    
 
     #[cfg(test)]
-    #[derive(Default)]
+#[derive(Default)]
     struct SpillJoins {
         vehicle: AtomicUsize,
         items: AtomicUsize,
     }
 
+    
+    
+
+    
+
     #[cfg(test)]
-    struct ObserveDestroyedVehicle {
+struct ObserveDestroyedVehicle {
         kind: &'static str,
         calls: Arc<AtomicUsize>,
     }
+    
 
+    
+
+    
+
+    
+
+    
+
+    
     #[cfg(test)]
-    struct CancelLive {
+struct CancelLive {
         count: Arc<AtomicUsize>,
         cross_level: bool,
     }
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
 }
 
 #[cfg(test)]
@@ -712,6 +744,10 @@ pub(in crate::game) mod trap_scatter_tests {
         }
         assert_eq!(horse_random.next_long(), expected.next_long());
     }
+
+    
+
+    
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;

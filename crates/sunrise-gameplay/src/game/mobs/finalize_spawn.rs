@@ -110,8 +110,7 @@ impl ServerGame<'_> {
     /// The first free chicken a jockey can take: alive, unhindered, inside
     /// the bounds.
     pub(in crate::game::server_side) fn finalize_free_chicken(&self, bounds: Aabb) -> Option<u32> {
-        self.common
-            .mobs
+        self.common.mobs
             .iter()
             .find(|c| {
                 c.species() == Species::Chicken
@@ -154,15 +153,9 @@ impl ServerGame<'_> {
         // finalization that follows reads none.
         let (outcome, _) = self.finalize_spawn_event(mob, reason, None, &mut None);
         match outcome {
-            sunrise_gameplay_common::game::creatures::Finalized::Cancelled => {
-                finalize::SpawnEvent::Cancelled
-            }
-            sunrise_gameplay_common::game::creatures::Finalized::Skipped => {
-                finalize::SpawnEvent::Skip
-            }
-            sunrise_gameplay_common::game::creatures::Finalized::Done => {
-                finalize::SpawnEvent::Finalize
-            }
+            super::creatures::Finalized::Cancelled => finalize::SpawnEvent::Cancelled,
+            super::creatures::Finalized::Skipped => finalize::SpawnEvent::Skip,
+            super::creatures::Finalized::Done => finalize::SpawnEvent::Finalize,
         }
     }
     /// The game's own finalization of a mob, with no event: the same

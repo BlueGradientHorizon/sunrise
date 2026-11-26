@@ -1,12 +1,12 @@
 use super::{Game, Hit, dragon_common::FightWho};
-use std::sync::Arc;
-use sunrise_core::{geometry::Vec3, random::RandomSource};
 use sunrise_gameplay_common::game::fireworks::FIREWORK_EXPLODE_EVENT;
 use sunrise_gameplay_common::game::fireworks::Rocket;
 use sunrise_gameplay_common::game::fireworks::blast_damage;
 use sunrise_gameplay_common::game::fireworks::fireworks_of;
 use sunrise_gameplay_common::game::fireworks::rocket_draws;
 use sunrise_gameplay_common::game::fireworks::use_on_passes;
+use std::sync::Arc;
+use sunrise_core::{geometry::Vec3, random::RandomSource};
 #[allow(unused_imports)]
 use {
     sunrise_game_data::text::Text, sunrise_items::firework::FireworkExplosion,
@@ -115,8 +115,7 @@ impl crate::game::ServerGame<'_> {
     ) -> Rocket {
         let (flight, explosions) = fireworks_of(stack);
         let id = self.take_entity_id();
-        self.common
-            .persist
+        self.common.persist
             .uuids
             .insert(id, sunrise_sim::save::insecure_uuid(own));
         let (velocity, lifetime) = rocket_draws(own, flight);
@@ -166,11 +165,7 @@ impl crate::game::ServerGame<'_> {
         if self.drop_all_leash_connections() {
             self.play_player_bound_sound("minecraft:item.lead.break", 6, 1.0, 1.0, false);
         }
-        let at = self
-            .common
-            .player
-            .as_ref()
-            .map_or(Vec3::ZERO, |p| p.position);
+        let at = self.common.player.as_ref().map_or(Vec3::ZERO, |p| p.position);
         let mut rocket = self.new_rocket(at, stack, true, &mut random_source::entity());
         rocket.owner = Some(Who::Player);
         rocket.guest = self.server.lan_acting;
@@ -180,10 +175,9 @@ impl crate::game::ServerGame<'_> {
         }
         self.award_stat("used", "minecraft:firework_rocket", 1);
         self.swing_arm();
-        if let (Some(player), Some(name)) = (
-            self.server.lan_acting_uuid,
-            self.server.lan_acting_name.clone(),
-        ) {
+        if let (Some(player), Some(name)) =
+            (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
+        {
             self.native_player_elytra_boost(player, &name);
         }
         true
@@ -226,11 +220,7 @@ impl crate::game::ServerGame<'_> {
                 && let Some(p) = self.player_view()
                 && p.bounds.intersects(reach)
             {
-                let pos = self
-                    .common
-                    .player
-                    .as_ref()
-                    .map_or(Vec3::ZERO, |pl| pl.position);
+                let pos = self.common.player.as_ref().map_or(Vec3::ZERO, |pl| pl.position);
                 candidates.push((
                     sunrise_sim::projectiles::TargetOrder::entity(pos, 0),
                     SplashTarget::Host,
@@ -298,8 +288,7 @@ impl crate::game::ServerGame<'_> {
                     SplashTarget::Mob(id) => {
                         let hit = {
                             let world = self.mob_world_base(&[]);
-                            self.common
-                                .mobs
+                            self.common.mobs
                                 .iter()
                                 .find(|m| m.id == id && !m.removed)
                                 .and_then(|m| {
@@ -349,8 +338,7 @@ impl crate::game::ServerGame<'_> {
                     SplashTarget::Stand(id) => {
                         let sees = {
                             let world = self.mob_world_base(&[]);
-                            self.common
-                                .armor_stands
+                            self.common.armor_stands
                                 .iter()
                                 .find(|a| a.id == id)
                                 .is_some_and(|a| {
@@ -405,10 +393,7 @@ impl crate::game::ServerGame<'_> {
         rocket.turn_to_shot();
         rocket.angled = true;
         rocket.owner = owner;
-        rocket.guest = self
-            .server
-            .lan_acting
-            .filter(|_| owner == Some(Who::Player));
+        rocket.guest = self.server.lan_acting.filter(|_| owner == Some(Who::Player));
         self.common.rockets.push(rocket);
     }
     /// `FireworkRocketItem.useOn`: launch from the clicked point.
@@ -690,7 +675,7 @@ impl crate::game::ServerGame<'_> {
         use sunrise_sim::projectiles::{NearestHit, compute_margin};
         let from = r.position;
         let to = from.add_vector(motion);
-        let query = sunrise_gameplay_common::game::creatures::TargetQuery {
+        let query = super::creatures::TargetQuery {
             include_guests: true,
             ..Default::default()
         };
@@ -739,8 +724,7 @@ impl crate::game::ServerGame<'_> {
         rocket: Rocket,
     ) -> bool {
         !self
-            .common
-            .persist
+            .common.persist
             .removals
             .contains(&super::commands::Target::Rocket(rocket.id))
             && self.common.rockets.store_back(index, rocket)
@@ -816,14 +800,13 @@ impl crate::game::ServerGame<'_> {
                     }
                     ProjectileHit::Block { pos, face, at } => {
                         if face != [0; 3] {
-                            let hitter =
-                                sunrise_gameplay_common::game::creatures::ProjectileHitter {
-                                    owner: r.owner,
-                                    guest: r.guest,
-                                    arrow: false,
-                                    kind: "minecraft:firework_rocket",
-                                    position: r.position,
-                                };
+                            let hitter = super::creatures::ProjectileHitter {
+                                owner: r.owner,
+                                guest: r.guest,
+                                arrow: false,
+                                kind: "minecraft:firework_rocket",
+                                position: r.position,
+                            };
                             let _ = self.projectile_block_impact(&hitter, pos, at, face);
                             self.target_block_hit(&hitter, pos, at, face);
                         }
@@ -879,16 +862,10 @@ impl crate::game::ServerGame<'_> {
             // where it stands, or at `i` when it is gone.
             i = if !kept {
                 i
-            } else if self
-                .common
-                .rockets
-                .get(i)
-                .is_some_and(|rocket| rocket.id == id)
-            {
+            } else if self.common.rockets.get(i).is_some_and(|rocket| rocket.id == id) {
                 i + 1
             } else {
-                self.common
-                    .rockets
+                self.common.rockets
                     .iter()
                     .position(|rocket| rocket.id == id)
                     .map_or(i, |index| index + 1)

@@ -75,12 +75,7 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn native_menu_guest(&self, menu: MenuRef) -> Option<&Guest> {
         let guest = self.native_menu_player(menu.fields().player)?;
         let host = self.server.lan.as_ref()?;
-        (host
-            .hub
-            .holder_guest(guest.uuid, self.common.dim.id())?
-            .conn
-            == guest.conn)
-            .then_some(())?;
+        (host.hub.holder_guest(guest.uuid, self.common.dim.id())?.conn == guest.conn).then_some(())?;
         (guest.menu_generation == menu.fields().generation).then_some(())?;
         if let Some(open) = &guest.menu {
             (open.window == menu.fields().window).then_some(guest)
@@ -339,8 +334,7 @@ impl crate::game::ServerGame<'_> {
                 }
                 self.journal_block_entity_slot(pos, index);
                 let Some(held) = self
-                    .common
-                    .world
+                    .common.world
                     .block_entities
                     .get_mut(&pos)
                     .and_then(|block| block.slot_mut(index))
@@ -348,9 +342,7 @@ impl crate::game::ServerGame<'_> {
                     return false;
                 };
                 *held = Some(stack);
-                self.after_commit(sunrise_gameplay_common::game::transactions::After::Changed(
-                    pos,
-                ));
+                self.after_commit(super::transactions::After::Changed(pos));
                 true
             }
             Some(
@@ -374,8 +366,8 @@ impl crate::game::ServerGame<'_> {
     /// equipment, cursor and ender contents are swapped into Game.
     pub(in crate::game) fn native_menu_player(&self, player: PlayerRef) -> Option<&Guest> {
         match self.player_handle_read(player)? {
-            sunrise_gameplay_common::game::native_server::PlayerRead::Guest(guest) => Some(guest),
-            sunrise_gameplay_common::game::native_server::PlayerRead::Acting { .. } => {
+            super::native_server::PlayerRead::Guest(guest) => Some(guest),
+            super::native_server::PlayerRead::Acting { .. } => {
                 self.server.lan.as_ref()?.hub.guest(self.server.lan_acting?)
             }
         }

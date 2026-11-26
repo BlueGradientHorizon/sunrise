@@ -1,9 +1,9 @@
 //! The player's `CombatTracker`: the damage taken lately, who dealt it and
 //! where the player fell from, turned into the vanilla death message.
 use super::{Game, commands_common::Target};
+use sunrise_gameplay_common::game::combat_common::{DROWN_EVENT, PlayerCredit};
 #[cfg(test)]
 use sunrise_core::random::RandomSource;
-use sunrise_gameplay_common::game::combat_common::{DROWN_EVENT, PlayerCredit};
 use {
     sunrise_game_data::text::Text, sunrise_level::particle_options::ParticleType,
     sunrise_sim::health::Attack, sunrise_sim::health::HealthEvent, sunrise_sim::mobs::Damage,
@@ -286,8 +286,7 @@ impl crate::game::ServerGame<'_> {
     /// A mob's drowning tick (`MobEvent::Drown`).
     pub(in crate::game::server_side) fn mob_drown(&mut self, mob: u32, at: [f64; 3], bubbles: i32) {
         let v = self
-            .common
-            .mobs
+            .common.mobs
             .iter()
             .find(|m| m.id == mob)
             .map_or([0.0; 3], |m| [m.velocity.x, m.velocity.y, m.velocity.z]);
@@ -546,8 +545,7 @@ impl crate::game::ServerGame<'_> {
         self.server.combat.0.noted_since = None;
         self.server.combat.0.projectile_direct = None;
         self.server.combat.0.projectile_attacker = None;
-        self.server.combat.0.fall_before =
-            self.common.player.as_ref().map_or(0.0, |p| p.fall_distance);
+        self.server.combat.0.fall_before = self.common.player.as_ref().map_or(0.0, |p| p.fall_distance);
     }
     /// `FallLocation.getCurrentFallLocation` and the fall distance so far.
     pub(in crate::game::server_side) fn fall_location(&self) -> (Option<&'static str>, f32) {
@@ -557,8 +555,7 @@ impl crate::game::ServerGame<'_> {
         let distance = p.fall_distance.max(self.server.combat.0.fall_before) as f32;
         let location = if let Some(c) = p.last_climbable {
             let name = self
-                .common
-                .res
+                .common.res
                 .facts()
                 .get(self.common.world.block(c.x, c.y, c.z))
                 .name
@@ -675,8 +672,7 @@ impl crate::game::ServerGame<'_> {
             return Text::translate("death.attack.generic", &[me]);
         };
         let def = self
-            .common
-            .health_resources
+            .common.health_resources
             .damage
             .id(&killing.damage_type)
             .and_then(|id| self.common.health_resources.damage.definition(id))
@@ -773,8 +769,7 @@ impl crate::game::ServerGame<'_> {
             return;
         };
         if !self
-            .common
-            .ui
+            .common.ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::SHOW_DEATH_MESSAGES)
         {
@@ -794,7 +789,7 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         let mut built = Some(self.mob_death_message(m, killer));
-        let kind = sunrise_gameplay_common::game::native_hooks::mob_kind(m);
+        let kind = super::native_hooks::mob_kind(m);
         self.native_living_death_message(m.id, &kind, &mut built);
         // A native mod may have changed the message, or set it to None to tell the owner nothing.
         let Some(message) = built else {
@@ -869,10 +864,7 @@ impl crate::game::ServerGame<'_> {
                     _ => None,
                 };
                 Entry {
-                    damage_type: sunrise_gameplay_common::game::creatures::source_damage_type(
-                        e.source,
-                    )
-                    .to_owned(),
+                    damage_type: super::creatures::source_damage_type(e.source).to_owned(),
                     damage: e.damage,
                     fall_location: e.in_water.then_some("water"),
                     fall_distance: e.fall_distance,
@@ -1020,8 +1012,7 @@ impl crate::game::ServerGame<'_> {
         if let Some(player) = self.combat_player(id) {
             return match player {
                 CombatPlayer::InPlace => self
-                    .common
-                    .player
+                    .common.player
                     .as_ref()
                     .is_some_and(|p| p.health.health() > 0.0),
                 CombatPlayer::Displaced(_, body) => body.health.health() > 0.0,
@@ -1031,19 +1022,15 @@ impl crate::game::ServerGame<'_> {
             };
         }
         match self.last_hurt_living_target(id) {
-            Some((Target::Mob(_), join)) => self
-                .common
-                .mobs
-                .locate(join)
-                .is_some_and(|i| self.common.mobs[i].alive()),
+            Some((Target::Mob(_), join)) => {
+                self.common.mobs.locate(join).is_some_and(|i| self.common.mobs[i].alive())
+            }
             Some((Target::Stand(_), join)) => self
-                .common
-                .armor_stands
+                .common.armor_stands
                 .locate(join)
                 .is_some_and(|i| self.common.armor_stands[i].health > 0.0),
             Some((Target::Dragon(id), _)) => self
-                .common
-                .dragon
+                .common.dragon
                 .as_ref()
                 .is_some_and(|d| d.id == id && d.health > 0.0),
             _ => self.parked_living_alive(id),
@@ -1052,11 +1039,7 @@ impl crate::game::ServerGame<'_> {
 
     /// The player's `LivingEntity.baseTick` clears the remembered target before effects.
     pub(in crate::game) fn clear_dead_player_target(&mut self) {
-        if let Some((id, _)) = self
-            .common
-            .player
-            .as_ref()
-            .and_then(|p| p.health.last_hurt_mob)
+        if let Some((id, _)) = self.common.player.as_ref().and_then(|p| p.health.last_hurt_mob)
             && !self.last_hurt_target_alive(id)
         {
             self.remember_player_target(None);
@@ -1079,10 +1062,7 @@ impl crate::game::ServerGame<'_> {
                 target,
                 source.attacker,
                 None,
-                Some(sunrise_gameplay_common::game::creatures::damage_type(
-                    source.kind,
-                    false,
-                )),
+                Some(super::creatures::damage_type(source.kind, false)),
             );
         }
         hurt
@@ -1155,9 +1135,7 @@ impl crate::game::ServerGame<'_> {
             return false;
         };
         let ticked = &self.common.creatures.ticked;
-        if !self.common.creatures.deferred_hits
-            || !ticked.contains(&attacker)
-            || !ticked.contains(&target)
+        if !self.common.creatures.deferred_hits || !ticked.contains(&attacker) || !ticked.contains(&target)
         {
             return false;
         }

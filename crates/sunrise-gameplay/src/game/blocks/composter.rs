@@ -6,8 +6,8 @@ use super::{
     Game,
     commands::{Target, compute::ComputeContext},
 };
-use sunrise_core::position::BlockPos;
 use sunrise_gameplay_common::game::composter_data::{Effects, is_composter};
+use sunrise_core::position::BlockPos;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::villager;
 /// Temporarily lends the provider the composter's random owner. Even unwinding restores
@@ -84,13 +84,8 @@ impl crate::game::ServerGame<'_> {
         let layers = self.composter_layers(pos, layers, interacting);
         let before = self.common.world.block(pos[0], pos[1], pos[2]);
         let at = BlockPos::new(pos[0], pos[1], pos[2]);
-        let after = self
-            .common
-            .with_level(|b, level, ticks| b.composter_insert(level, ticks, at, layers));
-        self.common
-            .world
-            .modified
-            .insert((pos[0] >> 4, pos[2] >> 4));
+        let after = self.common.with_level(|b, level, ticks| b.composter_insert(level, ticks, at, layers));
+        self.common.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
         // The game event and level event 1500 happen here, before the caller goes on.
         let _ = self.server_process_level_events();
         after != before
@@ -165,20 +160,17 @@ impl crate::game::ServerGame<'_> {
         let before = self.common.world.block(pos[0], pos[1], pos[2]);
         let layers = self.composter_transactional_layers(pos, &provider);
         let after = self
-            .common
-            .res
+            .common.res
             .behaviours()
             .composter_state_after_layers(before, layers);
         if after != before && !self.journal_set_block(pos, after) {
             return false;
         }
-        self.after_commit(
-            sunrise_gameplay_common::game::transactions::After::Composter(Effects::Insert {
-                pos,
-                before,
-                after,
-            }),
-        );
+        self.after_commit(super::transactions::After::Composter(Effects::Insert {
+            pos,
+            before,
+            after,
+        }));
         true
     }
 
@@ -192,20 +184,14 @@ impl crate::game::ServerGame<'_> {
             return None;
         }
         let before = self.common.world.block(pos[0], pos[1], pos[2]);
-        let after = self
-            .common
-            .res
-            .behaviours()
-            .composter_state_after_extract(before);
+        let after = self.common.res.behaviours().composter_state_after_extract(before);
         if !self.journal_set_block(pos, after) {
             return None;
         }
-        self.after_commit(
-            sunrise_gameplay_common::game::transactions::After::Composter(Effects::Empty {
-                pos,
-                after,
-            }),
-        );
+        self.after_commit(super::transactions::After::Composter(Effects::Empty {
+            pos,
+            after,
+        }));
         Some(ItemStack::new("minecraft:bone_meal", 1))
     }
 
@@ -245,8 +231,7 @@ impl crate::game::ServerGame<'_> {
             return;
         };
         if before == 8 {
-            self.common
-                .with_level(|b, level, ticks| b.composter_extract(level, ticks, at));
+            self.common.with_level(|b, level, ticks| b.composter_extract(level, ticks, at));
             let _ = self.server_process_level_events();
             before = 0;
         }
@@ -299,12 +284,8 @@ impl crate::game::ServerGame<'_> {
         let interacting = Some(Target::Mob(self.common.mobs[mob].id));
         let layers = self.composter_layers(pos, &layers, interacting);
         let at = BlockPos::new(pos[0], pos[1], pos[2]);
-        self.common
-            .with_level(|b, level, ticks| b.composter_layer(level, ticks, at, layers));
-        self.common
-            .world
-            .modified
-            .insert((pos[0] >> 4, pos[2] >> 4));
+        self.common.with_level(|b, level, ticks| b.composter_layer(level, ticks, at, layers));
+        self.common.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
         let _ = self.server_process_level_events();
         let inventory = &mut villager::ext_mut(&mut self.common.mobs[mob]).inventory;
         inventory[slot].count -= 1;

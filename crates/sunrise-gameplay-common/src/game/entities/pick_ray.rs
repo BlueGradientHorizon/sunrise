@@ -23,12 +23,12 @@ pub fn pick_ray_segment(eye: [f64; 3], dir: [f64; 3], reach: f64) -> (Vec3, Vec3
 
 pub struct PickAccumulator {
     pub hovered: Option<PickCandidate>,
-    pub nearest_sq: f64,
-    pub candidates: Option<Vec<PickCandidate>>,
+    pub(in crate::game) nearest_sq: f64,
+    pub(in crate::game) candidates: Option<Vec<PickCandidate>>,
 }
 
 impl PickAccumulator {
-    pub fn new(max_distance_sq: f64) -> Self {
+    pub(in crate::game) fn new(max_distance_sq: f64) -> Self {
         Self {
             hovered: None,
             nearest_sq: max_distance_sq,
@@ -52,7 +52,7 @@ impl PickAccumulator {
         )
     }
 
-    pub fn consider_box<__Side: crate::game::Side>(
+    pub(in crate::game) fn consider_box<__Side: crate::game::Side>(
         &mut self,
         game: &Game<'_, __Side>,
         id: u32,
@@ -66,7 +66,12 @@ impl PickAccumulator {
         self.consider_candidate(game, candidate)
     }
 
-    pub fn accept(&mut self, candidate: PickCandidate, same_vehicle: bool, allowed: bool) -> bool {
+    pub(in crate::game) fn accept(
+        &mut self,
+        candidate: PickCandidate,
+        same_vehicle: bool,
+        allowed: bool,
+    ) -> bool {
         if candidate.inside {
             if self.nearest_sq < 0.0 {
                 return false;

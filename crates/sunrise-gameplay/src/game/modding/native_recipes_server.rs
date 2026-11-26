@@ -1,7 +1,7 @@
 //! Server-side recipe lookup (`LevelRef::recipe_for`) for native mods.
 use crate::game::ServerGame;
+use super::api_values::TryIntoApi;
 use mod_api::{LevelRef, RecipeInput, RecipeLookupError, RecipeMatch};
-use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use sunrise_items::items::ItemStack;
 
 impl ServerGame<'_> {
@@ -28,8 +28,7 @@ impl ServerGame<'_> {
             )))
         };
         let read_stack = |stack: &mod_api::ItemStack| {
-            sunrise_gameplay_common::game::api_values::recipe_inputs::stack(stack, self.items())
-                .map_err(|_| InvalidItem)
+            super::api_values::recipe_inputs::stack(stack, self.items()).map_err(|_| InvalidItem)
         };
         match kind {
             "crafting" => {
@@ -79,9 +78,7 @@ impl ServerGame<'_> {
                     "smoking" => "minecraft:smoking",
                     _ => "minecraft:campfire_cooking",
                 };
-                let Some(recipe) =
-                    self.recipes()
-                        .cook(&self.common.loop_context, full_kind, &input)
+                let Some(recipe) = self.recipes().cook(&self.common.loop_context, full_kind, &input)
                 else {
                     return Ok(None);
                 };

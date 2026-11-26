@@ -11,9 +11,9 @@ use super::nether_portal::Plan;
 use super::respawn_anchor::RespawnConfig;
 use super::respawn_position::Respawn;
 use super::{Dim, Game, Mob, lan::LanHost, minecarts};
-use sunrise_core::{geometry::Vec3, position::BlockPos};
 use sunrise_gameplay_common::game::end_state::GatewayJob;
 use sunrise_gameplay_common::game::entity_memory::OffLevel;
+use sunrise_core::{geometry::Vec3, position::BlockPos};
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_sim::nether_portal::PLAYER_DELAY;
 use sunrise_sim::{lan::hub::TickCtx, world_spawn::PlayerSpawnFinder};
@@ -178,7 +178,7 @@ macro_rules! server_ctx {
             next_entity: &mut $s.side.next_entity,
             spawn,
             spawn_angle: $s.level.world_spawn_angle,
-            spawn_dimension: Dim::of_world_spawn(&$s.level).id(),
+            spawn_dimension: crate::game::Dim::of_world_spawn(&$s.level).id(),
             sea_level: $s.end.locator().map_or(63, |terrain| terrain.sea_level()),
             difficulty: i32::from($s.ui.difficulty),
             difficulty_locked: $s.level.difficulty_locked,
@@ -478,8 +478,7 @@ impl crate::game::ServerGame<'_> {
         // EndGatewayBlock.getPortalDestination: none without its block entity.
         let gateway_ok = name != "end_gateway"
             || self
-                .common
-                .world
+                .common.world
                 .block_entities
                 .get(&(pos[0], pos[1], pos[2]))
                 .is_some_and(|e| {
@@ -541,8 +540,7 @@ impl crate::game::ServerGame<'_> {
                 }
             }
             _ => {
-                if self.server_player_travel_allowed(conn, self.common.dim, TravelCause::EndGateway)
-                {
+                if self.server_player_travel_allowed(conn, self.common.dim, TravelCause::EndGateway) {
                     self.start_gateway_trip(conn, pos);
                 }
             }
@@ -572,12 +570,7 @@ impl crate::game::ServerGame<'_> {
         target: Dim,
         cause: TravelCause,
     ) -> bool {
-        let Some(g) = self
-            .server
-            .lan
-            .as_ref()
-            .and_then(|host| host.hub.guest(conn))
-        else {
+        let Some(g) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
             return false;
         };
         let entity = g.entity_id;
@@ -666,11 +659,7 @@ impl crate::game::ServerGame<'_> {
             .collect();
         for rider in accepted {
             if self.entity_is_passenger(rider) == Some(false)
-                && !self
-                    .common
-                    .mobs
-                    .iter()
-                    .any(|m| m.id == rider.id() && !m.alive())
+                && !self.common.mobs.iter().any(|m| m.id == rider.id() && !m.alive())
             {
                 // Reject callback topology changes: the shared mount path
                 // checks live handles, dimension, cycles and vehicle capacity.
@@ -753,11 +742,7 @@ impl crate::game::ServerGame<'_> {
             && self.gateway_available(g)
         {
             if self.common.portal_player.cooldown == 0 {
-                let Some(player) = self
-                    .server
-                    .lan
-                    .as_ref()
-                    .and_then(|host| host.hub.guest(conn))
+                let Some(player) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn))
                 else {
                     return;
                 };
@@ -767,11 +752,7 @@ impl crate::game::ServerGame<'_> {
                 if cancel {
                     return;
                 }
-                if !self.server_player_travel_allowed(
-                    conn,
-                    self.common.dim,
-                    TravelCause::EndGateway,
-                ) {
+                if !self.server_player_travel_allowed(conn, self.common.dim, TravelCause::EndGateway) {
                     return;
                 }
             }
@@ -791,8 +772,7 @@ impl crate::game::ServerGame<'_> {
         };
         let transition = self.common.ui.rules.int_at(rule).max(0);
         let Some(entry) = self
-            .common
-            .portal_player
+            .common.portal_player
             .handle(!sleeping, transition, PLAYER_DELAY)
         else {
             return;
@@ -1722,18 +1702,13 @@ impl crate::game::ServerGame<'_> {
         let spawn = self.world_spawn_position();
         let clock_rate = self.network_clock_rate();
         TickCtx {
-            sea_level: self
-                .common
-                .end
-                .locator()
-                .map_or(63, |terrain| terrain.sea_level()),
+            sea_level: self.common.end.locator().map_or(63, |terrain| terrain.sea_level()),
             world: &mut self.common.world,
             entities: &[],
             next_entity: &mut self.server.next_entity,
             spawn,
             spawn_angle: self.common.level.world_spawn_angle,
-            spawn_dimension: sunrise_gameplay_common::game::Dim::of_world_spawn(&self.common.level)
-                .id(),
+            spawn_dimension: sunrise_gameplay_common::game::Dim::of_world_spawn(&self.common.level).id(),
             difficulty: i32::from(self.common.ui.difficulty),
             difficulty_locked: self.common.level.difficulty_locked,
             clock_rate,
@@ -1752,6 +1727,16 @@ mod tests {
     use super::*;
     use mod_api::ServerHost;
     use std::sync::Arc;
+
+    
+
+    
+
+    
+
+    
+
+    
 
     /// A minecart a player rides through a portal rolls on at the motion it
     /// crossed with, clamped to 0.4 along x and z (`PositionMoveRotation.of`
@@ -1780,15 +1765,14 @@ mod tests {
     /// ride the vehicle that is recreated in the other dimension).
     #[test]
     fn the_vehicle_a_player_rides_travels_with_it() {
-        let mut boats: sunrise_sim::join_seq::JoinList<_> =
-            [sunrise_gameplay_common::game::boats_common::Boat::new(
-                7,
-                Arc::from("oak"),
-                Vec3::new(0.0, 64.0, 0.0),
-                0.0,
-            )]
-            .into_iter()
-            .collect();
+        let mut boats: sunrise_sim::join_seq::JoinList<_> = [sunrise_gameplay_common::game::boats_common::Boat::new(
+            7,
+            Arc::from("oak"),
+            Vec3::new(0.0, 64.0, 0.0),
+            0.0,
+        )]
+        .into_iter()
+        .collect();
         let mut carts = sunrise_sim::join_seq::JoinList::<minecarts::Minecart>::default();
         let mut mobs = sunrise_sim::join_seq::JoinList::<Mob>::default();
         let at = Vec3::new(1.5, 65.0, -2.5);
@@ -1812,7 +1796,7 @@ mod tests {
 
 #[cfg(test)]
 mod transfer_lifetime_tests {
-    use sunrise_gameplay_common::game::server_side::server_travel::transfer_lifetime_tests::VALUE;
+use sunrise_gameplay_common::game::server_side::server_travel::transfer_lifetime_tests::VALUE;
 
     use super::*;
     use std::sync::{Arc, Mutex};
@@ -1821,6 +1805,8 @@ mod transfer_lifetime_tests {
         index::AttachmentIndex,
     };
     use sunrise_sim::join_seq::Joined;
+
+    
 
     fn removal<T: Rideable + sunrise_sim::join_seq::Joined + HasAttachmentLifetime>(mut owner: T) {
         let index = Arc::new(Mutex::new(AttachmentIndex::default()));
@@ -1854,11 +1840,13 @@ mod transfer_lifetime_tests {
             0.0,
         ));
     }
+
+    
 }
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod credits_respawn_tests {
-    use sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_tests::ANCHOR;
+use sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_tests::ANCHOR;
 
     use super::Dim;
 
@@ -1877,6 +1865,16 @@ pub mod credits_respawn_tests {
         hub::HubConfig,
     };
     use sunrise_world::registry::BlockStateId;
+
+    
+
+    
+
+    
+
+    
+
+    
 
     pub fn light_spawn_chunks(game: &mut crate::game::ServerGame<'_>) {
         for x in -2..=2 {
@@ -1898,6 +1896,10 @@ pub mod credits_respawn_tests {
         game.world.set(x, y, z, charged).unwrap();
         charged
     }
+
+    
+
+    
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
