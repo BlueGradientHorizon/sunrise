@@ -116,10 +116,15 @@ def tool_json(commit: str, out: Path) -> None:
     """tool.json: what the signed sums bind to the tool beside each archive's hash."""
     contract = re.search(r"pub const CONTRACT: u32 = (\d+);", (ROOT / CONTRACT_SOURCE).read_text())
     release = re.search(r"pub const RELEASE_CONTRACT: u32 = (\d+);", (ROOT / RELEASE_CONTRACT_SOURCE).read_text())
+    # By its path, as `decide` loads release_train; the one reader of the package-format file lives in prebuilt_game.
+    spec = importlib.util.spec_from_file_location("prebuilt_game", ROOT / "tools/prebuilt_game.py")
+    prebuilt = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(prebuilt)
     date = run("git", "log", "-1", "--format=%cd", "--date=format-local:%Y-%m-%d", commit).strip()
     out.write_text(json.dumps({"schema": 1, "tag": TAG, "commit": commit, "date": date,
                                "native_contract": int(contract.group(1)),
                                "release_contract": int(release.group(1)),
+                               "package_format": prebuilt.package_format(ROOT),
                                "rust": (ROOT / "tools/ci/rust-version").read_text().strip()}, indent=2) + "\n")
 
 

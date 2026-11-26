@@ -505,14 +505,6 @@ impl Game<'_> {
                     self.clipboard.set(&text);
                 }
                 Event::ListShaderPacks => {
-                    let (key, _) = sunrise_client::shader_pack_list::resolve(
-                        &Self::shader_packs_dir(),
-                        &self.settings.sunrise.shader_pack,
-                    );
-                    if key != self.settings.sunrise.shader_pack {
-                        self.settings.sunrise.shader_pack = key;
-                        self.settings.save(&Self::options_path());
-                    }
                     self.settings.shader_packs =
                         sunrise_client::shader_pack_list::scan(&Self::shader_packs_dir());
                 }
@@ -520,11 +512,6 @@ impl Game<'_> {
                 Event::ShaderPack => self.settings.save(&Self::options_path()),
                 Event::OpenShaderOptions => self.open_shader_options(),
                 Event::ShaderOptions => self.save_shader_options(),
-                Event::NativePackOptions(i) => {
-                    if let Some(pack) = self.settings.shader_packs.get(i) {
-                        pack.save_values(&Self::shader_packs_dir());
-                    }
-                }
                 Event::OpenShaderPackFolder => {
                     let dir = Self::shader_packs_dir();
                     let _ = std::fs::create_dir_all(&dir);
@@ -743,12 +730,11 @@ impl Game<'_> {
     /// the last non-empty pick, resuming restores it, and the off state survives a restart.
     /// With `SUNRISE_SHADER_PACK` set the developer override wins and the key does nothing.
     /// Invalidation stays with the normal selection path: the next frame's `shader_pack_inputs`
-    /// sees the changed pick and drops or loads the pack itself, for either pack kind.
+    /// sees the changed pick and drops or loads the pack itself.
     pub(super) fn toggle_shader_pack(&mut self) {
         let present = |key: &str| {
-            sunrise_client::shader_pack_list::resolve(&Self::shader_packs_dir(), key)
-                .1
-                .exists()
+            let dir = Self::shader_packs_dir();
+            !sunrise_client::shader_pack_list::unsupported(&dir, key) && dir.join(key).exists()
         };
         let plan = plan_shader_toggle(
             &self.settings.sunrise.shader_pack,
@@ -943,7 +929,8 @@ mod resize_state_tests {
                 super::super::native_entity_refs::tests::with_client_game(|game| {
                     game.options.offscreen = true;
                     game.window = Some(window.clone());
-                    game.renderer = Some(game.new_renderer(window.clone()).unwrap());
+                    let renderer = game.new_renderer(window.clone()).unwrap();
+                    game.set_renderer(renderer);
                     game.renderer.as_mut().unwrap().resize(960, 1080);
                     game.settings.gui_scale = scale;
                     game.settings.force_unicode = false;

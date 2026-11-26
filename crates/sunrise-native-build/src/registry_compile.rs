@@ -667,12 +667,16 @@ pub(super) fn stage_and_cargo(
 }
 
 /// Gives each file under `staged` whose bytes equal the file at the same place under `previous`
-/// that file's modified time.
+/// that file's modified time, and each folder whose entries have the same names as the folder at
+/// the same place that folder's: a build script whose `rerun-if-changed` names a folder reruns
+/// when anything in it, the folder itself included, is newer than its last run.
 fn keep_unchanged_times(staged: &Path, previous: &Path) -> std::io::Result<()> {
+    let mut names = Vec::new();
     for entry in fs::read_dir(staged)? {
         let entry = entry?;
         let kind = entry.file_type()?;
         let old = previous.join(entry.file_name());
+        names.push(entry.file_name());
         if kind.is_dir() {
             if old.is_dir() {
                 keep_unchanged_times(&entry.path(), &old)?;
@@ -691,6 +695,18 @@ fn keep_unchanged_times(staged: &Path, previous: &Path) -> std::io::Result<()> {
                     .set_modified(meta.modified()?)?;
             }
         }
+    }
+    let mut old_names = fs::read_dir(previous)?
+        .map(|entry| entry.map(|entry| entry.file_name()))
+        .collect::<std::io::Result<Vec<_>>>()?;
+    names.sort();
+    old_names.sort();
+    // Setting a time inside a folder leaves the folder's own time alone, so this comes last.
+    if names == old_names {
+        filetime::set_file_mtime(
+            staged,
+            filetime::FileTime::from_last_modification_time(&fs::metadata(previous)?),
+        )?;
     }
     Ok(())
 }
@@ -725,6 +741,85 @@ mod tests {
         assert_eq!(modified("src/lib.rs"), then);
         assert_ne!(modified("Cargo.toml"), then);
         assert_ne!(modified("src/added.rs"), then);
+    }
+
+    /// A restaged folder whose entries didn't change keeps its old modified time; one that gained
+    /// an entry keeps its new one.
+    #[test]
+    fn only_folders_with_the_same_entries_keep_their_old_time() {
+        let root = tempfile::tempdir().unwrap();
+        let (old, new) = (root.path().join("stage.old"), root.path().join("stage"));
+        for dir in [&old, &new] {
+            for folder in ["data/inner", "grown"] {
+                fs::create_dir_all(dir.join(folder)).unwrap();
+            }
+            fs::write(dir.join("data/inner/a.bin"), "a").unwrap();
+        }
+        fs::write(new.join("grown/added.rs"), "added").unwrap();
+        let then = filetime::FileTime::from_unix_time(1_000_000, 0);
+        for folder in ["data/inner", "data", "grown"] {
+            filetime::set_file_mtime(old.join(folder), then).unwrap();
+        }
+        keep_unchanged_times(&new, &old).unwrap();
+        let modified = |name: &str| {
+            filetime::FileTime::from_last_modification_time(&fs::metadata(new.join(name)).unwrap())
+        };
+        assert_eq!(modified("data"), then);
+        assert_eq!(modified("data/inner"), then);
+        assert_ne!(modified("grown"), then);
+    }
+
+    /// Restaged twice with nothing changed, a build script whose `rerun-if-changed` names a folder
+    /// runs only in the first build: cargo finds nothing in the folder newer than that run.
+    #[test]
+    #[ignore = "daily"]
+    fn a_build_script_watching_a_restaged_folder_stays_fresh() {
+        let root = tempfile::tempdir().unwrap();
+        let (stage, previous) = (root.path().join("stage"), root.path().join("stage.old"));
+        let runs = root.path().join("runs");
+        let write_stage = || {
+            fs::create_dir_all(stage.join("src/data")).unwrap();
+            fs::write(
+                stage.join("Cargo.toml"),
+                "[package]\nname = \"watcher\"\nversion = \"0.0.0\"\nedition = \"2024\"\n[workspace]\n",
+            )
+            .unwrap();
+            fs::write(stage.join("src/lib.rs"), "").unwrap();
+            fs::write(stage.join("src/data/table.txt"), "rows").unwrap();
+            fs::write(
+                stage.join("build.rs"),
+                format!(
+                    "fn main() {{\n    println!(\"cargo::rerun-if-changed=src/data\");\n    \
+                     let mut runs = std::fs::OpenOptions::new().create(true).append(true).open({:?}).unwrap();\n    \
+                     std::io::Write::write_all(&mut runs, b\"run\\n\").unwrap();\n}}\n",
+                    runs
+                ),
+            )
+            .unwrap();
+        };
+        let build = || {
+            let status =
+                std::process::Command::new(std::env::var_os("CARGO").unwrap_or("cargo".into()))
+                    .args(["build", "--offline", "--quiet", "--target-dir"])
+                    .arg(root.path().join("target"))
+                    .current_dir(&stage)
+                    .status()
+                    .unwrap();
+            assert!(status.success());
+        };
+        write_stage();
+        build();
+        for _ in 0..2 {
+            // A second's gap, so a folder written again is newer than the last run even where
+            // the filesystem keeps whole seconds.
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            fs::rename(&stage, &previous).unwrap();
+            write_stage();
+            keep_unchanged_times(&stage, &previous).unwrap();
+            fs::remove_dir_all(&previous).unwrap();
+            build();
+        }
+        assert_eq!(fs::read_to_string(&runs).unwrap(), "run\n");
     }
 
     use super::*;

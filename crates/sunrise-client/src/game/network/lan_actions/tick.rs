@@ -432,7 +432,7 @@ impl Game<'_> {
                 let outer = std::mem::replace(&mut g.stab_players, players);
                 // Player.tick's attackStrengthTicker, part of the body.
                 if body {
-                    g.attack_ticks = g.attack_ticks.saturating_add(1);
+                    g.attack_ticks = g.attack_ticks.wrapping_add(1);
                 }
                 g.set_mapping_held("key.use", g.using.is_some());
                 g.tick_using();

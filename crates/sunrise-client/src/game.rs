@@ -1520,6 +1520,8 @@ mod native_menus;
 mod native_merchant_refs;
 #[path = "game/modding/native_minecart_refs.rs"]
 mod native_minecart_refs;
+#[path = "game/modding/native_mob_attack.rs"]
+mod native_mob_attack;
 #[path = "game/modding/native_mob_draw.rs"]
 mod native_mob_draw;
 #[path = "game/modding/native_mob_goals.rs"]
@@ -3675,6 +3677,14 @@ struct Game<'a> {
     window: Option<Arc<Window>>,
     /// What `window_resize` last reported: the physical size and the GUI settings behind the scaled size.
     resize_state: Option<ResizeState>,
+    /// The renderer's mod GPU tables and device handles, set with the renderer by `set_renderer`.
+    /// Declared before `renderer` so it drops first: its `Device` and `Queue` clones are gone
+    /// before the renderer's surface is, at `Game` drop. Invariant: it is `Some` exactly when a
+    /// renderer is installed or `Game::render` has it out; install both through `set_renderer`.
+    pub(in crate::game) mod_gpu: Option<sunrise_client::gfx::ModGpuResources>,
+    /// `None` while `Game::render` has the renderer out for `Renderer::render`, and so during every
+    /// frame hook a mod runs. Nothing a hook reaches may read it: state facing mods lives in
+    /// [`Self::mod_gpu`]'s `ModGpuResources`, and the per-frame values in `render_snapshot`.
     renderer: Option<Renderer>,
     /// Avoid an endless rebuild loop if the new device is lost as well.
     last_device_recovery: Option<Instant>,
@@ -3894,7 +3904,7 @@ struct Game<'a> {
     creatures: creatures::Creatures,
     sculk: sculk::SculkState,
     raiding: raids::Raiding,
-    attack_ticks: u32,
+    attack_ticks: i32,
     /// The main hand's item at the last player tick, whose attack damage and
     /// speed modifiers apply (`LivingEntity.detectEquipmentUpdates`): a hotbar
     /// swap just before an attack keeps them, with the new item's enchantments
@@ -4344,10 +4354,6 @@ struct Game<'a> {
     tick_script: tick_script::TickScript,
     /// The overworld's last `sky_darken` and its inputs (time, rain, thunder).
     sky_darken_memo: std::cell::Cell<Option<((Dim, i64, u32, u32), i32)>>,
-    /// The last water plane `water_plane` found, kept while none is in reach.
-    water_plane_memo: std::cell::Cell<Option<f32>>,
-    /// The camera's block and the second `water_plane` last scanned at.
-    water_plane_scan: std::cell::Cell<Option<([i32; 3], i64)>>,
     /// What the boats' and minecarts' ticks know about the mobs: their box reach
     /// (`vehicle_mob_reach`) and a grid of their boxes (`mobs_meeting`).
     vehicle_mobs: boat_passengers::VehicleMobs,
@@ -4592,7 +4598,7 @@ struct Game<'a> {
     lan_acting_entity: Option<u32>,
     /// Whether the player currently swapped into the game is connectionless.
     lan_acting_fake: bool,
-    /// A fake player's `perform_action` in progress, and what it refused.
+    /// A fake player's `perform_action`, or a mod's attack, in progress, and what it refused.
     fake_action: std::sync::Arc<native_server::FakeAction>,
     /// Command feedback to forward to a guest.
     chat_capture: Option<Vec<sunrise_client::text::Text>>,
@@ -8801,11 +8807,12 @@ impl Game<'_> {
         self.see_through_collector = st_collector;
         self.see_through_vertices = see_through;
         laps.lap("eg_name_tags");
-        // Entity shadows (EntityRenderer.extractShadow); a native pack's sun shadows replace them.
+        // Entity shadows (EntityRenderer.extractShadow); a shader pack's sun shadows replace them.
         self.mark_translucent_entity(out.len(), "minecraft:entity_shadow");
-        let pack_shadows = self.renderer.as_ref().is_some_and(|r| {
-            r.pack_entity_shadows() || (self.overworld_skybox() && r.native_shadow())
-        });
+        let pack_shadows = self
+            .renderer
+            .as_ref()
+            .is_some_and(|r| r.pack_entity_shadows());
         let shadows = self.settings.entity_shadows && self.pack.polytone_colors.entity_shadows();
         let shadow_sprite = (shadows && !pack_shadows)
             .then(|| self.gui.atlas.sprites.get("misc/shadow").copied())
@@ -11768,7 +11775,7 @@ impl Game<'_> {
         let on_top = g.on_top;
         pr.lap("pr_debug");
         let visuals = if self.title.is_none() {
-            self.native_frame_visuals(alpha, &mut lines)
+            self.native_frame_visuals(&mut lines)
         } else {
             native_visuals::FrameVisuals::default()
         };
@@ -12180,7 +12187,7 @@ impl Game<'_> {
         // After the mods' world geometry, whose labels add see-through copies.
         let see_through = std::mem::take(&mut self.see_through_vertices);
         let colored_lights = if self.title.is_none() {
-            visuals.finish(self, camera)
+            visuals.finish(camera)
         } else {
             Vec::new()
         };
@@ -12225,17 +12232,6 @@ impl Game<'_> {
             shadow_distance: Some(effective_detail_distance),
             depth_far,
             underwater,
-            water_plane: if title
-                || underwater
-                || !self
-                    .renderer
-                    .as_ref()
-                    .is_some_and(|r| r.wants_water_plane())
-            {
-                None
-            } else {
-                self.water_plane(camera)
-            },
             title,
             sky_pass: !title
                 && sunrise_client::fog::sky_pass_present(camera_fog, sky_effect_blocked, skybox),
@@ -12391,7 +12387,6 @@ impl Game<'_> {
                 self.render_snapshot.set(Some(RenderSnapshot {
                     framebuffer: [renderer.config.width, renderer.config.height],
                     prepared_generation: renderer.prepared_generation(),
-                    max_buffer_size: renderer.max_buffer_size(),
                     staged_prepared_draws: prepared_draws.len() as u64,
                 }));
                 self.pack_frame_state
@@ -12467,7 +12462,6 @@ impl Game<'_> {
 pub(super) struct RenderSnapshot {
     pub(super) framebuffer: [u32; 2],
     pub(super) prepared_generation: Option<u64>,
-    pub(super) max_buffer_size: u64,
     pub(super) staged_prepared_draws: u64,
 }
 
@@ -12492,14 +12486,24 @@ impl Game<'_> {
         )
     }
     pub(super) fn renderer_prepared_room_info(&self) -> Option<(u64, u64)> {
-        self.renderer
-            .as_ref()
-            .map(|r| (r.max_buffer_size(), 0))
-            .or_else(|| {
-                self.render_snapshot
-                    .get()
-                    .map(|s| (s.max_buffer_size, s.staged_prepared_draws))
-            })
+        let max_buffer_size = self.mod_gpu.as_ref()?.max_buffer_size();
+        let staged = match self.renderer {
+            Some(_) => 0,
+            None => self
+                .render_snapshot
+                .get()
+                .map_or(0, |s| s.staged_prepared_draws),
+        };
+        Some((max_buffer_size, staged))
+    }
+    /// The mod GPU handles: always there when a renderer is, also during `Renderer::render`.
+    pub(in crate::game) fn mod_gpu(&self) -> Option<&sunrise_client::gfx::ModGpuResources> {
+        self.mod_gpu.as_ref()
+    }
+    /// Installs `renderer` and the handles mods reach it through.
+    pub(in crate::game) fn set_renderer(&mut self, renderer: Renderer) {
+        self.mod_gpu = Some(renderer.mod_gpu().clone());
+        self.renderer = Some(renderer);
     }
 }
 
@@ -14532,6 +14536,7 @@ impl<'a> Game<'a> {
             window: None,
             resize_state: None,
             renderer: None,
+            mod_gpu: None,
             last_device_recovery: None,
             entity_vertices: Vec::new(),
             dynamic_lights: Vec::new(),
@@ -14895,8 +14900,6 @@ impl<'a> Game<'a> {
             native_mod_screen: None,
             native_mod_screen_parent: false,
             sky_darken_memo: Default::default(),
-            water_plane_memo: Default::default(),
-            water_plane_scan: Default::default(),
             vehicle_mobs: Default::default(),
             persist: Default::default(),
             missing_professions: Default::default(),

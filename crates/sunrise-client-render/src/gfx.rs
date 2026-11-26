@@ -117,8 +117,9 @@ pub use entity_batch::{
     WORLD_TEXT_POLYGON_OFFSET_OVERLAY, dynamic_texture_bits, is_native_terrain, mark_oit,
 };
 use external::{shadow_box, shadow_runs};
-pub use frustum::{Cull, Frusta, JoinedFrusta, ShadowCull};
+pub use frustum::{Cull, JoinedFrusta, ShadowCull};
 use frustum::{block_entities_within_reach, frustum, shadow_casters, taa_frustum};
+pub use mod_gpu::ModGpuResources;
 pub use section_fade::{CHUNK_VISIBILITY_THRESHOLD, chunk_visibility, fade_millis};
 use section_fade::{FadeInputs, compiled_and_visible, section_instance, section_visibility};
 #[doc(hidden)]
@@ -232,9 +233,7 @@ use display_watch::{macos_hdr, os_reported};
 pub use hdr::{Calibration as HdrCalibration, Output as HdrOutput};
 pub use output::{DisplayReading, EffectiveOutput, FrameConfiguration, FrameRequest};
 
-pub mod block_light;
 mod custom_sky;
-mod displace;
 mod frame_policy;
 pub mod lightning;
 mod linear_blend;
@@ -244,17 +243,13 @@ use frame_policy::{frame_configuration, overlay_format, sunrise_tone_curve};
 mod lod;
 pub mod mod_compute;
 pub mod mod_frame_graph;
+pub mod mod_gpu;
 pub mod mod_meshes;
 pub mod mod_pipelines;
 pub mod mod_render_targets;
 pub mod mod_storage;
 pub mod mod_uniforms;
-mod native_material;
-mod native_pack;
-mod native_post;
 use crate::render_slots as native_render;
-mod native_shadow;
-mod native_sky;
 mod occlusion;
 mod oit;
 mod oit_features;
@@ -299,7 +294,6 @@ pub(crate) mod upload;
 mod view;
 mod view_sections;
 mod visbuffer;
-mod wgsl_prefix;
 mod world_handover;
 mod world_post;
 pub mod world_primitives;
@@ -685,7 +679,6 @@ impl Renderer {
                 self.frame_gen.on,
                 (self.pack_post.as_ref())
                     .map(|(_, p)| p.as_ref().is_some_and(|p| p.skins_entities())),
-                self.native.is_some(),
                 || native_render::needs().entity_spans,
             )
     }
@@ -876,21 +869,11 @@ impl Renderer {
     }
     /// Device `max_buffer_size`, for instance-room checks while `Renderer` is borrowed by `render`.
     pub fn max_buffer_size(&self) -> u64 {
-        self.device.limits().max_buffer_size
+        self.mod_gpu.max_buffer_size()
     }
-    /// The largest inline uniform and texel-buffer payloads a mod's set-1 draw may bind: the
-    /// device's `max_uniform_buffer_binding_size` and `max_storage_buffer_binding_size`, each
-    /// capped by `max_buffer_size`.
+    /// See [`ModGpuResources::mod_binding_limits`].
     pub fn mod_binding_limits(&self) -> (u64, u64) {
-        let limits = self.device.limits();
-        (
-            limits
-                .max_uniform_buffer_binding_size
-                .min(limits.max_buffer_size),
-            limits
-                .max_storage_buffer_binding_size
-                .min(limits.max_buffer_size),
-        )
+        self.mod_gpu.mod_binding_limits()
     }
     /// Render `frame`, optionally driving mod world-render hooks (`FrameHooks`) at the renderer's
     /// real visibility, sky, prepare, pass-stage, and post-world boundaries.
@@ -1048,14 +1031,12 @@ pub(crate) fn world_projection(fov_degrees: f32, aspect: f32, far: f32) -> Mat4 
 /// face `eye` (`view::projection_center`), the mesh at the camera-relative
 /// `origin`; all of them when there is no eye.
 fn facing_runs(sides: &Sides, eye: Option<Vec3>, origin: [f32; 3], draw: impl FnMut(u32, u32)) {
-    facing_runs_from(sides, eye, None, origin, Quads::All, draw)
+    facing_runs_from(sides, eye, origin, Quads::All, draw)
 }
-/// `facing_runs` for the eye and, with `low`, every eye straight below it down to that
-/// camera-relative height (the water mirror's eye).
+/// `facing_runs` for one `part` of a mesh's solid quads.
 fn facing_runs_from(
     sides: &Sides,
     eye: Option<Vec3>,
-    low: Option<f32>,
     origin: [f32; 3],
     part: Quads,
     draw: impl FnMut(u32, u32),
@@ -1063,8 +1044,7 @@ fn facing_runs_from(
     match eye {
         Some(eye) => {
             let eye = eye - Vec3::from(origin);
-            let low = low.map_or(eye.y, |y| (y - origin[1]).min(eye.y));
-            sides.visible_from(eye.to_array(), low, part, draw)
+            sides.visible_from(eye.to_array(), eye.y, part, draw)
         }
         None => sides.every(part, draw),
     }
