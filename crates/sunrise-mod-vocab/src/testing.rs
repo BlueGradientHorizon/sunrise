@@ -425,7 +425,9 @@ impl FakeHost {
                 )
             },
             |host, (players, level, attachments)| {
-                (host.players, host.level, host.attachments) = (players, level, attachments);
+                host.players = players;
+                host.level.restore_snapshot(level);
+                host.attachments = attachments;
             },
             |host, tx| run(host, tx, slot),
         )?;
@@ -498,11 +500,11 @@ impl Host for FakeHost {
 }
 impl crate::prelude::BlockEntitiesHost for FakeHost {
     fn block_entity(&self, level: LevelRef, pos: [i32; 3]) -> Option<BlockEntityRef> {
-        self.level.standing(level, pos)?;
+        let (generation, _) = self.level.standing_entry(level, pos)?;
         Some(BlockEntityRef {
             level,
             position: pos,
-            generation: 0,
+            generation,
         })
     }
 }
@@ -763,8 +765,11 @@ impl crate::prelude::LevelTickingBackend for FakeHost {
 }
 impl crate::prelude::BlockEntitiesBackend for FakeHost {
     fn block_entity_kind(&self, entity: BlockEntityRef) -> Option<BlockEntityTypeKey> {
-        let standing = self.level.standing(entity.level, entity.position)?;
-        standing.kind().cloned()
+        let (generation, resident) = self.level.standing_entry(entity.level, entity.position)?;
+        if generation != entity.generation {
+            return None;
+        }
+        resident.kind().copied()
     }
 }
 impl crate::prelude::ItemsBackend for FakeHost {
