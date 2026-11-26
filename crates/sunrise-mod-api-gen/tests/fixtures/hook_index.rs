@@ -74,6 +74,9 @@ pub mod registry {
     }
 }
 mod game {
+    pub mod tables {
+        pub trait WorldTablesExt {}
+    }
     pub trait TryIntoApi {
         type Api;
         type Error;

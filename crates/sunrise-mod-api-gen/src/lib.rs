@@ -988,14 +988,16 @@ mod tests {
         assert_eq!(super::sources(&root).unwrap().hooks, without_counterparts);
         std::fs::write(&first, original).unwrap();
         let hook_dir = root.join("crates/sunrise-client/src/game/native_hooks");
+        std::fs::create_dir_all(&hook_dir).unwrap();
         for (package, file) in [
             ("sunrise-gameplay", "item_picked_up.rs"),
             ("sunrise-client-gameplay", "client_tick_pre.rs"),
         ] {
-            copy(
-                &real.join(format!("crates/{package}/src/game/native_hooks/{file}")),
-                &hook_dir.join(file),
-            );
+            let source = std::fs::read_to_string(
+                real.join(format!("crates/{package}/src/game/native_hooks/{file}")),
+            )
+            .unwrap();
+            std::fs::write(hook_dir.join(file), super::rustfmt(&source).unwrap()).unwrap();
         }
         std::fs::write(
             hook_dir.join("mod.rs"),
