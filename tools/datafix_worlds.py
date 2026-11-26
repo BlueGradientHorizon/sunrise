@@ -480,6 +480,12 @@ def build(name, force=False):
         shutil.rmtree(work / 'world' / 'region')
         server = Server(work, jar, port, scene.experiments(data_version), java(version), props)
     problems = []
+    bots = []   # every bot that joined, so that the finally below closes it whatever fails
+
+    class JoinedBot(Bot):
+        def __init__(self, *args):
+            super().__init__(*args)
+            bots.append(self)
 
     def run(command):
         out = server.run(command)
@@ -488,13 +494,18 @@ def build(name, force=False):
             problems.append((command[:160], bad[:2]))
         return out
 
-    if data_version < 1631 and not props:   # 1.12 and older: tools/datafix_scene_12.py builds the scene and saves the world itself
-        bot = scene12.populate(server, Bot, port, protocol, BOT, problems)
-    else:
-        bot = build_scene(server, run, Bot, port, protocol, props, era, data_version, states)
-    bot.leave()
-    time.sleep(2)
-    server.stop()
+    try:
+        try:
+            if data_version < 1631 and not props:   # 1.12 and older: tools/datafix_scene_12.py builds the scene and saves the world itself
+                scene12.populate(server, JoinedBot, port, protocol, BOT, problems)
+            else:
+                build_scene(server, run, JoinedBot, port, protocol, props, era, data_version, states)
+        finally:
+            for bot in bots:
+                bot.leave()
+        time.sleep(2)
+    finally:
+        server.stop()   # a failed stop still raises, after the bots are closed
     if data_version < 1631 and not props:
         scene12.fixtures(work / 'world')   # the few statistics a passive bot cannot cause, written by hand
     # Copy aside, then rename: an interrupted copy must not look like a finished world.

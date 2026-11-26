@@ -69,5 +69,53 @@ class ServerStopTests(unittest.TestCase):
         self.assertEqual(calls, [120, None])
 
 
+class BuildCleanupTests(unittest.TestCase):
+    """build() with the server, the bot and the scene replaced: what is closed when something fails."""
+
+    def build(self, scene_error, stop_error):
+        events = []
+
+        class FakeBot:
+            def __init__(self, port, protocol, name):
+                events.append('joined')
+
+            def leave(self):
+                events.append('left')
+
+        class FakeServer:
+            def __init__(self, *args):
+                pass
+
+            def stop(self):
+                events.append('stopped')
+                if stop_error:
+                    raise stop_error
+
+        def scene(server, run, Bot, *args):
+            bot = Bot(1, 2, 'x')
+            if scene_error:
+                raise scene_error
+            return bot
+
+        with tempfile.TemporaryDirectory() as temp, mock.patch.object(worlds, 'LOCAL', Path(temp)), \
+                mock.patch.object(worlds, 'server_jar', return_value=(Path('server.jar'), 3700, 770)), \
+                mock.patch.object(worlds, 'java', return_value='java'), mock.patch.object(worlds, 'Server', FakeServer), \
+                mock.patch.object(worlds, 'Bot', FakeBot), mock.patch.object(worlds, 'build_scene', scene), \
+                mock.patch.object(worlds, 'time', SimpleNamespace(sleep=lambda seconds: None)):
+            try:
+                worlds.build('1.21.5')
+            except Exception as error:
+                return events, error
+        return events, None
+
+    def test_a_scene_that_fails_still_closes_the_bot_and_stops_the_server(self):
+        events, error = self.build(ValueError('scene failed'), None)
+        self.assertEqual((events, str(error)), (['joined', 'left', 'stopped'], 'scene failed'))
+
+    def test_a_stop_that_raises_reaches_the_caller_and_the_bot_is_closed(self):
+        events, error = self.build(None, RuntimeError('stop failed'))
+        self.assertEqual((events, str(error)), (['joined', 'left', 'stopped'], 'stop failed'))
+
+
 if __name__ == '__main__':
     unittest.main()
