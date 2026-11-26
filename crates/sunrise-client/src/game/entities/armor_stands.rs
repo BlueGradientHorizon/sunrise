@@ -1981,6 +1981,7 @@ impl Game<'_> {
                 use_hand: None,
                 ticks_using_item: 0,
                 use_animation: mod_api::UseAnimation::None,
+                is_swinging: false,
                 main_arm_pose: mod_api::ArmPose::Empty,
                 off_arm_pose: mod_api::ArmPose::Empty,
             };
