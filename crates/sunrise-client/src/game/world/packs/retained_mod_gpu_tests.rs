@@ -136,6 +136,27 @@ fn assert_pixel(game: &Game<'_>, target: RenderTargetRef, expected: [u8; 4]) {
     assert_eq!(&slice.get_mapped_range().unwrap()[..], &expected);
 }
 
+fn same_device(old: &wgpu::Device, current: &wgpu::Device) -> bool {
+    // Each device owns its thread-local scope stack. If the handles share a device,
+    // the inner (current) scope catches the error; otherwise only the old scope can.
+    let old_scope = old.push_error_scope(wgpu::ErrorFilter::Validation);
+    let current_scope = current.push_error_scope(wgpu::ErrorFilter::Validation);
+    // wgpu rejects empty usage before allocating a GPU buffer.
+    drop(old.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("device identity probe"),
+        size: 4,
+        usage: wgpu::BufferUsages::empty(),
+        mapped_at_creation: false,
+    }));
+    let current_error = pollster::block_on(current_scope.pop());
+    let old_error = pollster::block_on(old_scope.pop());
+    match (current_error, old_error) {
+        (Some(wgpu::Error::Validation { .. }), None) => true,
+        (None, Some(wgpu::Error::Validation { .. })) => false,
+        errors => panic!("unexpected (current, old) device scope results: {errors:?}"),
+    }
+}
+
 #[test]
 #[ignore = "daily"]
 fn retained_mod_gpu_handles_follow_the_device_lifetime() {
@@ -187,7 +208,10 @@ fn retained_mod_gpu_handles_follow_the_device_lifetime() {
             assert_eq!(game.settings.resource_packs, ["file/retained_gpu"]);
             assert_eq!((game.pack.clouds.0, game.pack.clouds.1), (4, 6));
             assert!(game.pack.render.generation > generation);
-            assert_eq!(game.renderer.as_ref().unwrap().device, device);
+            assert!(
+                same_device(&device, &game.renderer.as_ref().unwrap().device),
+                "pack reload replaced the device"
+            );
 
             let bytes = submit_frame(game, buffer, 8, None);
             assert_eq!(read_ticket(game, old_ticket), FIRST);
@@ -229,7 +253,10 @@ fn retained_mod_gpu_handles_follow_the_device_lifetime() {
                 .unwrap();
             assert_eq!(replacement.info.backend, wgpu::Backend::Vulkan);
             game.adopt_renderer(replacement);
-            assert_ne!(game.renderer.as_ref().unwrap().device, device);
+            assert!(
+                !same_device(&device, &game.renderer.as_ref().unwrap().device),
+                "renderer adoption kept the old device"
+            );
 
             // Repopulate the first slots with the same owner and issue the replacement device's
             // first ticket *before* probing old handles; an empty store cannot catch aliasing.
