@@ -7,7 +7,8 @@ use sunrise_gameplay_common::game::Dim;
 use sunrise_items::items::ItemStack;
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use sunrise_gameplay_common::game::GameGameExt1;
+use super::*;
     use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
     use mod_api::{
         AttachmentType, Holder, Hooks, HostTransaction, PlayerCloneEvent,

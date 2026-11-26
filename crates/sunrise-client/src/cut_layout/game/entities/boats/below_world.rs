@@ -4,6 +4,9 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay_common::game::boats_common::BoatStatusGameExt;
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
 /// A tick discards vehicles below each dimension's own floor, even when
     /// its chunk storage extends lower, and spills the container's contents.
     /// Vehicles on the line or above it survive this tick.

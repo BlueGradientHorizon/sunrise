@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::GameGameExt1;
 use crate::game::server_side::commands::summon_bolt_tests::ORACLE_PLAYER_UUID;
 use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use sunrise_core::geometry::Vec3;

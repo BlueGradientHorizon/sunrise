@@ -9,6 +9,7 @@ use sunrise_gameplay_common::game::boats_common::Boat;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
 use super::*;
 
 #[test]

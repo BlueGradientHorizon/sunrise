@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::GameGameExt1;
 use crate::game::chat_common::end_clock_tests::game;
 use sunrise_sim::save::Level;
 

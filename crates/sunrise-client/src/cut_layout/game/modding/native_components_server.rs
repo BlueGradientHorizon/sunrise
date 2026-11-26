@@ -3,7 +3,8 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod item_resource_property_tests {
-    use crate::game::native_components::item_resource_property_tests::engine;
+    use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
+use crate::game::native_components::item_resource_property_tests::engine;
     use crate::game::native_components::item_resource_property_tests::*;
     use serde_json::Value;
 

@@ -3,7 +3,8 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::tables::GameItems;
+use super::super::native_entity_refs::tests::with_game;
     use mod_api::{ItemStack, RecipeInput, RecipeLookupError};
 
     fn stack(item: &str) -> Option<ItemStack> {

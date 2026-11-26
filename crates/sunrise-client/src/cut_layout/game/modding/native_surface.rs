@@ -4,7 +4,9 @@
 #[cfg(test)]
 mod tests {
 
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::side_ops::world::WorldSideGameExt;
+use sunrise_gameplay_common::game::tables::WorldTablesExt;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_gameplay_common::game::native_surface::TryIntoApi;
     use sunrise_gameplay_common::game_side;
     use std::sync::atomic::Ordering;

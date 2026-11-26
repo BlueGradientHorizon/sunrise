@@ -809,7 +809,8 @@ pub(crate) mod slot_guard_tests {
 /// What a slot that changes the block entities does to the pass (`BlockEntityTickSlot`'s docs).
 #[cfg(test)]
 pub(crate) mod slot_mutation_tests {
-    use {sunrise_gameplay::game::server_side::block_entity_ticks::BlockEntityTick, sunrise_gameplay::game::server_side::block_entity_ticks::BlockEntityTickSlot};
+    use sunrise_gameplay_common::game::GameGameExt1;
+use {sunrise_gameplay::game::server_side::block_entity_ticks::BlockEntityTick, sunrise_gameplay::game::server_side::block_entity_ticks::BlockEntityTickSlot};
 
     use sunrise_gameplay::game::game_tests::tests::server_game;
     use sunrise_gameplay_common::game::published_loops::LoopFlow;

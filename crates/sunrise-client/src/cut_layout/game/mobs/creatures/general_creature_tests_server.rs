@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_gameplay::game::server_side::creatures_server::ProjectileKind;
 use sunrise_gameplay_common::game_side;
 

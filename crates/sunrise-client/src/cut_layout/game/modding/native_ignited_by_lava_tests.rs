@@ -1,5 +1,6 @@
 //! `ignited_by_lava` answered by a block Part with the asked block's face (#3185): the Part's
 //! answer replaces the state's `IGNITED_BY_LAVA` flag either way.
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{self, BlockPart, Hooks, IgnitedByLavaEvent, LevelHost, Registrar};
 use sunrise_core::{geometry::Direction, position::BlockPos};

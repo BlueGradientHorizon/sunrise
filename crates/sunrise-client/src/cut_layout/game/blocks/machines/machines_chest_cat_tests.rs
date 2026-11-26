@@ -5,6 +5,7 @@
 //! that predicate, so a sitting cat leaves the comparator at 0. A hopper's
 //! `getContainer(.., true)` ignores the block, and the menu path keeps
 //! closing as before.
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_gameplay_common::hoppers::Pos;
 use sunrise_core::position::BlockPos;
 use super::*;

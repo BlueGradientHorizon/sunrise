@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::GameGameExt1;
 use super::*;
 use crate::game::native_hooks::client_pick::tests::First;
 use crate::game::native_hooks::client_pick::tests::Last;

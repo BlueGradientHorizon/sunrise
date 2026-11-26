@@ -11,6 +11,8 @@ use sunrise_sim::mobs::seen_grid::SeenGrid;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1;
+use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1;
 use super::*;
 
 #[test]

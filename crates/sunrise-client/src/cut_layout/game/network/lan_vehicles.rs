@@ -3,7 +3,8 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod controller_tests {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_core::position::ChunkPos;
     use sunrise_level::chunk::Chunk;

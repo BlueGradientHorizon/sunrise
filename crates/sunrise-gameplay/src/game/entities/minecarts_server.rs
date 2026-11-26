@@ -61,7 +61,7 @@ pub(in crate::game) mod section_steps;
 /// unseen, so with mods loaded both scans stay.
 #[derive(Default)]
 pub struct CartIndex {
-    pub(in crate::game) carts: Option<(SeenGrid, Vec<u32>)>,
+    pub carts: Option<(SeenGrid, Vec<u32>)>,
     pub(in crate::game) mobs: Option<(ListStamp, SeenGrid)>,
     pub(in crate::game) near: Vec<u32>,
 }

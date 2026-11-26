@@ -77,7 +77,8 @@ pub(crate) mod hatch_tests {
 
 #[cfg(test)]
 pub(crate) mod item_collision_tests {
-    use super::with_headless_game;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use super::with_headless_game;
     use std::sync::Arc;
     use sunrise_core::position::ChunkPos;
     use sunrise_level::chunk::Chunk;

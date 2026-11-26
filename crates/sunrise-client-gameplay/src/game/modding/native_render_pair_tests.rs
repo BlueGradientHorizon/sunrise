@@ -244,8 +244,8 @@ fn a_spectator_following_an_entity_submits_no_local_body() {
 }
 
 pub(in crate::game) struct BodyWitness {
-    pub(in crate::game) id: u32,
-    pub(in crate::game) vertices: std::ops::Range<usize>,
+    pub id: u32,
+    pub vertices: std::ops::Range<usize>,
 }
 
 thread_local! {

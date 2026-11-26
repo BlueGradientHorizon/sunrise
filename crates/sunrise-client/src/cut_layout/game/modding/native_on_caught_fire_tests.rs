@@ -1,5 +1,6 @@
 //! `on_caught_fire` heard by a block Part (#3185): the listener gets the burned block's old state
 //! and the face toward the fire, and what it writes through its level is in the world.
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{
     self, BlockPart, BlockUpdateFlags, FireOddsEvent, Hooks, LevelWriteHost, OnCaughtFireEvent,

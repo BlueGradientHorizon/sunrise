@@ -3,7 +3,8 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_gameplay_common::game::native_block_sounds::playable;
     use mod_api::BlockSoundCause::{Break, Dig, Fall, Place, Step};
     use std::sync::Arc;

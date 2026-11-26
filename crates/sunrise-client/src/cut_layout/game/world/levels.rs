@@ -9,6 +9,9 @@ use sunrise_sim::save::SaveDir;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1;
+use sunrise_gameplay_common::game::tables::WorldTablesExt;
 use sunrise_gameplay_common::game::server_side::levels::tests::LOGGED;
 use sunrise_gameplay::game::server_side::levels::IDLE_TICKS;
 

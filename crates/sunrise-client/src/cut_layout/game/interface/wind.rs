@@ -15,6 +15,8 @@ pub(crate) mod wind_dragon_tests;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_client_lib::join_seq::Joined;
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
 use super::*;
 
 #[test]

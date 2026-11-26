@@ -3,7 +3,8 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::world_items;
+    use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay_common::world_items;
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use {crate::game::native_world_read_common::*, sunrise_gameplay_common::game::native_world_read_common::{BlockRegistry, BlockStateId, EngineFluidState, FluidKind, Items, World, api_fluid_state, block_in_tag, can_see_sky, fluid_in_tag, fluid_shape, install_block_tags, prepare_block_tags}};
     use mod_api::LevelHost;

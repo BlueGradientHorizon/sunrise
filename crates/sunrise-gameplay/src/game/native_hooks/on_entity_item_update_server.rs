@@ -18,7 +18,7 @@ pub(in crate::game) struct ResidentDroppedItem<'g, 'w> {
 }
 
 pub struct ItemEntityTickAccess<'g, 'w> {
-    pub(in crate::game) game: &'g mut crate::game::ServerGame<'w>,
+    pub game: &'g mut crate::game::ServerGame<'w>,
     pub(in crate::game) subject: mod_api::ItemEntityRef,
     pub(in crate::game) index: usize,
 }

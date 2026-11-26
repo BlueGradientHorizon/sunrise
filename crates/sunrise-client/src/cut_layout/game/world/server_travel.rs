@@ -10,6 +10,7 @@ use sunrise_sim::mobs::Mob;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::GameGameExt1;
 use super::*;
 
 use mod_api::ServerHost;
@@ -396,6 +397,7 @@ use std::sync::Arc;
 #[cfg(test)]
 pub(crate) mod transfer_lifetime_tests {
 
+use sunrise_client_lib::join_seq::Joined;
 use sunrise_gameplay_common::game::server_side::server_travel::transfer_lifetime_tests::VALUE;
 
 use super::*;
@@ -537,6 +539,8 @@ use sunrise_mod_runtime::attachments::{
 #[cfg(test)]
 pub(crate) mod credits_respawn_tests {
 
+use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2;
 use sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_tests::ANCHOR;
 
 use sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_tests::placed_guest;

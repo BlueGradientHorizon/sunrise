@@ -4,7 +4,8 @@
 use sunrise_items::items::ItemStack;
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::*;
+    use sunrise_gameplay_common::game::tables::GameItems;
+use super::*;
     use sunrise_gameplay_common::game::native_hooks::register_enchantment_damage_effects::tests::Observations;
     use sunrise_gameplay_common::game::native_hooks::register_enchantment_damage_effects::tests::TestMod;
     use mod_api::ModEntry;

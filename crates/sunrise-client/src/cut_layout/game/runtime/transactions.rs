@@ -6,7 +6,10 @@ pub(crate) mod player_tests;
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::api_values::TryIntoApi;
+    use sunrise_client_gameplay::game::native_hooks::ModGameExt1;
+use sunrise_gameplay_common::game::tables::WorldTablesExt;
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use crate::game::{Settings, load_resources};
     use {sunrise_gameplay_common::game::BlockEntity, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
     use mod_api::HostTransaction;
@@ -1116,7 +1119,8 @@ pub(crate) mod tests {
 
 #[cfg(test)]
 pub(crate) mod mod_capability_tests {
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use mod_api::ServerHost;
     use mod_api::{BlockSide, HostTransaction, ResourceHandler, resource_util::move_resources};
     use mod_platform::__private::part_tests::{CHEMICALS, ChemTank, Chemical};

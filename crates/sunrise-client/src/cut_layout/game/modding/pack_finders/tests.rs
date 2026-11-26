@@ -1,3 +1,5 @@
+use mod_vocab::PackFinders;
+use sunrise_gameplay_common::game::pack_finders_common::CommonGameExt1;
 use {crate::game::pack_discovery::*, sunrise_gameplay_common::game::pack_discovery::{HookId, ModsState, PackDiscoveryContext, PackFinderError, PackPosition, PackRegistration, PackSource, PackType, Registry, ResourceSource, Source, StartupDiscovery, data_packs, data_repository, discover}};
 use sunrise_client_gameplay::game::client_side::pack_discovery_client::into_resource_pack;
 use mod_api::{AddPackFindersEvent, Hooks, Identifier, ModEntry};

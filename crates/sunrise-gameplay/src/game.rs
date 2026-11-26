@@ -120,7 +120,7 @@ pub(in crate::game) use server_side::server_effects;
 #[allow(dead_code)]
 pub struct ServerGame<'a> {
     common: sunrise_gameplay_common::game::CommonGame<'a>,
-    server: server_side::ServerState,
+    pub server: server_side::ServerState,
 }
 impl<'a> std::ops::Deref for ServerGame<'a> {
     type Target = sunrise_gameplay_common::game::CommonGame<'a>;

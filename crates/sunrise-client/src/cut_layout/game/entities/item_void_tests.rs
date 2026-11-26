@@ -1,6 +1,7 @@
 //! `Entity.checkBelowWorld`: a dropped item is discarded below its level's
 //! floor minus 64, so the Nether and the End lose one at y = -64 while the
 //! Overworld keeps it down to y = -128.
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_gameplay_common::game::Dim;
 use sunrise_gameplay::game::game_tests::tests::server_game;
 use std::collections::{HashMap, HashSet};

@@ -1,7 +1,8 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::client_side::remote_tags::tests::login;
+    use sunrise_gameplay_common::game::tables::WorldTablesExt;
+use sunrise_gameplay_common::game::client_side::remote_tags::tests::login;
     use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use mod_api::{Hooks, Identifier, ModEntry, TagMembers};
     use std::sync::Arc;

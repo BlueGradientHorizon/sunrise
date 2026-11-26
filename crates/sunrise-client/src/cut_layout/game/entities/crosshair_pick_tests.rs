@@ -1,4 +1,5 @@
 //! Crosshair targeting parity tests (#32 TNT/falling blocks, #34 root-vehicle exclusion) against vanilla 26.3.
+use sunrise_gameplay_common::game::side_ops::player::PlayerSideGameExt;
 use {sunrise_gameplay_common::game::FallingBlock, sunrise_gameplay_common::game::InteractTarget, sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry, sunrise_gameplay_common::game::entity_memory::OffLevel, sunrise_gameplay_common::game::in_own_process, sunrise_gameplay_common::game::interactions_common::RemoteInteraction, sunrise_client_gameplay::game::client_side::native_client_session::tests::finish_login, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle, sunrise_gameplay_common::game::tnt_common::PrimedTnt};
 use mod_api::CrosshairTarget;
 use serde_json::Value;

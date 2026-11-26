@@ -5,6 +5,9 @@ use sunrise_gameplay_common::game::Dim;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1;
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 use sunrise_gameplay_common::game::server_side::view_pass::tests::decode_ordered;
 use sunrise_gameplay_common::game::server_side::view_pass::tests::{Got, Sent};
 

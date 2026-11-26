@@ -23,7 +23,7 @@ use sunrise_sim::world_options::WorldOptions;
 /// The window's handle on its server thread.
 pub struct Integrated {
     pub(in crate::game) flags: Arc<Flags>,
-    pub(in crate::game) thread: Option<JoinHandle<()>>,
+    pub thread: Option<JoinHandle<()>>,
     pub(in crate::game) emergency_save: Option<sunrise_level::crash::EmergencySave>,
     pub(in crate::game) tasks: Sender<OwnerRequest>,
     /// The world's name (`level.dat`'s `LevelName`), for the pause menu.

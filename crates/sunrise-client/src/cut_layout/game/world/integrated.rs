@@ -14,6 +14,10 @@ use sunrise_gameplay_common::game::execution_role::ExecutionRole;
 use mod_api::prelude::BlockStatesHost;
 #[cfg(test)]
 pub(crate) mod tests {
+use mod_vocab::prelude::ServicesClientHost;
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1;
+use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1;
+use sunrise_gameplay_common::game::tables::WorldTablesExt;
 use std::sync::{Arc, Mutex};
 use sunrise_gameplay_common::game::Dim;
 

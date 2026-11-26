@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::GameGameExt1;
 use {sunrise_gameplay_common::game::creatures::SpawnSite, sunrise_gameplay::game::wind::Source};
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;

@@ -657,7 +657,8 @@ pub(crate) mod potion_contents_tests;
 
 #[cfg(test)]
 pub(crate) mod mob_absorption_max_tests {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
     use sunrise_level::chunk::Chunk;
@@ -830,7 +831,8 @@ pub(crate) mod mob_absorption_max_tests {
 
 #[cfg(test)]
 pub(crate) mod mob_health_boost_tests {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
     use sunrise_level::chunk::Chunk;
@@ -1082,7 +1084,8 @@ pub(crate) mod mob_health_boost_tests {
 
 #[cfg(test)]
 pub(crate) mod depleted_absorption_tests {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::commands_common::Target, crate::game::load_resources};
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::commands_common::Target, crate::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
     use sunrise_level::chunk::Chunk;

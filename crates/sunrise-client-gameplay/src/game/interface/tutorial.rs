@@ -183,12 +183,12 @@ impl crate::game::ClientGame<'_> {
 
 pub(in crate::game) struct HintToast {
     hint: Hint,
-    lines: Vec<(sunrise_game_data::text::Text, bool)>,
-    title_lines: usize,
+    pub lines: Vec<(sunrise_game_data::text::Text, bool)>,
+    pub title_lines: usize,
     progress: Option<f32>,
     smooth: f32,
     last_smooth: i64,
-    wanted: bool,
+    pub wanted: bool,
     slots: usize,
     slide: sunrise_client::toasts::Slide,
 }

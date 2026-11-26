@@ -8,6 +8,10 @@ use sunrise_sim::mobs::Who;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::TryIntoApi;
+use sunrise_gameplay_common::game::block_props::BlockPropsGameExt2;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 use mod_api::AttributeModifier;
 
 use mod_api::EquipmentSlot;

@@ -1,3 +1,4 @@
+use sunrise_core::random::RandomSource;
 use {sunrise_gameplay::game::server_side::raids::GameplayAttributes, sunrise_gameplay::game::server_side::raids::LegacyRandom, sunrise_gameplay::game::server_side::raids::LevelRandom, sunrise_gameplay::game::server_side::raids::RandomSource, sunrise_gameplay::game::server_side::raids::Species, sunrise_gameplay::game::server_side::raids::Vec3, sunrise_gameplay::game::server_side::raids::VillageSiege};
 use {sunrise_gameplay_common::game::creatures::SpawnSite, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{

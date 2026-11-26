@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::TryIntoApi;
 use mod_api::TooltipElement;
 use sunrise_client_gameplay::game::client_item_extensions::DEFAULT_TOOLTIP_FONT_ID;
 use sunrise_client_gameplay::game::client_side::stations::tooltip::PreparedTooltipItem;

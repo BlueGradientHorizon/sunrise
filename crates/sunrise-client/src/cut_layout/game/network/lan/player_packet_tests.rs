@@ -1,5 +1,6 @@
 //! Differential witness for tools/test_server_player_packets_parity.py. Packet bodies enter
 //! the server's ordinary inbox and run through the real Hub and Game dispatch.
+use sunrise_gameplay_common::game::GameGameExt1;
 #[cfg(test)]
 use sunrise_protocol::packets::play;
 use sunrise_gameplay_common::game::lan_common::LanSettings;

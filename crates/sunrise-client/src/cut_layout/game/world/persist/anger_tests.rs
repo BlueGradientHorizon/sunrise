@@ -1,6 +1,7 @@
 //! #13076: `NeutralMob`'s saved anger end time through the real summon, save
 //! and tick paths.
 
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_core::nbt::Tag;
 use super::h262_enderman_absolute_anger_tests::with_game;
 use super::*;

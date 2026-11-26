@@ -1,3 +1,4 @@
+use sunrise_client_gameplay::game::native_hooks::enchantments::EnchantmentsGameExt1;
 #[test]
 #[ignore = "daily"]
 fn enchantment_registry_returns_records_and_unknown_cost() {

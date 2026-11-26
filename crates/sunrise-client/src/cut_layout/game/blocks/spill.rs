@@ -8,6 +8,8 @@ use sunrise_level::containers::BlockEntity;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_core::random::RandomSource;
+use sunrise_gameplay_common::game::GameGameExt1;
 use super::*;
 
 use crate::game::spill_common::BlockDropEntity;

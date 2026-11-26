@@ -38,7 +38,7 @@ pub(in crate::game) const PROJECTILE_DELAY: i32 = 2;
 /// One level's loaded state the portal search reads: the level in place or a parked one.
 pub(in crate::game) struct PortalSide<'a> {
     pub(in crate::game) dim: Dim,
-    pub(in crate::game) world: &'a sunrise_level::world::World,
+    pub world: &'a sunrise_level::world::World,
     pub(in crate::game) border: &'a sunrise_level::worldborder::WorldBorder,
 }
 
@@ -130,7 +130,7 @@ pub(in crate::game) struct Arrival {
     /// Teleport-only state; deliberately absent from arrival_tag.
     pub(in crate::game) tnt_used_portal: bool,
     pub(in crate::game) plan: Plan,
-    pub(in crate::game) tag: Tag,
+    pub tag: Tag,
     pub(in crate::game) transferred: Option<TransferredArrivalState>,
 }
 

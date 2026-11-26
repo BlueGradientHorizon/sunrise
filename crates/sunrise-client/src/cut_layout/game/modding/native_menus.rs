@@ -17,6 +17,8 @@ mod owned_slots_tests;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::TryIntoApi;
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest;
 
 use sunrise_gameplay_common::game::server_side::native_menus::tests::MOD_MENU;

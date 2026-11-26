@@ -1,3 +1,4 @@
+use sunrise_client_gameplay::game::native_hooks::game_shutting_down::GameHooks;
 use mod_api::HookId;
 use mod_api::__private::reload::ReloadStageError;
 use super::*;

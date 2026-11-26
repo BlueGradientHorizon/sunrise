@@ -3,7 +3,8 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::LevelDimension;
+    use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay_common::game::LevelDimension;
     use mod_api::{self, BlockPart, Flow, Hooks, RandomTickEvent, Registrar};
     use sunrise_world::level::LevelEvent;
 

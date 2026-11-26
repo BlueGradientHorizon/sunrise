@@ -205,7 +205,7 @@ pub use client_side::game_client::WindowKeyInput;
 #[cfg(feature = "client")]
 pub struct ClientGame<'a> {
     common: sunrise_gameplay_common::game::CommonGame<'a>,
-    client: client_side::ClientState,
+    pub client: client_side::ClientState,
 }
 #[cfg(feature = "client")]
 impl<'a> std::ops::Deref for ClientGame<'a> {

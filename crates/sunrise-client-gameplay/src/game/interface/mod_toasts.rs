@@ -16,7 +16,7 @@ pub(in crate::game) struct Pending {
 }
 
 pub(in crate::game) struct Entry {
-    pub(in crate::game) request: Pending,
+    pub request: Pending,
     pub(in crate::game) layout: SystemToastLayout,
 }
 

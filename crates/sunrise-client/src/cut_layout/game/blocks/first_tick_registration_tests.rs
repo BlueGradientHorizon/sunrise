@@ -4,6 +4,7 @@
 //! before the level's next world tick, keeps its flow tick
 //! (tools/test_frozen_first_tick_water_parity.py measures the same on
 //! vanilla 26.3: it flows 5 ticks after placement).
+use sunrise_gameplay_common::game::GameGameExt1;
 use super::*;
 use crate::settings::Settings;
 use std::sync::Arc;

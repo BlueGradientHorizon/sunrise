@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::boats_common::BoatStatusGameExt;
 use std::sync::Arc;
 use sunrise_core::geometry::Aabb;
 use sunrise_core::geometry::Vec3;

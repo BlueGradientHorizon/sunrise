@@ -20,7 +20,8 @@ pub(crate) mod equippable_slot_tests {
 
 #[cfg(test)]
 pub(crate) mod enchantment_conflict_tests {
-    use sunrise_gameplay_common::game::native_components::ItemStack;
+    use sunrise_gameplay_common::game::tables::GameItems;
+use sunrise_gameplay_common::game::native_components::ItemStack;
     use {sunrise_gameplay_common::game::api_values::stack_value, sunrise_gameplay_common::game::api_values::test_snapshot};
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use mod_api::{Identifier, ItemResource, LevelRef, WorldEpoch};
@@ -102,7 +103,8 @@ pub(crate) mod enchantment_conflict_tests {
 
 #[cfg(test)]
 pub(crate) mod item_resource_property_tests {
-    pub(crate) fn engine(
+    use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
+pub(crate) fn engine(
         resource: &mod_api::ItemResource,
         count: u32,
     ) -> sunrise_items::items::ItemStack {

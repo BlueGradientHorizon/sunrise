@@ -368,6 +368,9 @@ pub(crate) mod off_level_tests {
 
 #[cfg(test)]
 pub(crate) mod nested_vehicle_discard_tests {
+use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5;
 use sunrise_gameplay_common::game::server_side::passengers::nested_vehicle_discard_tests::VEHICLE_VALUE;
 use crate::game::server_side::native_entity_refs::tests::{collect_all_entities, collect_entities_in};
 

@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::GameGameExt1;
 use crate::game::native_hooks::piston_push_reaction_tests::PayloadUser;
 use crate::game::native_hooks::piston_push_reaction_tests::state;
 use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_role};

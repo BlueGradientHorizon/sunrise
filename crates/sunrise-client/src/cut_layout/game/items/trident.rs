@@ -7,6 +7,7 @@ pub(crate) mod impact_tests;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::arrows::Pickup;

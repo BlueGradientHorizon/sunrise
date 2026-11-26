@@ -1,6 +1,7 @@
 //! `player_destroyed_block` heard through the game's own break path: a creative and a survival
 //! break are heard once with the removed state; a break `break_block` cancels and a piston's
 //! are not heard.
+use sunrise_gameplay_common::game::GameGameExt1;
 use super::native_entity_refs::tests::{collect_all_entities, with_game};
 use sunrise_command::args::GameMode;
 use sunrise_core::{geometry::Vec3, position::BlockPos};

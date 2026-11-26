@@ -8,6 +8,9 @@ use sunrise_sim::mobs::Who;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_core::random::RandomSource;
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2;
+use sunrise_gameplay_common::game::creatures::ModGameExt1;
 use sunrise_gameplay_common::game::server_side::tnt::tests::on_big_stack;
 
 use sunrise_gameplay_common::game::server_side::tnt::tests::write_silence_output;
@@ -796,7 +799,8 @@ pub(crate) fn run_silent_bottles_preserve_xp_and_the_server_random_stream()
 
 #[cfg(test)]
 pub(crate) mod entity_collision_tests {
-    use std::sync::Arc;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use std::sync::Arc;
     use sunrise_core::position::ChunkPos;
     use sunrise_level::chunk::Chunk;
 

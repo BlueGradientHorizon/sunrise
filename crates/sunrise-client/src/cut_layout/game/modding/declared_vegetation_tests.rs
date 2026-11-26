@@ -1,4 +1,5 @@
 //! Explicit vegetation behaves the same on different templates and is not inferred from Parts.
+use sunrise_gameplay_common::game::GameGameExt1;
 use mod_api::{BlockPart, Hooks, LevelSide, MayPlaceOnEvent, Registrar};
 use std::sync::{
     Arc,

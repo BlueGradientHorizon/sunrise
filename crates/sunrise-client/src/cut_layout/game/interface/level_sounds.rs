@@ -3,7 +3,8 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay::game::server_side::lan::LanSettings;
+    use sunrise_gameplay_common::game::creatures::ModGameExt1;
+use sunrise_gameplay::game::server_side::lan::LanSettings;
     use super::super::native_entity_refs::tests::with_game;
     use {sunrise_gameplay_common::game::server_side::native_sound_refs::tests::guest, sunrise_gameplay_common::game::server_side::native_sound_refs::tests::packets};
     use mod_api::{HostSide, SoundSource};

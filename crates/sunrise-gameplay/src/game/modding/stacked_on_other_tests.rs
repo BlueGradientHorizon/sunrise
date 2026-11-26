@@ -1266,10 +1266,10 @@ pub mod item_part_tests {
     pub(in crate::game) struct PartObservation {
         pub(in crate::game) tag: &'static str,
         pub(in crate::game) direction: StackedOnOtherDirection,
-        pub(in crate::game) is_server: bool,
+        pub is_server: bool,
         pub(in crate::game) primary: bool,
         pub(in crate::game) carried: Option<(String, u32)>,
-        pub(in crate::game) clicked: Option<(String, u32)>,
+        pub clicked: Option<(String, u32)>,
     }
 
     thread_local! {

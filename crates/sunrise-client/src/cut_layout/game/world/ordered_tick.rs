@@ -3,6 +3,7 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
 /// Hears every entity tick, naming `named` to `entity_tick_each`.
     struct Displays {
         named: &'static [&'static str],

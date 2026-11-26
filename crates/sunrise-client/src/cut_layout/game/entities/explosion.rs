@@ -11,6 +11,7 @@ use sunrise_world::registry::BlockStateId;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_core::random::RandomSource;
 use sunrise_gameplay::game::server_side::explosion::tests::exploded_positions_stepwise;
 
 use super::*;

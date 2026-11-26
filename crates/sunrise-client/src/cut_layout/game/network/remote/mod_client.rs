@@ -43,7 +43,8 @@ pub(crate) mod riptide_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_client_gameplay::game::client_side::remote_client::Game;
+    use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_client_gameplay::game::client_side::remote_client::Game;
     pub(crate) use crate::game::remote::tests::connect_menu_test;
     pub(crate) use crate::game::remote::tests::connect_play_test;
     pub(crate) use crate::game::remote::tests::spawn_menu_test;
@@ -85,7 +86,8 @@ pub(crate) mod tests {
     }
 
     pub(crate) mod client_level_lifecycle_tests {
-        include!("client_level_lifecycle_tests_client.rs");
+        use sunrise_gameplay_common::game::tables::WorldTablesExt;
+include!("client_level_lifecycle_tests_client.rs");
     }
 
     pub(crate) mod client_menu_tests {

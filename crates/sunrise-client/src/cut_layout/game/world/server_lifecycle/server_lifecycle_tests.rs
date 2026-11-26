@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::native_configs::NativeConfigsGameExt1;
 use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_gameplay::game::native_guest_turn_tests::with_guests};
 use mod_api::{
     __private::{HookPanicReport, take_hook_panics},

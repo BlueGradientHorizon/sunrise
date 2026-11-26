@@ -167,9 +167,9 @@ impl AdvUi {
 }
 /// What the current frame shows: tabs and the connected widgets of the selected tab.
 struct View {
-    tabs: Vec<usize>,
-    tab: Option<usize>,
-    widgets: Vec<usize>,
+    pub tabs: Vec<usize>,
+    pub tab: Option<usize>,
+    pub widgets: Vec<usize>,
     parent: Vec<Option<usize>>,
 }
 fn window(w: f32, h: f32) -> (f32, f32) {

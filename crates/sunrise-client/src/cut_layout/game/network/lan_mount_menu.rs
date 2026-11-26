@@ -3,7 +3,8 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    #[test]
+    use sunrise_gameplay_common::game::tables::WorldTablesExt;
+#[test]
     #[ignore = "daily"]
     fn horse_inventory_click_keeps_complete_body_stack() {
         use sunrise_core::geometry::Vec3;

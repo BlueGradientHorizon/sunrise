@@ -1,4 +1,5 @@
 //! Real server/client Game owners, world publication and negotiated client registry limits.
+use sunrise_gameplay_common::game::native_registry_entries::NativeRegistryReads;
 use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{
     DatapackField, DatapackFieldKind, DatapackRegistrySync, Hooks, ModEntry, Registrar,

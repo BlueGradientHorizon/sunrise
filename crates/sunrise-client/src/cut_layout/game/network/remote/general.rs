@@ -4,6 +4,7 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1;
 use sunrise_client_gameplay::game::remote::general::tests::row_ids;
 
 use sunrise_client_gameplay::game::remote::general::tests::rows;

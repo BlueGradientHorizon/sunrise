@@ -61,7 +61,7 @@ pub struct GuestPlay {
     /// What the guest's body was given for its effects and enchantments.
     pub(in crate::game) potions: sunrise_gameplay_common::game::potions_common::BodyPotions,
     /// `ServerPlayer.getStats` and the inventory `inventory_changed` last saw.
-    pub(in crate::game) stats: sunrise_gameplay_common::stats::Stats,
+    pub stats: sunrise_gameplay_common::stats::Stats,
     /// `Stats.LEAVE_GAME` is counted: a guest is saved more than once on the
     /// way out, the statistic is awarded once (`Game::award_leave_game`).
     pub(in crate::game) left_game: bool,

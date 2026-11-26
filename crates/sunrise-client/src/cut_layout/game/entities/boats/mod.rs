@@ -117,7 +117,8 @@ use crate::game::boats_common::{
 
 #[cfg(test)]
 pub(crate) mod cobweb_tests {
-    use sunrise_gameplay::game::server_side::boats::Boat;
+    use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1;
+use sunrise_gameplay::game::server_side::boats::Boat;
     use sunrise_gameplay::game::game_tests::tests::server_game;
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;

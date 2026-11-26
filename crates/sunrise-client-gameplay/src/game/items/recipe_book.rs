@@ -73,7 +73,7 @@ impl Button {
 #[derive(Default)]
 pub(in crate::game) struct View {
     /// Visible tabs.
-    pub(in crate::game) tabs: Vec<Tab>,
+    pub tabs: Vec<Tab>,
     pub(in crate::game) buttons: Vec<Button>,
 }
 

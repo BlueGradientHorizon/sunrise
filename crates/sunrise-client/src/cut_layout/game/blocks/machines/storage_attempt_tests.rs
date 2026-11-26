@@ -1,4 +1,5 @@
 //! #3720: real Game ticks, Parts storage and transaction close/restore traces.
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_gameplay::game::server_side::machines::Pos;
 use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use sunrise_gameplay_common::game::spill_common as spill;

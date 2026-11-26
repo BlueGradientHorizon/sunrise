@@ -13,6 +13,10 @@ mod spawn_obstruction_fixture;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_client_lib::mobs::spawn_rules::SpawnLevel;
+use sunrise_client_lib::mobs::spawn_selection::NaturalLevel;
+use sunrise_core::random::RandomSource;
+use sunrise_gameplay_common::game::GameGameExt1;
 use super::*;
 use sunrise_sim::mobs::spawn_selection::{Category, Heightmap};
 use sunrise_gameplay_common::world_biomes;

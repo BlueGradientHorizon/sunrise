@@ -930,7 +930,8 @@ pub(crate) mod pot_signal_tests;
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::*;
+    use sunrise_gameplay_common::game::GameGameExt1;
+use super::*;
     use sunrise_gameplay::game::game_tests::tests::server_game;
 
     /// `ShelfBlockEntity.setChanged` (no arguments) posts `BLOCK_ACTIVATE`:

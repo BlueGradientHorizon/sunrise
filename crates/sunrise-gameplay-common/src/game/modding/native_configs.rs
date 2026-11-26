@@ -32,7 +32,7 @@ pub struct Tracked {
 #[derive(Default)]
 pub struct NativeConfigs {
     pub(in crate::game) started: bool,
-    pub(in crate::game) files: Vec<Tracked>,
+    pub files: Vec<Tracked>,
     pub(in crate::game) next_check: Option<Instant>,
 }
 

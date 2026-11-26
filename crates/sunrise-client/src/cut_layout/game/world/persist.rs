@@ -1612,7 +1612,9 @@ pub(crate) mod thrown_item_tests;
 
 #[cfg(test)]
 mod h262_enderman_absolute_anger_tests {
-    use super::*;
+    use sunrise_core::random::RandomSource;
+use sunrise_gameplay_common::game::GameGameExt1;
+use super::*;
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
     use sunrise_sim::motion::PlayerMotion;
@@ -2129,7 +2131,8 @@ mod sulfur_body_attribute_tests {
 
 #[cfg(test)]
 mod summoned_knot_tests {
-    use super::*;
+    use sunrise_gameplay_common::game::GameGameExt1;
+use super::*;
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::commands_common::Target, crate::game::load_resources};
     use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
     use sunrise_level::chunk::Chunk;

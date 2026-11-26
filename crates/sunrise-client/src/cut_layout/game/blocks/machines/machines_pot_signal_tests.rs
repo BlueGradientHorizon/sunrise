@@ -1,6 +1,7 @@
 //! `DecoratedPotBlock.getAnalogOutputSignal` (`getRedstoneSignalFromBlockEntity`
 //! → `getRedstoneSignalFromContainer`): a pot's one slot lives in the chunk's
 //! saved block entity, so a comparator beside it has to read that tag.
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_core::position::BlockPos;
 use sunrise_core::geometry::Direction;
 use sunrise_gameplay_common::hoppers::Pos;

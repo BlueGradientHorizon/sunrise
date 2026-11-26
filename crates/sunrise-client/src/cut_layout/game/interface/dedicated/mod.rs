@@ -212,7 +212,8 @@ use std::{
 
 #[cfg(test)]
 mod console_source_tests {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
     use crate::game::load_resources;
     use sunrise_client_render::settings::Settings;
     use std::sync::Arc;

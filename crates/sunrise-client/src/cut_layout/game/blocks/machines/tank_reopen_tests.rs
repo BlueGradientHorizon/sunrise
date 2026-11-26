@@ -10,6 +10,7 @@
 //! the chunk back from that file. Not covered: LAN guests, a dedicated server process,
 //! and `close_world`'s closing save, which finishes over event-loop stages a test can't
 //! run.
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 use sunrise_gameplay::game::server_side::machines::BlockEntity;
 use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
 use sunrise_gameplay::game::world_loading::WorldRequest;

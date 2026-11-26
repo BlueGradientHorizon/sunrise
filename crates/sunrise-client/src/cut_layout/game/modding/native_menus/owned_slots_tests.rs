@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::GameGameExt1;
 use {sunrise_gameplay_common::game::server_side::native_menus::tests::MOD_MENU, sunrise_gameplay::game::server_side::native_menus::tests::mod_menu_guest, sunrise_gameplay_common::game::server_side::native_menus::tests::sent};
 use {sunrise_gameplay_common::game::api_values, sunrise_gameplay_common::game::api_values::TryIntoApi, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{

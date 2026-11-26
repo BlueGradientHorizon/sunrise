@@ -6,7 +6,9 @@ use sunrise_level::containers::BlockEntity;
 use sunrise_sim::save;
 #[cfg(test)]
 pub(crate) mod tests {
-    #[test]
+    use sunrise_gameplay_common::game::block_items::BlockItemsGameExt1;
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+#[test]
     #[ignore = "daily"]
     fn placed_sculk_item_data_survives_pending_placement() {
         use sunrise_gameplay::game::native_entity_refs::tests::with_game;

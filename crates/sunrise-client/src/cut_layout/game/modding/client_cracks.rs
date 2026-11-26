@@ -4,7 +4,8 @@
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(crate) mod tests {
-    use {sunrise_gameplay_common::game::Mining, sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, crate::game::server_side::native_entity_refs::tests::with_client_game};
+    use sunrise_gameplay_common::game::GameGameExt1;
+use {sunrise_gameplay_common::game::Mining, sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use mod_api::{
         BlockPart, BlockPos, BreakProgressPositionsEvent, ClientHost, Hooks, ModEntry, Registrar,
         RegistrationContext,

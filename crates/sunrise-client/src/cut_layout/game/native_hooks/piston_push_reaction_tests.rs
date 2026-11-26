@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::GameGameExt1;
 use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_role, crate::game::server_side::native_entity_refs::tests::with_game_role_client};
 use mod_api::*;
 use std::{

@@ -1,4 +1,5 @@
 //! First End exit is a PlayerList respawn; later exits are teleports of the same player.
+use sunrise_gameplay_common::game::GameGameExt1;
 use {sunrise_gameplay::game::server_side::server_travel::Dim, sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_tests::ANCHOR, sunrise_gameplay::game::server_side::server_travel::credits_respawn_tests::charge_anchor, sunrise_gameplay::game::server_side::server_travel::credits_respawn_tests::light_spawn_chunks, sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_tests::placed_guest, sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_tests::received_packets, crate::game::server_side::server_travel::credits_respawn_tests::server_with_a_nether_anchor};
 use sunrise_gameplay::game::native_entity_refs::tests::run_with_game_stack;
 use mod_api::{

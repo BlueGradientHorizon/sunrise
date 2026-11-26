@@ -20,6 +20,8 @@ pub(crate) mod sidebar_tests;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 use sunrise_gameplay_common::game::in_own_process;
 
 use sunrise_gameplay_common::game::native_server::tests::player_guest;

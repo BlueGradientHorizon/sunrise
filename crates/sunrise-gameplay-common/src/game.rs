@@ -1250,10 +1250,10 @@ pub struct Resources {
 pub struct WorldCore {
     pub item_data: Arc<sunrise_world::item_defaults::ItemData>,
     facts: BlockFacts,
-    biomes: Arc<Biomes>,
+    pub biomes: Arc<Biomes>,
     environment: Environment,
     pub collision: Arc<BlockCollisionRegistry<'static>>,
-    motion: MotionResources,
+    pub motion: MotionResources,
     suffocation: sunrise_world::suffocation::SuffocationRegistry<'static>,
     spawn_registries: sunrise_sim::mobs::finalize::SpawnRegistries,
     threads: usize,
@@ -1267,7 +1267,7 @@ pub struct WorldRest {
     /// The registry keys of the player, the armor stand and the dragon, resolved with these
     /// resources as each mob type's own key is ([`MobType::type_key`]).
     living_type_keys: sunrise_sim::health::LivingTypeKeys,
-    mob_data: sunrise_sim::mobs::MobData,
+    pub mob_data: sunrise_sim::mobs::MobData,
     /// Complete pre-creation facts for the registered entity types.
     pub spawner_types: HashMap<String, sunrise_sim::mobs::spawner::SpawnerTypeFacts>,
     providers: Providers,
@@ -1362,7 +1362,7 @@ pub struct PackResources {
     pub names: Arc<Names>,
     pub chunk_context: Arc<sunrise_level::chunk_streamer::ChunkWorkerContext>,
     pub item_models: Arc<sunrise_assets::item_model::ItemModels>,
-    pub(in crate::game) item_ids: Arc<HashMap<String, i32>>,
+    pub item_ids: Arc<HashMap<String, i32>>,
 }
 
 /// A quick craft drag as the screen draws it: each dragged slot's count and

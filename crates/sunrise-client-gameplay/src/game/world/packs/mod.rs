@@ -53,9 +53,9 @@ pub fn open_uri(uri: &str) {
 /// The accepted content root and the result of layering selected client packs over it.
 /// Recovery keeps the required packs and uses the same content root.
 pub struct PackRoots {
-    pub(in crate::game) base: ResourceRoot,
-    pub(in crate::game) selected: std::io::Result<ResourceRoot>,
-    pub(in crate::game) cleared: Option<Vec<Pack>>,
+    pub base: ResourceRoot,
+    pub selected: std::io::Result<ResourceRoot>,
+    pub cleared: Option<Vec<Pack>>,
 }
 
 impl PackRoots {
@@ -932,7 +932,7 @@ pub(in crate::game) struct StagedPack {
     pub client_applies: Vec<super::client_reload::PreparedClientReload>,
     pub gui: UiResources,
     pub pack: PackResources,
-    pub(in crate::game) client_pack: ClientPackResources,
+    pub client_pack: ClientPackResources,
     pub textures: PreparedTextures,
     /// The packs' custom entity models (OptiFine CEM).
     pub cem: Arc<sunrise_client::mobs::cem::CemModels>,
@@ -971,14 +971,14 @@ pub type StageResult = std::result::Result<StagedPack, String>;
 /// loading overlay; `Game::drive_pack_reload` applies it on the render thread.
 #[cfg(feature = "client")]
 pub struct PackReload {
-    pub(in crate::game) progress: super::Progress,
+    pub progress: super::Progress,
     pub(in crate::game) kind: ReloadKind,
-    pub(in crate::game) handle: Option<std::thread::JoinHandle<StageResult>>,
+    pub handle: Option<std::thread::JoinHandle<StageResult>>,
     /// When the overlay went up. `LoadingOverlay.fadeInStart`, set on the
     /// first frame it draws.
     pub(in crate::game) started: Instant,
     /// How long the overlay stays up before the reload may be applied.
-    pub(in crate::game) hold: Duration,
+    pub hold: Duration,
 }
 /// `LoadingOverlay` over a pack reload, from its first frame until it has
 /// faded out (`Minecraft.setOverlay(null)`), two seconds after the reload.

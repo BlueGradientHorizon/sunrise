@@ -419,8 +419,8 @@ pub struct BlockItemDraw<'a> {
     #[cfg(test)]
     pub(in crate::game) seed: i32,
     pub(in crate::game) state: &'a ItemRenderState,
-    pub(in crate::game) pose: glam::Mat4,
-    pub(in crate::game) light: u32,
+    pub pose: glam::Mat4,
+    pub light: u32,
 }
 
 /// The pose `LevelRenderer` gives a block entity's renderer: a `PoseStack`

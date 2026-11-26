@@ -1,6 +1,7 @@
 //! A client's `LevelRef::brightness`, `EntityRef::set_sprinting` and the server's
 //! `tick_rate_is_frozen`.
 
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_gameplay_common::game::execution_role::ExecutionRole;
 use super::native_entity_refs::tests::with_game;
 use sunrise_gameplay::game::native_guest_turn_tests::with_guests;

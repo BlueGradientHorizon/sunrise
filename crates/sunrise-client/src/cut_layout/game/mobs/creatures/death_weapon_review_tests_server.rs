@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::TryIntoApi;
 use sunrise_items::items::ItemStack;
 use super::tests::WeaponProbe;
 use super::*;

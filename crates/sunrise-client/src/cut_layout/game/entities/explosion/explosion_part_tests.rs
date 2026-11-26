@@ -1,3 +1,5 @@
+use sunrise_client_gameplay::game::native_hooks::explosion_resistance::ExplosionResistanceGameExt1;
+use sunrise_gameplay_common::game::GameGameExt1;
 use mod_api::ExplosionStart;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::BlockPos;

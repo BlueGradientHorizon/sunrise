@@ -1,4 +1,5 @@
 //! Game event regressions for server-side block actions.
+use sunrise_gameplay_common::game::GameGameExt1;
 use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
 use sunrise_gameplay_common::game_side;
 use std::sync::Arc;

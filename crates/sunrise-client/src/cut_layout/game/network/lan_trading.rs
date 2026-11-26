@@ -5,6 +5,8 @@ use sunrise_items::items::ItemStack;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::TryIntoApi;
+use sunrise_gameplay_common::game::tables::GameItems;
 use sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::offer;
 
 use sunrise_gameplay::game::server_side::lan_trading::tests::open_trade;

@@ -1,4 +1,5 @@
 //! `LevelHost::block_states`: a part reads the block-state facts inside a level callback.
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_gameplay_common::game::LevelDimension;
 use mod_api::{
     BlockPart, BlockState, Flow, Hooks, HostBlockStates, RandomTickEvent, Registrar, WeatheringAge,

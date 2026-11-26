@@ -3,7 +3,8 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::commands_common::Target;
+    use sunrise_gameplay_common::game::pick_entity_common::PickEntityCommonGameExt1;
+use sunrise_gameplay_common::game::commands_common::Target;
     use sunrise_gameplay_common::game::creatures::SpawnSite;
     use sunrise_gameplay_common::game::dragon_common::dragon_part_id;
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;

@@ -146,7 +146,8 @@ pub(crate) mod pumpkin_equippable_use_tests {
 
 #[cfg(test)]
 pub(crate) mod stand_lodestone_inventory_tick_tests {
-    use sunrise_core::{geometry::Vec3, position::BlockPos};
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use sunrise_core::{geometry::Vec3, position::BlockPos};
     use sunrise_sim::motion::PlayerMotion;
 
     #[test]
@@ -314,7 +315,8 @@ pub(crate) mod stand_lodestone_inventory_tick_tests {
 pub(crate) mod postbaseline_lodestone_controls {
     //! Added after baseline: source-backed slots and preservation, not new runtime breadth.
 
-    use std::sync::Arc;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use std::sync::Arc;
     use sunrise_core::position::BlockPos;
     use sunrise_items::items::ItemStack;
     use sunrise_level::chunk::Chunk;

@@ -8,7 +8,8 @@ pub(crate) mod roll_loot_tests;
 
 #[cfg(test)]
 pub(crate) mod general_handle_tests {
-    use super::tests::with_game;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5;
+use super::tests::with_game;
     use sunrise_gameplay_common::game::commands_common::Target;
     use sunrise_gameplay_common::game::general::GeneralRow;
     use mod_api::{EntityRef, WorldEpoch};
@@ -107,7 +108,14 @@ pub(crate) mod general_handle_tests {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::{game_side, world_biomes};
+    use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2;
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1;
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1;
+use sunrise_gameplay_common::{game_side, world_biomes};
     pub use sunrise_gameplay_common::game::test_fixtures::{
         FRESH_CASE_LIMIT, fixture_block_names, fixture_facts_mut, fixture_root, output_within, ran_one_test,
         record_key, resolve_parts, run_fresh_cases, run_fresh_cases_at_once, run_with_game_stack,

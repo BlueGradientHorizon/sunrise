@@ -39,7 +39,7 @@ pub struct OpenNativeScreen {
     pub(in crate::game) layout_revision: u64,
     pub(in crate::game) slot_moves: SlotMoves,
     pub(in crate::game) screen: mod_api::__private::OwnedMenuScreen,
-    pub(in crate::game) menu: OpenNativeMenu,
+    pub menu: OpenNativeMenu,
     /// Installed as the window's screen, not merely staged for ScreenOpening.
     pub(in crate::game) shown: bool,
     /// The server closed the logical menu (`LocalPlayer.clientSideCloseContainer`),

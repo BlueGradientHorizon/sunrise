@@ -81,7 +81,7 @@ pub struct EntitySections {
     /// The world open the table was filled in: another one starts it over.
     pub(in crate::game) epoch: Option<WorldEpoch>,
     /// Each entity's level and section.
-    pub(in crate::game) filed: HashMap<u32, (DimensionKey, [i32; 3])>,
+    pub filed: HashMap<u32, (DimensionKey, [i32; 3])>,
     /// Crossings raised while a listener is already running. Ordinary writes are told
     /// immediately; a nested write waits until the current callback returns.
     pub(in crate::game) queue: Vec<Crossing>,

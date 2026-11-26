@@ -3,7 +3,8 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod conduit_target_tests {
-    use {sunrise_gameplay_common::game::server_side::block_entity_anims::conduit_target_tests::CONDUIT, sunrise_gameplay::game::server_side::block_entity_anims::conduit_target_tests::attack_conduit_for_test, crate::game::server_side::block_entity_anims::conduit_target_tests::game, sunrise_gameplay::game::server_side::block_entity_anims::conduit_target_tests::summon};
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use {sunrise_gameplay_common::game::server_side::block_entity_anims::conduit_target_tests::CONDUIT, sunrise_gameplay::game::server_side::block_entity_anims::conduit_target_tests::attack_conduit_for_test, crate::game::server_side::block_entity_anims::conduit_target_tests::game, sunrise_gameplay::game::server_side::block_entity_anims::conduit_target_tests::summon};
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role, crate::game::{Audio, Settings, load_resources}};
     use std::sync::Arc;
     use sunrise_core::nbt::Tag;

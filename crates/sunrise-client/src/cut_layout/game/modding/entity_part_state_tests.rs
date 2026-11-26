@@ -1,5 +1,6 @@
 //! Entity Part state (#796 stage 3) on real entities: one value each, kept with its entity
 //! through edits, transactions, removal, unloading, reloading and changes of level.
+use sunrise_gameplay_common::game::GameGameExt1;
 use std::{collections::HashSet, panic::AssertUnwindSafe, sync::Arc};
 
 use mod_api::{

@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_gameplay::game::commands::data::DataRef;
 use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use std::collections::BTreeMap;

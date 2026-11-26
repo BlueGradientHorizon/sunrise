@@ -4,11 +4,11 @@ use sunrise_items::items::ItemStack;
 use sunrise_sim::advancements::Frame;
 
 pub struct Toast {
-    pub(in crate::game) icon: ItemStack,
+    pub icon: ItemStack,
     pub(in crate::game) frame: Frame,
     pub(in crate::game) title: Text,
     pub(in crate::game) description: Option<Text>,
-    pub(in crate::game) slide: Slide,
+    pub slide: Slide,
     /// A `RecipeToast`: the crafting station and result of each display
     /// unlocked while it lasts (`recipeItems`); empty for an advancement.
     pub(in crate::game) recipes: Vec<(String, ItemStack)>,

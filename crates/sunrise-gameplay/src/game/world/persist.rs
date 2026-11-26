@@ -106,7 +106,7 @@ pub enum EntitySnapshot {
 pub(in crate::game) struct TransferredVehicleTree {
     source_id: u32,
     kind: VehicleTreeKind,
-    name: String,
+    pub name: String,
     state: super::entity_initialization::TransferredEntityState,
     passengers: Vec<TransferredVehicleTree>,
 }
@@ -118,8 +118,8 @@ impl TransferredVehicleTree {
 }
 
 pub(in crate::game) struct RestoredVehicleTree {
-    pub(in crate::game) root: u32,
-    pub(in crate::game) by_source: HashMap<u32, u32>,
+    pub root: u32,
+    pub by_source: HashMap<u32, u32>,
 }
 
 #[derive(Clone, Copy, Debug)]

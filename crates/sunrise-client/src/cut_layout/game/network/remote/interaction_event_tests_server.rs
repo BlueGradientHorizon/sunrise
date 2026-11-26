@@ -1,3 +1,4 @@
+use sunrise_client_gameplay::game::native_hooks::item_fallthrough::ItemFallthroughGameExt1;
 use {crate::game::server_side::Game, sunrise_gameplay::game::server_side::lan::LanSettings, crate::game::server_side::native_entity_refs::tests::with_game};
 use crate::game::remote::interaction_event_tests::Controls;
 use crate::game::remote::interaction_event_tests::Observer;

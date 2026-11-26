@@ -1,6 +1,7 @@
 //! The wither's nether star: `WitherBoss.dropCustomDeathLoot` spawns it and
 //! then calls `ItemEntity.setExtendedLifetime` (`age = -6000`), so the age
 //! discard (`age >= 6000`) takes it at tick 12000 instead of 6000.
+use sunrise_gameplay_common::game::GameGameExt1;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;

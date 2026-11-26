@@ -3,7 +3,8 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::GameGameExt1;
+use super::super::native_entity_refs::tests::with_game;
     use mod_api::{EntityRef, WorldEpoch};
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::mobs::Mob;

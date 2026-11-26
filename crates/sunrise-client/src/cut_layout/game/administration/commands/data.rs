@@ -51,7 +51,8 @@ pub(crate) mod eye_item_tests;
 
 #[cfg(test)]
 pub(crate) mod wolf_live_anger_tests {
-    use sunrise_gameplay::game::server_side::commands::data::Target;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use sunrise_gameplay::game::server_side::commands::data::Target;
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use sunrise_core::nbt::Tag;
 
@@ -325,7 +326,8 @@ pub(crate) mod boat_passenger_tree_tests {
 
 #[cfg(test)]
 pub(crate) mod loot_table_tests {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::nbt::Tag;
     use sunrise_items::items::ItemStack;
@@ -495,7 +497,8 @@ pub(crate) mod arrow_reload_tests;
 
 #[cfg(test)]
 pub(crate) mod arrow_owner_tests {
-    use sunrise_gameplay::game::server_side::commands::data::Target;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use sunrise_gameplay::game::server_side::commands::data::Target;
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use sunrise_core::nbt::Tag;
 
@@ -708,7 +711,8 @@ pub(crate) mod bell_command_identity_tests {
 
 #[cfg(test)]
 pub(crate) mod falling_live_adoption_tests {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::position::ChunkPos;
     use sunrise_level::chunk::Chunk;

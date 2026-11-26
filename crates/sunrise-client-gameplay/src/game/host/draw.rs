@@ -103,7 +103,7 @@ pub fn label_layout_with(
 #[cfg(feature = "client")]
 pub struct GameDrawContext<'a, 'g> {
     pub(crate) game: &'a crate::game::ClientGame<'g>,
-    pub(crate) surface: &'a mut sunrise_client::hud::HudBatch,
+    pub surface: &'a mut sunrise_client::hud::HudBatch,
     /// The call's open clips (`push_clip`), closed when the call returns.
     pub(in crate::game) clips: crate::game::gui_clips::GuiClips,
     pub(in crate::game) tooltip_font: Option<&'a EngineTooltipFont<'a>>,

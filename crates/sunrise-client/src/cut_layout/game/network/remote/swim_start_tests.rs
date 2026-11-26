@@ -1,4 +1,5 @@
 //! Exercise both owning player tick routes, not the standalone swim oracle.
+use sunrise_gameplay_common::game::native_hooks::can_start_swimming::SprintGameExt;
 use {crate::game::remote::*, sunrise_gameplay_common::game::remote::{Chunk, Game, ItemStack, Keys, PlayerMotion, S, Vec3, motion, play, tick}};
 use std::sync::Arc;
 use sunrise_client_gameplay::game::client_side::remote_client::RemoteDimensionEntry;

@@ -1,4 +1,5 @@
 //! A real idle server tick must not sweep or read the attachment index.
+use sunrise_gameplay_common::game::GameGameExt1;
 use std::sync::Arc;
 use sunrise_gameplay_common::game::Dim;
 use super::*;

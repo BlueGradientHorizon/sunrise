@@ -17,7 +17,8 @@ pub(crate) mod tests;
 
 #[cfg(test)]
 pub(crate) mod tnt_impact_tests {
-    use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
+    use sunrise_gameplay_common::game::GameGameExt1;
+use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_core::geometry::Vec3;
 
@@ -824,7 +825,8 @@ pub(crate) mod hook_mutation_regressions {
 
 #[cfg(test)]
 pub(crate) mod cart_cost_bench {
-    use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
+    use sunrise_gameplay_common::game::GameGameExt1;
+use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
     use sunrise_gameplay::game::game_tests::tests::server_game;
     use sunrise_core::geometry::Vec3;
 

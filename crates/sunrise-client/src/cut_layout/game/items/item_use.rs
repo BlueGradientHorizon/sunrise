@@ -5,6 +5,7 @@ use sunrise_items::items::ItemStack;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
 use sunrise_gameplay_common::game::in_own_process;
 
 use sunrise_core::use_animation::UseAnimation;
@@ -295,7 +296,8 @@ use sunrise_core::use_animation::UseAnimation;
 
 #[cfg(test)]
 pub(crate) mod interact_vibration_tests {
-    use super::*;
+    use sunrise_gameplay_common::game::GameGameExt1;
+use super::*;
 
     use sunrise_gameplay::game::server_side::sculk_server::item_use_event_fixture::{EVENTS, RECORDING};
     use sunrise_gameplay::game::server_side::item_use::interact_vibrations;

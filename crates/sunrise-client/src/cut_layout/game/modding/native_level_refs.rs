@@ -3,7 +3,9 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::Dim;
+    use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
+use sunrise_gameplay_common::game::Dim;
     use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use super::super::native_entity_refs::tests::{run_fresh_cases, with_client_game, with_game};
     use sunrise_gameplay_common::world_biomes;
@@ -2204,7 +2206,8 @@ mod tests {
 
 #[cfg(test)]
 pub(crate) mod environment_read_tests {
-    use {sunrise_gameplay_common::game::Dim, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+    use sunrise_gameplay_common::game::weather::WeatherGameExt;
+use {sunrise_gameplay_common::game::Dim, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
     use mod_api::{BiomeSearch, LevelRef, WorldEpoch};
     use std::sync::Arc;
     use sunrise_level::chunk::Chunk;

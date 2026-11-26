@@ -5,6 +5,7 @@ use std::fs;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::native_configs::NativeConfigsGameExt1;
 use sunrise_gameplay_common::game::server_side::native_config_files::tests::path;
 
 use super::*;

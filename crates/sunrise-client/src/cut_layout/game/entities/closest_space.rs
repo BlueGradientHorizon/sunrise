@@ -3,7 +3,8 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use sunrise_gameplay_common::game::tables::GameItems;
+use std::sync::Arc;
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::motion::PlayerMotion;
 

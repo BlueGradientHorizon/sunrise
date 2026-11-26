@@ -1,6 +1,7 @@
 //! A mod's fluid interaction in a real game: lava beside the mod's fluid turns to the block it
 //! declared, `fluid_place_block` can veto it, vanilla's two lava rules stay first, and the water
 //! tag is read again when the tables are installed again.
+use sunrise_gameplay_common::game::GameGameExt1;
 use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
 use mod_api::{
     Flow, FluidBecomes, FluidInteraction, FluidNeighbour, FluidPlaceBlockEvent, Hooks, LevelHost,

@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::GameGameExt1;
 use super::setup_live_damage_world;
 use {sunrise_gameplay_common::game::combat_common::PlayerCredit, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENT_ORDER};
 use mod_api::{

@@ -584,7 +584,7 @@ pub struct Levels {
     heard_open: Vec<Dim>,
     /// The levels a mod asked to have saved (`level_request_save`), each once, saved at the start
     /// of the next server tick.
-    requested_saves: Vec<Dim>,
+    pub requested_saves: Vec<Dim>,
     /// The levels mods opened while the server runs, and the requests waiting to be applied.
     pub(in crate::game) runtime: super::runtime_levels::RuntimeTable,
     /// The entities that travelled to another level lately: the id each had, to the id it

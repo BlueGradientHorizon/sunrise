@@ -1,6 +1,7 @@
 //! `on_block_state_change` heard by a block Part at the end of `Level.setBlock`: after the
 //! neighbours' shapes settled, where `block_changed` hears the write before them, and on a
 //! client for each block the server sends and each write of a piston's replay.
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
 use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{

@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::TryIntoApi;
 use mod_api::BlockEntityScope;
 use sunrise_level::containers::BlockEntity;
 use super::tick_tests::*;

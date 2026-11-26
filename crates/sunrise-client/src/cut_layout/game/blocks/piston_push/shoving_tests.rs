@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::GameGameExt1;
 #[cfg(test)]
 use sunrise_world::moving_colliders;
 use sunrise_core::geometry::Vec3;

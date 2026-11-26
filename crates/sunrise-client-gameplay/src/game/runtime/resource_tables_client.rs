@@ -431,14 +431,14 @@ pub struct ClientResources {
 #[derive(Clone)]
 pub struct ClientPackResources {
     /// `Blocks.WATER.defaultBlockState()` for screen-effect extraction.
-    pub(in crate::game) water_overlay_state: mod_api::BlockState,
-    pub(in crate::game) render: Arc<RenderAssets>,
-    pub(in crate::game) context: Arc<sunrise_client_render::streaming::WorkerContext>,
+    pub water_overlay_state: mod_api::BlockState,
+    pub render: Arc<RenderAssets>,
+    pub context: Arc<sunrise_client_render::streaming::WorkerContext>,
     pub(in crate::game) layer_names: Arc<HashMap<u32, String>>,
     /// Item definitions, baked item models and special renderers.
-    pub(in crate::game) item_renderer: Arc<sunrise_client::item_render::ItemRenderer>,
+    pub item_renderer: Arc<sunrise_client::item_render::ItemRenderer>,
     /// clouds.png: (width, height, filled cells).
-    pub(in crate::game) clouds: Arc<(u32, u32, Vec<bool>)>,
+    pub clouds: Arc<(u32, u32, Vec<bool>)>,
     /// misc/forcefield.png: (width, height, RGBA) for the world border wall.
     pub(in crate::game) forcefield: Arc<(u32, u32, Vec<u8>)>,
     /// Custom sky layers (OptiFine's `optifine/sky`) with their textures; none without them.
@@ -452,7 +452,7 @@ pub struct ClientPackResources {
     /// The packs' Polytone post chains (#11486), when a pack has some.
     pub(in crate::game) polytone_post: Option<Arc<sunrise_client::polytone_post::PolytonePost>>,
     /// The packs' Polytone custom colours (`polytone/colors.json`).
-    pub(in crate::game) polytone_colors: Arc<sunrise_client::pack_palette::PackColors>,
+    pub polytone_colors: Arc<sunrise_client::pack_palette::PackColors>,
 }
 
 /// Everything the title and menus draw: the GUI atlas with its font, the

@@ -4,7 +4,9 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
-    use super::super::native_entity_refs::tests::{record_key, with_game};
+    use sunrise_gameplay_common::game::block_props::BlockPropsGameExt1;
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2;
+use super::super::native_entity_refs::tests::{record_key, with_game};
     use sunrise_gameplay_common::game_side;
     use mod_api::{
         BlockPart, EntityRef, Hooks, LivingRef, LoopContext, MakesOpenTrapdoorAboveClimbableEvent,

@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_gameplay::game::command_harness::spans;
 use crate::game::server_side::commands::summon_bolt_tests::ORACLE_PLAYER_UUID;
 use crate::game::server_side::commands::summon_bolt_tests::tag_contains_bolt;

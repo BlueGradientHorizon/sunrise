@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::GameGameExt1;
 use {sunrise_gameplay::game::server_side::commands::data::DataRef, sunrise_gameplay::game::server_side::commands::data::Target};
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use serde::Deserialize;

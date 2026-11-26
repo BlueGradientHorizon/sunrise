@@ -1,4 +1,5 @@
 //! Positional block Parts run against the owning readonly level, not during state resolution.
+use sunrise_gameplay_common::game::GameGameExt1;
 use super::native_entity_refs::tests::with_game;
 use mod_api::{
     AdjacentBlockPathTypeEvent, BlockPart, BlockPathTypeEvent, Hooks, Host, IsPathfindableEvent,

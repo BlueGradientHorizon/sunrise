@@ -84,10 +84,12 @@ pub(crate) mod tests {
         include!("client_epochs_tests.rs");
     }
     pub(crate) mod client_handles_tests {
-        include!("client_handles_tests.rs");
+        use sunrise_gameplay_common::game::GameGameExt1;
+include!("client_handles_tests.rs");
     }
     pub(crate) mod client_level_environment_tests {
-        include!("client_level_environment_tests.rs");
+        use sunrise_gameplay_common::game::weather::WeatherGameExt;
+include!("client_level_environment_tests.rs");
     }
     pub(crate) mod client_level_lifecycle_tests {
         include!("client_level_lifecycle_tests.rs");
@@ -168,7 +170,8 @@ pub(crate) mod tests {
         include!("player_sleep_tests.rs");
     }
     pub(crate) mod predicted_block_notice_tests {
-        include!("predicted_block_notice_tests.rs");
+        use sunrise_gameplay_common::game::GameGameExt1;
+include!("predicted_block_notice_tests.rs");
     }
     pub(crate) mod predicted_throw_tests {
         include!("predicted_throw_tests.rs");

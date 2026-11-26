@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::GameGameExt1;
 use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
 use crate::game::load_resources;
 use crate::settings::Settings;

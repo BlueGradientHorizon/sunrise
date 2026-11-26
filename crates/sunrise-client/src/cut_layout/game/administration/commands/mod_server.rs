@@ -62,7 +62,8 @@ pub(crate) mod teleport_player_rider_tests;
 #[cfg(test)]
 pub(crate) mod query_feedback_tests {
 
-    #[test]
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+#[test]
     #[ignore = "daily"]
     fn a_silent_source_drops_query_results_but_still_stores_them() {
         use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role::ExecutionRole};

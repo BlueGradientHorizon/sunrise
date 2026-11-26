@@ -1,6 +1,7 @@
 //! `player_changed_dimension` is heard on every logical server: the integrated server that runs
 //! single player and the LAN world opened from it, and a dedicated server (#3250).
 //! These prepared tests also exercise menu retirement during travel.
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_gameplay::game::server_side::server_travel::Dim;
 use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::lan::LanSettings, sunrise_gameplay_common::game::lan_actions::GuestCommand, sunrise_gameplay::game::native_entity_refs::tests::with_game_role};
 use mod_api::{

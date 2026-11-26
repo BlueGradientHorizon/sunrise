@@ -173,11 +173,11 @@ impl SpawnScratch {
 /// A player in the level in place, as spawning and despawning see it.
 pub(in crate::game) struct LevelPlayer {
     pub(in crate::game) uuid: u128,
-    pub(in crate::game) position: Vec3,
+    pub position: Vec3,
     pub(in crate::game) bounds: Aabb,
     pub(in crate::game) alive: bool,
     pub(in crate::game) creative: bool,
-    pub(in crate::game) spectator: bool,
+    pub spectator: bool,
 }
 impl LevelPlayer {
     fn distance_sqr(&self, x: f64, y: f64, z: f64) -> f64 {
@@ -348,8 +348,8 @@ pub(in crate::game) struct GameLevel<'g, 'a> {
     /// The mobs this pass's finalizeSpawn calls made (jockeys and mounts),
     /// and the chicken-jockey links on mobs already in the game's list, both
     /// applied by [`Game::add_spawned`].
-    pub(in crate::game) spawned: std::cell::RefCell<Vec<Mob>>,
-    pub(in crate::game) rides: std::cell::RefCell<Vec<(u32, u32)>>,
+    pub spawned: std::cell::RefCell<Vec<Mob>>,
+    pub rides: std::cell::RefCell<Vec<(u32, u32)>>,
     /// How many provisional ids the pass has handed out (`u32::MAX - n`),
     /// mapped to real ones by [`Game::add_spawned`].
     pub(in crate::game) provisional: std::cell::Cell<u32>,

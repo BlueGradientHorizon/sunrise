@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_gameplay_common::game::execution_role::ExecutionRole;
 use crate::game::native_hooks::piston_push_reaction_tests::state;
 use std::sync::Arc;

@@ -1,7 +1,8 @@
 #![cfg(test)]
 #[cfg(test)]
 mod command_exploration_map_tests {
-    use std::sync::Arc;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use std::sync::Arc;
     use sunrise_core::nbt::Tag;
 
     #[test]
@@ -134,7 +135,8 @@ mod command_exploration_map_tests {
 // Added after the qualified baseline: bounded source-backed preservation controls.
 #[cfg(test)]
 mod added_preservation_tests {
-    use serde_json::json;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use serde_json::json;
     use sunrise_items::items::ItemStack;
     use sunrise_level::containers::BlockEntity;
     use sunrise_sim::structure_blocks;

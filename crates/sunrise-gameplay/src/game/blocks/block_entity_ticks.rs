@@ -99,9 +99,9 @@ impl TickedKind {
 )]
 pub struct BlockEntityTick<'g, 'a> {
     /// The game the loop runs on: the level being ticked, `hoppers`, everything the loop has.
-    pub(crate) game: &'g mut crate::game::ServerGame<'a>,
+    pub game: &'g mut crate::game::ServerGame<'a>,
     /// The block entity's position.
-    pub(crate) pos: Pos,
+    pub pos: Pos,
     /// What it is, from the block entity the dispatch is about to tick.
     pub(crate) kind: TickedKind,
     /// A mod's block entity's type, as a numeric wire ID; read through [`OwnBlockEntities`].

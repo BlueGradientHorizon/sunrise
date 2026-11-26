@@ -4,6 +4,7 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::tables::WorldTablesExt;
 use sunrise_client_gameplay::game::client_side::remote_tags::{Probe, Seen};
 
 use sunrise_gameplay_common::game::client_side::remote_tags::login;

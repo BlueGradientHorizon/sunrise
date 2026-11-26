@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::GameGameExt1;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use sunrise_core::geometry::Vec3;

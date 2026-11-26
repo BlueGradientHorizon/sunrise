@@ -357,7 +357,8 @@ pub(crate) mod structure_tag_tests {
 
 #[cfg(test)]
 pub(crate) mod random_chance_command_tests {
-    use super::*;
+    use sunrise_core::random::RandomSource;
+use super::*;
     use sunrise_gameplay_common::game::commands_common::Target;
     use sunrise_core::nbt::Tag;
     #[test]
@@ -623,7 +624,8 @@ pub(crate) mod custom_data_equipment_tests {
 
 #[cfg(test)]
 pub(crate) mod movement_predicate_tests {
-    use sunrise_gameplay::game::game_tests::tests::server_game;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use sunrise_gameplay::game::game_tests::tests::server_game;
     use serde_json::json;
     use sunrise_core::geometry::Vec3;
     use sunrise_core::position::BlockPos;

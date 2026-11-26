@@ -3,7 +3,8 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod allay_owner_damage_tests {
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game_at;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game_at;
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::mobs::{Damage, Mob};
 

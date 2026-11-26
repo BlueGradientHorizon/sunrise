@@ -94,20 +94,20 @@ pub struct ContainerLayout {
     /// `leftPos`, `topPos`, `imageWidth`, `imageHeight` in GUI pixels.
     pub(in crate::game) image: [f32; 4],
     /// `getXOrigin`/`getYOrigin`: the player inventory's top-left corner.
-    pub(in crate::game) origin: (f32, f32),
+    pub origin: (f32, f32),
     /// The open recipe book's panel.
-    pub(in crate::game) book: Option<[f32; 4]>,
+    pub book: Option<[f32; 4]>,
     /// The effect panels' box beside the window.
-    pub(in crate::game) effects: Option<[f32; 4]>,
+    pub effects: Option<[f32; 4]>,
     pub(in crate::game) shows_effects: bool,
     pub(in crate::game) effects_revision: u64,
     /// The `RenderInventoryMobEffects` answer the panel box was laid out with.
     pub(in crate::game) effects_layout: EffectsLayout,
     /// The creative tab rows above and below the window.
-    pub(in crate::game) tabs: Option<[[f32; 4]; 2]>,
+    pub tabs: Option<[[f32; 4]; 2]>,
     /// Every slot's `isHovering` box (the 16x16 slot grown by one pixel on
     /// every side) and its slot id, in `slots()` order.
-    pub(in crate::game) slots: Vec<(usize, [f32; 4])>,
+    pub slots: Vec<(usize, [f32; 4])>,
 }
 
 impl ContainerLayout {
@@ -138,7 +138,7 @@ pub struct PauseLayout {
     /// row, is a new layout even at the same size.
     pub(in crate::game) inputs: PauseInputs,
     /// `(x, y, width, label key, action id, active)`, in `PauseScreen`'s order.
-    pub(in crate::game) buttons: Vec<(f32, f32, f32, &'static str, u8, bool)>,
+    pub buttons: Vec<(f32, f32, f32, &'static str, u8, bool)>,
     /// `(x, y, sprite)`: the report bugs, feedback, friends and player reporting
     /// icons, in that order.
     pub(in crate::game) icons: [(f32, f32, &'static str); 4],
@@ -161,7 +161,7 @@ pub struct PauseInputs {
 /// chat opening on a plain chat build needs no rebuild.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(in crate::game) struct ChatLayout {
-    pub(in crate::game) leave_bed: (i32, i32, i32, i32),
+    pub leave_bed: (i32, i32, i32, i32),
 }
 
 /// `AbstractCommandBlockEditScreen.init`'s buttons: the output toggle, the
@@ -342,11 +342,11 @@ pub struct ScreenState {
     /// frame painted them (`recipe_book_screen::sprite_bounds`); None when the
     /// book drew none.
     pub(in crate::game) drawn_book_tabs: std::cell::Cell<Option<[f32; 4]>>,
-    pub(in crate::game) widgets: super::screen_widgets::MountedScreenWidgets,
+    pub widgets: super::screen_widgets::MountedScreenWidgets,
     /// Monotonic identity of the currently open screen instance. Bumped on
     /// every screen open, close, or replacement, and preserved across
     /// same-instance resize/rebuild (`Screen.resize`/`rebuildWidgets`).
-    pub(in crate::game) screen_instance: u64,
+    pub screen_instance: u64,
     /// Identity of the text field that last owned IME composition, so switching
     /// directly between two fields clears the old field's preedit and area.
     pub(in crate::game) ime_focus: Option<u64>,

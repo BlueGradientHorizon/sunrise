@@ -423,10 +423,10 @@ pub(in crate::game) struct Remote {
     pub(in crate::game) custom_completions: std::collections::BTreeSet<String>,
     pub(in crate::game) players: HashMap<u128, String>,
     /// `ClientPacketListener.playerInfoMap` as player-list entries, and which of them are listed.
-    pub(in crate::game) tab_players: HashMap<u128, sunrise_level::profile_lookup::TabPlayer>,
+    pub tab_players: HashMap<u128, sunrise_level::profile_lookup::TabPlayer>,
     /// Live `PlayerInfo.gameMode` cell per active tab entry; `PlayerInfoRemove` drops the map
     /// slot while leaving any entity's cached `Arc` untouched (`AbstractClientPlayer.playerInfo`).
-    pub(in crate::game) tab_game_modes: HashMap<u128, Arc<std::sync::atomic::AtomicI32>>,
+    pub tab_game_modes: HashMap<u128, Arc<std::sync::atomic::AtomicI32>>,
     /// First resolved `PlayerInfo` game mode cell of the current `LocalPlayer` entity.
     pub(in crate::game) own_player_info: std::cell::OnceCell<Arc<std::sync::atomic::AtomicI32>>,
     /// Each listed profile's `textures` property, verified once the keys are ready.
@@ -475,7 +475,7 @@ pub(in crate::game) struct Remote {
     /// `Player.DATA_SHOULDER_PARROT_LEFT` and `_RIGHT` of the own player.
     pub(in crate::game) own_shoulders: [Option<i32>; 2],
     /// The local player's profile UUID (always in the level).
-    pub(in crate::game) profile: u128,
+    pub profile: u128,
     /// The local player's profile name: its score holder and team member.
     pub(in crate::game) profile_name: String,
     /// `MultiPlayerGameMode.destroyBlockPos`, `.destroyProgress` and the face last sent: the block
@@ -545,7 +545,7 @@ pub(in crate::game) const TICK_DECODE_WAIT: Duration = Duration::from_millis(250
 #[derive(Default)]
 pub(in crate::game) struct ClientMenu {
     pub(in crate::game) current: Option<(i32, String)>,
-    pub(in crate::game) generation: u64,
+    pub generation: u64,
 }
 
 impl ClientMenu {

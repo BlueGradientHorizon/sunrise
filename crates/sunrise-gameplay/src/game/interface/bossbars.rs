@@ -780,11 +780,11 @@ pub enum Scope {
     Level(Dim),
 }
 pub(in crate::game) struct Viewer {
-    pub(in crate::game) uuid: u128,
+    pub uuid: u128,
     pub(in crate::game) ints: [i32; 4],
-    pub(in crate::game) at: [f64; 3],
+    pub at: [f64; 3],
     pub(in crate::game) alive: bool,
-    pub(in crate::game) here: bool,
+    pub here: bool,
     pub(in crate::game) conn: Option<u32>,
     pub(in crate::game) view_chunks: i32,
 }

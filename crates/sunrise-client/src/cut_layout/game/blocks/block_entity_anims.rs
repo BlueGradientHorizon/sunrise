@@ -4,7 +4,8 @@
 use sunrise_level::containers::BlockEntity;
 #[cfg(test)]
 pub(crate) mod tests {
-    #[test]
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+#[test]
     #[ignore = "daily"]
     fn replacing_a_gateway_discards_its_old_cooldown() {
         run_replacing_a_gateway_discards_its_old_cooldown();
@@ -100,6 +101,7 @@ pub(crate) mod tests {
 #[cfg(test)]
 pub(crate) mod conduit_target_tests {
 
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
 use sunrise_gameplay_common::game::server_side::block_entity_anims::conduit_target_tests::CONDUIT;
 
 use sunrise_gameplay::game::server_side::block_entity_anims::conduit_target_tests::setup;

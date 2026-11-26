@@ -1,3 +1,6 @@
+use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay_common::game::TryIntoApi;
+use sunrise_gameplay_common::game::native_hooks::block_entity_on_load::BlockEntityOnLoadGameExt1;
 use mod_api::BlockEntityRef;
 use sunrise_core::nbt::Compound;
 use sunrise_level::block_entities::Pos;

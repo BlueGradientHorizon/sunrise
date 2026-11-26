@@ -1,5 +1,6 @@
 //! `is_fire_source` answered by a block Part (#3185): stone keeps a fire burning, netherrack
 //! refuses what the overworld's infiniburn tag gives it, and other blocks leave the tag to answer.
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{self, BlockPart, Hooks, IsFireSourceEvent, LevelHost, Registrar};
 use sunrise_core::position::BlockPos;

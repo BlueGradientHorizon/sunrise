@@ -1,7 +1,8 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use crate::game::native_hooks::block_entity_save_additional_tests::tests::BreakObserver;
     use crate::game::native_hooks::block_entity_save_additional_tests::tests::Mod;
     use crate::game::native_hooks::block_entity_save_additional_tests::tests::SaveItemsMod;

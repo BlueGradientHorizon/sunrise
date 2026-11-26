@@ -1,3 +1,5 @@
+use sunrise_core::random::RandomSource;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_core::position::BlockPos;
 use super::*;
 use crate::game::creatures::chorus_projectile_drop_tests::source;

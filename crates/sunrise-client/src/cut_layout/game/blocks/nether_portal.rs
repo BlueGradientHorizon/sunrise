@@ -12,6 +12,10 @@ pub(crate) mod portal_spawn_tests;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 use sunrise_gameplay::game::server_side::nether_portal::tests::portal_cooldown_keeps_the_process;
 
 use sunrise_gameplay::game::server_side::server_travel::TravelCause;

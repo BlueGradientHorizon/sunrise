@@ -10,6 +10,8 @@ use sunrise_sim::projectiles::ProjectileKind;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_core::random::RandomSource;
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
 use sunrise_gameplay_common::game::server_side::dragon::tests::flying;
 use sunrise_gameplay_common::game::dragon_common::Phase;
 use sunrise_gameplay_common::game::server_side::dragon::tests::dragon;
@@ -426,7 +428,8 @@ pub(crate) mod walls_tests;
 
 #[cfg(test)]
 pub(crate) mod dragon_fireball_spawn_tests {
-    include!("dragon/fireball_spawn_tests.rs");
+    use sunrise_gameplay_common::game::GameGameExt1;
+include!("dragon/fireball_spawn_tests.rs");
 }
 #[cfg(test)]
 #[path = "dragon/wing_push_tests.rs"]

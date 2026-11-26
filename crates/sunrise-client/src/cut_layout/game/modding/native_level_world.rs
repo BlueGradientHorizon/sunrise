@@ -6,7 +6,10 @@ use sunrise_gameplay_common::game::native_rain_read::weather_flags;
 
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1;
+use super::super::native_entity_refs::tests::with_game;
     use mod_api::{GameRuleChangedEvent, GameRuleValue, Hooks, LevelHost, ModEntry, ServerHost};
     use mod_platform::testing::with_mods;
     use std::sync::{Arc, Mutex};

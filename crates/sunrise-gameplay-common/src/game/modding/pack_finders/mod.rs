@@ -19,7 +19,7 @@ pub struct DiscoveredPack {
 pub struct Registry {
     kind: PackType,
     mods: ModsState,
-    pub(in crate::game) packs: Vec<DiscoveredPack>,
+    pub packs: Vec<DiscoveredPack>,
 }
 impl Registry {
     pub fn new(kind: PackType, mods: ModsState) -> Self {

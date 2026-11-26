@@ -3,6 +3,7 @@
 //! entities in entity-ticking chunks: past the simulation distance an item in
 //! an End gateway stays where it is, and only the ticking one goes in.
 
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_gameplay_common::game::Dim;
 use sunrise_gameplay::game::game_tests::tests::server_game;
 use std::sync::Arc;

@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use sunrise_gameplay::game::native_entity_refs::tests::bind_local_player;
 use crate::game::native_hooks::death_source_tests::bow;

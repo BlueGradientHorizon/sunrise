@@ -3,7 +3,8 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::maps::MapData;
+    use sunrise_gameplay_common::game::tables::WorldTablesExt;
+use sunrise_gameplay_common::game::maps::MapData;
     use sunrise_items::items::ItemStack;
 
     #[test]

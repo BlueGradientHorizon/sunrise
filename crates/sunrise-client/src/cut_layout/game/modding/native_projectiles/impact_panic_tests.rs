@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::projectiles::Projectile;
 use super::*;

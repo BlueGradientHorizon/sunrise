@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::GameGameExt1;
 #[test]
 #[ignore = "daily"]
 fn stateful_creation_uses_actual_state_and_preserves_existing_entity() {

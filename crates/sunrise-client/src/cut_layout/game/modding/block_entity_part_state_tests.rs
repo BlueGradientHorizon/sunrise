@@ -1,5 +1,6 @@
 //! Part state (#781) on real block entities: one value each, kept with its block entity
 //! through ticks, transactions, replacement, saving and unloading.
+use sunrise_gameplay_common::game::GameGameExt1;
 use std::{panic::AssertUnwindSafe, sync::Arc};
 
 use mod_api::{

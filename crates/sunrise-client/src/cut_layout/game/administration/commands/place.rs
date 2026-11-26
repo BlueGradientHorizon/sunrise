@@ -5,7 +5,8 @@ use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
 #[cfg(test)]
 pub(crate) mod live_dungeon_spawner_tests {
-    use super::*;
+    use sunrise_gameplay_common::game::GameGameExt1;
+use super::*;
     use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};

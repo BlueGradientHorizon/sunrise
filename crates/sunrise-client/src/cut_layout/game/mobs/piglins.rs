@@ -6,6 +6,7 @@ use sunrise_sim::mobs::Species;
 #[cfg(test)]
 pub(crate) mod tests {
 
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
 use super::*;
 
 /// `PiglinAi.throwItemsTowardPos` swings the off hand once when it has

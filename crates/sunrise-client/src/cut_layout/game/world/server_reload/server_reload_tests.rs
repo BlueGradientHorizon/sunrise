@@ -1,3 +1,4 @@
+use sunrise_client_gameplay::game::native_hooks::tags_updated::GameHooks;
 use mod_api::FileToIdConverter;
 use mod_api::{Identifier, ServerReloadContext};
 use mod_api::__private::reload::ReloadStageError;

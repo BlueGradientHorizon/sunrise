@@ -20,7 +20,7 @@ pub(in crate::game) struct NativeMenuSlot {
 #[derive(Clone, PartialEq)]
 pub(in crate::game) struct MenuSnapshot {
     pub(in crate::game) conn: u32,
-    pub(in crate::game) uuid: u128,
+    pub uuid: u128,
     pub(in crate::game) entity_id: i32,
     pub(in crate::game) placed_at: u64,
     pub(in crate::game) dimension: String,
@@ -33,7 +33,7 @@ pub(in crate::game) struct MenuSnapshot {
 
     pub(in crate::game) links: Vec<(i32, i32, i32)>,
     pub(in crate::game) craft: Option<ModCraft>,
-    pub(in crate::game) inventory: Vec<Option<ItemStack>>,
+    pub inventory: Vec<Option<ItemStack>>,
     pub(in crate::game) armor: [Option<ItemStack>; 4],
     pub(in crate::game) offhand: Option<ItemStack>,
     pub(in crate::game) carried: Option<ItemStack>,

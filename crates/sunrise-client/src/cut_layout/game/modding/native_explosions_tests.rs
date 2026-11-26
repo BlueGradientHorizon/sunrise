@@ -1,6 +1,7 @@
 //! `LevelRef::explode` through native mod calls: source, interactions, damage type,
 //! calculator, effects and unbounded radius.
 #![cfg(test)]
+use sunrise_gameplay_common::game::GameGameExt1;
 use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::run_with_game_stack, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{
     EntityRef, ExplodeError, ExplosionCalculator, ExplosionDetonateEvent, ExplosionInteraction,

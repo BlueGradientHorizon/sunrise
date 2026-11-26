@@ -210,7 +210,8 @@ use sunrise_level::{chunk::Chunk, containers::BlockEntity};
 
 #[cfg(test)]
 pub(crate) mod loot_position_tests {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::{Settings, load_resources}};
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::{Settings, load_resources}};
 
     #[test]
     #[ignore = "daily"]

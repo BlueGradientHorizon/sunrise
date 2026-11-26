@@ -2,7 +2,8 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+    use sunrise_gameplay_common::game::native_hooks::base::GameHooks;
+use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
     use mod_api::{
         Hooks, HostSide, LevelTickPreEvent, ModEntry, ServerHost, ServerTickEvent, ServerTickPhase,
     };

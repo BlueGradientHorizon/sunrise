@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::GameGameExt1;
 use crate::game::fireworks::events_tests::start_events;
 use crate::game::fireworks::events_tests::stop_events;
 use crate::game::fireworks::events_tests::twinkling;

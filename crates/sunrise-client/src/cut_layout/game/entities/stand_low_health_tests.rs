@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;

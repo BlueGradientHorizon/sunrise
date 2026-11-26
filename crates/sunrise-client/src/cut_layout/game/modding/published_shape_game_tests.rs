@@ -1,5 +1,6 @@
 //! #1666: a content block whose block entity publishes its shapes
 //! (`shapes_from_block_entity`), on a game over the prepared resources.
+use sunrise_gameplay_common::game::GameGameExt1;
 use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
 use mod_api::*;
 use std::sync::Arc;

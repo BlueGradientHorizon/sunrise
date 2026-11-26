@@ -113,7 +113,8 @@ pub(crate) mod jukebox_play_tests {
 
 #[cfg(test)]
 pub(crate) mod saved_song_clock_tests {
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 
     #[test]
     #[ignore = "daily"]

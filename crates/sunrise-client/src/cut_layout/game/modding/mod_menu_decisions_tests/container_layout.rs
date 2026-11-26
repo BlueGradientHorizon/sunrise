@@ -1,4 +1,5 @@
 //! A block-backed menu lays out all its declared slots before the first write.
+use sunrise_gameplay_common::game::GameGameExt1;
 use super::{container_click, register_test_menu};
 use {sunrise_gameplay_common::game::api_values, sunrise_gameplay_common::game::lan_actions::MenuOpen, sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_guest_turn_tests::with_guests_at};
 use mod_api::{

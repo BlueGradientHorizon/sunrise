@@ -34,7 +34,7 @@ mod live_vehicle;
 /// it) and the game host behind the tick, for the reads that are the level's
 /// own. The writes apply to the mob itself.
 pub struct GoalCx<'a, 'w> {
-    m: &'a mut Mob,
+    pub m: &'a mut Mob,
     w: &'a MobWorld<'w>,
     host: &'a dyn Host,
 }

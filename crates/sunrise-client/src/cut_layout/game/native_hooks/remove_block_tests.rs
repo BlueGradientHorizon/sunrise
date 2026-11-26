@@ -1,4 +1,5 @@
 //! Removal exposes the engine's default and still lets a block Part replace it.
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
 use mod_api::{BlockPart, BlockState, Hooks, LevelHost, Registrar, RemoveBlockEvent};

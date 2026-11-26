@@ -11,7 +11,8 @@ mod lifetime_tests;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use sunrise_client_lib::join_seq::Joined;
+use super::*;
     use sunrise_gameplay::game::commands::Target;
     use sunrise_gameplay::game::entity_residency::SlotAccess;
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;

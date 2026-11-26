@@ -1,4 +1,5 @@
 //! The real refresh path updates both the active world and worlds parked by dimension.
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_gameplay_common::game::Dim;
 use super::native_entity_refs::tests::with_game;
 use std::sync::Arc;

@@ -1,4 +1,5 @@
 //! `create_fluid_source` reaches mods from the server's fluid ticks.
+use sunrise_gameplay_common::game::GameGameExt1;
 use mod_api::{CreateFluidSourceEvent, Hooks, LevelHost, Registrar};
 use std::sync::Mutex;
 use sunrise_core::position::BlockPos;

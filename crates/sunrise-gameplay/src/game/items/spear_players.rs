@@ -16,7 +16,7 @@ use {
 /// the hub before it: `PiercingWeapon.canHitEntity` holds for them.
 #[derive(Clone, Copy)]
 pub(in crate::game) struct StabPlayer {
-    pub(in crate::game) conn: u32,
+    pub conn: u32,
     pub(in crate::game) entity_id: i32,
     pub(in crate::game) bounds: Aabb,
     /// `getKnownSpeed`: the movement their client reported, per tick.

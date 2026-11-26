@@ -145,7 +145,7 @@ pub(in crate::game) struct MountedWidgetEntry {
     pub(in crate::game) id: ScreenWidgetId,
     pub(in crate::game) owner: CallbackOwner,
     pub(in crate::game) disabled: bool,
-    pub(in crate::game) kind: MountedWidgetKind,
+    pub kind: MountedWidgetKind,
 }
 
 /// Engine representation of each mounted widget variant.

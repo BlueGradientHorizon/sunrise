@@ -177,10 +177,10 @@ impl Info {
 
 /// One `GameTestBatch`.
 pub(in crate::game) struct Batch {
-    pub(in crate::game) index: i32,
+    pub index: i32,
     pub(in crate::game) environment: String,
     dimension: String,
-    pub(in crate::game) infos: Vec<Info>,
+    pub infos: Vec<Info>,
 }
 
 /// What `GameTestRunner.Builder` is given.
@@ -193,7 +193,7 @@ pub struct RunnerOptions {
     /// `trackAndStartRunner`'s source is the command's own, not the
     /// server's (`TestInstanceBlockEntity.runTest`).
     from_command: bool,
-    summary_source: Option<SummarySource>,
+    pub summary_source: Option<SummarySource>,
 }
 
 impl RunnerOptions {
@@ -377,8 +377,8 @@ pub struct Grid {
     around: (i32, i32),
     per_row: i32,
     /// `clearOnBatch`.
-    clear_on_batch: bool,
-    states: Vec<(Dim, DimGrid)>,
+    pub clear_on_batch: bool,
+    pub states: Vec<(Dim, DimGrid)>,
 }
 
 impl Grid {

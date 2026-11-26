@@ -1,7 +1,8 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::block_items::BlockItemsGameExt1;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use mod_api::{BlockEntityPart, BlockEntitySaveAdditionalEvent, Hooks, LevelHost, ModEntry};
     use std::sync::atomic::{AtomicI32, Ordering};
     use std::sync::{Arc, Mutex};

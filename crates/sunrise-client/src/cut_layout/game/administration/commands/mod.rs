@@ -26,6 +26,7 @@ pub(crate) mod summon_bolt_tests;
 #[cfg(test)]
 pub(crate) mod peaceful_tests {
 
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
 use sunrise_gameplay_common::game::server_side::commands::peaceful_tests::TRADER;
 
 use sunrise_command::{Arg, Context};
@@ -719,7 +720,9 @@ pub(crate) mod vehicle_kill_tests;
 
 #[cfg(test)]
 pub(crate) mod global_selector_order_tests {
-    use {sunrise_gameplay::game::server_side::commands::Selector, sunrise_gameplay_common::game::commands_common::Target};
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2;
+use {sunrise_gameplay::game::server_side::commands::Selector, sunrise_gameplay_common::game::commands_common::Target};
     use sunrise_command::args::Sort;
     use sunrise_core::nbt::Tag;
     use sunrise_core::position::ChunkPos;

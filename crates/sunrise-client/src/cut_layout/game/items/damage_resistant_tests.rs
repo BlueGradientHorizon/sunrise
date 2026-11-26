@@ -1,4 +1,5 @@
 //! The effective damage-resistant component at its actual item-damage callers.
+use sunrise_gameplay_common::game::GameGameExt1;
 use std::sync::Arc;
 use sunrise_items::items::ItemStack;
 use sunrise_level::world::World;

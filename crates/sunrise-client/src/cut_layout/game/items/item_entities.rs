@@ -4,7 +4,8 @@
 use sunrise_core::geometry::Vec3;
 #[cfg(test)]
 pub(crate) mod destroyed_contents_tests {
-    use super::*;
+    use sunrise_gameplay_common::game::GameGameExt1;
+use super::*;
     use sunrise_gameplay::game::game_tests::tests::server_game;
     use sunrise_core::random::RandomSource;
     use sunrise_items::items::ItemStack;
@@ -100,7 +101,8 @@ pub(crate) mod destroyed_contents_tests {
 
 #[cfg(test)]
 pub(crate) mod escape_tests {
-    use sunrise_gameplay::game::game_tests::tests::server_game;
+    use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay::game::game_tests::tests::server_game;
     use sunrise_core::random::RandomSource;
     use sunrise_items::items::ItemStack;
 

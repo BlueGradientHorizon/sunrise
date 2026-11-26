@@ -4,7 +4,8 @@
 use sunrise_sim::lan::playerdata::uuid_ints;
 #[cfg(test)]
 mod tests {
-    use {sunrise_gameplay::game::server_side::lan::LanSettings, crate::game::server_side::native_entity_refs::tests::with_game};
+    use mod_vocab::__private::game::Fields;
+use {sunrise_gameplay::game::server_side::lan::LanSettings, crate::game::server_side::native_entity_refs::tests::with_game};
     use super::*;
     use mod_api::{BossBarColor, BossBarOverlay, BossBarRef};
     use std::sync::{

@@ -77,32 +77,32 @@ pub struct Loading {
     pub(in crate::game) window: Option<Arc<Window>>,
     pub(in crate::game) renderer: Option<Renderer>,
     /// The boot screen's atlas, until the pack's GUI atlas replaces it.
-    pub(in crate::game) boot: sunrise_client::hud::HudAtlas,
-    pub(in crate::game) gui: Option<UiResources>,
-    pub(in crate::game) settings: Settings,
+    pub boot: sunrise_client::hud::HudAtlas,
+    pub gui: Option<UiResources>,
+    pub settings: Settings,
     pub(in crate::game) fullscreen: sunrise_client::window::FullscreenState,
     pub(in crate::game) video_modes: sunrise_client::window::VideoModeList,
-    pub(in crate::game) options: Option<Options>,
-    pub(in crate::game) vanilla_root: PathBuf,
+    pub options: Option<Options>,
+    pub vanilla_root: PathBuf,
     pub(in crate::game) pack_error: Option<String>,
     pub(in crate::game) started: Instant,
     pub(in crate::game) panorama_rotation: sunrise_client::gfx::panorama::Rotation,
     pub(in crate::game) progress: Progress,
     /// The bar as drawn, easing toward `progress` (`LoadingOverlay.currentProgress`).
     pub(in crate::game) bar: f32,
-    pub(in crate::game) receiver: Receiver<LoaderMsg>,
-    pub(in crate::game) loaded:
+    pub receiver: Receiver<LoaderMsg>,
+    pub loaded:
         Option<std::result::Result<Loaded, super::resource_loader::LoaderFailure>>,
     /// The loader's `Done` arrived: its channel closing afterwards is expected.
     pub(in crate::game) delivered: bool,
-    pub(in crate::game) handle: Option<JoinHandle<()>>,
+    pub handle: Option<JoinHandle<()>>,
     pub(in crate::game) shown: bool,
     /// When the menu bundle arrived (`set_ui`), and whether a title frame with
     /// it was presented since: the world renderer waits for that frame
     /// (`ready_for_handoff`).
-    pub(in crate::game) ui_at: Option<Instant>,
-    pub(in crate::game) title_drawn: bool,
-    pub(in crate::game) menu: startup_menu::StartupMenu,
+    pub ui_at: Option<Instant>,
+    pub title_drawn: bool,
+    pub menu: startup_menu::StartupMenu,
     pub(in crate::game) error: Option<Box<dyn std::error::Error>>,
 }
 /// How long the handoff waits for the first title frame before building the

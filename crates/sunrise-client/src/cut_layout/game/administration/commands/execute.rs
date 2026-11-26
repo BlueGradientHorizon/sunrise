@@ -7,7 +7,8 @@ pub(crate) mod execute_facing_tests;
 
 #[cfg(test)]
 pub(crate) mod terminal_fork_tests {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::{Settings, load_resources}};
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::{Settings, load_resources}};
     use std::sync::Arc;
     use sunrise_core::position::ChunkPos;
     use sunrise_level::chunk::Chunk;
@@ -132,7 +133,8 @@ pub(crate) use sunrise_gameplay::game::server_side::commands_server::execute::te
 
 #[cfg(test)]
 pub(crate) mod score_condition_tests {
-    use sunrise_gameplay::game::game_tests::tests::server_game;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+use sunrise_gameplay::game::game_tests::tests::server_game;
 
     pub(crate) fn game(
         resources: &mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,

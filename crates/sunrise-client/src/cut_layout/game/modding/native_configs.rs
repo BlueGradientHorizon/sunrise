@@ -3,7 +3,9 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use {crate::game::native_configs::*, sunrise_gameplay_common::game::native_configs::{CHECK_EVERY, ConfigFile, Duration, Instant, NativeConfigs, Path, PathBuf, Tracked, fs}};
+    use sunrise_client_gameplay::game::native_hooks::mod_configs::GameHooks;
+use sunrise_gameplay_common::game::native_configs::NativeConfigsGameExt1;
+use {crate::game::native_configs::*, sunrise_gameplay_common::game::native_configs::{CHECK_EVERY, ConfigFile, Duration, Instant, NativeConfigs, Path, PathBuf, Tracked, fs}};
     use mod_api::ConfigKind::{Client, Common, Server};
 
     #[test]
