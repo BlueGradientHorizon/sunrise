@@ -3287,6 +3287,7 @@ impl ModPipelines {
                                 buffer: indirect.buffer.clone(),
                                 offset: indirect.offset,
                                 count: indirect.max_count,
+                                count_buffer: indirect.count.clone(),
                                 index: indirect
                                     .index_buffer()
                                     .map(|(buf, format)| (buf.clone(), *format)),
