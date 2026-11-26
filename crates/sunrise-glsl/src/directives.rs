@@ -52,12 +52,12 @@ fn arguments(name: &str) -> String {
     format!("`{name}` called with a number of arguments it doesn't take")
 }
 
-/// Why `stop` stopped an expansion.
+/// Why `stop` stopped an expansion, without its source position.
 pub(crate) fn stopped(stop: Stop) -> String {
     match stop {
         Stop::Work => ImportRefusal::TooMuchScanned.to_string(),
         Stop::Depth => crate::macros::calls_too_deep(),
-        Stop::Arguments(name) => arguments(&name),
+        Stop::Arguments { name, .. } => arguments(&name),
     }
 }
 
@@ -109,8 +109,8 @@ fn with_line(out: &mut Lines, line: &str, mut at: usize, joined: &Lines, number:
 /// before (naga's preprocessor had no `__VERSION__`), and an `#undef` removes it. The expansion
 /// spends at most [`MAX_SCANNED`] tokens of work (what each call reads and what its replacement
 /// makes, [`Macros::checked`]), the bound on what the translator reads for a stage; past it the
-/// stage is refused. Directive refusals point to the authored `#`; a refusal known only by
-/// its line has no column.
+/// stage is refused. Directive refusals point to the authored `#`, and wrong-arity calls in
+/// code point to the authored invocation. A refusal known only by its line has no column.
 pub fn run_directives(code: &Expanded, defines: &[&str]) -> Result<Expanded, Error> {
     if let Some(define) = defines.iter().find(|d| d.contains('\n')) {
         // Every line of the result is a line of the code: a replacement can't add one.
@@ -174,14 +174,15 @@ pub fn run_directives(code: &Expanded, defines: &[&str]) -> Result<Expanded, Err
         let here = number(k, offset);
         macros.define("__LINE__", format!("{here}u"));
         let directive = directive(line).map(|(word, rest)| (byte_at(line.trim_start()), word, rest));
+        let line_error = |message| {
+            let (file, line) = code.lines.origin(at).map_or((code.file(), 0), |origin| {
+                (code.files[origin.file as usize].as_str(), origin.line)
+            });
+            Error::new(file, line, message)
+        };
         let error = |message| match directive {
             Some((start, _, _)) => joined.error_at(Some(start), message),
-            None => {
-                let (file, line) = code.lines.origin(at).map_or((code.file(), 0), |origin| {
-                    (code.files[origin.file as usize].as_str(), origin.line)
-                });
-                Error::new(file, line, message)
-            }
+            None => line_error(message),
         };
         if let Some((start, word, rest)) = directive {
             if matches!(word, "define" | "undef" | "ifdef" | "ifndef")
@@ -281,10 +282,45 @@ pub fn run_directives(code: &Expanded, defines: &[&str]) -> Result<Expanded, Err
             if !(0..1 << 32).contains(&last) && macros.mentions(&probe, "__LINE__") {
                 return Err(error("line number outside GLSL range".into()));
             }
-            macros.define("__LINE__", format!("{last}u"));
-            to_line(&mut out, &mut out_line, at);
-            macros.expand_located(&input, &mut out);
-            k += taken;
+            // The first stop lasts. A probe uses the original spelling of `__LINE__`, so its
+            // offsets belong to the probe, not the mapped input of the actual expansion.
+            let probe_stop = macros.stopped();
+            let from_probe = probe_stop.is_some();
+            let stop = probe_stop.or_else(|| {
+                macros.define("__LINE__", format!("{last}u"));
+                to_line(&mut out, &mut out_line, at);
+                macros.expand_located(&input, &mut out);
+                macros.stopped()
+            });
+            if let Some(stop) = stop {
+                let Stop::Arguments { byte: Some(byte), .. } = stop else {
+                    return Err(error(stopped(stop)));
+                };
+                let message = stopped(stop);
+                let located = if from_probe {
+                    // The probe replaces each LF with a space and only trims CRs from the
+                    // first piece. Restore those skipped bytes for tokens on later pieces.
+                    let skipped = if byte < line.len() {
+                        0
+                    } else {
+                        logical[k].len() - line.len()
+                    };
+                    joined.error_at(Some(byte_at(line) + byte + skipped), message)
+                } else {
+                    Expanded {
+                        lines: input,
+                        ..joined
+                    }
+                    .error_at(Some(byte), message)
+                };
+                return Err(if located.column == 0 {
+                    line_error(located.message)
+                } else {
+                    located
+                });
+            }
+            k += taken + 1;
+            continue;
         }
         if let Some(stop) = macros.stopped() {
             return Err(error(stopped(stop)));

@@ -711,6 +711,55 @@ fn a_post_shaders_directive_errors_name_the_include_and_position() {
     }
 }
 
+/// Wrong arity points to the invocation, whether the join probe or the actual expansion stops.
+#[test]
+fn wrong_arity_names_the_authored_call() {
+    const FILE: &str = "p:shaders/post/a.fsh";
+    for (text, line, column) in [
+        ("#define F(x) x\n\tfloat x = F(1, 2);\n", 2, 12),
+        // No upcoming line to probe.
+        ("#define F(x) x\n\tfloat x = F(1, 2);", 2, 12),
+        // The probe sees the call only after joining a CRLF and a spliced line. An earlier F
+        // is valid; the bad call's name comes from ALIAS and points there.
+        (
+            concat!(
+                "#define F(x) x\n#define OUTER(x) x\n#define ALIAS F\n",
+                "\tfloat x = OUTER(\r\n  F(0) + \\\r\n \tALIAS(1, 2));\r\n",
+                "float y;\n",
+            ),
+            6,
+            3,
+        ),
+        // The next directive ends probing before the joined call is checked. The actual
+        // expansion's offsets must account for the shorter spelling of __LINE__.
+        (
+            concat!(
+                "#define F(x) x\n#define OUTER(x) x\n",
+                "\tfloat x = OUTER(\r\n  __LINE__ + \\\r\n \tF(1, 2));\r\n",
+                "#define NEXT 1\n",
+            ),
+            5,
+            3,
+        ),
+    ] {
+        let code = Expanded {
+            lines: Lines::from_text(text),
+            files: vec![FILE.into()],
+            version: 110,
+        };
+        let error = run_directives(&code, &[]).unwrap_err();
+        assert_eq!(
+            (error.file.as_str(), error.line, error.column),
+            (FILE, line, column),
+            "{text:?}"
+        );
+        assert_eq!(
+            error.message,
+            "`F` called with a number of arguments it doesn't take"
+        );
+    }
+}
+
 /// Overflow of the logical line counter reports the physical line, not an unrelated token.
 #[test]
 fn a_line_counter_overflow_does_not_invent_a_column() {

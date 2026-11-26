@@ -65,7 +65,12 @@ pub enum Stop {
     Depth,
     /// A call of the function-like macro of this name gives it a number of arguments it doesn't
     /// take, which naga's preprocessor (pp-rs 0.2.1) refused.
-    Arguments(String),
+    Arguments {
+        /// The name of the function-like macro.
+        name: String,
+        /// The invocation's byte offset in the input that stopped, when tracked.
+        byte: Option<usize>,
+    },
 }
 
 /// The macros defined at a point of a stage, by name.
@@ -241,7 +246,8 @@ impl Macros {
     /// them is a directive and the call spans at most [`MAX_CALL_LINES`] lines, counting the
     /// `joined` lines `line` is already made of beyond its first; returns how many it joined.
     /// Telling whether a call is unfinished expands the line so far, which is work like any
-    /// other expansion.
+    /// other expansion. A wrong-arity stop from a probe gives its byte offset in `line`; joining
+    /// more lines only appends to that input.
     pub fn join_call(&self, line: &mut String, upcoming: &[&str], joined: usize) -> usize {
         let mut taken = 0;
         while taken < upcoming.len()
@@ -309,10 +315,11 @@ impl Macros {
     }
 
     /// Whether upcoming source lines continue a call, including one whose expanded name
-    /// ends `text` and whose opening parenthesis is on the next nonempty line.
+    /// ends `text` and whose opening parenthesis is on the next nonempty line. In checked mode,
+    /// a wrong-arity stop records its invocation's byte offset in `text`.
     pub fn unfinished_call(&self, text: &str, upcoming: &[&str]) -> bool {
         self.begin();
-        let (tokens, unfinished) = self.expand_tokens(expansion_tokens(text, false));
+        let (tokens, unfinished) = self.expand_tokens(expansion_tokens(text, self.arity));
         unfinished
             || (tokens.iter().rfind(|t| !t.blank()).is_some_and(|t| {
                 self.map.get_key_value(&t.text).is_some_and(|(name, m)| {
@@ -337,7 +344,8 @@ impl Macros {
             .collect()
     }
 
-    /// Append the same expansion as [`Self::expand`], with source positions for diagnostics.
+    /// Append the same expansion as [`Self::expand`], mapping the output's source positions.
+    /// A wrong-arity stop from this expansion records its invocation's byte offset in `input`.
     pub(crate) fn expand_located(&self, input: &Lines, out: &mut Lines) {
         self.begin();
         for token in self.expand_tokens(expansion_tokens(input.text(), true)).0 {
@@ -381,6 +389,8 @@ impl Macros {
         resolve_defined(&expanded, |name| self.is_defined(name))
     }
 
+    /// Expand the tokens, keeping their sources, and report whether a call is still open.
+    /// The first refusal is kept in [`Self::stopped`], including the source of a wrong-arity call.
     fn expand_tokens<'a>(
         &'a self,
         tokens: Vec<ExpansionToken<'a>>,
@@ -456,7 +466,14 @@ impl Macros {
                     }
                     let empty = args.len() == 1 && args[0].iter().all(ExpansionToken::blank);
                     if self.arity && args.len() != params.len() && !(empty && params.is_empty()) {
-                        self.stop(Stop::Arguments(name.clone()));
+                        let byte = match token.source {
+                            TokenSource::Copy(at) | TokenSource::Call(at) => Some(at),
+                            TokenSource::None => None,
+                        };
+                        self.stop(Stop::Arguments {
+                            name: name.clone(),
+                            byte,
+                        });
                         pending.push(token);
                         break;
                     }
