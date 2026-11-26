@@ -795,11 +795,11 @@ impl Game<'_> {
     // ---- geometry ----
 
     /// `RecipeBookComponent.getXOrigin` / `getYOrigin` (`widthTooNarrow`
-    /// centres the book over the menu), moved left with the window by the
+    /// centres the book over the menu), moved with the window by the
     /// room the mods ask beside it (`screen_room`).
     fn book_origin(&self, batch: &HudBatch) -> (f32, f32) {
         let (x, y) = self.book_origin_in_place(batch);
-        (x - self.screen_room_shift(batch), y)
+        (x + self.screen_room_offset(batch), y)
     }
     /// The visible left edge, including the selected tab, of the book beside
     /// the window before room moves it; none while no book is open or it covers the

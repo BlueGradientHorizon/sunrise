@@ -4,8 +4,11 @@ In CI, each tree's `sunrise-stage` exports its own SDK surface. The head's tool 
 compares the surfaces and writes the classified report to the job summary. CI compares published loops, not listed
 internals. On `pull_request`, the checkout is GitHub's merge commit, whose first parent is the base, and a dispatch
 with `pr` checks out that pull request's test merge the same way (tools/ci/pr_gate.py). CI builds
-the base's tool from a full archive of that commit (into target/surface-base, which a Dyna slot keeps), including
-`crates/`, `tools/layering`, Cargo manifests, and workspace members outside `crates/` (such as `docs/modding/examples/`).
+the base's tool from a full archive of that commit, including `crates/`, `tools/layering`, Cargo manifests, and
+workspace members outside `crates/` (such as `docs/modding/examples/`). A Dyna slot keeps `target/surface-base-v3`:
+its Cargo target, build directory, mtime snapshot and lock share one protocol version. Under that lock, the
+archive's Git objects reconcile the snapshot before Cargo builds. Older writers keep their own directory, so
+an older build cannot leave artifacts that the current snapshot doesn't describe.
 Only that one commit is fetched (`--depth 1`, in CI's shallow checkout; a full clone is never fetched shallow).
 
 Locally, `--base SHA` compares this checkout against that commit exactly as CI compares against its base (the base's
@@ -18,8 +21,9 @@ and neither goes with `--build-tool`.
 
 Use --with-internals to audit listed internals too. With --trees BASE HEAD, use --build-base-tool when the generator
 changed: it always builds and uses BASE's own `sunrise-stage`, even if HEAD's could read the old sources. Only pass
-it for a whole checkout you trust: it compiles and runs BASE's code, build scripts included. Without the flag,
---trees is a source-only comparison for two trees that use the same generator.
+it for a whole checkout you trust: it compiles and runs BASE's code, build scripts included. The build uses the audit's
+scratch target, not the shared archive cache. Without the flag, --trees is a source-only comparison for two trees that
+use the same generator.
 
 It passes when the CI base cannot be found or fetched, saying so in one line. It fails if either export cannot be
 compared, for a new change note that names an id that did not change or cannot be read, and, with `gate = true` in
@@ -50,6 +54,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from tools import file_lock
+from tools.ci.source_mtimes import restore_tree_mtimes
 
 ROOT = Path(__file__).resolve().parents[2]
 NOTES = "crates/sunrise-mod-vocab/changes"
@@ -101,51 +106,53 @@ def fetch_commit(sha: str, depth: int, git_text=git) -> None:
         git_text("fetch", "-q", "--no-tags", "origin", sha)
 
 
-def archive_paths(sha: str) -> tuple[str, ...]:
-    """The source needed to export a surface at `sha`, including libraries outside crates/."""
-    manifest = tomllib.loads(git("show", f"{sha}:Cargo.toml"))
+def archive_paths(tree: str) -> tuple[str, ...]:
+    """The source needed to export a surface at `tree`, including libraries outside crates/."""
+    manifest = tomllib.loads(git("show", f"{tree}:Cargo.toml"))
     members = manifest.get("workspace", {}).get("members", [])
     extras = sorted({member for member in members if not member.startswith("crates/")})
     return ("crates", "tools/layering", ":(glob)**/Cargo.toml", *extras)
 
 
-def unpack(sha: str, into: Path, paths: tuple[str, ...] | None = None) -> None:
+def unpack(sha: str, into: Path, paths: tuple[str, ...] | None = None) -> str:
+    """Extract the selected paths (empty tuple for the full tree) and return the exact tree ID."""
     fetch_commit(sha, 1)
+    tree = git("rev-parse", "--verify", f"{sha}^{{tree}}").strip()
     if paths is None:
-        paths = archive_paths(sha)
-    with subprocess.Popen(["git", "archive", sha, *paths], cwd=ROOT, stdout=subprocess.PIPE) as archive:
-        # `-m`: files take the time of this extraction, not the commit's. Cargo decides a unit is fresh by source
-        # mtime, and the surface-base target is shared by trees of different commits, so an older commit's tree must
-        # not look unchanged beside a newer one's build of the same paths.
-        subprocess.run(["tar", "-x", "-m", "-C", str(into)], stdin=archive.stdout, check=True)
+        paths = archive_paths(tree)
+    with subprocess.Popen(["git", "archive", tree, *paths], cwd=ROOT, stdout=subprocess.PIPE) as archive:
+        subprocess.run(["tar", "-x", "-C", str(into)], stdin=archive.stdout, check=True)
     if archive.returncode != 0:
         raise subprocess.CalledProcessError(archive.returncode, "git archive")
+    return tree
 
 
-def base_tool(sha: str, work: Path) -> list[str]:
-    """The command of the base commit's own sunrise-stage: its whole tree, built as verify builds the head's (test profile)."""
-    tree = work / f"base-tool-{sha[:12]}"
-    tree.mkdir()
-    unpack(sha, tree, ())
-    return tree_tool(tree, work)
-
-
-def tree_tool(tree: Path, work: Path) -> list[str]:
-    """The command of the sunrise-stage of the whole source tree `tree`, built in the test profile in target/surface-base and
-    copied into this run's `work`. The build directory is shared (and cached), so a lock held from the build to the
-    copy keeps another audit's build from replacing the binary before this one has its copy."""
-    target = ROOT / "target" / "surface-base"
+def base_tool(sha: str, work: Path, *, archive_name: str | None = None) -> list[str]:
+    """Build a commit's own exporter from a fresh full archive, the only source allowed in the kept target."""
+    # Version the whole cache together: a writer that doesn't update this snapshot must not share its artifacts.
+    target = ROOT / "target" / "surface-base-v3"
     target.mkdir(parents=True, exist_ok=True)
-    suffix = ".exe" if sys.platform == "win32" else ""  # Cargo names the program so on Windows, and Windows runs only that
-    tool = work / f"base-stage-{len(list(work.glob('base-stage-*')))}{suffix}"
     with open(target / "surface-report.lock", "a") as lock:
         file_lock.lock(lock)
-        built = subprocess.run(["cargo", "build", "--locked", "--profile", "test",
-                                "--bin", "sunrise-stage", "--target-dir", str(target)],
-                               cwd=tree, capture_output=True, text=True)
-        if built.returncode != 0:
-            raise RuntimeError(f"building that tree's sunrise-stage failed: {last_line(built.stderr)}")
-        shutil.copy2(target / "debug" / f"sunrise-stage{suffix}", tool)
+        tree = work / (archive_name or f"base-tool-{sha[:12]}")
+        tree.mkdir()
+        identity = unpack(sha, tree, ())
+        restore_tree_mtimes(ROOT, identity, tree, target / "ci-source-mtimes-v3.json")
+        return tree_tool(tree, work, target)
+
+
+def tree_tool(tree: Path, work: Path, target: Path) -> list[str]:
+    """Build a tree's sunrise-stage and copy it into the audit's scratch directory."""
+    target = target.resolve()
+    suffix = ".exe" if sys.platform == "win32" else ""  # Cargo names the program so on Windows, and Windows runs only that
+    tool = work / f"base-stage-{len(list(work.glob('base-stage-*')))}{suffix}"
+    built = subprocess.run(["cargo", "build", "--locked", "--profile", "test",
+                            "--bin", "sunrise-stage", "--target-dir", str(target)],
+                           cwd=tree, capture_output=True, text=True,
+                           env={**os.environ, "CARGO_BUILD_BUILD_DIR": str(target)})
+    if built.returncode != 0:
+        raise RuntimeError(f"building that tree's sunrise-stage failed: {last_line(built.stderr)}")
+    shutil.copy2(target / "debug" / f"sunrise-stage{suffix}", tool)
     return [str(tool)]
 
 
@@ -191,12 +198,10 @@ def audited_checkpoint(reset_path: Path, work: Path, old_hash: str) -> tuple[Pat
     if missing:
         return None, f"The schema-reset audit lacks change notes for {', '.join(missing)}.\n"
     checkpoint = work / "schema-reset"
-    checkpoint.mkdir()
     output = work / "base.json"
     commit = reset["checkpoint"]
     try:
-        unpack(commit, checkpoint, ())
-        done = export_surface(tree_tool(checkpoint, work), checkpoint, output)
+        done = export_surface(base_tool(commit, work, archive_name=checkpoint.name), checkpoint, output)
     except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
         return None, f"Could not export the schema-reset checkpoint: {error}.\n"
     if done.returncode != 0:
@@ -416,7 +421,7 @@ def main(argv=None) -> int:
         work = Path(directory)
         if args.trees:
             base, head = args.trees
-            own = (lambda: tree_tool(base, work)) if args.build_base_tool else None
+            own = (lambda: tree_tool(base, work, work / "base-target")) if args.build_base_tool else None
             code, text = report(tool, base, head, work, gate_on, with_internals=args.with_internals,
                                 own_base_tool=own)
         else:
