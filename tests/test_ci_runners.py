@@ -7,6 +7,7 @@
 """
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -78,6 +79,16 @@ def checkouts(job):
     return [step for step in job.get("steps", []) if step.get("uses", "").startswith("actions/checkout")]
 
 
+def labels_of(runs_on):
+    """The labels a parsed runs-on can select: a list's or mapping's own, or the lists in an expression's
+    fromJSON('[...]') literals, whichever branch picks them (other values name hosted runners)."""
+    if isinstance(runs_on, dict):
+        runs_on = runs_on.get("labels", [])
+    if isinstance(runs_on, list):
+        return set(runs_on)
+    return {label for literal in re.findall(r"fromJSON\('(\[[^']*\])'\)", runs_on) for label in json.loads(literal)}
+
+
 def routed():
     """(where, triggers, workflow, job, runs-on, pools) for every job that can run on our runners."""
     for path in sorted(WORKFLOWS.glob("*.yml")):
@@ -85,8 +96,8 @@ def routed():
         on = triggers(document)
         for name, job in jobs(document):
             value = job.get("runs-on", "")
-            pools = {pool for pool, labels in (("light", LIGHT), ("checks", CHECKS))
-                     if any(f'"{label}"' in value for label in labels)}
+            reached = labels_of(value)
+            pools = {pool for pool, labels in (("light", LIGHT), ("checks", CHECKS)) if reached & set(labels)}
             if pools:
                 yield f"{path.name} {name}", on, document, job, value, pools
 
