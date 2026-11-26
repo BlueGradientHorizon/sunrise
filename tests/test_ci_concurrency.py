@@ -1,18 +1,13 @@
 """Pin the actual parsed workflow's main queue and PR replacement behavior."""
 import ast
-import hashlib
 from pathlib import Path
 import re
-import sys
 import unittest
 
+from tools.ci import vendored_yaml
+
 ROOT = Path(__file__).resolve().parents[1]
-# Use the same offline parser as the repository guard, not a runner package, and only the exact archive it pins.
-PARSER = ROOT / "tools/ci/vendor/pyyaml-6.0.3.zip"
-PARSER_SHA256 = "94ac21b4343e15647b3b5b5bd594aab5b7d3cd8d2ce17db15acb7260d489b6fc"
-assert hashlib.sha256(PARSER.read_bytes()).hexdigest() == PARSER_SHA256, f"{PARSER} is not the pinned PyYAML 6.0.3"
-sys.path.insert(0, str(PARSER))
-import yaml
+yaml = vendored_yaml.load()
 
 WORKFLOWS = [ROOT / ".github/workflows/dyna-ci.yml"]
 # The daily run's legs: called by daily.yml or dispatched by hand, never on pull requests or main pushes (owner,

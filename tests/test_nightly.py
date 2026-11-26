@@ -8,7 +8,6 @@ import os
 import shutil
 import string
 import subprocess
-import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -16,6 +15,9 @@ from pathlib import Path
 
 from tools.ci import nightly
 from tools.ci import nightly_set as ns
+from tools.ci import vendored_yaml
+
+yaml = vendored_yaml.load()
 
 NOW = "2026-10-28T12:00:00+00:00"
 PATTERNS = ns.guarded_patterns((Path(__file__).resolve().parents[1] / ".github/CODEOWNERS").read_text())
@@ -51,7 +53,7 @@ def notes(chosen=None, picked=(), left_out=(), merged=(), issues=()):
 class NightlyTests(unittest.TestCase):
     def test_release_keys_and_publishers_stay_on_github_hosted_runners(self):
         import re
-        from tests.test_ci_concurrency import ROOT, yaml
+        from tests.test_ci_concurrency import ROOT
 
         workflows = ROOT / ".github/workflows"
         for path in sorted(workflows.iterdir()):

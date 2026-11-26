@@ -3,15 +3,14 @@ run, the stable tags and their order, and the commits the nightly and stable bui
 import io
 import os
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
+from tools.ci import vendored_yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "tools/ci/vendor/pyyaml-6.0.3.zip"))
-import yaml
+yaml = vendored_yaml.load()
 
 from tests.os_support import needs_runner_shell
 from tools import release_file
