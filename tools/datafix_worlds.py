@@ -462,8 +462,9 @@ def build(name, force=False):
     work = LOCAL / 'gen' / name
     shutil.rmtree(work, ignore_errors=True)
     port = free_port()
-    states = block_states(jar, java(version)) if version in STATE_GRID and not props else ()
-    server = Server(work, jar, port, scene.experiments(data_version), java(version), props)
+    java_exe = java(version)
+    states = block_states(jar, java_exe) if version in STATE_GRID and not props else ()
+    server = Server(work, jar, port, scene.experiments(data_version), java_exe, props)
     if props and props.get('level-type') == 'debug_all_block_states':
         # The debug world's grid (DebugLevelSource.getBlockStateFor: every block state at odd x and z from 1 to
         # 2 * GRID_WIDTH + 1, 187 for 1.13.2's 8,599 states) holds the twelve moving_piston states. Their block has a
@@ -478,7 +479,7 @@ def build(name, force=False):
             raise RuntimeError(f'{name}: setworldspawn was refused, so the grid would be saved: {out}')
         server.stop()
         shutil.rmtree(work / 'world' / 'region')
-        server = Server(work, jar, port, scene.experiments(data_version), java(version), props)
+        server = Server(work, jar, port, scene.experiments(data_version), java_exe, props)
     problems = []
     bots = []   # every bot that joined, so that the finally below closes it whatever fails
 
