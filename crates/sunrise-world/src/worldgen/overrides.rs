@@ -299,29 +299,34 @@ impl WorldgenOverrides {
     /// Evaluates each winning registry file's conditions before any generation codec reads
     /// it (`ResourceManagerRegistryLoadTask.load` through `ConditionalOps`): a file whose
     /// conditions fail is dropped, an admitted one keeps only its `neoforge:value` payload.
-    /// `allows` gets the file, its registry folder (`worldgen/placed_feature`) and its id.
-    /// Biomes are admitted by their own load.
+    /// `allows` gets the file, its registry folder (`worldgen/placed_feature`, `dimension`)
+    /// and its id; the level stems are filtered like every other registry. Tags ignore
+    /// conditions (`TagLoader`), unparseable JSON is kept for the owning decoder's error,
+    /// and biomes are admitted by their own load. A file whose conditions fail to decode is
+    /// dropped here and reported by `allows`; its owning load refuses the registry.
     pub fn admit_conditions(&mut self, allows: impl Fn(&Value, &str, &str) -> bool) {
-        for (bundle, entries) in &mut self.entries {
-            let Some((kind, _)) = KINDS
-                .iter()
-                .find(|(kind, name)| name == bundle && *kind != "worldgen/biome")
-            else {
-                continue;
+        let admit = |kind: &str, id: &str, json: &mut String| {
+            let Ok(value) = serde_json::from_str::<Value>(json) else {
+                return true;
             };
-            entries.retain(|id, json| {
-                let Ok(value) = serde_json::from_str::<Value>(json) else {
-                    return true;
-                };
-                if value.get("neoforge:conditions").is_none() {
-                    return true;
-                }
-                if !allows(&value, kind, id) {
-                    return false;
-                }
-                *json = crate::conditions::into_payload(value).to_string();
-                true
-            });
+            if value.get("neoforge:conditions").is_none() {
+                return true;
+            }
+            if !allows(&value, kind, id) {
+                return false;
+            }
+            *json = crate::conditions::into_payload(value).to_string();
+            true
+        };
+        for (kind, bundle) in KINDS.iter().filter(|(kind, _)| *kind != "worldgen/biome") {
+            if *bundle == DIMENSIONS {
+                self.level_stems.retain(|id, stem| match stem {
+                    Some(json) => admit(kind, id, json),
+                    None => true,
+                });
+            } else if let Some(entries) = self.entries.get_mut(*bundle) {
+                entries.retain(|id, json| admit(kind, id, json));
+            }
         }
     }
     /// The owning world's final, bound biome generation data (after modifiers).
@@ -402,6 +407,67 @@ impl WorldgenOverrides {
         } else {
             PackFile::Other
         }
+    }
+
+    /// After the last pack: leaves out the packs' new biomes (`known` says
+    /// which the game has), and what names them names the rest without
+    /// them: their biome tags' other biomes, and the climate points of the
+    /// other biomes in a level stem's multi-noise list (the left-out
+    /// biome's climate goes to its nearest neighbours). Returns what it
+    /// left out, for the log.
+    pub fn finish(&mut self, known: impl Fn(&str) -> bool) -> Vec<String> {
+        let left_out = self.retain("biomes", &known);
+        let mut warnings: Vec<String> = left_out
+            .iter()
+            .map(|id| {
+                format!("biome {id} is new: Sunrise cannot add biomes yet, so it is left out")
+            })
+            .collect();
+        if left_out.is_empty() {
+            return warnings;
+        }
+        let gone = |v: &Value| {
+            let id = v.as_str().or_else(|| v["id"].as_str()).unwrap_or_default();
+            let id = if id.contains(':') {
+                id.to_owned()
+            } else {
+                format!("minecraft:{id}")
+            };
+            left_out.contains(&id)
+        };
+        for (_, _, json) in self.tags.get_mut("biome_tags").into_iter().flatten() {
+            if let Ok(mut v) = serde_json::from_str::<Value>(json)
+                && let Some(values) = v["values"].as_array_mut()
+            {
+                let before = values.len();
+                values.retain(|e| !gone(e));
+                if values.len() != before {
+                    *json = v.to_string();
+                }
+            }
+        }
+        for (id, stem) in &mut self.level_stems {
+            let Some(json) = stem else {
+                continue;
+            };
+            let Ok(mut v) = serde_json::from_str::<Value>(json) else {
+                continue;
+            };
+            let Some(points) = v["generator"]["biome_source"]["biomes"].as_array_mut() else {
+                continue;
+            };
+            let before = points.len();
+            points.retain(|p| !gone(&p["biome"]));
+            if points.len() != before {
+                warnings.push(format!(
+                    "dimension {id}: {} of its {before} biome climate points name left-out \
+                     biomes and are removed",
+                    before - points.len()
+                ));
+                *json = v.to_string();
+            }
+        }
+        warnings
     }
     /// The build range of the vanilla level `level` (`minecraft:overworld`,
     /// `minecraft:the_nether`, `minecraft:the_end`) with these packs: the
@@ -979,5 +1045,77 @@ mod admit_conditions_tests {
                 ("a:plain", r#"{"feature":"a:z"}"#)
             ]
         );
+    }
+
+    /// The winning file decides: a failing high file never uncovers the low one; tags and
+    /// unparseable JSON are left alone; a conditioned level stem is filtered and stripped.
+    #[test]
+    fn winners_stems_tags_and_malformed_json() {
+        let mut o = WorldgenOverrides::default();
+        let gone = r#"{"neoforge:conditions":[{"type":"neoforge:mod_loaded","modid":"absent"}],"type":"minecraft:tree"}"#;
+        o.add_file("low", "data/demo/worldgen/feature/oak.json", || {
+            Some(r#"{"type":"minecraft:tree"}"#.into())
+        });
+        o.add_file("high", "data/demo/worldgen/feature/oak.json", || {
+            Some(gone.into())
+        });
+        o.add_file("high", "data/demo/worldgen/feature/broken.json", || {
+            Some("{not valid json".into())
+        });
+        o.add_file("high", "data/demo/dimension/gone.json", || {
+            Some(gone.into())
+        });
+        o.add_file("high", "data/demo/dimension/kept.json", || {
+            Some(
+                r#"{"neoforge:conditions":[{"type":"neoforge:always"}],"neoforge:value":{"type":"demo:kept"}}"#
+                    .into(),
+            )
+        });
+        o.add_file("high", "data/demo/tags/block/soil.json", || {
+            Some(
+                r#"{"neoforge:conditions":[{"type":"neoforge:never"}],"values":["minecraft:dirt"]}"#
+                    .into(),
+            )
+        });
+        o.admit_conditions(|file, _, _| {
+            file["neoforge:conditions"][0]["type"] == "neoforge:always"
+        });
+        assert_eq!(
+            o.entries("features").collect::<Vec<_>>(),
+            [("demo:broken", "{not valid json")]
+        );
+        assert_eq!(
+            o.entries("dimensions").collect::<Vec<_>>(),
+            [("demo:kept", r#"{"type":"demo:kept"}"#)]
+        );
+        assert_eq!(o.tags("block_tags").count(), 1);
+    }
+
+    /// An unknown condition type is refused by the registry load (`ConditionalOps` decode
+    /// error), naming the file and the type, for a worldgen file and a dimension file.
+    #[test]
+    fn an_unknown_condition_type_is_recorded_for_the_registry_load() {
+        let conditions = crate::conditions::LoadConditions::new(["present"]);
+        let mut o = WorldgenOverrides::default();
+        let bad = r#"{"neoforge:conditions":[{"type":"unknown:bogus"}],"type":"minecraft:tree"}"#;
+        o.add_file("high", "data/demo/worldgen/feature/bad.json", || {
+            Some(bad.into())
+        });
+        o.add_file("high", "data/demo/dimension/bad_dim.json", || {
+            Some(bad.into())
+        });
+        o.admit_conditions(|file, kind, id| conditions.allows_id(file, kind, id));
+        assert!(o.entries("features").next().is_none());
+        assert!(o.entries("dimensions").next().is_none());
+        let error = conditions.check_errors().unwrap_err();
+        for file in [
+            "data/demo/worldgen/feature/bad.json",
+            "data/demo/dimension/bad_dim.json",
+        ] {
+            assert!(
+                error.contains(file) && error.contains("unknown:bogus"),
+                "{error}"
+            );
+        }
     }
 }

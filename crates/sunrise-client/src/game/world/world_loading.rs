@@ -568,6 +568,7 @@ pub(super) fn preload_launch_world(
     data_source: &sunrise_assets::resource_source::ResourceSource,
     registry: &'static sunrise_world::registry::BlockRegistry,
     additional: &[Arc<sunrise_client::datapack::DataPack>],
+    base_conditions: sunrise_world::conditions::LoadConditions,
 ) {
     let mut preload = PRELOAD.lock().unwrap_or_else(|e| e.into_inner());
     if !matches!(*preload, Preload::Idle) {
@@ -603,7 +604,17 @@ pub(super) fn preload_launch_world(
                 enabled_features,
                 &additional,
             );
-            let (overrides, _) = worldgen_overrides_of(&stack.data_packs(Vec::new()));
+            let enabled: Vec<_> = stack.enabled_packs().collect();
+            let conditions = super::load_conditions::worldgen_load_conditions(
+                &base_conditions,
+                &resources,
+                &enabled,
+            );
+            let Ok((overrides, _)) =
+                worldgen_overrides_of(&stack.data_packs(Vec::new()), &conditions)
+            else {
+                return;
+            };
             if let Ok(data) = sunrise_client::vanillagen::shared_data_from(
                 &resources.join("worldgen"),
                 &overrides,
@@ -717,12 +728,12 @@ impl WorldBiomeRegistry {
             };
             payloads.insert(id, payload);
         }
-        let (mut inputs, warnings) = sunrise_client::datapack::worldgen_overrides(data);
+        let (mut inputs, warnings) =
+            sunrise_client::datapack::worldgen_overrides(data, overlay.conditions);
         for warning in warnings {
             log::warn!("Sunrise: data pack worldgen: {warning}");
         }
-        // The winning registry files' conditions run before the generation codecs see them.
-        inputs.admit_conditions(|file, kind, id| overlay.conditions.allows_id(file, kind, id));
+        // `worldgen_overrides` has already run the winning registry files' conditions.
         sunrise_client::vanillagen::add_passive_structure_templates(
             &mut inputs,
             stack.content.source(),
@@ -821,14 +832,21 @@ impl WorldBiomeRegistry {
 
 /// The worldgen entries of the merged view `data` (the Create screen's chosen packs, or the
 /// world's enabled ones: `applyNewPackConfig` reloads with the new pack config), and what the
-/// generator leaves out of them.
+/// generator leaves out of them. A file whose `neoforge:conditions` fail to decode refuses
+/// the load (`RegistryDataLoader` fails on a decode error).
 pub(super) fn worldgen_overrides_of(
     data: &sunrise_client::datapack::DataPacks,
-) -> (
-    sunrise_world::worldgen::overrides::WorldgenOverrides,
-    Vec<String>,
-) {
-    sunrise_client::datapack::worldgen_overrides(data)
+    conditions: &sunrise_world::conditions::LoadConditions,
+) -> std::result::Result<
+    (
+        sunrise_world::worldgen::overrides::WorldgenOverrides,
+        Vec<String>,
+    ),
+    String,
+> {
+    let loaded = sunrise_client::datapack::worldgen_overrides(data, conditions);
+    conditions.check_errors()?;
+    Ok(loaded)
 }
 
 /// [`worldgen_overrides_of`] over the view of the world a test's fixture folder holds.
@@ -838,10 +856,14 @@ fn worldgen_overrides_in_world(
     resources: &std::path::Path,
     enabled_features: &[String],
     additional: &[Arc<sunrise_client::datapack::DataPack>],
-) -> (
-    sunrise_world::worldgen::overrides::WorldgenOverrides,
-    Vec<String>,
-) {
+    base_conditions: &sunrise_world::conditions::LoadConditions,
+) -> std::result::Result<
+    (
+        sunrise_world::worldgen::overrides::WorldgenOverrides,
+        Vec<String>,
+    ),
+    String,
+> {
     let empty = sunrise_assets::resource_source::ResourceSource::indexed(Default::default());
     let stack = super::functions::pack_stack(
         world_root,
@@ -852,7 +874,10 @@ fn worldgen_overrides_in_world(
         enabled_features,
         additional,
     );
-    worldgen_overrides_of(&stack.data_packs(Vec::new()))
+    let enabled: Vec<_> = stack.enabled_packs().collect();
+    let conditions =
+        super::load_conditions::worldgen_load_conditions(base_conditions, resources, &enabled);
+    worldgen_overrides_of(&stack.data_packs(Vec::new()), &conditions)
 }
 
 /// The shapes of the world's levels: their dimension types, the world's
@@ -1736,6 +1761,7 @@ mod tests {
 
         with_game(|game| {
             let shape = LevelShape::NETHER;
+            let base_conditions = sunrise_world::conditions::LoadConditions::vanilla();
             let empty =
                 sunrise_assets::resource_source::ResourceSource::indexed(Default::default());
             let stack = super::functions::pack_stack(
@@ -1748,7 +1774,13 @@ mod tests {
                 &game.pack.additional_data,
             );
             let data = stack.data_packs(Vec::new());
-            let (overrides, _) = worldgen_overrides_of(&data);
+            let enabled: Vec<_> = stack.enabled_packs().collect();
+            let conditions = super::load_conditions::worldgen_load_conditions(
+                &base_conditions,
+                &game.options.resources,
+                &enabled,
+            );
+            let (overrides, _) = worldgen_overrides_of(&data, &conditions).unwrap();
             let packed: Vec<(String, serde_json::Value)> = overrides
                 .entries("biomes")
                 .filter_map(|(id, json)| Some((id.to_owned(), serde_json::from_str(json).ok()?)))
@@ -1882,7 +1914,9 @@ mod tests {
                 &game.pack.additional_data,
             );
             let data = stack.data_packs(Vec::new());
-            let (overrides, _) = worldgen_overrides_of(&data);
+            let (overrides, _) =
+                worldgen_overrides_of(&data, &sunrise_world::conditions::LoadConditions::vanilla())
+                    .unwrap();
             let packed: Vec<(String, serde_json::Value)> = overrides
                 .entries("biomes")
                 .filter_map(|(id, json)| Some((id.to_owned(), serde_json::from_str(json).ok()?)))
@@ -1977,7 +2011,9 @@ mod tests {
                 &game.pack.additional_data,
             );
             let data = stack.data_packs(Vec::new());
-            let (overrides, _) = worldgen_overrides_of(&data);
+            let (overrides, _) =
+                worldgen_overrides_of(&data, &sunrise_world::conditions::LoadConditions::vanilla())
+                    .unwrap();
             let packed: Vec<(String, serde_json::Value)> = overrides
                 .entries("biomes")
                 .filter_map(|(id, json)| Some((id.to_owned(), serde_json::from_str(json).ok()?)))
@@ -2146,7 +2182,11 @@ mod tests {
                 None,
             ),
         ];
-        let (overrides, _) = worldgen_overrides_over(&mods, &Default::default());
+        let (overrides, _) = worldgen_overrides_over(
+            &mods,
+            &Default::default(),
+            &sunrise_world::conditions::LoadConditions::vanilla(),
+        );
         set_level_sea_levels(&overrides, &mods, std::path::Path::new("."));
         let sea = |id: &str| {
             sunrise_world::level::sea_level_of(sunrise_core::LevelKey::parse(id).unwrap())
@@ -2674,7 +2714,11 @@ mod tests {
     fn a_mods_level_opens_with_no_data_packs() {
         use sunrise_client::chunk::{LevelShape, LevelShapes};
         use sunrise_client::datapack::worldgen_overrides_over;
-        let (mut none, _) = worldgen_overrides_over(&[], &Default::default());
+        let (mut none, _) = worldgen_overrides_over(
+            &[],
+            &Default::default(),
+            &sunrise_world::conditions::LoadConditions::vanilla(),
+        );
         none.include_implicit_level_stems();
         assert_eq!(shapes_of(&none, none.level_stems()).0, LevelShapes::VANILLA);
 
@@ -2686,7 +2730,11 @@ mod tests {
                     .into(),
             sea_level: None,
         };
-        let (mut overrides, _) = worldgen_overrides_over(&[pocket], &Default::default());
+        let (mut overrides, _) = worldgen_overrides_over(
+            &[pocket],
+            &Default::default(),
+            &sunrise_world::conditions::LoadConditions::vanilla(),
+        );
         overrides.include_implicit_level_stems();
         let registry: std::collections::HashMap<_, _> = overrides.level_stems().collect();
         let traversal = [
@@ -2779,7 +2827,9 @@ mod tests {
             biomes: &biomes,
             item_data: &item_data,
         };
-        let (overrides, _) = worldgen_overrides_in_world(world, &root, &[], &[]);
+        let base_conditions = sunrise_world::conditions::LoadConditions::vanilla();
+        let (overrides, _) =
+            worldgen_overrides_in_world(world, &root, &[], &[], &base_conditions).unwrap();
         let open = |dim| {
             mod_terrain(
                 &overrides,
@@ -2909,7 +2959,10 @@ mod tests {
             item_data: &item_data,
         };
         let pocket = Dim::Extra(mod_api::__private::dimension_key("test:pocket"));
-        let (overrides, _) = worldgen_overrides_in_world(&world, &resources_root, &[], &[]);
+        let base_conditions = sunrise_world::conditions::LoadConditions::vanilla();
+        let (overrides, _) =
+            worldgen_overrides_in_world(&world, &resources_root, &[], &[], &base_conditions)
+                .unwrap();
         let Some(Ok(ModLevel::Terrain(terrain))) = mod_terrain(
             &overrides,
             resources,
@@ -3083,7 +3136,9 @@ mod unused_feature_startup_tests {
                 &options.resources,
                 &level.enabled_features,
                 &loaded.pack.additional_data,
-            );
+                &sunrise_world::conditions::LoadConditions::vanilla(),
+            )
+            .unwrap();
             assert_eq!(
                 overrides
                     .entries("features")
@@ -3220,7 +3275,9 @@ mod unused_feature_preservation_tests {
             &options.resources,
             &level.enabled_features,
             &loaded.pack.additional_data,
-        );
+            &sunrise_world::conditions::LoadConditions::vanilla(),
+        )
+        .unwrap();
         assert_eq!(
             overrides.entries("features").collect::<Vec<_>>(),
             vec![

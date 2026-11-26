@@ -976,45 +976,6 @@ pub struct DataStore {
     pub file_errors: BTreeMap<String, String>,
     /// Functions that failed to parse (id, message), for logging.
     pub errors: Vec<(String, String)>,
-    /// Predicates, item modifiers and slot sources whose codec refuses the winning
-    /// file, keyed `<kind> <id>` with the reason. Any entry fails the load
-    /// (`RegistryDataLoader.logErrors`); functions only log (`ServerFunctionLibrary`).
-    pub refused: BTreeMap<String, String>,
-}
-/// Decode a winning JSON file of a registry the loads refuse on: a higher pack's
-/// file replaces a lower pack's, refused or not.
-fn insert_json(
-    refused: &mut BTreeMap<String, String>,
-    entries: &mut BTreeMap<String, serde_json::Value>,
-    label: &str,
-    id: String,
-    bytes: &[u8],
-) {
-    let key = format!("{label} {id}");
-    match serde_json::from_slice(bytes) {
-        Ok(value) => {
-            refused.remove(&key);
-            entries.insert(id, value);
-        }
-        Err(error) => {
-            entries.remove(&id);
-            refused.insert(key, error.to_string());
-        }
-    }
-}
-fn refuse_invalid(
-    refused: &mut BTreeMap<String, String>,
-    entries: &mut BTreeMap<String, serde_json::Value>,
-    label: &str,
-    validate: fn(&serde_json::Value) -> Result<(), String>,
-) {
-    entries.retain(|id, value| match validate(value) {
-        Ok(()) => true,
-        Err(error) => {
-            refused.insert(format!("{label} {id}"), error);
-            false
-        }
-    });
 }
 /// `<kind-dir>/<ns>:<path>` for a pack file the content tables read:
 /// `recipe/`, `recipe_filter/`, `loot_table/`, `advancement/`, `trade_set/`,
@@ -1062,6 +1023,7 @@ fn content_id(file: &str) -> Option<String> {
         | "item_modifier"
         | "test_environment"
         | "test_instance"
+        | "slot_source"
         | "world_clock" => kind,
         "worldgen" => {
             return resource_id(file, "worldgen/biome", ".json")
@@ -1297,20 +1259,6 @@ impl DataStore {
                         slot.clear();
                     }
                     slot.extend(entries);
-                } else if let Some(id) = resource_id(&f, "predicate", ".json")
-                    && let Some(bytes) = resource.read().ok()
-                {
-                    insert_json(&mut s.refused, &mut s.predicates, "predicate", id, &bytes);
-                } else if let Some(id) = resource_id(&f, "item_modifier", ".json")
-                    && let Some(bytes) = resource.read().ok()
-                {
-                    insert_json(
-                        &mut s.refused,
-                        &mut s.item_modifiers,
-                        "item modifier",
-                        id,
-                        &bytes,
-                    );
                 } else if let Some(id) = resource_id(&f, "tags/slot_source", ".json")
                     && let Some(bytes) = resource.read().ok()
                     && let Ok(v) = serde_json::from_slice::<serde_json::Value>(&bytes)
@@ -1328,37 +1276,9 @@ impl DataStore {
                         slot.clear();
                     }
                     slot.extend(entries);
-                } else if let Some(id) = resource_id(&f, "slot_source", ".json")
-                    && let Some(bytes) = resource.read().ok()
-                {
-                    insert_json(
-                        &mut s.refused,
-                        &mut s.slot_sources,
-                        "slot source",
-                        id,
-                        &bytes,
-                    );
                 }
             }
         }
-        refuse_invalid(
-            &mut s.refused,
-            &mut s.predicates,
-            "predicate",
-            sunrise_world::loot::validate_loot_condition,
-        );
-        refuse_invalid(
-            &mut s.refused,
-            &mut s.item_modifiers,
-            "item modifier",
-            sunrise_world::loot::validate_item_modifier,
-        );
-        refuse_invalid(
-            &mut s.refused,
-            &mut s.slot_sources,
-            "slot source",
-            sunrise_world::loot::validate_slot_source,
-        );
         s
     }
     /// `ServerFunctionLibrary.getTag`: only valid function tags expand
@@ -1640,9 +1560,13 @@ pub fn dimension_stems(data: &DataPacks) -> BTreeMap<String, serde_json::Value> 
 
 /// The worldgen entries of the merged view `data` (every layer but the prepared root,
 /// `vanilla`: the prepared bundles are it) for the chunk generator, and what it leaves out, for
-/// the log. Every biome a pack gives is kept, as `RegistryDataLoader` loads them.
-pub fn worldgen_overrides(data: &DataPacks) -> (WorldgenOverrides, Vec<String>) {
-    worldgen_overrides_over(overrides::mod_dimensions(), data)
+/// the log. Every biome a pack gives is kept, as `RegistryDataLoader` loads them. A file whose
+/// `neoforge:conditions` fail is left out; one that fails to decode is recorded in `conditions`.
+pub fn worldgen_overrides(
+    data: &DataPacks,
+    conditions: &sunrise_world::conditions::LoadConditions,
+) -> (WorldgenOverrides, Vec<String>) {
+    worldgen_overrides_over(overrides::mod_dimensions(), data, conditions)
 }
 
 /// [`worldgen_overrides`] over the levels `mods` registered, which sit below
@@ -1650,6 +1574,7 @@ pub fn worldgen_overrides(data: &DataPacks) -> (WorldgenOverrides, Vec<String>) 
 pub fn worldgen_overrides_over(
     mods: &[overrides::ModDimension],
     data: &DataPacks,
+    conditions: &sunrise_world::conditions::LoadConditions,
 ) -> (WorldgenOverrides, Vec<String>) {
     let mut out = WorldgenOverrides::default();
     for dimension in mods {
@@ -1680,6 +1605,10 @@ pub fn worldgen_overrides_over(
             }
         }
     }
+    // After every pack, so a failing higher file never uncovers a lower one. A condition that
+    // fails to decode is recorded in `conditions`: the owning registry load refuses on
+    // `check_errors`, as `ConditionalOps` fails the registry's decode.
+    out.admit_conditions(|file, kind, id| conditions.allows_id(file, kind, id));
     for (kind, files) in not_read {
         warnings.push(format!("{kind}: {files} files the generator does not read"));
     }
@@ -2037,7 +1966,11 @@ mod tests {
         ]}});
         let high = memory_pack("high", &[]).with_filter(filter_of(&meta));
         let data = DataPacks::new(&[&low, &high]);
-        let (o, warnings) = worldgen_overrides_over(&[], &data);
+        let (o, warnings) = worldgen_overrides_over(
+            &[],
+            &data,
+            &sunrise_world::conditions::LoadConditions::vanilla(),
+        );
         assert!(warnings.is_empty(), "{warnings:?}");
         assert_eq!(
             o.entries("noises").collect::<Vec<_>>(),
@@ -2046,10 +1979,14 @@ mod tests {
         assert!(dimension_stems(&data).is_empty());
         let unfiltered = DataPacks::new(&[&low]);
         assert_eq!(
-            worldgen_overrides_over(&[], &unfiltered)
-                .0
-                .entries("noises")
-                .count(),
+            worldgen_overrides_over(
+                &[],
+                &unfiltered,
+                &sunrise_world::conditions::LoadConditions::vanilla()
+            )
+            .0
+            .entries("noises")
+            .count(),
             2
         );
         assert_eq!(dimension_stems(&unfiltered).len(), 1);
@@ -2080,7 +2017,11 @@ mod tests {
             sea_level: None,
         }];
         let height = |packs: &[&DataPack]| {
-            let (o, _) = worldgen_overrides_over(&mods, &DataPacks::new(packs));
+            let (o, _) = worldgen_overrides_over(
+                &mods,
+                &DataPacks::new(packs),
+                &sunrise_world::conditions::LoadConditions::vanilla(),
+            );
             o.level_height("test:pocket").unwrap().height
         };
         assert_eq!(height(&[]), 448);
@@ -2160,12 +2101,18 @@ mod tests {
         write_archive(2);
         let old =
             DataPack::from_source("passive".into(), ResourceSource::archive(&archive).unwrap());
-        let (before, warnings) = worldgen_overrides(&DataPacks::new(&[&old]));
+        let (before, warnings) = worldgen_overrides(
+            &DataPacks::new(&[&old]),
+            &sunrise_world::conditions::LoadConditions::vanilla(),
+        );
         assert!(warnings.is_empty(), "{warnings:?}");
         write_archive(5);
         let new =
             DataPack::from_source("passive".into(), ResourceSource::archive(&archive).unwrap());
-        let (after, warnings) = worldgen_overrides(&DataPacks::new(&[&new]));
+        let (after, warnings) = worldgen_overrides(
+            &DataPacks::new(&[&new]),
+            &sunrise_world::conditions::LoadConditions::vanilla(),
+        );
         assert!(warnings.is_empty(), "{warnings:?}");
         assert_ne!(
             before, after,
@@ -2451,7 +2398,10 @@ mod tests {
             .iter()
             .map(|id| packs.iter().find(|p| &p.id == id).unwrap())
             .collect();
-        let (o, warnings) = worldgen_overrides(&DataPacks::new(&enabled));
+        let (o, warnings) = worldgen_overrides(
+            &DataPacks::new(&enabled),
+            &sunrise_world::conditions::LoadConditions::vanilla(),
+        );
         assert_eq!(
             o.entries("noises").collect::<Vec<_>>(),
             [("minecraft:cave", "a")]
@@ -2640,7 +2590,7 @@ mod tests {
             store.tag_functions("minecraft:tick"),
             ["mine:a", "mine:sub/b"]
         );
-        assert!(store.predicates.contains_key("mine:p"));
+        assert!(store.files.contains_key("predicate/mine:p"));
         // Dialogs reach the synchronized registry through the content files.
         assert_eq!(
             store.files["dialog/mine:config/points"],
@@ -2745,6 +2695,7 @@ mod tests {
             "instrument",
             "predicate",
             "item_modifier",
+            "slot_source",
         ];
         let mut packs = Vec::new();
         for name in ["low", "high"] {
@@ -2772,8 +2723,11 @@ mod tests {
                 "high"
             );
         }
-        assert!(store.predicates.contains_key("demo:nested/entry"));
-        assert!(store.item_modifiers.contains_key("demo:nested/entry"));
+        // Predicates, item modifiers and slot sources are loaded solely through
+        // LootData + LoadConditions, never duplicated in DataStore::load.
+        assert!(store.predicates.is_empty());
+        assert!(store.item_modifiers.is_empty());
+        assert!(store.slot_sources.is_empty());
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -2785,10 +2739,10 @@ mod tests {
             std::env::temp_dir().join(format!("sunrise-1381-datapack-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let nested = serde_json::json!([{"type": "absent:condition"}]);
-        let predicate = serde_json::json!({"condition": "minecraft:all_of", "terms": [
-            {"condition": "minecraft:random_chance", "chance": 0.5, "neoforge:conditions": nested}]});
+        let predicate = serde_json::json!({"type": "minecraft:all_of", "terms": [
+            {"type": "minecraft:random_chance", "chance": 0.5, "neoforge:conditions": nested}]});
         let modifier = serde_json::json!([
-            {"function": "minecraft:set_count", "count": 2, "neoforge:conditions": nested}]);
+            {"type": "minecraft:set_count", "count": 2, "neoforge:conditions": nested}]);
         for (kind, value) in [("predicate", &predicate), ("item_modifier", &modifier)] {
             let file = root.join(format!("data/demo/{kind}/entry.json"));
             std::fs::create_dir_all(file.parent().unwrap()).unwrap();
@@ -2796,9 +2750,16 @@ mod tests {
         }
         let pack = DataPack::from_source("pack".into(), ResourceSource::directory(root.clone()));
         let store = DataStore::load(&DataPacks::new(&[&pack]));
+        let files: Vec<_> = store.files.into_iter().collect();
+        let overlay = sunrise_world::loot::PackOverlay::new(&files);
+        let empty_root = root.join("empty");
+        std::fs::create_dir_all(&empty_root).unwrap();
+        std::fs::write(empty_root.join("items.json"), "{}").unwrap();
+        let defaults = sunrise_world::item_defaults::read(&empty_root).unwrap();
+        let loot = sunrise_world::loot::LootData::load(&empty_root, &overlay, &defaults).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
-        assert_eq!(store.predicates.get("demo:entry"), Some(&predicate));
-        assert_eq!(store.item_modifiers.get("demo:entry"), Some(&modifier));
+        assert_eq!(loot.predicates().get("demo:entry"), Some(&predicate));
+        assert_eq!(loot.item_modifiers().get("demo:entry"), Some(&modifier));
     }
 
     #[test]

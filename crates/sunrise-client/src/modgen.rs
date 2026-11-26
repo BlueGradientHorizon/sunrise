@@ -457,6 +457,7 @@ mod tests {
         let (overrides, _) = crate::datapack::worldgen_overrides_over(
             &[pocket],
             &crate::datapack::DataPacks::default(),
+            &sunrise_world::conditions::LoadConditions::vanilla(),
         );
         let height = overrides.level_height("test:pocket").unwrap();
         let shape = LevelShape::new(
