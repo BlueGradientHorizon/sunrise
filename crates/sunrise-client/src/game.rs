@@ -1495,6 +1495,9 @@ mod native_living_body;
 mod native_living_effects;
 #[path = "game/modding/native_living_flags.rs"]
 mod native_living_flags;
+#[cfg(test)]
+#[path = "game/modding/native_living_model_posed_tests.rs"]
+mod native_living_model_posed_tests;
 #[path = "game/modding/native_living_position.rs"]
 mod native_living_position;
 #[path = "game/modding/native_living_refs.rs"]
@@ -10815,7 +10818,7 @@ impl Game<'_> {
             self.settings.sunrise.translucent_batching,
             self.effective_vsync(),
             &self.settings.sunrise,
-            shader_packs::picked_pack_shape(&self.settings),
+            self.picked_pack_shape(),
             display,
             self.settings.texture_atlas_settings(),
         )?;

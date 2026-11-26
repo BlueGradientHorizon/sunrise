@@ -31,6 +31,11 @@ impl render::RenderDataSource for Game<'_> {
     fn variants(&self) -> Option<&sunrise_client::mobs::variants::VariantTables> {
         Some(self.world_variants())
     }
+
+    fn model_posed(&self) -> Option<&dyn render::ModelPosed> {
+        mod_api::__private::listened(mod_api::HookId::LivingModelPosed)
+            .then_some(self as &dyn render::ModelPosed)
+    }
 }
 
 /// A living-entity draw adapter that lends a target's hidden stock-layer mask to the model
@@ -64,7 +69,19 @@ impl render::RenderDataSource for HiddenLayersData<'_, '_> {
     fn humanoid_setup(&self) -> Option<&dyn anim::HumanoidSetup> {
         render::RenderDataSource::humanoid_setup(self.game)
     }
+
+    fn variants(&self) -> Option<&sunrise_client::mobs::variants::VariantTables> {
+        render::RenderDataSource::variants(self.game)
+    }
+
+    fn model_posed(&self) -> Option<&dyn render::ModelPosed> {
+        render::RenderDataSource::model_posed(self.game)
+    }
 }
+
+#[cfg(test)]
+#[path = "tests/hidden_layers_variants_tests.rs"]
+mod hidden_layers_variants_tests;
 
 impl anim::HumanoidSetup for Game<'_> {
     fn before_arm_pose(&self, mob: &Mob, state: &anim::State<'_>, poses: &mut anim::Poses) {

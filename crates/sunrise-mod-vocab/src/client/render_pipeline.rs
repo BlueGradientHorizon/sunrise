@@ -2120,7 +2120,7 @@ pub enum SamplerAddress {
 /// backends blend between mip levels linearly whenever `maxLod` allows more than the base level
 /// (`GlSampler`: `NEAREST` becomes `NEAREST_MIPMAP_LINEAR`, `LINEAR` becomes
 /// `LINEAR_MIPMAP_LINEAR`; Vulkan: the mipmap mode is linear when `maxLod > 0.25`), and so does
-/// this one. [`Sampler::new`] gives what mod samplers always did.
+/// this one. [`Sampler::new`] has no `max_lod`, so it blends between levels.
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 // no wire: local client sampler descriptor.
@@ -2135,16 +2135,18 @@ pub struct Sampler {
     pub mag: SamplerFilter,
     /// The largest mip level of detail the sampler reads (`maxLod`): `Some(0.0)` reads only the
     /// base level. A value above `0.25` blends linearly between the two nearest levels, as
-    /// vanilla does. `None` is [`Sampler::new`]'s: no limit, and the single nearest level is
-    /// read. A value that is negative or not finite is refused with
+    /// vanilla does. `None` is [`Sampler::new`]'s: no limit, vanilla's absent `maxLod` (1000),
+    /// so it blends between levels too. A sampler that blends is a filtering one: to sample a
+    /// depth target, or an `R32Float` target where
+    /// [`RenderCapabilities::float32_filterable`] is false, set `Some(0.0)` with
+    /// [`SamplerFilter::Nearest`]. A value that is negative or not finite is refused with
     /// [`BindGroupLayoutError::BadMaxLod`] when the layout is built.
     pub max_lod: Option<f32>,
 }
 
 impl Sampler {
     /// One `filter` for minification and magnification, one `address` mode for both axes, and
-    /// no `max_lod`: what `.sampler(name, filter, address)` was before samplers took a
-    /// descriptor.
+    /// no `max_lod`, which blends between mip levels as vanilla's sampler does.
     pub fn new(filter: SamplerFilter, address: SamplerAddress) -> Self {
         Self {
             address_u: address,
@@ -2767,6 +2769,12 @@ pub struct RenderCapabilities {
     /// Whether an indirect draw's `first_instance` may be non-zero on this adapter
     /// (`INDIRECT_FIRST_INSTANCE`).
     pub indirect_first_instance: bool,
+    /// Whether an [`IndirectDraw`](crate::IndirectDraw) may read its command count from a GPU
+    /// buffer ([`IndirectDraw::with_count_buffer`](crate::IndirectDraw::with_count_buffer);
+    /// `multi_draw_indirect_count`, Vulkan's `vkCmdDrawIndexedIndirectCount`). False where the
+    /// adapter lacks `MULTI_DRAW_INDIRECT_COUNT`, and on DirectX 12, whose count draws leave an
+    /// indexed command's `base_vertex` out of the vertex fetch.
+    pub multi_draw_indirect_count: bool,
 }
 
 /// Why a mod-owned offscreen [`RenderTargetRef`] operation was refused.
@@ -4153,8 +4161,13 @@ pub enum PipelineDrawError {
     /// An [`IndirectDraw`](crate::IndirectDraw)'s command buffer was not created with
     /// [`StorageBufferDescriptor::indirect`](crate::StorageBufferDescriptor::indirect), its
     /// offset is not a multiple of 4, `indirect_offset + max_count * stride` lies beyond the
-    /// buffer.
+    /// buffer; or its count buffer was not created with
+    /// [`StorageBufferDescriptor::indirect`](crate::StorageBufferDescriptor::indirect), its
+    /// count offset is not a multiple of 4, or the count's 4 bytes lie beyond that buffer.
     InvalidIndirect,
+    /// An [`IndirectDraw`](crate::IndirectDraw) has a count buffer, and this adapter cannot draw
+    /// a GPU-written count ([`RenderCapabilities::multi_draw_indirect_count`] is false).
+    UnsupportedIndirectCount,
     /// A [`TextureSource::RenderTargetColor`] or [`TextureSource::RenderTargetDepth`] in
     /// [`DrawBindings`] binds a mip level of a [`RenderTargetRef`] both as a storage image and
     /// as something else the draw reads or writes (a sampled view, or a storage image of another

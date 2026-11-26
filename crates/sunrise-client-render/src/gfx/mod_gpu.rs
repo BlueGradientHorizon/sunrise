@@ -154,6 +154,11 @@ impl ModGpuResources {
         self.render_capabilities.clone()
     }
 
+    /// `RenderCapabilities::multi_draw_indirect_count`, without copying the rest.
+    pub fn multi_draw_indirect_count(&self) -> bool {
+        self.render_capabilities.multi_draw_indirect_count
+    }
+
     /// The largest inline uniform and texel-buffer payloads a mod's set-1 draw may bind: the
     /// device's `max_uniform_buffer_binding_size` and `max_storage_buffer_binding_size`, each
     /// capped by `max_buffer_size`.

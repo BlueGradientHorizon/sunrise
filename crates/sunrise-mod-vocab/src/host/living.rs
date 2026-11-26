@@ -229,6 +229,12 @@ pub trait LivingBackend {
     /// can't be tamed or a stale handle. API @API:living_refs@.
     fn living_is_tamed(&self, living: LivingRef) -> Option<bool>;
     /// Side: server.
+    /// The living entity as a player (`instanceof Player`), with its UUID (`Entity.getUUID`):
+    /// the player in place or a guest. None for any other living entity, a stale handle or on
+    /// a client. A pure read of an id the player already has, so it answers under a read-only
+    /// host, as in `living_visibility`.
+    fn living_player(&self, living: LivingRef) -> Option<PlayerRef>;
+    /// Side: server.
     /// The owner's UUID (`OwnableEntity.getOwnerReference`): None for a wild
     /// mob, a kind that can't be tamed, or a stale handle. API @API:living_refs@.
     fn living_owner(&self, living: LivingRef) -> Option<u128>;

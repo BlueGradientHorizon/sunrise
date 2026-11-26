@@ -97,6 +97,7 @@ pub(super) fn build_renderer(
     // adopted. Configure the world swapchain before its first gameplay frame instead of
     // waiting for `Game::apply_settings` after the handoff.
     renderer.set_present_mode(vsync, settings.present_mode);
+    renderer.pack_hdr = shader_pack.hdr;
     renderer.hud.sprite_animations = atlas.renderer_animations();
     // The packs' core shaders: the device refusing a pipeline vanilla requires fails the load,
     // after the renderer is made (`ShaderManager.apply`'s required programs).
