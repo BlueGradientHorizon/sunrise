@@ -1161,8 +1161,10 @@ fn mod_pack_indirect_draw_with_a_count_buffer_draws_only_the_counted_commands() 
     }
     let counted = draw(Some((count_buffer, 0)));
     assert!(counted[0][0] >= 250, "command 0 is counted: {counted:?}");
-    assert!(
-        counted[1][0] < 5,
+    // Command 1 left the fixture's clear colour (`Gpu::clear`: 0.0625 per channel, 16 of 255).
+    assert_eq!(
+        counted[1],
+        [16, 16, 16, 255],
         "command 1 is past the count of 1: {counted:?}"
     );
 }
