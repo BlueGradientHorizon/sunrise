@@ -606,6 +606,7 @@ impl Game<'_> {
                 },
                 false,
             ),
+            report_unloaded: false,
         };
         let (mut hits, mut count) = (0, 0);
         let mut xx = 0.0;

@@ -1378,7 +1378,8 @@ impl Game<'_> {
         if let Some(handle) = self.native_walk_entity(entity.id()) {
             let tags = &self.items().entity_type_tags;
             return Some(with_entity!(self, handle, e => {
-                let (context, subject) = e.support_collision(tags);
+                let (context, subject) =
+                    super::entity::Entity::support_collision(e, tags);
                 f(context, subject)
             }));
         }
