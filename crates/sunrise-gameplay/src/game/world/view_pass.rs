@@ -60,6 +60,14 @@ impl crate::game::ServerGame<'_> {
             // `LevelChunk.postProcessGeneration` comes before a chunk is sent
             // (`ChunkMap.prepareTickingChunk`, then `onChunkReadyToSend`), ticked or not.
             self.postprocess_chunks()?;
+            // The level's changes go first, as `ServerChunkCache.tick` broadcasts them before
+            // the level's block entities tick: a block placed this tick goes with the group it
+            // was given, before its new block entity's load can change it (#6142).
+            if self.needs_view_pass(dim)
+                && let Some(host) = self.lan.as_mut()
+            {
+                host.hub.viewed_broadcast(&mut self.world);
+            }
             // Like LevelChunk.registerAllBlockEntitiesAfterLevelLoad, attaching a loaded
             // entity publishes it even when this level has no entity ticks.
             self.fire_pending_block_entity_loads();
