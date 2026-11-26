@@ -17,8 +17,6 @@ use crate::{
     items::{ItemStack, Items},
 };
 pub use mod_api::item::menu::{LogicalSide, MenuButtonContext};
-#[cfg(test)]
-use sunrise_world::native_load_context::{DataLoadOrigin, LoadContext, LoadInputs};
 use sunrise_world::native_load_context::{LoopContext, LoopSide};
 mod models;
 pub use models::{

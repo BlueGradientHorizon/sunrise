@@ -79,7 +79,7 @@ fn installed_slot_rules_change_mod_menu_placement() {
     // setting is missing, after it every one sees it.
     let name = |context: &LoopContext| {
         let mut displayname = crate::text::Text::literal("Alex");
-        crate::native_client_hooks::player_name_format(
+        crate::lan::hub::native_player_name_format(
             context,
             &crate::text::Text::literal("Alex"),
             &mut displayname,
@@ -88,12 +88,7 @@ fn installed_slot_rules_change_mod_menu_placement() {
     };
     let tab_list = |context: &LoopContext| {
         let mut display_name = None;
-        crate::native_client_hooks::player_tab_list_name_format(
-            context,
-            1,
-            "Alex",
-            &mut display_name,
-        );
+        crate::lan::hub::native_player_tab_list_name_format(context, 1, "Alex", &mut display_name);
         display_name.map(|text| text.plain())
     };
     assert_eq!(name(&before), "Alex");
