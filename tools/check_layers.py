@@ -37,6 +37,16 @@ DOC = "docs/layers.md"
 # The section of docs/layers.md that says what a layer may depend on.
 SECTION = {"engine": "#engine", "platform": "#platform", "sunrise": "#sunrise", TOOL: "#tools"}
 WHERE = "#where-a-new-feature-goes"
+CLIENT_GAMEPLAY_TRANSFERS = {
+    "sunrise-dualsense": ("allowed", True),
+    "sunrise-friends": ("allowed", True),
+    "sunrise-shader-api": ("allowed", False),
+    "sunrise-shaders": ("allowed", False),
+    "sunrise-telemetry": ("allowed", False),
+    "sunrise-optifine": ("optional", True),
+    "sunrise-theme": ("optional", True),
+}
+PORTABLE_GAMEPLAY = {"sunrise-gameplay-common", "sunrise-gameplay"}
 
 
 def load_config(path=CONFIG):
@@ -137,6 +147,23 @@ def side_problems(config, graph):
     return problems
 
 
+def transferred_exception(edge, key, graph, optional, config, base):
+    crate, dependency = edge.split(" -> ")
+    approved = CLIENT_GAMEPLAY_TRANSFERS.get(dependency)
+    if crate != "sunrise-client-gameplay" or approved != (key, edge in optional):
+        return False
+    if dependency not in graph.get(crate, ()):
+        return False
+    previous = f"sunrise-client -> {dependency}"
+    baseline = base.get("allowed", ()) if key == "allowed" else optional_rows(base)
+    if previous not in baseline:
+        return False
+    if dependency == "sunrise-telemetry":
+        return True
+    current = set(config.get("allowed", ())) | optional_rows(config)
+    return previous not in current and dependency not in graph.get("sunrise-client", ())
+
+
 def check(config, graph, base=None, optional=frozenset(), upstream=None):
     """(problems, notes): problems fail the check, notes are only printed. `optional` is optional_edges()."""
     may = config["may_depend"]
@@ -187,7 +214,8 @@ def check(config, graph, base=None, optional=frozenset(), upstream=None):
                 # exceptions; a new dependency target excuses nothing.
                 restored = (key == "allowed" and upstream is not None
                             and edge in upstream.get("allowed", []))
-                if not restored and (crate in base_layers or upstream is not None):
+                transferred = transferred_exception(edge, key, graph, optional, config, base)
+                if not (restored or transferred) and (crate in base_layers or upstream is not None):
                     problems.append(f"{edge}: added to '{key}' in {CONFIG_PATH}. The exceptions only shrink; "
                                     f"see {DOC}{SECTION.get(layers.get(crate), '')}")
     notes = [f"{edge}: no longer a dependency; you can remove it from 'allowed' in {CONFIG_PATH}"
@@ -221,6 +249,9 @@ def portable(config, packages, base=None):
             if dep.get("kind") == "dev":
                 continue
             edge = f"{package['name']} -> {dep['name']}"
+            if (package["name"] in PORTABLE_GAMEPLAY and dep["name"] == "sunrise-mod-api-gen"
+                    and dep.get("kind") != "build"):
+                problems.add(f"{edge}: portable gameplay may use the generator only as a build dependency")
             if dep.get("optional") and edge in optional_baselines:
                 continue
             if dep.get("path") and dep["name"] not in crates | pending.get(package["name"], set()):

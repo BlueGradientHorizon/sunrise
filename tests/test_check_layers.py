@@ -84,6 +84,36 @@ class CheckLayersTests(unittest.TestCase):
                           crates={"gameplay": "engine"})
         self.assertEqual(problems, [])
 
+    def test_only_witnessed_transfers_keep_their_exception(self):
+        old, new = "sunrise-client", "sunrise-client-gameplay"
+        source = f"{old} -> sunrise-friends"
+        dest = f"{new} -> sunrise-friends"
+        old_telemetry = f"{old} -> sunrise-telemetry"
+        new_telemetry = f"{new} -> sunrise-telemetry"
+        layers = dict(CONFIG["crates"], **{old: "engine", new: "engine",
+                                          "sunrise-friends": "sunrise", "sunrise-telemetry": "sunrise"})
+        graph = {old: {"sunrise-telemetry"}, new: {"sunrise-friends", "sunrise-telemetry"}}
+        base = dict(CONFIG, crates=layers, allowed=[source, old_telemetry])
+        config = dict(CONFIG, crates=layers, allowed=[dest, old_telemetry, new_telemetry])
+        self.assertEqual(check_layers.check(config, graph, base, {dest}), ([], []))
+        self.assertIn("added to 'allowed'", check_layers.check(config, graph, base)[0][0])
+        self.assertIn("added to 'allowed'", check_layers.check(
+            config, graph, dict(base, allowed=[old_telemetry]), {dest})[0][0])
+        graph[old].add("sunrise-friends")
+        copied = dict(config, allowed=config["allowed"] + [source])
+        self.assertIn("added to 'allowed'", check_layers.check(copied, graph, base, {dest})[0][0])
+
+    def test_a_portable_gameplay_generator_edge_must_be_build_only(self):
+        owner, generator = "sunrise-gameplay-common", "sunrise-mod-api-gen"
+        config = dict(CONFIG, crates={owner: "engine", generator: "engine"},
+                      portable={"crates": [owner, generator], "forbidden": ["wgpu"]})
+        self.assertEqual(check_layers.portable(config, [package(owner, (generator, "build"))]), [])
+        self.assertEqual(check_layers.portable(config, [package(owner, generator)]),
+                         [f"{owner} -> {generator}: portable gameplay may use the generator only as a build dependency"])
+        gpu = {"name": "wgpu", "kind": None, "path": None}
+        self.assertIn("takes no window, GPU", check_layers.portable(
+            config, [package(owner, (generator, "build")), {"name": generator, "dependencies": [gpu]}])[0])
+
     def test_a_new_dependency_target_excuses_nothing(self):
         base = {"crates": CONFIG["crates"], "allowed": []}
         problems, _ = run(package("game", "shop"), allowed=["game -> shop"], base=base, crates={"shop": "sunrise"})
