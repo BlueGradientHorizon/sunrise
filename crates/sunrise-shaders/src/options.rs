@@ -98,7 +98,8 @@ pub fn with_options(pack: &Pack, macros: &crate::Macros) -> crate::Macros {
 /// A pack's `shaders.properties` as the game reads it before the programs, with the pack's
 /// options over `macros` (the standard set and the renderer's), in two reads (spec 3.2,
 /// decision D-6): the first, with no `IRIS_FEATURE_*`, settles the flags the pack lists;
-/// `Macros::define_features` then defines the answers in `macros`, and the second read, the
+/// `Macros::define_features` then defines the answers in `macros` (any `IRIS_FEATURE_*` it held
+/// before is dropped first), and the second read, the
 /// one returned, sees them. A flag list only a feature macro reaches is not read, and the
 /// returned properties hold the two lists as the first read gave them, so whatever decides by
 /// them (`load_post`'s shadow colour buffers) follows the answers the programs got. Returns the
@@ -109,6 +110,14 @@ pub fn read_properties(
     pack: &Pack,
     macros: &mut crate::Macros,
 ) -> (crate::Properties, Vec<String>) {
+    // The answers start from none: a set the caller reuses may hold another pack's.
+    let answers: Vec<String> = (macros.names())
+        .filter(|n| crate::macros::is_feature_answer(n))
+        .map(str::to_owned)
+        .collect();
+    for name in &answers {
+        macros.undef(name);
+    }
     let text = pack.read_text("shaders.properties").unwrap_or_default();
     let listed = crate::Properties::parse(&text, &with_options(pack, macros));
     let notes = crate::Macros::feature_notes(&listed);
@@ -739,8 +748,8 @@ mod tests {
     /// the choice is dropped and the line is never rewritten; a program sees only the answer.
     #[test]
     fn a_saved_choice_never_rewrites_a_feature_answer() {
-        let include =
-            "//#define IRIS_FEATURE_SSBO\n#define IRIS_FEATURE_FADE_VARIABLE 0 // [0 1]\n";
+        let include = "//#define IRIS_FEATURE_SSBO\n#define IRIS_FEATURE_FADE_VARIABLE 0 // [0 1]\n\
+                       const int IRIS_FEATURE_ENTITY_TRANSLUCENT = 0; // [0 1]\n";
         let fsh = "#version 330\n#include \"/features.glsl\"\nout vec4 c;\n\
                    #ifdef IRIS_FEATURE_SSBO\nuniform float seen_ssbo;\n#else\n\
                    const float seen_ssbo = 0.0;\n#endif\n\
@@ -755,10 +764,17 @@ mod tests {
             ("shaders/composite.vsh", vsh),
             ("shaders/composite.fsh", fsh),
         ]);
-        let saved = parse_chosen("IRIS_FEATURE_SSBO=true\nIRIS_FEATURE_FADE_VARIABLE=1\n");
-        let pack = Pack::from_zip_bytes("p.zip", bytes)
-            .unwrap()
-            .with_chosen(saved.clone());
+        let saved = parse_chosen(
+            "IRIS_FEATURE_SSBO=true\nIRIS_FEATURE_FADE_VARIABLE=1\n\
+             IRIS_FEATURE_ENTITY_TRANSLUCENT=1\n",
+        );
+        let pack = Pack::from_zip_bytes("p.zip", bytes).unwrap();
+        let found = super::options(&pack);
+        assert!(
+            found.keys().all(|n| !n.starts_with("IRIS_FEATURE_")),
+            "{found:?}"
+        );
+        let pack = pack.with_chosen(saved.clone());
         assert_eq!(pack.read_text("features.glsl").unwrap(), include);
         assert_eq!(apply(include, &saved), include);
         let mut macros = crate::Macros::standard();
@@ -895,6 +911,22 @@ mod tests {
             composite_uniforms(&pack, &properties, &macros),
             ["seen_ssbo"]
         );
+    }
+
+    /// A macro set reused for another pack starts its first read without the answers the
+    /// previous pack got: a pack that lists no flag sees none.
+    #[test]
+    fn a_reused_macro_set_carries_no_answer_to_the_next_pack() {
+        let features = [("seen_ssbo", "SSBO")];
+        let asks = feature_pack("iris.features.optional = SSBO\n", &features);
+        let plain = feature_pack("#ifdef IRIS_FEATURE_SSBO\nleaked = 1\n#endif\n", &features);
+        let mut macros = crate::Macros::standard();
+        read_properties(&asks, &mut macros);
+        assert!(macros.is_defined("IRIS_FEATURE_SSBO"));
+        let (properties, _) = read_properties(&plain, &mut macros);
+        assert!(!macros.is_defined("IRIS_FEATURE_SSBO"));
+        assert_eq!(properties.get("leaked"), None);
+        assert!(composite_uniforms(&plain, &properties, &macros).is_empty());
     }
 
     #[test]

@@ -295,6 +295,41 @@ impl PickHdr {
     }
 }
 
+/// A pack's id files as the load reads them, each with `macros` as `read_properties` left them
+/// (the feature answers among them): `block.properties` (ids and `layer.*` rules, 4.1, 4.2),
+/// `entity.properties` and `item.properties`, and whether `item.properties` exists.
+struct IdFiles {
+    blocks: BlockIds,
+    layers: BlockLayers,
+    entities: BlockIds,
+    items: BlockIds,
+    item_file: bool,
+}
+
+fn read_id_files(pack: &Pack, macros: &Macros) -> IdFiles {
+    let block_properties = Properties::parse(
+        &pack.read_text("block.properties").unwrap_or_default(),
+        macros,
+    );
+    let read = |file: &str, kind: &str| {
+        let text = pack.read_text(file);
+        let ids = BlockIds::parse_kind(
+            &Properties::parse(text.as_deref().unwrap_or_default(), macros),
+            kind,
+        );
+        (ids, text.is_some())
+    };
+    let (entities, _) = read("entity.properties", "entity");
+    let (items, item_file) = read("item.properties", "item");
+    IdFiles {
+        blocks: BlockIds::parse(&block_properties),
+        layers: BlockLayers::parse(&block_properties),
+        entities,
+        items,
+        item_file,
+    }
+}
+
 /// The `sunrise.hdr` request of pack `name` at `path` as the frame is picked for it: its
 /// `shaders.properties` read with the standard macros and the pack's options as chosen, since
 /// the renderer's macros come with the renderer the answer picks; and a note for each value
@@ -646,30 +681,23 @@ impl Game<'_> {
                         let names: Vec<&str> =
                             biomes.list.iter().map(|b| b.name.as_str()).collect();
                         post.custom.set_biomes(&names);
-                        let text = pack.read_text("block.properties").unwrap_or_default();
-                        let block_properties = Properties::parse(&text, &macros);
-                        let ids = BlockIds::parse(&block_properties);
-                        let layers = BlockLayers::parse(&block_properties);
+                        let IdFiles {
+                            blocks: ids,
+                            layers,
+                            entities,
+                            items,
+                            item_file,
+                        } = read_id_files(&pack, &macros);
                         for note in ids.notes.iter().chain(&layers.notes) {
                             log::warn!("shader pack {name}: block.properties: {note}");
                         }
-                        let text = pack.read_text("entity.properties");
-                        let entities = BlockIds::parse_kind(
-                            &Properties::parse(text.as_deref().unwrap_or_default(), &macros),
-                            "entity",
-                        );
-                        let text = pack.read_text("item.properties");
-                        let items = BlockIds::parse_kind(
-                            &Properties::parse(text.as_deref().unwrap_or_default(), &macros),
-                            "item",
-                        );
                         let block_items =
                             block_item_ids(self.res.facts(), self.pack.assets.registry, &ids);
                         self.pack_ids = Some(PackIds {
                             block_items,
-                            item_file: text.is_some(),
+                            item_file,
                             items: items.plain(),
-                            missing_item: if text.is_some() { -1 } else { 0 },
+                            missing_item: if item_file { -1 } else { 0 },
                             // OQ-21: on unless the pack turns it off.
                             old_hand_light: properties
                                 .get("oldHandLight")
@@ -684,7 +712,7 @@ impl Game<'_> {
                                 .is_some_and(|v| v.trim() == "true"),
                             separate_ao,
                             entities: entities.plain(),
-                            missing_entity: if text.is_some() { 65535 } else { 0 },
+                            missing_entity: if item_file { 65535 } else { 0 },
                             missing_block: if ids.is_empty() { 0 } else { 65535 },
                             blocks: ids.clone(),
                             layers: super::pack_layers::PackLayers::new(name, layers),
@@ -1345,7 +1373,8 @@ mod rendered_item_tests {
 #[cfg(test)]
 mod native_pack_tests {
     use super::{
-        PickHdr, active_pack, loaded_properties, pack_shape, reconcile_pack_hdr, startup_pack_shape,
+        PickHdr, active_pack, loaded_properties, pack_shape, read_id_files, reconcile_pack_hdr,
+        startup_pack_shape,
     };
     use sunrise_client::mod_list::{Installed, ModList, NativePage};
     use sunrise_shaders::Tonemap;
@@ -1498,6 +1527,57 @@ mod native_pack_tests {
         assert_eq!(sliders(&lists), ["LEVEL"]);
         assert!(sliders(&unlisted).is_empty());
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// The load's id files see the answers `read_properties` gives: a mapping guarded by a flag
+    /// the pack lists resolves, one guarded by a flag it doesn't list doesn't, in
+    /// `block.properties`, `entity.properties` and `item.properties` alike.
+    #[test]
+    fn the_loads_id_files_see_the_features_the_pack_lists() {
+        use sunrise_shaders::{Macros, Pack};
+        let root = std::env::temp_dir().join(format!("sunrise-id-features-{}", std::process::id()));
+        let path = hdr_pack(&root, "ids", "iris.features.optional = SSBO\n");
+        let guarded = |kind: &str, listed: &str, unlisted: &str| {
+            format!(
+                "#ifdef IRIS_FEATURE_SSBO\n{kind}.10 = {listed}\n#endif\n\
+                 #ifdef IRIS_FEATURE_CUSTOM_IMAGES\n{kind}.11 = {unlisted}\n#endif\n"
+            )
+        };
+        for (file, text) in [
+            (
+                "block",
+                guarded("block", "minecraft:stone", "minecraft:dirt"),
+            ),
+            (
+                "entity",
+                guarded("entity", "minecraft:pig", "minecraft:cow"),
+            ),
+            (
+                "item",
+                guarded("item", "minecraft:stick", "minecraft:apple"),
+            ),
+        ] {
+            std::fs::write(path.join(format!("shaders/{file}.properties")), text).unwrap();
+        }
+        let pack = Pack::open(&path).unwrap();
+        let mut macros = Macros::standard();
+        macros.define_renderer(4);
+        sunrise_shaders::read_properties(&pack, &mut macros);
+        let ids = read_id_files(&pack, &macros);
+        std::fs::remove_dir_all(root).unwrap();
+        assert_eq!(ids.blocks.id("minecraft:stone", |_| None), Some(10));
+        assert_eq!(ids.blocks.id("minecraft:dirt", |_| None), None);
+        let entities = ids.entities.plain();
+        assert_eq!(
+            (entities.get("minecraft:pig"), entities.get("minecraft:cow")),
+            (Some(&10), None)
+        );
+        let items = ids.items.plain();
+        assert_eq!(
+            (items.get("minecraft:stick"), items.get("minecraft:apple")),
+            (Some(&10), None)
+        );
+        assert!(ids.item_file);
     }
 
     /// The kept request is read again when the pick changes and at each boundary that can

@@ -215,7 +215,8 @@ the full list.
     (`ssbo` listed gives `IRIS_FEATURE_SSBO`, not `IRIS_FEATURE_ssbo`). A flag Sunrise lacks, and a flag the pack
     doesn't list, stay undefined. A required flag Sunrise lacks keeps its note, and the pack still loads, as before.
   - `shaders.properties` is read twice, in one fixed order: first with the standard macros, the renderer's and the
-    pack's options and no feature macro, which settles the two lists; then the answers are defined and the file is
+    pack's options and no feature macro (any answer a reused macro set still holds is dropped), which settles the two
+    lists; then the answers are defined and the file is
     read again, and that second read is the one the game uses. A list that only a feature macro reaches is not read.
     The programs and `block.properties`, `entity.properties` and `item.properties` see the answers. A pack that lists
     no supported flag is read once, with the macros it had before, but for one exception that holds for every pack:
@@ -255,8 +256,10 @@ the full list.
   `options::tests::a_repeated_flag_list_is_noted_as_the_lists_were_settled`,
   `options::tests::a_repeat_the_second_read_cannot_see_is_still_noted`,
   `options::tests::the_settled_lists_keep_their_place_in_the_file`,
-  `options::tests::an_undef_in_shaders_properties_hides_the_answer_from_conditionals_only`, and in `tests/it`
+  `options::tests::an_undef_in_shaders_properties_hides_the_answer_from_conditionals_only`,
+  `options::tests::a_reused_macro_set_carries_no_answer_to_the_next_pack`, and in `tests/it`
   `reversed_culling_feature::requested_reversed_culling_loads_and_packs_take_the_path_it_guards` and
   `terrain_fade::fade_feature_negotiation_ignores_case_and_defines_the_written_macro` (`sunrise-shaders`);
-  `game::shader_packs::native_pack_tests::the_hdr_read_and_the_options_page_see_the_features_the_pack_lists`
+  `game::shader_packs::native_pack_tests::the_hdr_read_and_the_options_page_see_the_features_the_pack_lists`,
+  `game::shader_packs::native_pack_tests::the_loads_id_files_see_the_features_the_pack_lists`
   (`sunrise-client`); `profiles_behind_answered_feature_flags_are_dumped` (`sunrise-render-shaderpack`, `spirv_dump`).
