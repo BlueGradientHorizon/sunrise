@@ -1819,7 +1819,7 @@ pub(super) fn emit<'a>(
                 let active = enter_active(&format!("{mod_entry}.id"));
                 let side_guard = if movement_side_filter {
                     format!(
-                        "if {client_controlled} && {mod_entry}.side == super::Side::Server {{ continue; }} "
+                        "if {client_controlled} && {mod_entry}.side == super::Side::Server {{ continue; }}\n"
                     )
                 } else {
                     String::new()
@@ -1828,6 +1828,19 @@ pub(super) fn emit<'a>(
                     String::new(),
                     format!(
                         "{{ let mut {entered} = super::runtime::ListenerScope::new(); for ({receives}, {mod_entry}) in {each} {{ {side_guard}if {accepted} && !{receives} {{ continue; }} {active} let {mod_item} = {entered}.enter({mod_entry}, \"{name}\"); {local_event} {cancel_step} {publish_each} }} }} {publish_end}"
+                    ),
+                )
+            }
+            None if movement_side_filter => {
+                let side_guard = format!(
+                    "if {client_controlled} && {mod_entry}.side == super::Side::Server {{ continue; }}"
+                );
+                let active = enter_active(&format!("{mod_entry}.id"));
+                (
+                    String::new(),
+                    format!(
+                        "{{ let mut {entered} = super::runtime::ListenerScope::new(); for (_, {mod_entry}) in super::listening(HookId::{hook_id}) {{ {side_guard} {active} let {mod_item} = {entered}.enter({mod_entry}, \"{name}\"); {} }} }}",
+                        call(&mod_item, &format!("{mod_entry}.id"), "continue;", "break"),
                     ),
                 )
             }
