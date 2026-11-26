@@ -95,6 +95,35 @@ class StructKindFixtures(unittest.TestCase):
         self.assertEqual(constructors, {('', (name,)) for name in (
             'B', 'D', 'Const', 'Async', 'Unsafe', 'ConstUnsafe')})
 
+    def test_associated_item_macro_tokens_are_not_a_constructor(self):
+        for invocation in ('tokens!(fn);', 'tokens![fn];', 'tokens!{fn}',
+                           'tokens!(pub fn fake() -> Self {});'):
+            with self.subTest(invocation=invocation):
+                _, constructors = defaults_and_constructors(f'impl A {{ {invocation} }}')
+                self.assertEqual(constructors, set())
+
+    def test_incomplete_function_header_is_not_a_constructor(self):
+        _, constructors = defaults_and_constructors('impl A { pub fn incomplete; }')
+        self.assertEqual(constructors, set())
+
+    def test_generic_constructor_is_found(self):
+        _, constructors = defaults_and_constructors(
+            'impl A { pub fn new<T: Fn()>(f: T) -> Self { todo!() } }')
+        self.assertEqual(constructors, {('', ('A',))})
+
+    def test_constructor_param_path_is_not_a_self_receiver(self):
+        _, constructors = defaults_and_constructors(
+            'impl A { pub fn new(value: self::Input) -> Self { todo!() } }')
+        self.assertEqual(constructors, {('', ('A',))})
+
+    def test_self_receivers_are_not_constructors(self):
+        for receiver in ('self', 'mut self', 'self: Box<Self>', '&self', '&mut self',
+                         "&'static mut self", '#[allow(unused)] self'):
+            with self.subTest(receiver=receiver):
+                _, constructors = defaults_and_constructors(
+                    f'impl A {{ pub fn copy({receiver}) -> Self {{ todo!() }} }}')
+                self.assertEqual(constructors, set())
+
     def test_arrow_where_and_unrelated_built(self):
         self.assertFalse(kinds('pub struct A { pub cb: fn() -> u8, private: u8 }')['A'][2])
         self.assertTrue(kinds('pub struct A<T> where T: Fn() { pub x: T }')['A'][2])

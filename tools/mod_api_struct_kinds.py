@@ -226,23 +226,43 @@ def defaults_and_constructors(source, file=""):
         key = (file, modules[i] + path)
         end = _skip_group(ts, j, '{', '}')
         body = ts[j + 1:end - 1]
-        # Only the impl's own items count: each `fn` body (and any other braced item) is skipped
-        # whole, so a function declared inside a method is not taken for a constructor.
+        # Only direct items count, not tokens in attributes, macro calls or function bodies.
+        groups = {'(': ')', '[': ']', '{': '}'}
         k = 0
         while k < len(body):
-            if body[k] == '{':
-                k = _skip_group(body, k, '{', '}')
+            token = body[k]
+            if token in groups:
+                k = _skip_group(body, k, token, groups[token])
                 continue
-            if body[k] != 'fn':
-                k += 1
+            k += 1
+            if token != 'pub':
                 continue
-            before = k - 1
-            while before >= 0 and body[before] in ('const', 'async', 'unsafe'):
-                before -= 1
-            public = before >= 0 and body[before] == 'pub'
-            params_at = body.index('(', k + 1)
+            fn_at = k
+            while fn_at < len(body) and body[fn_at] in ('const', 'async', 'unsafe'):
+                fn_at += 1
+            name_at = fn_at + 1
+            if (name_at >= len(body) or body[fn_at] != 'fn'
+                    or not re.fullmatch(r'[A-Za-z_]\w*', body[name_at])):
+                continue
+            params_at = name_at + 1
+            if params_at < len(body) and body[params_at] == '<':
+                params_at = _skip_group(body, params_at, '<', '>')
+            if params_at == len(body) or body[params_at] != '(':
+                continue
             params_end = _skip_group(body, params_at, '(', ')')
-            params = body[params_at:params_end]
+            k = params_end
+            # A receiver's `self` precedes its type; `value: self::Input` is not a receiver.
+            receiver = params_at + 1
+            while body[receiver:receiver + 2] == ['#', '[']:
+                receiver = _skip_group(body, receiver + 1, '[', ']')
+            if body[receiver:receiver + 1] == ['&']:
+                receiver += 1
+                if body[receiver:receiver + 1] == ["'"]:
+                    receiver += 2  # lifetime name
+            if body[receiver:receiver + 1] == ['mut']:
+                receiver += 1
+            if body[receiver:receiver + 1] == ['self']:
+                continue
             ret = []
             m = params_end
             if m < len(body) and body[m] == '->':
@@ -250,15 +270,11 @@ def defaults_and_constructors(source, file=""):
                 while m < len(body) and body[m] not in ('{', 'where', ';'):
                     ret.append(body[m])
                     m += 1
-            if public and 'self' not in params[:4]:
-                for value in (['Self'], [name]):
-                    if (ret == value or ret == ['Option', '<'] + value + ['>']
-                            or (ret[:2] == ['Result', '<'] and ret[2:3] == value
-                                and ret[3:4] == [','] and ret[-1:] == ['>'])):
-                        constructors.add(key)
-            while m < len(body) and body[m] not in ('{', ';'):
-                m += 1
-            k = _skip_group(body, m, '{', '}') if m < len(body) and body[m] == '{' else m + 1
+            for value in (['Self'], [name]):
+                if (ret == value or ret == ['Option', '<'] + value + ['>']
+                        or (ret[:2] == ['Result', '<'] and ret[2:3] == value
+                            and ret[3:4] == [','] and ret[-1:] == ['>'])):
+                    constructors.add(key)
     return defaults, constructors
 
 
