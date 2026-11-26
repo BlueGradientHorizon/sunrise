@@ -460,10 +460,11 @@ pub fn stages_reading(
         .map_or(wgpu_types::ShaderStages::NONE, |(_, stages)| *stages)
 }
 
-/// A program's two stages, their file ids (`ns:path`, which errors in them name), and the folder
-/// they are in (`ns:path/`), which their quoted (relative) includes start from.
+/// A program's authored stage sources, their diagnostic file names, and each stage's own
+/// folder (`ns:path/`) for quoted (relative) includes.
 pub struct Stages<'a> {
-    pub dir: &'a str,
+    pub vertex_dir: &'a str,
+    pub fragment_dir: &'a str,
     pub vertex: &'a str,
     pub fragment: &'a str,
     pub vertex_file: &'a str,
@@ -473,8 +474,9 @@ pub struct Stages<'a> {
 /// The program of `sources` under `inputs`, its vertex stage fed by `glue`. Blocks and samplers
 /// beyond [`Inputs::blocks`] and [`Inputs::samplers`] are bound at [`Translated::other`]'s
 /// bindings when `provided` says yes to their name (a block's and a sampler's alike: the caller
-/// knows which kind each one is), and are an error otherwise. Errors name the file, line and
-/// column the author wrote and the responsible stage when known ([`Error`]).
+/// knows which kind each one is), and are an error otherwise. Each stage's quoted includes
+/// resolve from its own folder. Errors name the file, line and column the author wrote and the
+/// responsible stage when known ([`Error`]).
 pub fn translate(
     sources: &Stages,
     inputs: &Inputs,
@@ -482,21 +484,22 @@ pub fn translate(
     provided: &dyn Fn(&str) -> bool,
 ) -> Result<Translated, Vec<Error>> {
     let Stages {
-        dir,
+        vertex_dir,
+        fragment_dir,
         vertex,
         fragment,
         vertex_file,
         fragment_file,
     } = *sources;
-    let stage = |text: &str, file: &str, stage| -> Result<Expanded, Vec<Error>> {
+    let stage = |text: &str, file: &str, dir: &str, stage| -> Result<Expanded, Vec<Error>> {
         let mut expanded = expand_includes(text, file, dir, inputs.includes, Some(inputs.defines))
             .map_err(|e| vec![Error::from(e).with_stage(stage)])?;
         expanded.lines = glsl_fixups::fixups(expanded.lines);
         texel_fetches(&mut expanded.lines);
         Ok(expanded)
     };
-    let vertex_text = stage(vertex, vertex_file, ShaderStage::Vertex)?;
-    let fragment_text = stage(fragment, fragment_file, ShaderStage::Fragment)?;
+    let vertex_text = stage(vertex, vertex_file, vertex_dir, ShaderStage::Vertex)?;
+    let fragment_text = stage(fragment, fragment_file, fragment_dir, ShaderStage::Fragment)?;
     let base =
         other_binding_base(inputs).map_err(|message| vec![Error::new(vertex_file, 0, message)])?;
     let mut names = Names::new(base);
@@ -2399,7 +2402,8 @@ mod tests {
         provided: &dyn Fn(&str) -> bool,
     ) -> Result<Translated, Vec<Error>> {
         let sources = Stages {
-            dir: "minecraft:shaders/core/",
+            vertex_dir: "minecraft:shaders/core/",
+            fragment_dir: "minecraft:shaders/core/",
             vertex,
             fragment,
             vertex_file: VSH_FILE,
@@ -3265,7 +3269,8 @@ mod tests {
 
     fn storage_stages<'a>(vertex: &'a str, fragment: &'a str) -> Stages<'a> {
         Stages {
-            dir: "minecraft:shaders/core/",
+            vertex_dir: "minecraft:shaders/core/",
+            fragment_dir: "minecraft:shaders/core/",
             vertex,
             fragment,
             vertex_file: VSH_FILE,
@@ -3512,7 +3517,8 @@ void main() { }
             }
         };
         let stages = Stages {
-            dir: "minecraft:shaders/core/",
+            vertex_dir: "minecraft:shaders/core/",
+            fragment_dir: "minecraft:shaders/core/",
             vertex: branch,
             fragment: fsh,
             vertex_file: VSH_FILE,
@@ -3700,7 +3706,8 @@ void main() { }
                 fragColor = Tint * texture(Albedo, uv) * texture(ExtraTex, uv);\n\
             }\n";
         let stages = Stages {
-            dir: "demo:custom/core/",
+            vertex_dir: "demo:custom/core/",
+            fragment_dir: "demo:custom/core/",
             vertex: vsh,
             fragment: fsh,
             vertex_file: "demo:custom/core/test.vsh",
@@ -3805,7 +3812,8 @@ void main() { }
                 fragColor = Tint * texture(ModTex, uv);\n\
             }\n";
         let stages = Stages {
-            dir: "demo:shaders/core/",
+            vertex_dir: "demo:shaders/core/",
+            fragment_dir: "demo:shaders/core/",
             vertex: vsh,
             fragment: fsh,
             vertex_file: VSH_FILE,

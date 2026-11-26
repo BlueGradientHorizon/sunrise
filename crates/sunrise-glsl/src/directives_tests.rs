@@ -590,7 +590,8 @@ fn program(vsh: &str, files: &[(&str, &str)]) -> Result<Translated, Vec<Error>> 
             .map(|(_, text)| (*text).to_owned()))
     };
     let stages = Stages {
-        dir: "minecraft:shaders/core/",
+        vertex_dir: "minecraft:shaders/core/",
+        fragment_dir: "minecraft:shaders/core/",
         vertex: vsh,
         fragment: "#version 330\nout vec4 c;\nvoid main() { c = vec4(1.0); }\n",
         vertex_file: tests::VSH_FILE,

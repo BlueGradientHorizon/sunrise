@@ -529,6 +529,17 @@ fn asset_path(file: &str) -> String {
     }
 }
 
+/// An include expansion refusal at the directive that caused it, in its own asset file. The
+/// preprocessor names the line but not the column.
+fn import_problem(error: sunrise_glsl::ImportError) -> Problem {
+    Problem {
+        file: asset_path(&error.file),
+        line: error.line as usize,
+        column: 0,
+        message: error.refusal.to_string(),
+    }
+}
+
 /// A refusal at byte `at` of `stage`'s text (none when it has no place: the stage file, no line),
 /// in the file and at the line that byte came from ([`Expanded::error_at`]: an `#include`d
 /// declaration is located in its own file), and at its column in the expanded text.
@@ -599,10 +610,9 @@ fn program_includes<'a>(read: &'a dyn Fn(&str) -> Result<Option<String>, String>
     }
 }
 
-/// Refuse any top-level vertex `in` declaration ([`sunrise_glsl::stage_inputs`] of the expanded
-/// stage, comments gone) that is not listed in `vertex_inputs` or whose GLSL type disagrees with
-/// the pipeline's [`VertexFormat`]. A declaration is located by where its name stands in
-/// `vertex`, in the file and at the line it came from ([`refusal_at`]).
+/// Refuse a top-level vertex `in` ([`sunrise_glsl::stage_inputs`]) whose name or GLSL type
+/// doesn't match the supplied `vertex_inputs`. Both registration and the CLI check use this
+/// check; the refusal names the declaration's file and line ([`refusal_at`]).
 fn validate_vertex_inputs(
     vertex: &Expanded,
     vertex_inputs: &[(&str, &str)],
@@ -613,9 +623,7 @@ fn validate_vertex_inputs(
                 return Err(refusal_at(
                     vertex,
                     Some(offset),
-                    format!(
-                        "undeclared vertex input `{name}`: declare it in RenderPipeline::vertex_binding"
-                    ),
+                    format!("vertex input `{name}` has no matching vertex attribute"),
                 ));
             }
             Some((_, expected)) if *expected != ty => {
@@ -657,9 +665,9 @@ pub struct ProgramBindings {
 /// under `defines` and comments removed. A uniform block, sampler or buffer an included file
 /// declares is the program's too (#5905), and one named only in a comment is not, nor does a
 /// sprite name in a comment make the program textured. A stage whose includes cannot be expanded
-/// refuses the program, as [`translate`] does, with the include's error, and so does a vertex
-/// input of an unsupported type, a duplicate one or a 17th, in the file and at the line that
-/// declares it, an included file's among them.
+/// refuses the program at the directive that failed, as [`translate`] does. An unsupported,
+/// duplicate or 17th vertex input is refused where it is declared. Both refusals name the
+/// file (including an included file) and line.
 /// [`SPRITE_INCLUDE`] is always pasted: including it is itself asking for the sprite texture.
 pub fn extract_program_bindings(
     sources: &ProgramSources<'_>,
@@ -671,7 +679,7 @@ pub fn extract_program_bindings(
     let defines = effective_defines(defines);
     let expand = |text: &str, file: &str, dir: &str| {
         sunrise_glsl::expand_includes(text, file, dir, &includes, Some(&defines))
-            .map_err(|e| problem(file, e.to_string()))
+            .map_err(import_problem)
     };
     let vertex = expand(sources.vertex, sources.vertex_file, sources.vertex_dir)?;
     let fragment = expand(
@@ -752,7 +760,8 @@ pub const COMPUTE_BIND_GROUP: u32 = 0;
 pub const COMPUTE_FOLDER: &str = "shaders/compute";
 
 /// Translate and validate one mod compute shader (`.csh`) on a guarded 64 MiB stack thread with
-/// the same crash/memory containment bounds as [`translate`].
+/// the same crash/memory containment bounds as [`translate`]. An include expansion refusal
+/// names the file and line of the failing directive.
 pub fn translate_compute(
     sources: &ComputeSources<'_>,
     options: &ComputeOptions<'_>,
@@ -762,6 +771,7 @@ pub fn translate_compute(
         .unwrap_or_else(|reason| Err(vec![problem(sources.file, reason)]))
 }
 
+/// Check expanded source for refusals before translating the compute shader.
 fn translate_compute_inner(
     sources: &ComputeSources<'_>,
     options: &ComputeOptions<'_>,
@@ -775,7 +785,7 @@ fn translate_compute_inner(
         &includes,
         Some(options.defines),
     )
-    .map_err(|e| vec![problem(sources.file, e.to_string())])?;
+    .map_err(|e| vec![import_problem(e)])?;
     if let Some((at, msg)) = guard::refusal(expanded.text()) {
         return Err(vec![refusal_at(&expanded, at, msg)]);
     }
@@ -856,8 +866,10 @@ pub fn translate_oit(
 }
 
 /// Expand both stages ([`Expanded`]), refuse what the guard and the vertex inputs refuse, and
-/// translate the program, once more with the linear-light finish when `options` ask for it. The
-/// built program carries each stage's expanded text.
+/// translate the program, once more with the linear-light finish when `options` ask for it.
+/// Include expansion refusals name the file and line of the failing directive. The translator
+/// takes the authored sources so each stage keeps its own file, lines and include folder; the
+/// built program also carries the expanded text.
 fn translate_inner(
     sources: &ProgramSources<'_>,
     options: &Options<'_>,
@@ -875,7 +887,7 @@ fn translate_inner(
         &includes,
         Some(defines),
     )
-    .map_err(|e| vec![problem(sources.vertex_file, e.to_string())])?;
+    .map_err(|e| vec![import_problem(e)])?;
     if let Some((at, msg)) = guard::refusal(vertex.text()) {
         return Err(vec![refusal_at(&vertex, at, msg)]);
     }
@@ -888,22 +900,15 @@ fn translate_inner(
         &includes,
         Some(defines),
     )
-    .map_err(|e| vec![problem(sources.fragment_file, e.to_string())])?;
+    .map_err(|e| vec![import_problem(e)])?;
     if let Some((at, msg)) = guard::refusal(fragment.text()) {
         return Err(vec![refusal_at(&fragment, at, msg)]);
     }
 
-    // `Stages` has one folder for both stages, which a quoted include is read from. The vertex
-    // stage's own source keeps `__LINE__` and error lines exact, but is only right when the
-    // folders are the same; otherwise its text, expanded against its own folder above, goes in.
-    let vertex_source = if sources.vertex_dir == sources.fragment_dir {
-        sources.vertex
-    } else {
-        vertex.text()
-    };
     let stages = Stages {
-        dir: sources.fragment_dir,
-        vertex: vertex_source,
+        vertex_dir: sources.vertex_dir,
+        fragment_dir: sources.fragment_dir,
+        vertex: sources.vertex,
         fragment: sources.fragment,
         vertex_file: sources.vertex_file,
         fragment_file: sources.fragment_file,
@@ -970,8 +975,9 @@ fn translate_inner(
 }
 
 /// Re-translate an already-expanded program with [`linear_fragment_finish`] enabled, returning
-/// the linear-light fragment [`naga::Module`]. Used by the GPU renderer only on linear-light
-/// frames so standard gamma loads avoid translating twice.
+/// the linear-light fragment [`naga::Module`]. No include folders are needed for these expanded
+/// stages. Used by the GPU renderer only on linear-light frames so standard gamma loads avoid
+/// translating twice.
 pub fn translate_linear_fragment(
     vertex_expanded: &str,
     fragment_expanded: &str,
@@ -989,7 +995,8 @@ pub fn translate_linear_fragment(
         // `translate_oit` does, and the renderer never re-translates an OIT program.
         let provided = |_: &str| false;
         let stages = Stages {
-            dir: "",
+            vertex_dir: "",
+            fragment_dir: "",
             vertex: vertex_expanded,
             fragment: fragment_expanded,
             vertex_file: "",
@@ -1279,10 +1286,17 @@ void main() { fragColor = texture(Sampler0, texCoord0); }
         );
     }
 
+    /// Stages from different folders resolve quoted includes independently and still translate
+    /// the vertex stage with its authored line numbers and GLSL version.
     #[test]
     fn separate_vertex_and_fragment_directories_resolve_own_relative_includes() {
-        let vsh = "#version 330\n#include \"vhelper.glsl\"\nin vec3 Position;\nout vec4 vertexColor;\n\
-            void main() { gl_Position = vec4(Position, 1.0); vertexColor = vcolor(); }\n";
+        let vsh = "#version 330\n#include \"vhelper.glsl\"\n\
+            const uint authoredLine = __LINE__;\nconst int authoredVersion = __VERSION__;\n\
+            in vec3 Position;\nout vec4 vertexColor;\n\
+            void main() {\n\
+                gl_Position = vec4(Position, float(authoredLine + uint(authoredVersion)));\n\
+                vertexColor = vcolor();\n\
+            }\n";
         let fsh = "#version 330\n#include \"fhelper.glsl\"\nin vec4 vertexColor;\nout vec4 fragColor;\n\
             void main() { fragColor = vertexColor * fscale(); }\n";
         let srcs = ProgramSources {
@@ -1304,6 +1318,48 @@ void main() { fragColor = texture(Sampler0, texCoord0); }
         };
         let built = translate(&srcs, &Options::default(), &include).unwrap();
         assert_eq!(built.translated.fragment_writes(), [0]);
+        let vertex = &built.translated.vertex;
+        for (name, expected) in [
+            ("authoredLine", naga::Literal::U32(3)),
+            ("authoredVersion", naga::Literal::I32(330)),
+        ] {
+            let (_, constant) = vertex
+                .constants
+                .iter()
+                .find(|(_, c)| c.name.as_deref() == Some(name))
+                .unwrap_or_else(|| panic!("missing constant {name}"));
+            let expression = &vertex.global_expressions[constant.init];
+            assert!(
+                matches!(expression, naga::Expression::Literal(actual) if *actual == expected),
+                "{name}: {expression:?}"
+            );
+        }
+    }
+
+    /// A split-folder vertex error after an include names the line in the stage file, not the
+    /// shifted line in the expanded text.
+    #[test]
+    fn a_split_folder_vertex_error_names_its_authored_line() {
+        let vsh = "#version 330\n#include \"height.glsl\"\nin vec3 Position;\n\
+            layout(std140) uniform Unbound { vec4 Offset; };\n\
+            void main() { gl_Position = vec4(Position, height()) + Offset; }\n";
+        let fsh = "#version 330\nout vec4 fragColor;\nvoid main() { fragColor = vec4(1.0); }\n";
+        let program = ProgramSources {
+            vertex_file: "assets/libmod/shaders/core/v/shared.vsh",
+            vertex_dir: "libmod:shaders/core/v/",
+            ..sources(vsh, fsh)
+        };
+        let include = |id: &str| match id {
+            "libmod:shaders/core/v/height.glsl" => {
+                Ok(Some("float height() {\n    return 1.0;\n}\n".to_owned()))
+            }
+            other => stub_include(other),
+        };
+        let refused = translate(&program, &Options::default(), &include).unwrap_err();
+        assert_eq!(refused.len(), 1, "{refused:?}");
+        assert_eq!(refused[0].file, "assets/libmod/shaders/core/v/shared.vsh");
+        assert_eq!(refused[0].line, 4, "{refused:?}");
+        assert!(refused[0].message.contains("Unbound"), "{refused:?}");
     }
 
     #[test]
@@ -1936,7 +1992,10 @@ void main() {{
             "assets/example/shaders/include/attributes.glsl"
         );
         assert_eq!(refused[0].line, 2);
-        assert!(refused[0].message.contains("`Stray`"), "{refused:?}");
+        assert_eq!(
+            refused[0].message,
+            "vertex input `Stray` has no matching vertex attribute"
+        );
     }
 
     /// A program whose include cannot be expanded is refused with the include's error, not read
@@ -1949,11 +2008,59 @@ void main() {{
             void main() { fragColor = texture(Real, vec2(0.0)); }\n";
         let refused = extract_program_bindings(&sources(vsh, fsh), &[], &stub_include)
             .expect_err("a missing include refuses the program");
-        assert_eq!(refused.file, "assets/example/shaders/core/glow.vsh");
-        assert!(
-            refused.message.contains("nothing_here.glsl not found"),
-            "{refused:?}"
+        assert_eq!(
+            refused,
+            Problem {
+                file: "assets/example/shaders/core/glow.vsh".to_owned(),
+                line: 2,
+                column: 0,
+                message: "minecraft:shaders/include/nothing_here.glsl not found".to_owned(),
+            }
         );
+    }
+
+    /// A missing nested include names the file and line that asked for it, whether reading
+    /// bindings for `check` or preparing a render or compute stage for translation.
+    #[test]
+    fn a_missing_nested_include_names_the_including_file_and_line() {
+        let include = |id: &str| match id {
+            "example:shaders/include/outer.glsl" => {
+                Ok(Some("// outer\n\n#include \"missing.glsl\"\n".to_owned()))
+            }
+            other => stub_include(other),
+        };
+        let expected = Problem {
+            file: "assets/example/shaders/include/outer.glsl".to_owned(),
+            line: 3,
+            column: 0,
+            message: "example:shaders/include/missing.glsl not found".to_owned(),
+        };
+        let bad = "#version 450\n#include <example:outer.glsl>\n";
+        for render in [sources(bad, FSH), sources(VSH, bad)] {
+            assert_eq!(
+                extract_program_bindings(&render, &[], &include).unwrap_err(),
+                expected
+            );
+            assert_eq!(
+                translate(&render, &Options::default(), &include).unwrap_err(),
+                [expected.clone()]
+            );
+        }
+        let compute = ComputeSources {
+            file: "assets/example/shaders/compute/a.csh",
+            dir: "example:shaders/compute/",
+            source: bad,
+        };
+        let options = ComputeOptions {
+            defines: &[],
+            mod_bindings: &[],
+            check_backends: false,
+            interface: DEVICELESS_INTERFACE_LIMITS,
+        };
+        let Err(problems) = translate_compute(&compute, &options, &include) else {
+            panic!("a missing include must refuse the compute shader");
+        };
+        assert_eq!(problems, [expected]);
     }
 
     /// A translator error in an included file names it by its asset path, as a stage file is.

@@ -165,7 +165,8 @@ fn translate_selected(
     let (vertex_file, fragment_file) =
         (stage_id(vertex_name, "vsh"), stage_id(fragment_name, "fsh"));
     let stages = sunrise_glsl::Stages {
-        dir: "minecraft:shaders/core/",
+        vertex_dir: "minecraft:shaders/core/",
+        fragment_dir: "minecraft:shaders/core/",
         vertex,
         fragment,
         vertex_file: &vertex_file,
